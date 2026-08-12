@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 4
+    "engine_owned": 5
   },
   "fixtures": [
     {
@@ -220,6 +220,15 @@
       "sha256": "sha256:2c909bf14db297c4462ca653331a5bf08bd54300f72800caae63b7e72f590493",
       "owner": "engine",
       "notes": "Carries a /FontDescriptor with Ascent 718 / Descent -207, so the MEASURED ink path is exercised. Every other fixture takes the typed-absence path (M3)."
+    },
+    {
+      "id": "absent-font-metrics",
+      "root": "engine",
+      "group": "engine",
+      "path": "absent-font-metrics/document.pdf",
+      "sha256": "sha256:218c2ad51efc30835771be062e7baae0a08fca14d01c260ba142cb72163f9783",
+      "owner": "engine",
+      "notes": "Carries a /FontDescriptor that RESOLVES and answers nothing \u2014 no /Ascent, no /Descent, no /FontBBox, no embedded program \u2014 so resolve_font_ink walks the descriptor and still declines to measure. That route is what only this fixture covers: the three M3 engine fixtures also pair a known advance with absent geometry, but they carry no descriptor at all, and synthetic/simple-text never reaches the metrics branch because its advance is unknown too. /Widths IS supplied here, so the advance is known and the absence is attributable to the font's silence about ink extent alone. Drives the M5 geometry-omission path."
     }
   ]
 }

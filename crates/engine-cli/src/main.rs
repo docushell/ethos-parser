@@ -56,8 +56,13 @@ enum Command {
     /// mean two different things depending on which subcommand ran.
     Extract(ExtractArgs),
 
-    /// Project a representation into `ethos.grounding.v1`. **Not implemented until M5.**
-    Ground(PathArg),
+    /// Project a `DocumentRepresentation v0` into `ethos.grounding.v1`.
+    ///
+    /// Exit codes: 0 projected, 2 could not read or refused. Nodes with no measurable ink box
+    /// are omitted from the artifact and reported on stderr — the grounding schema is
+    /// `additionalProperties: false` and cannot carry the count, so the representation it came
+    /// from is where the declaration lives.
+    Ground(GroundArgs),
 
     /// Validate a grounding artifact against its schema and source bytes.
     /// **Not implemented until M6.**
@@ -84,6 +89,12 @@ struct ExtractArgs {
 }
 
 #[derive(clap::Args)]
+struct GroundArgs {
+    /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
+    path: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct PathArg {
     /// Input path.
     #[arg(value_name = "PATH")]
@@ -95,7 +106,7 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Classify(args) => run_classify(args),
         Command::Extract(args) => run_extract(args),
-        Command::Ground(_) => not_implemented("ground", "M5"),
+        Command::Ground(args) => run_ground(args),
         Command::GroundingCheck(_) => not_implemented("grounding-check", "M6"),
     }
 }
@@ -132,8 +143,14 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
 
     // Opened once, exactly as `classify` opens it. The same handle serves both stages
     // (docs/04-ARCHITECTURE.md §2.1); nothing below the CLI opens a file.
-    let result =
-        Document::open(&args.path, &profile).and_then(|doc| engine_pdf::extract(&doc, &profile));
+    //
+    // The happy-path output is the REPRESENTATION, not the stage artifact: `05-MILESTONES.md`
+    // M5 makes `DocumentRepresentation v0` the canonical record, and it is what `engine ground`
+    // consumes. The stage artifact remains the library's return type, so M3's acceptance suite
+    // still asserts on the thing the parser actually produces.
+    let result = Document::open(&args.path, &profile)
+        .and_then(|doc| engine_pdf::extract(&doc, &profile))
+        .and_then(|extract| engine_pdf::to_representation(&extract, &profile));
 
     match result {
         Ok(artifact) => match artifact.to_canonical_bytes() {
@@ -149,6 +166,72 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         Err(e) => fail(&e),
     }
 }
+
+/// Read a representation from disk and project it.
+///
+/// Thin, like every other subcommand: it reads bytes, calls the library, prints canonical bytes,
+/// and maps the outcome to an exit code. The projection itself lives in `engine-grounding`.
+fn run_ground(args: GroundArgs) -> ExitCode {
+    let bytes = match std::fs::read(&args.path) {
+        Ok(b) => b,
+        Err(e) => {
+            return fail(&EngineError::Io {
+                detail: format!("{}: {e}", args.path.display()),
+            })
+        }
+    };
+
+    let repr: engine_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "representation".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    // The fingerprint is checked before anything is projected. A representation whose payload
+    // does not hash to its declared digest is not a record this engine will speak for, and
+    // projecting it anyway would launder the disagreement into a fresh-looking artifact.
+    if let Err(e) = repr.verify_fingerprint() {
+        return fail(&e);
+    }
+
+    let projection = match engine_grounding::project(&repr) {
+        Ok(p) => p,
+        Err(e) => return fail(&e),
+    };
+
+    match engine_grounding::to_canonical_bytes(&projection.source) {
+        Ok(out) => {
+            let mut stdout = std::io::stdout().lock();
+            let _ = stdout.write_all(&out);
+            let _ = stdout.write_all(b"\n");
+            let _ = stdout.flush();
+
+            // On stderr, deliberately: stdout is the artifact and must stay byte-identical
+            // across runs. A consumer that wants this durably reads the representation's
+            // `geometry-absent-not-groundable` limitation, which carries the same count.
+            if projection.omission.is_lossy() {
+                eprintln!(
+                    "engine: {} of {} node(s) omitted from the grounding artifact — no measurable \
+                     ink box [{}]. The nodes remain in the representation with their text and \
+                     native locators; the grounding schema requires a bbox and this engine does \
+                     not fabricate one.",
+                    projection.omission.nodes_omitted,
+                    projection.omission.nodes_total,
+                    projection.omission.limitation_code,
+                );
+            }
+            ExitCode::from(PROJECTED as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+/// Projection succeeded.
+const PROJECTED: i32 = 0;
 
 /// Extraction succeeded.
 ///

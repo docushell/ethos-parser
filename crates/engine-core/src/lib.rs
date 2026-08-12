@@ -64,6 +64,7 @@ pub mod geom;
 pub mod identity;
 pub mod ids;
 pub mod profile;
+pub mod representation;
 
 pub use assurance::{
     codes, page_binding_status, Assurance, CoverageSummary, Limitation, LimitationScope,
@@ -82,6 +83,11 @@ pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, CMAP_DATA_VERSION,
     READING_ORDER_RULE_V0,
+};
+pub use representation::{
+    DocumentRepresentation, NativeLocator, Node, NodeGeometry, NodeKind, PageRecord, PdfLocator,
+    ProcessingRun, ProcessorIdentity, RepresentationPayload, SourceIdentity, StructuralLocator,
+    SynthesizedAt, TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

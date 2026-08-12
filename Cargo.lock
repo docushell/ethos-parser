@@ -349,6 +349,8 @@ name = "engine-grounding"
 version = "0.0.0"
 dependencies = [
  "engine-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

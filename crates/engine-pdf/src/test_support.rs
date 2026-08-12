@@ -75,3 +75,8 @@ pub fn conformance_fixture(rel: &str) -> Vec<u8> {
 pub fn bench_fixture(rel: &str) -> Vec<u8> {
     read("benchmark", rel)
 }
+
+/// Read a fixture from the engine-owned CC0 set (`fixtures/engine`).
+pub fn engine_fixture(rel: &str) -> Vec<u8> {
+    read("engine", rel)
+}

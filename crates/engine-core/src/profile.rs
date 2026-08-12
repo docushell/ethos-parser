@@ -102,9 +102,12 @@ pub struct Capabilities {
     pub spans: bool,
     /// Spans carry character offsets into their element's text. (grounding-aligned)
     ///
-    /// **v0: false.** M3 emits runs with native locators and no element/span hierarchy, so
-    /// there is nothing for an offset to be an offset *into*. The hierarchy arrives with
-    /// `DocumentRepresentation v0` at M5, and this flips then — with a test.
+    /// **v0: false.** M5 built `DocumentRepresentation v0` and left this false on purpose: v0
+    /// performs no line or block grouping, so an element and a span are the *same object* and an
+    /// offset would always be `0..len` — advertising sub-element addressing the engine cannot do.
+    /// Ethos's own validator also ties the two together (offsets present must equal the
+    /// capability), so claiming it would oblige every span to carry them. It flips at v1, when
+    /// grouping makes elements coarser than spans and the offsets start carrying information.
     pub char_offsets: bool,
     /// Tables are detected and emitted. **v0: false** — tables are M-later, v1 scope.
     /// (grounding-aligned)
@@ -129,7 +132,7 @@ impl Capabilities {
     ///
     /// Note how much is `false`. Two of these were `true` in the M1 sketch and are `false` here
     /// because M4 asked for the proof and the proof did not exist: `char_offsets` has no
-    /// hierarchy to index into until M5, and `structural_locators` would be claiming a full
+    /// hierarchy to index into until grouping lands, and `structural_locators` would be claiming a full
     /// structural address on the strength of a best-effort `mcid`. Narrowing a declaration when
     /// the evidence does not support it is the mechanism working, not a regression.
     pub const V0: Self = Self {
@@ -513,7 +516,9 @@ mod tests {
         assert!(
             !c.char_offsets,
             "v0 emits runs with no element/span hierarchy, so there is nothing an offset could \
-             index into. It flips at M5 with DocumentRepresentation v0 — and with a test"
+             index into. M5 built the record and left this false: with no line grouping an \
+             element and a span are the same object, so an offset would always be 0..len. It \
+             flips at v1 with grouping — and with a test"
         );
         assert!(
             !c.structural_locators,

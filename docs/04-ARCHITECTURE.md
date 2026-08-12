@@ -53,6 +53,23 @@ not a reason to add a crate.
 The third row is what keeps the second format cheap. If `engine-grounding` reaches for a page tree,
 DOCX support becomes a rewrite instead of a variant.
 
+**"Any PDF concept" means machinery, not vocabulary — clarified at M5**, because the rule as
+written forbids something the contract requires. `01-CONTRACT.md` §5.1 defines `NativeLocator` as
+a **discriminated union with a `PdfLocator` variant**, and that union is part of the artifact
+contract, which `engine-core` owns. This document's own header says the contract wins where the
+two disagree, so the line is:
+
+| In `engine-core` | Verdict |
+| --- | --- |
+| `lopdf`, a content-stream operator, a page tree, a font program, an xref table | **Forbidden.** This is machinery: it makes the crate know how to read one format |
+| A contract-defined locator variant carrying integers (`PdfLocator { page, origin_x, … }`), a format name as a string (`BackendIdentity { name: "lopdf" }`) | **Permitted.** This is data and a discriminant. Nothing here can parse anything |
+
+`engine-grounding` is held to the **stronger** rule, and it is a rule rather than a hope: the
+projection addresses pages by node id, so it never reads a locator at all, and
+`engine_grounding_has_no_pdf_concept` fails if the crate so much as mentions `NativeLocator`.
+That is what actually keeps the second format a variant — hiding the type in `engine-pdf` would
+have kept the letter of the old wording while leaving the projection free to match on it.
+
 ## 2. CLI surface — v0
 
 Four subcommands. **The CLI is a thin shell over the library** so the two cannot diverge; every

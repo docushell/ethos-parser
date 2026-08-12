@@ -6,12 +6,13 @@ The conformance corpus lives in the Ethos tree and is used **read-only**. `manif
 references each fixture by path and `sha256`. Copying would invite drift; a hash-pinned manifest
 makes a fixture change a visible event in this repo.
 
-## Resolution — two roots
+## Resolution — three roots
 
 | Root | Default | Override | What it holds |
 | --- | --- | --- | --- |
 | `conformance` | `../ethos/fixtures` | `ETHOS_FIXTURES` | The 15-fixture conformance corpus. **The M6 oracle criterion counts exactly these** |
 | `benchmark` | `../ethos/benchmarks/gate-zero/corpus` | `ETHOS_BENCH_CORPUS` | Large real-world PDFs that M2's acceptance names. Not part of the oracle count |
+| `engine` | `fixtures/engine` | `ETHOS_ENGINE_FIXTURES` | CC0 PDFs authored **here**, for behaviours the Ethos corpus does not cover. Never part of the oracle count |
 
 The second root exists because M2's load-bearing acceptance tests name documents the conformance
 corpus does not contain. The bounded-cost A/B needs a 492-page PDF (`nist-sp-800-53r5`); the
@@ -42,12 +43,49 @@ Two entries are worth knowing before you debug against them:
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. Today all 15 are `ethos`.
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; five are
+`engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
+corpus genuinely cannot cover.
 
-**One exception is planned**, at M5: an **absent-font-metrics** PDF, authored here under CC0, marked
-`owner: "engine"`. It exercises the geometry-omission path, and the Ethos corpus has no fixture for
-that case. Adding a second engine-owned fixture needs the same justification — that the Ethos corpus
-genuinely cannot cover it — not merely convenience.
+| Fixture | Milestone | What only it proves |
+| --- | --- | --- |
+| `show-text-quote-operators` | M3 | The `'` and `"` operators, whose omission is pdf-inspector's disqualifying defect |
+| `horizontal-scaling-tz` | M3 | `Tz` changes the advance |
+| `synthesized-space-tj` | M3 | A `TJ` gap wide enough that a space was intended and never written |
+| `measured-ink-box` | M3 | A `/FontDescriptor` with real ascent/descent, so ink is **measured** |
+| `absent-font-metrics` | M5 | A descriptor that exists and declares **no ink extent**, with the advance known |
+
+**Why `absent-font-metrics` is not redundant**, since the answer is narrower than it first looks
+and the first draft of this paragraph got it wrong:
+
+Geometry can be absent for more than one reason, and it is tempting to say this fixture is the only
+one pairing a **known advance** with an absent box. That is false, and measured: `/Widths` has
+always been supplied to every engine fixture, so `show-text-quote-operators`,
+`horizontal-scaling-tz` and `synthesized-space-tj` already produce seven fully-addressable runs
+(page + origin + advance) with no groundable box between them.
+
+What only this fixture covers is one specific route through `resolve_font_ink`: a
+`/FontDescriptor` that **resolves and answers nothing**. The other three carry no descriptor at
+all and exit at the first gate; `synthetic/simple-text` supplies no `/Widths`, so its advance is
+unknown and `extract` never calls `ink_box` in the first place — it cannot stand in for a metrics
+test it never reaches. Here the reader opens a descriptor, finds no `/Ascent`, no `/Descent`, no
+`/FontBBox` and no embedded program, and still refuses to invent a box. That is the shape most
+likely to tempt a `height = font_size` fallback, which is the defect the whole typed-absence design
+exists to prevent.
+
+It is a **dedicated** fixture rather than a reused one on purpose: the three M3 fixtures happen to
+take an absence path today, but each exists to prove something else, and a later edit to one of
+them — adding a descriptor to test something new — would silently stop testing omission.
 
 **The 15-fixture oracle criterion counts only `owner: "ethos"` entries.** Engine-owned fixtures are
 additional test assets and never inflate that number.
+
+## Regenerating the engine-owned fixtures
+
+```bash
+python3 fixtures/engine/make_fixtures.py fixtures/engine
+```
+
+Deterministic: no timestamps, no ids, no compression, so two runs produce byte-identical files and
+re-pinning a hash in `manifest.json` is a review of an intended change rather than of churn. A
+regeneration that moves an existing fixture's digest is a signal to stop and find out why.

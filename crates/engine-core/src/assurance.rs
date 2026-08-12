@@ -83,6 +83,14 @@ pub mod codes {
     ///
     /// Document-scoped, and only present when the budget actually bit.
     pub const RESOURCE_LIMIT_PAGES: &str = "resource-limit-pages";
+
+    /// Some nodes carry no measurable ink box, so a grounding projection must omit them.
+    ///
+    /// Document-scoped, and only present when it applies. The count travels in the detail
+    /// because `ethos.grounding.v1` is `additionalProperties: false` and cannot carry a
+    /// limitation list of its own — so the record is the only place a consumer can come back to
+    /// and find out what the projection dropped.
+    pub const GEOMETRY_ABSENT_NOT_GROUNDABLE: &str = "geometry-absent-not-groundable";
 }
 
 /// How wide a limitation reaches.
@@ -196,9 +204,12 @@ impl Capabilities {
         if !char_offsets {
             out.push(Limitation::profile(
                 codes::CHAR_OFFSETS_NOT_EMITTED,
-                "Spans carry no character offsets into a parent element's text. v0 emits runs \
-                 with native locators and no element/span hierarchy for offsets to point into; \
-                 the hierarchy lands with DocumentRepresentation v0 at M5. A consumer needing \
+                "Spans carry no character offsets into a parent element's text. The hierarchy \
+                 exists — a projection emits an element and a span per run, and the span names \
+                 its element — but v0 performs no line or block grouping, so the two are the \
+                 SAME object and an offset would always be 0..len. Emitting it would advertise \
+                 sub-element addressing this profile cannot do. It becomes informative at v1, \
+                 when grouping makes elements coarser than spans. A consumer needing \
                  `char_start`/`char_end` must not infer them from concatenation order.",
             ));
         }

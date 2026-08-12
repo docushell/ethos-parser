@@ -49,6 +49,17 @@ impl NodeId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Build an id from a kind and an ordinal, without an allocator.
+    ///
+    /// For tests and for reconstructing a reference to an id that already exists — a
+    /// `parent` pointer, say. **Not** an allocation: it takes the ordinal rather than choosing
+    /// one, so it cannot mint a duplicate behind an [`IdAllocator`]'s back. Ordering discipline
+    /// still belongs to the allocator, and the structural checks that consume these ids reject a
+    /// duplicate or a dangling reference regardless of which route produced it.
+    pub fn from_parts(kind: IdKind, ordinal: u64) -> Self {
+        Self(format!("{}{}", kind.prefix(), ordinal))
+    }
 }
 
 impl core::fmt::Display for NodeId {

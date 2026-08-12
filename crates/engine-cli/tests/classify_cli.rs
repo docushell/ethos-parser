@@ -169,28 +169,55 @@ fn the_sample_flag_changes_the_profile_and_the_observation() {
 
 /// Subcommands that do not exist yet exit 2, naming the milestone that owns them.
 ///
-/// `extract` left this list at M3. Exiting 0 with usage text would let a script conclude the
-/// work happened.
+/// `extract` left this list at M3 and `ground` at M5. Exiting 0 with usage text would let a
+/// script conclude the work happened.
 #[test]
 fn unimplemented_subcommands_exit_two_rather_than_pretend() {
-    for sub in ["ground", "grounding-check"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_engine"))
-            .arg(sub)
-            .arg(conformance("synthetic/simple-text/document.pdf"))
-            .output()
-            .expect("runs");
-        assert_eq!(
-            out.status.code(),
-            Some(2),
-            "`{sub}` is unimplemented; exiting 0 would let a script conclude the work happened"
-        );
-        assert!(out.stdout.is_empty(), "`{sub}` must emit no artifact");
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        assert!(
-            stderr.contains('M'),
-            "`{sub}` should name the milestone that owns it; got: {stderr}"
-        );
-    }
+    // One entry left: `grounding-check` lands at M6. Kept as a loop so the next milestone
+    // removes a row rather than rewriting the test.
+    let sub = "grounding-check";
+    let out = Command::new(env!("CARGO_BIN_EXE_engine"))
+        .arg(sub)
+        .arg(conformance("synthetic/simple-text/document.pdf"))
+        .output()
+        .expect("runs");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "`{sub}` is unimplemented; exiting 0 would let a script conclude the work happened"
+    );
+    assert!(out.stdout.is_empty(), "`{sub}` must emit no artifact");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains('M'),
+        "`{sub}` should name the milestone that owns it; got: {stderr}"
+    );
+}
+
+/// `ground` is implemented, and refuses input that is not a representation.
+///
+/// The complement of the test above: an implemented subcommand still exits 2 on bad input, but
+/// for a *named* reason rather than "not built yet". Handed a PDF where a representation belongs,
+/// it says the representation is malformed instead of trying to make sense of the bytes.
+#[test]
+fn ground_is_implemented_and_refuses_a_non_representation() {
+    let out = Command::new(env!("CARGO_BIN_EXE_engine"))
+        .arg("ground")
+        .arg(conformance("synthetic/simple-text/document.pdf"))
+        .output()
+        .expect("runs");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty(), "no artifact may be emitted");
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("malformed representation"),
+        "the refusal must name what was wrong, not a milestone: {stderr}"
+    );
+    assert!(
+        !stderr.contains("not implemented"),
+        "`ground` lands at M5 and must stop claiming otherwise: {stderr}"
+    );
 }
 
 #[test]

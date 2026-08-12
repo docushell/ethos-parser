@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:document-representation:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 (identity), §3 (coordinates), §4 (c14n, and geometry excluded from the fingerprint), §5 (locators and typed absence), §6 (derivation), §7 (the L1 gate), §11 (the grounding projection). Written from crates/engine-core/src/representation.rs. THE RECORD, not a projection: ethos.grounding.v1 is derived from this and is deliberately lossy, so a grounding round-trip is never proof this is intact.",
+  "title": "DocumentRepresentation v0 (DRAFT)",
+  "description": "The canonical evidence record: what was read, who read it, under what pinned configuration, what they could not do, and every ordered typed node with its required native address.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_type", "schema_version", "representation", "representation_c14n_sha256", "geometry"],
+  "properties": {
+    "artifact_type": {
+      "const": "ethos.engine.representation.v0",
+      "$comment": "At the TOP LEVEL, before any payload (§2), so a reader can fail closed on an unrecognised shape before parsing it (§8). Mirrors representation.identity.artifact_type, and a parse-time check refuses an artifact where the two disagree — a mirror that can disagree is worse than no mirror."
+    },
+    "schema_version": { "const": "0.1.0" },
+    "representation": {
+      "$ref": "#/$defs/payload",
+      "$comment": "THE HASHED SUBTREE. representation_c14n_sha256 is the digest of exactly this member and nothing else."
+    },
+    "representation_c14n_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "$comment": "REPRESENTATION identity, distinct from source identity (§2) and — importantly — distinct from Ethos's field of the same name, which is a hash of a grounding FILE's raw bytes. Computed as `\"sha256:\" + hex(sha256(c14n(doc[\"representation\"])))`. The hashed bytes are a literal subtree rather than the document minus a named key set, because an exclusion rule is a second canonicalization contract two implementations can drift on, and a drifted rule produces a mismatch that looks exactly like tampering. NOT checked at parse time, deliberately: a validator that refuses to load the artifact it is judging can only ever report 'invalid JSON', where the report shape distinguishes structure from binding. `engine ground` calls verify_fingerprint() before projecting."
+    },
+    "geometry": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node_geometry" },
+      "$comment": "OUTSIDE the fingerprint, by §4: rectangles are preserved for display and inspection but are not fingerprint-critical, because text is anchored by stable origin locators rather than boxes. Two independent PDF stacks agree on character origin to 0.001 pt and disagree on height by 6.174 pt — fingerprinting the boxes would make identity hostage to the least reliable number in the artifact. Implemented by keeping the type OUT of the payload rather than by filtering at hash time: a filter is a rule someone can quietly change, a type that is not there cannot be hashed by accident. Exactly one row per node, in node order; a missing row would make absence ambiguous with omission, so a misaligned sidecar is refused at parse."
+    }
+  },
+  "$defs": {
+    "payload": {
+      "title": "The fingerprinted payload",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "source", "processing_run", "coordinate_system", "pages", "nodes", "assurance"],
+      "properties": {
+        "identity": { "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0" },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["media_type", "sha256"],
+          "description": "SOURCE identity: the digest of the exact original bytes. What went in, as opposed to what came out.",
+          "properties": {
+            "media_type": { "const": "application/pdf" },
+            "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        },
+        "processing_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["processor", "reading_order_rule"],
+          "$comment": "The companion names a ProcessingRun/StageRun carrying processor, adapter, build and profile identities. v0 has one processor and one stage, so this is the honest subset — a `stages` array with a single hardcoded entry would be shape without information. NO RUN ID AND NO TIMESTAMP: either would make two runs over identical bytes under an identical profile produce different artifacts, and byte identity across runs is a test here. A run's identity is its inputs.",
+          "properties": {
+            "processor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "version", "backend"],
+              "properties": {
+                "name": { "type": "string", "examples": ["ethos-engine"] },
+                "version": { "type": "string" },
+                "backend": { "type": "string", "examples": ["lopdf 0.44.0"] }
+              }
+            },
+            "reading_order_rule": {
+              "type": "string",
+              "examples": ["single-column-v1"],
+              "$comment": "On the artifact so a reader need not fetch the profile. `single-column-v1` means a multi-column document is in the WRONG ORDER, which assurance.limitations declares explicitly rather than hiding."
+            }
+          }
+        },
+        "coordinate_system": { "$ref": "urn:ethos-engine:draft-schema:coordinate-system:0" },
+        "pages": { "type": "array", "items": { "$ref": "#/$defs/page_record" } },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "assurance": {
+          "$ref": "urn:ethos-engine:draft-schema:coverage:0",
+          "$comment": "M4's L1 gate, carried forward by value: capabilities, limitations, per-page state, coverage, terminal state. An artifact without it has not reached 'extracted' regardless of how good its text is."
+        }
+      }
+    },
+
+    "page_record": {
+      "title": "A page — a record, deliberately NOT a node",
+      "$comment": "A node carries a required NativeLocator, and the PDF variant of that is a CHARACTER origin. A page has none, so making a page a node would force the emitter to write an origin it does not have — and {\"origin_x\":0,\"origin_y\":0} for a page is indistinguishable on the wire from a run drawn in the corner. Inventing a coordinate is forbidden outright (§5.2, Workbench rule 3). One extra array removes the temptation entirely.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "width", "height", "rotation"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$", "examples": ["p1"] },
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "The DOCUMENT'S OWN 1-based page number, not this record's position in the array. The two differ the moment a page is quarantined or fails, and a citation renders against the document's number."
+        },
+        "width": { "type": "integer", "minimum": 1, "$comment": "Integer centipoints, AFTER rotation." },
+        "height": { "type": "integer", "minimum": 1 },
+        "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+      }
+    },
+
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "parent", "ordinal", "text", "native_locator", "derivation", "attributes"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "$comment": "Stable within this representation AND this profile, never globally. A profile upgrade creates a new representation plus a mapping, rather than pretending node ids are permanently global. The grounding projection reuses this id for its span, so a consumer can join a span back to its node without a mapping table."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["text_run"],
+          "$comment": "NOT a line and NOT a paragraph. v0 performs no grouping, so a run is exactly what the content stream drew in one operation; calling it a block would be a claim about layout that no code makes. Constrained to ^[a-z0-9][a-z0-9_-]*$ because this spelling becomes the grounding artifact's `kind` verbatim."
+        },
+        "parent": { "type": "string", "$comment": "The id of the page record this node was drawn on." },
+        "ordinal": { "type": "integer", "minimum": 1, "$comment": "1-based and contiguous within a page, in reading order. Refused at parse if it is not." },
+        "text": { "type": "string" },
+        "native_locator": { "$ref": "#/$defs/native_locator" },
+        "structural_locator": { "$ref": "#/$defs/structural_locator" },
+        "derivation": { "$ref": "urn:ethos-engine:draft-schema:derivation-class:0" },
+        "attributes": { "$ref": "#/$defs/text_run_attributes" }
+      }
+    },
+
+    "native_locator": {
+      "title": "NativeLocator — required on every node (§5.1)",
+      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed. Lives in engine-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. engine-grounding never reads one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf"],
+      "properties": {
+        "pdf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["page", "origin_x", "origin_y"],
+          "properties": {
+            "page": { "type": "integer", "minimum": 1 },
+            "origin_x": { "type": "integer" },
+            "origin_y": { "type": "integer" },
+            "advance": {
+              "type": "integer",
+              "$comment": "OMITTED, not zero, when the document carries no widths. Absent means the reader does not know."
+            }
+          }
+        }
+      }
+    },
+
+    "structural_locator": {
+      "title": "StructuralLocator — where the node kind defines one",
+      "$comment": "v0 emits marked-content ids only, and only where the page's own content stream supplies one via BDC. The tagged-structure tree is NOT read, so an absent id is not evidence the document is untagged — which is exactly why capabilities.structural_locators is false. Omitted entirely when the document supplied none; never invented.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf_mcid"],
+      "properties": { "pdf_mcid": { "type": "integer" } }
+    },
+
+    "text_run_attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["char_codes", "scalar_code_mismatch", "synthesized", "font_id", "font_size"],
+      "$comment": "A typed struct rather than an open map: an open map is a place for a future field to arrive unreviewed, and additionalProperties:false cannot police one. NONE of these survives the grounding projection — a lossiness test enumerates them.",
+      "properties": {
+        "char_codes": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "scalar_code_mismatch": { "type": "boolean", "$comment": "True when text.chars().count() != char_codes.len(). A ligature is one code and several scalars. Declared, not reconciled." },
+        "synthesized": {
+          "type": "array",
+          "description": "Characters this reader inserted. Empty for text taken verbatim.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["char_index", "reason"],
+            "properties": {
+              "char_index": { "type": "integer", "minimum": 0 },
+              "reason": { "type": "string", "examples": ["tj-gap"] }
+            }
+          }
+        },
+        "font_id": { "type": "string" },
+        "font_size": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints. NEVER used as a box height." }
+      }
+    },
+
+    "node_geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "presence"],
+      "properties": {
+        "node": { "type": "string", "$comment": "The node id this row describes. Index-aligned with payload.nodes." },
+        "presence": {
+          "$ref": "urn:ethos-engine:draft-schema:geometry:0",
+          "$comment": "Measured, or a typed reason there is none. A MEASURED box is additionally required to lie inside its page: a box outside is a HARD ERROR on construction, never a clamp and never an omission. Clamping fabricates a coordinate; omitting would have to travel the geometry-omission path, and that path takes a typed absence by construction — an out-of-page measured box is not an absence, and routing it through would be the 'omit for a non-geometry reason' hole §11 forbids."
+        }
+      }
+    }
+  }
+}

@@ -20,6 +20,7 @@ authority. Where these and the contract disagree, the contract is right.
 | [`extract.draft.json`](extract.draft.json) | The M3 extract artifact: text runs, `PdfLocator`, synthesized flags, the ligature caveat | §3, §4, §5, §6 |
 | [`limitation.draft.json`](limitation.draft.json) | A named gap and how wide it reaches: profile, document, or one page | §7 |
 | [`coverage.draft.json`](coverage.draft.json) | The M4 assurance envelope: per-page state, the coverage reconciliation, the terminal state | §7 |
+| [`document-representation.draft.json`](document-representation.draft.json) | **The M5 canonical record**: identity, source, processing run, pages, ordered typed nodes, the fingerprint, and the geometry sidecar | §2, §4, §5, §7 |
 
 ## `not_detected` and `not_decoded` are gone
 
@@ -31,15 +32,32 @@ to trust. The migration is asserted rather than asserted-to: a test fails if eit
 reappears on the wire, and another checks that every `NOT_DETECTED` entry became a limitation
 carrying M2's own words.
 
+## The grounding schema is not here, and that is deliberate
+
+`ethos.grounding.v1` is **owned by Ethos**, not by this repo, so it is not redrafted here. A
+byte-for-byte snapshot lives at
+[`crates/engine-grounding/schemas/`](../../crates/engine-grounding/schemas/) with its origin path
+and digest recorded, and it is the file the conformance tests actually validate against. Writing a
+DRAFT of someone else's shipped schema would create a second, drifting description of a contract we
+do not control.
+
 ## What is deliberately not here
 
-**A `DocumentRepresentation v0` skeleton.** The companion spec settles the *node* shape (stable id,
-kind, parent, ordinal, text/value, attributes, required `NativeLocator`, optional
-`StructuralLocator`, optional `RenderedLocator`), and as of M3 the engine has real nodes —
-`extract.draft.json` describes them. As of M4 the assurance half of the envelope exists too:
-per-page state, the coverage summary, and the terminal state are in `coverage.draft.json`. What is
-still missing is the **identity** half — the processing run and the representation fingerprint —
-which is M5 work, together with the `ethos.grounding.v1` projection.
+~~**A `DocumentRepresentation v0` skeleton.**~~ **Landed at M5** —
+`document-representation.draft.json`. The companion spec settles the node shape (stable id, kind,
+parent, ordinal, text/value, attributes, required `NativeLocator`, optional `StructuralLocator`,
+optional `RenderedLocator`); M3 produced real nodes, M4 added the assurance envelope, and M5 added
+the identity half — the processing run and the representation fingerprint — plus the projection.
+
+**Two divergences from the companion remain open**, both engine-local and both additive:
+
+- **Typed `GeometryAbsence`.** The companion models geometry as an optional field and never names
+  a variant for *why* it is absent. Typed absence carries strictly more information and projects
+  down to an omitted field cleanly. Pending DocuShell review.
+- **Pages are records, not nodes.** The companion's tree is "ordered typed nodes"; a page in this
+  representation is a `PageRecord` instead, because a node carries a required `NativeLocator` whose
+  PDF variant is a *character* origin — which a page does not have, and inventing one is
+  forbidden. Projects to `pages[]` exactly as the companion's node tree would.
 
 ## Relationship to the Rust
 

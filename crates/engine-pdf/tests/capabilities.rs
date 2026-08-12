@@ -144,7 +144,10 @@ fn proof_table() -> Vec<Proof> {
             proof_test: None,
             why_not: Some(
                 "v0 emits runs and no element/span hierarchy, so there is nothing for an offset \
-                 to index into. Lands at M5 with DocumentRepresentation v0.",
+                 to index into. M5 built the record and left this false: v0 does no line \
+                 grouping, so an element and a span are the same object and an offset would \
+                 always be 0..len. Ethos's validator also ties the capability to the fields, \
+                 so claiming it would oblige every span to carry offsets. Flips at v1.",
             ),
         },
         Proof {

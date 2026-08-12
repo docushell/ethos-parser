@@ -1,14 +1,25 @@
-"""Author the engine-owned CC0 fixtures M3 needs and the Ethos corpus lacks.
+"""Author the engine-owned CC0 fixtures the Ethos corpus lacks.
 
 Each is a minimal, hand-built PDF exercising exactly one behaviour:
 
   show-text-quote-operators  the ' and " operators, whose omission is pdf-inspector's
-                             disqualifying defect (parity checklist P6)
-  horizontal-scaling-tz      Tz, which pdf-inspector does not implement anywhere
-  synthesized-space-tj       a TJ gap wide enough that a space was intended but never written
+                             disqualifying defect (parity checklist P6)               [M3]
+  horizontal-scaling-tz      Tz, which pdf-inspector does not implement anywhere      [M3]
+  synthesized-space-tj       a TJ gap wide enough that a space was intended but never
+                             written                                                  [M3]
+  measured-ink-box           a /FontDescriptor with real ascent/descent, so ink is
+                             MEASURED — the only fixture anywhere that takes that
+                             branch                                                   [M3]
+  absent-font-metrics        a /FontDescriptor that exists and carries NO usable ink
+                             metrics, so geometry is typed-absent while the advance is
+                             known — the geometry-omission path at M5                 [M5]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
+
+Regenerating is deterministic: no timestamps, no ids, no compression. Running this script twice
+produces byte-identical files, so re-pinning a hash in fixtures/manifest.json is a review of an
+intended change rather than of incidental churn.
 """
 
 import pathlib
@@ -22,7 +33,26 @@ FIRST_CHAR = 32
 LAST_CHAR = 126
 
 
-def build_pdf(content: str, media=(0, 0, 300, 144), descriptor: bool = False) -> bytes:
+# What kind of /FontDescriptor a fixture carries. The three values are three distinct paths
+# through crates/engine-pdf/src/metrics.rs, and the difference between the last two is the whole
+# point of the absent-font-metrics fixture:
+#
+#   None          no descriptor at all      -> resolve_font_ink returns Absent immediately
+#   "metrics"     ascent/descent present    -> from_descriptor returns Measured
+#   "no-metrics"  descriptor present, but no Ascent/Descent and no /FontBBox
+#                                           -> from_descriptor returns None -> Absent
+#
+# The third is NOT reachable by simply omitting the descriptor: it proves the reader looked at a
+# descriptor, found nothing usable in it, and still refused to invent a box.
+DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
+
+
+def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None) -> bytes:
+    # `descriptor` is one of DESCRIPTOR_KINDS. Left unannotated so this script runs on any
+    # python3 a reviewer happens to have — `str | None` in a signature is evaluated at import
+    # time and raises before 3.10, which would make regenerating fixtures depend on the
+    # regenerator's toolchain. The assertion below is the check that annotation would have been.
+    assert descriptor in DESCRIPTOR_KINDS, f"unknown descriptor kind {descriptor!r}"
     widths = " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1))
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -38,7 +68,7 @@ def build_pdf(content: str, media=(0, 0, 300, 144), descriptor: bool = False) ->
             % (FIRST_CHAR, LAST_CHAR, widths, " /FontDescriptor 6 0 R" if descriptor else "")
         ).encode(),
     ]
-    if descriptor:
+    if descriptor == "metrics":
         # Real Helvetica ascent/descent, declared BY THE DOCUMENT so the extractor reads them
         # rather than assuming them. This is the fixture that exercises the measured-ink path;
         # every other one exercises typed absence.
@@ -46,6 +76,19 @@ def build_pdf(content: str, media=(0, 0, 300, 144), descriptor: bool = False) ->
             b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
             b"/Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 88 "
             b"/FontBBox [-166 -225 1000 931] >>"
+        )
+    elif descriptor == "no-metrics":
+        # A descriptor that is present and structurally valid and says NOTHING about ink extent:
+        # no /Ascent, no /Descent, no /FontBBox, and no embedded font program to read them from.
+        # Legal PDF — those keys are only required for embedded fonts — and exactly the shape a
+        # reader is tempted to paper over by falling back to the font size.
+        #
+        # /Widths is still supplied by build_pdf, so the ADVANCE is known. That is what isolates
+        # the cause: this run's geometry is absent because the font declares no ink metrics, not
+        # because the reader could not work out how wide the text is.
+        objects.append(
+            b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
+            b"/ItalicAngle 0 /StemV 88 >>"
         )
     stream = content.encode()
     objects[3] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)
@@ -98,6 +141,17 @@ FIXTURES = {
     "synthesized-space-tj": (
         "BT /F1 24 Tf 72 72 Td [(one) -500 (two)] TJ ET"
     ),
+    # M5's geometry-omission fixture. Advance KNOWN (/Widths is supplied), ink metrics ABSENT
+    # (the descriptor carries neither Ascent/Descent nor /FontBBox). The representation keeps
+    # the run with its native locator and typed-absent geometry; the grounding projection omits
+    # it, counts it, and declares it.
+    "absent-font-metrics": "BT /F1 24 Tf 72 72 Td (No ink metrics) Tj ET",
+}
+
+# name -> descriptor kind. Absent from this map means no descriptor at all.
+DESCRIPTORS = {
+    "measured-ink-box": "metrics",
+    "absent-font-metrics": "no-metrics",
 }
 
 
@@ -106,7 +160,7 @@ def main() -> int:
     for name, content in FIXTURES.items():
         d = root / name
         d.mkdir(parents=True, exist_ok=True)
-        pdf = build_pdf(content, descriptor=(name == "measured-ink-box"))
+        pdf = build_pdf(content, descriptor=DESCRIPTORS.get(name))
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")
     return 0

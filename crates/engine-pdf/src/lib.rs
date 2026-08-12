@@ -47,6 +47,7 @@ pub mod metrics;
 pub mod nodes;
 pub mod ops;
 pub mod reasons;
+pub mod represent;
 pub mod text_state;
 pub mod thresholds;
 
@@ -62,6 +63,7 @@ pub use extract::{extract, ExtractArtifact, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEM
 pub use magic::check_pdf_magic;
 pub use nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};
+pub use represent::{to_representation, PROCESSOR_NAME};
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "engine-pdf";

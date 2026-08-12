@@ -455,9 +455,9 @@ fn oracle_agrees_on_simple_text() {
          \x20 M2        classify: reason codes, two axes, bounded sampling — DONE\n\
          \x20 M3        extract: text runs, native locators, fail-closed operators — DONE\n\
          \x20 M4        capabilities, limitations, coverage, terminal state — DONE\n\
+         \x20 M5        DocumentRepresentation v0 + ethos.grounding.v1 projection — DONE\n\
          \n\
-         Missing — the engine cannot yet produce a grounding artifact to compare:\n\
-         \x20 M5  DocumentRepresentation v0 emit + ethos.grounding.v1 adapter\n\
+         Missing — the engine can now PRODUCE a grounding artifact but cannot yet VALIDATE one:\n\
          \x20 M6  this comparison, across all {} fixtures\n\
          \n\
          At M6 this test runs `engine grounding-check` and\n\

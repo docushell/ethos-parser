@@ -9,6 +9,157 @@ that has acceptance criteria.
 
 ## [Unreleased]
 
+### M5 — `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter
+
+The canonical evidence record, and the projection a verifier consumes. `engine extract` now emits
+the record; `engine ground` projects it.
+
+**Added — `engine-core`**
+
+- `representation` — `DocumentRepresentation`, `RepresentationPayload`, `PageRecord`, `Node`,
+  `NativeLocator` (the contract's discriminated union, `Pdf` variant only), `StructuralLocator`,
+  `NodeKind`, `TextRunAttributes`, `NodeGeometry`, `ProcessingRun`, `SourceIdentity`.
+- **The fingerprint is the digest of a literal subtree**, `representation_c14n_sha256` =
+  `"sha256:" + hex(sha256(c14n(doc["representation"])))`. A reader recomputes it with no domain
+  knowledge. The alternative — hash the document minus a named key set — makes canonicalization a
+  second rule two implementations can drift on, and a drifted rule produces a mismatch that looks
+  exactly like tampering.
+- **Named `representation_c14n_sha256`, not `representation_sha256`**, because Ethos already uses
+  that name for a hash of a grounding **file's raw bytes**. Two different things under one name is
+  how a consumer concludes tampering where there is only a naming collision.
+- **Geometry sits outside the fingerprint** (§4), implemented by keeping the type out of the
+  payload rather than by filtering at hash time — a filter is a rule someone can quietly change; a
+  type that is not there cannot be hashed by accident. Two mirrored tests: moving a box does not
+  move the digest, and moving a text origin does.
+- **A measured box outside its page is a hard error.** Reachable, not theoretical: an ink box is
+  `baseline_y − ascent × size` in a top-left system, so a baseline within one ascent of the page
+  top yields a negative `y0` that `QRect::new` accepts. Clamping fabricates; omitting would have to
+  travel the geometry-omission path, which takes a typed absence by construction. So it is refused.
+- **Pages are records, not nodes.** A node carries a required `NativeLocator` whose PDF variant is
+  a *character* origin. A page has none, and `{"origin_x":0,"origin_y":0}` for a page is
+  indistinguishable on the wire from a run drawn in the corner.
+
+**Added — `engine-pdf`**
+
+- `represent::to_representation` — `ExtractArtifact` → record. `extract()` keeps its signature and
+  its artifact, so M3's thirty-odd behavioural tests still assert on what the parser produces;
+  `every_extracted_run_appears_exactly_once` is the bridge that stops the two drifting.
+
+**Added — `engine-grounding`** (was an M0 skeleton)
+
+- `project()` → `Projection { source, omission }`, and `to_canonical_bytes()`.
+- **The omission rule is a type, not a convention.** `GroundedBox` has a private field and one
+  constructor, `from_presence(GeometryPresence)`. There is no `GroundedBox::new(x0, y0, x1, y1)`,
+  so "omit because the page looked bad" would require *adding* a constructor. An audit showed the
+  first version of that guard — a source scan — could be walked past by writing the new
+  constructor in the obvious shape, so `GroundedBox` now lives in its own module with the field
+  private to it: `project()` cannot construct one either, and the guarantee is the compiler's
+  rather than a grep's.
+- The crate depends on `engine-core` alone and **never reads a locator at all**: the projection
+  addresses pages by node id. A test fails if it so much as mentions `NativeLocator`, which is a
+  stronger guarantee than hiding the type in `engine-pdf` would have given.
+
+**Added — schema conformance without a new dependency**
+
+- A **JSON Schema subset validator driven by the pinned schema file itself**, so it cannot drift
+  from the rules it enforces. It fails loudly on any keyword it does not implement — a validator
+  that silently ignores a keyword reports success over rules it never checked — and
+  `the_validator_rejects_each_deliberate_break` runs 17 artifacts broken one rule at a time.
+  Without that corpus, every positive conformance test would be satisfied by a validator that
+  returns `Ok(())`.
+- `crates/engine-grounding/schemas/` holds a byte-for-byte snapshot of Ethos's schema with its
+  origin and digest recorded, plus a drift check against `../ethos` when that tree is present.
+
+**Measured, and it is the most important thing in this milestone**
+
+**Across the entire Ethos conformance corpus, zero runs have measurable geometry.** Every fixture
+is standard-14 Helvetica with no `/FontDescriptor`, so every grounding artifact projected from the
+corpus is `elements: []`, `spans: []`, with the whole run count omitted. The engine reads the text
+correctly and the record holds it with native locators intact — none of it can cross into a schema
+that requires a `bbox`. The geometry-omission path is therefore the **normal** path, not an edge
+case, and `TODO(confirm with Ethos owners)` about an optional `bbox` now has a number behind it
+rather than a hypothesis.
+
+**Aligned with Ethos's runtime validator, measured from its source rather than guessed**
+
+Beyond the JSON Schema, `ethos-core/src/grounding_json.rs` enforces rules the schema cannot
+express, and emitting something it would reject would be a landmine for M6:
+`capabilities.spans` ⟺ the `spans` array is present; `capabilities.tables` ⟺ `tables` is present
+(so `tables: false` means the key is **absent**, not an empty array); offsets present ⟺
+`char_offsets`; boxes must lie inside their page; page indices ascend from 1. All are asserted on
+emitted artifacts.
+
+**`capabilities.char_offsets` stays `false`, and M5 is where that was settled**
+
+The milestone allowed flipping it once a hierarchy existed. The hierarchy now exists and the answer
+is still no: v0 does no line grouping, so an element and a span are the *same object* and an offset
+would always be `0..len` — advertising sub-element addressing the engine cannot do. Ethos's own
+validator ties the capability to the fields, so claiming it would oblige every span to carry them.
+It flips at v1, with grouping. Five doc sites that promised "flips at M5" were corrected.
+
+**Fixed — an overclaim caught before it shipped**
+
+The first draft of `fixtures/README.md` said the new `absent-font-metrics` fixture was the only one
+pairing a known advance with an absent box. Measured, that is false: `/Widths` has always been
+supplied to every engine fixture, so three M3 fixtures already produce seven such runs. The
+fixture's real and narrower contribution is the `from_descriptor → None` route — a descriptor that
+**resolves and answers nothing** — which nothing else reaches, and which is the shape most likely to
+tempt a `height = font_size` fallback.
+
+**Clarified — `docs/04-ARCHITECTURE.md` §1**
+
+"No PDF concept in `engine-core`" as written forbids something `01-CONTRACT.md` §5.1 requires: the
+`NativeLocator` union with a `PdfLocator` variant. The architecture doc's own header says the
+contract wins, so §1 now states the line as **machinery, not vocabulary** — no `lopdf`, no
+operator, no page tree, no font program; a contract-defined locator variant carrying integers is
+data. `engine-grounding` is held to the stronger rule and a test enforces it.
+
+**Fixed after an adversarial audit, and the findings are worth recording**
+
+A multi-agent audit ran the real `ethos grounding check` against every emitted artifact — **13/13
+`structure: valid`, `source_binding: matched`**, including a 2-page real form projecting 1975
+elements. The emitter was right. The *tests* were not, and six of them passed while the behaviour
+they were named for was mutated away:
+
+- **The geometry sidecar was unauthenticated in a way that mattered.** It sits outside the digest
+  by §4, but the projection drops locators and keeps boxes — so the one thing the fingerprint did
+  not cover was the only spatial claim reaching `ethos.grounding.v1`. Flipping a row
+  `Measured` → `Absent` made a node vanish with no declaration; `Absent` → `Measured` emitted a
+  fabricated box while the record still declared the node unmeasurable. Both passed
+  `verify_fingerprint`. **`check_structure` now binds the sidecar to the payload's own
+  `geometry-absent-not-groundable` declaration**, closing both, and the trust boundary is stated
+  where a reader will meet it: *a verified representation attests to the text, the order and the
+  origins — not to the rectangles.*
+- **`GroundedBox`'s "the type system says it" claim was false.** The private field stopped other
+  crates while `project()`, in the same module, could build a box from anything; the grep meant to
+  cover that gap was walked past by writing `fn from_raw(x0, y0, x1, y1) -> Self`. The type now
+  lives in its own module, and the bypass **fails to compile**: `tuple struct constructor
+  GroundedBox is private`.
+- **`omission_selects_rather_than_empties` did not test selection.** It compared two all-or-nothing
+  documents, so an emitter that dropped every box as soon as any node lacked one passed the whole
+  suite — the exact §11 hole. It now runs on a mixed-geometry document and asserts the emitted span
+  ids are *exactly* the nodes with measured geometry.
+- **Nothing checked that an emitted bbox was the measured one.** A fabricated `[x0, y0, x0+1,
+  y0+1]` satisfied shape and containment and passed. Now compared against the node's own rectangle,
+  over 100+ boxes.
+- **`lossiness_is_asserted_not_assumed` was vacuous** — pointed at a fixture whose artifact had no
+  elements, so the dropped field names could not have appeared however the projection behaved.
+  Retargeted, with a non-empty guard.
+- **Three boundary guards read `src/lib.rs` alone**, so a second file in the crate was invisible to
+  all of them. Now recursive.
+- **A limitation shipping inside every artifact still said the hierarchy "lands at M5"** — it had
+  landed. Corrected to the real reason.
+
+Each of the first four fixes was re-verified by re-applying the audit's mutation and watching the
+named test fail.
+
+**Not done, deliberately**
+
+- **No `grounding-check`, no oracle agreement.** That is M6. This milestone produces artifacts; it
+  does not validate them as a product feature. The subset validator is test-layer only, and a test
+  asserts it never becomes a runtime dependency.
+- No tables, no char offsets, no multi-column reordering, no fabricated geometry.
+
 ### M4 — Capabilities, typed absence, explicit multi-column limitation (the L1 gate)
 
 L1's achievement condition names capability declarations explicitly, so an artifact without them
