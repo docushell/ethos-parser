@@ -437,9 +437,37 @@ mod tests {
         );
     }
 
+    /// Every nested object in `Profile`, not just the ones someone remembered.
+    ///
+    /// `deny_unknown_fields` is **not recursive**. This test originally covered `capabilities`
+    /// and `backend` and missed `coordinate_system`, which left the exact hole it was written to
+    /// prevent: a profile carrying `coordinate_system.future_knob` parsed cleanly and re-hashed
+    /// to the unmodified default digest. The list below is derived from the serialized value, so
+    /// a nested object added later is covered automatically rather than by memory.
     #[test]
     fn an_unknown_nested_field_also_fails_closed() {
-        for path in ["capabilities", "backend"] {
+        let default = serde_json::to_value(Profile::default()).unwrap();
+        let nested: Vec<String> = default
+            .as_object()
+            .expect("profile is an object")
+            .iter()
+            .filter(|(_, v)| v.is_object())
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        assert!(
+            nested.len() >= 3,
+            "expected at least backend, capabilities and coordinate_system as nested objects; \
+             found {nested:?}"
+        );
+        for required in ["backend", "capabilities", "coordinate_system"] {
+            assert!(
+                nested.iter().any(|n| n == required),
+                "`{required}` must be among the nested objects under test; found {nested:?}"
+            );
+        }
+
+        for path in &nested {
             let mut v = serde_json::to_value(Profile::default()).unwrap();
             v[path]
                 .as_object_mut()
@@ -448,8 +476,36 @@ mod tests {
             let parsed: Result<Profile, _> = serde_json::from_value(v);
             assert!(
                 parsed.is_err(),
-                "an unknown field inside `{path}` must be refused too"
+                "an unknown field inside `{path}` must be refused; accepting it means the knob \
+                 is dropped and the profile re-hashes as though it never existed"
             );
+        }
+    }
+
+    /// The failure that makes nested unknown fields a correctness bug, not a tidiness one.
+    ///
+    /// If a truncating parse were ever allowed, the reconstructed profile would produce a digest
+    /// identical to the default — so an artifact would claim comparability with a profile it does
+    /// not match. This asserts the parse is refused *and* records why it has to be.
+    #[test]
+    fn a_truncated_profile_can_never_reproduce_the_default_digest() {
+        let baseline = Profile::default().profile_sha256().unwrap();
+
+        for path in ["backend", "capabilities", "coordinate_system"] {
+            let mut v = serde_json::to_value(Profile::default()).unwrap();
+            v[path]
+                .as_object_mut()
+                .unwrap()
+                .insert("future_knob".into(), serde_json::Value::from(7));
+
+            match serde_json::from_value::<Profile>(v) {
+                Err(_) => {} // correct: refused before it could be re-hashed
+                Ok(truncated) => panic!(
+                    "a profile with an unknown field in `{path}` parsed, and re-hashed to {} \
+                     (default is {baseline}). Comparability is now a lie.",
+                    truncated.profile_sha256().unwrap()
+                ),
+            }
         }
     }
 

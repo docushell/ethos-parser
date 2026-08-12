@@ -56,11 +56,24 @@ impl DerivationClass {
 
     /// Whether a node of class `self` may be overwritten by a node of class `other`.
     ///
-    /// Nothing overwrites `Extracted`. That single rule is what stops the LiteParse failure
-    /// where OCR is merged into the native text stream and distinguishable only by an omittable
-    /// nullable field (checklist L24).
-    pub fn may_be_overwritten_by(self, _other: Self) -> bool {
-        !matches!(self, Self::Extracted)
+    /// `docs/01-CONTRACT.md` §6 states two rules, and **both** are enforced here:
+    ///
+    /// 1. **Nothing overwrites `Extracted`.** This is what stops the LiteParse failure where OCR
+    ///    is merged into the native text stream and distinguishable only by an omittable nullable
+    ///    field (checklist L24).
+    /// 2. **`Proposed` never overwrites anything.** A model suggestion may sit beside evidence and
+    ///    may never replace it — including replacing another suggestion, since the first one may
+    ///    already have been shown to a reviewer.
+    ///
+    /// Only checking rule 1 would let `Proposed` overwrite `Computed`, `Recognized`, or another
+    /// `Proposed` — which is how a model's output quietly becomes the record.
+    ///
+    /// What this function deliberately does **not** encode: the v2.1 constraint that `Recognized`
+    /// may author only on canvases where the deterministic reader found no text layer at all.
+    /// That is a property of *where* a node is placed, not of which classes may replace which, and
+    /// inventing a class-pair rule for it here would be a rule the contract does not state.
+    pub fn may_be_overwritten_by(self, other: Self) -> bool {
+        !matches!(self, Self::Extracted) && !matches!(other, Self::Proposed)
     }
 }
 
@@ -97,7 +110,12 @@ pub enum GeometryAbsence {
 /// into one, and the first is a capability limitation that must be declared and counted while
 /// the second is not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "state", content = "value")]
+#[serde(
+    rename_all = "snake_case",
+    tag = "state",
+    content = "value",
+    deny_unknown_fields
+)]
 pub enum GeometryPresence {
     /// A measured ink box, from the embedded font program or the font descriptor.
     Measured(QRect),
@@ -156,6 +174,70 @@ mod tests {
                 "{c:?} must not overwrite Extracted"
             );
         }
+    }
+
+    #[test]
+    fn proposed_overwrites_nothing() {
+        for target in ALL_CLASSES {
+            assert!(
+                !target.may_be_overwritten_by(DerivationClass::Proposed),
+                "Proposed must not overwrite {target:?} — a model suggestion may sit beside \
+                 evidence and never replace it"
+            );
+        }
+    }
+
+    /// The full 4×4 matrix, written out.
+    ///
+    /// The half-implemented version of this rule passed `nothing_overwrites_extracted` while
+    /// letting `Proposed` overwrite `Computed`, `Recognized` and `Proposed`. A matrix is the only
+    /// form of this test that cannot be satisfied by checking one argument and ignoring the other.
+    #[test]
+    fn the_overwrite_matrix_is_exhaustive_and_pinned() {
+        use DerivationClass::{Computed, Extracted, Proposed, Recognized};
+
+        // (target, overwriter, allowed)
+        let expected = [
+            (Extracted, Extracted, false),
+            (Extracted, Computed, false),
+            (Extracted, Recognized, false),
+            (Extracted, Proposed, false),
+            (Computed, Extracted, true),
+            (Computed, Computed, true),
+            (Computed, Recognized, true),
+            (Computed, Proposed, false),
+            (Recognized, Extracted, true),
+            (Recognized, Computed, true),
+            (Recognized, Recognized, true),
+            (Recognized, Proposed, false),
+            (Proposed, Extracted, true),
+            (Proposed, Computed, true),
+            (Proposed, Recognized, true),
+            (Proposed, Proposed, false),
+        ];
+
+        assert_eq!(
+            expected.len(),
+            ALL_CLASSES.len() * ALL_CLASSES.len(),
+            "the matrix must cover every ordered pair"
+        );
+
+        for (target, overwriter, allowed) in expected {
+            assert_eq!(
+                target.may_be_overwritten_by(overwriter),
+                allowed,
+                "{target:?}.may_be_overwritten_by({overwriter:?}) should be {allowed}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_overwrite_rule_reads_both_arguments() {
+        // A guard against regressing to `!matches!(self, Extracted)`: holding the target fixed at
+        // a non-Extracted class, the answer must still depend on the overwriter.
+        let a = DerivationClass::Computed.may_be_overwritten_by(DerivationClass::Recognized);
+        let b = DerivationClass::Computed.may_be_overwritten_by(DerivationClass::Proposed);
+        assert_ne!(a, b, "the overwriter argument must affect the result");
     }
 
     #[test]
@@ -243,6 +325,23 @@ mod tests {
             let back: GeometryPresence = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(back, c);
         }
+    }
+
+    #[test]
+    fn geometry_presence_refuses_unknown_fields() {
+        let extra =
+            serde_json::json!({"state": "absent", "value": "not_reported_by_reader", "extra": 1});
+        assert!(
+            serde_json::from_value::<GeometryPresence>(extra).is_err(),
+            "GeometryPresence must fail closed on an unknown field"
+        );
+
+        // Guard the guard: the exact shape still parses.
+        let ok = serde_json::json!({"state": "absent", "value": "not_reported_by_reader"});
+        assert_eq!(
+            serde_json::from_value::<GeometryPresence>(ok).unwrap(),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
+        );
     }
 
     #[test]

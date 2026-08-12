@@ -234,15 +234,25 @@ without laundering into born-digital certainty.
 | **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v2.1. Own profile. **May author nodes only on canvases where the deterministic reader found no text layer at all** |
 | **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence. Never overwrites another class |
 
-Three hard rules:
+Four hard rules:
 
-1. **`Recognized` never overwrites `Extracted`.** Not merged, not preferred, not reconciled.
-   LiteParse merges OCR into the native text stream discriminated only by an omittable nullable
-   field (checklist L24); that is the bug.
-2. **`Proposed` is never citable.** A chart description or a formula guess can exist in the tree and
+1. **Nothing overwrites `Extracted`.** Not merged, not preferred, not reconciled. LiteParse merges
+   OCR into the native text stream discriminated only by an omittable nullable field
+   (checklist L24); that is the bug.
+2. **`Proposed` overwrites nothing.** Not `Computed`, not `Recognized`, not another `Proposed` — a
+   suggestion may sit beside evidence and may never replace it, including replacing an earlier
+   suggestion a reviewer may already have seen. This was previously stated only in the table row
+   above, and the first implementation enforced rule 1 while missing this one entirely; it is
+   numbered here because that is where an implementer reads.
+3. **`Proposed` is never citable.** A chart description or a formula guess can exist in the tree and
    can never be the source of a verified quote.
-3. **Different classes mean different profiles.** An OCR run has a different `profile_sha256`, so its
+4. **Different classes mean different profiles.** An OCR run has a different `profile_sha256`, so its
    output is non-comparable with a born-digital parse *by contract*, with no new machinery.
+
+Rules 1 and 2 are the whole of `DerivationClass::may_be_overwritten_by`. The v2.1 constraint that
+`Recognized` may author **only** where the deterministic reader found no text layer is deliberately
+*not* encoded there: it governs where a node may be placed, not which classes may replace which, and
+inventing a class-pair rule for it would be a rule this contract does not state.
 
 ---
 
@@ -479,6 +489,9 @@ exactly these four, across all 15 fixtures.
 - [ ] Every node has a `NativeLocator`
 - [ ] No box is derived from a font size; absent metrics produce typed absence plus a declared limit
 - [ ] Every node declares a derivation class; nothing but `Extracted` is produced in v0
+- [ ] Every nested object in a hashed type denies unknown fields — `serde`'s
+      `deny_unknown_fields` is **not recursive**, and a dropped nested knob re-hashes to the
+      unmodified digest
 - [ ] Capabilities and limitations present; per-page state and coverage summary present
 - [ ] Unknown operator / unknown artifact type / unquantizable number all fail closed with a named
       error

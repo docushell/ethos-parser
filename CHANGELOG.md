@@ -63,6 +63,19 @@ compile error.
 
 **Fixed after adversarial review**
 
+- **Unknown-field denial now covers every nested object, not the ones someone remembered.**
+  `deny_unknown_fields` is not recursive, and the first pass stopped one level short: a profile
+  carrying `coordinate_system.future_knob` parsed cleanly and **re-hashed to the unmodified default
+  digest** — measured — so an artifact would claim comparability with a profile it does not match.
+  Now on `CoordinateSystem`, plus `ArtifactIdentity`, `ArtifactBinding` and `GeometryPresence`,
+  matching the `additionalProperties: false` their draft schemas already declared. The nested test
+  derives its field list from the serialized value rather than a hardcoded array, so a nested
+  object added later is covered automatically.
+- **`DerivationClass::may_be_overwritten_by` implemented only half of §6.** It ignored its second
+  argument entirely, so it protected `Extracted` while letting `Proposed` overwrite `Computed`,
+  `Recognized`, and other `Proposed` nodes — the path by which a model's suggestion quietly becomes
+  the record. Both rules are now enforced and pinned by a full 4×4 matrix, plus a test asserting
+  the result actually depends on the overwriter.
 - `Profile` now denies unknown fields. Without it a profile from a newer engine deserialized with
   its unknown knob silently dropped, then **re-hashed to a different digest than it arrived with** —
   an artifact claiming comparability it does not have.

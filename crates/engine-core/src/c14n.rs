@@ -303,6 +303,34 @@ mod tests {
         assert!(c14n_bytes(&json!({"x": 1.5})).is_err());
     }
 
+    /// Float rejection must survive a change in how `serde_json` represents numbers.
+    ///
+    /// The rejection works because `Number::as_i64`/`as_u64` return `None` for anything stored as
+    /// a float. That is an implementation detail of a dependency, so it is pinned from the
+    /// *outside*: these are values whose JSON text is float-shaped even though the value is
+    /// mathematically an integer. If a future `serde_json` normalised `1.0` to an integer, or
+    /// `-0` to `0`, these assertions would start failing and the change would be visible instead
+    /// of silently widening what counts as canonical.
+    #[test]
+    fn float_shaped_text_stays_rejected_regardless_of_number_representation() {
+        for text in ["1.0", "-0", "-0.0", "0.0", "1e2", "1E2", "1.5e3", "2.0"] {
+            let v: Value = serde_json::from_str(text)
+                .unwrap_or_else(|e| panic!("{text} should parse as JSON: {e}"));
+            assert!(
+                c14n_bytes(&v).is_err(),
+                "`{text}` parsed to {v} and was accepted by c14n; float-shaped text must be \
+                 rejected however serde_json chooses to store it"
+            );
+        }
+
+        // The integer spellings of the same values remain fine. `-0` is deliberately absent:
+        // JSON text `-0` is float-shaped and is asserted rejected in the loop above.
+        for text in ["1", "0", "2", "100", "-1", "-100"] {
+            let v: Value = serde_json::from_str(text).unwrap();
+            assert!(c14n_bytes(&v).is_ok(), "`{text}` must remain canonical");
+        }
+    }
+
     #[test]
     fn integers_at_the_2_53_boundary() {
         assert!(c14n_bytes(&json!(MAX_SAFE_INT)).is_ok());

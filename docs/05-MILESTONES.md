@@ -131,6 +131,11 @@ M5. Skipping ahead means rewriting.
   - [ ] `QRect` is `[x0, y0, x1, y1]`, not `[x, y, w, h]`; ordering is validated at construction
   - [ ] Every profile-relevant knob is in `Profile`, and the sensitivity test covers it
   - [ ] Typed absence is a variant, never `Option<T>` standing in for "we did not measure"
+  - [ ] **Every** nested object in a hashed type denies unknown fields. `deny_unknown_fields` does
+        not recurse, and guarding only the outer struct leaves a dropped nested knob re-hashing to
+        the unmodified digest
+  - [ ] A rule stated over a pair of values is tested as a matrix, not from one side. A function
+        that ignores an argument passes every single-sided test
   - [ ] Schemas are DRAFT, under `docs/draft-schemas/`, and say so in `$comment`
   - [ ] Uncertain field names carry `TODO(re-read DocumentRepresentation v0 field list)`
   - [ ] No public confidence field, score, grade, or quality summary

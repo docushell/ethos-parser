@@ -128,7 +128,15 @@ pub enum CoordinateOrigin {
 ///
 /// Matches `ethos.grounding.v1`'s `coordinate_system` object exactly, so the M5 projection is a
 /// move rather than a translation.
+///
+/// `deny_unknown_fields` matters here more than anywhere else in this module, because this type
+/// is **nested inside [`crate::Profile`]** and the attribute is *not* recursive. Without it, a
+/// profile carrying `coordinate_system.some_future_knob` deserialized with that knob dropped and
+/// then re-hashed to the **unmodified default digest** — measured, not theorised — so an
+/// artifact would claim comparability with a profile it does not actually match. Guarding the
+/// outer struct alone left this exact hole one level down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoordinateSystem {
     /// The measurement unit.
     pub unit: CoordinateUnit,
@@ -152,7 +160,13 @@ impl Default for CoordinateSystem {
 
 /// The four identity fields every artifact carries, before any payload
 /// (`docs/01-CONTRACT.md` §2).
+///
+/// Fails closed on unknown fields, matching `artifact-identity.draft.json`'s
+/// `additionalProperties: false`. §8 says a reader that does not recognise a shape refuses it
+/// rather than best-effort parsing; an envelope silently shedding a field it did not expect is
+/// that same best-effort parse wearing a struct definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactIdentity {
     /// Names the shape exactly, e.g. `ethos.grounding.v1`. A reader that does not recognise it
     /// fails closed rather than best-effort parsing.
@@ -173,7 +187,10 @@ pub struct ArtifactIdentity {
 /// of the original bytes ("what was read"), representation identity is the hash of the
 /// canonical evidence produced under a pinned profile ("what was produced"). Collapsing them
 /// makes it impossible to tell a re-parse from a different document.
+///
+/// Fails closed on unknown fields, for the same reason as [`ArtifactIdentity`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactBinding {
     /// Digest of the exact original source bytes.
     pub source_sha256: Sha256Hex,
@@ -244,6 +261,58 @@ mod tests {
             String::from_utf8(c14n_bytes(&v).unwrap()).unwrap(),
             r#"{"origin":"top-left","unit":"centipoint"}"#
         );
+    }
+
+    #[test]
+    fn envelope_types_refuse_unknown_fields() {
+        let identity = serde_json::json!({
+            "artifact_type": "ethos.engine.representation.v0",
+            "schema_version": "0.1.0",
+            "parser_version": "0.0.0",
+            "profile_sha256": VALID,
+            "future_knob": 1
+        });
+        assert!(
+            serde_json::from_value::<ArtifactIdentity>(identity).is_err(),
+            "ArtifactIdentity must fail closed on an unknown field"
+        );
+
+        let binding = serde_json::json!({
+            "source_sha256": VALID,
+            "representation_sha256": VALID,
+            "future_knob": 1
+        });
+        assert!(
+            serde_json::from_value::<ArtifactBinding>(binding).is_err(),
+            "ArtifactBinding must fail closed on an unknown field"
+        );
+
+        let coords = serde_json::json!({
+            "unit": "centipoint",
+            "origin": "top-left",
+            "future_knob": 1
+        });
+        assert!(
+            serde_json::from_value::<CoordinateSystem>(coords).is_err(),
+            "CoordinateSystem must fail closed — it is nested inside Profile, where a dropped \
+             field silently reproduces the default digest"
+        );
+    }
+
+    #[test]
+    fn envelope_types_still_accept_their_exact_shape() {
+        // Guard the guard: `deny_unknown_fields` must not have broken the happy path.
+        let identity = serde_json::json!({
+            "artifact_type": "ethos.engine.representation.v0",
+            "schema_version": "0.1.0",
+            "parser_version": "0.0.0",
+            "profile_sha256": VALID
+        });
+        assert!(serde_json::from_value::<ArtifactIdentity>(identity).is_ok());
+        assert!(serde_json::from_value::<CoordinateSystem>(
+            serde_json::json!({"unit": "centipoint", "origin": "top-left"})
+        )
+        .is_ok());
     }
 
     #[test]
