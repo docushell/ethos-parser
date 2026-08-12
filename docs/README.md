@@ -1,10 +1,12 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M3 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
+**Status:** **M4 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
 extracts position-aware text runs from it (M3): an exhaustive operator table that fails closed,
 `PdfLocator` on every run, measured or typed-absent ink boxes, synthesized-character flags, and
-the ligature caveat on the wire. `engine classify` and `engine extract` both emit canonical
-artifacts. **Next: M4.**
+the ligature caveat on the wire. As of M4 every artifact also carries the **L1 gate** — declared
+capabilities, named limitations, per-page processing state, a coverage summary that reconciles,
+and a terminal state where **partial is not a degraded success**. `engine classify` and
+`engine extract` both emit canonical artifacts. **Next: M5.**
 
 ---
 
@@ -14,10 +16,12 @@ artifacts. **Next: M4.**
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M4.** M0–M3 are done and committed; do not re-author the workspace, the contract
-   types, the classifier, or the extractor. M4 turns the ad-hoc `not_detected` / `not_decoded`
-   lists into real capability and limitation declarations, adds per-page state and the coverage
-   summary, and makes the multi-column limitation explicit
+5. **Implement M5.** M0–M4 are done and committed; do not re-author the workspace, the contract
+   types, the classifier, the extractor, or the assurance envelope. M5 emits
+   `DocumentRepresentation v0` and the `ethos.grounding.v1` adapter — the identity half of the
+   envelope (processing run, representation fingerprint) plus the projection a verifier consumes.
+   It is also where `capabilities.char_offsets` may honestly flip to `true`, because that is when
+   an element/span hierarchy exists for an offset to index into
 
 **Before you touch anything, run the gate** so you know the baseline you inherited:
 
@@ -66,8 +70,8 @@ Then, as needed:
 | **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **done** |
 | **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | **done** |
 | **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **done** |
-| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | **next** |
-| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | — |
+| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | **done** |
+| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | **next** |
 | **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | — |
 | **M7** | CLI + library freeze + v0 exit criteria green | M6 | — |
 
@@ -121,10 +125,17 @@ Grep for `TODO(` to find them. Currently:
 - ~~`TODO(M3)` — `BackendIdentity::default().version` placeholder~~ **Closed at M2.** `lopdf` is now
   a real dependency and the profile carries its resolved version, `0.44.0`. The pinned profile
   digest moved as a result, which is the mechanism working: a backend change is fingerprint-visible.
-- **`not_detected` (M2) and `not_decoded` (M3) are stand-ins for capability declarations.** The
-  classification artifact declares reason codes it never emits; the extract artifact declares
-  decoding gaps (absent font widths, form XObjects). The full capability/limitation machinery
-  lands at **M4** and should absorb both lists rather than sit beside them.
+- ~~`not_detected` (M2) and `not_decoded` (M3) are stand-ins for capability declarations~~
+  **Closed at M4.** Both fields are gone from the wire. Everything they declared is now a
+  `Limitation` in `assurance.limitations`, carrying the same reasons verbatim, alongside the
+  capability-derived ones. Tests fail if either field reappears, and if any `NOT_DETECTED` entry
+  loses its declaration in the move.
+- **Two capabilities were narrowed at M4, and both should be revisited.**
+  `capabilities.char_offsets` went `true` → `false` because v0 emits runs and no element/span
+  hierarchy, so nothing exists for an offset to index into; it flips at **M5**, with a test.
+  `capabilities.structural_locators` stays `false` because an `mcid` captured from `BDC` is not a
+  structural address — no role path, and an absent id is not evidence the document is untagged.
+  Full structural addressing is v1. Both moved `profile_sha256`, which is the mechanism working.
 - **Adobe predefined CMaps, Core-14 AFM widths and the full Adobe Glyph List are not vendored.**
   Each makes the engine fail closed with a named error, and each is declared on the wire. See
   [`vendor/README.md`](../vendor/README.md) for the reasoning and what would change if they land.

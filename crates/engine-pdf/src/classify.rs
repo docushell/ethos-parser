@@ -39,9 +39,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use engine_core::{ArtifactIdentity, EngineError, Profile, Sha256Hex};
+use engine_core::{
+    ArtifactIdentity, Assurance, EngineError, PageState, PageStateEntry, Profile, Sha256Hex,
+};
 
 use crate::document::Document;
+use crate::limitations as lim;
 use crate::reasons::{LayoutComplexityReason, OcrNeedReason};
 use crate::thresholds as th;
 
@@ -59,16 +62,6 @@ pub struct SourceRef {
     pub media_type: String,
     /// Digest of the exact source bytes.
     pub sha256: Sha256Hex,
-}
-
-/// A reason this profile's detectors can never emit, with the reason why.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NotDetected {
-    /// The reason code, in its wire spelling.
-    pub reason: String,
-    /// Why no detector exists.
-    pub detail: String,
 }
 
 /// Per-page observations. Page numbers are **1-based**.
@@ -112,7 +105,12 @@ pub struct Classification {
     pub source: SourceRef,
     /// Total pages in the document. **Does not** drive cost.
     pub page_count: u32,
-    /// Pages selected for sampling: `min(page_count, classify_sample_pages)`.
+    /// Pages selected for sampling: `min(page_count, classify_sample_pages, page_budget)`.
+    ///
+    /// The budget is in the minimum deliberately, so this field keeps meaning "the pages this
+    /// run intended to read" and stays equal to [`Self::pages_content_scanned`]. A version that
+    /// ignored the budget here would claim intent the run never acted on, and the equality that
+    /// makes the bound observable would break for a reason unrelated to a rescan bug.
     pub pages_sampled: u32,
     /// Pages whose content stream was actually walked.
     ///
@@ -131,10 +129,18 @@ pub struct Classification {
     /// The lists are the truth. Removing this field loses no information, which a property test
     /// asserts.
     pub needs_attention: bool,
-    /// Per-page rows for the sampled pages, in page order.
+    /// Per-page rows for the **scanned** pages, in page order.
+    ///
+    /// Not every page: bounded sampling means a large document has rows for the first `N` only.
+    /// Which pages those were, and what happened to the rest, is
+    /// [`Assurance::page_states`] — a row's absence here is never evidence about a page.
     pub pages: Vec<PageClassification>,
-    /// Vocabulary members this profile never emits, with reasons.
-    pub not_detected: Vec<NotDetected>,
+    /// Declared capabilities, limitations, per-page state, coverage, and terminal state.
+    ///
+    /// **The L1 gate** (`docs/01-CONTRACT.md` §7). Absorbs what M2 emitted as `not_detected`:
+    /// the reason codes this profile never produces are now profile-scope limitations in
+    /// `assurance.limitations`, in the same shape as every other declared gap.
+    pub assurance: Assurance,
 }
 
 impl Classification {
@@ -144,6 +150,15 @@ impl Classification {
     /// the boolean can reconstruct it exactly.
     pub fn derive_needs_attention(&self) -> bool {
         !self.ocr_reasons.is_empty() || !self.layout_reasons.is_empty()
+    }
+
+    /// Whether every authorized page was classified.
+    ///
+    /// **Usually false, and correctly so.** Bounded sampling is the design: a 492-page document
+    /// classified at `N = 8` is a partial reading, and saying otherwise would make the bound
+    /// invisible in exactly the artifacts that depend on it.
+    pub fn is_complete(&self) -> bool {
+        self.assurance.is_complete()
     }
 
     /// Canonical bytes, via `engine-core`'s c14n.
@@ -188,17 +203,67 @@ struct PageTally {
 pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, EngineError> {
     let page_count = doc.page_count();
     let sample_n = profile.classify_sample_pages;
-    let pages_sampled = page_count.min(sample_n);
+    let budget = profile.page_budget;
 
-    let mut rows: Vec<PageClassification> = Vec::with_capacity(pages_sampled as usize);
+    // Two bounds, and they are not the same thing. The sample count is the classifier's own
+    // design bound; the page budget is a resource ceiling that applies to every stage. Whichever
+    // is tighter decides how many pages are read, and — the part that matters for honesty —
+    // which single reason every unread page carries.
+    let pages_sampled = page_count.min(sample_n);
+    let budget_binds = budget
+        .max_pages_to_process()
+        .is_some_and(|b| b < pages_sampled);
+    let pages_to_scan = match budget.max_pages_to_process() {
+        Some(b) => pages_sampled.min(b),
+        None => pages_sampled,
+    };
+
+    // The reason goes to the **binding** constraint, uniformly, rather than being decided per
+    // page. Consider a 80-page document at `N = 8` under a budget of 20: pages 21–80 are outside
+    // the budget, so a per-page test would report them `quarantined` — sending a caller to raise
+    // a budget that is not what stopped them. At `N = 8` page 30 would not have been read if the
+    // budget were lifted entirely, so the sample bound is the operative reason and the one worth
+    // acting on.
+    let skipped_state = if budget_binds {
+        PageState::Quarantined(engine_core::codes::RESOURCE_LIMIT_PAGES.to_string())
+    } else {
+        PageState::NotAttempted(lim::CLASSIFY_SAMPLE_BOUND.to_string())
+    };
+
+    let mut rows: Vec<PageClassification> = Vec::with_capacity(pages_to_scan as usize);
     let mut scanned = 0u32;
+    let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(page_count as usize);
 
     // The bound. `take` is the whole mechanism: there is no later phase, and adding one would
     // move `pages_content_scanned` and fail `the_sampler_is_bounded_on_a_492_page_document`.
-    for &(page_number, page_id) in doc.pages().iter().take(pages_sampled as usize) {
+    for &(page_number, page_id) in doc.pages().iter().take(pages_to_scan as usize) {
         let tally = tally_page(doc, page_id);
         scanned += 1;
         rows.push(page_row(page_number, tally));
+        page_states.push(PageStateEntry {
+            index: page_number,
+            state: PageState::Processed,
+        });
+    }
+
+    // Every page the run was authorized to consider gets a disposition, including the ones it
+    // deliberately never looked at. Leaving them out would let a caller read "no row for page
+    // 300" as "page 300 is empty", which is the failure this whole milestone exists to close.
+    for &(page_number, _) in doc.pages().iter().skip(pages_to_scan as usize) {
+        page_states.push(PageStateEntry {
+            index: page_number,
+            state: skipped_state.clone(),
+        });
+    }
+
+    let mut limitations = lim::classify_limitations(sample_n);
+    if budget_binds {
+        // Declared exactly when the page states point at it, so the cross-check that every gap
+        // names a declared limitation cannot pass for the wrong reason.
+        let b = budget
+            .max_pages_to_process()
+            .expect("a budget that binds is a budget that exists");
+        limitations.push(lim::resource_limit_pages(b, page_count));
     }
 
     let mut ocr_reasons: Vec<OcrNeedReason> = rows
@@ -235,20 +300,14 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
             sha256: doc.source_sha256().clone(),
         },
         page_count,
-        pages_sampled,
+        pages_sampled: pages_to_scan,
         pages_content_scanned: scanned,
         pages_with_text,
         ocr_reasons,
         layout_reasons,
         needs_attention,
         pages: rows,
-        not_detected: th::NOT_DETECTED
-            .iter()
-            .map(|(reason, detail)| NotDetected {
-                reason: (*reason).to_string(),
-                detail: (*detail).to_string(),
-            })
-            .collect(),
+        assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
     })
 }
 

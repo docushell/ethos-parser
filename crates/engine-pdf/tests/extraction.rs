@@ -641,21 +641,32 @@ fn reading_order_is_stream_order_and_the_limitation_is_visible() {
     assert_eq!(a.reading_order_rule, "single-column-v1");
 }
 
+/// The M3 `not_decoded` gaps, now carried as limitations.
+///
+/// M4 absorbed the list rather than leaving it beside the capability block: a reviewer reading an
+/// artifact should find every declared gap in one place and one shape, not two vocabularies whose
+/// relationship they have to work out.
 #[test]
 fn undecodable_gaps_are_declared_rather_than_silent() {
     let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+
     assert!(
-        a.not_decoded.iter().any(|n| n.kind == "font-widths"),
+        codes.contains(&engine_pdf::limitations::FONT_WIDTHS_ABSENT),
         "standard-14 Helvetica carries no /Widths, and this profile does not vendor the AFM \
-         tables — the gap must be declared: {:?}",
-        a.not_decoded
+         tables — the gap must be declared: {codes:?}"
     );
     assert!(
-        a.not_decoded.iter().any(|n| n.kind == "form-xobject"),
-        "text inside form XObjects is not descended into, and that is declared"
+        codes.contains(&engine_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED),
+        "text inside form XObjects is not descended into, and that is declared: {codes:?}"
     );
-    for n in &a.not_decoded {
-        assert!(n.detail.len() > 40, "`{}` needs a real reason", n.kind);
+    for l in &a.assurance.limitations {
+        assert!(l.detail.len() > 40, "`{}` needs a real reason", l.code);
     }
 }
 

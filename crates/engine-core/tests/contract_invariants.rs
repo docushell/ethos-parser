@@ -22,8 +22,10 @@
 use std::path::{Path, PathBuf};
 
 use engine_core::{
-    c14n_bytes, ArtifactBinding, ArtifactIdentity, Capabilities, CoordinateSystem, DerivationClass,
-    GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Profile, QRect, Sha256Hex,
+    c14n_bytes, ArtifactBinding, ArtifactIdentity, Assurance, Capabilities, CoordinateSystem,
+    CoverageSummary, DerivationClass, GeometryAbsence, GeometryPresence, IdAllocator, IdKind,
+    Limitation, PageState, PageStateEntry, ProcessingGaps, ProcessingTerminalState, Profile, QRect,
+    Sha256Hex,
 };
 use serde_json::Value;
 
@@ -350,6 +352,12 @@ fn engine_core_has_no_pdf_dependency() {
 /// The distinction is types and imports versus data. A test that banned the vocabulary outright
 /// would forbid the error taxonomy from ever being demonstrated, which would make it worse
 /// documented without making it more format-agnostic.
+///
+/// **Banned type names are matched exactly, not by prefix.** The prefix form (`"struct Page"`)
+/// read `PageStateEntry` as a PDF page-tree type and failed M4's coverage summary — a type the
+/// contract *requires* in `engine-core`, since `01-CONTRACT.md` §7 mandates per-page processing
+/// state for every format. A page is a universal document concept; `lopdf::Page` is a PDF one.
+/// The guard has to be able to tell those apart or it forbids the contract it exists to protect.
 #[test]
 fn no_pdf_type_or_import_in_engine_core() {
     let mut offenders = Vec::new();
@@ -360,15 +368,78 @@ fn no_pdf_type_or_import_in_engine_core() {
         "acroform",
         "font_descriptor",
         "text_matrix",
-        "struct Page",
-        "struct TextRun",
     ] {
         offenders.extend(code_hits(banned));
+    }
+    // Type names that would mean this crate had learned about PDF structure, matched as whole
+    // identifiers so a format-agnostic `PageState` is not read as a page tree.
+    for banned in ["Page", "TextRun", "ContentStream", "Xref", "FontDescriptor"] {
+        for keyword in ["struct", "enum", "type"] {
+            offenders.extend(declared_item_hits(keyword, banned));
+        }
     }
     assert!(
         offenders.is_empty(),
         "a PDF type or import appears in engine-core:\n  {}",
         offenders.join("\n  ")
+    );
+}
+
+/// Hits where `<keyword> <name>` declares an item named **exactly** `name`.
+///
+/// The character after the name must not be an identifier character, so `struct Page` matches
+/// `struct Page { … }` and `struct Page;` but not `struct PageStateEntry`.
+fn declared_item_hits(keyword: &str, name: &str) -> Vec<String> {
+    let needle = format!("{keyword} {name}");
+    code_hits(&needle)
+        .into_iter()
+        .filter(|hit| {
+            // `code_hits` returns "file.rs:line: text"; re-find the needle in the text.
+            let Some(at) = hit.find(&needle) else {
+                return false;
+            };
+            let after = &hit[at + needle.len()..];
+            !after
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+        .collect()
+}
+
+/// The exact-match guard still catches what it is for.
+///
+/// Guards the guard: a prefix relaxation that let `struct Page` through would make the boundary
+/// test decorative, and nobody would notice until a page tree was already in `engine-core`.
+#[test]
+fn the_pdf_type_guard_matches_exactly_and_still_catches() {
+    let banned_shapes = ["struct Page {", "struct Page;", "enum Xref {"];
+    for shape in banned_shapes {
+        let hit = format!("some.rs:1: {shape}");
+        let (keyword, name) = shape.split_once(' ').unwrap();
+        let name = name.split(|c: char| !c.is_alphanumeric()).next().unwrap();
+        let needle = format!("{keyword} {name}");
+        let at = hit.find(&needle).expect("shape contains its own needle");
+        let after = &hit[at + needle.len()..];
+        assert!(
+            !after
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_'),
+            "`{shape}` must be recognised as a banned declaration"
+        );
+    }
+
+    // And the shape that must NOT be caught.
+    let allowed = "some.rs:1: pub struct PageStateEntry {";
+    let at = allowed.find("struct Page").expect("prefix is present");
+    let after = &allowed[at + "struct Page".len()..];
+    assert!(
+        after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_'),
+        "PageStateEntry must not be read as a PDF page type"
     );
 }
 
@@ -475,6 +546,64 @@ fn public_type_samples() -> Vec<(&'static str, Value)> {
             "NodeId",
             serde_json::to_value(alloc.next(IdKind::Element).unwrap()).unwrap(),
         ),
+        (
+            "Limitation",
+            serde_json::to_value(Limitation::page(
+                2,
+                engine_core::codes::RESOURCE_LIMIT_PAGES,
+                "a configured page budget stopped the run",
+            ))
+            .unwrap(),
+        ),
+        (
+            "PageState::Processed",
+            serde_json::to_value(PageState::Processed).unwrap(),
+        ),
+        (
+            "PageState::Quarantined",
+            serde_json::to_value(PageState::Quarantined(
+                engine_core::codes::RESOURCE_LIMIT_PAGES.into(),
+            ))
+            .unwrap(),
+        ),
+        (
+            "CoverageSummary",
+            serde_json::to_value(
+                CoverageSummary::from_page_states(
+                    1,
+                    &[PageStateEntry {
+                        index: 1,
+                        state: PageState::Processed,
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        ),
+        (
+            "ProcessingTerminalState::Partial",
+            serde_json::to_value(ProcessingTerminalState::Partial(ProcessingGaps {
+                pages_not_processed: 1,
+                first_gap_page: 2,
+            }))
+            .unwrap(),
+        ),
+        (
+            "Assurance",
+            serde_json::to_value(
+                Assurance::new(
+                    Capabilities::V0,
+                    1,
+                    vec![PageStateEntry {
+                        index: 1,
+                        state: PageState::Processed,
+                    }],
+                    Vec::new(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        ),
     ]
 }
 
@@ -541,5 +670,56 @@ fn no_public_type_emits_a_decimal_number() {
                 _ => {}
             }
         }
+    }
+}
+
+/// `profile.draft.json`'s example is the **real** canonical profile.
+///
+/// The DRAFT schemas are documentation, not validated against the code by a test — a deliberate
+/// decision recorded in `docs/draft-schemas/README.md`, because adding a JSON Schema validator to
+/// prove a draft matches is more machinery than a draft warrants.
+///
+/// This is the one exception, and it is cheap: the README claims that example *is* the profile
+/// `engine-core` emits, and by M4 it was not — it still carried `"unbound-until-m3"` placeholders
+/// two milestones after the backend landed. A claim that specific either holds or should not be
+/// made, and `serde_json` equality is enough to keep it holding.
+#[test]
+fn the_profile_schema_example_is_the_real_profile() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/profile.draft.json");
+    let schema: Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    let example = schema["examples"][0].clone();
+    assert!(
+        !example.is_null(),
+        "profile.draft.json must carry an example"
+    );
+
+    let real = serde_json::to_value(Profile::default()).unwrap();
+    assert_eq!(
+        example, real,
+        "profile.draft.json's example has drifted from the profile engine-core emits. Update the \
+         example — docs/draft-schemas/README.md tells readers it is the real one."
+    );
+
+    // And the required list covers every field the real profile carries, so a new knob cannot be
+    // added to the type while the schema keeps describing the old shape.
+    let required: Vec<&str> = schema["required"]
+        .as_array()
+        .expect("required is an array")
+        .iter()
+        .map(|v| v.as_str().expect("string"))
+        .collect();
+    for key in real.as_object().expect("profile is an object").keys() {
+        assert!(
+            required.contains(&key.as_str()),
+            "`{key}` is on Profile and missing from profile.draft.json's required list"
+        );
     }
 }

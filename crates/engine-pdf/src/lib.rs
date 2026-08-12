@@ -41,6 +41,7 @@ pub mod document;
 pub mod encoding;
 pub mod extract;
 pub mod fonts;
+pub mod limitations;
 pub mod magic;
 pub mod metrics;
 pub mod nodes;
@@ -53,13 +54,11 @@ pub mod thresholds;
 mod test_support;
 
 pub use classify::{
-    classify, Classification, NotDetected, PageClassification, SourceRef,
-    CLASSIFICATION_ARTIFACT_TYPE, CLASSIFICATION_SCHEMA_VERSION,
+    classify, Classification, PageClassification, SourceRef, CLASSIFICATION_ARTIFACT_TYPE,
+    CLASSIFICATION_SCHEMA_VERSION,
 };
 pub use document::Document;
-pub use extract::{
-    extract, ExtractArtifact, NotDecoded, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION,
-};
+pub use extract::{extract, ExtractArtifact, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION};
 pub use magic::check_pdf_magic;
 pub use nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};

@@ -9,6 +9,103 @@ that has acceptance criteria.
 
 ## [Unreleased]
 
+### M4 — Capabilities, typed absence, explicit multi-column limitation (the L1 gate)
+
+L1's achievement condition names capability declarations explicitly, so an artifact without them
+has not reached "extracted" regardless of how good its text is. Every emitted artifact now
+declares what the profile can do, what it could not do, what happened to each page, and how the
+run ended.
+
+**Added — `engine-core`**
+
+- `assurance` — `Limitation` (stable kebab code + detail + `Profile | Document | Page(n)` scope),
+  `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`,
+  `RefusalCode`, and the `Assurance` envelope both artifacts embed.
+- `Assurance::new` **derives** the coverage summary and the terminal state from the page states it
+  is given. An artifact that claims `Complete` while carrying an unread page is not a bug this
+  type can have — which is the only way to guarantee `docs/01-CONTRACT.md` §7's rule that a
+  verification over a partially processed document never renders as a clean verification of the
+  whole document.
+- `CoverageSummary` reconciles: `pages_authorized == processed + failed + unsupported +
+  quarantined + not_attempted`. Six buckets, not five: **`not_attempted` is the one a four-bucket
+  summary would have had to lie about.** Bounded classification samples `N` pages and stops, so
+  folding the rest into `processed` would claim observations nobody made and folding them into
+  `failed` would claim failures that never happened.
+- `page_binding_status` — **capability-limited beats negative** (Workbench rule 4). A query bound
+  to a failed, quarantined, or unattempted page returns `CapabilityLimited { limitation_code }`,
+  never a boolean "not present". The signature is the enforcement: there is no way to express
+  "missing", so absence of extractable content cannot become evidence of absence in the source.
+  `NotInDocument` is a separate answer, because "we skipped it" and "there is no such page" are
+  different facts.
+- `Capabilities::declared_limitations` — the mirror of the proof rule: **no capability may be
+  `false` without a declared limitation**, derived by exhaustive destructuring so adding one
+  without a code is a compile error.
+- `PageBudget` on `Profile` — `Unlimited` or `AtMost(n)`, a **declared state rather than an
+  optional field**. An `Option` missing from incoming JSON deserializes to `None` and silently
+  re-hashes as though it had been there; a declared enum cannot.
+
+**Added — `engine-pdf`**
+
+- `limitations` — the format-specific codes `engine-core` is not allowed to know about:
+  `backend-xref-strict-20-byte`, `predefined-cmaps-not-vendored`,
+  `form-xobject-text-not-descended`, `font-widths-absent`, `classify-sample-bound`, and the
+  derived `*-reason-not-detected` pair.
+- The **xref refusal is declared on artifacts for documents it did not refuse.**
+  `synthetic/table-regular-grid` exits 2 with no body, so the only place a caller can learn this
+  backend turns away roughly one document in twenty-six is an artifact for one it accepted.
+
+**Changed — the wire, deliberately**
+
+- **`not_detected` (M2) and `not_decoded` (M3) are gone.** Both were declared stand-ins. Their
+  content is now `assurance.limitations`, carrying M2's and M3's reasons verbatim — a test fails
+  if any `NOT_DETECTED` entry loses its declaration in the move, and another fails if either field
+  reappears. Two vocabularies on one artifact means a consumer has to work out which to trust, and
+  the answer is never written down.
+- **`capabilities.char_offsets`: `true` → `false`.** v0 emits runs and no element/span hierarchy,
+  so there is nothing for an offset to index into. M4 asked for the proof and there was none.
+  Flips at M5 with `DocumentRepresentation v0`, with a test.
+- **`profile_sha256` moved** to
+  `sha256:f34be6328f858e09c241cb51c7b0dbb0fe065ecbf5f00e9942cd6bbcdd6faf1e` — the honest
+  `char_offsets` value plus the new `page_budget` knob. Artifacts from before and after are
+  correctly non-comparable, because the profile that produced them really did change.
+- `Classification::pages_sampled` is now `min(page_count, classify_sample_pages, page_budget)`, so
+  it keeps meaning "the pages this run intended to read" and stays equal to
+  `pages_content_scanned`.
+
+**`failure/memory-limit-simulated`, stated plainly**
+
+Its bytes are **identical to `synthetic/simple-text`** (`sha256:f2f6ab91…`, asserted in the test
+rather than taken on trust). The fixture name means *a limit simulated by configuration*, not
+*this PDF is huge*, so the test sets `page_budget` explicitly — and on a one-page document the
+only budget that bites is zero. The behaviour is a **declared limitation plus a coverage gap**,
+not a hard refusal: one authorized page, zero processed, one quarantined, terminal state
+`partial`, and no page tree at all. The same bytes under the default profile read cleanly, which
+is the proof the gap came from the knob.
+
+**Fixed — two guards that were not guarding**
+
+- The profile sensitivity test's `capabilities.char_offsets` mutation wrote back the value the
+  field already held once `V0` flipped, so it proved nothing while passing. Every mutation now
+  asserts it actually changed the profile before asking whether the hash moved.
+- `no_pdf_type_or_import_in_engine_core` banned the **prefix** `struct Page`, which read the
+  format-agnostic `PageStateEntry` as a PDF page-tree type — forbidding a type the contract
+  requires. Banned type names are now matched as whole identifiers, with a test proving the
+  exact-match form still catches `struct Page {`.
+- `profile.draft.json`'s example still carried `"unbound-until-m3"` placeholders two milestones
+  after the backend landed, while its README told readers the example *is* the real profile. The
+  example is corrected and `the_profile_schema_example_is_the_real_profile` now holds it there.
+
+**Not done, deliberately**
+
+- **No CLI flag for the page budget.** It is a profile knob, so the binary cannot emit a partial
+  artifact at v0 and the question of which exit code one deserves does not arise. Exit-code
+  meanings are unchanged.
+- **`pages_failed` and `pages_unsupported` are always zero in v0 artifacts.** Extraction fails
+  closed on a hard error and emits nothing at all, so no page reaches those states through the
+  public path. The buckets are declared with honest zeros and the query helper handles them, but
+  nothing pretends they are exercised.
+- No repair, no invented pagination, no capability claimed without a proof test.
+
 ### M3 — Extract: text runs, native locators, fail-closed operators, synthesized flags
 
 Position-aware text runs whose origins are trustworthy, whose boxes are measured or typed-absent,

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:limitation:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §7 (capabilities and limitations, the L1 gate); docs/03-V0-SCOPE.md §3.2 (the multi-column limitation); docs/05-MILESTONES.md M4. Written from crates/engine-core/src/assurance.rs and crates/engine-pdf/src/limitations.rs. This ABSORBS the M2 `not_detected` and M3 `not_decoded` lists — both were declared stand-ins and neither exists on the wire any more.",
+  "title": "Limitation (DRAFT)",
+  "description": "A named gap: something this profile cannot do, or something this document/run could not do. Limitations live in the artifact, not in a doc comment — a limitation a reviewer can read and a consumer cannot is not a declaration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "detail", "scope"],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "$comment": "Stable kebab-case, matched by callers. Renaming one is a schema change, not a refactor. The list below is v0's; it is not closed, and a consumer must treat an unrecognised code as a gap it does not understand rather than as no gap.",
+      "examples": [
+        "multi-column-reading-order",
+        "tables-not-extracted",
+        "char-offsets-not-emitted",
+        "structural-locators-not-claimed",
+        "spans-not-emitted",
+        "measured-ink-boxes-not-emitted",
+        "resource-limit-pages",
+        "classify-sample-bound",
+        "backend-xref-strict-20-byte",
+        "predefined-cmaps-not-vendored",
+        "form-xobject-text-not-descended",
+        "font-widths-absent",
+        "garbled-reason-not-detected",
+        "multi-column-reason-not-detected"
+      ]
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 40,
+      "$comment": "Human-readable and stable enough to assert on. A test rejects any detail under 60 characters, because a placeholder reason is how a declaration becomes paperwork."
+    },
+    "scope": { "$ref": "#/$defs/limitation_scope" }
+  },
+  "$defs": {
+    "limitation_scope": {
+      "title": "How wide the limitation reaches",
+      "$comment": "Adjacently tagged, matching GeometryPresence's shape. Ordered Profile < Document < Page in the canonical sort, so a reader meets 'this engine can never' before 'this one page could not'.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "profile" } },
+          "description": "True of every run under this profile, whatever the document. ALWAYS declared — including on artifacts for documents where it caused no visible harm. `multi-column-reading-order` is profile-scoped for exactly this reason: a single-column document still tells its reader that this engine would have got a two-column one wrong."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "document" } },
+          "description": "True of this document under this profile. Declared only when it applies — `font-widths-absent`, `resource-limit-pages`."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "page" },
+            "value": { "type": "integer", "minimum": 1, "$comment": "1-based page number." }
+          },
+          "description": "True of one page."
+        }
+      ]
+    }
+  }
+}

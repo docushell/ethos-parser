@@ -13,6 +13,7 @@
     "quantum_per_point",
     "coordinate_system",
     "capabilities",
+    "page_budget",
     "reading_order_rule",
     "cmap_data_version"
   ],
@@ -26,7 +27,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "version"],
-      "description": "Object/xref backend identity. Declared before the backend is wired up at M3, so adopting or upgrading it is fingerprint-visible.",
+      "description": "Object/xref backend identity, so adopting or upgrading it is fingerprint-visible.",
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 }
@@ -45,7 +46,24 @@
       "description": "Quanta per point. 100 = centipoints."
     },
     "coordinate_system": { "$ref": "urn:ethos-engine:draft-schema:coordinate-system:0" },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "page_budget": { "$ref": "#/$defs/page_budget" },
+    "reading_order_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity: when a stable multi-column rule lands it gets a new id here rather than silently replacing this one.",
+      "examples": ["single-column-v1"]
+    },
+    "cmap_data_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identity of the vendored character-decoding data. Names what is actually vendored rather than what was planned: at M3 that is the PDF 32000-1 Annex D encoding tables, not the Adobe predefined CJK CMaps, whose absence is a declared limitation.",
+      "examples": ["annex-d-encodings-1"]
+    }
+  },
+  "$defs": {
     "capabilities": {
+      "title": "What this profile claims it can do",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -56,37 +74,62 @@
         "multi_column_reading_order",
         "structural_locators"
       ],
-      "description": "What this profile claims it can do. L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
+      "description": "L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
+      "$comment": "Two rules bind this object in both directions, and both are enforced by tests rather than by review. No `true` without a named proof test: crates/engine-pdf/tests/capabilities.rs maps each true field to a test function and fails the build when the named test does not exist. No `false` without a declared limitation: Capabilities::declared_limitations() derives one per false field, exhaustively, so a consumer never infers a gap from silence.",
       "properties": {
-        "spans": { "type": "boolean" },
-        "char_offsets": { "type": "boolean" },
+        "spans": { "type": "boolean", "$comment": "true in v0 — proof: spans_are_emitted_with_native_locators" },
+        "char_offsets": {
+          "type": "boolean",
+          "$comment": "FALSE in v0, and it was true in the M1 sketch. v0 emits runs with native locators and no element/span hierarchy, so there is nothing for an offset to index into. It flips at M5 with DocumentRepresentation v0 — and with a test. Narrowing a declaration when the evidence does not support it is the mechanism working, not a regression."
+        },
         "tables": { "type": "boolean", "$comment": "false in v0 — tables are v1 scope" },
-        "measured_ink_boxes": { "type": "boolean" },
+        "measured_ink_boxes": {
+          "type": "boolean",
+          "$comment": "true in v0 — proof: measured_ink_boxes_are_measured_and_absence_stays_typed, which asserts both halves (a measured box exists, and unusable metrics still yield typed absence rather than a fallback)"
+        },
         "multi_column_reading_order": {
           "type": "boolean",
-          "$comment": "false in v0 — single-column only, and the limitation is declared on every artifact"
+          "$comment": "false in v0 — single-column only, and the limitation is declared on every artifact and pinned by the synthetic/two-columns golden"
         },
-        "structural_locators": { "type": "boolean" }
+        "structural_locators": {
+          "type": "boolean",
+          "$comment": "FALSE in v0. An mcid IS captured where a page's content stream supplies one via BDC, and never invented where it does not — but the tagged-structure tree is not read, so there is no role path and an absent mcid is not evidence the document is untagged. Claiming the capability on the strength of the partial half would promise an address consumers could not rely on."
+        }
       }
     },
-    "reading_order_rule": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity: when a stable multi-column rule lands it gets a new id here rather than silently replacing this one.",
-      "examples": ["single-column-v1"]
-    },
-    "cmap_data_version": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Version of the vendored CMap data, or the explicit sentinel 'absent-until-m3'. A sentinel rather than an omitted field, so the value is still hashed.",
-      "examples": ["absent-until-m3"]
+    "page_budget": {
+      "title": "How many pages a run may process before it stops",
+      "$comment": "A DECLARED STATE, not an absent field: {\"mode\":\"unlimited\"} says the budget was considered and found unbounded, where an omitted optional would leave a reader unable to tell 'unbounded' from 'this build has no such knob' — and would deserialize to a default that silently re-hashes as though it had been there. A page count is the knob because it is the bound that actually governs peak cost in a page-at-a-time reader. Setting it changes profile_sha256, so a budgeted run is correctly non-comparable with an unbudgeted one.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "unlimited" } },
+          "description": "No page bound. The v0 default."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "pages"],
+          "properties": {
+            "mode": { "const": "at_most" },
+            "pages": {
+              "type": "integer",
+              "minimum": 0,
+              "$comment": "Zero is legal and means 'process none'. It is the only budget that can bite on a one-page document, which is what failure/memory-limit-simulated needs: that fixture is byte-identical to synthetic/simple-text, so its name means the limit is simulated BY CONFIGURATION, not that the PDF is large."
+            }
+          },
+          "description": "Process at most this many pages; the rest are quarantined and declared, and the run's terminal state is partial."
+        }
+      ]
     }
   },
   "examples": [
     {
-      "backend": { "name": "lopdf", "version": "unbound-until-m3" },
+      "backend": { "name": "lopdf", "version": "0.44.0" },
       "capabilities": {
-        "char_offsets": true,
+        "char_offsets": false,
         "measured_ink_boxes": true,
         "multi_column_reading_order": false,
         "spans": true,
@@ -94,8 +137,9 @@
         "tables": false
       },
       "classify_sample_pages": 8,
-      "cmap_data_version": "absent-until-m3",
+      "cmap_data_version": "annex-d-encodings-1",
       "coordinate_system": { "origin": "top-left", "unit": "centipoint" },
+      "page_budget": { "mode": "unlimited" },
       "parser_version": "0.0.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1"

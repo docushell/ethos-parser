@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:coverage:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §7 (per-page state, coverage summary, partial processing as a first-class outcome); docs/05-MILESTONES.md M4. Written from crates/engine-core/src/assurance.rs. Holds the whole assurance envelope, because the coverage summary is only meaningful next to the page states it was tallied from and the terminal state derived from it.",
+  "title": "Assurance envelope — coverage, page state, terminal state (DRAFT)",
+  "description": "The extraction-assurance state every classify/extract artifact embeds. L1's achievement condition names capability declarations explicitly, so an artifact without this block has not reached 'extracted' regardless of how good its text is.",
+  "$ref": "#/$defs/assurance",
+  "$defs": {
+    "assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "limitations",
+        "coverage",
+        "page_states",
+        "terminal_state"
+      ],
+      "properties": {
+        "capabilities": {
+          "$ref": "urn:ethos-engine:draft-schema:profile:0#/$defs/capabilities",
+          "$comment": "The producing profile's capability set, repeated on the artifact so a reader need not fetch the profile to know what was claimed. Two rules bind it in both directions: no `true` without a named proof test (crates/engine-pdf/tests/capabilities.rs fails the build otherwise), and no `false` without a declared limitation below."
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "$ref": "urn:ethos-engine:draft-schema:limitation:0" },
+          "$comment": "Sorted by (code, scope, detail) and deduplicated. Order on the wire must not depend on the order code happened to append in, or two runs observing the same gaps would produce different bytes — and byte identity is a test here, not an aspiration."
+        },
+        "coverage": { "$ref": "#/$defs/coverage_summary" },
+        "page_states": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/page_state_entry" },
+          "$comment": "EVERY authorized page, in page order — not only the ones that went wrong. Emitting exceptions alone would mean 'absent from this list' had to imply 'processed', which is a sentinel by omission and the exact shape this milestone exists to remove."
+        },
+        "terminal_state": { "$ref": "#/$defs/terminal_state" }
+      }
+    },
+
+    "coverage_summary": {
+      "title": "Coverage summary",
+      "description": "The reconciliation between what a run was authorized to read and what it read.",
+      "$comment": "PRESENT ON EVERY ARTIFACT representing a read attempt, including fully successful ones. Zeros in the gap buckets are the correct output for a clean document; the ABSENCE of this object is what is forbidden, because then 'no gaps declared' and 'gaps not tracked' look identical to a consumer. A hard open failure (encrypted, bad magic, malformed xref) exits 2 with no body at all — that is refusal, not partial coverage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pages_authorized",
+        "pages_processed",
+        "pages_failed",
+        "pages_unsupported",
+        "pages_quarantined",
+        "pages_not_attempted"
+      ],
+      "properties": {
+        "pages_authorized": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "The denominator, not a bucket. INVARIANT: pages_authorized == processed + failed + unsupported + quarantined + not_attempted. Asserted at construction, on every fixture, and by a unit test that feeds one page into each bucket."
+        },
+        "pages_processed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Read to the profile's declared capabilities. The only state supporting a positive answer to a query."
+        },
+        "pages_failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Processing was attempted and failed."
+        },
+        "pages_unsupported": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The page holds something this profile does not claim to handle. Distinct from failed: the page may be perfectly valid and the gap is ours."
+        },
+        "pages_quarantined": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Held back deliberately — a resource budget, or a declared policy."
+        },
+        "pages_not_attempted": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "The bucket a four-bucket summary would have had to lie about. Bounded classification samples N pages and stops; folding the rest into `processed` would claim observations nobody made, and folding them into `failed` would claim failures that never happened. A 492-page document at N=8 has 484 pages here, which is the design working rather than a defect."
+        }
+      }
+    },
+
+    "page_state_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "state"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1, "$comment": "1-based, as the document numbers its own pages." },
+        "state": { "$ref": "#/$defs/page_state" }
+      }
+    },
+
+    "page_state": {
+      "title": "What happened to one authorized page",
+      "$comment": "NAMING IS LOAD-BEARING. A caller must not be able to read 'this page was never looked at' as 'this page has no text', so the variant name says which it is before anyone reads a reason string. Every non-processed variant carries a LIMITATION CODE, not free prose: the prose lives once in the matching limitation, and 'every gap names a declared limitation' is then an invariant a test checks rather than a convention.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": { "state": { "const": "processed" } },
+          "description": "Read to this profile's declared capabilities."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reason"],
+          "properties": {
+            "state": { "enum": ["failed", "unsupported", "quarantined", "not_attempted"] },
+            "reason": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "$comment": "A limitation code that MUST appear in this artifact's `limitations` array." }
+          },
+          "description": "A gap. `not_attempted` is not 'empty' and not a failure — bounded classification reaches it by design."
+        }
+      ]
+    },
+
+    "terminal_state": {
+      "title": "How a processing run ended",
+      "$comment": "PARTIAL IS A TERMINAL STATE, NOT A DEGRADED SUCCESS. A representation where some pages failed may still support claims binding to pages that succeeded, but the gap must be visible to every consumer. Modelled as an enum rather than a boolean so `complete` cannot be what a caller gets by not looking, and DERIVED from the page states at construction so an artifact cannot claim `complete` while carrying an unread page.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": { "state": { "const": "complete" } },
+          "description": "Every authorized page was processed."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": { "const": "partial" },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pages_not_processed", "first_gap_page"],
+              "properties": {
+                "pages_not_processed": { "type": "integer", "minimum": 1 },
+                "first_gap_page": { "type": "integer", "minimum": 1 }
+              },
+              "$comment": "A POINTER to the gaps, not a copy. The full disposition is in `page_states`; duplicating 484 skipped page numbers here would make a bounded run's output scale with the page count it exists to avoid scaling with."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": { "const": "refused" },
+            "value": {
+              "enum": ["unsupported", "malformed", "encrypted", "resource_limit", "missing_part", "io"],
+              "$comment": "Mirrors EngineError::code() rather than restating it."
+            }
+          },
+          "$comment": "NOT REACHABLE FROM AN EMITTED v0 ARTIFACT, and that is deliberate. A hard open failure exits 2 with a named error and no body, because a body would be a representation of a document nobody read. The variant exists so a caller modelling outcomes has a name for that case and does not reach for `partial`, which means something materially different: refusal is 'I read nothing', partial is 'I read some of it and here is exactly which'."
+        }
+      ]
+    }
+  }
+}

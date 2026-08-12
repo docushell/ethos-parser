@@ -210,3 +210,82 @@ fn the_cli_output_matches_the_library() {
         "CLI stdout must be the library's canonical bytes, with only a trailing newline added"
     );
 }
+
+/// Both subcommands put the assurance blocks on stdout.
+///
+/// The library builds them and a library test asserts their content; this asserts the *binary*
+/// ships them. An artifact that reached L1 in memory and lost its declarations on the way to the
+/// pipe has not reached L1 for the caller, who is the only one it matters to.
+#[test]
+fn both_subcommands_emit_the_assurance_blocks() {
+    let path = conformance("synthetic/two-columns/document.pdf");
+    let arg = path.to_str().unwrap();
+
+    let runs = [
+        ("classify", classify(&[arg])),
+        (
+            "extract",
+            Command::new(env!("CARGO_BIN_EXE_engine"))
+                .arg("extract")
+                .arg(arg)
+                .output()
+                .expect("the engine binary runs"),
+        ),
+    ];
+
+    for (sub, out) in runs {
+        let s = String::from_utf8(out.stdout).expect("canonical bytes are UTF-8");
+        for required in [
+            "\"assurance\"",
+            "\"capabilities\"",
+            "\"limitations\"",
+            "\"coverage\"",
+            "\"page_states\"",
+            "\"terminal_state\"",
+            // The explicit multi-column limitation, on the wire, from the binary.
+            "multi-column-reading-order",
+        ] {
+            assert!(
+                s.contains(required),
+                "`engine {sub}` stdout is missing {required}"
+            );
+        }
+        // The absorbed stand-ins must not reappear alongside the block they became.
+        assert!(
+            !s.contains("\"not_detected\""),
+            "{sub} carries a second vocabulary"
+        );
+        assert!(
+            !s.contains("\"not_decoded\""),
+            "{sub} carries a second vocabulary"
+        );
+    }
+}
+
+/// `extract` still exits 0, and the terminal state — not the exit code — carries completeness.
+///
+/// Exit-code meanings are unchanged at M4 (0 extracted, 2 could-not-read). The page budget that
+/// can produce a partial artifact is a library/profile knob with no CLI flag, so the binary
+/// cannot emit a partial artifact at v0 and the question of what exit code one deserves does not
+/// arise yet. Pinned here so the answer is a decision on the record rather than an accident.
+#[test]
+fn extract_exits_zero_and_reports_completeness_on_the_artifact() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let out = Command::new(env!("CARGO_BIN_EXE_engine"))
+        .arg("extract")
+        .arg(path.to_str().unwrap())
+        .output()
+        .expect("the engine binary runs");
+
+    assert_eq!(
+        code(&out),
+        0,
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8(out.stdout).expect("UTF-8");
+    assert!(
+        s.contains(r#""terminal_state":{"state":"complete"}"#),
+        "a clean document reports Complete on the artifact: {s}"
+    );
+}

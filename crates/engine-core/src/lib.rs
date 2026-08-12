@@ -26,6 +26,7 @@
 //! | [`identity`] | [`ArtifactIdentity`], [`Sha256Hex`], [`CoordinateSystem`] |
 //! | [`profile`] | [`Profile`] and its hash — the identity everything else hangs off |
 //! | [`derivation`] | [`DerivationClass`] and typed geometric absence |
+//! | [`assurance`] | The L1 gate: [`Limitation`], [`PageState`], [`CoverageSummary`], terminal state |
 //! | [`ids`] | Stable-id allocation and the ordering discipline |
 //! | [`error`] | The six-variant error taxonomy |
 //!
@@ -48,10 +49,14 @@
 //! 3. **Absence is typed.** [`derivation::GeometryPresence`] distinguishes "could not measure"
 //!    from "nothing to measure" from "not asked to measure". `Option<QRect>` would collapse all
 //!    three, and only the first is a declarable capability limitation.
+//! 4. **A gap cannot be presented as a success.** [`assurance::Assurance`] derives its coverage
+//!    and terminal state from the page states it is given, so no artifact can claim `Complete`
+//!    while carrying a page nobody read (`docs/01-CONTRACT.md` §7).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod assurance;
 pub mod c14n;
 pub mod derivation;
 pub mod error;
@@ -60,6 +65,11 @@ pub mod identity;
 pub mod ids;
 pub mod profile;
 
+pub use assurance::{
+    codes, page_binding_status, Assurance, CoverageSummary, Limitation, LimitationScope,
+    PageBindingResult, PageState, PageStateEntry, ProcessingGaps, ProcessingTerminalState,
+    RefusalCode,
+};
 pub use c14n::{c14n_bytes, sha256_hex, sha256_hex_bytes, C14nError};
 pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
 pub use error::EngineError;
@@ -70,7 +80,7 @@ pub use identity::{
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, Profile, CMAP_DATA_VERSION,
+    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, CMAP_DATA_VERSION,
     READING_ORDER_RULE_V0,
 };
 

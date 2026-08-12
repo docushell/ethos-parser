@@ -12,7 +12,7 @@
     "reading_order_rule",
     "page_count",
     "pages",
-    "not_decoded"
+    "assurance"
   ],
   "properties": {
     "identity": {
@@ -22,45 +22,84 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["media_type", "sha256"],
+      "required": [
+        "media_type",
+        "sha256"
+      ],
       "properties": {
-        "media_type": { "const": "application/pdf" },
-        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        "media_type": {
+          "const": "application/pdf"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
       }
     },
     "reading_order_rule": {
       "type": "string",
       "$comment": "`single-column-v1` at v0: runs appear in content-stream order with no reordering. A two-column document therefore comes out column-by-column in whatever order the stream wrote them, which is visibly wrong and honestly so. Multi-column ships at v1 with a stable rule; pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page.",
-      "examples": ["single-column-v1"]
+      "examples": [
+        "single-column-v1"
+      ]
     },
-    "page_count": { "type": "integer", "minimum": 0 },
-    "pages": { "type": "array", "items": { "$ref": "#/$defs/page_extract" } },
-    "not_decoded": {
+    "page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pages": {
       "type": "array",
-      "description": "Gaps this profile declares rather than papering over.",
-      "$comment": "Three kinds occur today. `font-widths`: a standard-14 font with no /Widths, whose built-in AFM metrics this profile does not vendor — the advance is reported absent rather than guessed. `form-xobject`: text inside a form XObject drawn with `Do` is not descended into. A predefined Adobe CMap would produce a third. Declaring them matters because an empty run list otherwise reads as 'no text here'.",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["kind", "detail"],
-        "properties": {
-          "kind": { "type": "string" },
-          "detail": { "type": "string" }
-        }
-      }
+        "$ref": "#/$defs/page_extract"
+      },
+      "$comment": "Per-page results for the PROCESSED pages only. A page missing from this list was not read, and `assurance.page_states` says which of the reasons applied — its absence here is never evidence that the page holds no text. A test asserts pages.length == coverage.pages_processed."
+    },
+    "assurance": {
+      "$ref": "urn:ethos-engine:draft-schema:coverage:0",
+      "$comment": "The L1 gate (docs/01-CONTRACT.md §7): declared capabilities, limitations, per-page state, coverage, and terminal state. ABSORBS M3's `not_decoded` list, which no longer exists on the wire — absent font widths are now the document-scoped `font-widths-absent` limitation and undescended form XObjects the profile-scoped `form-xobject-text-not-descended`. It also carries the explicit multi-column reading-order limitation that synthetic/two-columns pins."
     }
   },
   "$defs": {
     "page_extract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["index", "width", "height", "rotation", "runs"],
+      "required": [
+        "index",
+        "width",
+        "height",
+        "rotation",
+        "runs"
+      ],
       "properties": {
-        "index": { "type": "integer", "minimum": 1, "$comment": "1-based, as the document numbers its pages." },
-        "width": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints, AFTER rotation: a quarter turn swaps the visible dimensions." },
-        "height": { "type": "integer", "minimum": 0 },
-        "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
-        "runs": { "type": "array", "items": { "$ref": "#/$defs/text_run" } }
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "1-based, as the document numbers its pages."
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Integer centipoints, AFTER rotation: a quarter turn swaps the visible dimensions."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rotation": {
+          "type": "integer",
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text_run"
+          }
+        }
       }
     },
     "text_run": {
@@ -79,11 +118,19 @@
         "derivation"
       ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "text": { "type": "string" },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "text": {
+          "type": "string"
+        },
         "char_codes": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 0 },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
           "$comment": "NOT 1:1 with `text`. A ligature is one code and several scalars: the fi glyph is code 0x03 and characters f and i. The ligature-fi fixture produces 11 characters from 9 codes."
         },
         "scalar_code_mismatch": {
@@ -97,26 +144,45 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["char_index", "reason"],
+            "required": [
+              "char_index",
+              "reason"
+            ],
             "properties": {
-              "char_index": { "type": "integer", "minimum": 0 },
-              "reason": { "type": "string", "enum": ["tj-gap"] }
+              "char_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "tj-gap"
+                ]
+              }
             }
           }
         },
-        "font_id": { "type": "string" },
+        "font_id": {
+          "type": "string"
+        },
         "font_size": {
           "type": "integer",
           "minimum": 0,
           "$comment": "Integer centipoints. NEVER used as a box height — pdf-inspector's TextItem.height is literally the same variable as font_size (checklist P5), which is why a separate measured geometry exists."
         },
-        "locator": { "$ref": "#/$defs/pdf_locator" },
-        "geometry": { "$ref": "urn:ethos-engine:draft-schema:geometry:0" },
+        "locator": {
+          "$ref": "#/$defs/pdf_locator"
+        },
+        "geometry": {
+          "$ref": "urn:ethos-engine:draft-schema:geometry:0"
+        },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."
         },
-        "derivation": { "$ref": "urn:ethos-engine:draft-schema:derivation-class:0" }
+        "derivation": {
+          "$ref": "urn:ethos-engine:draft-schema:derivation-class:0"
+        }
       }
     },
     "pdf_locator": {
@@ -125,11 +191,22 @@
       "$comment": "The origin is the fingerprint-critical primitive: two independent PDF stacks agree on character origin to 0.001 pt while disagreeing on height by 6.174 pt. That asymmetry is why origins are identity and boxes are inspection.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["page", "origin_x", "origin_y"],
+      "required": [
+        "page",
+        "origin_x",
+        "origin_y"
+      ],
       "properties": {
-        "page": { "type": "integer", "minimum": 1 },
-        "origin_x": { "type": "integer" },
-        "origin_y": { "type": "integer" },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "origin_x": {
+          "type": "integer"
+        },
+        "origin_y": {
+          "type": "integer"
+        },
         "advance": {
           "type": "integer",
           "$comment": "OMITTED, not zero, when the document carries no width information. A standard-14 font may legally omit /Widths and expect built-in AFM metrics, which this profile does not vendor — so the advance is unknown, and unknown is what it says. The origin is unaffected: it comes from the content stream, not from the font."

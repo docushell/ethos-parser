@@ -279,6 +279,44 @@ clean verification of the whole document. And a claim binding to a failed, unsup
 quarantined page returns an explicit capability-limited or indeterminate result: **absence of
 extractable content is never evidence of absence in the source** (Workbench rule 4).
 
+### 7.1 Wire spellings, pinned at M4
+
+Callers match on these, so they are named here rather than left to the implementation. DRAFT
+schemas: `docs/draft-schemas/limitation.draft.json` and `coverage.draft.json`.
+
+| Field | Shape |
+| --- | --- |
+| `assurance` | The envelope, on every classification and representation |
+| `assurance.capabilities` | The producing profile's capability set, repeated on the artifact |
+| `assurance.limitations[]` | `{code, detail, scope}`; `scope` is `{kind: profile\|document\|page, value?}` |
+| `assurance.coverage` | `pages_authorized` and five disposition buckets |
+| `assurance.page_states[]` | `{index, state}` for **every** authorized page, 1-based |
+| `assurance.terminal_state` | `complete` \| `partial` \| `refused` |
+
+Four rules the shape enforces, each with a test rather than a convention behind it:
+
+1. **No capability `true` without a named proof test**, and **no capability `false` without a
+   declared limitation.** Both are exhaustiveness-gated: adding a capability without covering it
+   fails to compile.
+2. **Every authorized page appears in `page_states`**, including the ones deliberately never
+   looked at. Emitting only the exceptions would make "absent from the list" imply "processed",
+   which is a sentinel by omission.
+3. **A page state's reason is a limitation code, not prose.** The prose lives once, in the
+   matching `Limitation`, so "every gap names a declared limitation" is checkable.
+4. **The terminal state is derived from the page states, never asserted alongside them.** An
+   artifact cannot claim `complete` while carrying a page nobody read.
+
+`refused` is modelled and **not reachable from a v0 artifact**: a hard open failure exits 2 with a
+named error and no body, because a body would be a representation of a document nobody read. The
+variant exists so a caller has a name for that outcome and does not reach for `partial`, which
+means something materially different — refusal is "I read nothing", partial is "I read some of it
+and here is exactly which".
+
+`not_attempted` is the fifth disposition bucket and it is load-bearing. Bounded classification
+samples `N` pages and stops (§`03-V0-SCOPE.md` §1 item 5), so a 492-page document at `N = 8` has
+484 pages that were never observed. Folding them into `processed` would claim observations nobody
+made; folding them into `failed` would claim failures that never happened.
+
 ---
 
 ## 8. Fail closed

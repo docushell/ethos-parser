@@ -529,14 +529,22 @@ fn garbled_is_never_emitted_and_the_absence_is_declared() {
 
         // Silence would be dishonest: a caller could read the empty list as evidence the document
         // is not garbled. The artifact declares that no detector exists.
-        assert!(
-            c.not_detected.iter().any(|n| n.reason == "garbled"),
-            "{label}: `garbled` must be declared undetected"
-        );
-        assert!(
-            c.not_detected.iter().any(|n| n.reason == "multi-column"),
-            "{label}: `multi-column` must be declared undetected"
-        );
+        //
+        // M4 moved this declaration out of the ad-hoc `not_detected` list and into
+        // `assurance.limitations`, where every other declared gap already lived. One vocabulary,
+        // one place to look — the migration `docs/README.md` had open since M2.
+        for reason in ["garbled", "multi-column"] {
+            let code = engine_pdf::limitations::undetected_reason_code(reason);
+            assert!(
+                c.assurance.limitations.iter().any(|l| l.code == code),
+                "{label}: `{reason}` must be declared undetected as `{code}`; got {:?}",
+                c.assurance
+                    .limitations
+                    .iter()
+                    .map(|l| l.code.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 }
 

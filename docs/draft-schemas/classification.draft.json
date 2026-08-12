@@ -17,7 +17,7 @@
     "layout_reasons",
     "needs_attention",
     "pages",
-    "not_detected"
+    "assurance"
   ],
   "properties": {
     "identity": {
@@ -27,10 +27,18 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["media_type", "sha256"],
+      "required": [
+        "media_type",
+        "sha256"
+      ],
       "properties": {
-        "media_type": { "const": "application/pdf" },
-        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        "media_type": {
+          "const": "application/pdf"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
       }
     },
     "page_count": {
@@ -41,7 +49,7 @@
     "pages_sampled": {
       "type": "integer",
       "minimum": 0,
-      "description": "min(page_count, profile.classify_sample_pages)."
+      "description": "min(page_count, profile.classify_sample_pages, profile.page_budget). The budget is in the minimum deliberately, so this field keeps meaning 'the pages this run intended to read' and stays equal to pages_content_scanned."
     },
     "pages_content_scanned": {
       "type": "integer",
@@ -56,12 +64,16 @@
     "ocr_reasons": {
       "type": "array",
       "description": "Union of per-page OCR-need reasons, sorted and deduplicated. An OBSERVATION, never a routing decision.",
-      "items": { "$ref": "#/$defs/ocr_need_reason" }
+      "items": {
+        "$ref": "#/$defs/ocr_need_reason"
+      }
     },
     "layout_reasons": {
       "type": "array",
       "description": "Union of per-page layout-hard reasons, sorted and deduplicated. None of these implies OCR — that independence is the point of the split and is asserted by a test.",
-      "items": { "$ref": "#/$defs/layout_complexity_reason" }
+      "items": {
+        "$ref": "#/$defs/layout_complexity_reason"
+      }
     },
     "needs_attention": {
       "type": "boolean",
@@ -69,22 +81,14 @@
     },
     "pages": {
       "type": "array",
-      "description": "One row per scanned page, in page order.",
-      "items": { "$ref": "#/$defs/page_classification" }
-    },
-    "not_detected": {
-      "type": "array",
-      "description": "Vocabulary members this profile's detectors never emit, with the reason why.",
-      "$comment": "Not paperwork. A vocabulary listing `garbled` while no detector can produce it invites a caller to read an empty list as evidence the document is not garbled — absence of a reason mistaken for evidence of its absence, which is Workbench rule 4 one level up. The full capability-declaration machinery arrives at M4; this is the minimum honesty M2 owes while emitting a vocabulary it only partly implements.",
+      "description": "One row per SCANNED page, in page order. Not every page: bounded sampling means a large document has rows for the first N only, and what happened to the rest is assurance.page_states.",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["reason", "detail"],
-        "properties": {
-          "reason": { "type": "string" },
-          "detail": { "type": "string" }
-        }
+        "$ref": "#/$defs/page_classification"
       }
+    },
+    "assurance": {
+      "$ref": "urn:ethos-engine:draft-schema:coverage:0",
+      "$comment": "The L1 gate (docs/01-CONTRACT.md §7). ABSORBS M2's `not_detected` list, which no longer exists on the wire: the reason codes this profile never emits are now profile-scope limitations `garbled-reason-not-detected` and `multi-column-reason-not-detected`, carrying the same reasons verbatim. One vocabulary, one shape, one place to look. Note that a bounded classification is normally terminal_state `partial`: pages past the sample bound are `not_attempted`, which is not the same as observed and empty."
     }
   },
   "$defs": {
@@ -105,7 +109,11 @@
     "layout_complexity_reason": {
       "title": "Layout-hard axis",
       "type": "string",
-      "enum": ["multi-column", "table-likely", "dense-graphics"],
+      "enum": [
+        "multi-column",
+        "table-likely",
+        "dense-graphics"
+      ],
       "$comment": "Orthogonal to the OCR-need axis: none of these implies OCR. A dense financial table in crisp born-digital text needs no OCR at all. `multi-column` is never emitted by this profile — v0 has no stable rule, and pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page. See not_detected."
     },
     "page_classification": {
@@ -138,14 +146,33 @@
           "minimum": 0,
           "$comment": "Count of Tj, TJ, ' and \" — all four. pdf-inspector omits \" from its operator match, which loses text silently (parity checklist P6); at this layer the same omission would surface as a false no-text."
         },
-        "image_count": { "type": "integer", "minimum": 0 },
-        "path_operators": { "type": "integer", "minimum": 0 },
-        "rectangles": { "type": "integer", "minimum": 0 },
-        "annotations": { "type": "integer", "minimum": 0 },
-        "ocr_reasons": { "type": "array", "items": { "$ref": "#/$defs/ocr_need_reason" } },
+        "image_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path_operators": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rectangles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "annotations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ocr_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ocr_need_reason"
+          }
+        },
         "layout_reasons": {
           "type": "array",
-          "items": { "$ref": "#/$defs/layout_complexity_reason" }
+          "items": {
+            "$ref": "#/$defs/layout_complexity_reason"
+          }
         }
       }
     }

@@ -26,8 +26,8 @@
 //! transform is this engine's job and the declaration is how a reader knows it happened.
 
 use engine_core::{
-    quantize, ArtifactIdentity, DerivationClass, EngineError, IdAllocator, IdKind, Profile,
-    Sha256Hex, QUANTUM_PER_POINT,
+    quantize, ArtifactIdentity, Assurance, DerivationClass, EngineError, IdAllocator, IdKind,
+    PageState, PageStateEntry, Profile, Sha256Hex, QUANTUM_PER_POINT,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +35,7 @@ use crate::classify::SourceRef;
 use crate::content::Interpreter;
 use crate::document::Document;
 use crate::fonts::{load_page_fonts, WidthSource};
+use crate::limitations as lim;
 use crate::nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
 
 /// Artifact type for an extract. **DRAFT** — see `docs/draft-schemas/`.
@@ -42,16 +43,6 @@ pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.engine.extract.v0";
 
 /// Shape version of the extract artifact. **DRAFT**.
 pub const EXTRACT_SCHEMA_VERSION: &str = "0.1.0";
-
-/// Something this profile could not decode, named rather than dropped.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NotDecoded {
-    /// What kind of gap: `font-widths`, `form-xobject`, `predefined-cmap`.
-    pub kind: String,
-    /// The specific detail.
-    pub detail: String,
-}
 
 /// The extract artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,10 +59,18 @@ pub struct ExtractArtifact {
     pub reading_order_rule: String,
     /// Total pages.
     pub page_count: u32,
-    /// Per-page results, in page order.
+    /// Per-page results for the **processed** pages, in page order.
+    ///
+    /// A page missing from this list was not read; [`Assurance::page_states`] says which of the
+    /// reasons applied. Its absence is never evidence that the page holds no text.
     pub pages: Vec<PageExtract>,
-    /// Gaps this profile declares rather than papering over.
-    pub not_decoded: Vec<NotDecoded>,
+    /// Declared capabilities, limitations, per-page state, coverage, and terminal state.
+    ///
+    /// **The L1 gate** (`docs/01-CONTRACT.md` §7). Absorbs what M3 emitted as `not_decoded`:
+    /// absent font widths and undescended form XObjects are now limitations in
+    /// `assurance.limitations`, alongside the capability-derived ones — including the explicit
+    /// multi-column reading-order limitation that `synthetic/two-columns` exists to pin.
+    pub assurance: Assurance,
 }
 
 impl ExtractArtifact {
@@ -96,6 +95,14 @@ impl ExtractArtifact {
     pub fn runs(&self) -> impl Iterator<Item = &TextRun> {
         self.pages.iter().flat_map(|p| p.runs.iter())
     }
+
+    /// Whether this artifact may be presented as a complete reading of its source.
+    ///
+    /// The question a consumer must ask before treating the run list as the whole document.
+    /// False whenever any authorized page did not reach `Processed`.
+    pub fn is_complete(&self) -> bool {
+        self.assurance.is_complete()
+    }
 }
 
 /// Extract text runs from an already-open document.
@@ -117,9 +124,24 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());
-    let mut not_decoded: Vec<NotDecoded> = Vec::new();
+    let mut limitations = lim::extract_limitations();
+    let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
+
+    let budget = profile.page_budget;
+    let page_count = doc.page_count();
 
     for &(page_number, page_id) in doc.pages() {
+        // The budget is checked before any work on the page, not after. A page counted as
+        // quarantined must genuinely not have been read — otherwise the coverage summary
+        // describes a run that did not happen.
+        if !budget.admits(page_number) {
+            page_states.push(PageStateEntry {
+                index: page_number,
+                state: PageState::Quarantined(engine_core::codes::RESOURCE_LIMIT_PAGES.to_string()),
+            });
+            continue;
+        }
+
         let page_dict =
             doc.inner()
                 .get_dictionary(page_id)
@@ -133,12 +155,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
         for font in fonts.values() {
             if let WidthSource::Absent { reason } = &font.widths {
-                let entry = NotDecoded {
-                    kind: "font-widths".into(),
-                    detail: reason.clone(),
-                };
-                if !not_decoded.contains(&entry) {
-                    not_decoded.push(entry);
+                let entry = lim::font_widths_absent(reason);
+                if !limitations.contains(&entry) {
+                    limitations.push(entry);
                 }
             }
         }
@@ -217,17 +236,20 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             rotation: geom.rotation,
             runs,
         });
+        // Reached only after the page's runs are in the artifact, so `Processed` cannot be
+        // claimed for a page whose interpretation failed — that path returns `Err` above and
+        // produces no artifact at all.
+        page_states.push(PageStateEntry {
+            index: page_number,
+            state: PageState::Processed,
+        });
     }
 
-    // Form XObjects may contain text this profile does not descend into. Declared once, so a
-    // consumer sees the gap rather than inferring its absence.
-    not_decoded.push(NotDecoded {
-        kind: "form-xobject".into(),
-        detail: "Text inside form XObjects (drawn with `Do`) is not descended into by this \
-                 profile. The operator is acknowledged, not skipped silently; a document relying \
-                 on it will under-report runs, and that is declared here rather than discovered."
-            .into(),
-    });
+    if let Some(b) = budget.max_pages_to_process() {
+        if b < page_count {
+            limitations.push(lim::resource_limit_pages(b, page_count));
+        }
+    }
 
     Ok(ExtractArtifact {
         identity: ArtifactIdentity {
@@ -241,9 +263,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             sha256: Sha256Hex::parse(doc.source_sha256().as_str())?,
         },
         reading_order_rule: profile.reading_order_rule.clone(),
-        page_count: doc.page_count(),
+        page_count,
         pages,
-        not_decoded,
+        assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
     })
 }
 

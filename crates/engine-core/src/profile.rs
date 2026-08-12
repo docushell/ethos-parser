@@ -86,12 +86,25 @@ impl Default for BackendIdentity {
 ///
 /// L1's achievement condition names capability declarations explicitly, so an artifact without
 /// them has not reached "extracted" regardless of how good its text is.
+///
+/// # Two rules bind this type, in both directions
+///
+/// 1. **No `true` without a proof test.** `crates/engine-pdf/tests/capabilities.rs` maps every
+///    `true` field to a named test and fails the build when one is missing — a capability
+///    asserted without a passing test is the failure mode this type exists to prevent.
+/// 2. **No `false` without a declared limitation.** [`Capabilities::declared_limitations`]
+///    derives one per `false` field, exhaustively, so a caller never has to infer a gap from
+///    silence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capabilities {
     /// Text spans are emitted. (grounding-aligned)
     pub spans: bool,
     /// Spans carry character offsets into their element's text. (grounding-aligned)
+    ///
+    /// **v0: false.** M3 emits runs with native locators and no element/span hierarchy, so
+    /// there is nothing for an offset to be an offset *into*. The hierarchy arrives with
+    /// `DocumentRepresentation v0` at M5, and this flips then — with a test.
     pub char_offsets: bool,
     /// Tables are detected and emitted. **v0: false** — tables are M-later, v1 scope.
     /// (grounding-aligned)
@@ -102,22 +115,81 @@ pub struct Capabilities {
     /// is declared on every artifact.
     pub multi_column_reading_order: bool,
     /// Structural locators (`mcid`, tagged-structure roles) are captured.
+    ///
+    /// **v0: false**, and this one is a judgement call worth recording. A marked-content id
+    /// *is* captured where a page's content stream supplies one via `BDC`, and never invented
+    /// where it does not — but the tagged-structure tree is not read, so there is no role path,
+    /// and an absent `mcid` is not evidence the document is untagged. Claiming the capability
+    /// on the strength of the partial half would promise an address consumers could not rely on.
     pub structural_locators: bool,
 }
 
 impl Capabilities {
     /// What v0 actually claims.
     ///
-    /// Note how much is `false`. A capability asserted without a passing test is the failure
-    /// mode this type exists to prevent, so the honest default is narrow.
+    /// Note how much is `false`. Two of these were `true` in the M1 sketch and are `false` here
+    /// because M4 asked for the proof and the proof did not exist: `char_offsets` has no
+    /// hierarchy to index into until M5, and `structural_locators` would be claiming a full
+    /// structural address on the strength of a best-effort `mcid`. Narrowing a declaration when
+    /// the evidence does not support it is the mechanism working, not a regression.
     pub const V0: Self = Self {
         spans: true,
-        char_offsets: true,
+        char_offsets: false,
         tables: false,
         measured_ink_boxes: true,
         multi_column_reading_order: false,
         structural_locators: false,
     };
+}
+
+/// How many pages a run may process before it stops.
+///
+/// A **declared state, not an absent field**: `{"mode":"unlimited"}` says the budget was
+/// considered and found unbounded, where an omitted `Option` would leave a reader unable to
+/// distinguish "unbounded" from "this build has no such knob". It is also the difference between
+/// a profile that round-trips honestly and one that does not — an `Option` field missing from
+/// incoming JSON deserializes to `None` and silently re-hashes as though it had been there.
+///
+/// # Why a page count is the right knob
+///
+/// `failure/memory-limit-simulated` is **byte-identical to `synthetic/simple-text`** (both
+/// `sha256:f2f6ab91…`). The fixture name means *the limit is simulated by configuration*, not
+/// *this PDF is huge* — so a meaningful test must set the budget explicitly. A page count is the
+/// bound that actually governs peak cost in a page-at-a-time reader, which is why it is the knob
+/// rather than a byte ceiling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "snake_case",
+    tag = "mode",
+    content = "pages",
+    deny_unknown_fields
+)]
+pub enum PageBudget {
+    /// No page bound. The v0 default.
+    Unlimited,
+    /// Process at most this many pages; the rest are quarantined and declared.
+    ///
+    /// Zero is legal and means "process none" — the only budget that can bite on a one-page
+    /// document, and therefore the one `memory-limit-simulated` needs.
+    AtMost(u32),
+}
+
+impl PageBudget {
+    /// The bound as a count, or `None` when unbounded.
+    pub fn max_pages_to_process(self) -> Option<u32> {
+        match self {
+            Self::Unlimited => None,
+            Self::AtMost(n) => Some(n),
+        }
+    }
+
+    /// Whether a **1-based** page number is inside the budget.
+    pub fn admits(self, page: u32) -> bool {
+        match self {
+            Self::Unlimited => true,
+            Self::AtMost(n) => page <= n,
+        }
+    }
 }
 
 impl Default for Capabilities {
@@ -154,6 +226,12 @@ pub struct Profile {
     pub coordinate_system: CoordinateSystem,
     /// Declared capabilities.
     pub capabilities: Capabilities,
+    /// How many pages any stage may process before it stops. Default [`PageBudget::Unlimited`].
+    ///
+    /// On the profile because it changes output: a budgeted run emits a **partial** artifact
+    /// with quarantined pages and a declared limitation, and an artifact produced under a
+    /// different budget is correctly non-comparable with one produced under none.
+    pub page_budget: PageBudget,
     /// Version id of the reading-order rule in force.
     pub reading_order_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
@@ -169,6 +247,7 @@ impl Default for Profile {
             quantum_per_point: QUANTUM_PER_POINT,
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
+            page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
         }
@@ -257,6 +336,7 @@ mod tests {
                     multi_column_reading_order: _,
                     structural_locators: _,
                 },
+            page_budget: _,
             reading_order_rule: _,
             cmap_data_version: _,
         } = &base;
@@ -290,8 +370,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.spans = false),
             ),
             (
+                // Mutated toward `true`: `char_offsets` is false in V0, and a mutation to the
+                // value a field already holds tests nothing.
                 "capabilities.char_offsets",
-                Box::new(|p: &mut Profile| p.capabilities.char_offsets = false),
+                Box::new(|p: &mut Profile| p.capabilities.char_offsets = true),
             ),
             (
                 "capabilities.tables",
@@ -310,6 +392,16 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.structural_locators = true),
             ),
             (
+                "page_budget",
+                Box::new(|p: &mut Profile| p.page_budget = PageBudget::AtMost(4)),
+            ),
+            (
+                // Zero is a distinct budget from four, and from unlimited. A knob whose
+                // *value* did not move the hash would be as bad as one whose presence did not.
+                "page_budget.pages",
+                Box::new(|p: &mut Profile| p.page_budget = PageBudget::AtMost(0)),
+            ),
+            (
                 "reading_order_rule",
                 Box::new(|p: &mut Profile| p.reading_order_rule = "xy-cut-v1".into()),
             ),
@@ -325,6 +417,16 @@ mod tests {
         for (name, mutate) in mutations {
             let mut p = Profile::default();
             mutate(&mut p);
+
+            // Guard the guard. A "mutation" that writes back the value the field already holds
+            // proves nothing about hash sensitivity while passing every assertion below — which
+            // is exactly what happened to `capabilities.char_offsets` when its V0 value flipped
+            // to `false` at M4 and the mutation still set `false`.
+            assert_ne!(
+                p, base,
+                "the {name} mutation left the profile unchanged, so it tests nothing"
+            );
+
             let h = hash(&p);
             assert_ne!(
                 h, base_hash,
@@ -360,15 +462,19 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
-             added an output-affecting knob by accident."
+             added an output-affecting knob by accident.\n\n\
+             Moved deliberately at M4, twice: `capabilities.char_offsets` true -> false (v0 \
+             emits no element/span hierarchy for an offset to index into; it lands at M5), and \
+             the new `page_budget` knob. Artifacts from before and after are correctly \
+             non-comparable, because the profile that produced them really did change."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:228f82b817b7c829fdb1c466fcaac748cf32c2e3768f7e18b177384fa4fdef79"
+            "sha256:f34be6328f858e09c241cb51c7b0dbb0fe065ecbf5f00e9942cd6bbcdd6faf1e"
         );
     }
 
@@ -404,6 +510,41 @@ mod tests {
             !c.multi_column_reading_order,
             "v0 reads single-column and declares the limitation"
         );
+        assert!(
+            !c.char_offsets,
+            "v0 emits runs with no element/span hierarchy, so there is nothing an offset could \
+             index into. It flips at M5 with DocumentRepresentation v0 — and with a test"
+        );
+        assert!(
+            !c.structural_locators,
+            "an `mcid` captured from BDC is not a structural address: no role path, and an \
+             absent id is not evidence the document is untagged"
+        );
+    }
+
+    #[test]
+    fn the_default_budget_is_unlimited_and_says_so_on_the_wire() {
+        assert_eq!(Profile::default().page_budget, PageBudget::Unlimited);
+        assert_eq!(PageBudget::Unlimited.max_pages_to_process(), None);
+        assert_eq!(PageBudget::AtMost(3).max_pages_to_process(), Some(3));
+
+        // Declared, not omitted: a reader must not have to infer "unbounded" from a missing key.
+        let s = String::from_utf8(Profile::default().canonical_bytes().unwrap()).unwrap();
+        assert!(s.contains(r#""page_budget":{"mode":"unlimited"}"#), "{s}");
+    }
+
+    #[test]
+    fn a_budget_admits_pages_up_to_its_bound_and_no_further() {
+        assert!(PageBudget::Unlimited.admits(1));
+        assert!(PageBudget::Unlimited.admits(u32::MAX));
+
+        let b = PageBudget::AtMost(2);
+        assert!(b.admits(1), "pages are 1-based");
+        assert!(b.admits(2));
+        assert!(!b.admits(3));
+
+        // Zero admits nothing — the only budget that bites on a one-page document.
+        assert!(!PageBudget::AtMost(0).admits(1));
     }
 
     #[test]
@@ -463,11 +604,16 @@ mod tests {
             .collect();
 
         assert!(
-            nested.len() >= 3,
-            "expected at least backend, capabilities and coordinate_system as nested objects; \
-             found {nested:?}"
+            nested.len() >= 4,
+            "expected at least backend, capabilities, coordinate_system and page_budget as \
+             nested objects; found {nested:?}"
         );
-        for required in ["backend", "capabilities", "coordinate_system"] {
+        for required in [
+            "backend",
+            "capabilities",
+            "coordinate_system",
+            "page_budget",
+        ] {
             assert!(
                 nested.iter().any(|n| n == required),
                 "`{required}` must be among the nested objects under test; found {nested:?}"
@@ -498,7 +644,12 @@ mod tests {
     fn a_truncated_profile_can_never_reproduce_the_default_digest() {
         let baseline = Profile::default().profile_sha256().unwrap();
 
-        for path in ["backend", "capabilities", "coordinate_system"] {
+        for path in [
+            "backend",
+            "capabilities",
+            "coordinate_system",
+            "page_budget",
+        ] {
             let mut v = serde_json::to_value(Profile::default()).unwrap();
             v[path]
                 .as_object_mut()

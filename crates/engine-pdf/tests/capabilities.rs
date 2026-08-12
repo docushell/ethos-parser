@@ -1,0 +1,925 @@
+// Copyright 2026 The ethos-engine maintainers
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! M4 acceptance — the L1 gate (`docs/05-MILESTONES.md` M4, `docs/01-CONTRACT.md` §7).
+//!
+//! An artifact that does not declare its capabilities has not reached "extracted," regardless of
+//! how good its text is. These tests hold the declarations to the same standard as the text:
+//! every `true` capability names a test that proves it, every gap is on the wire, and a run with
+//! a gap cannot be presented as a complete one.
+//!
+//! Fixtures resolve through `fixtures/manifest.json`'s three roots exactly as the oracle harness
+//! resolves them. **A missing corpus is a failure, never a skip.**
+
+use std::path::PathBuf;
+
+use engine_core::{
+    Capabilities, GeometryPresence, PageBindingResult, PageBudget, PageState,
+    ProcessingTerminalState, Profile,
+};
+use engine_pdf::{limitations as lim, Classification, Document, ExtractArtifact};
+
+// -------------------------------------------------------------------------------------------
+// Fixture resolution
+// -------------------------------------------------------------------------------------------
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("manifest dir has two ancestors")
+        .to_path_buf()
+}
+
+fn manifest() -> serde_json::Value {
+    let p = repo_root().join("fixtures/manifest.json");
+    serde_json::from_slice(
+        &std::fs::read(&p)
+            .unwrap_or_else(|e| panic!("manifest unreadable at {}: {e}", p.display())),
+    )
+    .expect("manifest is valid JSON")
+}
+
+fn path_in(root_name: &str, rel: &str) -> PathBuf {
+    let m = manifest();
+    let decl = &m["roots"][root_name];
+    assert!(!decl.is_null(), "manifest declares no root `{root_name}`");
+    let root = match decl["env"].as_str().and_then(|e| std::env::var(e).ok()) {
+        Some(v) => PathBuf::from(v),
+        None => repo_root().join(decl["default"].as_str().expect("default")),
+    };
+    let p = root.join(rel);
+    assert!(
+        p.is_file(),
+        "fixture `{rel}` missing from `{root_name}` at {}. A missing corpus is a failure, never \
+         a skip.",
+        p.display()
+    );
+    p
+}
+
+fn conformance(rel: &str) -> PathBuf {
+    path_in("conformance", rel)
+}
+fn engine_fx(name: &str) -> PathBuf {
+    path_in("engine", &format!("{name}/document.pdf"))
+}
+fn bench(name: &str) -> PathBuf {
+    path_in("benchmark", name)
+}
+
+fn extract_with(path: PathBuf, profile: &Profile) -> ExtractArtifact {
+    let doc = Document::open(&path, profile).expect("document opens");
+    engine_pdf::extract(&doc, profile).expect("document extracts")
+}
+
+fn extract_ok(path: PathBuf) -> ExtractArtifact {
+    extract_with(path, &Profile::default())
+}
+
+fn classify_with(path: PathBuf, profile: &Profile) -> Classification {
+    let doc = Document::open(&path, profile).expect("document opens");
+    engine_pdf::classify(&doc, profile).expect("document classifies")
+}
+
+fn codes(limitations: &[engine_core::Limitation]) -> Vec<&str> {
+    limitations.iter().map(|l| l.code.as_str()).collect()
+}
+
+// -------------------------------------------------------------------------------------------
+// 1. Every declared capability has a passing test
+// -------------------------------------------------------------------------------------------
+
+/// The proof table: capability field → the test that proves it, or why it is `false`.
+///
+/// `05-MILESTONES.md` M4 lists as an **Out**: *any capability declared `true` that is not
+/// tested*. This is the enforcement. The destructuring in
+/// [`every_true_capability_names_a_proof_test`] means adding a capability without adding a row
+/// here is a **compile error**, and the row's named test must actually exist in this crate's test
+/// sources — a proof that is only a string is not a proof.
+struct Proof {
+    field: &'static str,
+    claimed: bool,
+    /// The test function proving the claim. `None` is only legal when `claimed` is false.
+    proof_test: Option<&'static str>,
+    /// Why the capability is false. `None` is only legal when `claimed` is true.
+    why_not: Option<&'static str>,
+}
+
+fn proof_table() -> Vec<Proof> {
+    let c = Capabilities::V0;
+
+    // Exhaustiveness gate. A capability added to the type without a row below fails to compile,
+    // which is the only way this table cannot silently fall behind the thing it describes.
+    let Capabilities {
+        spans,
+        char_offsets,
+        tables,
+        measured_ink_boxes,
+        multi_column_reading_order,
+        structural_locators,
+    } = c;
+
+    vec![
+        Proof {
+            field: "spans",
+            claimed: spans,
+            proof_test: Some("spans_are_emitted_with_native_locators"),
+            why_not: None,
+        },
+        Proof {
+            field: "char_offsets",
+            claimed: char_offsets,
+            proof_test: None,
+            why_not: Some(
+                "v0 emits runs and no element/span hierarchy, so there is nothing for an offset \
+                 to index into. Lands at M5 with DocumentRepresentation v0.",
+            ),
+        },
+        Proof {
+            field: "tables",
+            claimed: tables,
+            proof_test: None,
+            why_not: Some("Tables are v1 scope; v0 emits no table array."),
+        },
+        Proof {
+            field: "measured_ink_boxes",
+            claimed: measured_ink_boxes,
+            proof_test: Some("measured_ink_boxes_are_measured_and_absence_stays_typed"),
+            why_not: None,
+        },
+        Proof {
+            field: "multi_column_reading_order",
+            claimed: multi_column_reading_order,
+            proof_test: None,
+            why_not: Some(
+                "v0 reads single-column; no stable multi-column rule exists. The limitation is \
+                 declared on every artifact and pinned by the two-columns golden.",
+            ),
+        },
+        Proof {
+            field: "structural_locators",
+            claimed: structural_locators,
+            proof_test: None,
+            why_not: Some(
+                "An `mcid` captured from BDC is not a structural address: no role path, and no \
+                 tagged-structure tree is read. Claiming the capability on the strength of the \
+                 partial half would promise an address consumers could not rely on.",
+            ),
+        },
+    ]
+}
+
+/// Every source line of this crate's integration tests, for locating a named proof.
+fn test_sources() -> String {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut all = String::new();
+    for entry in std::fs::read_dir(&dir).expect("tests/ is readable") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().is_some_and(|e| e == "rs") {
+            all.push_str(&std::fs::read_to_string(&path).expect("readable"));
+        }
+    }
+    assert!(
+        all.len() > 1000,
+        "the test-source scan found almost nothing, so the proof check would pass vacuously"
+    );
+    all
+}
+
+/// **A capability asserted `true` with no test is a build failure.**
+#[test]
+fn every_true_capability_names_a_proof_test() {
+    let sources = test_sources();
+
+    for p in proof_table() {
+        if p.claimed {
+            let name = p.proof_test.unwrap_or_else(|| {
+                panic!(
+                    "`capabilities.{}` is claimed true with no proof test named. A capability \
+                     without a passing test is exactly what docs/05-MILESTONES.md M4 lists as \
+                     out of scope.",
+                    p.field
+                )
+            });
+            assert!(
+                sources.contains(&format!("fn {name}(")),
+                "`capabilities.{}` names `{name}` as its proof, and no such test exists in \
+                 crates/engine-pdf/tests/. A proof that is only a string is not a proof.",
+                p.field
+            );
+            assert!(
+                p.why_not.is_none(),
+                "`capabilities.{}` is true, so it needs a proof, not an excuse",
+                p.field
+            );
+        } else {
+            assert!(
+                p.why_not.is_some(),
+                "`capabilities.{}` is false and says nothing about why. Every false capability \
+                 owes a reason and a declared limitation.",
+                p.field
+            );
+            assert!(
+                p.proof_test.is_none(),
+                "`capabilities.{}` is false but names a proof test, which cannot be right",
+                p.field
+            );
+        }
+    }
+}
+
+/// Guard the guard: the proof check would be worthless if it accepted any string.
+///
+/// The negative control's name is **assembled at runtime**, because a literal spelling of it in
+/// this file would make the file contain the very string the check looks for — and the control
+/// would pass by describing itself. That is not a hypothetical: the first version of this test
+/// did exactly that and failed on its own source.
+#[test]
+fn a_missing_proof_test_would_be_detected() {
+    let sources = test_sources();
+
+    let absent = format!("fn {}_{}_{}(", "a", "proof", "that_does_not_exist");
+    assert!(
+        !sources.contains(&absent),
+        "the negative control `{absent}` must not exist, or the check proves nothing"
+    );
+    assert!(
+        sources.contains("fn every_true_capability_names_a_proof_test("),
+        "the positive control must be found by the same mechanism the check uses"
+    );
+}
+
+/// Proof for `capabilities.spans`.
+#[test]
+fn spans_are_emitted_with_native_locators() {
+    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    let runs: Vec<_> = a.runs().collect();
+    assert!(!runs.is_empty(), "the claim is that spans are emitted");
+    for r in &runs {
+        assert!(r.locator.page >= 1, "1-based page on every span");
+        assert!(!r.text.is_empty());
+    }
+    assert!(a.assurance.capabilities.spans);
+}
+
+/// Proof for `capabilities.measured_ink_boxes`.
+///
+/// Both halves, because the claim is not "boxes exist" — it is that boxes come from *measured*
+/// metrics and that the absence path stays typed rather than falling back to a guess.
+#[test]
+fn measured_ink_boxes_are_measured_and_absence_stays_typed() {
+    let measured = extract_ok(engine_fx("measured-ink-box"));
+    let boxes: Vec<_> = measured
+        .runs()
+        .filter_map(|r| r.geometry.measured())
+        .collect();
+    assert!(
+        !boxes.is_empty(),
+        "a font with usable metrics must produce at least one measured box"
+    );
+    assert!(measured.assurance.capabilities.measured_ink_boxes);
+
+    // The other half: no usable metrics produces typed absence, never a fabricated box.
+    let absent = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    assert!(
+        absent
+            .runs()
+            .all(|r| matches!(r.geometry, GeometryPresence::Absent(_))),
+        "a font with no widths must yield typed absence, not a box derived from the font size"
+    );
+}
+
+/// Every `false` capability is matched by a declared limitation, on both artifacts.
+#[test]
+fn every_false_capability_declares_a_limitation_on_the_wire() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let profile = Profile::default();
+    let e = extract_with(path.clone(), &profile);
+    let c = classify_with(path, &profile);
+
+    let expected = Capabilities::V0.declared_limitations();
+    assert!(
+        !expected.is_empty(),
+        "v0 has false capabilities, so it owes limitations"
+    );
+
+    for artifact_codes in [
+        codes(&e.assurance.limitations),
+        codes(&c.assurance.limitations),
+    ] {
+        for l in &expected {
+            assert!(
+                artifact_codes.contains(&l.code.as_str()),
+                "`{}` is false and its limitation is missing from the artifact: {artifact_codes:?}",
+                l.code
+            );
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// 2. `synthetic/two-columns` declares the multi-column limitation
+// -------------------------------------------------------------------------------------------
+
+/// The golden asserts the **declaration**, not correct reading order.
+///
+/// `docs/03-V0-SCOPE.md` §3.2: v0 reads single-column, a two-column document comes out in the
+/// wrong order, and the artifact says so rather than silently producing interleaved text.
+/// Asserting correct order here would be asserting a capability v0 does not have.
+#[test]
+fn two_columns_declares_the_multi_column_limitation() {
+    let a = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+
+    assert!(
+        !a.assurance.capabilities.multi_column_reading_order,
+        "v0 must not claim multi-column reading order"
+    );
+
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::MULTI_COLUMN_READING_ORDER)
+        .unwrap_or_else(|| {
+            panic!(
+                "the multi-column limitation is missing from the two-columns artifact: {:?}",
+                codes(&a.assurance.limitations)
+            )
+        });
+    assert_eq!(l.scope, engine_core::LimitationScope::Profile);
+    assert!(
+        l.detail.contains("WRONG ORDER"),
+        "the declaration must say what actually happens to the reader's text: {}",
+        l.detail
+    );
+
+    // The order really is wrong, which is why the declaration is load-bearing rather than
+    // defensive. Pinned here so nobody later reads the limitation as hypothetical.
+    let texts: Vec<&str> = a.runs().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Right top", "Right bottom", "Left top", "Left bottom"],
+        "stream order puts the right column first — the declared limitation, observed"
+    );
+
+    // Classification declares it too: the capability belongs to the profile, not to one stage.
+    let c = classify_with(
+        conformance("synthetic/two-columns/document.pdf"),
+        &Profile::default(),
+    );
+    assert!(
+        codes(&c.assurance.limitations).contains(&engine_core::codes::MULTI_COLUMN_READING_ORDER)
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// 3. Partial processing is terminal and visible
+// -------------------------------------------------------------------------------------------
+
+/// A gap makes the artifact partial, and no API call can call it complete.
+#[test]
+fn partial_processing_is_terminal_and_cannot_look_whole() {
+    let profile = Profile {
+        page_budget: PageBudget::AtMost(1),
+        ..Profile::default()
+    };
+
+    // Two pages, budget of one. The second page exists, was never read, and says so.
+    let a = extract_with(bench("irs-form-1040-2025.pdf"), &profile);
+
+    assert_eq!(a.page_count, 2, "the fixture is the 2-page IRS form");
+    assert!(
+        !a.is_complete(),
+        "an artifact with an unread page must never present as a complete reading"
+    );
+    assert_eq!(
+        a.assurance.coverage.pages_authorized, 2,
+        "every page of the document was authorized"
+    );
+    assert_eq!(a.assurance.coverage.pages_processed, 1);
+    assert_eq!(a.assurance.coverage.pages_quarantined, 1);
+    assert!(a.assurance.coverage.reconciles());
+
+    match a.assurance.terminal_state {
+        ProcessingTerminalState::Partial(gaps) => {
+            assert_eq!(gaps.pages_not_processed, 1);
+            assert_eq!(gaps.first_gap_page, 2);
+        }
+        other => panic!("a run with a gap must be Partial, got {other:?}"),
+    }
+
+    // The gap names a limitation the artifact actually declares.
+    assert!(a.assurance.every_gap_names_a_declared_limitation());
+    assert!(codes(&a.assurance.limitations).contains(&engine_core::codes::RESOURCE_LIMIT_PAGES));
+
+    // And the run list is honest about which pages it covers.
+    assert_eq!(a.pages.len(), 1);
+    assert_eq!(a.pages[0].index, 1);
+}
+
+/// The same gap, seen from the query side: page 2 is indeterminate, not empty.
+#[test]
+fn a_query_against_an_unprocessed_page_is_capability_limited_not_negative() {
+    let profile = Profile {
+        page_budget: PageBudget::AtMost(1),
+        ..Profile::default()
+    };
+    let a = extract_with(bench("irs-form-1040-2025.pdf"), &profile);
+
+    assert_eq!(a.assurance.page_binding_status(1), PageBindingResult::Ok);
+    assert_eq!(
+        a.assurance.page_binding_status(2),
+        PageBindingResult::CapabilityLimited {
+            limitation_code: engine_core::codes::RESOURCE_LIMIT_PAGES.into()
+        },
+        "absence of extractable content is never evidence of absence in the source"
+    );
+    assert!(!a.assurance.page_binding_status(2).is_determinate());
+
+    // A page that is not in the document is a different answer from a page nobody read.
+    assert_eq!(
+        a.assurance.page_binding_status(3),
+        PageBindingResult::NotInDocument
+    );
+}
+
+/// Bounded classification produces the same visible gap, under its own reason code.
+#[test]
+fn bounded_classification_reports_unsampled_pages_as_never_attempted() {
+    let profile = Profile {
+        classify_sample_pages: 3,
+        ..Profile::default()
+    };
+    let c = classify_with(bench("nist-sp-800-63b.pdf"), &profile);
+
+    assert_eq!(c.page_count, 80);
+    assert_eq!(c.pages_content_scanned, 3, "the bound still holds");
+    assert!(
+        !c.is_complete(),
+        "77 unread pages is not a complete reading"
+    );
+    assert_eq!(c.assurance.coverage.pages_processed, 3);
+    assert_eq!(c.assurance.coverage.pages_not_attempted, 77);
+    assert_eq!(c.assurance.coverage.pages_quarantined, 0);
+    assert!(c.assurance.coverage.reconciles());
+
+    // The state name is the point: "not attempted" cannot be misread as "page has no text".
+    let page_40 = c
+        .assurance
+        .page_states
+        .iter()
+        .find(|e| e.index == 40)
+        .expect("every authorized page has a disposition");
+    assert_eq!(
+        page_40.state,
+        PageState::NotAttempted(lim::CLASSIFY_SAMPLE_BOUND.to_string())
+    );
+    assert_eq!(
+        c.assurance.page_binding_status(40),
+        PageBindingResult::CapabilityLimited {
+            limitation_code: lim::CLASSIFY_SAMPLE_BOUND.into()
+        }
+    );
+    assert!(c.assurance.every_gap_names_a_declared_limitation());
+}
+
+/// A resource ceiling and the sampling bound are different gaps and report differently.
+#[test]
+fn a_budget_and_a_sample_bound_are_not_confused_with_each_other() {
+    let profile = Profile {
+        classify_sample_pages: 8,
+        page_budget: PageBudget::AtMost(2),
+        ..Profile::default()
+    };
+    let c = classify_with(bench("nist-sp-800-63b.pdf"), &profile);
+
+    assert_eq!(
+        c.pages_content_scanned, 2,
+        "the tighter of the two bounds decides how many pages are read"
+    );
+    // Pages 3..=8 were inside the sample window and outside the budget: quarantined, not merely
+    // unsampled. Pages 9..=80 were outside both, and the budget is the binding constraint.
+    for index in [3u32, 9, 80] {
+        let e = c
+            .assurance
+            .page_states
+            .iter()
+            .find(|e| e.index == index)
+            .expect("disposition present");
+        assert_eq!(
+            e.state,
+            PageState::Quarantined(engine_core::codes::RESOURCE_LIMIT_PAGES.to_string()),
+            "page {index} was stopped by the budget, and the reason must say so"
+        );
+    }
+    assert_eq!(c.assurance.coverage.pages_quarantined, 78);
+    assert_eq!(c.assurance.coverage.pages_not_attempted, 0);
+    assert!(c.assurance.coverage.reconciles());
+}
+
+/// A budget looser than the sample bound is **not** the reason anything went unread.
+///
+/// The case that a per-page budget test gets wrong. At `N = 8` under a budget of 20, pages 21–80
+/// are outside the budget — but at `N = 8` they would not have been read if the budget were
+/// lifted entirely, so reporting them `quarantined` would send a caller to raise a ceiling that
+/// is not what stopped them. The reason names the binding constraint, uniformly.
+#[test]
+fn a_budget_that_does_not_bind_is_not_blamed_for_the_sample_bound() {
+    let profile = Profile {
+        classify_sample_pages: 8,
+        page_budget: PageBudget::AtMost(20),
+        ..Profile::default()
+    };
+    let c = classify_with(bench("nist-sp-800-63b.pdf"), &profile);
+
+    assert_eq!(
+        c.pages_content_scanned, 8,
+        "the sample bound is the tighter one"
+    );
+    assert_eq!(c.assurance.coverage.pages_not_attempted, 72);
+    assert_eq!(
+        c.assurance.coverage.pages_quarantined, 0,
+        "a budget that was never reached must not be blamed for anything"
+    );
+
+    for index in [9u32, 21, 80] {
+        let e = c
+            .assurance
+            .page_states
+            .iter()
+            .find(|e| e.index == index)
+            .expect("disposition present");
+        assert_eq!(
+            e.state,
+            PageState::NotAttempted(lim::CLASSIFY_SAMPLE_BOUND.to_string()),
+            "page {index} went unread because of the sample bound, whichever side of the budget \
+             it happens to fall on"
+        );
+    }
+
+    // And the limitation list agrees: no resource-limit declaration, because none applied.
+    assert!(!codes(&c.assurance.limitations).contains(&engine_core::codes::RESOURCE_LIMIT_PAGES));
+    assert!(c.assurance.every_gap_names_a_declared_limitation());
+}
+
+// -------------------------------------------------------------------------------------------
+// 5. `failure/memory-limit-simulated`
+// -------------------------------------------------------------------------------------------
+
+/// The limit is **configuration**, not the document.
+///
+/// `failure/memory-limit-simulated/document.pdf` is byte-identical to
+/// `synthetic/simple-text/document.pdf` — both `sha256:f2f6ab91…`, asserted below rather than
+/// taken on trust. The fixture name means *a limit simulated by configuration*, so a meaningful
+/// test has to set the knob explicitly, and on a one-page document the only budget that bites is
+/// zero.
+///
+/// The behaviour is **declared limitation plus coverage gap**, not a hard refusal: the run is
+/// honest about having read nothing, and never emits a tree that looks whole.
+#[test]
+fn the_memory_limit_fixture_declares_a_gap_rather_than_looking_whole() {
+    let fixture = conformance("failure/memory-limit-simulated/document.pdf");
+    let simple = conformance("synthetic/simple-text/document.pdf");
+    assert_eq!(
+        std::fs::read(&fixture).unwrap(),
+        std::fs::read(&simple).unwrap(),
+        "the premise of this test: the bytes are identical, so only configuration differs"
+    );
+
+    let profile = Profile {
+        page_budget: PageBudget::AtMost(0),
+        ..Profile::default()
+    };
+    let a = extract_with(fixture, &profile);
+
+    assert!(
+        !a.is_complete(),
+        "nothing was read; this cannot read as done"
+    );
+    assert_eq!(a.assurance.coverage.pages_authorized, 1);
+    assert_eq!(a.assurance.coverage.pages_processed, 0);
+    assert_eq!(a.assurance.coverage.pages_quarantined, 1);
+    assert!(a.assurance.coverage.reconciles());
+    assert!(
+        a.pages.is_empty() && a.runs().count() == 0,
+        "a budget of zero must not produce a partial tree at all, let alone a whole-looking one"
+    );
+
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::RESOURCE_LIMIT_PAGES)
+        .expect("the gap must be declared, not merely counted");
+    assert_eq!(l.scope, engine_core::LimitationScope::Document);
+    assert!(l.detail.contains("quarantined"));
+
+    // The same bytes at the default profile read cleanly — proof the gap came from the knob.
+    let unlimited = extract_ok(simple);
+    assert!(unlimited.is_complete());
+    assert_eq!(unlimited.assurance.coverage.pages_processed, 1);
+}
+
+// -------------------------------------------------------------------------------------------
+// 4 / 7 / 9 / 10. Absence, hash sensitivity, coverage everywhere, determinism
+// -------------------------------------------------------------------------------------------
+
+/// No confidence field, and no implied full value in its place.
+///
+/// `docs/01-CONTRACT.md` §9.1: *a processor that reports no uncertainty produces an absent
+/// field, never an implied `1.0`.* v0 has no uncertainty to report, so the absence is total —
+/// there is no field, and no number standing in for one.
+#[test]
+fn absence_is_never_a_full_value_and_no_confidence_field_exists() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let profile = Profile::default();
+    let e = extract_with(path.clone(), &profile);
+    let c = classify_with(path, &profile);
+
+    for (label, bytes) in [
+        ("extract", e.to_canonical_bytes().unwrap()),
+        ("classify", c.to_canonical_bytes().unwrap()),
+    ] {
+        let s = String::from_utf8(bytes).unwrap();
+        let lower = s.to_lowercase();
+        for banned in ["confidence", "score", "quality", "grade", "certainty"] {
+            assert!(
+                !lower.contains(banned),
+                "`{banned}` appears in the {label} artifact; no field may summarise quality"
+            );
+        }
+        // No bare decimal anywhere: an implied `1.0` would have to arrive as a number, and c14n
+        // refuses non-integers. Scanned outside quoted strings because `schema_version` is
+        // legitimately `"0.1.0"` — a substring match on `1.0` flags the version and misses the
+        // actual hazard, which is the wrong instrument for this rule.
+        let mut in_string = false;
+        let chars: Vec<char> = s.chars().collect();
+        for i in 0..chars.len() {
+            match chars[i] {
+                '"' if i == 0 || chars[i - 1] != '\\' => in_string = !in_string,
+                '.' if !in_string => {
+                    panic!("a bare decimal reached the {label} artifact: {s}")
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// A fully successful document still carries the coverage object.
+///
+/// Zeros in the gap buckets are correct output. The *absence* of the object is what is
+/// forbidden, because then "no gaps" and "gaps not tracked" look identical on the wire.
+#[test]
+fn a_fully_processed_document_still_carries_coverage() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let profile = Profile::default();
+
+    let e = extract_with(path.clone(), &profile);
+    assert!(e.is_complete());
+    assert_eq!(
+        e.assurance.terminal_state,
+        ProcessingTerminalState::Complete
+    );
+    assert_eq!(e.assurance.coverage.pages_authorized, 1);
+    assert_eq!(e.assurance.coverage.pages_processed, 1);
+    assert_eq!(e.assurance.coverage.pages_failed, 0);
+    assert_eq!(e.assurance.coverage.pages_not_attempted, 0);
+
+    let s = String::from_utf8(e.to_canonical_bytes().unwrap()).unwrap();
+    for required in [
+        "\"coverage\"",
+        "\"pages_authorized\"",
+        "\"pages_failed\":0",
+        "\"terminal_state\"",
+        "\"capabilities\"",
+        "\"limitations\"",
+        "\"page_states\"",
+    ] {
+        assert!(
+            s.contains(required),
+            "{required} missing from a clean extract"
+        );
+    }
+
+    // A one-page document classified at N=8 is also complete: the bound did not bite.
+    let c = classify_with(path, &profile);
+    assert!(c.is_complete());
+    assert_eq!(c.assurance.coverage.pages_not_attempted, 0);
+}
+
+/// Coverage reconciles, and every gap names a declared limitation, on every fixture that opens.
+#[test]
+fn coverage_reconciles_across_the_corpus() {
+    let openable = [
+        "synthetic/heading-export",
+        "synthetic/hyphenated-line-break",
+        "synthetic/ligature-fi-embedded-font",
+        "synthetic/list-items",
+        "synthetic/rotation-90",
+        "synthetic/simple-text",
+        "synthetic/two-columns",
+        "synthetic/two-lines",
+        "failure/image-only-or-blank-page",
+        "failure/memory-limit-simulated",
+    ];
+    let profile = Profile::default();
+
+    for id in openable {
+        let path = conformance(&format!("{id}/document.pdf"));
+        let e = extract_with(path.clone(), &profile);
+        assert!(
+            e.assurance.coverage.reconciles(),
+            "{id}: extract coverage does not reconcile: {:?}",
+            e.assurance.coverage
+        );
+        assert_eq!(
+            e.assurance.page_states.len() as u32,
+            e.page_count,
+            "{id}: every page needs exactly one disposition"
+        );
+        assert_eq!(
+            e.pages.len() as u32,
+            e.assurance.coverage.pages_processed,
+            "{id}: the page list and the processed count must agree"
+        );
+        assert!(e.assurance.every_gap_names_a_declared_limitation(), "{id}");
+
+        let c = classify_with(path, &profile);
+        assert!(
+            c.assurance.coverage.reconciles(),
+            "{id}: classify coverage does not reconcile"
+        );
+        assert_eq!(
+            c.pages.len() as u32,
+            c.assurance.coverage.pages_processed,
+            "{id}: scanned rows and the processed count must agree"
+        );
+        assert!(c.assurance.every_gap_names_a_declared_limitation(), "{id}");
+    }
+}
+
+/// Changing the capability set changes `profile_sha256`, and the artifact carries the new one.
+///
+/// Core already proves the hash moves. This proves the *artifact* moves with it — the identity
+/// on the wire is the one that makes two artifacts comparable or not.
+#[test]
+fn a_changed_capability_set_changes_the_artifacts_profile_hash() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let base = extract_with(path.clone(), &Profile::default());
+
+    let claiming = Profile {
+        capabilities: Capabilities {
+            tables: true,
+            ..Capabilities::V0
+        },
+        ..Profile::default()
+    };
+    let changed = extract_with(path, &claiming);
+
+    assert_ne!(
+        base.identity.profile_sha256, changed.identity.profile_sha256,
+        "a profile claiming tables must not be comparable with one that does not"
+    );
+    assert!(changed.assurance.capabilities.tables);
+    assert!(
+        !codes(&changed.assurance.limitations).contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
+        "a claimed capability must stop declaring its own limitation"
+    );
+}
+
+/// The budget is on the profile, so it is fingerprint-visible.
+#[test]
+fn a_changed_page_budget_changes_the_artifacts_profile_hash() {
+    let path = bench("irs-form-1040-2025.pdf");
+    let base = extract_with(path.clone(), &Profile::default());
+
+    let budgeted = Profile {
+        page_budget: PageBudget::AtMost(1),
+        ..Profile::default()
+    };
+    let limited = extract_with(path, &budgeted);
+
+    assert_ne!(
+        base.identity.profile_sha256, limited.identity.profile_sha256,
+        "a budgeted run produced different output and must not claim comparability"
+    );
+}
+
+/// The new blocks do not break byte identity.
+#[test]
+fn the_assurance_block_is_byte_identical_across_runs() {
+    let profile = Profile::default();
+    for id in ["synthetic/two-columns", "synthetic/simple-text"] {
+        let path = conformance(&format!("{id}/document.pdf"));
+        let first = extract_with(path.clone(), &profile)
+            .to_canonical_bytes()
+            .unwrap();
+        let second = extract_with(path.clone(), &profile)
+            .to_canonical_bytes()
+            .unwrap();
+        assert_eq!(first, second, "{id}: extract is not byte-identical");
+
+        let c1 = classify_with(path.clone(), &profile)
+            .to_canonical_bytes()
+            .unwrap();
+        let c2 = classify_with(path, &profile).to_canonical_bytes().unwrap();
+        assert_eq!(c1, c2, "{id}: classify is not byte-identical");
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// 8. `not_detected` absorbed — one vocabulary, not two
+// -------------------------------------------------------------------------------------------
+
+/// The stand-in lists are gone from the wire, and nothing they said was lost.
+///
+/// `docs/README.md` had this open since M2: *`not_detected` (M2) and `not_decoded` (M3) are
+/// stand-ins for capability declarations … M4 should absorb both rather than sit beside them.*
+/// Two vocabularies on one artifact means a consumer has to learn which one to trust, and the
+/// answer is never written down.
+#[test]
+fn the_stand_in_vocabularies_are_absorbed_not_duplicated() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let profile = Profile::default();
+    let e = extract_with(path.clone(), &profile);
+    let c = classify_with(path, &profile);
+
+    for (label, bytes) in [
+        ("extract", e.to_canonical_bytes().unwrap()),
+        ("classify", c.to_canonical_bytes().unwrap()),
+    ] {
+        let s = String::from_utf8(bytes).unwrap();
+        for gone in ["\"not_detected\"", "\"not_decoded\""] {
+            assert!(
+                !s.contains(gone),
+                "{label} still carries {gone} beside `limitations` — that is the second \
+                 vocabulary M4 exists to remove"
+            );
+        }
+    }
+
+    // What they declared still is declared, in the one surviving shape.
+    let classify_codes = codes(&c.assurance.limitations);
+    assert!(classify_codes.contains(&"garbled-reason-not-detected"));
+    assert!(classify_codes.contains(&"multi-column-reason-not-detected"));
+
+    let extract_codes = codes(&e.assurance.limitations);
+    assert!(extract_codes.contains(&lim::FONT_WIDTHS_ABSENT));
+    assert!(extract_codes.contains(&lim::FORM_XOBJECT_TEXT_NOT_DESCENDED));
+}
+
+/// The backend's refusal is declared even by artifacts it did not refuse.
+///
+/// `synthetic/table-regular-grid` exits 2 with no body, so the only place a caller can learn
+/// this backend refuses 19-byte xref entries is an artifact for a document it accepted.
+#[test]
+fn the_xref_refusal_is_named_on_artifacts_that_opened_fine() {
+    let path = conformance("synthetic/simple-text/document.pdf");
+    let profile = Profile::default();
+
+    for artifact_codes in [
+        codes(&extract_with(path.clone(), &profile).assurance.limitations),
+        codes(&classify_with(path, &profile).assurance.limitations),
+    ] {
+        assert!(
+            artifact_codes.contains(&lim::BACKEND_XREF_STRICT_20_BYTE),
+            "the known backend limitation must be nameable by callers: {artifact_codes:?}"
+        );
+    }
+
+    // And the refused document still refuses, with no artifact at all.
+    let hostile = conformance("synthetic/table-regular-grid/document.pdf");
+    let err = Document::open(&hostile, &Profile::default()).expect_err("must not open");
+    assert_eq!(err.code(), "malformed");
+    assert_eq!(
+        engine_core::RefusalCode::of(&err),
+        engine_core::RefusalCode::Malformed,
+        "a refusal has a name, even though v0 emits no body to put it in"
+    );
+}
+
+/// Limitations are canonically ordered, so two runs cannot disagree on their order.
+#[test]
+fn limitations_are_sorted_and_free_of_duplicates() {
+    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    let mut sorted = a.assurance.limitations.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(
+        a.assurance.limitations, sorted,
+        "the emitted order must already be canonical"
+    );
+}
