@@ -16,6 +16,7 @@ path = "src/main.rs"
 engine-core.workspace = true
 engine-pdf.workspace = true
 engine-grounding.workspace = true
+clap = { version = "4.6.6", features = ["derive"] }
 
 [dev-dependencies]
 # M0 harness only: verify manifest hashes and read the manifest. Both become real

@@ -57,16 +57,17 @@ pub struct BackendIdentity {
 }
 
 impl Default for BackendIdentity {
-    /// The planned v0 backend, declared before it is wired up at M3.
+    /// The v0 backend, resolved.
     ///
-    /// Declaring it now means the profile hash changes when the backend is actually adopted or
-    /// its version moves — which is the event we want visible.
+    /// The version moving changes the profile hash, which is the event we want visible: two
+    /// artifacts produced by different backend builds are correctly non-comparable.
     fn default() -> Self {
         Self {
             name: "lopdf".into(),
-            // TODO(M3): replace with the resolved `lopdf` version once the dependency lands.
-            // Pinned as a placeholder rather than omitted so the field is always hashed.
-            version: "unbound-until-m3".into(),
+            // The resolved `lopdf` version, wired in at M2 when the dependency landed. Bumping
+            // the crate moves this string, which moves `profile_sha256` — which is the point:
+            // a backend change is fingerprint-visible rather than silent.
+            version: "0.44.0".into(),
         }
     }
 }
@@ -353,7 +354,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"unbound-until-m3"},"capabilities":{"char_offsets":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"absent-until-m3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"absent-until-m3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -361,7 +362,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:3013880c170ccbe7a3fad073328d3539ae3977a42e0086c16017c1be5a5f238a"
+            "sha256:6a37a9bcec39dfd4ddadacc782a663e043f80f91dc2bb8d1869417bf9219bf71"
         );
     }
 

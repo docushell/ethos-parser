@@ -10,3 +10,9 @@ description = "ethos-engine PDF reader: classification and position-aware extrac
 
 [dependencies]
 engine-core.workspace = true
+lopdf = { version = "0.44.0", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

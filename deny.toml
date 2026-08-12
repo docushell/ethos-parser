@@ -35,6 +35,17 @@ allow = [
     # allows it for the same reason. OSI-approved, permissive, no source-availability or
     # network-use conditions.
     "Unicode-3.0",
+    # Added at M2, the PR that introduced the crate needing it: `lopdf` -> `encoding_rs`, whose
+    # licence is "(Apache-2.0 OR MIT) AND BSD-3-Clause" — again the AND makes it non-optional.
+    # OSI-approved and FSF-free. The vendored Adobe CMap data arriving at M3 is BSD-3-Clause
+    # too, so this entry is load-bearing beyond `encoding_rs`.
+    "BSD-3-Clause",
+    # Permissive, no attribution requirement. `memchr` (via `nom`, via `lopdf`).
+    "Unlicense",
+    # Permissive. `miniz_oxide` and `tinyvec` (via `lopdf`'s stream decompression).
+    "Zlib",
+    # Permissive, public-domain-equivalent. `adler2` (via `miniz_oxide`).
+    "0BSD",
 ]
 confidence-threshold = 0.93
 # Expect a `license-not-encountered` warning for MIT. Most of this graph is `MIT OR Apache-2.0`

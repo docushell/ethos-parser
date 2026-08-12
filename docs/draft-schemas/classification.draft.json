@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:classification:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 (identity), §8 (fail closed), §9 (no confidence); docs/03-V0-SCOPE.md §1 items 1–5. Written from crates/engine-pdf/src/classify.rs; if the two disagree, the Rust is the implementation and 01-CONTRACT.md is the contract.",
+  "title": "Classification artifact (DRAFT)",
+  "description": "What a classifier observed, never what it concluded. Counts and named reason codes on two orthogonal axes, plus a derived boolean. There is no confidence field, no verdict, and no quality summary — the engine owns the observation, the caller owns the routing policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "identity",
+    "source",
+    "page_count",
+    "pages_sampled",
+    "pages_content_scanned",
+    "pages_with_text",
+    "ocr_reasons",
+    "layout_reasons",
+    "needs_attention",
+    "pages",
+    "not_detected"
+  ],
+  "properties": {
+    "identity": {
+      "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0",
+      "description": "artifact_type is `ethos.engine.classification.v0`; schema_version is `0.1.0`. Both DRAFT."
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["media_type", "sha256"],
+      "properties": {
+        "media_type": { "const": "application/pdf" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total pages in the document. Deliberately NOT the driver of cost."
+    },
+    "pages_sampled": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "min(page_count, profile.classify_sample_pages)."
+    },
+    "pages_content_scanned": {
+      "type": "integer",
+      "minimum": 0,
+      "$comment": "The bound, made observable. Must equal pages_sampled. pdf-inspector advertises Sample(8) and then re-scans every page in a later phase, so asking for one page costs the same as asking for all of them (memo §16.3: Pages(1)=439ms, Sample(8)=412ms, Full=434ms on the same 492-page file). Measured here: 492 pages, 8 scanned, and classify time is flat — 246x the pages for 1.7x the time. A regression that reintroduced a full rescan would move this number and fail a test rather than surface as a benchmark surprise."
+    },
+    "pages_with_text": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sampled pages carrying at least one text-showing operator."
+    },
+    "ocr_reasons": {
+      "type": "array",
+      "description": "Union of per-page OCR-need reasons, sorted and deduplicated. An OBSERVATION, never a routing decision.",
+      "items": { "$ref": "#/$defs/ocr_need_reason" }
+    },
+    "layout_reasons": {
+      "type": "array",
+      "description": "Union of per-page layout-hard reasons, sorted and deduplicated. None of these implies OCR — that independence is the point of the split and is asserted by a test.",
+      "items": { "$ref": "#/$defs/layout_complexity_reason" }
+    },
+    "needs_attention": {
+      "type": "boolean",
+      "$comment": "DERIVED: !ocr_reasons.is_empty() || !layout_reasons.is_empty(). The lists are the truth; removing this field loses no information, which a property test asserts. Taken from LiteParse (parity checklist L3), where the same relationship holds."
+    },
+    "pages": {
+      "type": "array",
+      "description": "One row per scanned page, in page order.",
+      "items": { "$ref": "#/$defs/page_classification" }
+    },
+    "not_detected": {
+      "type": "array",
+      "description": "Vocabulary members this profile's detectors never emit, with the reason why.",
+      "$comment": "Not paperwork. A vocabulary listing `garbled` while no detector can produce it invites a caller to read an empty list as evidence the document is not garbled — absence of a reason mistaken for evidence of its absence, which is Workbench rule 4 one level up. The full capability-declaration machinery arrives at M4; this is the minimum honesty M2 owes while emitting a vocabulary it only partly implements.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "detail"],
+        "properties": {
+          "reason": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ocr_need_reason": {
+      "title": "OCR-need axis",
+      "type": "string",
+      "enum": [
+        "scanned",
+        "no-text",
+        "sparse-text",
+        "embedded-images",
+        "garbled",
+        "vector-text",
+        "annotation-text"
+      ],
+      "$comment": "`sparse-text` requires short text ALONGSIDE imagery. Short text on its own is a short page, not a sparse one — LiteParse uses text_length < 20 unconditionally and compounds it with a vowel-frequency garble heuristic that strips items from the tally first, so an acronym-dense page (a NIST control table of AC-2/SC-7) can be reported as no-text when its text extracted perfectly (memo §18.3). Neither the vowel heuristic nor the unconditional length test exists here. `garbled` is never emitted by this profile — see not_detected."
+    },
+    "layout_complexity_reason": {
+      "title": "Layout-hard axis",
+      "type": "string",
+      "enum": ["multi-column", "table-likely", "dense-graphics"],
+      "$comment": "Orthogonal to the OCR-need axis: none of these implies OCR. A dense financial table in crisp born-digital text needs no OCR at all. `multi-column` is never emitted by this profile — v0 has no stable rule, and pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page. See not_detected."
+    },
+    "page_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "text_bytes",
+        "text_operators",
+        "image_count",
+        "path_operators",
+        "rectangles",
+        "annotations",
+        "ocr_reasons",
+        "layout_reasons"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "$comment": "1-based, as the document numbers its own pages. pdf-inspector carries a 0-vs-1 inconsistency between two of its own result types; one indexing origin, established at the boundary, is how that is avoided."
+        },
+        "text_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Raw string-operand bytes inside text-showing operators, BEFORE any encoding or CMap decoding (which is M3). An estimate of extent, not a character count: a CID font may use two bytes per glyph, so this over-counts for CJK. Used only for presence and sparseness signals, never presented as a character count."
+        },
+        "text_operators": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Count of Tj, TJ, ' and \" — all four. pdf-inspector omits \" from its operator match, which loses text silently (parity checklist P6); at this layer the same omission would surface as a false no-text."
+        },
+        "image_count": { "type": "integer", "minimum": 0 },
+        "path_operators": { "type": "integer", "minimum": 0 },
+        "rectangles": { "type": "integer", "minimum": 0 },
+        "annotations": { "type": "integer", "minimum": 0 },
+        "ocr_reasons": { "type": "array", "items": { "$ref": "#/$defs/ocr_need_reason" } },
+        "layout_reasons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/layout_complexity_reason" }
+        }
+      }
+    }
+  }
+}

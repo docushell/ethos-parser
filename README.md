@@ -10,16 +10,21 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 ## Status
 
-**M1 complete. No parsing yet.** The artifact contract is now Rust: `engine-core` owns artifact
-identity, the profile and its hash, c14n v1, integer quanta, `QRect`, derivation classes, typed
-absence, stable-id ordering, and the error taxonomy. The contract was frozen *before* any parser was
-written, so it is shaped by what a verifier needs rather than by a parser's accidents.
+**M2 complete. Classification works; extraction does not yet.** The artifact contract is Rust
+(`engine-core`), frozen *before* any parser was written so it is shaped by what a verifier needs
+rather than by a parser's accidents. `engine-pdf` opens a PDF once and reports what it observed:
+per-page counts and named reason codes on two orthogonal axes, with a derived boolean and no
+confidence score anywhere.
 
-`engine-pdf` and `engine-grounding` are still skeletons. `engine` exits 2 with a named reason, and
-the oracle test fails on purpose with a diagnostic naming everything still missing.
+```bash
+engine classify document.pdf   # canonical JSON on stdout; exit 0 / 1 / 2
+```
+
+`engine-grounding` is still a skeleton, `extract` is not implemented, and the oracle test fails on
+purpose with a diagnostic naming everything still missing.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
-- **Next milestone:** **M2 ∥ M3** — classify and extract
+- **Next milestone:** **M3** — extract
   ([`docs/05-MILESTONES.md`](docs/05-MILESTONES.md))
 
 ## Building

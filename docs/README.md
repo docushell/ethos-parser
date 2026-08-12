@@ -1,8 +1,9 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M1 complete.** The contract is Rust: `engine-core` owns artifact identity, the profile
-and its hash, c14n v1, integer quanta, `QRect`, derivation classes, typed absence, stable-id
-ordering, and the error taxonomy. No parsing exists. **Next: M2 ∥ M3.**
+**Status:** **M2 complete.** `engine-core` owns the contract types (M1); `engine-pdf` now opens
+PDFs and classifies them — reason codes on two orthogonal axes, per-page counts, bounded sampling,
+three exit codes — and `engine classify` emits a canonical artifact. No text extraction exists.
+**Next: M3.**
 
 ---
 
@@ -12,8 +13,9 @@ ordering, and the error taxonomy. No parsing exists. **Next: M2 ∥ M3.**
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M2 or M3.** M0 and M1 are done and committed; do not re-author the workspace or the
-   contract types. M2 and M3 both depend only on M1, so they can run in parallel
+5. **Implement M3.** M0, M1 and M2 are done and committed; do not re-author the workspace, the
+   contract types, or the classifier. M3 adds extraction to `engine-pdf` using the same
+   `Document` handle `classify` already takes — it must not reopen the file
 
 **Before you touch anything, run the gate** so you know the baseline you inherited:
 
@@ -49,7 +51,7 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
-| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types. Not a shipped contract | When you need the wire shape of an `engine-core` type |
+| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2 classification artifact. Not a shipped contract | When you need the wire shape of an `engine-core` type |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
 
 ---
@@ -60,14 +62,14 @@ Then, as needed:
 | --- | --- | --- | --- |
 | **M0** | Repo skeleton + toolchain + deny + failing oracle harness | — | **done** |
 | **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **done** |
-| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | **next** |
+| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | **done** |
 | **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **next** |
 | **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | — |
 | **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | — |
 | **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | — |
 | **M7** | CLI + library freeze + v0 exit criteria green | M6 | — |
 
-M2 and M3 can run in parallel once M1 lands. Everything else is a chain.
+M2 and M3 both depend only on M1. M2 is done; M3 is next. Everything else is a chain.
 
 ---
 
@@ -114,6 +116,10 @@ Grep for `TODO(` to find them. Currently:
 - **`TODO(confirm with Ethos owners...)`** — whether a geometry-absent span should be representable
   in a future `ethos.grounding.v1` revision. v0 declares and omits (`01-CONTRACT.md` §11). Open;
   does not block M2–M4.
-- **`TODO(M3)` in `crates/engine-core/src/profile.rs`** — `BackendIdentity::default().version` is the
-  placeholder `"unbound-until-m3"` until `lopdf` is actually a dependency. It is hashed, so adopting
-  the real version is a visible profile change.
+- ~~`TODO(M3)` — `BackendIdentity::default().version` placeholder~~ **Closed at M2.** `lopdf` is now
+  a real dependency and the profile carries its resolved version, `0.44.0`. The pinned profile
+  digest moved as a result, which is the mechanism working: a backend change is fingerprint-visible.
+- **`not_detected` is M2's stand-in for capability declarations.** The classification artifact
+  declares `garbled` and `multi-column` as reasons it never emits, with the reason why. The full
+  capability/limitation machinery lands at **M4** and should absorb this list rather than sit
+  beside it.

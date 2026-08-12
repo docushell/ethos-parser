@@ -163,22 +163,46 @@ M5. Skipping ahead means rewriting.
   `engine classify <pdf>` emitting the classification artifact.
 
 - **Acceptance tests:**
-  - **Bounded cost, the load-bearing test**: `nist-sp-800-53r5` (492 pages) at N=8 completes within
-    **20%** of an 8-page PDF at similar bytes/page. This is the exact A/B that catches
-    pdf-inspector's `detector.rs:431-447` class of bug, where `Pages(1)` costs the same as `Full`.
-  - **Three exit codes, one fixture each, all distinguishable**: `irs-form-1040-2025` → **0**;
-    a fixture with any reason code → **1**; `failure/password-protected` → **2**;
-    `failure/invalid-header` → **2**; a missing file → **2**. Assert the codes, not the messages.
+  - **Bounded cost, the load-bearing test**, in two parts:
+    - **Counter (mandatory)**: `pages_content_scanned == min(N, page_count)` and never approaches
+      `page_count`. Measured on `nist-sp-800-53r5`: **492 pages, 8 scanned.** This is the exact
+      class of bug pdf-inspector has at `detector.rs:431-447`, where `Pages(1)` costs the same as
+      `Full`.
+    - **Timing**: classify time must be flat in total page count. Measured against `nist-sp-800-63b`:
+      **246× the pages for 1.7× the classify time.**
+    <br>**Corrected after measurement:** this line originally demanded the 492-page document
+    complete within 20% of a short control *in total*. It cannot, and the reason is not the
+    sampler — `lopdf` parses the whole object graph eagerly, so total cost is
+    `O(parse) + O(N × per-page)` and the parse term scales with bytes. Measured (release, best of
+    3): open 16 / 48 / 431 ms against classify 14 / 21 / 25 ms for 2 / 80 / 492 pages. The phases
+    are therefore timed separately, which is also what `03-V0-SCOPE.md` §6 actually claims:
+    *"~0.5 ms per sampled page, plus document parse."*
+  - **Three exit codes, one fixture each, all distinguishable**: `synthetic/simple-text` → **0**;
+    `failure/image-only-or-blank-page` (fires `no-text`) → **1**; `failure/password-protected` →
+    **2**; `failure/invalid-header` → **2**; `synthetic/table-regular-grid` (19-byte xref) → **2**;
+    a missing file → **2**. Assert the codes, not the messages.
+    <br>**Corrected after measurement:** this line originally named `irs-form-1040-2025` as the
+    exit-0 case. It is not — it fires `table-likely` and `dense-graphics`, so under the derivation
+    rule it is exit **1**. Suppressing a true layout reason to make a doc line come out right is
+    exactly the tuning this project refuses, so the fixture choice changed instead. `irs-form-1040`
+    is now the axis-independence case, which it serves better: heavy ruling lines with crisp
+    born-digital text, so the layout axis fires and the OCR axis stays empty.
   - **Axis independence**: a fixture producing `table-likely` and no OCR-need reason emits an empty
     OCR-need list. `table-likely` never appears in the OCR-need axis.
   - **Boolean derivation**: `needs_attention == !ocr_reasons.is_empty() || !layout_reasons.is_empty()`,
     and removing the boolean from the artifact loses no information (property test over fixtures).
   - **Page indexing**: a round-trip test pins 1-based indexing. `synthetic/two-lines` and
     `nist-sp-800-63b` both assert page 1 is `1`.
-  - **`simple-text` behaviour is recorded, not tuned to match anyone.** Whatever counts the engine
-    reports for `synthetic/simple-text`, the golden records them and the reasons explain them.
-    pdf-inspector calls it TEXT-BASED with zero text pages; LiteParse calls it `no-text`. Neither is
-    the target.
+  - **`simple-text` behaviour is recorded, not tuned to match anyone.** pdf-inspector calls it
+    TEXT-BASED with zero text pages; LiteParse calls it `no-text` and demands OCR. Neither is the
+    target. **Measured here:** one page, one text-showing operator, 11 text bytes, no imagery, and
+    therefore **no reasons on either axis** — because short text without competing content is a
+    short page, not a sparse one. Golden pins every count.
+  - **The `garbled` and `multi-column` reasons are never emitted, and the artifact says so.** No
+    sound detector exists for either, so silence would let a caller read an empty list as evidence
+    of absence. Both are declared in `not_detected` with the reason why, and an acronym-dense
+    document (`nist-sp-800-53r5`, full of `AC-2`/`SC-7`) is asserted **not** to be reported as
+    textless — the LiteParse compounding-garble trap.
   - **No confidence**: `grep -ri confidence` over the classify artifact and its types returns nothing.
   - **Unknown magic** fails closed with a named error and exit **2**.
 

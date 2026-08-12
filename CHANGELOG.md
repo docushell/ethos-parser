@@ -9,6 +9,64 @@ that has acceptance criteria.
 
 ## [Unreleased]
 
+### M2 — Classify: reason codes, two axes, three exit codes, bounded sampling
+
+`engine-pdf` opens a PDF once and reports what it observed. No verdict, no confidence, no quality
+field — the engine owns the observation, the caller owns the routing policy.
+
+**Added**
+
+- `engine_pdf::Document` — magic-checked, opened once, shared by every stage. M3's `extract` takes
+  the same handle rather than reopening: two loads can disagree, and a classifier that saw a
+  different object graph from the extractor is a silent divergence with no diagnostic.
+- `engine_pdf::classify` — per-page counts, two orthogonal reason axes, a derived boolean, and
+  `pages_content_scanned` as an observable bound.
+- `OcrNeedReason` / `LayoutComplexityReason` — **separate types**, so `table-likely` cannot be
+  constructed as an OCR-need reason. A dense financial table in crisp born-digital text needs no
+  OCR at all; a single "complex" list would send it to an engine that could only make it worse.
+- `engine classify <pdf>` — canonical JSON on stdout, exit 0 / 1 / 2. `extract`, `ground` and
+  `grounding-check` exit 2 naming the milestone that owns them, rather than printing usage and
+  exiting 0 as though the work happened.
+- `docs/draft-schemas/classification.draft.json`.
+
+**Measured, and it changed two acceptance lines**
+
+- **`irs-form-1040-2025` is exit 1, not exit 0.** It fires `table-likely` and `dense-graphics`.
+  Suppressing a true layout reason to make a doc line come out right is the tuning this project
+  refuses, so the fixture choice changed: `synthetic/simple-text` is the exit-0 case, and
+  `irs-form-1040` became the axis-independence case, which it serves better.
+- **The 20%-total-time bound was unachievable, and the reason was informative.** The counter proved
+  the page walk was already bounded — 492 pages, 8 scanned — while `lopdf` parses the whole object
+  graph eagerly, so total cost is `O(parse) + O(N × per-page)`. Timing the phases separately shows
+  what the claim actually is: **246× the pages for 1.7× the classify time.**
+
+**Honesty about what is not detected**
+
+`garbled` and `multi-column` are in the vocabulary and are **never emitted**, because no sound
+detector exists for either. The artifact declares both in `not_detected` with the reason — silence
+would let a caller read an empty list as evidence a document is not garbled.
+
+`sparse-text` requires short text **alongside imagery**. LiteParse uses `text_length < 20`
+unconditionally and compounds it with a vowel-frequency garble heuristic that strips items from the
+tally first, so an acronym-dense page can be reported as `no-text` when its text extracted
+perfectly. Neither mechanism exists here, and a test asserts `nist-sp-800-53r5` — a control
+catalogue full of `AC-2`/`SC-7` — is not reported as textless.
+
+**Changed**
+
+- `Profile.backend.version` is now the resolved `lopdf` version, `0.44.0`, replacing
+  `unbound-until-m3`. The pinned profile digest moved accordingly — the mechanism working as
+  designed.
+- `deny.toml` gains `BSD-3-Clause` (`lopdf` → `encoding_rs`; also the licence the vendored Adobe
+  CMaps will need at M3), plus `Unlicense`, `Zlib` and `0BSD` from the same subtree. Each added in
+  the PR that introduced the crate needing it.
+
+**Not done**
+
+- Text extraction: content-stream interpretation, CMaps, ink boxes, `NativeLocator` emit (M3). The
+  classifier walks content streams to **count** operators; it decodes no text and interprets
+  nothing.
+
 ### M1 — Contract types, c14n / quanta, `schema_version` on the wire
 
 `docs/01-CONTRACT.md` is now Rust. The artifact shape stops being negotiable and starts being a

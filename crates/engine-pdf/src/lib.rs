@@ -14,17 +14,74 @@
 
 //! `engine-pdf` — the PDF reader.
 //!
-//! Owns classification (reason codes on two orthogonal axes, counts, bounded sampling) and
-//! extraction (position-aware text runs, native locators, measured font metrics, fail-closed
-//! operator handling). See `docs/03-V0-SCOPE.md`.
+//! # What exists at M2
 //!
-//! **Boundary:** this crate contains no grounding concept. It produces representation nodes;
-//! projecting them is `engine-grounding`'s job.
+//! [`Document`] opens a PDF once, and [`classify`] reports what it observed: per-page counts and
+//! named reason codes on two orthogonal axes, with a derived boolean. Nothing here renders a
+//! verdict, scores quality, or decides where a document should be routed.
 //!
-//! **Status: M0 skeleton.** Classification lands at M2, extraction at M3.
+//! # Boundary
+//!
+//! This crate contains no grounding concept. It produces observations and, at M3, representation
+//! nodes; projecting them is `engine-grounding`'s job.
+//!
+//! # Not yet implemented
+//!
+//! Extraction (M3): content-stream interpretation with an enumerated operator set, `NativeLocator`
+//! emission, measured ink boxes, vendored CMaps, synthesized-character flags. The classifier walks
+//! content streams to *count* operators; it does not interpret them, and it decodes no text.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-/// The crate name, used by the M0 harness to prove the workspace links.
+pub mod classify;
+pub mod document;
+pub mod magic;
+pub mod reasons;
+pub mod thresholds;
+
+#[cfg(test)]
+mod test_support;
+
+pub use classify::{
+    classify, Classification, NotDetected, PageClassification, SourceRef,
+    CLASSIFICATION_ARTIFACT_TYPE, CLASSIFICATION_SCHEMA_VERSION,
+};
+pub use document::Document;
+pub use magic::check_pdf_magic;
+pub use reasons::{LayoutComplexityReason, OcrNeedReason};
+
+/// The crate name, asserted by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "engine-pdf";
+
+/// Process exit codes (`docs/03-V0-SCOPE.md` §3.1).
+///
+/// **Three outcomes, three codes, never collapsed.** LiteParse's own README predicate
+/// (`lit is-complex doc.pdf --quiet && lit parse …`) returns 1 for password-protected,
+/// invalid-header, corrupt-header **and** a missing file — identically to "this document is
+/// complex" (parity checklist L16). It fails closed, but with an indistinguishable signal, which
+/// is still a defect: a caller cannot tell "hard" from "I could not open this".
+pub mod exit {
+    use engine_core::EngineError;
+
+    use crate::classify::Classification;
+
+    /// No reason code fired on either axis.
+    pub const SIMPLE: i32 = 0;
+    /// The document was read, and at least one reason code fired.
+    pub const NEEDS_ATTENTION: i32 = 1;
+    /// The document could not be read.
+    pub const COULD_NOT_READ: i32 = 2;
+
+    /// Map a classification outcome to its exit code.
+    ///
+    /// Shared by the CLI and its tests so the mapping is asserted where it is defined rather than
+    /// re-derived at the call site.
+    pub fn exit_code(result: &Result<Classification, EngineError>) -> i32 {
+        match result {
+            Ok(c) if c.needs_attention => NEEDS_ATTENTION,
+            Ok(_) => SIMPLE,
+            Err(_) => COULD_NOT_READ,
+        }
+    }
+}

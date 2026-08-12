@@ -16,6 +16,7 @@ authority. Where these and the contract disagree, the contract is right.
 | [`derivation-class.draft.json`](derivation-class.draft.json) | `extracted` / `computed` / `recognized` / `proposed` | §6 |
 | [`geometry.draft.json`](geometry.draft.json) | `QRect` as `[x0, y0, x1, y1]`, and typed absence | §5.2, §5.3 |
 | [`error-taxonomy.draft.json`](error-taxonomy.draft.json) | The six routable error kinds | §8 |
+| [`classification.draft.json`](classification.draft.json) | The M2 classification artifact: counts, the two reason axes, the derived boolean, `not_detected` | §2, §8, §9 |
 
 ## What is deliberately not here
 
