@@ -164,11 +164,19 @@ pub fn sort_ids(ids: &mut [NodeId]) {
     });
 }
 
-/// Split `e12` into `("e", Some(12))`. An unparseable ordinal sorts last within its prefix.
-fn split_id(s: &str) -> (&str, Option<u64>) {
+/// Split `e12` into `("e", Some(12))`.
+///
+/// An unparseable ordinal sorts **last** within its prefix. `Option`'s natural order puts `None`
+/// first, which is the wrong end: a malformed id would displace well-formed content at the head
+/// of a reading order. Mapping absence to `u64::MAX` puts it at the tail instead.
+///
+/// Ids reaching here always come from [`IdAllocator`], so this branch is defensive. It still has
+/// to be *deterministic and stated*, because a total order that nobody has pinned is a total
+/// order that changes when someone refactors it.
+fn split_id(s: &str) -> (&str, u64) {
     let split = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
     let (prefix, digits) = s.split_at(split);
-    (prefix, digits.parse::<u64>().ok())
+    (prefix, digits.parse::<u64>().unwrap_or(u64::MAX))
 }
 
 #[cfg(test)]
@@ -261,6 +269,25 @@ mod tests {
         sort_ids(&mut ids);
         let got: Vec<&str> = ids.iter().map(NodeId::as_str).collect();
         assert_eq!(got, vec!["e1", "e2", "p1", "s1"]);
+    }
+
+    #[test]
+    fn an_unparseable_ordinal_sorts_last_within_its_prefix() {
+        // Constructed by hand: the allocator cannot mint these. The point is that the order is
+        // pinned and documented, not that it is reachable.
+        let mut ids = vec![
+            NodeId("e".into()),
+            NodeId("e2".into()),
+            NodeId("e1".into()),
+            NodeId("s1".into()),
+        ];
+        sort_ids(&mut ids);
+        let got: Vec<&str> = ids.iter().map(NodeId::as_str).collect();
+        assert_eq!(
+            got,
+            vec!["e1", "e2", "e", "s1"],
+            "a malformed id must sort to the tail of its prefix, never displace e1 at the head"
+        );
     }
 
     #[test]

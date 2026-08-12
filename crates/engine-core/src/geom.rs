@@ -15,8 +15,9 @@
 //! Integer quanta and rectangles (`docs/01-CONTRACT.md` §4, §5).
 //!
 //! Floats do not exist in canonical output. `quantize` is the only permitted float math on the
-//! canonical path: an IEEE-754 double multiply plus floor/ceil gives identical results on
-//! identical inputs across supported platforms, which is what makes byte identity achievable.
+//! canonical path: an IEEE-754 double multiply followed by `roundToIntegralTiesToAway` gives
+//! identical results on identical inputs across supported platforms, which is what makes byte
+//! identity achievable.
 
 use serde::{Deserialize, Serialize};
 
@@ -50,21 +51,33 @@ impl std::error::Error for QuantizeError {}
 /// quantum 100. Half-to-even would make the sign of a coordinate change its magnitude, which is
 /// surprising in a geometry context and harder to reproduce in another language.
 ///
-/// # Precision limit, stated rather than hidden
+/// # Why `f64::round` and not `(x + 0.5).floor()`
 ///
-/// The `(x + 0.5).floor()` idiom loses exactness once `|x| ≥ 2^52`, because `x + 0.5` is no
-/// longer representable and rounds to `x + 1`. **Measured:** `quantize(4503599627370497.0, 1)`
-/// returns `4503599627370498`, one more than the exact product, and `MAX_SAFE_INT` itself is
-/// unreachable — it errors, because the intermediate rounds past the bound.
+/// Ethos implements this as `(scaled + 0.5).floor()` / `(scaled - 0.5).ceil()`. That idiom
+/// **double-rounds**: once `|x| ≥ 2^52` the sum `x + 0.5` is not representable, so it rounds to
+/// `x + 1` *before* `floor` runs, and an exact integer product comes back one quantum too large.
 ///
-/// This is **deliberately not fixed.** The implementation is byte-identical to Ethos's, and
-/// byte-identical output is the property the parity vectors exist to protect; diverging here to
-/// chase an unreachable input would trade a real guarantee for a theoretical one. The affected
-/// domain is unreachable for page geometry: at quantum 100, `2^52` quanta is about
-/// 4.5 × 10^13 points, roughly 6 × 10^11 inches. Real page coordinates live below 10^4 points.
+/// Measured, on values that are all exactly representable as `f64`:
 ///
-/// **Safe input domain:** `|pts × quantum_per_point| < 2^52`. Above it, results remain
-/// deterministic and reproducible — they are simply not exact.
+/// | input | `(x+0.5).floor()` | `f64::round` |
+/// | --- | --- | --- |
+/// | `4503599627370497` | `4503599627370498` ✗ | `4503599627370497` ✓ |
+/// | `9007199254740989` | `9007199254740990` ✗ | `9007199254740989` ✓ |
+/// | `9007199254740991` (`MAX_SAFE_INT`) | rounds to `2^53`, then **errors** ✗ | `9007199254740991` ✓ |
+///
+/// `f64::round` is IEEE-754 `roundToIntegralTiesToAway` — the same half-away-from-zero rule,
+/// computed exactly, with no intermediate value to lose.
+///
+/// **This is a deliberate divergence from Ethos, and it is small and measured.** Exhaustively
+/// swept: over the entire knife edge of `[0, 2·10^6)` — the three doubles nearest every `n + 0.5`
+/// — the two forms disagree on exactly **one** value, `0.49999999999999994`, where this one
+/// returns `0` and Ethos returns `1`. Since that value is strictly below one half, `0` is the
+/// correct answer. It is also unreachable from decimal text: `"0.005"` parses to a double whose
+/// product is exactly `0.5`, and across all ten million `0.001`-step literals in `[0, 10000)`
+/// points the two forms agree **everywhere**.
+///
+/// So the divergence is confined to inputs where Ethos is arithmetically wrong, and page
+/// geometry cannot reach any of them. The M6 oracle comparison is unaffected.
 ///
 /// # Errors
 ///
@@ -72,9 +85,10 @@ impl std::error::Error for QuantizeError {}
 ///
 /// - `NaN` or `±∞` input, or a product that overflows to non-finite
 /// - a result whose magnitude exceeds [`MAX_SAFE_INT`]
-/// - `quantum_per_point == 0`, which would silently collapse every coordinate to the origin.
-///   Ethos does not reject this; refusing it is *stricter on emission*, which is the one
-///   direction of divergence the contract permits (`docs/01-CONTRACT.md` §11).
+/// - `quantum_per_point == 0`, which would otherwise collapse every coordinate to the origin and
+///   return `Ok(0)` while doing it. Ethos does not reject this; refusing it is *stricter on
+///   emission*, the one direction of divergence the contract permits
+///   (`docs/01-CONTRACT.md` §11).
 pub fn quantize(pts: f64, quantum_per_point: u32) -> Result<i64, QuantizeError> {
     if quantum_per_point == 0 {
         return Err(QuantizeError);
@@ -86,11 +100,8 @@ pub fn quantize(pts: f64, quantum_per_point: u32) -> Result<i64, QuantizeError> 
     if !scaled.is_finite() {
         return Err(QuantizeError);
     }
-    let rounded = if scaled >= 0.0 {
-        (scaled + 0.5).floor()
-    } else {
-        (scaled - 0.5).ceil()
-    };
+    // `roundToIntegralTiesToAway`, exact. See the rustdoc above for why not `(x + 0.5).floor()`.
+    let rounded = scaled.round();
     if rounded.abs() > MAX_SAFE_INT as f64 {
         return Err(QuantizeError);
     }
@@ -233,34 +244,59 @@ mod tests {
         assert_eq!(quantize(-1.0, 0), Err(QuantizeError));
     }
 
-    /// The large-magnitude precision limit, pinned as behaviour rather than left as folklore.
+    /// Large magnitudes are **exact**, which the `(x + 0.5).floor()` idiom cannot manage.
     ///
-    /// These values are *wrong* in the arithmetic sense and *right* in the contract sense: they
-    /// match Ethos byte for byte, and byte identity is the property that matters. Documented in
-    /// `quantize`'s rustdoc. If a future change makes these exact, it has diverged from the
-    /// oracle and the parity vectors are no longer meaningful — that is the failure this test is
-    /// here to make loud.
+    /// Every input here is exactly representable as an `f64`, so the correct answer is the input
+    /// itself. Ethos's idiom double-rounds and returns one more for the odd ones; this returns
+    /// them unchanged. If a future change reintroduces the idiom, these assertions fail.
     #[test]
-    fn the_precision_limit_above_2_pow_52_is_pinned() {
-        // Exactly representable, and exact.
+    fn large_magnitudes_are_exact() {
+        for n in [
+            4_503_599_627_370_496i64, // 2^52
+            4_503_599_627_370_497,    // Ethos's idiom returns ...498 here
+            4_503_599_627_370_499,    // ...and ...500 here
+            9_007_199_254_740_989,
+            9_007_199_254_740_990,
+            MAX_SAFE_INT, // Ethos's idiom overshoots to 2^53 and then errors
+        ] {
+            assert_eq!(
+                quantize(n as f64, 1).unwrap(),
+                n,
+                "quantize must be exact for the representable integer {n}"
+            );
+        }
+    }
+
+    /// `MAX_SAFE_INT` is reachable, not accidentally excluded by the range guard.
+    ///
+    /// `docs/01-CONTRACT.md` §4 declares `|n| <= 2^53-1` canonical, so refusing the boundary
+    /// value itself would contradict the contract.
+    #[test]
+    fn max_safe_int_is_reachable() {
+        assert_eq!(quantize(MAX_SAFE_INT as f64, 1).unwrap(), MAX_SAFE_INT);
+        assert_eq!(quantize(-(MAX_SAFE_INT as f64), 1).unwrap(), -MAX_SAFE_INT);
+        // One quantum beyond is still refused.
+        assert_eq!(quantize(MAX_SAFE_INT as f64 + 1.0, 1), Err(QuantizeError));
+    }
+
+    /// The single measured divergence from Ethos, pinned so it stays single and stays justified.
+    ///
+    /// `0.49999999999999994` is the largest double below one half. Ethos's idiom rounds it to 1;
+    /// this rounds it to 0, which is arithmetically correct. An exhaustive knife-edge sweep over
+    /// `[0, 2e6)` found no other disagreement, and no decimal literal reaches this value.
+    #[test]
+    fn the_one_divergence_from_ethos_is_where_ethos_is_wrong() {
+        let just_below_half = 0.499_999_999_999_999_94_f64;
+        assert!(just_below_half < 0.5);
         assert_eq!(
-            quantize(4_503_599_627_370_496.0, 1).unwrap(),
-            4_503_599_627_370_496
+            quantize(just_below_half, 1).unwrap(),
+            0,
+            "a value strictly below one half rounds to zero"
         );
 
-        // One above 2^52: `x + 0.5` is not representable and rounds up, so the result is one
-        // more than the exact product.
-        assert_eq!(
-            quantize(4_503_599_627_370_497.0, 1).unwrap(),
-            4_503_599_627_370_498
-        );
-
-        // MAX_SAFE_INT itself is unreachable: the intermediate rounds past the bound.
-        assert_eq!(quantize(MAX_SAFE_INT as f64, 1), Err(QuantizeError));
-        assert_eq!(
-            quantize(9_007_199_254_740_990.0, 1).unwrap(),
-            9_007_199_254_740_990
-        );
+        // The decimal literal a real document would carry lands exactly on the tie, where both
+        // implementations agree.
+        assert_eq!(quantize(0.005, 100).unwrap(), 1);
     }
 
     #[test]

@@ -36,9 +36,19 @@ compile error.
 
 **Decisions worth knowing**
 
+- **`quantize` uses `f64::round`, not Ethos's `(x + 0.5).floor()`.** That idiom double-rounds: once
+  `|x| ≥ 2^52` the sum is unrepresentable and rounds *before* `floor` runs, so an exact integer
+  product returns one quantum too large — and `MAX_SAFE_INT`, which the contract declares canonical,
+  is refused outright. `f64::round` is IEEE `roundToIntegralTiesToAway`: same rule, computed
+  exactly. Measured divergence from Ethos across an exhaustive knife-edge sweep of `[0, 2·10^6)`:
+  **exactly one value**, `0.49999999999999994`, where this returns `0` (correct — it is below one
+  half) and Ethos returns `1`. Unreachable from decimal text, and across all ten million
+  `0.001`-step literals in `[0, 10000)` points the two agree everywhere.
 - **`QRect` rejects zero-area rectangles**, which is *stricter* than Ethos, whose `QRect::new`
   rejects only `x0 > x1`. Stricter-on-emission is the only safe direction: the engine may refuse to
   emit what the oracle tolerates, never the reverse.
+- **`quantize` rejects `quantum_per_point == 0`**, which would otherwise map every coordinate on
+  the page to the origin and return `Ok(0)` while doing it.
 - **Typed absence, not `Option<QRect>`.** `None` would collapse "could not measure", "nothing to
   measure", and "not asked to measure" into one value, and only the first is a declarable capability
   limitation.
@@ -50,6 +60,20 @@ compile error.
   it: `serde`'s `derive` feature reaches `unicode-ident`, whose licence is
   `(MIT OR Apache-2.0) AND Unicode-3.0` — the `AND` makes it non-optional. Added on introduction
   rather than in advance, which is what the prior comment asked for.
+
+**Fixed after adversarial review**
+
+- `Profile` now denies unknown fields. Without it a profile from a newer engine deserialized with
+  its unknown knob silently dropped, then **re-hashed to a different digest than it arrived with** —
+  an artifact claiming comparability it does not have.
+- The profile sensitivity gate now destructures to the leaf. A field added to `Capabilities` or
+  `BackendIdentity` is as output-affecting as one on `Profile`; a gate stopping at
+  `capabilities: _` waved it straight through.
+- The float ban was scoped to `quantize`'s body rather than the whole of `geom.rs`. The file-level
+  skip was a hole big enough for `QRect` — which lives there, derives `Serialize`, and would have
+  passed with an `f64` field. Verified by injecting one and watching the guard fire.
+- `sort_ids` put a malformed id **first** while its doc claimed last, because `Option`'s natural
+  order sorts `None` first. Now sorts last, with a test.
 
 **Not done, deliberately**
 

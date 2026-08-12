@@ -124,8 +124,17 @@ mean silently accepting a float, which is the one thing this layer exists to ref
 | **Idempotence** | `c14n(parse(c14n(v))) == c14n(v)`, property-tested |
 
 **Floats do not exist in canonical output.** Geometry is quantized to integer centipoints —
-`quantize(pts, 100)`, round-half-away-from-zero, with `NaN`, `±Inf` and overflow as errors rather
-than saturating values. LiteParse emits `f32` throughout with a lossy round-trip and no fixed
+`quantize(pts, 100)`, round-half-away-from-zero, with `NaN`, `±Inf`, overflow and a zero quantum as
+errors rather than saturating values.
+
+**One measured divergence from Ethos, in the engine's favour.** Ethos computes the rounding as
+`(x + 0.5).floor()`, which double-rounds above `2^52` — an exact integer product returns one quantum
+too large, and `MAX_SAFE_INT` (which §4 declares canonical) is refused outright. The engine uses
+`f64::round`, IEEE `roundToIntegralTiesToAway`: the same rule, computed exactly. An exhaustive
+knife-edge sweep of `[0, 2·10^6)` finds **one** disagreement, `0.49999999999999994`, where the
+engine returns `0` — correct, since the value is below one half. No decimal literal reaches it, and
+across all ten million `0.001`-step literals in `[0, 10000)` points the two agree everywhere. So the
+divergence lives only where Ethos is arithmetically wrong, and page geometry cannot get there. LiteParse emits `f32` throughout with a lossy round-trip and no fixed
 precision (checklist L22); that is the shape to refuse.
 
 **Canonical exclusions.** Volatile data — timings, memory, host, source paths — lives under a

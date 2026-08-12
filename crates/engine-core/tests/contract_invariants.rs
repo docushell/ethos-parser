@@ -193,22 +193,93 @@ fn no_other_quality_summary_vocabulary_leaks_in() {
 ///
 /// `quantize` legitimately *takes* an `f64` — that is the one permitted float on the canonical
 /// path. What must never happen is a float reaching a struct that derives `Serialize`.
+///
+/// The exemption is scoped to `quantize`'s own body and the test module, **not** to all of
+/// `geom.rs`. Exempting the whole file would be a hole big enough to drive `QRect` through: it
+/// lives in `geom.rs`, derives `Serialize`, and a field changed to `f64` would have sailed past
+/// a file-level skip.
 #[test]
-fn floats_appear_only_in_the_quantize_boundary() {
+fn floats_appear_only_inside_quantize() {
+    let exempt = quantize_and_test_line_ranges();
     let mut offenders = Vec::new();
+
     for hit in code_hits("f64").into_iter().chain(code_hits("f32")) {
-        // geom.rs owns the float boundary: quantize's signature and its internal math.
-        if hit.starts_with("geom.rs:") {
-            continue;
+        if let Some(rest) = hit.strip_prefix("geom.rs:") {
+            let line: usize = rest
+                .split(':')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .expect("hit carries a line number");
+            if exempt.iter().any(|(lo, hi)| line >= *lo && line <= *hi) {
+                continue;
+            }
         }
         offenders.push(hit);
     }
+
     assert!(
         offenders.is_empty(),
-        "floats appear outside the quantize boundary in geom.rs:\n  {}\n\n\
+        "floats appear outside `quantize`:\n  {}\n\n\
          Serialized types carry i64, enums, or strings. Floats do not exist in canonical \
          output (docs/01-CONTRACT.md §4).",
         offenders.join("\n  ")
+    );
+}
+
+/// Line ranges in `geom.rs` where a float is legitimate: `quantize`'s body, and the tests that
+/// exercise it. Computed by brace-depth scan rather than hardcoded, so edits do not silently
+/// widen the exemption.
+fn quantize_and_test_line_ranges() -> Vec<(usize, usize)> {
+    let src = std::fs::read_to_string(src_dir().join("geom.rs")).expect("geom.rs is readable");
+    let mut ranges = Vec::new();
+
+    let mut start: Option<usize> = None;
+    let mut depth = 0i32;
+    for (i, line) in src.lines().enumerate() {
+        let n = i + 1;
+        if start.is_none() && line.contains("pub fn quantize(") {
+            start = Some(n);
+            depth = 0;
+        }
+        if let Some(s) = start {
+            depth += line.matches('{').count() as i32;
+            depth -= line.matches('}').count() as i32;
+            if depth == 0 && n > s {
+                ranges.push((s, n));
+                start = None;
+            }
+        }
+        if line.trim_start().starts_with("mod tests") {
+            ranges.push((n, src.lines().count()));
+        }
+    }
+
+    assert!(
+        !ranges.is_empty(),
+        "could not locate `quantize` in geom.rs — the exemption scan is broken, which would \
+         make the float ban either vacuous or unusable"
+    );
+    ranges
+}
+
+/// The exemption must not cover `QRect`. Guards the guard: if the range scan ever swallowed the
+/// whole file, this fails.
+#[test]
+fn the_float_exemption_does_not_cover_qrect() {
+    let src = std::fs::read_to_string(src_dir().join("geom.rs")).expect("geom.rs is readable");
+    let qrect_line = src
+        .lines()
+        .position(|l| l.contains("pub struct QRect"))
+        .expect("QRect is defined in geom.rs")
+        + 1;
+
+    let exempt = quantize_and_test_line_ranges();
+    assert!(
+        !exempt
+            .iter()
+            .any(|(lo, hi)| qrect_line >= *lo && qrect_line <= *hi),
+        "the float exemption covers QRect's definition at geom.rs:{qrect_line}, so a float \
+         field there would go unnoticed. Exempt ranges: {exempt:?}"
     );
 }
 
