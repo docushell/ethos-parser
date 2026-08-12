@@ -167,9 +167,13 @@ fn the_sample_flag_changes_the_profile_and_the_observation() {
     );
 }
 
+/// Subcommands that do not exist yet exit 2, naming the milestone that owns them.
+///
+/// `extract` left this list at M3. Exiting 0 with usage text would let a script conclude the
+/// work happened.
 #[test]
 fn unimplemented_subcommands_exit_two_rather_than_pretend() {
-    for sub in ["extract", "ground", "grounding-check"] {
+    for sub in ["ground", "grounding-check"] {
         let out = Command::new(env!("CARGO_BIN_EXE_engine"))
             .arg(sub)
             .arg(conformance("synthetic/simple-text/document.pdf"))

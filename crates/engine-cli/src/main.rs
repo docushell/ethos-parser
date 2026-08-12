@@ -49,8 +49,12 @@ enum Command {
     /// Exit codes: 0 simple, 1 needs attention, 2 could not read.
     Classify(ClassifyArgs),
 
-    /// Emit `DocumentRepresentation v0`. **Not implemented until M3.**
-    Extract(PathArg),
+    /// Extract position-aware text runs with native locators.
+    ///
+    /// Exit codes: 0 extracted, 2 could not extract. There is no exit 1 here — "needs
+    /// attention" is a classify concept, and overloading it would make a caller's `&&` chain
+    /// mean two different things depending on which subcommand ran.
+    Extract(ExtractArgs),
 
     /// Project a representation into `ethos.grounding.v1`. **Not implemented until M5.**
     Ground(PathArg),
@@ -74,6 +78,12 @@ struct ClassifyArgs {
 }
 
 #[derive(clap::Args)]
+struct ExtractArgs {
+    /// The PDF to extract.
+    path: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct PathArg {
     /// Input path.
     #[arg(value_name = "PATH")]
@@ -84,7 +94,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Classify(args) => run_classify(args),
-        Command::Extract(_) => not_implemented("extract", "M3"),
+        Command::Extract(args) => run_extract(args),
         Command::Ground(_) => not_implemented("ground", "M5"),
         Command::GroundingCheck(_) => not_implemented("grounding-check", "M6"),
     }
@@ -116,6 +126,35 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
         Err(e) => fail(e),
     }
 }
+
+fn run_extract(args: ExtractArgs) -> ExitCode {
+    let profile = Profile::default();
+
+    // Opened once, exactly as `classify` opens it. The same handle serves both stages
+    // (docs/04-ARCHITECTURE.md §2.1); nothing below the CLI opens a file.
+    let result =
+        Document::open(&args.path, &profile).and_then(|doc| engine_pdf::extract(&doc, &profile));
+
+    match result {
+        Ok(artifact) => match artifact.to_canonical_bytes() {
+            Ok(bytes) => {
+                let mut out = std::io::stdout().lock();
+                let _ = out.write_all(&bytes);
+                let _ = out.write_all(b"\n");
+                let _ = out.flush();
+                ExitCode::from(EXTRACTED as u8)
+            }
+            Err(e) => fail(&e),
+        },
+        Err(e) => fail(&e),
+    }
+}
+
+/// Extraction succeeded.
+///
+/// Deliberately not reusing `SIMPLE`: exit 0 means different things for the two subcommands, and
+/// naming them separately keeps that visible.
+const EXTRACTED: i32 = 0;
 
 /// Report a failure on stderr and exit 2.
 ///

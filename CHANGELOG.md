@@ -9,6 +9,75 @@ that has acceptance criteria.
 
 ## [Unreleased]
 
+### M3 — Extract: text runs, native locators, fail-closed operators, synthesized flags
+
+Position-aware text runs whose origins are trustworthy, whose boxes are measured or typed-absent,
+and whose parse stops rather than silently dropping content.
+
+**Added — `engine-pdf`**
+
+- `ops` — all **73** operators of PDF 32000-1 Table A.1 as an enum. Dispatch is an exhaustive
+  match with **no wildcard arm**: adding a variant without handling it is a compile error, and a
+  token outside the table is a hard error naming it. Operators that do not move a glyph are
+  *named* no-ops, so "we do not interpret `rg`" is a decision in the source rather than an
+  accident of a `_ =>`.
+- `content` — the interpreter, including all four show-text operators. **`"` and `'` are
+  implemented**; `"`'s absence from pdf-inspector's match is the disqualifying defect, where text
+  vanishes and adjacent runs merge with corrupt geometry while the output stays well-formed.
+- `text_state` — CTM, text and line matrices, `Tc`/`Tw`/`Tz`/`TL`/`Ts`. **`Tz` multiplies the
+  whole advance expression**, spacing terms included; pdf-inspector implements it nowhere.
+- `fonts`, `metrics` — three independent questions per glyph (what character, how far, what box),
+  because they fail independently. Conflating the last two is how `height = font_size` gets
+  written.
+- `cmap` — `ToUnicode` parsing (`bfchar`, `bfrange`, codespace ranges), the source of the ligature
+  caveat: `<03>` → `<00660069>` is one code and two characters.
+- `encoding` — `WinAnsiEncoding` in full, `StandardEncoding`'s ASCII range including the two codes
+  where it is *not* ASCII (`0x27` is `quoteright`, `0x60` is `quoteleft`), and `/Differences`.
+- `nodes` — `TextRun` with `PdfLocator`, `SynthesizedChar`, `scalar_code_mismatch`.
+- `engine extract <pdf>` — canonical JSON, exit 0 or 2. **No exit 1**: "needs attention" is a
+  classify concept, and overloading it would make a caller's `&&` chain mean two different things
+  depending on which subcommand ran.
+
+**Honesty, and where it shows**
+
+- **Ink boxes are measured or absent.** The whole conformance corpus is standard-14 Helvetica with
+  no `FontDescriptor`, so every run reports `NotReportedByReader` — the typed-absence path, proved
+  on real documents rather than a mock. One engine-owned fixture carries a descriptor so the
+  measured path is proved too.
+- **Absent advance is absent, not zero.** A standard-14 font may omit `/Widths` and expect built-in
+  AFM metrics, which this profile does not vendor. The advance is omitted from the wire; the origin
+  is unaffected, because it comes from the content stream.
+- **Hyphenation is not rejoined**, and that is a stated policy with a golden. Distinguishing a soft
+  break-hyphen from a real compound hyphen needs a dictionary, and a rule that guesses is the
+  cliff-shaped heuristic refused everywhere else. Silent rejoining is forbidden outright.
+- **Reading order is stream order.** `two-columns` comes out right-column-first — visibly wrong,
+  and asserted that way, because that is what `single-column-v1` means.
+
+**Changed**
+
+- **`skrifa` replaces `ttf-parser`**, which the milestone named. RUSTSEC-2026-0192 records that
+  ttf-parser's author declared it unmaintained with no safe upgrade, and names skrifa as the
+  maintained successor. Pinned to 0.39 because 0.44's tree needs Rust 1.89 and this workspace pins
+  1.88.
+- `Profile.cmap_data_version`: `absent-until-m3` → `annex-d-encodings-1`, naming what is actually
+  carried. The pinned profile digest moved accordingly.
+- The float-ban guard now matches **whole tokens**. It was matching substrings, and a sha256
+  digest containing `…cf32c2e…` tripped it — a guard that cries wolf on a hash is a guard someone
+  eventually disables.
+
+**Deviation from the milestone text, stated plainly**
+
+M3 called for vendoring ~168 Adobe `.bcmap` CMaps. They are **not** vendored. Nothing in the corpus
+exercises them, they could not be obtained and verified in this pass, and committing binary data no
+test touches would be worse than declaring the gap. A document naming a predefined CMap is
+**refused** with a named error. The same applies to the Core-14 AFM widths and the full Adobe Glyph
+List. All three are declared in `not_decoded` and explained in `vendor/README.md`.
+
+**Not done**
+
+- M4 capability blocks and coverage summaries; M5 `DocumentRepresentation v0` and the grounding
+  projection; M6 oracle agreement.
+
 ### M2 — Classify: reason codes, two axes, three exit codes, bounded sampling
 
 `engine-pdf` opens a PDF once and reports what it observed. No verdict, no confidence, no quality

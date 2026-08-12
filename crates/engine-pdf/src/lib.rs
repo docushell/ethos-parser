@@ -35,9 +35,18 @@
 #![deny(missing_docs)]
 
 pub mod classify;
+pub mod cmap;
+pub mod content;
 pub mod document;
+pub mod encoding;
+pub mod extract;
+pub mod fonts;
 pub mod magic;
+pub mod metrics;
+pub mod nodes;
+pub mod ops;
 pub mod reasons;
+pub mod text_state;
 pub mod thresholds;
 
 #[cfg(test)]
@@ -48,7 +57,11 @@ pub use classify::{
     CLASSIFICATION_ARTIFACT_TYPE, CLASSIFICATION_SCHEMA_VERSION,
 };
 pub use document::Document;
+pub use extract::{
+    extract, ExtractArtifact, NotDecoded, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION,
+};
 pub use magic::check_pdf_magic;
+pub use nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

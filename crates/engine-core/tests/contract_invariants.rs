@@ -111,6 +111,39 @@ fn strip_comments(src: &str) -> String {
     out
 }
 
+/// Non-comment lines where `needle` appears as a **whole token**, not a substring.
+///
+/// Substring matching was a false-positive machine: a sha256 digest containing `...cf32c2e...`
+/// tripped the float ban, because `f32` is three hex digits as readily as it is a type name. A
+/// guard that cries wolf on a hash is a guard someone will eventually disable.
+fn token_hits(needle: &str) -> Vec<String> {
+    fn is_ident(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+    let mut hits = Vec::new();
+    for path in rust_sources(&src_dir()) {
+        let src = std::fs::read_to_string(&path).expect("readable source");
+        for (n, line) in strip_comments(&src).lines().enumerate() {
+            let mut from = 0;
+            while let Some(rel) = line[from..].find(needle) {
+                let start = from + rel;
+                let end = start + needle.len();
+                let before_ok =
+                    start == 0 || !line[..start].chars().next_back().is_some_and(is_ident);
+                let after_ok =
+                    end >= line.len() || !line[end..].chars().next().is_some_and(is_ident);
+                if before_ok && after_ok {
+                    let name = path.file_name().unwrap().to_string_lossy().to_string();
+                    hits.push(format!("{name}:{}: {}", n + 1, line.trim()));
+                    break;
+                }
+                from = end;
+            }
+        }
+    }
+    hits
+}
+
 /// Non-comment lines mentioning `needle`, case-insensitively, as `path:line: text`.
 fn code_hits(needle: &str) -> Vec<String> {
     let needle = needle.to_ascii_lowercase();
@@ -203,7 +236,7 @@ fn floats_appear_only_inside_quantize() {
     let exempt = quantize_and_test_line_ranges();
     let mut offenders = Vec::new();
 
-    for hit in code_hits("f64").into_iter().chain(code_hits("f32")) {
+    for hit in token_hits("f64").into_iter().chain(token_hits("f32")) {
         if let Some(rest) = hit.strip_prefix("geom.rs:") {
             let line: usize = rest
                 .split(':')

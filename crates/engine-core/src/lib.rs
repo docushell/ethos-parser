@@ -70,7 +70,8 @@ pub use identity::{
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, Profile, CMAP_DATA_ABSENT, READING_ORDER_RULE_V0,
+    profile_sha256, BackendIdentity, Capabilities, Profile, CMAP_DATA_VERSION,
+    READING_ORDER_RULE_V0,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

@@ -10,12 +10,17 @@
       "default": "../ethos/benchmarks/gate-zero/corpus",
       "env": "ETHOS_BENCH_CORPUS",
       "note": "Large real-world PDFs named by M2 acceptance. Not part of the oracle count."
+    },
+    "engine": {
+      "default": "fixtures/engine",
+      "env": "ETHOS_ENGINE_FIXTURES",
+      "note": "CC0 fixtures authored in this repo, for behaviours the Ethos corpus does not cover. Never counted toward the 15-fixture oracle criterion."
     }
   },
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 0
+    "engine_owned": 4
   },
   "fixtures": [
     {
@@ -179,6 +184,42 @@
       "sha256": "sha256:3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
       "owner": "ethos-bench",
       "notes": "2 pages. The exit-code-0 (simple) case (M2). LiteParse classifies it SIMPLE with layout reason table-likely and no OCR-need reason -- the axis-independence case"
+    },
+    {
+      "id": "show-text-quote-operators",
+      "root": "engine",
+      "group": "engine",
+      "path": "show-text-quote-operators/document.pdf",
+      "sha256": "sha256:31318098d20c27ae0f1f859858521ccfc9dca0207e8efe4457bc08eec31e55ef",
+      "owner": "engine",
+      "notes": "The ' and \" show-text operators. \" is absent from pdf-inspector's operator match, so its text vanishes silently and adjacent runs merge with corrupt geometry (checklist P6). Three runs expected, one per operator (M3)."
+    },
+    {
+      "id": "horizontal-scaling-tz",
+      "root": "engine",
+      "group": "engine",
+      "path": "horizontal-scaling-tz/document.pdf",
+      "sha256": "sha256:1b63003371aaf0dac71f042a44b9a984371d99826c3ccaa699ac153de503f436",
+      "owner": "engine",
+      "notes": "Tz horizontal scaling, which pdf-inspector implements nowhere. The same string at Tz 100 and Tz 50 must produce advances in exactly a 2:1 ratio (M3)."
+    },
+    {
+      "id": "synthesized-space-tj",
+      "root": "engine",
+      "group": "engine",
+      "path": "synthesized-space-tj/document.pdf",
+      "sha256": "sha256:7499ef69dab4f5314b43b0142ae1d6cb6caadec415fd33be3552f6c102935ca7",
+      "owner": "engine",
+      "notes": "A TJ adjustment of -500 thousandths: a word gap the document never wrote as a space glyph. The inserted space must be flagged at the character (M3)."
+    },
+    {
+      "id": "measured-ink-box",
+      "root": "engine",
+      "group": "engine",
+      "path": "measured-ink-box/document.pdf",
+      "sha256": "sha256:2c909bf14db297c4462ca653331a5bf08bd54300f72800caae63b7e72f590493",
+      "owner": "engine",
+      "notes": "Carries a /FontDescriptor with Ascent 718 / Descent -207, so the MEASURED ink path is exercised. Every other fixture takes the typed-absence path (M3)."
     }
   ]
 }

@@ -1,9 +1,10 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M2 complete.** `engine-core` owns the contract types (M1); `engine-pdf` now opens
-PDFs and classifies them — reason codes on two orthogonal axes, per-page counts, bounded sampling,
-three exit codes — and `engine classify` emits a canonical artifact. No text extraction exists.
-**Next: M3.**
+**Status:** **M3 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
+extracts position-aware text runs from it (M3): an exhaustive operator table that fails closed,
+`PdfLocator` on every run, measured or typed-absent ink boxes, synthesized-character flags, and
+the ligature caveat on the wire. `engine classify` and `engine extract` both emit canonical
+artifacts. **Next: M4.**
 
 ---
 
@@ -13,9 +14,10 @@ three exit codes — and `engine classify` emits a canonical artifact. No text e
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M3.** M0, M1 and M2 are done and committed; do not re-author the workspace, the
-   contract types, or the classifier. M3 adds extraction to `engine-pdf` using the same
-   `Document` handle `classify` already takes — it must not reopen the file
+5. **Implement M4.** M0–M3 are done and committed; do not re-author the workspace, the contract
+   types, the classifier, or the extractor. M4 turns the ad-hoc `not_detected` / `not_decoded`
+   lists into real capability and limitation declarations, adds per-page state and the coverage
+   summary, and makes the multi-column limitation explicit
 
 **Before you touch anything, run the gate** so you know the baseline you inherited:
 
@@ -26,9 +28,9 @@ cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
 Green, with `oracle_agrees_on_simple_text` failing when unskipped, is the correct state — not a bug
 to fix. That one exclusion holds until M6.
 
-**`engine-core` is closed to format concepts.** M2 and M3 add PDF work in `engine-pdf`, which
-depends on `engine-core` and never the other way round. A test scans `engine-core`'s sources and
-fails if a PDF import, a float outside `quantize`, or the token `confidence` appears.
+**`engine-core` is closed to format concepts.** All PDF work lives in `engine-pdf`, which depends
+on `engine-core` and never the other way round. A test scans `engine-core`'s sources and fails if a
+PDF import, a float outside `quantize`, or the token `confidence` appears.
 
 Then, as needed:
 
@@ -51,7 +53,7 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
-| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2 classification artifact. Not a shipped contract | When you need the wire shape of an `engine-core` type |
+| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
 
 ---
@@ -63,13 +65,13 @@ Then, as needed:
 | **M0** | Repo skeleton + toolchain + deny + failing oracle harness | — | **done** |
 | **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **done** |
 | **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | **done** |
-| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **next** |
-| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | — |
+| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **done** |
+| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | **next** |
 | **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | — |
 | **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | — |
 | **M7** | CLI + library freeze + v0 exit criteria green | M6 | — |
 
-M2 and M3 both depend only on M1. M2 is done; M3 is next. Everything else is a chain.
+M2 and M3 both depended only on M1; both are done. Everything else is a chain.
 
 ---
 
@@ -119,7 +121,12 @@ Grep for `TODO(` to find them. Currently:
 - ~~`TODO(M3)` — `BackendIdentity::default().version` placeholder~~ **Closed at M2.** `lopdf` is now
   a real dependency and the profile carries its resolved version, `0.44.0`. The pinned profile
   digest moved as a result, which is the mechanism working: a backend change is fingerprint-visible.
-- **`not_detected` is M2's stand-in for capability declarations.** The classification artifact
-  declares `garbled` and `multi-column` as reasons it never emits, with the reason why. The full
-  capability/limitation machinery lands at **M4** and should absorb this list rather than sit
-  beside it.
+- **`not_detected` (M2) and `not_decoded` (M3) are stand-ins for capability declarations.** The
+  classification artifact declares reason codes it never emits; the extract artifact declares
+  decoding gaps (absent font widths, form XObjects). The full capability/limitation machinery
+  lands at **M4** and should absorb both lists rather than sit beside them.
+- **Adobe predefined CMaps, Core-14 AFM widths and the full Adobe Glyph List are not vendored.**
+  Each makes the engine fail closed with a named error, and each is declared on the wire. See
+  [`vendor/README.md`](../vendor/README.md) for the reasoning and what would change if they land.
+- **`skrifa` is pinned to 0.39**, not the current 0.44, because the newer tree requires Rust 1.89
+  and this workspace pins 1.88. Revisit when the toolchain moves.

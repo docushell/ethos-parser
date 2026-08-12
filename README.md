@@ -10,21 +10,24 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 ## Status
 
-**M2 complete. Classification works; extraction does not yet.** The artifact contract is Rust
+**M3 complete. Classification and extraction both work.** The artifact contract is Rust
 (`engine-core`), frozen *before* any parser was written so it is shaped by what a verifier needs
-rather than by a parser's accidents. `engine-pdf` opens a PDF once and reports what it observed:
-per-page counts and named reason codes on two orthogonal axes, with a derived boolean and no
-confidence score anywhere.
+rather than by a parser's accidents.
 
 ```bash
-engine classify document.pdf   # canonical JSON on stdout; exit 0 / 1 / 2
+engine classify document.pdf   # counts and reason codes; exit 0 / 1 / 2
+engine extract  document.pdf   # position-aware text runs; exit 0 / 2
 ```
 
-`engine-grounding` is still a skeleton, `extract` is not implemented, and the oracle test fails on
-purpose with a diagnostic naming everything still missing.
+Extraction interprets content streams against an **exhaustive** operator table — an unrecognised
+operator stops the parse instead of being skipped — puts a native locator on every run, and
+reports an ink box only when it was measured.
+
+`engine-grounding` is still a skeleton, and the oracle test fails on purpose with a diagnostic
+naming everything still missing.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
-- **Next milestone:** **M3** — extract
+- **Next milestone:** **M4** — capabilities and coverage
   ([`docs/05-MILESTONES.md`](docs/05-MILESTONES.md))
 
 ## Building

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:extract:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §3 (coordinates), §4 (c14n/quanta), §5 (locators and typed absence), §6 (derivation), §9 (no confidence). Written from crates/engine-pdf/src/{extract,nodes}.rs. This is NOT DocumentRepresentation v0 — that envelope and the grounding projection land at M5.",
+  "title": "Extract artifact (DRAFT)",
+  "description": "Position-aware text runs whose origins are trustworthy, whose boxes are measured or typed-absent, and whose parse stopped rather than silently dropping content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "identity",
+    "source",
+    "reading_order_rule",
+    "page_count",
+    "pages",
+    "not_decoded"
+  ],
+  "properties": {
+    "identity": {
+      "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0",
+      "description": "artifact_type is `ethos.engine.extract.v0`; schema_version is `0.1.0`. Both DRAFT."
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["media_type", "sha256"],
+      "properties": {
+        "media_type": { "const": "application/pdf" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "reading_order_rule": {
+      "type": "string",
+      "$comment": "`single-column-v1` at v0: runs appear in content-stream order with no reordering. A two-column document therefore comes out column-by-column in whatever order the stream wrote them, which is visibly wrong and honestly so. Multi-column ships at v1 with a stable rule; pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page.",
+      "examples": ["single-column-v1"]
+    },
+    "page_count": { "type": "integer", "minimum": 0 },
+    "pages": { "type": "array", "items": { "$ref": "#/$defs/page_extract" } },
+    "not_decoded": {
+      "type": "array",
+      "description": "Gaps this profile declares rather than papering over.",
+      "$comment": "Three kinds occur today. `font-widths`: a standard-14 font with no /Widths, whose built-in AFM metrics this profile does not vendor — the advance is reported absent rather than guessed. `form-xobject`: text inside a form XObject drawn with `Do` is not descended into. A predefined Adobe CMap would produce a third. Declaring them matters because an empty run list otherwise reads as 'no text here'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "detail"],
+        "properties": {
+          "kind": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "page_extract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "width", "height", "rotation", "runs"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1, "$comment": "1-based, as the document numbers its pages." },
+        "width": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints, AFTER rotation: a quarter turn swaps the visible dimensions." },
+        "height": { "type": "integer", "minimum": 0 },
+        "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
+        "runs": { "type": "array", "items": { "$ref": "#/$defs/text_run" } }
+      }
+    },
+    "text_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "char_codes",
+        "scalar_code_mismatch",
+        "synthesized",
+        "font_id",
+        "font_size",
+        "locator",
+        "geometry",
+        "derivation"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "text": { "type": "string" },
+        "char_codes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "$comment": "NOT 1:1 with `text`. A ligature is one code and several scalars: the fi glyph is code 0x03 and characters f and i. The ligature-fi fixture produces 11 characters from 9 codes."
+        },
+        "scalar_code_mismatch": {
+          "type": "boolean",
+          "$comment": "True when text.chars().count() != char_codes.len(). DECLARED, not reconciled — reconciling means dropping one side or the other. LiteParse notes the same caveat in a doc comment; this puts it on the wire where a consumer can act on it."
+        },
+        "synthesized": {
+          "type": "array",
+          "description": "Characters this reader inserted. Empty for a run taken verbatim from the document.",
+          "$comment": "Generalises LiteParse's `trailing_space_generated`, the best honesty field in the four surveyed projects (checklist L6). A reader that inserts a character has authored content, and unflagged authored content is indistinguishable from evidence. Flagged AT CREATION, not reconstructed later.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["char_index", "reason"],
+            "properties": {
+              "char_index": { "type": "integer", "minimum": 0 },
+              "reason": { "type": "string", "enum": ["tj-gap"] }
+            }
+          }
+        },
+        "font_id": { "type": "string" },
+        "font_size": {
+          "type": "integer",
+          "minimum": 0,
+          "$comment": "Integer centipoints. NEVER used as a box height — pdf-inspector's TextItem.height is literally the same variable as font_size (checklist P5), which is why a separate measured geometry exists."
+        },
+        "locator": { "$ref": "#/$defs/pdf_locator" },
+        "geometry": { "$ref": "urn:ethos-engine:draft-schema:geometry:0" },
+        "mcid": {
+          "type": "integer",
+          "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."
+        },
+        "derivation": { "$ref": "urn:ethos-engine:draft-schema:derivation-class:0" }
+      }
+    },
+    "pdf_locator": {
+      "title": "NativeLocator, PDF variant",
+      "description": "Required on every run. Page plus baseline origin plus advance, in integer centipoints, in the declared top-left coordinate system after page rotation.",
+      "$comment": "The origin is the fingerprint-critical primitive: two independent PDF stacks agree on character origin to 0.001 pt while disagreeing on height by 6.174 pt. That asymmetry is why origins are identity and boxes are inspection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "origin_x", "origin_y"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "origin_x": { "type": "integer" },
+        "origin_y": { "type": "integer" },
+        "advance": {
+          "type": "integer",
+          "$comment": "OMITTED, not zero, when the document carries no width information. A standard-14 font may legally omit /Widths and expect built-in AFM metrics, which this profile does not vendor — so the advance is unknown, and unknown is what it says. The origin is unaffected: it comes from the content stream, not from the font."
+        }
+      }
+    }
+  }
+}

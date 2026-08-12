@@ -13,6 +13,16 @@ engine-core.workspace = true
 lopdf = { version = "0.44.0", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
+# `skrifa` 0.39, not the current 0.44: the newer tree needs Rust 1.89 and this workspace pins
+# 1.88 deliberately (see rust-toolchain.toml). 0.39 is the newest version that builds on the
+# pinned compiler.
+#
+# `skrifa` rather than `ttf-parser`, which the milestone named: RUSTSEC-2026-0192 records that
+# ttf-parser's author declared it unmaintained with no safe upgrade available, and names skrifa
+# (Google Fonts' fontations project) as the maintained successor. Swapping beats ignoring the
+# advisory.
+skrifa = "0.39.0"
 
 [dev-dependencies]
+lopdf = { version = "0.44.0", default-features = false }
 serde_json.workspace = true

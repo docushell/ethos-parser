@@ -17,14 +17,17 @@ authority. Where these and the contract disagree, the contract is right.
 | [`geometry.draft.json`](geometry.draft.json) | `QRect` as `[x0, y0, x1, y1]`, and typed absence | §5.2, §5.3 |
 | [`error-taxonomy.draft.json`](error-taxonomy.draft.json) | The six routable error kinds | §8 |
 | [`classification.draft.json`](classification.draft.json) | The M2 classification artifact: counts, the two reason axes, the derived boolean, `not_detected` | §2, §8, §9 |
+| [`extract.draft.json`](extract.draft.json) | The M3 extract artifact: text runs, `PdfLocator`, synthesized flags, the ligature caveat, `not_decoded` | §3, §4, §5, §6 |
 
 ## What is deliberately not here
 
-**A `DocumentRepresentation v0` skeleton.** It was optional for M1 and is omitted rather than
-guessed: the companion spec settles the *node* shape (stable id, kind, parent, ordinal, text/value,
-attributes, required `NativeLocator`, optional `StructuralLocator`, optional `RenderedLocator`) but
-the engine has no nodes to put in it until M3. A skeleton written now would be an invented shape
-that later work would have to argue with. It lands at M5, alongside the emit that populates it.
+**A `DocumentRepresentation v0` skeleton.** The companion spec settles the *node* shape (stable id,
+kind, parent, ordinal, text/value, attributes, required `NativeLocator`, optional
+`StructuralLocator`, optional `RenderedLocator`), and as of M3 the engine has real nodes —
+`extract.draft.json` describes them. What is still missing is the **envelope**: the processing run,
+the representation fingerprint, per-page state, and the coverage summary. Those are M4 and M5 work,
+and writing the envelope before the capability machinery exists would be an invented shape that
+later work would have to argue with.
 
 ## Relationship to the Rust
 

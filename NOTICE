@@ -5,19 +5,31 @@ This product includes software developed by the ethos-engine maintainers,
 licensed under the Apache License, Version 2.0.
 
 --------------------------------------------------------------------------------
-Reserved: vendored Adobe CMap resources
+Character encoding data
 --------------------------------------------------------------------------------
 
-This file reserves the attribution for character-map data to be vendored under
-vendor/cmaps/ at milestone M3 (see docs/05-MILESTONES.md).
+The simple-font encoding tables in crates/engine-pdf/src/encoding.rs
+(WinAnsiEncoding, the ASCII range of StandardEncoding, and a glyph-name subset
+for /Differences) are transcriptions of PDF 32000-1 (ISO 32000-1:2008) Annex D,
+a published specification. They were authored for this project.
 
-That data — the Adobe CMap resources and associated glyph-name tables — is
-distributed by Adobe Systems Incorporated under the BSD 3-Clause License. Its
-full licence text and copyright notice will be reproduced in vendor/cmaps/
-alongside the data itself when it lands.
+--------------------------------------------------------------------------------
+Adobe CMap resources: NOT PRESENT
+--------------------------------------------------------------------------------
 
-The data is vendored rather than fetched: it does not churn, regenerating it is
-pure cost, and a build that reaches the network to obtain it is a build whose
-output depends on the network (docs/04-ARCHITECTURE.md §5).
+No Adobe CMap resource files (.bcmap or otherwise) are present in this
+repository, so no Adobe BSD 3-Clause notice is currently required.
 
-No CMap data is present in this repository yet.
+The M3 plan called for vendoring the ~168 predefined CJK CMaps. They are not
+here, and that is a declared decision rather than an oversight: nothing in the
+conformance corpus exercises them, and committing binary data that no test
+touches means shipping data nobody has verified. A document naming a predefined
+CMap is REFUSED with a named error rather than decoded approximately, and the
+gap is declared in every extract artifact's `not_decoded` list.
+
+When those files land — with a fixture that proves they work — they belong under
+vendor/cmaps/ with the Adobe BSD 3-Clause licence text reproduced there and this
+section replaced by the attribution.
+
+See vendor/README.md for the full vendoring posture, including the Core-14 AFM
+width tables and the Adobe Glyph List, which are absent for the same reason.

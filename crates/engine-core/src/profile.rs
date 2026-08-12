@@ -39,12 +39,18 @@ use crate::identity::{CoordinateSystem, Sha256Hex};
 /// it gets a new id here rather than silently replacing this one.
 pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
 
-/// Sentinel for the CMap data version until the tables are vendored at M3.
+/// Identity of the character-decoding data this profile carries.
 ///
-/// An explicit sentinel rather than an empty string or an omitted field: it is still hashed, so
-/// the profile that produced today's output is distinguishable from the one that will exist
-/// once real CMap data lands.
-pub const CMAP_DATA_ABSENT: &str = "absent-until-m3";
+/// Names what is **actually** vendored rather than what was planned. At M3 that is the
+/// PDF 32000-1 Annex D encoding tables — `WinAnsiEncoding`, the ASCII range of
+/// `StandardEncoding`, and a glyph-name subset — held in `engine-pdf`'s `encoding` module.
+///
+/// The Adobe predefined CJK CMaps are **not** carried, so a document naming one is refused
+/// rather than decoded approximately. That is a declared limitation, recorded in every extract
+/// artifact's `not_decoded` list and in `vendor/README.md`. When those files land this string
+/// changes, which moves `profile_sha256` — artifacts from before and after are then correctly
+/// non-comparable, because they really were produced by different decoders.
+pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
 
 /// Identity of the object/xref backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,7 +156,7 @@ pub struct Profile {
     pub capabilities: Capabilities,
     /// Version id of the reading-order rule in force.
     pub reading_order_rule: String,
-    /// Version of the vendored CMap data, or [`CMAP_DATA_ABSENT`].
+    /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
 }
 
@@ -164,7 +170,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
-            cmap_data_version: CMAP_DATA_ABSENT.to_string(),
+            cmap_data_version: CMAP_DATA_VERSION.to_string(),
         }
     }
 }
@@ -354,7 +360,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"absent-until-m3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -362,7 +368,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:6a37a9bcec39dfd4ddadacc782a663e043f80f91dc2bb8d1869417bf9219bf71"
+            "sha256:228f82b817b7c829fdb1c466fcaac748cf32c2e3768f7e18b177384fa4fdef79"
         );
     }
 
