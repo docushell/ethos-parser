@@ -107,6 +107,12 @@ asserts the *declared limitation*, not correct order.
 | `fixtures/failure/` | 5 | `corrupt-header-valid`, `image-only-or-blank-page`, `invalid-header`, `memory-limit-simulated`, `password-protected` |
 | `fixtures/foreign/opendataloader/real/` | 1 | Foreign-adapter round trip |
 
+**Plus three benchmark documents, in a second root.** M2's acceptance names `nist-sp-800-53r5`
+(492 pp, the bounded-cost A/B), `nist-sp-800-63b` (80 pp) and `irs-form-1040-2025` (2 pp, the
+exit-code-0 case). None is in `fixtures/` — they live at `ethos/benchmarks/gate-zero/corpus/`, and
+the manifest resolves them through a `benchmark` root (`ETHOS_BENCH_CORPUS`). They are hash-pinned
+like everything else and **do not count toward the 15**.
+
 Plus **one engine-authored CC0 fixture**, added at M5: a PDF with unusable font metrics, exercising
 the geometry-omission path. It is the only fixture this repo owns, because the Ethos corpus has none
 for that case. **The 15-fixture oracle criterion is unchanged** — it is the Ethos conformance corpus,

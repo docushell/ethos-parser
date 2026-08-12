@@ -335,8 +335,20 @@ exactly these fields and nothing else.
 | `tables` | optional | `[{id, page, bbox, cells:[{row, col, row_span, col_span, bbox, text}]}]` | **not emitted in v0** |
 
 **`bbox` is `[x0, y0, x1, y1]`** — left, top, right, bottom — in integer centipoints, matching
-Ethos's `QRect`. Not `[x, y, w, h]`. The schema enforces `x1 ≥ 1`, `y1 ≥ 1` and Ethos fails closed on
-non-positive area.
+Ethos's `QRect`. Not `[x, y, w, h]`. The schema enforces `x1 ≥ 1` and `y1 ≥ 1`.
+
+**Zero-area boxes: the engine is stricter than the oracle, deliberately.** Ethos's `QRect::new`
+(`ethos-core/src/geom.rs:87`) rejects only `x0 > x1 || y0 > y1`, so a **degenerate `x0 == x1` box is
+accepted** on the grounding path; the non-positive-area rejection at `crop_element.rs:284` is on the
+*crop* path and does not run here. The grounding schema does not exclude it either. So a zero-area
+box is not a shared error — it is something ethos-engine refuses to *emit* while Ethos would accept
+it. State it that way round, and never as "matching Ethos's fail-closed behaviour."
+
+This asymmetry is safe for the M6 oracle test because that test compares `structure`,
+`source_binding`, `representation_sha256` and `counts` — not per-box validity — and because being
+stricter means the engine never produces an artifact Ethos would reject. **A future stricter
+*emission* rule must be checked against this direction before it lands:** the engine may refuse to
+emit what the oracle tolerates, never the reverse.
 
 **Three things the adapter must confront honestly, and none of them is a bug in the adapter:**
 

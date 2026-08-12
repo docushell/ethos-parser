@@ -113,6 +113,12 @@ stable.
 manifest that references them by path and `sha256`; it does not copy them and it never modifies them.
 Copying invites drift; a hash-pinned manifest makes a fixture change a visible event in this repo.
 
+**Two roots, each independently overridable.** `conformance` (`ETHOS_FIXTURES`, default
+`../ethos/fixtures`) holds the 15 the M6 criterion counts. `benchmark` (`ETHOS_BENCH_CORPUS`,
+default `../ethos/benchmarks/gate-zero/corpus`) holds the large real-world PDFs M2's acceptance
+names — the 492-page bounded-cost A/B document is not in `fixtures/` and never was. Separate roots
+keep benchmark documents from inflating the 15.
+
 **One exception, and it is enumerated rather than open.** Where the Ethos corpus has no fixture for a
 behaviour this engine must test, the engine authors its own under CC0, stores it here, and marks it
 `owner: "engine"` in the manifest. Today that is exactly one: the **absent-font-metrics** fixture that
@@ -127,7 +133,7 @@ deterministic external oracle to agree with:
 ethos grounding check <file> --source-artifact <pdf>
 ```
 
-`tests/oracle.rs` runs both, across all 15 fixtures, and asserts byte-identical agreement on
+`crates/engine-cli/tests/oracle.rs` runs both, across all 15 fixtures, and asserts byte-identical agreement on
 `structure`, `source_binding`, `representation_sha256`, and `counts`. This is a CI job, not a claim.
 
 **The Ethos binary is a test-time dependency, not a runtime one.** Its absence fails the oracle test

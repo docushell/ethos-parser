@@ -43,12 +43,20 @@ M5. Skipping ahead means rewriting.
   closed with exit 2; CI green except the one test that is meant to fail.
 
 - **Acceptance tests:**
-  - `cargo build --workspace` and `cargo test --workspace` succeed; `clippy -D warnings` and
-    `fmt --check` clean.
-  - `cargo deny check` passes and **fails** when an AGPL crate is added to a scratch branch — proved,
-    not assumed.
-  - `tests/oracle.rs` **fails** with a message naming what is missing (no implementation yet), not
-    with a panic, a skip, or `todo!()`.
+  - **The M0 gate, stated exactly** — these two together, because a bare `cargo test --workspace`
+    exits non-zero at M0 *by design* and asserting otherwise would be a contradiction:
+    - `cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text` is **green**
+    - the unskipped `oracle_agrees_on_simple_text` **fails** with the named M1–M6 diagnostic
+    <br>**Do not resolve this by making the bare command green.** Every mechanical route —
+    `#[ignore]`, deleting the test, weakening it to a `return` — destroys the milestone, and the
+    test's own diagnostic forbids it in as many words. The exclusion is the gate, and it is the
+    same exclusion CI encodes.
+  - `cargo build --workspace --locked` succeeds; `clippy -D warnings` and `fmt --check` clean.
+  - `cargo deny check` passes, and the AGPL probe **fails with exit code 4 and names
+    `engine-core`** — proving the gate fired for *that* reason, not merely that cargo-deny was
+    unhappy. Any non-zero exit would also match a config typo.
+  - `crates/engine-cli/tests/oracle.rs` **fails** with a message naming what is missing (no
+    implementation yet), not with a panic, a skip, or `todo!()`.
   - The oracle harness locates the `ethos` binary and **errors loudly if absent** — never skips.
   - **`ETHOS_BIN` is authoritative, not a hint.** Set to a non-existent path, the harness fails hard
     rather than falling back to another binary. Resolving silently to a verifier nobody chose is
@@ -65,6 +73,12 @@ M5. Skipping ahead means rewriting.
   - [ ] The Ethos tree is untouched (`git -C ../ethos status` clean)
   - [ ] The failing test fails with a diagnostic, not a `todo!()` panic
   - [ ] No `src/` file contains logic yet
+  - [ ] **Every negative-path acceptance criterion has a committed test**, not prose. The
+        `ETHOS_BIN` hard-fail and the mutated-hash detection are branches; an assertion nobody has
+        watched fail is an assertion nobody has tested
+  - [ ] Env-dependent behaviour is tested through a parameterised function, never by mutating
+        process env — `set_var` races the threaded test harness and corrupts sibling tests
+  - [ ] The manifest's declared counts are validated against its own array
 
 - **Depends on:** nothing.
 
@@ -294,8 +308,10 @@ M5. Skipping ahead means rewriting.
     `schema_version == "1.0.0"`, `source.media_type == "application/pdf"`,
     `source.sha256` matches the fixture bytes, `coordinate_system == {centipoint, top-left}`,
     `capabilities.tables == false`.
-  - **`bbox` is `[x0, y0, x1, y1]`** in integer centipoints, with `x1 > x0` and `y1 > y0`; a
-    zero-area box is a hard error, matching Ethos's fail-closed behaviour.
+  - **`bbox` is `[x0, y0, x1, y1]`** in integer centipoints, with `x1 > x0` and `y1 > y0`. A
+    zero-area box is a hard error **in the engine** — note this is *stricter* than the oracle, which
+    accepts `x0 == x1` (`ethos-core/src/geom.rs:87` rejects only `x0 > x1`). Stricter-on-emission is
+    the safe direction and the only one permitted; see `01-CONTRACT.md` §11.
   - **Pages are 1-indexed**, and `rotation ∈ {0, 90, 180, 270}` with `synthetic/rotation-90`
     asserting `90`.
   - **Geometry-absent nodes are omitted from the grounding artifact and counted** in a declared
@@ -339,7 +355,7 @@ M5. Skipping ahead means rewriting.
   say the same thing, byte for byte, across the whole corpus.
 
 - **In:** `grounding-check` implementing **JSON Schema validation only**, plus source-byte binding via
-  `--source-artifact`; the `ethos.grounding_validation.v1` report shape; `tests/oracle.rs` extended to
+  `--source-artifact`; the `ethos.grounding_validation.v1` report shape; `crates/engine-cli/tests/oracle.rs` extended to
   all 15 fixtures; the double-run byte-identity harness.
 
 - **Out:** **Any verification semantics whatsoever.** `grounding-check` validates structure and

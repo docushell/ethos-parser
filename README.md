@@ -10,12 +10,28 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 ## Status
 
-**Docs bootstrap. Pre-code.** There is no Rust in this repository yet, by design. The artifact
-contract is frozen before the parser is written so the contract is shaped by what a verifier needs,
-not by a parser's accidents.
+**M0 complete. No parsing yet.** The workspace, the pinned toolchain, the dependency policy, the
+fixture manifest and the oracle harness exist. The four crates are skeletons: `engine` exits 2 with
+a named reason, and the oracle test fails on purpose with a diagnostic naming everything still
+missing. The artifact contract was frozen before any parser was written, so it is shaped by what a
+verifier needs rather than by a parser's accidents.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
-- **Then:** implement **M0** from [`docs/05-MILESTONES.md`](docs/05-MILESTONES.md), and nothing else
+- **Next milestone:** **M1** — contract types, c14n, integer quanta
+  ([`docs/05-MILESTONES.md`](docs/05-MILESTONES.md))
+
+## Building
+
+```bash
+cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
+```
+
+That exclusion is deliberate and is the M0 gate. `oracle_agrees_on_simple_text` fails until M6, with
+a diagnostic naming each missing milestone. Do not `#[ignore]` or delete it to get a green run.
+
+The oracle harness needs the Ethos repo for its fixture corpus and CLI. It resolves
+`../ethos/fixtures` and `../ethos/target/release/ethos` by default; override with `ETHOS_FIXTURES`
+and `ETHOS_BIN`. Absence is a failure, never a skip.
 
 ## What it will do first (v0)
 

@@ -5,68 +5,141 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege. Both jobs check out a second repository and job 1 compiles and executes it,
+# so the token this workflow carries should be able to do nothing but read.
+permissions:
+  contents: read
+
+# The oracle build is the slowest step and is not covered by rust-cache (it lands in
+# ethos-oracle/target). Superseded runs are therefore expensive, not cheap — cancel them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  # Pinned the way the compiler is: one place, explicit, greppable, bumped deliberately.
+  # 0.20.2 is a floor, not a preference — 0.18.3 aborts the whole advisories check on any
+  # RustSec entry carrying a CVSS 4.0 vector (see deny.toml).
+  CARGO_DENY_VERSION: "0.20.2"
+  # The Ethos commit this engine is oracled against. Pinned for the same reason the fixture
+  # corpus is pinned by sha256: docs/07-VERIFY-BOUNDARY.md §4 requires a verifier swap to be
+  # visible. Unpinned, every run silently tests against whatever `main` is at that instant and
+  # no ethos-engine commit records which verifier answered.
+  #
+  # 5cb9f9b == ethos 0.6.0 work ("fix(ci): repair the release workflow's Windows version step").
+  # Bump deliberately, in its own commit, and re-run the oracle test when you do.
+  ETHOS_ORACLE_REF: "5cb9f9bce4f6eb551632792289bf70ed4bd8c363"
 
 jobs:
   check:
     name: build · test · clippy · fmt · deny
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       # The oracle is a test-time dependency. Its absence is a FAILURE, never a skip
       # (docs/04-ARCHITECTURE.md §4), so the corpus and the verifier must both be present.
       #
-      # TODO(ci): while docushell/ethos is private this needs a PAT in `token:`. Do not "fix"
-      # a checkout failure by making the oracle steps optional — that reintroduces the skip.
+      # docushell/ethos is PUBLIC, so the default GITHUB_TOKEN clones it. Do NOT add a `token:`
+      # here: secrets are not exposed to workflow runs from forked repositories, so a
+      # `${{ secrets.* }}` token would interpolate to empty and break every fork PR — turning a
+      # working checkout into a broken one. If the repo ever goes private, that is the moment to
+      # revisit, and the fix is a PAT, never making these steps optional.
       - name: Check out Ethos (fixture corpus + CLI oracle)
         uses: actions/checkout@v4
         with:
           repository: docushell/ethos
+          ref: ${{ env.ETHOS_ORACLE_REF }}
           path: ethos-oracle
+          persist-credentials: false
 
-      # rust-toolchain.toml pins 1.88.0; this action honours it.
-      - uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml is what actually selects 1.88.0: rustup re-reads it on every cargo
+      # invocation and it outranks the rustup default. This action does not read that file — it
+      # is here only to preinstall a toolchain and the rustfmt/clippy components. Naming 1.88.0
+      # explicitly keeps the two in agreement instead of installing `stable` and relying on
+      # rustup to quietly fetch 1.88.0 afterwards.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.88.0"
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # The oracle builds into ethos-oracle/target, outside the default `.` workspace, so
+          # without this it is the one expensive step the cache never covers.
+          workspaces: |
+            .
+            ethos-oracle
 
+      # Assert the pin rather than trusting it. If rust-toolchain.toml is ever moved or renamed,
+      # cargo silently falls back to the rustup default and the "same compiler everywhere"
+      # contract fails open. This is the tripwire.
+      - name: Assert the toolchain pin is in force
+        run: |
+          set -euo pipefail
+          want="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' rust-toolchain.toml | head -1)"
+          got="$(cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "rust-toolchain.toml wants $want; cargo reports $got"
+          [ "$want" = "$got" ] || { echo "::error::toolchain pin not in force"; exit 1; }
+
+      # RUSTFLAGS is set per-step, never at workflow level: at workflow level it would also
+      # apply here, holding Ethos's source to a lint gate Ethos does not run on itself. A
+      # warning in another repo would then fail this repo's CI with no fix available here.
       - name: Build the oracle
         working-directory: ethos-oracle
-        run: cargo build --release --bin ethos
+        run: cargo build --release --locked --bin ethos
+
+      - name: Record the oracle identity
+        run: |
+          ./ethos-oracle/target/release/ethos --version
+          echo "oracle ref: ${{ env.ETHOS_ORACLE_REF }}"
 
       - name: fmt
         run: cargo fmt --all --check
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: build
-        run: cargo build --workspace
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo build --workspace --locked
 
       - name: test
         env:
+          RUSTFLAGS: "-D warnings"
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
-        # M0: `oracle_agrees_on_simple_text` fails by design until M6. Until then CI runs the
-        # preconditions and reports the oracle test's failure without gating the build on it.
+          ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
+        # M0: `oracle_agrees_on_simple_text` fails by design until M6. Everything else must be
+        # green. This exclusion is the milestone gate, stated the same way in
+        # docs/05-MILESTONES.md M0 acceptance.
         # DELETE THIS EXCLUSION AT M6 — it is the last thing M6 does.
-        run: cargo test --workspace -- --skip oracle_agrees_on_simple_text
+        run: cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
 
-      - name: oracle status (informational until M6)
+      - name: oracle status (expected to fail until M6)
         continue-on-error: true
         env:
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
-        run: cargo test --workspace oracle_agrees_on_simple_text
+        run: cargo test --workspace --locked oracle_agrees_on_simple_text
+
+      # Installed rather than run via EmbarkStudios/cargo-deny-action, for two reasons:
+      #   1. That action exposes no input to pin the cargo-deny version — its only version
+      #      control is the action ref itself, which hides the tool version behind a tag.
+      #   2. Its `arguments` input defaults to `--all-features`, and cargo-deny ORs that with
+      #      the config, so deny.toml's `[graph] all-features = false` cannot switch it back
+      #      off. The gate would silently check a graph the committed config does not describe.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+        run: cargo deny check
 
   # Forced decision #14 ("no AGPL") is only real if it is tested. A policy nobody proves is a
   # policy that has already drifted.
@@ -74,28 +147,46 @@ jobs:
   # The probe flips a workspace crate's own licence field rather than pulling a third-party
   # AGPL crate. That keeps the proof self-contained: it cannot break because an upstream crate
   # relicensed, went yanked, or changed its feature graph, and it needs no network.
+  #
+  # It uses the same cargo-deny version and the same invocation as the gate above, so what is
+  # proven here is what actually runs on a PR.
   deny-policy-is-enforced:
     name: deny rejects AGPL (proof, not assumption)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-deny
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
 
       - name: Baseline — the gate passes as committed
         run: cargo deny check licenses
 
-      - name: Flip a crate to AGPL-3.0 and require rejection
+      - name: Flip a crate to AGPL-3.0 and require rejection for the right reason
         run: |
           set -euo pipefail
           sed -i 's/^license.workspace = true/license = "AGPL-3.0"/' crates/engine-core/Cargo.toml
           grep -q 'AGPL-3.0' crates/engine-core/Cargo.toml || {
             echo "::error::probe did not apply; the licence gate was never exercised"; exit 1; }
-          if cargo deny check licenses; then
-            echo "::error::cargo deny ACCEPTED AGPL-3.0. Forced decision #14 is not enforced."
-            exit 1
-          fi
-          echo "cargo deny correctly rejected AGPL-3.0."
+
+          set +e
+          out="$(cargo deny check licenses 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+
+          # Any non-zero exit would be "cargo-deny was unhappy" — a config typo or a network
+          # blip would pass for proof. Require the licence-rejection exit code (4) AND the
+          # crate name in the diagnostic, so this proves the gate fired for THIS reason.
+          [ "$code" -eq 4 ] || {
+            echo "::error::expected cargo-deny exit 4 (licence rejection), got $code"; exit 1; }
+          echo "$out" | grep -q 'engine-core' || {
+            echo "::error::cargo-deny failed, but not about engine-core's licence"; exit 1; }
+          echo "cargo deny correctly rejected AGPL-3.0 on engine-core (exit 4)."
 
       - name: Restore and confirm the tree is clean
         if: always()

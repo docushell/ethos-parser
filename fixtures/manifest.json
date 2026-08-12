@@ -1,11 +1,26 @@
 {
-  "manifest_version": "1",
-  "corpus_root_default": "../ethos/fixtures",
-  "corpus_root_env": "ETHOS_FIXTURES",
-  "fixture_count": 15,
+  "manifest_version": "2",
+  "roots": {
+    "conformance": {
+      "default": "../ethos/fixtures",
+      "env": "ETHOS_FIXTURES",
+      "note": "The 15-fixture conformance corpus. The M6 oracle criterion counts exactly these."
+    },
+    "benchmark": {
+      "default": "../ethos/benchmarks/gate-zero/corpus",
+      "env": "ETHOS_BENCH_CORPUS",
+      "note": "Large real-world PDFs named by M2 acceptance. Not part of the oracle count."
+    }
+  },
+  "counts": {
+    "conformance_ethos_owned": 15,
+    "benchmark": 3,
+    "engine_owned": 0
+  },
   "fixtures": [
     {
       "id": "synthetic/heading-export",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/heading-export/document.pdf",
       "sha256": "sha256:e5692f6b236da48f85790bffa68787a2d30ec2bcadf4e2d1e0ef9626787537b4",
@@ -14,6 +29,7 @@
     },
     {
       "id": "synthetic/hyphenated-line-break",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/hyphenated-line-break/document.pdf",
       "sha256": "sha256:7f079977e8438cea4f4b876b3f67380f047218133b3193d7bae8130ac327eeeb",
@@ -22,6 +38,7 @@
     },
     {
       "id": "synthetic/ligature-fi-embedded-font",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/ligature-fi-embedded-font/document.pdf",
       "sha256": "sha256:7f99a763d765ea0d880fcd871171ac4811e23b9fc7c3912a391276fcbdf6431e",
@@ -30,6 +47,7 @@
     },
     {
       "id": "synthetic/list-items",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/list-items/document.pdf",
       "sha256": "sha256:475e22fcc5d71e24d90204e0b06d82ca5620eebef7ec88aaad29378af9de4f1a",
@@ -38,6 +56,7 @@
     },
     {
       "id": "synthetic/rotation-90",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/rotation-90/document.pdf",
       "sha256": "sha256:1400858e1c0fa0255a037463b4e44df6f9d740ac33583cc590c4ac5cfd2fcc9d",
@@ -46,6 +65,7 @@
     },
     {
       "id": "synthetic/simple-text",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/simple-text/document.pdf",
       "sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
@@ -54,6 +74,7 @@
     },
     {
       "id": "synthetic/table-regular-grid",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/table-regular-grid/document.pdf",
       "sha256": "sha256:1ea9b32622e0bfc5b1465d9d78ad9eab8be31a7c8e760592ecc52c06cf0864ca",
@@ -62,6 +83,7 @@
     },
     {
       "id": "synthetic/two-columns",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/two-columns/document.pdf",
       "sha256": "sha256:de50aafb08219aa7fefdcb13ef8975ebf362f52f4d558c2d274ca711ce9d9d79",
@@ -70,6 +92,7 @@
     },
     {
       "id": "synthetic/two-lines",
+      "root": "conformance",
       "group": "synthetic",
       "path": "synthetic/two-lines/document.pdf",
       "sha256": "sha256:28d9c089bced8c913e6e0440a937f36581ed0b951384787930ba5c52f47a5359",
@@ -78,6 +101,7 @@
     },
     {
       "id": "failure/corrupt-header-valid",
+      "root": "conformance",
       "group": "failure",
       "path": "failure/corrupt-header-valid/document.pdf",
       "sha256": "sha256:0716f9264c9fe19f5d7455276107f3ddcc1d3497f63d60689a73558ae8a1bf5e",
@@ -86,6 +110,7 @@
     },
     {
       "id": "failure/image-only-or-blank-page",
+      "root": "conformance",
       "group": "failure",
       "path": "failure/image-only-or-blank-page/document.pdf",
       "sha256": "sha256:df69a01c6c61fb04fb4a4be2a53e920dccbd8956c32eb7ab53bf0f19b50f3e21",
@@ -94,6 +119,7 @@
     },
     {
       "id": "failure/invalid-header",
+      "root": "conformance",
       "group": "failure",
       "path": "failure/invalid-header/document.pdf",
       "sha256": "sha256:c52fa72b5f4be9a86cd7bf69559025bae760a974e1c9d998e33d6981993df412",
@@ -102,6 +128,7 @@
     },
     {
       "id": "failure/memory-limit-simulated",
+      "root": "conformance",
       "group": "failure",
       "path": "failure/memory-limit-simulated/document.pdf",
       "sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
@@ -110,6 +137,7 @@
     },
     {
       "id": "failure/password-protected",
+      "root": "conformance",
       "group": "failure",
       "path": "failure/password-protected/document.pdf",
       "sha256": "sha256:0c064a2fd0fcd34779a985470fa7a2c5d60caf47afc55ad5da99aba39ad50b22",
@@ -118,11 +146,39 @@
     },
     {
       "id": "foreign/opendataloader/real",
+      "root": "conformance",
       "group": "foreign",
       "path": "foreign/opendataloader/real/source.pdf",
       "sha256": "sha256:082f9f8c800fda43b13d097ccf3a603e1f8048987fb497fd2be4cba6817001ee",
       "owner": "ethos",
       "notes": "foreign-adapter round trip; the continuous proof that the BYO path is not decorative"
+    },
+    {
+      "id": "nist-sp-800-53r5",
+      "root": "benchmark",
+      "group": "benchmark",
+      "path": "nist-sp-800-53r5.pdf",
+      "sha256": "sha256:fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6",
+      "owner": "ethos-bench",
+      "notes": "492 pages. THE bounded-cost A/B fixture (M2): at N=8 it must complete within 20% of an 8-page PDF at similar bytes/page. This is the test that catches the pdf-inspector class of bug where Sample(8) is defeated by a full rescan"
+    },
+    {
+      "id": "nist-sp-800-63b",
+      "root": "benchmark",
+      "group": "benchmark",
+      "path": "nist-sp-800-63b.pdf",
+      "sha256": "sha256:ccfce7510a1267933f912d023306c6e7d485f21be63d271108b61aad6139127e",
+      "owner": "ethos-bench",
+      "notes": "80 pages. Multi-reason classification and 1-based page indexing (M2)"
+    },
+    {
+      "id": "irs-form-1040-2025",
+      "root": "benchmark",
+      "group": "benchmark",
+      "path": "irs-form-1040-2025.pdf",
+      "sha256": "sha256:3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
+      "owner": "ethos-bench",
+      "notes": "2 pages. The exit-code-0 (simple) case (M2). LiteParse classifies it SIMPLE with layout reason table-likely and no OCR-need reason -- the axis-independence case"
     }
   ]
 }

@@ -19,9 +19,9 @@
 //! byte-identical agreement on `structure`, `source_binding`, `representation_sha256` and
 //! `counts`.
 //!
-//! **At M0 the last test fails, deliberately and with a diagnostic.** That is the milestone: a
-//! harness that reports honestly on a repo with no implementation. The first three tests pass —
-//! they check preconditions that are real today.
+//! **At M0 `oracle_agrees_on_simple_text` fails, deliberately and with a diagnostic.** That is
+//! the milestone: a harness that reports honestly on a repo with no implementation. Every other
+//! test passes — they check preconditions and negative paths that are real today.
 //!
 //! Nothing here skips. An absent oracle binary, a missing corpus, or a hash mismatch is a
 //! **failure**, never a quiet pass. A harness that skips is a harness that reports green on a
@@ -68,15 +68,45 @@ fn read_manifest() -> serde_json::Value {
         .unwrap_or_else(|e| panic!("fixture manifest at {} is not valid JSON: {e}", p.display()))
 }
 
-/// Resolve the Ethos fixture corpus. `ETHOS_FIXTURES` wins; otherwise the manifest default.
-fn corpus_root(manifest: &serde_json::Value) -> PathBuf {
-    if let Ok(v) = std::env::var("ETHOS_FIXTURES") {
-        return PathBuf::from(v);
+/// Resolve one of the manifest's declared corpus roots by name.
+///
+/// Two roots exist because M2's acceptance names documents the conformance corpus does not
+/// contain: the bounded-cost A/B needs a 492-page PDF, and those live in Ethos's benchmark
+/// corpus, not `fixtures/`. Keeping them in separate roots stops benchmark documents from
+/// inflating the 15-fixture count the M6 oracle criterion is stated over.
+fn corpus_root(manifest: &serde_json::Value, root: &str) -> PathBuf {
+    let decl = &manifest["roots"][root];
+    assert!(
+        !decl.is_null(),
+        "manifest declares no root named `{root}`; known roots are {:?}",
+        manifest["roots"]
+            .as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default()
+    );
+
+    if let Some(var) = decl["env"].as_str() {
+        if let Ok(v) = std::env::var(var) {
+            return PathBuf::from(v);
+        }
     }
-    let rel = manifest["corpus_root_default"]
+    let rel = decl["default"]
         .as_str()
-        .expect("manifest declares corpus_root_default");
+        .unwrap_or_else(|| panic!("root `{root}` declares no default path"));
     repo_root().join(rel)
+}
+
+/// Every root a fixture entry actually references.
+fn referenced_roots(manifest: &serde_json::Value) -> Vec<String> {
+    let mut roots: Vec<String> = manifest["fixtures"]
+        .as_array()
+        .expect("fixtures array")
+        .iter()
+        .filter_map(|f| f["root"].as_str().map(str::to_owned))
+        .collect();
+    roots.sort();
+    roots.dedup();
+    roots
 }
 
 /// Resolve the Ethos CLI, preferring the repo build over whatever is on `PATH`.
@@ -90,9 +120,18 @@ fn corpus_root(manifest: &serde_json::Value) -> PathBuf {
 /// explicitly and got a different one silently is in the worst position of all: they believe
 /// they know which verifier answered.
 fn resolve_ethos_binary() -> Result<PathBuf, String> {
+    resolve_ethos_binary_from(std::env::var("ETHOS_BIN").ok())
+}
+
+/// The resolution rule, with the environment passed in rather than read.
+///
+/// Split out so the `ETHOS_BIN`-is-authoritative branch is testable without mutating process
+/// environment — `set_var` races across Rust's threaded test harness, so a test that set it
+/// could corrupt a sibling test rather than prove anything.
+fn resolve_ethos_binary_from(explicit: Option<String>) -> Result<PathBuf, String> {
     let mut tried = Vec::new();
 
-    if let Ok(v) = std::env::var("ETHOS_BIN") {
+    if let Some(v) = explicit {
         let p = PathBuf::from(&v);
         if p.is_file() {
             return Ok(p);
@@ -139,7 +178,23 @@ fn resolve_ethos_binary() -> Result<PathBuf, String> {
 // Preconditions. These pass at M0.
 // ---------------------------------------------------------------------------------------------
 
+/// Every workspace crate links and is reachable from the CLI.
+///
+/// Trivial by design — it exists so the `CRATE_NAME` constants have the use their doc comments
+/// claim, and so the four-crate wiring is asserted rather than assumed. At M1 the contract types
+/// replace this and the constants go away.
+#[test]
+fn every_workspace_crate_links() {
+    assert_eq!(engine_core::CRATE_NAME, "engine-core");
+    assert_eq!(engine_pdf::CRATE_NAME, "engine-pdf");
+    assert_eq!(engine_grounding::CRATE_NAME, "engine-grounding");
+}
+
 /// The manifest describes the corpus the M6 criterion counts.
+///
+/// Also checks the manifest's own declared counts against the array. Those numbers are repeated
+/// across six docs; unvalidated, an added or removed entry leaves every one of them silently
+/// wrong while the harness still passes.
 #[test]
 fn manifest_declares_fifteen_ethos_owned_fixtures() {
     let manifest = read_manifest();
@@ -155,10 +210,54 @@ fn manifest_declares_fifteen_ethos_owned_fixtures() {
     assert_eq!(
         ethos_owned, ETHOS_OWNED_FIXTURE_COUNT,
         "the M6 oracle criterion is stated over exactly {ETHOS_OWNED_FIXTURE_COUNT} \
-         Ethos-owned fixtures.\n\
-         Engine-owned fixtures are additional test assets and must not inflate that count \
-         (fixtures/README.md)."
+         Ethos-owned conformance fixtures.\n\
+         Benchmark and engine-owned fixtures are additional test assets and must not inflate \
+         that count (fixtures/README.md)."
     );
+
+    // The declared counts must match reality, or they are decoration.
+    for (key, actual) in [
+        (
+            "conformance_ethos_owned",
+            fixtures
+                .iter()
+                .filter(|f| {
+                    f["root"].as_str() == Some("conformance")
+                        && f["owner"].as_str() == Some("ethos")
+                })
+                .count(),
+        ),
+        (
+            "benchmark",
+            fixtures
+                .iter()
+                .filter(|f| f["root"].as_str() == Some("benchmark"))
+                .count(),
+        ),
+        (
+            "engine_owned",
+            fixtures
+                .iter()
+                .filter(|f| f["owner"].as_str() == Some("engine"))
+                .count(),
+        ),
+    ] {
+        let declared = manifest["counts"][key].as_u64().unwrap_or_else(|| {
+            panic!("manifest[\"counts\"][\"{key}\"] is missing or not a number")
+        });
+        assert_eq!(
+            declared as usize, actual,
+            "manifest counts.{key} says {declared} but the fixtures array has {actual}"
+        );
+    }
+
+    // Every fixture must name a root that actually exists in the roots table.
+    for root in referenced_roots(&manifest) {
+        assert!(
+            !manifest["roots"][&root].is_null(),
+            "a fixture references root `{root}`, which the roots table does not declare"
+        );
+    }
 }
 
 /// Every referenced fixture exists and hashes to what the manifest recorded.
@@ -168,23 +267,47 @@ fn manifest_declares_fifteen_ethos_owned_fixtures() {
 #[test]
 fn manifest_hashes_verify_against_the_ethos_tree() {
     let manifest = read_manifest();
-    let root = corpus_root(&manifest);
+
+    for root_name in referenced_roots(&manifest) {
+        let root = corpus_root(&manifest, &root_name);
+        let env_hint = manifest["roots"][&root_name]["env"]
+            .as_str()
+            .unwrap_or("(no env override)");
+        assert!(
+            root.is_dir(),
+            "corpus root `{root_name}` not found at {}\n\
+             Set {env_hint} to override. Corpora are used read-only and are never copied into \
+             this repo (docs/04-ARCHITECTURE.md §4).",
+            root.display()
+        );
+    }
+
+    let failures = hash_failures(&manifest);
 
     assert!(
-        root.is_dir(),
-        "Ethos fixture corpus not found at {}\n\
-         Set ETHOS_FIXTURES to override. The corpus is used read-only and is never copied \
-         into this repo (docs/04-ARCHITECTURE.md §4).",
-        root.display()
+        failures.is_empty(),
+        "{} of {} fixtures failed hash verification:\n  {}\n\n\
+         Either the Ethos corpus changed (re-pin the manifest deliberately, in its own commit) \
+         or the manifest is wrong.",
+        failures.len(),
+        manifest["fixtures"].as_array().expect("fixtures").len(),
+        failures.join("\n  ")
     );
+}
 
+/// Hash every fixture the manifest names, returning one message per failure.
+///
+/// Separated from the test so the detection itself can be tested against a deliberately
+/// corrupted manifest — an assertion nobody has watched fail is an assertion nobody has tested.
+fn hash_failures(manifest: &serde_json::Value) -> Vec<String> {
     let mut failures = Vec::new();
 
     for f in manifest["fixtures"].as_array().expect("fixtures array") {
         let id = f["id"].as_str().expect("fixture has an id");
         let rel = f["path"].as_str().expect("fixture has a path");
         let want = f["sha256"].as_str().expect("fixture has a sha256");
-        let path = root.join(rel);
+        let root_name = f["root"].as_str().expect("fixture declares a root");
+        let path = corpus_root(manifest, root_name).join(rel);
 
         let Ok(bytes) = std::fs::read(&path) else {
             failures.push(format!("{id}: missing at {}", path.display()));
@@ -199,15 +322,65 @@ fn manifest_hashes_verify_against_the_ethos_tree() {
         }
     }
 
-    assert!(
-        failures.is_empty(),
-        "{} of {} fixtures failed hash verification:\n  {}\n\n\
-         Either the Ethos corpus changed (re-pin the manifest deliberately, in its own commit) \
-         or the manifest is wrong.",
+    failures
+}
+
+// ---------------------------------------------------------------------------------------------
+// Negative paths. Two M0 acceptance criteria describe behaviour on bad input; without these the
+// criteria were prose, and the branches had never executed.
+// ---------------------------------------------------------------------------------------------
+
+/// A corrupted manifest hash must be detected, and the message must name the fixture.
+#[test]
+fn a_mutated_manifest_hash_is_detected() {
+    let mut manifest = read_manifest();
+    let target = "synthetic/simple-text";
+
+    let entry = manifest["fixtures"]
+        .as_array_mut()
+        .expect("fixtures array")
+        .iter_mut()
+        .find(|f| f["id"].as_str() == Some(target))
+        .unwrap_or_else(|| panic!("manifest does not contain {target}"));
+    entry["sha256"] = serde_json::Value::String(format!("sha256:{}", "0".repeat(64)));
+
+    let failures = hash_failures(&manifest);
+
+    assert_eq!(
         failures.len(),
-        manifest["fixtures"].as_array().expect("fixtures").len(),
-        failures.join("\n  ")
+        1,
+        "exactly one fixture was corrupted, so exactly one failure was expected; got: {failures:#?}"
     );
+    assert!(
+        failures[0].contains(target) && failures[0].contains("hash mismatch"),
+        "the failure must name the fixture and the problem; got: {}",
+        failures[0]
+    );
+}
+
+/// `ETHOS_BIN` pointing at a missing file is a hard error, never a fallback.
+///
+/// This is the branch the docs argue for most strongly, so it is the one that most needs a test:
+/// resolving silently to a verifier nobody chose is worse than finding none at all.
+#[test]
+fn an_explicit_but_missing_ethos_bin_is_a_hard_error() {
+    let err = resolve_ethos_binary_from(Some("/nonexistent/definitely/not/ethos".to_string()))
+        .expect_err("a non-existent ETHOS_BIN must not resolve to any binary");
+
+    assert!(
+        err.contains("ETHOS_BIN") && err.contains("not a file"),
+        "the error must say which pin failed and why; got: {err}"
+    );
+
+    // The real hazard is a silent fallback. Prove it did not happen: a valid oracle IS
+    // resolvable on this machine via the default order, and the explicit pin must not reach it.
+    if let Ok(fallback) = resolve_ethos_binary_from(None) {
+        assert!(
+            !err.contains(&fallback.display().to_string()),
+            "the explicit pin fell back to {} instead of failing",
+            fallback.display()
+        );
+    }
 }
 
 /// The oracle binary is present and reports a version. Absence fails loudly.
@@ -254,7 +427,6 @@ fn oracle_agrees_on_simple_text() {
     // Preconditions first, so a genuine environment problem is never misreported as
     // "unimplemented".
     let manifest = read_manifest();
-    let root = corpus_root(&manifest);
     let oracle = resolve_ethos_binary().unwrap_or_else(|e| panic!("{e}"));
 
     let fixture = manifest["fixtures"]
@@ -264,6 +436,7 @@ fn oracle_agrees_on_simple_text() {
         .find(|f| f["id"].as_str() == Some(M0_FIXTURE))
         .unwrap_or_else(|| panic!("manifest does not contain the M0 fixture {M0_FIXTURE}"));
 
+    let root = corpus_root(&manifest, fixture["root"].as_str().expect("fixture root"));
     let pdf = root.join(fixture["path"].as_str().expect("fixture path"));
     assert!(pdf.is_file(), "M0 fixture missing at {}", pdf.display());
 

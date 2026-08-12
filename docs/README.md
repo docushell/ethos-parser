@@ -1,6 +1,7 @@
 # ethos-engine — implementation documentation
 
-**Status:** docs bootstrap. No code exists yet. **Start at milestone M0.**
+**Status:** **M0 complete.** Workspace, pinned toolchain, deny policy, fixture manifest and oracle
+harness exist; no parsing does. **Next milestone: M1.**
 
 ---
 
@@ -10,7 +11,17 @@
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M0 only.** Do not start M1 until M0's acceptance tests are green
+5. **Implement M1 only.** M0 is done and committed; do not re-author the workspace. Do not start
+   M2/M3 until M1's acceptance tests are green
+
+**Before you touch anything, run the M0 gate** so you know the baseline you inherited:
+
+```bash
+cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
+```
+
+Green, with `oracle_agrees_on_simple_text` failing when unskipped, is the correct M0 state — not a
+bug to fix.
 
 Then, as needed:
 
@@ -39,16 +50,16 @@ Then, as needed:
 
 ## Milestones at a glance
 
-| ID | Milestone | Depends on |
-| --- | --- | --- |
-| **M0** | Repo skeleton + toolchain + deny + failing oracle harness | — |
-| **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 |
-| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 |
-| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 |
-| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 |
-| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 |
-| **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 |
-| **M7** | CLI + library freeze + v0 exit criteria green | M6 |
+| ID | Milestone | Depends on | State |
+| --- | --- | --- | --- |
+| **M0** | Repo skeleton + toolchain + deny + failing oracle harness | — | **done** |
+| **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **next** |
+| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | — |
+| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | — |
+| **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | — |
+| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | — |
+| **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | — |
+| **M7** | CLI + library freeze + v0 exit criteria green | M6 | — |
 
 M2 and M3 can run in parallel once M1 lands. Everything else is a chain.
 
