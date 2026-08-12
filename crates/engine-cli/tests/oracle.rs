@@ -445,15 +445,15 @@ fn oracle_agrees_on_simple_text() {
 
     panic!(
         "\n\
-         ORACLE NOT YET COMPARABLE — this is the expected M0 state.\n\
+         ORACLE NOT YET COMPARABLE — this is the expected state until M6.\n\
          \n\
          Ready:\n\
          \x20 fixture   {}\n\
          \x20 oracle    {}\n\
          \x20 engine    {}\n\
+         \x20 M1        contract types, c14n, integer quanta, artifact identity — DONE\n\
          \n\
          Missing — the engine cannot yet produce a grounding artifact to compare:\n\
-         \x20 M1  contract types, c14n, integer quanta, artifact identity\n\
          \x20 M2  classify\n\
          \x20 M3  extract\n\
          \x20 M4  capabilities and typed absence\n\

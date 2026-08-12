@@ -1,7 +1,8 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M0 complete.** Workspace, pinned toolchain, deny policy, fixture manifest and oracle
-harness exist; no parsing does. **Next milestone: M1.**
+**Status:** **M1 complete.** The contract is Rust: `engine-core` owns artifact identity, the profile
+and its hash, c14n v1, integer quanta, `QRect`, derivation classes, typed absence, stable-id
+ordering, and the error taxonomy. No parsing exists. **Next: M2 ∥ M3.**
 
 ---
 
@@ -11,17 +12,21 @@ harness exist; no parsing does. **Next milestone: M1.**
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M1 only.** M0 is done and committed; do not re-author the workspace. Do not start
-   M2/M3 until M1's acceptance tests are green
+5. **Implement M2 or M3.** M0 and M1 are done and committed; do not re-author the workspace or the
+   contract types. M2 and M3 both depend only on M1, so they can run in parallel
 
-**Before you touch anything, run the M0 gate** so you know the baseline you inherited:
+**Before you touch anything, run the gate** so you know the baseline you inherited:
 
 ```bash
 cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
 ```
 
-Green, with `oracle_agrees_on_simple_text` failing when unskipped, is the correct M0 state — not a
-bug to fix.
+Green, with `oracle_agrees_on_simple_text` failing when unskipped, is the correct state — not a bug
+to fix. That one exclusion holds until M6.
+
+**`engine-core` is closed to format concepts.** M2 and M3 add PDF work in `engine-pdf`, which
+depends on `engine-core` and never the other way round. A test scans `engine-core`'s sources and
+fails if a PDF import, a float outside `quantize`, or the token `confidence` appears.
 
 Then, as needed:
 
@@ -44,6 +49,7 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
+| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types. Not a shipped contract | When you need the wire shape of an `engine-core` type |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
 
 ---
@@ -53,9 +59,9 @@ Then, as needed:
 | ID | Milestone | Depends on | State |
 | --- | --- | --- | --- |
 | **M0** | Repo skeleton + toolchain + deny + failing oracle harness | — | **done** |
-| **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **next** |
-| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | — |
-| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | — |
+| **M1** | Contract types + c14n/quanta + `schema_version` on the wire | M0 | **done** |
+| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | M1 | **next** |
+| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **next** |
 | **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | — |
 | **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | — |
 | **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | — |
@@ -97,8 +103,17 @@ Never edit the Ethos or DocuShell repos from this project.
 
 Grep for `TODO(` to find them. Currently:
 
-- `TODO(re-read DocumentRepresentation v0 field list)` — exact field names and the typed-absence
-  variant spelling, in `01-CONTRACT.md` §5.2 and §11. Closed at **M1**, against the companion spec
-  and a DocuShell review round
-- `TODO(confirm with Ethos owners...)` — whether a geometry-absent span should be representable in a
-  future `ethos.grounding.v1` revision. v0 declares and omits (`01-CONTRACT.md` §11)
+- **`TODO(re-read DocumentRepresentation v0 field list)` — re-read at M1, mostly closed.** The
+  companion settles the locator names, `TableCellPosition` (zero-indexed), `ProcessingRun`/`StageRun`,
+  the node field list, the two-identity rule, and "capability-limited"; all are now used verbatim and
+  tabulated in `01-CONTRACT.md` §1. **One divergence remains open and is engine-local:** the
+  companion models geometry as an *optional field* and never names a variant for *why* it is absent,
+  while this engine carries a typed `GeometryAbsence`. Typed absence is additive and projects down to
+  an omitted field cleanly, so nothing is blocked. **Pending DocuShell review** — no live review
+  round has happened.
+- **`TODO(confirm with Ethos owners...)`** — whether a geometry-absent span should be representable
+  in a future `ethos.grounding.v1` revision. v0 declares and omits (`01-CONTRACT.md` §11). Open;
+  does not block M2–M4.
+- **`TODO(M3)` in `crates/engine-core/src/profile.rs`** — `BackendIdentity::default().version` is the
+  placeholder `"unbound-until-m3"` until `lopdf` is actually a dependency. It is hashed, so adopting
+  the real version is a visible profile change.

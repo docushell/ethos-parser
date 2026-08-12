@@ -10,14 +10,16 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 ## Status
 
-**M0 complete. No parsing yet.** The workspace, the pinned toolchain, the dependency policy, the
-fixture manifest and the oracle harness exist. The four crates are skeletons: `engine` exits 2 with
-a named reason, and the oracle test fails on purpose with a diagnostic naming everything still
-missing. The artifact contract was frozen before any parser was written, so it is shaped by what a
-verifier needs rather than by a parser's accidents.
+**M1 complete. No parsing yet.** The artifact contract is now Rust: `engine-core` owns artifact
+identity, the profile and its hash, c14n v1, integer quanta, `QRect`, derivation classes, typed
+absence, stable-id ordering, and the error taxonomy. The contract was frozen *before* any parser was
+written, so it is shaped by what a verifier needs rather than by a parser's accidents.
+
+`engine-pdf` and `engine-grounding` are still skeletons. `engine` exits 2 with a named reason, and
+the oracle test fails on purpose with a diagnostic naming everything still missing.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
-- **Next milestone:** **M1** — contract types, c14n, integer quanta
+- **Next milestone:** **M2 ∥ M3** — classify and extract
   ([`docs/05-MILESTONES.md`](docs/05-MILESTONES.md))
 
 ## Building

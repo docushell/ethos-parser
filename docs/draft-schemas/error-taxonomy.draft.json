@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:error-taxonomy:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §8, docs/03-V0-SCOPE.md §1 item 13. Six variants, borrowed in shape from Anydoc (parity checklist A5).",
+  "title": "Engine error taxonomy (DRAFT)",
+  "description": "The point is that a caller can ROUTE on the kind. 'This document is encrypted' and 'this document is complex' must never arrive as the same signal — the defect LiteParse's single exit code has, where password-protected, invalid-header, corrupt-header and missing-file all exit 1 identically to 'complex'. Failing closed with an indistinguishable signal is still a defect.",
+  "type": "object",
+  "required": ["kind"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["unsupported", "malformed", "encrypted", "resource_limit", "missing_part", "io"]
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Unsupported",
+      "description": "A format, version, or feature this profile does not claim to handle. Distinct from malformed: the document may be perfectly valid and the gap is ours. Maps to a capability-limited result, never a negative conclusion — absence of extractable content is never evidence of absence in the source.",
+      "additionalProperties": false,
+      "required": ["kind", "what", "detail"],
+      "properties": {
+        "kind": { "const": "unsupported" },
+        "what": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    {
+      "title": "Malformed",
+      "description": "The input violates its own format specification.",
+      "additionalProperties": false,
+      "required": ["kind", "what", "detail"],
+      "properties": {
+        "kind": { "const": "malformed" },
+        "what": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    {
+      "title": "Encrypted",
+      "description": "Its own variant rather than a malformed sub-case, because it is the canonical example of an outcome a caller routes differently: a human can supply a password, and no amount of retrying fixes it otherwise.",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": { "const": "encrypted" },
+        "detail": { "type": "string" }
+      }
+    },
+    {
+      "title": "ResourceLimit",
+      "description": "A declared bound was hit. Partial work is discarded rather than emitted: a truncated representation that looks complete is worse than no representation.",
+      "additionalProperties": false,
+      "required": ["kind", "limit", "configured"],
+      "properties": {
+        "kind": { "const": "resource_limit" },
+        "limit": { "type": "string" },
+        "configured": { "type": "string" }
+      }
+    },
+    {
+      "title": "MissingPart",
+      "description": "A structure the format requires was absent.",
+      "additionalProperties": false,
+      "required": ["kind", "part"],
+      "properties": {
+        "kind": { "const": "missing_part" },
+        "part": { "type": "string" }
+      }
+    },
+    {
+      "title": "Io",
+      "description": "An I/O failure reading the source. Carries a string rather than a system error so the value stays comparable and serializable — an error that cannot appear in a diagnostic artifact is not much use to a fail-closed design.",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": { "const": "io" },
+        "detail": { "type": "string" }
+      }
+    }
+  ],
+  "examples": [
+    { "kind": "unsupported", "what": "pdf operator", "detail": "\"" },
+    { "kind": "malformed", "what": "xref entry", "detail": "19 bytes, expected 20" },
+    { "kind": "encrypted", "detail": "standard security handler" },
+    { "kind": "resource_limit", "limit": "max nesting depth", "configured": "64" },
+    { "kind": "missing_part", "part": "xref table" },
+    { "kind": "io", "detail": "no such file" }
+  ]
+}

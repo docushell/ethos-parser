@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:geometry:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §5.2 and §5.3. TODO(re-read DocumentRepresentation v0 field list): the DocuShell companion models geometry as an OPTIONAL field and never names a variant for WHY it is absent, so the absence spellings below are engine-local and project to a plain absent field on the DocuShell wire. Pending DocuShell review.",
+  "title": "Quantized geometry and typed absence (DRAFT)",
+  "description": "A measured ink box, or a typed reason there is none. Deliberately not a nullable rectangle: null would collapse 'could not measure', 'nothing to measure', and 'not asked to measure' into one value, and only the first is a declarable capability limitation.",
+  "$defs": {
+    "qrect": {
+      "title": "QRect",
+      "description": "A rectangle in integer centipoints as [x0, y0, x1, y1] — left, top, right, bottom. NOT [x, y, width, height]: the grounding wire format is edge-based, and a silent reinterpretation between the two conventions would place every citation highlight in the wrong spot while remaining structurally valid. Construction requires x1 > x0 and y1 > y0.",
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "examples": [[100, 200, 300, 500]]
+    },
+    "geometry_absence": {
+      "title": "GeometryAbsence",
+      "description": "Why a measurement is absent. Never a sentinel value: no zero box, no null island, no page-sized stand-in, and never height = font_size — a font-size-derived box is closer to invented than measured, and inventing a coordinate is forbidden.",
+      "type": "string",
+      "enum": ["not_reported_by_reader", "not_applicable_to_kind", "capability_not_enabled"],
+      "oneOf": [
+        {
+          "const": "not_reported_by_reader",
+          "description": "The reader has no usable metrics for this glyph's font. The only variant that counts toward a declared capability limitation, and the only one that causes omission from a grounding artifact."
+        },
+        {
+          "const": "not_applicable_to_kind",
+          "description": "The node kind has no geometry by definition, so absence is correct rather than a gap."
+        },
+        {
+          "const": "capability_not_enabled",
+          "description": "This profile does not declare the capability that would produce the measurement."
+        }
+      ]
+    },
+    "geometry_presence": {
+      "title": "GeometryPresence",
+      "description": "Externally tagged: {state, value}.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "value"],
+      "properties": {
+        "state": { "type": "string", "enum": ["measured", "absent"] },
+        "value": {
+          "oneOf": [
+            { "$ref": "#/$defs/qrect" },
+            { "$ref": "#/$defs/geometry_absence" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "measured" } } },
+          "then": { "properties": { "value": { "$ref": "#/$defs/qrect" } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "absent" } } },
+          "then": { "properties": { "value": { "$ref": "#/$defs/geometry_absence" } } }
+        }
+      ],
+      "examples": [
+        { "state": "measured", "value": [100, 200, 300, 500] },
+        { "state": "absent", "value": "not_reported_by_reader" }
+      ]
+    }
+  },
+  "$ref": "#/$defs/geometry_presence"
+}

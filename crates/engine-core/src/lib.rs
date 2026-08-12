@@ -14,17 +14,64 @@
 
 //! `engine-core` — the contract, in types.
 //!
-//! Owns artifact identity, the profile and its hash, the coordinate-system declaration,
-//! c14n v1, integer quanta, stable-id ordering, derivation classes, typed absence, and the
-//! error taxonomy. See `docs/01-CONTRACT.md`.
+//! `docs/01-CONTRACT.md` expressed as Rust. After M1 the artifact shape stops being negotiable
+//! and starts being a compile error.
 //!
-//! **Boundary:** this crate contains no PDF concept. No `lopdf`, no content-stream operator,
-//! no page tree. If a PDF type appears here, the second format becomes a rewrite.
+//! # What lives here
 //!
-//! **Status: M0 skeleton.** Types land at M1 (`docs/05-MILESTONES.md`).
+//! | Module | Owns |
+//! | --- | --- |
+//! | [`c14n`] | The one canonical JSON serialization. Integers only, keys sorted at write time |
+//! | [`geom`] | Integer quanta, [`quantize`], and [`QRect`] as `[x0, y0, x1, y1]` |
+//! | [`identity`] | [`ArtifactIdentity`], [`Sha256Hex`], [`CoordinateSystem`] |
+//! | [`profile`] | [`Profile`] and its hash — the identity everything else hangs off |
+//! | [`derivation`] | [`DerivationClass`] and typed geometric absence |
+//! | [`ids`] | Stable-id allocation and the ordering discipline |
+//! | [`error`] | The six-variant error taxonomy |
+//!
+//! # Boundary
+//!
+//! **No PDF concept appears in this crate.** No `lopdf`, no content-stream operator, no page
+//! tree. If a PDF type appears here, the second format becomes a rewrite instead of a variant
+//! (`docs/04-ARCHITECTURE.md` §1).
+//!
+//! **No verification concept appears either.** No claim, no verdict, no `grounded`, no
+//! `evidence_tier` (`docs/07-VERIFY-BOUNDARY.md`).
+//!
+//! # Three rules this crate enforces in the type system
+//!
+//! 1. **Floats do not exist in canonical output.** [`c14n::c14n_bytes`] rejects any non-integer
+//!    number, at any depth. Geometry arrives pre-quantized as `i64`.
+//! 2. **No public confidence field**, score, grade, or quality summary — anywhere, at any
+//!    version (`docs/01-CONTRACT.md` §9). A test scans this crate's own sources to enforce it,
+//!    because the rule is easiest to break with good intentions.
+//! 3. **Absence is typed.** [`derivation::GeometryPresence`] distinguishes "could not measure"
+//!    from "nothing to measure" from "not asked to measure". `Option<QRect>` would collapse all
+//!    three, and only the first is a declarable capability limitation.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-/// The crate name, used by the M0 harness to prove the workspace links.
+pub mod c14n;
+pub mod derivation;
+pub mod error;
+pub mod geom;
+pub mod identity;
+pub mod ids;
+pub mod profile;
+
+pub use c14n::{c14n_bytes, sha256_hex, sha256_hex_bytes, C14nError};
+pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
+pub use error::EngineError;
+pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
+pub use identity::{
+    ArtifactBinding, ArtifactIdentity, CoordinateOrigin, CoordinateSystem, CoordinateUnit,
+    Sha256Hex,
+};
+pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
+pub use profile::{
+    profile_sha256, BackendIdentity, Capabilities, Profile, CMAP_DATA_ABSENT, READING_ORDER_RULE_V0,
+};
+
+/// The crate name, asserted by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "engine-core";

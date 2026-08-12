@@ -29,14 +29,17 @@ version = 2
 allow = [
     "Apache-2.0",
     "MIT",
+    # Added at M1, which is the PR that introduced the crate needing it: `serde`'s `derive`
+    # feature pulls `serde_derive` -> `proc-macro2` -> `unicode-ident`, whose licence is
+    # "(MIT OR Apache-2.0) AND Unicode-3.0" — the AND makes Unicode-3.0 non-optional. Ethos
+    # allows it for the same reason. OSI-approved, permissive, no source-availability or
+    # network-use conditions.
+    "Unicode-3.0",
 ]
 confidence-threshold = 0.93
 # Expect a `license-not-encountered` warning for MIT. Most of this graph is `MIT OR Apache-2.0`
 # and cargo-deny satisfies those with the first match, so MIT goes unmatched while still being
 # required the moment a MIT-only crate appears. The warning is not a reason to delete the entry.
-#
-# Ethos also allows Unicode-3.0. Omitted here because no crate in this graph carries it. Add it
-# in the PR that introduces the crate needing it, not in advance.
 
 # Adobe's CMap data (vendored at M3, vendor/cmaps/) is BSD-3-Clause and is *data*, not a crate.
 # It does not appear in the dependency graph; its NOTICE obligation is handled in ./NOTICE.

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:derivation-class:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §6. This enum is what lets OCR (v2.1) and assist (v3) be added later without laundering their output into born-digital certainty, so its values are fixed even though v0 emits only two of them.",
+  "title": "Derivation class (DRAFT)",
+  "description": "How a node came to exist. Three hard rules ride on this: Recognized never overwrites Extracted; Proposed is never citable; and different classes mean different profiles, so an OCR run is non-comparable with a born-digital parse by contract.",
+  "type": "string",
+  "enum": ["extracted", "computed", "recognized", "proposed"],
+  "oneOf": [
+    {
+      "const": "extracted",
+      "title": "Extracted",
+      "description": "Read from the source's own encoding — text, origins, font identity, mcid. Nothing overwrites this. Produced in v0."
+    },
+    {
+      "const": "computed",
+      "title": "Computed",
+      "description": "Derived deterministically from Extracted values by a versioned rule — reading order, line grouping, ink boxes from font metrics. The rule's version is part of the profile. Produced in v0."
+    },
+    {
+      "const": "recognized",
+      "title": "Recognized",
+      "description": "Produced by a recognition engine over pixels. v2.1. Runs under its own profile and may author nodes ONLY on canvases where the deterministic reader found no text layer at all. Not produced in v0."
+    },
+    {
+      "const": "proposed",
+      "title": "Proposed",
+      "description": "Suggested by a model. v3. Never citable, never evidence, never overwrites anything. Not produced in v0."
+    }
+  ]
+}

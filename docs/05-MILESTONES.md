@@ -108,15 +108,22 @@ M5. Skipping ahead means rewriting.
   - **Float rejection**: any non-integer number anywhere in a canonical value is a hard error, not a
     rounding. Includes nested arrays and objects.
   - **Key ordering** is by Unicode code point and holds even with `serde_json/preserve_order` enabled
-    in the dependency graph — test with the feature forced on.
+    in the dependency graph — test with the feature forced on. **The test must first prove the
+    feature is actually active**, by asserting plain `serde_json` emits insertion order; otherwise it
+    passes vacuously under a `BTreeMap` that sorts for free, which is worse than having no test.
   - **Quantize vectors**: `0.005 → 1`, `0.004 → 0`, `-0.005 → -1`, `612.0 → 61200`, `-0.0 → 0`;
     `NaN`, `INFINITY`, and `1e17` all error.
   - **Escaping**: no Unicode normalization; non-ASCII is emitted literally; `U+0000–U+001F` becomes
     lowercase `\u00xx`.
   - **Profile sensitivity**: mutating each profile field in turn changes `profile_sha256`, asserted
     field by field.
-  - **`grep -ri confidence`** over `engine-core`'s public API returns nothing.
+  - **`grep -ri confidence`** over `engine-core`'s public API returns nothing. Enforced as a test
+    that scans `src/**` with comments stripped — prose arguing the rule is fine, an identifier is
+    not — plus a self-test proving the comment stripper works, so the scan cannot pass vacuously.
   - Round-trip: every artifact type serializes, canonicalizes, and re-parses to an identical value.
+  - **The default profile is pinned** by bytes and digest, so a profile change is a deliberate act
+    rather than a discovery. Distinct from the sensitivity test: that proves a change is
+    *detectable*, this proves it was *intended*.
 
 - **Review checklist:**
   - [ ] Keys sorted explicitly at write time, not via map iteration order

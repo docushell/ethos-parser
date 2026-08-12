@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:coordinate-system:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §3. Intentionally byte-identical in shape to ethos.grounding.v1's coordinate_system object, so the M5 projection is a move rather than a translation.",
+  "title": "Coordinate system declaration (DRAFT)",
+  "description": "Declared on every artifact carrying geometry, never omitted and never implied by the format. PDF's native origin is bottom-left; the artifact's is top-left, and this declaration is how a reader knows the transform happened. An artifact that cannot be interpreted without its source file is not evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["unit", "origin"],
+  "properties": {
+    "unit": {
+      "const": "centipoint",
+      "description": "1/100 of a PostScript point. A single-valued enum today; a const today is a discriminator tomorrow, which is why it is written rather than assumed."
+    },
+    "origin": {
+      "const": "top-left",
+      "description": "Origin at the top-left corner; x grows right, y grows down."
+    }
+  },
+  "examples": [{ "origin": "top-left", "unit": "centipoint" }]
+}

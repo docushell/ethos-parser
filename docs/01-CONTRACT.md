@@ -19,8 +19,27 @@ the two ever disagree, this one is right and the code is a bug.
 **What "frozen" means here:** the *rules* below are frozen. The exact JSON field names of
 `DocumentRepresentation v0` are a **DRAFT** target held against a spec nobody has implemented yet
 (north-star §4, risk #1 in `03-V0-SCOPE.md`). Where a field name is uncertain this document says
-`TODO(re-read DocumentRepresentation v0 field list)` rather than inventing one. Milestone M1 closes
-those TODOs against the companion spec and against a review round with DocuShell.
+`TODO(re-read DocumentRepresentation v0 field list)` rather than inventing one.
+
+**M1 re-read status.** The companion was re-read against every marker. What it settles is now used
+verbatim; what it does not is stated as a divergence rather than guessed at.
+
+| Settled by the companion — now used | Where |
+| --- | --- |
+| `NativeLocator` (required), `StructuralLocator` (where the kind defines one), `RenderedLocator`/geometry (optional, "for inspection") | §5.1 |
+| `TableCellPosition(row, column, rowspan, colspan, parent table node ID)`, **zero-indexed**, span of 1 = not merged | §5.4, v1 |
+| `ProcessingRun` / `StageRun` carrying processor/adapter/build/profile identities | §7 |
+| Node fields: stable id, kind, parent, ordinal, text/value, attributes | M5 |
+| Source identity vs representation identity as two distinct hashes | §2, `ArtifactBinding` |
+| "capability-limited" as the outcome name for a claim binding to unprocessed content | §7 |
+| Locator-consistency result recorded as a **typed diagnostic with a check version**, never silently repaired | §5.4 |
+| Absence expressed as an absent field, never an implied `1.0` | §9.1 |
+
+| Still open — engine-local, pending DocuShell review | Where |
+| --- | --- |
+| A name for *why* geometry is absent. The companion models geometry as an optional field and never names an absence variant | §5.2 |
+
+Nothing here blocks M2–M4. The divergence is additive and projects down cleanly.
 
 **Source of truth for the target shape:**
 `docushell-repo/docs/FUTURE_DOCUMENT_AI_TRUST_INFRASTRUCTURE_ARCHITECTURE.md`, "Minimum canonical
@@ -94,7 +113,13 @@ The engine adopts Ethos's c14n v1 wholesale (`ethos/docs/determinism-contract.md
 | **Encoding** | UTF-8, no whitespace between tokens |
 | **Key order** | Sorted by Unicode code point, explicitly at write time — never relying on map iteration order (a `serde_json/preserve_order` feature unification anywhere in the graph would otherwise break every fingerprint silently) |
 | **Escaping** | Minimal: `"`, `\`, and U+0000–U+001F only. No `\uXXXX` for non-ASCII. **No Unicode normalization** — extracted text is preserved exactly as extracted |
-| **Numbers** | **Integers only.** Base-10, no leading zeros, no `+`, no exponent, `-0` → `0`, \|n\| ≤ 2^53−1. Any non-integer number anywhere in a canonical value is a hard error |
+| **Numbers** | **Integers only.** Base-10, no leading zeros, no `+`, no exponent, \|n\| ≤ 2^53−1. Any non-integer number anywhere in a canonical value is a hard error |
+
+**On `-0`.** The rule is about *output*: canonical output never contains `-0`, which falls out of
+integers being the only representation — `i64` has no negative zero, and `quantize(-0.0)` returns
+`0`. It is **not** an input-normalization rule. JSON text `-0` parses as the float `-0.0`, and c14n
+rejects it as a non-integer rather than folding it to `0`. Ethos behaves identically. Folding would
+mean silently accepting a float, which is the one thing this layer exists to refuse.
 | **Arrays** | Order is semantic. Element order *is* reading order |
 | **Idempotence** | `c14n(parse(c14n(v))) == c14n(v)`, property-tested |
 
@@ -142,9 +167,22 @@ format profile defines that rendering as authoritative. No such profile exists i
 
 A missing box is a **type**, never a sentinel and never a substitute.
 
-- Where font metrics are unavailable, emit the typed absence variant
-  (`NotReportedByReader` — `TODO(re-read DocumentRepresentation v0 field list)` for the exact
-  spelling) **and** declare the capability limit (§7).
+- Where font metrics are unavailable, emit `GeometryPresence::Absent(NotReportedByReader)` **and**
+  declare the capability limit (§7). Two sibling variants exist — `NotApplicableToKind` and
+  `CapabilityNotEnabled` — and only `NotReportedByReader` counts toward the limitation, because a
+  node kind that never has geometry is not a gap in what the engine could do.
+
+  **`TODO(re-read DocumentRepresentation v0 field list)` — re-read, still open, and now precise.**
+  The companion settles the locator names (`NativeLocator` required, `StructuralLocator` where the
+  kind defines one, `RenderedLocator`/geometry optional "for inspection") and it settles that
+  absence is expressed as an **absent field** — *"A processor that reports no uncertainty produces
+  an absent field, never an implied `1.0`."* What it does **not** do is name a variant for *why*
+  geometry is absent; its model is "optional field, omitted".
+
+  So this is a real divergence, not a missing lookup. Typed absence carries strictly more
+  information than an omitted field, and it projects down to one cleanly (all three variants
+  serialize to "no geometry" on the DocuShell wire). v0 keeps the richer type and does not invent a
+  competing *field name*. Pending DocuShell review — tracked in `docs/README.md`.
 - **Never `height = font_size`.** pdf-inspector's `TextItem.height` is literally the same variable as
   `font_size` (checklist P5). A font-size-derived box is closer to invented than measured, and
   Workbench rule 3 forbids inventing a coordinate.
@@ -344,6 +382,10 @@ accepted** on the grounding path; the non-positive-area rejection at `crop_eleme
 box is not a shared error — it is something ethos-engine refuses to *emit* while Ethos would accept
 it. State it that way round, and never as "matching Ethos's fail-closed behaviour."
 
+Implemented at M1: `engine_core::QRect::new` requires `x1 > x0 && y1 > y0`, and `serde`
+deserialization goes through the same constructor so a degenerate rectangle cannot enter through the
+wire either.
+
 This asymmetry is safe for the M6 oracle test because that test compares `structure`,
 `source_binding`, `representation_sha256` and `counts` — not per-box validity — and because being
 stricter means the engine never produces an artifact Ethos would reject. **A future stricter
@@ -369,6 +411,10 @@ emit what the oracle tolerates, never the reverse.
    **omission is only ever for missing measurable geometry** — never because a classifier disliked a
    page, never as a quality filter; and the omit-plus-count path needs **its own fixture with absent
    metrics**, not just `simple-text`.
+
+   M1 built the type that makes this enforceable: `GeometryPresence::is_groundable()` takes a
+   measurement state, not a boolean or a reason code, so the omission path is unreachable from a
+   quality judgement by construction rather than by review.
 
    `TODO(confirm with Ethos owners whether a geometry-absent span should be representable in a future
    grounding schema revision. Open; does not block M0–M4.)`

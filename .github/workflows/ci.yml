@@ -188,6 +188,9 @@ jobs:
             echo "::error::cargo-deny failed, but not about engine-core's licence"; exit 1; }
           echo "cargo deny correctly rejected AGPL-3.0 on engine-core (exit 4)."
 
+      # Safe in CI because the runner checks out a clean tree. Do NOT run this probe by hand in a
+      # working tree with uncommitted changes: `git checkout --` restores the COMMITTED file and
+      # silently discards them. To reproduce locally, stash first or copy the file aside.
       - name: Restore and confirm the tree is clean
         if: always()
         run: |

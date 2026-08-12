@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:profile:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 and docs/04-ARCHITECTURE.md §3. The canonical form of this object, under c14n v1, is what profile_sha256 hashes; the example below is the real v0 profile and its real digest, emitted by crates/engine-core and pinned in its tests.",
+  "title": "Engine profile (DRAFT)",
+  "description": "Every knob that can change output. Anything that can change a byte of output belongs here or is a bug. Host-varying data (paths, timings, thread counts, machine identity) is deliberately absent: including it would make every machine produce a different fingerprint for identical work.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "parser_version",
+    "backend",
+    "classify_sample_pages",
+    "quantum_per_point",
+    "coordinate_system",
+    "capabilities",
+    "reading_order_rule",
+    "cmap_data_version"
+  ],
+  "properties": {
+    "parser_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The engine build this profile describes. A new build is a new profile by design."
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "description": "Object/xref backend identity. Declared before the backend is wired up at M3, so adopting or upgrading it is fingerprint-visible.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "classify_sample_pages": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "How many pages classification samples before it stops. Default 8. Its boundedness is the point: cost must not scale with total page count."
+    },
+    "quantum_per_point": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "Quanta per point. 100 = centipoints."
+    },
+    "coordinate_system": { "$ref": "urn:ethos-engine:draft-schema:coordinate-system:0" },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spans",
+        "char_offsets",
+        "tables",
+        "measured_ink_boxes",
+        "multi_column_reading_order",
+        "structural_locators"
+      ],
+      "description": "What this profile claims it can do. L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
+      "properties": {
+        "spans": { "type": "boolean" },
+        "char_offsets": { "type": "boolean" },
+        "tables": { "type": "boolean", "$comment": "false in v0 — tables are v1 scope" },
+        "measured_ink_boxes": { "type": "boolean" },
+        "multi_column_reading_order": {
+          "type": "boolean",
+          "$comment": "false in v0 — single-column only, and the limitation is declared on every artifact"
+        },
+        "structural_locators": { "type": "boolean" }
+      }
+    },
+    "reading_order_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity: when a stable multi-column rule lands it gets a new id here rather than silently replacing this one.",
+      "examples": ["single-column-v1"]
+    },
+    "cmap_data_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version of the vendored CMap data, or the explicit sentinel 'absent-until-m3'. A sentinel rather than an omitted field, so the value is still hashed.",
+      "examples": ["absent-until-m3"]
+    }
+  },
+  "examples": [
+    {
+      "backend": { "name": "lopdf", "version": "unbound-until-m3" },
+      "capabilities": {
+        "char_offsets": true,
+        "measured_ink_boxes": true,
+        "multi_column_reading_order": false,
+        "spans": true,
+        "structural_locators": false,
+        "tables": false
+      },
+      "classify_sample_pages": 8,
+      "cmap_data_version": "absent-until-m3",
+      "coordinate_system": { "origin": "top-left", "unit": "centipoint" },
+      "parser_version": "0.0.0",
+      "quantum_per_point": 100,
+      "reading_order_rule": "single-column-v1"
+    }
+  ]
+}
