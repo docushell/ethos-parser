@@ -1,0 +1,128 @@
+{
+  "manifest_version": "1",
+  "corpus_root_default": "../ethos/fixtures",
+  "corpus_root_env": "ETHOS_FIXTURES",
+  "fixture_count": 15,
+  "fixtures": [
+    {
+      "id": "synthetic/heading-export",
+      "group": "synthetic",
+      "path": "synthetic/heading-export/document.pdf",
+      "sha256": "sha256:e5692f6b236da48f85790bffa68787a2d30ec2bcadf4e2d1e0ef9626787537b4",
+      "owner": "ethos",
+      "notes": "heading and export-role fixture"
+    },
+    {
+      "id": "synthetic/hyphenated-line-break",
+      "group": "synthetic",
+      "path": "synthetic/hyphenated-line-break/document.pdf",
+      "sha256": "sha256:7f079977e8438cea4f4b876b3f67380f047218133b3193d7bae8130ac327eeeb",
+      "owner": "ethos",
+      "notes": "hyphenation rejoin must be Computed and reversible (M3)"
+    },
+    {
+      "id": "synthetic/ligature-fi-embedded-font",
+      "group": "synthetic",
+      "path": "synthetic/ligature-fi-embedded-font/document.pdf",
+      "sha256": "sha256:7f99a763d765ea0d880fcd871171ac4811e23b9fc7c3912a391276fcbdf6431e",
+      "owner": "ethos",
+      "notes": "char_codes vs scalars mismatch must be declared, not reconciled (M3)"
+    },
+    {
+      "id": "synthetic/list-items",
+      "group": "synthetic",
+      "path": "synthetic/list-items/document.pdf",
+      "sha256": "sha256:475e22fcc5d71e24d90204e0b06d82ca5620eebef7ec88aaad29378af9de4f1a",
+      "owner": "ethos",
+      "notes": "list structure fixture"
+    },
+    {
+      "id": "synthetic/rotation-90",
+      "group": "synthetic",
+      "path": "synthetic/rotation-90/document.pdf",
+      "sha256": "sha256:1400858e1c0fa0255a037463b4e44df6f9d740ac33583cc590c4ac5cfd2fcc9d",
+      "owner": "ethos",
+      "notes": "geometry expressed after rotation; page declares rotation: 90 (M3, M5)"
+    },
+    {
+      "id": "synthetic/simple-text",
+      "group": "synthetic",
+      "path": "synthetic/simple-text/document.pdf",
+      "sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
+      "owner": "ethos",
+      "notes": "the M0 oracle fixture. Breaks both surveyed classifiers in opposite directions: pdf-inspector calls it TEXT-BASED with 0 text pages; LiteParse calls it no-text. Neither is the target (M2)"
+    },
+    {
+      "id": "synthetic/table-regular-grid",
+      "group": "synthetic",
+      "path": "synthetic/table-regular-grid/document.pdf",
+      "sha256": "sha256:1ea9b32622e0bfc5b1465d9d78ad9eab8be31a7c8e760592ecc52c06cf0864ca",
+      "owner": "ethos",
+      "notes": "KNOWN HOSTILE: 19-byte xref entries where PDF 32000-1 s7.5.4 requires 20. lopdf refuses, PDFium repairs. v0 exits 2 and declares the limitation (M3, M4)"
+    },
+    {
+      "id": "synthetic/two-columns",
+      "group": "synthetic",
+      "path": "synthetic/two-columns/document.pdf",
+      "sha256": "sha256:de50aafb08219aa7fefdcb13ef8975ebf362f52f4d558c2d274ca711ce9d9d79",
+      "owner": "ethos",
+      "notes": "the multi-column limitation fixture. Its golden asserts the DECLARATION, not correct reading order (M4)"
+    },
+    {
+      "id": "synthetic/two-lines",
+      "group": "synthetic",
+      "path": "synthetic/two-lines/document.pdf",
+      "sha256": "sha256:28d9c089bced8c913e6e0440a937f36581ed0b951384787930ba5c52f47a5359",
+      "owner": "ethos",
+      "notes": "1-based page indexing round trip (M2)"
+    },
+    {
+      "id": "failure/corrupt-header-valid",
+      "group": "failure",
+      "path": "failure/corrupt-header-valid/document.pdf",
+      "sha256": "sha256:0716f9264c9fe19f5d7455276107f3ddcc1d3497f63d60689a73558ae8a1bf5e",
+      "owner": "ethos",
+      "notes": "must exit 2, distinguishably from needs-attention (M2)"
+    },
+    {
+      "id": "failure/image-only-or-blank-page",
+      "group": "failure",
+      "path": "failure/image-only-or-blank-page/document.pdf",
+      "sha256": "sha256:df69a01c6c61fb04fb4a4be2a53e920dccbd8956c32eb7ab53bf0f19b50f3e21",
+      "owner": "ethos",
+      "notes": "no text layer; drives the no-text reason code (M2)"
+    },
+    {
+      "id": "failure/invalid-header",
+      "group": "failure",
+      "path": "failure/invalid-header/document.pdf",
+      "sha256": "sha256:c52fa72b5f4be9a86cd7bf69559025bae760a974e1c9d998e33d6981993df412",
+      "owner": "ethos",
+      "notes": "must exit 2 (M2)"
+    },
+    {
+      "id": "failure/memory-limit-simulated",
+      "group": "failure",
+      "path": "failure/memory-limit-simulated/document.pdf",
+      "sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
+      "owner": "ethos",
+      "notes": "OBSERVED: byte-identical to synthetic/simple-text. The limit is simulated by configuration, not by a distinct document. Drives the coverage-gap path (M4)"
+    },
+    {
+      "id": "failure/password-protected",
+      "group": "failure",
+      "path": "failure/password-protected/document.pdf",
+      "sha256": "sha256:0c064a2fd0fcd34779a985470fa7a2c5d60caf47afc55ad5da99aba39ad50b22",
+      "owner": "ethos",
+      "notes": "must exit 2, never the same signal as 'complex'. This is the case LiteParse's is-complex predicate cannot distinguish (M2)"
+    },
+    {
+      "id": "foreign/opendataloader/real",
+      "group": "foreign",
+      "path": "foreign/opendataloader/real/source.pdf",
+      "sha256": "sha256:082f9f8c800fda43b13d097ccf3a603e1f8048987fb497fd2be4cba6817001ee",
+      "owner": "ethos",
+      "notes": "foreign-adapter round trip; the continuous proof that the BYO path is not decorative"
+    }
+  ]
+}

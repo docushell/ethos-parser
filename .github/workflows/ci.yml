@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: build · test · clippy · fmt · deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The oracle is a test-time dependency. Its absence is a FAILURE, never a skip
+      # (docs/04-ARCHITECTURE.md §4), so the corpus and the verifier must both be present.
+      #
+      # TODO(ci): while docushell/ethos is private this needs a PAT in `token:`. Do not "fix"
+      # a checkout failure by making the oracle steps optional — that reintroduces the skip.
+      - name: Check out Ethos (fixture corpus + CLI oracle)
+        uses: actions/checkout@v4
+        with:
+          repository: docushell/ethos
+          path: ethos-oracle
+
+      # rust-toolchain.toml pins 1.88.0; this action honours it.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the oracle
+        working-directory: ethos-oracle
+        run: cargo build --release --bin ethos
+
+      - name: fmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: build
+        run: cargo build --workspace
+
+      - name: test
+        env:
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
+        # M0: `oracle_agrees_on_simple_text` fails by design until M6. Until then CI runs the
+        # preconditions and reports the oracle test's failure without gating the build on it.
+        # DELETE THIS EXCLUSION AT M6 — it is the last thing M6 does.
+        run: cargo test --workspace -- --skip oracle_agrees_on_simple_text
+
+      - name: oracle status (informational until M6)
+        continue-on-error: true
+        env:
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
+        run: cargo test --workspace oracle_agrees_on_simple_text
+
+      - name: deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # Forced decision #14 ("no AGPL") is only real if it is tested. A policy nobody proves is a
+  # policy that has already drifted.
+  #
+  # The probe flips a workspace crate's own licence field rather than pulling a third-party
+  # AGPL crate. That keeps the proof self-contained: it cannot break because an upstream crate
+  # relicensed, went yanked, or changed its feature graph, and it needs no network.
+  deny-policy-is-enforced:
+    name: deny rejects AGPL (proof, not assumption)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+
+      - name: Baseline — the gate passes as committed
+        run: cargo deny check licenses
+
+      - name: Flip a crate to AGPL-3.0 and require rejection
+        run: |
+          set -euo pipefail
+          sed -i 's/^license.workspace = true/license = "AGPL-3.0"/' crates/engine-core/Cargo.toml
+          grep -q 'AGPL-3.0' crates/engine-core/Cargo.toml || {
+            echo "::error::probe did not apply; the licence gate was never exercised"; exit 1; }
+          if cargo deny check licenses; then
+            echo "::error::cargo deny ACCEPTED AGPL-3.0. Forced decision #14 is not enforced."
+            exit 1
+          fi
+          echo "cargo deny correctly rejected AGPL-3.0."
+
+      - name: Restore and confirm the tree is clean
+        if: always()
+        run: |
+          git checkout -- crates/engine-core/Cargo.toml
+          git diff --exit-code

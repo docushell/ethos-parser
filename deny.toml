@@ -1,0 +1,70 @@
+# cargo-deny policy for ethos-engine.
+#
+# Discipline copied from Ethos, with one deliberate difference: Ethos denies network crates as
+# "no network in base". ethos-engine denies them outright at v0 — nothing in the happy path
+# reaches the network (docs/04-ARCHITECTURE.md §5). The v2.1 HTTP OCR lane will need a reviewed
+# exception with its own ADR; it does not get one in advance.
+#
+# Exceptions require an ADR before merge.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# Known environment snag, not a policy issue: cargo-deny < ~0.20 cannot parse RustSec advisories
+# carrying a CVSS 4.0 vector and aborts the whole `advisories` check on a DB-parse error. If
+# `cargo deny check advisories` fails with "unsupported CVSS version: 4.0", upgrade the tool
+# (`cargo install cargo-deny --locked`). CI pins a current version via cargo-deny-action.
+# `licenses`, `bans` and `sources` are unaffected.
+
+[licenses]
+version = 2
+# Forced decision #14: no AGPL. GPL/AGPL/LGPL/source-available/custom-condition licences are
+# denied by omission — this is an allowlist, so anything not named here fails.
+#
+# Keep the list limited to licences actually present in the resolved graph. An entry added
+# "just in case" is a licence nobody reviewed.
+allow = [
+    "Apache-2.0",
+    "MIT",
+]
+confidence-threshold = 0.93
+# Expect a `license-not-encountered` warning for MIT. Most of this graph is `MIT OR Apache-2.0`
+# and cargo-deny satisfies those with the first match, so MIT goes unmatched while still being
+# required the moment a MIT-only crate appears. The warning is not a reason to delete the entry.
+#
+# Ethos also allows Unicode-3.0. Omitted here because no crate in this graph carries it. Add it
+# in the PR that introduces the crate needing it, not in advance.
+
+# Adobe's CMap data (vendored at M3, vendor/cmaps/) is BSD-3-Clause and is *data*, not a crate.
+# It does not appear in the dependency graph; its NOTICE obligation is handled in ./NOTICE.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# No network in v0. The names below are the reachable HTTP/TLS/socket surface in the ecosystem;
+# the allowlist above is the real gate, this is defence in depth against a transitive pull-in.
+deny = [
+    { crate = "reqwest", reason = "no network at v0" },
+    { crate = "hyper", reason = "no network at v0" },
+    { crate = "hyper-util", reason = "no network at v0" },
+    { crate = "ureq", reason = "no network at v0" },
+    { crate = "curl", reason = "no network at v0" },
+    { crate = "curl-sys", reason = "no network at v0" },
+    { crate = "isahc", reason = "no network at v0" },
+    { crate = "attohttpc", reason = "no network at v0" },
+    { crate = "surf", reason = "no network at v0" },
+    { crate = "socket2", reason = "socket-bearing" },
+    { crate = "mio", reason = "socket-bearing" },
+    { crate = "tokio", reason = "async runtime implies a network surface at v0" },
+    { crate = "openssl-sys", reason = "TLS stack implies network use" },
+    { crate = "native-tls", reason = "TLS stack implies network use" },
+    { crate = "rustls", reason = "TLS stack implies network use" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

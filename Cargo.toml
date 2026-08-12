@@ -1,0 +1,47 @@
+# ethos-engine workspace.
+#
+# Four crates, decided (docs/04-ARCHITECTURE.md §1). A fifth crate before a second format is
+# speculative structure; revisit only when office or OCR needs a real home.
+#
+# Boundary rules, enforced in review:
+#   engine-core       — no PDF concept
+#   engine-pdf        — no grounding concept
+#   engine-grounding  — no PDF concept
+#   engine-cli        — no logic
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/engine-core",
+    "crates/engine-pdf",
+    "crates/engine-grounding",
+    "crates/engine-cli",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.88"
+license = "Apache-2.0"
+repository = "https://github.com/docushell/ethos-engine"
+authors = ["ethos-engine maintainers"]
+
+[workspace.dependencies]
+# Dependencies are constrained by deny.toml: permissive licences only, no AGPL, no network.
+# Additions are reviewed against docs/04-ARCHITECTURE.md §5.
+#
+# M0 declares only what the oracle harness needs. `lopdf`, `ttf-parser`, `serde` and `clap`
+# arrive with the milestones that use them (M1-M3), not before.
+sha2 = "0.10"
+serde_json = "1"
+
+# internal
+engine-core = { path = "crates/engine-core", version = "0.0.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.0.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.0.0" }
+
+[profile.release]
+strip = "symbols"
+lto = true
+codegen-units = 1
+panic = "abort"

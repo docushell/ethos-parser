@@ -1,0 +1,24 @@
+[package]
+name = "engine-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "ethos-engine command line: classify | extract | ground | grounding-check. No logic."
+
+[[bin]]
+name = "engine"
+path = "src/main.rs"
+
+[dependencies]
+engine-core.workspace = true
+engine-pdf.workspace = true
+engine-grounding.workspace = true
+
+[dev-dependencies]
+# M0 harness only: verify manifest hashes and read the manifest. Both become real
+# dependencies at M1 when the contract types land.
+sha2.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,23 @@
+ethos-engine
+Copyright 2026 The ethos-engine maintainers
+
+This product includes software developed by the ethos-engine maintainers,
+licensed under the Apache License, Version 2.0.
+
+--------------------------------------------------------------------------------
+Reserved: vendored Adobe CMap resources
+--------------------------------------------------------------------------------
+
+This file reserves the attribution for character-map data to be vendored under
+vendor/cmaps/ at milestone M3 (see docs/05-MILESTONES.md).
+
+That data — the Adobe CMap resources and associated glyph-name tables — is
+distributed by Adobe Systems Incorporated under the BSD 3-Clause License. Its
+full licence text and copyright notice will be reproduced in vendor/cmaps/
+alongside the data itself when it lands.
+
+The data is vendored rather than fetched: it does not churn, regenerating it is
+pure cost, and a build that reaches the network to obtain it is a build whose
+output depends on the network (docs/04-ARCHITECTURE.md §5).
+
+No CMap data is present in this repository yet.
