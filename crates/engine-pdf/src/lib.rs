@@ -65,6 +65,7 @@ pub(crate) mod reasons;
 pub(crate) mod represent;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;
+pub(crate) mod xref;
 
 #[cfg(test)]
 mod test_support;

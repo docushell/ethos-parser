@@ -329,13 +329,59 @@ The engine fails closed and says why. It never fails open, and it never fails si
 | **Unknown `artifact_type` or `schema_version`** | Refuse to read. Never best-effort parse an unrecognised shape |
 | **Missing capability for a requested operation** | Explicit capability-limited result. Never a stub, never a default, never a skip |
 | **A number that will not quantize** (`NaN`, `±Inf`, overflow) | Error. Never saturate, never clamp |
-| **Malformed xref / broken trailer** | Refuse. `lopdf` rejects 19-byte xref entries where PDF 32000-1 §7.5.4 requires exactly 20 — roughly **1 valid document in 26** on Ethos's own fixture corpus, against a backend that repairs it. Refusing is correct; **the rate is a declared limitation**, and repair-or-refuse is a v0.1 decision, not a v0 improvisation |
+| **Malformed xref / broken trailer** | Refuse, **except one bounded class decided at v0.1** — see §8.1. Every other malformation still exits 2 with a named error and no body |
 | **Encrypted / password-protected source** | Distinct exit code. Never the same signal as "this document is complex" |
 
 **Three outcomes get three exit codes** (§`03-V0-SCOPE.md` for the mapping). LiteParse's
 `is-complex` predicate returns 1 for password-protected, invalid-header, corrupt-header **and**
 missing-file, identically to "complex" — a predicate that cannot distinguish *"hard"* from *"I could
 not open this"* (checklist L16). Fail closed with an *indistinguishable* signal is still a defect.
+
+### 8.1 The one repair — decided at v0.1
+
+**Decision: repair, bounded and declared.** v0 refused 19-byte cross-reference entries where PDF
+32000-1 §7.5.4 requires exactly 20 — roughly **1 valid document in 26** on Ethos's own corpus,
+against a backend (PDFium) that repairs it — and deferred repair-or-refuse to v0.1. This is that
+decision, and it is the **only** repair this engine performs.
+
+| | |
+| --- | --- |
+| **The class** | Every entry in the table is exactly `dddddddddd ddddd [nf]\n` — 19 bytes, the specified trailing space missing |
+| **The repair** | Pad each entry to 20 bytes, then parse normally. Nothing else is altered |
+| **The knob** | `Profile::xref_repair`, `{"mode":"pad-19-to-20-v1"}` by default, `{"mode":"refuse"}` restores v0 exactly |
+| **The declaration** | Every artifact from a repaired open carries `xref-entry-padded`, document-scoped, with the entry count |
+
+**Why a repair is admissible here at all.** §7 already says a repair is *"a recorded event or it is
+a fabrication"*, and this one is recorded three ways: in the profile hash, so a repairing build's
+artifacts are non-comparable with a refusing build's; in a per-document limitation, so a reader
+knows this document needed it; and in that limitation's detail, which states what was changed.
+Nothing is silent.
+
+**Why it is safe, which is a stronger claim than "it works."** Padding grows the file, so bytes
+move — and a cross-reference entry *is* a byte offset. Moving a byte an offset points at would
+convert a refusal into the one outcome this project refuses outright: a document that parses into
+the wrong objects and produces a well-formed artifact that is silently wrong. The repair is
+therefore attempted only when **nothing an offset points at can move**:
+
+1. exactly one `xref` keyword table;
+2. the trailer declares no `/Prev`, so no incremental-update chain reaches into moved bytes;
+3. `startxref` names that table's own start offset;
+4. **every** entry matches the 19-byte class — a mixed-stride table is worse repaired than refused;
+5. every in-use offset precedes the table, so the table is last and only its own tail, the
+   trailer, `startxref` and `%%EOF` move — none of which is addressed by offset.
+
+Any precondition failing means the original parse error is reported unchanged. The repair is also a
+**fallback**: the document is parsed as written first, so a well-formed file never reaches it, and
+magic and encryption are answered before it — neither is ever repaired.
+
+**What was rejected.** General recovery, PDFium-style. A reader that repairs whatever it can is
+useful and is not this: it makes "the engine read it" stop implying "the document said it", and the
+whole artifact contract rests on that implication. One named class with published preconditions can
+be argued with; a recovery heuristic cannot.
+
+**The consequence, in the open.** `synthetic/table-regular-grid` now opens, so the oracle partition
+moved from 11 compared / 4 refused to **12 compared / 3 refused**, and `docs/03-V0-SCOPE.md` §4,
+`docs/07-VERIFY-BOUNDARY.md` Stage 0 and `fixtures/README.md` all moved with it in the same change.
 
 ---
 
@@ -492,11 +538,14 @@ emit what the oracle tolerates, never the reverse.
 | `counts` | `{pages, elements, spans, tables}` |
 
 M6's exit criterion is agreement with `ethos grounding check <file> --source-artifact <pdf>` on
-exactly these four. **Measured at M6:** 11 of the 15 Ethos-owned fixtures reach a grounding
-artifact and agree; the other 4 cannot be opened by this backend at all and are asserted to fail
-closed instead. Because every fixture in that corpus yields typed-absent geometry, all 11 agreeing
-artifacts are `1 page / 0 elements / 0 spans` — so the element, span and table rules are compared
-against the oracle using a **benchmark** document, not one of the 15.
+exactly these four. **Measured at M6, and moved at v0.1:** **12** of the 15 Ethos-owned fixtures
+reach a grounding artifact and agree; the other **3** cannot be opened by this backend at all and
+are asserted to fail closed instead. The twelfth is `synthetic/table-regular-grid`, which §8.1's
+bounded xref repair opens — the partition moved because the engine's behaviour did, and both
+lists are derived from a live walk rather than hardcoded, so neither can go stale quietly.
+Because every fixture in that corpus yields typed-absent geometry, all 12 agreeing artifacts are
+`1 page / 0 elements / 0 spans` — so the element, span and table rules are compared against the
+oracle using a **benchmark** document, not one of the 15.
 
 ---
 

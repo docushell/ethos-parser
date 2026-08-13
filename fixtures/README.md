@@ -33,10 +33,12 @@ skips, and it never silently uses a different file.
 
 Two entries are worth knowing before you debug against them:
 
-- **`synthetic/table-regular-grid` does not open under `lopdf`.** Its xref entries are 19 bytes where
-  PDF 32000-1 §7.5.4 requires exactly 20. PDFium repairs it; `lopdf` rejects it. One valid document
-  in ~26 on this corpus. v0 exits 2 and **declares** the limitation. This is expected behaviour, not
-  a bug to fix at v0.
+- **`synthetic/table-regular-grid` did not open under `lopdf` until v0.1.** Its xref entries are 19
+  bytes where PDF 32000-1 §7.5.4 requires exactly 20. PDFium repairs it; `lopdf` rejects it. One
+  valid document in ~26 on this corpus. v0 exited 2 and **declared** the limitation; v0.1 pads the
+  entries under published preconditions and reads it, declaring `xref-entry-padded` on every
+  artifact (`docs/01-CONTRACT.md` §8.1). If you are debugging against an older build, that exit-2
+  is expected behaviour there, not a bug.
 - **`failure/memory-limit-simulated` is byte-identical to `synthetic/simple-text`.** Observed, not
   assumed — both hash to `f2f6ab91…`. The limit is simulated by configuration, not by a distinct
   document. A test asserting "different fixture ⇒ different bytes" would be wrong here.

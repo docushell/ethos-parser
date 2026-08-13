@@ -51,6 +51,18 @@ pub const FORM_XOBJECT_TEXT_NOT_DESCENDED: &str = "form-xobject-text-not-descend
 /// A font supplied no usable widths, so advances are absent rather than guessed.
 pub const FONT_WIDTHS_ABSENT: &str = "font-widths-absent";
 
+/// This document's cross-reference table was padded from 19-byte entries to the specified 20.
+///
+/// Declared on every artifact produced from a repaired open. New at v0.1 — see
+/// [`crate::xref`] for the repair and `docs/01-CONTRACT.md` §12 for the decision.
+pub const XREF_ENTRY_PADDED: &str = "xref-entry-padded";
+
+/// A font's encoding could not map every code, so the affected runs were dropped, not guessed.
+///
+/// New at v0.1. The alternative every other reader takes is a substitution character, which puts
+/// text in the evidence that the document does not contain.
+pub const BROKEN_FONT_ENCODING: &str = "broken-font-encoding";
+
 /// The code declaring that a reason in the classification vocabulary is never emitted.
 ///
 /// Derived from the reason's own wire spelling rather than hand-written, so the declaration and
@@ -70,12 +82,16 @@ pub fn backend_limitations() -> Vec<Limitation> {
             BACKEND_XREF_STRICT_20_BYTE,
             "This backend requires the exactly-20-byte cross-reference entries PDF 32000-1 \
              §7.5.4 mandates and refuses 19-byte ones (`0000000015 00000 n\\n`, missing the \
-             trailing space). Roughly one valid document in twenty-six on the Ethos fixture \
-             corpus is affected — `synthetic/table-regular-grid` is the known case. Such a \
-             document exits 2 with a named malformed-structure error and produces no artifact \
-             at all; it is never repaired, and never partially read. PDFium repairs it, so a \
-             document this engine refuses may well be readable elsewhere. Repair-or-refuse is a \
-             v0.1 decision, not a v0 improvisation.",
+             trailing space). **v0.1 decided repair-or-refuse in favour of a bounded repair**: \
+             where the table is the last structure in the file, `startxref` names it, no `/Prev` \
+             chain exists, and every in-use offset precedes the table, the entries are padded to \
+             the specified width and the document is parsed normally — and the artifact declares \
+             `xref-entry-padded`. Any document failing one of those preconditions still exits 2 \
+             with a named malformed-structure error and produces no artifact at all; it is never \
+             partially read. The repair is recorded in the profile as `xref_repair`, so an \
+             artifact from a repairing build is correctly non-comparable with one from a build \
+             that refuses. Other malformations are not repaired: this is one bounded class, not \
+             PDFium-style general recovery.",
         ),
         Limitation::profile(
             PREDEFINED_CMAPS_NOT_VENDORED,
@@ -148,6 +164,39 @@ pub fn font_widths_absent(detail: &str) -> Limitation {
              report an ABSENT advance rather than a guessed one — and no ink box is measured \
              for them, since a box with no width would have to be invented. The origin is \
              unaffected: it comes from the content stream. Detail: {detail}"
+        ),
+    )
+}
+
+/// The document-scoped limitation for an open that needed the cross-reference repair.
+///
+/// Document-scoped rather than profile-scoped, deliberately: the *policy* is on the profile
+/// (`xref_repair`) and is declared on every artifact, while this says something about **this
+/// document** — that it was malformed and what was done about it. A reader must be able to tell
+/// "the repair was available" from "the repair fired here".
+pub fn xref_entry_padded(entries_padded: u32) -> Limitation {
+    Limitation::document(
+        XREF_ENTRY_PADDED,
+        crate::xref::repaired_detail(entries_padded),
+    )
+}
+
+/// The document-scoped limitation for a font whose encoding could not map every code.
+///
+/// The runs that could not be decoded are **absent from the artifact**, and their count is here.
+/// Never a substitution character: `U+FFFD` in an evidence artifact is a character the document
+/// does not contain, and downstream nothing can tell it from one that does.
+pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
+    Limitation::document(
+        BROKEN_FONT_ENCODING,
+        format!(
+            "A font on this document has an incomplete or damaged encoding: {runs_dropped} text \
+             run(s) contained codes neither its `/ToUnicode` CMap nor its simple encoding could \
+             map. Those runs are OMITTED from this artifact rather than decoded approximately — \
+             no `U+FFFD`, no best-guess glyph, no dropped-silently. Text that IS decodable on the \
+             same page is present and unaffected, with exact origins. A consumer must therefore \
+             read this document's text as incomplete, and must not infer from a run's absence \
+             that the page is blank there. Detail: {detail}"
         ),
     )
 }

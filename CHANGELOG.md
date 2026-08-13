@@ -7,6 +7,167 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v0.1, as 0.2.0
+
+The roadmap row after v0 (`docs/02-ROADMAP.md`): citation verification as a declared capability,
+encoding-issue detection, and the xref repair-or-refuse decision. **Not tagged.** v0's exit
+criteria are untouched — `docs/03-V0-SCOPE.md` §5 is still fifteen criteria and fourteen jobs, and
+a test asserts that number does not move for v0.1 work.
+
+### Version: 0.1.0 → 0.2.0, and the profile hash moves again
+
+```
+profile_sha256  d2ebf3ef…6d21fc   ->   8357e5ba…7f2497
+```
+
+Three causes at once, and the middle one is the largest identity change since M1:
+
+| Cause | Why it is identity |
+| --- | --- |
+| `parser_version` 0.1.0 → 0.2.0 | A `Profile` field, as always |
+| **`xref_repair`** | Decides *which documents produce an artifact at all* |
+| **`verifier`** | Which verifier a run was bound to |
+
+Both new fields are adjacently tagged (`{"mode": …}`), matching `PageBudget` — and that is
+load-bearing rather than cosmetic. serde does **not** honour `deny_unknown_fields` on an
+*internally* tagged enum, so `{"mode":"refuse","future_knob":true}` would have parsed, dropped the
+knob, and re-hashed to a digest different from the one it arrived with. The nested-field test
+caught it during the change.
+
+The version number now leads the roadmap label by one minor: v0 shipped as 0.1.0, and this row —
+"v0.1" — ships as 0.2.0. Two profile fields and a fifth subcommand are more than a patch.
+
+### Added — `engine verify`: invoking a verifier, still not verifying
+
+```bash
+engine verify grounding.json --citations claims.json [--fail-on-ungrounded] [--config F] [--out F]
+```
+
+**The report is the verifier's bytes.** `engine verify` stdout is byte-identical to running
+`ethos verify` with the same arguments, asserted on both the grounded and the ungrounded path.
+Not "the same fields" — the same bytes, because the engine forwards them and forms no opinion.
+
+`engine_core::verifier` is the whole of it, and **what it does not contain is the design**: no
+type for a report, a claim, a check, an evidence tier or a result. There is nothing to re-derive
+because there is nothing that reads. `ci/forbidden-tokens.sh verification` still exits 0 with the
+shim in the tree, which is the check that the shim really is only a shim.
+
+| Path | Behaviour |
+| --- | --- |
+| Grounded claim | Exit 0, report relayed verbatim |
+| Ungrounded + `--fail-on-ungrounded` | **Exit 1**, report still written — the product gate |
+| Ungrounded, no flag | The verifier's own exit status forwarded, report still written. Never a silent skip |
+| No verifier | **Exit 2, nothing on stdout**, a named `missing_part`. Never a skip, never a stub, never a default-pass |
+| Verifier usage refusal | Exit 2, no report, the verifier's own stderr forwarded |
+
+1 and 2 never collapse, for the reason the classify codes never collapse: a caller must be able to
+tell *the check failed* from *the check did not run*.
+
+**`ETHOS_BIN` is authoritative, not a hint** — set and unresolvable is a hard error rather than a
+fallback to some other binary. An operator who pinned a verifier and silently got a different one
+is in the worst position available: they believe they know which one answered. Resolution order is
+the oracle harness's, so one binary answers for both.
+
+**The pin is version *and* digest.** Two builds of the same version can differ, so a version-only
+pin would not make a rebuild fingerprint-visible. A test asserts that changing either moves
+`profile_sha256`.
+
+**The adapter is declared, not sniffed.** The engine passes `--grounding ethos-grounding-json`,
+measured against the pinned binary rather than remembered — it accepts three adapter ids and only
+that one loads an `ethos.grounding.v1` artifact. `ethos verify` *can* infer the type, and
+declaring it anyway is what turns a wrong input into a usage error instead of a silent fall back
+to native-document loading.
+
+One measurement worth recording, because it cost an hour: a citations envelope's
+`document_fingerprint` must be the **sha256 of the grounding file's raw bytes** — the same digest
+M6 established as `representation_sha256`. Naming the PDF's own digest instead returns
+`stale_fingerprint`, and omitting the envelope entirely returns `missing_citation_fingerprint`.
+Neither is an error; both are reports saying the claim did not ground, which is exactly the kind
+of confident-but-wrong green a test could have been written around.
+
+### Added — encoding-issue detection (parity checklist P10)
+
+Through v0, one unmappable glyph anywhere refused the **whole document**. Fail-closed, but far
+more than the evidence required: a page with a single bad code yielded nothing at all.
+
+v0.1 drops the affected run and keeps the page, declaring `broken-font-encoding` with a count.
+The run is dropped **whole** — two alternatives were rejected explicitly:
+
+- emitting `U+FFFD` puts a character in the evidence the document does not contain;
+- omitting just the bad code splices the surrounding glyphs into a word the document never wrote,
+  which is undetectable downstream and worse than losing the run.
+
+A document that shows text and decodes **none** of it is still refused outright, with a named
+error. That is the line: an artifact carrying zero runs would be indistinguishable from a
+genuinely blank page.
+
+New fixture `fixtures/engine/broken-font-encoding` (CC0, engine-owned, sixth of its kind). Its
+`/Differences` remap codes 200–202 to glyph names no vendored table resolves — and in
+WinAnsiEncoding those three codes are E-grave, E-acute and E-circumflex, so a reader that ignored
+`/Differences`, or fell back to the base encoding on a glyph-name miss, would emit `ÈÉÊ` inside a
+perfectly well-formed artifact. The test asserts those characters are absent, that `Readable`
+survives, and that the limitation is present with its count.
+
+A correction found on the way: the code comment at the drop site claimed *"the run continues so
+the rest of the page is still extractable"*. It did not — the line under it was `return Err(e)`.
+The code was the truth and the comment was aspiration.
+
+### Added — the xref decision, written down (parity checklist P20)
+
+**Decided: repair, bounded and declared.** `docs/01-CONTRACT.md` §8.1 is the decision;
+`engine_pdf::xref` is its implementation; `Profile::xref_repair` is the knob, and
+`{"mode":"refuse"}` restores v0's behaviour exactly.
+
+v0 refused 19-byte cross-reference entries where PDF 32000-1 §7.5.4 requires 20 — about 1 valid
+document in 26 on the Ethos corpus, against a backend (PDFium) that repairs it — and deferred the
+call. The repair pads each entry and re-parses. Nothing else is touched.
+
+**Why it is safe is a stronger claim than "it works", and the preconditions are the argument.**
+Padding grows the file, and a cross-reference entry *is* a byte offset — moving a byte an offset
+points at would turn a refusal into the one outcome this project refuses outright: a document that
+parses into the wrong objects and produces a well-formed artifact that is silently wrong. So the
+repair runs only when nothing an offset points at can move:
+
+1. exactly one `xref` keyword table;
+2. no `/Prev` in the trailer, so no incremental-update chain reaches into moved bytes;
+3. `startxref` names that table's own start;
+4. **every** entry is the 19-byte class — a mixed-stride table is worse repaired than refused;
+5. every in-use offset precedes the table.
+
+Each has a unit test that constructs the hostile document and asserts refusal. The repair is also
+a fallback — the document is parsed as written first — and magic and encryption are answered
+before it, so neither is ever repaired. General PDFium-style recovery was considered and rejected:
+it makes "the engine read it" stop implying "the document said it", and the whole artifact
+contract rests on that implication.
+
+**The consequence, in the open.** `synthetic/table-regular-grid` now reads, yielding its real
+content (`Name`, `Score`, `Alpha`, `10`, `Beta`, `12`). The oracle partition moved from **11
+compared / 4 refused to 12 / 3**, and every place that quoted those numbers moved in the same
+change: `01-CONTRACT.md` §11, `03-V0-SCOPE.md` §4, `07-VERIFY-BOUNDARY.md` Stage 0,
+`fixtures/README.md`, and the `ORACLE_AGREED_COUNT` constant. Ten tests asserted the old
+behaviour and were rewritten rather than deleted — including the mutation survivor set, which
+gained `table-regular-grid/junk-after-eof` for the same reason every other openable document has
+it. It is still a *table* document read as single-column text in stream order: the tables
+limitation is unchanged, and v0.1 is not v1.
+
+### Changed — two guards that were passing for the wrong reason
+
+- **`ci/forbidden-tokens.sh`** checked for `/* */` block comments in the **raw** file, before
+  stripping `//` comments — so a doc comment containing `crates/*/src`, prose about the scan's own
+  scope, failed the scan. It now checks the stripped text. A `/*` inside a `//` comment is not a
+  block comment, and a guard that cannot tell the difference is one somebody eventually disables.
+  Both probes still fire: a real block comment and a real token each fail it.
+- **`every_matrix_job_is_claimed_by_a_criterion`** scanned every `- id:` in the workflow, so
+  v0.1's new matrix looked like unclaimed §5 jobs. It is now scoped structurally to the
+  `v0-exit-criteria` block, and `the_v01_gates_exist` keeps the v0.1 matrix from emptying out
+  quietly in exchange.
+
+### CI
+
+Three new named jobs in their own `v01-gates` matrix — `v01-verify-relay`, `v01-encoding`,
+`v01-xref-decision` — deliberately separate from `v0-exit-criteria` so v0's map does not move.
+The oracle is still required everywhere it was, and no `--skip` appears anywhere.
+
 ## [0.1.0] — v0, frozen
 
 **Not tagged.** The freeze is in-tree; creating the tag and any release is a separate, deliberate

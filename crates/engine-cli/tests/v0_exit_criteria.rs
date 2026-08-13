@@ -266,20 +266,56 @@ fn no_job_filter_selects_zero_tests() {
     );
 }
 
-/// **Every matrix entry is claimed by a criterion.**
+/// The `- id:` entries inside one named job's block.
+///
+/// Scoped structurally — from the job key to the next top-level job key — rather than by a
+/// prefix convention. The workflow has more than one matrix, and "every entry is claimed by a §5
+/// line" is only true of the §5 one; scoping by name would have made that rule quietly depend on
+/// nobody choosing an unfortunate job id.
+fn matrix_ids_of(job: &str) -> BTreeSet<String> {
+    let wf = workflow();
+    let start = wf
+        .find(&format!("\n  {job}:\n"))
+        .unwrap_or_else(|| panic!("the workflow must define a `{job}` job"));
+    let rest = &wf[start + 1..];
+
+    // The next line that is a top-level job key: two spaces, a name, a colon, end of line.
+    let end = rest
+        .match_indices('\n')
+        .find(|(i, _)| {
+            let line = rest[i + 1..].lines().next().unwrap_or("");
+            line.starts_with("  ")
+                && !line.starts_with("   ")
+                && line.trim_end().ends_with(':')
+                && !line.trim_start().starts_with('#')
+                && line.trim_start().split(':').next().is_some_and(|k| {
+                    !k.is_empty()
+                        && k.chars()
+                            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+                })
+        })
+        .map(|(i, _)| i + 1)
+        .unwrap_or(rest.len());
+
+    rest[..end]
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("- id: "))
+        .map(|s| s.trim().to_string())
+        .collect()
+}
+
+/// **Every §5 matrix entry is claimed by a criterion.**
 ///
 /// The other direction, and it matters just as much: a job with no criterion behind it is
 /// runner time spent on something nobody agreed was a gate, and it drifts unnoticed because
 /// nothing points at it.
+///
+/// Scoped to `v0-exit-criteria`. The workflow also carries `v01-gates`, which proves the roadmap
+/// row *after* v0 — those are not §5 criteria, v0's map does not move to accommodate them, and
+/// `the_v01_gates_exist` below keeps them from being deleted quietly instead.
 #[test]
 fn every_matrix_job_is_claimed_by_a_criterion() {
-    let wf = workflow();
-
-    let matrix_ids: BTreeSet<String> = wf
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("- id: "))
-        .map(|s| s.trim().to_string())
-        .collect();
+    let matrix_ids = matrix_ids_of("v0-exit-criteria");
 
     assert!(
         matrix_ids.len() >= 10,
@@ -299,6 +335,38 @@ fn every_matrix_job_is_claimed_by_a_criterion() {
          Every job in that matrix is there to prove a criterion. One that proves nothing named \
          should either be documented in §5 or removed.",
         orphans.len()
+    );
+}
+
+/// **The v0.1 gates exist**, and v0's map is untouched by them.
+///
+/// v0 is frozen: `docs/03-V0-SCOPE.md` §5 is fifteen criteria and stays fifteen. The roadmap row
+/// after it — verification by shell-out, encoding detection, the xref decision — gets its own
+/// matrix, and this is what stops that matrix quietly emptying out. Without it, deleting a v0.1
+/// job would fail nothing at all, because §5 does not mention them and never should.
+#[test]
+fn the_v01_gates_exist() {
+    let ids = matrix_ids_of("v01-gates");
+    for expected in ["v01-verify-relay", "v01-encoding", "v01-xref-decision"] {
+        assert!(
+            ids.contains(expected),
+            "the v0.1 gate `{expected}` is missing from the workflow; found {ids:?}"
+        );
+    }
+
+    // And it really is a separate matrix — a v0.1 gate that drifted into the §5 one would make
+    // `every_matrix_job_is_claimed_by_a_criterion` demand a criterion that does not exist.
+    let v0 = matrix_ids_of("v0-exit-criteria");
+    assert!(
+        v0.is_disjoint(&ids),
+        "the v0 and v0.1 matrices must not share entries: {:?}",
+        v0.intersection(&ids).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        v0.len(),
+        14,
+        "docs/03-V0-SCOPE.md §5's matrix is fifteen criteria across fourteen entries (fuzz and \
+         mutation share a line); v0 is frozen and this number does not move for v0.1 work"
     );
 }
 

@@ -319,9 +319,11 @@ fn two_library_runs_produce_identical_bytes() {
 fn the_library_refuses_what_the_binary_refuses() {
     let profile = Profile::default();
 
-    // The known-hostile xref fixture: 19-byte entries where PDF 32000-1 §7.5.4 requires 20.
+    // A malformation v0.1's bounded repair does NOT cover. `table-regular-grid` used to sit here
+    // and now opens (docs/01-CONTRACT.md §12); this one still refuses, which is what keeps the
+    // repair from having quietly become general recovery.
     let hostile =
-        std::fs::read(conformance("synthetic/table-regular-grid/document.pdf")).expect("readable");
+        std::fs::read(conformance("failure/corrupt-header-valid/document.pdf")).expect("readable");
     let e = Document::open_bytes(&hostile, &profile).expect_err("must refuse");
     assert_eq!(e.code(), "malformed");
     assert_eq!(

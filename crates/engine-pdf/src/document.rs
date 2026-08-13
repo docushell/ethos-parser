@@ -38,6 +38,13 @@ pub struct Document {
     byte_len: usize,
     /// Page object ids keyed by their **1-based** page number, as `lopdf` reports them.
     pages: Vec<(u32, lopdf::ObjectId)>,
+    /// How many cross-reference entries the bounded repair padded, if it ran.
+    ///
+    /// `None` means the document parsed as written — the overwhelmingly common case, and the
+    /// only one v0 had. `Some(n)` makes the repair visible to every stage so the artifact can
+    /// declare it; a repaired open that produced an artifact indistinguishable from an
+    /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
+    xref_entries_padded: Option<u32>,
 }
 
 impl core::fmt::Debug for Document {
@@ -48,6 +55,7 @@ impl core::fmt::Debug for Document {
             .field("source_sha256", &self.source_sha256.as_str())
             .field("byte_len", &self.byte_len)
             .field("page_count", &self.pages.len())
+            .field("xref_entries_padded", &self.xref_entries_padded)
             .finish()
     }
 }
@@ -80,10 +88,28 @@ impl Document {
     ///   known-hostile `synthetic/table-regular-grid`, whose xref entries are 19 bytes where PDF
     ///   32000-1 §7.5.4 requires 20.
     /// - [`EngineError::MissingPart`] — a required structure is absent.
-    pub fn open_bytes(bytes: &[u8], _profile: &Profile) -> Result<Self, EngineError> {
+    pub fn open_bytes(bytes: &[u8], profile: &Profile) -> Result<Self, EngineError> {
+        // Magic first, always. An encrypted or wrong-magic file is refused here and never
+        // reaches the repair below — repairing either was never on the table
+        // (`docs/01-CONTRACT.md` §12).
         crate::magic::check_pdf_magic(bytes)?;
 
-        let inner = lopdf::Document::load_mem(bytes).map_err(map_lopdf_error)?;
+        // The document as written, first. The repair is a fallback and nothing else: a
+        // well-formed document never goes near it, so the common path is byte-for-byte the v0
+        // path and cannot have changed behaviour.
+        let (inner, xref_entries_padded) = match lopdf::Document::load_mem(bytes) {
+            Ok(doc) => (doc, None),
+            Err(original) => {
+                let original = map_lopdf_error(original);
+                match Self::repair_and_reload(bytes, profile, &original) {
+                    Some((doc, padded)) => (doc, Some(padded)),
+                    // The ORIGINAL error, not one about the repair. A caller asked why this
+                    // document failed; "the repair did not apply" answers a question nobody
+                    // asked and hides the one they did.
+                    None => return Err(original),
+                }
+            }
+        };
 
         // Explicit, and before anything reads the page tree. `lopdf` returns Ok for an encrypted
         // document and then reports zero pages — so without this check a locked file classifies
@@ -97,12 +123,49 @@ impl Document {
         let pages: Vec<(u32, lopdf::ObjectId)> = inner.get_pages().into_iter().collect();
 
         Ok(Self {
+            // **The ORIGINAL bytes**, deliberately, even after a repair. The artifact must bind
+            // to the file the caller actually has: a digest over the repaired bytes would match
+            // nothing on disk, and `grounding-check --source-artifact` would report `mismatched`
+            // against the very document that produced the artifact.
             source_sha256: Sha256Hex::from_hex(&engine_core::sha256_hex_bytes(bytes))
                 .expect("sha256 hex is always well formed"),
             byte_len: bytes.len(),
             pages,
             inner,
+            xref_entries_padded,
         })
+    }
+
+    /// The one bounded repair, attempted only after a normal parse failed.
+    ///
+    /// Returns `None` — leaving the caller to report the original error — when the profile
+    /// disables the repair, when the failure is not a structural one, or when any of
+    /// [`crate::xref::repair_xref`]'s preconditions does not hold.
+    fn repair_and_reload(
+        bytes: &[u8],
+        profile: &Profile,
+        original: &EngineError,
+    ) -> Option<(lopdf::Document, u32)> {
+        if !profile.xref_repair.is_enabled() {
+            return None;
+        }
+        // Only a structural failure is a repair candidate. An encrypted document reports
+        // `encrypted`, and a missing part reports `missing_part`; neither is a 19-byte xref
+        // table, and trying anyway would be the start of general recovery.
+        if original.code() != "malformed" {
+            return None;
+        }
+
+        let repair = crate::xref::repair_xref(bytes).ok()?;
+        // The repaired bytes must parse cleanly. If they do not, the document had something else
+        // wrong with it and the original error is still the honest answer.
+        let doc = lopdf::Document::load_mem(&repair.bytes).ok()?;
+        Some((doc, repair.entries_padded))
+    }
+
+    /// How many cross-reference entries the bounded repair padded, or `None` if it did not run.
+    pub fn xref_entries_padded(&self) -> Option<u32> {
+        self.xref_entries_padded
     }
 
     /// Digest of the exact source bytes this handle was built from.
@@ -201,13 +264,66 @@ mod tests {
         );
     }
 
+    /// **The v0.1 decision, on the fixture that forced it** (`docs/01-CONTRACT.md` §12).
+    ///
+    /// Through v0 this document exited 2: 19-byte xref entries where PDF 32000-1 §7.5.4 requires
+    /// 20. v0.1 repairs that one class, so it now opens — and says so.
     #[test]
-    fn the_known_hostile_xref_fixture_is_malformed() {
-        // 19-byte xref entries where PDF 32000-1 §7.5.4 requires 20. Refusing is correct; the
-        // rate is a declared limitation (docs/03-V0-SCOPE.md §4).
+    fn the_known_hostile_xref_fixture_is_repaired_and_declares_it() {
         let bytes = conformance_fixture("synthetic/table-regular-grid/document.pdf");
+        let doc = Document::open_bytes(&bytes, &Profile::default()).expect("v0.1 repairs this");
+
+        assert_eq!(
+            doc.xref_entries_padded(),
+            Some(6),
+            "the repair must be visible on the handle, or no artifact can declare it"
+        );
+        assert_eq!(doc.page_count(), 1);
+
+        // The artifact binds to the file on disk, not to the repaired bytes. A digest over the
+        // repaired copy would match nothing a caller holds.
+        assert_eq!(
+            doc.source_sha256().hex(),
+            engine_core::sha256_hex_bytes(&bytes),
+            "the source digest is over the ORIGINAL bytes"
+        );
+        assert_eq!(doc.byte_len(), bytes.len());
+    }
+
+    /// The repair is a knob, and turning it off restores v0's refusal exactly.
+    #[test]
+    fn a_profile_that_refuses_still_refuses() {
+        let bytes = conformance_fixture("synthetic/table-regular-grid/document.pdf");
+        let profile = Profile {
+            xref_repair: engine_core::XrefRepair::Refuse,
+            ..Profile::default()
+        };
+        let e = Document::open_bytes(&bytes, &profile).unwrap_err();
+        assert_eq!(e.code(), "malformed", "got {e}");
+    }
+
+    /// A document with a *different* malformation is still refused, repair enabled or not.
+    ///
+    /// The whole risk of a repair is that it grows into general recovery. This is the test that
+    /// says it did not: `corrupt-header-valid` fails for a reason that is not a 19-byte xref
+    /// table, and the repair leaves it exactly as refused as before.
+    #[test]
+    fn a_different_malformation_is_not_swept_up_by_the_repair() {
+        let bytes = conformance_fixture("failure/corrupt-header-valid/document.pdf");
         let e = Document::open_bytes(&bytes, &Profile::default()).unwrap_err();
         assert_eq!(e.code(), "malformed", "got {e}");
+    }
+
+    /// An encrypted document never reaches the repair.
+    #[test]
+    fn an_encrypted_document_is_never_repaired() {
+        let bytes = conformance_fixture("failure/password-protected/document.pdf");
+        let e = Document::open_bytes(&bytes, &Profile::default()).unwrap_err();
+        assert_eq!(
+            e.code(),
+            "encrypted",
+            "encryption is answered before any repair is considered; got {e}"
+        );
     }
 
     #[test]

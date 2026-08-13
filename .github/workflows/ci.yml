@@ -315,6 +315,76 @@ jobs:
         run: ${{ matrix.run }}
 
   # -----------------------------------------------------------------------------------------
+  # v0.1 gates — the roadmap row after v0 (docs/02-ROADMAP.md)
+  # -----------------------------------------------------------------------------------------
+  #
+  # Deliberately a SEPARATE matrix from `v0-exit-criteria`. That one is docs/03-V0-SCOPE.md §5,
+  # one entry per criterion, and `v0_exit_criteria.rs::every_matrix_job_is_claimed_by_a_criterion`
+  # asserts every entry there is named by a §5 line. v0.1's gates are not §5 criteria — v0 is
+  # frozen and its map does not move — so they live here and the two stay legible apart.
+  #
+  # All three need the Ethos tree. `v01-verify-relay` additionally needs the built binary: it is
+  # the one suite that spawns a verifier, and its whole subject is that absence is loud rather
+  # than skipped.
+  v01-gates:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v01-verify-relay
+            gate: "citation verification by shell-out: bytes relayed verbatim, absence is loud"
+            oracle: true
+            run: cargo test -p engine-cli --test verify_relay --locked
+
+          - id: v01-encoding
+            gate: "a broken font encoding is a named limitation or a named refusal, never mojibake"
+            oracle: false
+            run: cargo test --workspace --locked -- broken_font_encoding decodes_nothing decodes_cleanly
+
+          - id: v01-xref-decision
+            gate: "the one bounded xref repair, and everything outside it still refused"
+            oracle: false
+            run: cargo test --workspace --locked -- xref repaired_and_declares a_profile_that_refuses a_different_malformation never_repaired
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Ethos (fixture corpus + CLI)
+        uses: actions/checkout@v4
+        with:
+          repository: docushell/ethos
+          ref: ${{ env.ETHOS_ORACLE_REF }}
+          path: ethos-oracle
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            ethos-oracle
+          shared-key: v0-exit-criteria
+
+      - name: Build the verifier
+        if: matrix.oracle
+        working-directory: ethos-oracle
+        run: cargo build --release --locked --bin ethos
+
+      - name: ${{ matrix.id }} — ${{ matrix.gate }}
+        env:
+          RUSTFLAGS: "-D warnings"
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
+          ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
+        run: ${{ matrix.run }}
+
+  # -----------------------------------------------------------------------------------------
   # §5: `cargo-fuzz` target exists and runs clean on the corpus
   # -----------------------------------------------------------------------------------------
   #

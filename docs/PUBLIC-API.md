@@ -43,17 +43,38 @@ the items re-exported at the crate root.
 | `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
 | `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `StructuralLocator`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
+| `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` — **new at v0.1** |
 
 Plus `CRATE_NAME`, which exists so the M0 link harness can assert the workspace builds.
 
 **Internal, do not use:** nothing. Every module in this crate is contract.
+
+**The `verifier` module is v0.1, and what it does *not* export is the point.** There is no report
+type, no claim, no check, no result — the engine spawns a verifier and forwards its bytes without
+reading them, so there is nothing to model. `VerifierBinary::resolve` locates and pins one,
+`relay` runs it, and `Relayed` carries the child's stdout, stderr and a mapped exit code. The
+three `RELAY_*` constants keep "the verifier refused" (1) apart from "the run did not happen" (2),
+for the same reason the classify exit codes never collapse.
+
+**Two further additions at v0.1**, both on `Profile` and both hash-bearing:
+
+- `XrefRepair` — whether the one bounded cross-reference repair runs. It decides *which documents
+  produce an artifact at all*, which makes it the strongest output-affecting knob in the set.
+- `VerifierPin` — which verifier a run was bound to. `NotPinned` is the default and is a real
+  statement rather than a missing field: the engine does not verify, and a run that consulted no
+  verifier says so. `engine verify` pins the binary it spawned by version and digest.
+
+Both are adjacently tagged (`{"mode": …}`), matching `PageBudget`. That is not cosmetic: serde
+does not honour `deny_unknown_fields` on an internally tagged enum, so an internally tagged
+variant would accept an unknown key, drop it, and re-hash to a digest different from the one it
+arrived with.
 
 **One caveat that is not about visibility.** `diagnostics` is public but is *not* an artifact type.
 It has no `artifact_type`, no `schema_version`, no `profile_sha256`, and it is not canonicalized.

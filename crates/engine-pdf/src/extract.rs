@@ -125,7 +125,15 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());
     let mut limitations = lim::extract_limitations();
+    // A repaired open is never silent: every artifact derived from one says so.
+    if let Some(padded) = doc.xref_entries_padded() {
+        limitations.push(lim::xref_entry_padded(padded));
+    }
     let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
+    // Accumulated across pages: how much text is missing from this artifact because a font's
+    // encoding could not map it, and the first failure's reason for the declaration's detail.
+    let mut encoding_dropped_runs: u32 = 0;
+    let mut encoding_detail = String::new();
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -171,6 +179,17 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
         let mut interp = Interpreter::new(&fonts);
         interp.run(&decoded.operations)?;
+
+        // v0.1: a font that cannot map a code drops its run rather than failing the document.
+        // Accumulated across pages so the artifact declares one honest total.
+        encoding_dropped_runs = encoding_dropped_runs.saturating_add(interp.dropped_runs);
+        if interp.dropped_runs > 0 {
+            if let Some(first) = interp.undecodable.first() {
+                if encoding_detail.is_empty() {
+                    encoding_detail = format!("page {page_number}: {first}");
+                }
+            }
+        }
 
         let mut runs = Vec::with_capacity(interp.shown.len());
         for shown in &interp.shown {
@@ -249,6 +268,33 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         if b < page_count {
             limitations.push(lim::resource_limit_pages(b, page_count));
         }
+    }
+
+    // **Encoding holes: declare, or refuse outright.**
+    //
+    // Some text decoded and some did not — say so, and say how much is missing. But a document
+    // that showed text and decoded *none* of it has no usable text layer, and an artifact
+    // carrying zero runs would be indistinguishable from a genuinely blank page. That is the
+    // one case where refusing is the honest answer (`docs/01-CONTRACT.md` §8).
+    if encoding_dropped_runs > 0 {
+        let any_text = pages.iter().any(|p| !p.runs.is_empty());
+        if !any_text {
+            return Err(EngineError::Unsupported {
+                what: "text encoding".into(),
+                detail: format!(
+                    "this document's text layer is unusable: {encoding_dropped_runs} run(s) were \
+                     shown and none could be decoded, because no font supplied a `/ToUnicode` \
+                     CMap or an encoding this profile can map. No artifact is emitted — an \
+                     artifact with zero runs would be indistinguishable from a blank page, and \
+                     substituting `U+FFFD` would put characters in the evidence that the \
+                     document does not contain. First failure: {encoding_detail}"
+                ),
+            });
+        }
+        limitations.push(lim::broken_font_encoding(
+            encoding_dropped_runs,
+            &encoding_detail,
+        ));
     }
 
     Ok(ExtractArtifact {

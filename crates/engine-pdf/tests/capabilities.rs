@@ -884,33 +884,57 @@ fn the_stand_in_vocabularies_are_absorbed_not_duplicated() {
     assert!(extract_codes.contains(&lim::FORM_XOBJECT_TEXT_NOT_DESCENDED));
 }
 
-/// The backend's refusal is declared even by artifacts it did not refuse.
+/// The backend's xref posture is declared on every artifact, repaired or not.
 ///
-/// `synthetic/table-regular-grid` exits 2 with no body, so the only place a caller can learn
-/// this backend refuses 19-byte xref entries is an artifact for a document it accepted.
+/// Rewritten at v0.1. The policy limitation still rides on every artifact — a caller reading one
+/// needs to know this backend is strict about entry width and what it does about it — and the
+/// *document*-scoped limitation appears only where the repair actually fired. Keeping the two
+/// apart is the point: "the repair exists" and "the repair ran here" are different facts.
 #[test]
-fn the_xref_refusal_is_named_on_artifacts_that_opened_fine() {
-    let path = conformance("synthetic/simple-text/document.pdf");
+fn the_xref_posture_is_declared_and_the_repair_is_scoped_to_where_it_fired() {
     let profile = Profile::default();
 
+    // A clean document: the policy is declared, the repair is not claimed.
+    let clean = conformance("synthetic/simple-text/document.pdf");
     for artifact_codes in [
-        codes(&extract_with(path.clone(), &profile).assurance.limitations),
-        codes(&classify_with(path, &profile).assurance.limitations),
+        codes(&extract_with(clean.clone(), &profile).assurance.limitations),
+        codes(&classify_with(clean, &profile).assurance.limitations),
     ] {
         assert!(
             artifact_codes.contains(&lim::BACKEND_XREF_STRICT_20_BYTE),
-            "the known backend limitation must be nameable by callers: {artifact_codes:?}"
+            "the backend's xref policy must be nameable by callers: {artifact_codes:?}"
+        );
+        assert!(
+            !artifact_codes.contains(&lim::XREF_ENTRY_PADDED),
+            "a document that needed no repair must not claim one: {artifact_codes:?}"
         );
     }
 
-    // And the refused document still refuses, with no artifact at all.
-    let hostile = conformance("synthetic/table-regular-grid/document.pdf");
-    let err = Document::open(&hostile, &Profile::default()).expect_err("must not open");
+    // The repaired document: both, on both artifacts.
+    let repaired = conformance("synthetic/table-regular-grid/document.pdf");
+    for artifact_codes in [
+        codes(
+            &extract_with(repaired.clone(), &profile)
+                .assurance
+                .limitations,
+        ),
+        codes(&classify_with(repaired, &profile).assurance.limitations),
+    ] {
+        assert!(
+            artifact_codes.contains(&lim::XREF_ENTRY_PADDED),
+            "a repaired open declares itself on every artifact it produces: {artifact_codes:?}"
+        );
+    }
+
+    // A malformation outside the repaired class still refuses, with a named error and no body.
+    // This is what says the bounded repair did not become general recovery.
+    let unrepairable = conformance("failure/corrupt-header-valid/document.pdf");
+    let err = Document::open(&unrepairable, &profile).expect_err("must not open");
     assert_eq!(err.code(), "malformed");
     assert_eq!(
         engine_core::RefusalCode::of(&err),
         engine_core::RefusalCode::Malformed,
-        "a refusal has a name, even though v0 emits no body to put it in"
+        "a refusal has a name, even though no body is emitted to put it in"
     );
 }
 

@@ -1,6 +1,26 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M7 complete — v0 is done and frozen, at v0.1.0.**
+**Status:** **v0.1 shipped, as 0.2.0.** v0 was frozen at M7 (0.1.0) and its exit criteria have not
+moved; this is the roadmap row after it (`02-ROADMAP.md`), and it is the first work that is a
+*version* rather than a milestone.
+
+**What v0.1 added**, all three from that roadmap row:
+
+- **Citation verification as a declared capability.** `engine verify` spawns the pinned Ethos CLI
+  and relays its report bytes **verbatim** — byte-identical to running `ethos verify` yourself.
+  The engine still does not verify: `engine_core::verifier` has no type for a report, a claim or a
+  result, so there is nothing that could re-derive one. `--fail-on-ungrounded` exits 1 with the
+  report; a missing verifier exits 2 with no report and a named error.
+- **Encoding-issue detection.** A font that cannot map a code drops its run and declares
+  `broken-font-encoding` with a count, instead of failing the whole document as v0 did — and
+  never emits a substitution character. A document that decodes *nothing* is refused outright.
+- **The xref decision, written down.** `01-CONTRACT.md` §8.1 chose one bounded, declared repair
+  over refusal. `synthetic/table-regular-grid` now reads, and the oracle partition moved from
+  11/4 to 12/3 in the open.
+
+The verifier's identity and the repair policy are both `Profile` fields, so `profile_sha256` moved
+again — a verifier swap and a repair-policy change are now as fingerprint-visible as a backend
+swap.
 
 `engine-pdf` opens a PDF once and both classifies it (M2) and extracts position-aware text runs
 from it (M3): an exhaustive operator table that fails closed, `PdfLocator` on every run, measured

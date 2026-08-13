@@ -83,6 +83,12 @@ pub struct Interpreter<'a> {
     pub shown: Vec<ShownText>,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
     pub undecodable: Vec<String>,
+    /// How many runs were dropped because a font could not map one of their codes.
+    ///
+    /// Separate from [`Interpreter::undecodable`]'s length: one run can carry several
+    /// unmappable codes, and what a caller needs to know is how many pieces of text are
+    /// **missing from the artifact**, not how many diagnostics were produced.
+    pub dropped_runs: u32,
 }
 
 impl<'a> Interpreter<'a> {
@@ -96,6 +102,7 @@ impl<'a> Interpreter<'a> {
             mcid_stack: Vec::new(),
             shown: Vec::new(),
             undecodable: Vec::new(),
+            dropped_runs: 0,
         }
     }
 
@@ -123,6 +130,7 @@ impl<'a> Interpreter<'a> {
                 // interpreter refused.
                 self.shown.clear();
                 self.undecodable.clear();
+                self.dropped_runs = 0;
                 Err(e)
             }
         }
@@ -300,11 +308,24 @@ impl<'a> Interpreter<'a> {
                     kept_codes.push(code);
                 }
                 Err(e) => {
-                    // A typed diagnostic, not a silent drop. The run continues so the rest of
-                    // the page is still extractable, but the gap is recorded and surfaces in the
-                    // artifact's `not_decoded` list.
+                    // **v0.1: drop this run, keep the page.** Through v0 this returned `Err` and
+                    // failed the whole document — one unmappable glyph anywhere and a caller got
+                    // nothing, which is fail-closed but far more than the evidence requires.
+                    // (The comment here claimed the run continued. It did not; the code was the
+                    // truth and the comment was aspiration.)
+                    //
+                    // The run is dropped **whole**, not patched. Two alternatives were rejected:
+                    // emitting `U+FFFD` for the hole would put a character in the evidence that
+                    // the document does not contain, and silently omitting just the bad code
+                    // would splice the surrounding glyphs into a word the document never wrote —
+                    // undetectable downstream, and worse than losing the run.
+                    //
+                    // Losing a run is itself a real loss, so it is counted and declared:
+                    // `extract` turns a non-zero count into `broken-font-encoding`, and a
+                    // document that decodes *nothing* is still refused outright.
                     self.undecodable.push(e.to_string());
-                    return Err(e);
+                    self.dropped_runs = self.dropped_runs.saturating_add(1);
+                    return Ok(());
                 }
             }
 

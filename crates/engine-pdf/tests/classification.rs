@@ -252,8 +252,10 @@ fn the_three_exit_codes_are_distinguishable() {
             COULD_NOT_READ,
         ),
         (
-            "table-regular-grid (19-byte xref)",
-            conformance("synthetic/table-regular-grid/document.pdf"),
+            // v0.1 repairs the 19-byte class, so the exit-2 case here is a malformation that
+            // is NOT repairable — see `the_repaired_fixture_classifies_and_declares_it`.
+            "corrupt-header-valid (unrepairable xref)",
+            conformance("failure/corrupt-header-valid/document.pdf"),
             COULD_NOT_READ,
         ),
         (

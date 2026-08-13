@@ -34,6 +34,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use engine_core::diagnostics::{DiagnosticsRun, Stage};
+use engine_core::verifier::{RelayRequest, VerifierBinary};
 use engine_core::{EngineError, Profile};
 use engine_pdf::exit::{exit_code, COULD_NOT_READ};
 use engine_pdf::Document;
@@ -92,6 +93,24 @@ enum Command {
     /// failing check from an unreadable file is the defect this project refuses. Both agree on
     /// zero versus non-zero, which is what a shell predicate reads.
     GroundingCheck(GroundingCheckArgs),
+
+    /// Relay a citation-verification run to the pinned Ethos CLI.
+    ///
+    /// **The engine does not verify — it invokes a verifier** (`docs/07-VERIFY-BOUNDARY.md`
+    /// Stage 1). This spawns `ethos verify`, forwards its report bytes to stdout **verbatim**,
+    /// and maps its exit status. Nothing here reads the report: no field is re-computed, no
+    /// verdict is formed, and the engine has no opinion about whether a claim is supported.
+    ///
+    /// Exit codes: **0** the verifier was satisfied · **1** it was not, and you asked it to say
+    /// so with `--fail-on-ungrounded` · **2** the run did not happen — no verifier, a spawn
+    /// failure, or a usage error the verifier itself refused. **2 means no report was produced**,
+    /// and it is kept apart from 1 for the reason the other subcommands keep it apart: a caller
+    /// must be able to tell "the check failed" from "the check did not run".
+    ///
+    /// The verifier is located the way the oracle harness locates it: `ETHOS_BIN` first and
+    /// authoritatively, then the sibling repo build, then `PATH`. Absence is a named error,
+    /// never a skip and never a default-pass.
+    Verify(VerifyArgs),
 }
 
 #[derive(clap::Args)]
@@ -128,6 +147,35 @@ struct GroundingCheckArgs {
 }
 
 #[derive(clap::Args)]
+struct VerifyArgs {
+    /// The `ethos.grounding.v1` artifact, as `engine ground` emits it.
+    path: PathBuf,
+
+    /// Citations file (JSON): an array of claims, or `{"document_fingerprint": …, "claims": […]}`.
+    ///
+    /// Named to match the Ethos CLI, like `--source-artifact` on `grounding-check`, so the two
+    /// invocations read the same and a caller can compare them directly.
+    #[arg(long, value_name = "FILE")]
+    citations: PathBuf,
+
+    /// Exit 1 after writing the report when the verifier is not satisfied.
+    ///
+    /// Without it the verifier writes its report and exits 0 whatever it found, and the engine
+    /// forwards that unchanged — the report is still produced, so an ungrounded claim is never a
+    /// silent skip either way. With it, a shell predicate can gate on the outcome.
+    #[arg(long)]
+    fail_on_ungrounded: bool,
+
+    /// Verification config (JSON). Forwarded unread.
+    #[arg(long, value_name = "FILE")]
+    config: Option<PathBuf>,
+
+    /// Write the report here instead of stdout. Forwarded unread.
+    #[arg(long, value_name = "FILE")]
+    out: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
 struct GroundArgs {
     /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
     path: PathBuf,
@@ -154,6 +202,10 @@ fn main() -> ExitCode {
             timed(Stage::GroundingCheck, diag, &path, || {
                 run_grounding_check(args)
             })
+        }
+        Command::Verify(args) => {
+            let path = args.path.clone();
+            timed(Stage::Verify, diag, &path, || run_verify(args))
         }
     }
 }
@@ -358,6 +410,53 @@ fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
         }
         Err(e) => fail(&e),
     }
+}
+
+/// Spawn the pinned verifier and relay what it says.
+///
+/// Thin, and thinner than the rest: this one does not even look at the bytes it prints. It
+/// resolves a binary, forwards the flags the caller gave, writes stdout through unchanged, and
+/// returns the mapped exit code. `engine_core::verifier` owns all of that so an embedding caller
+/// gets the same behaviour without a process boundary of its own.
+fn run_verify(args: VerifyArgs) -> ExitCode {
+    // `ETHOS_BIN` is read here rather than in the library: which environment variable pins the
+    // verifier is a property of how this tool is deployed, not of the relay.
+    let explicit = std::env::var_os("ETHOS_BIN").map(PathBuf::from);
+    let repo_relative = std::env::current_dir().ok();
+
+    let binary = match VerifierBinary::resolve(explicit.as_deref(), repo_relative.as_deref()) {
+        Ok(b) => b,
+        // Exit 2 with nothing on stdout. A caller that got a report here would have one the
+        // engine invented, which is the single outcome this subcommand exists to make impossible.
+        Err(e) => return fail(&e),
+    };
+
+    let request = RelayRequest {
+        grounding: &args.path,
+        citations: &args.citations,
+        adapter: engine_core::GROUNDING_ADAPTER,
+        fail_on_ungrounded: args.fail_on_ungrounded,
+        config: args.config.as_deref(),
+        out: args.out.as_deref(),
+    };
+
+    let relayed = match engine_core::relay(&binary, &request) {
+        Ok(r) => r,
+        Err(e) => return fail(&e),
+    };
+
+    // Verbatim, in both directions. The report goes to stdout because it is the artifact of this
+    // subcommand; the verifier's own diagnostics go to stderr because they are its, not ours.
+    let mut out = std::io::stdout().lock();
+    let _ = out.write_all(&relayed.stdout);
+    let _ = out.flush();
+    if !relayed.stderr.is_empty() {
+        let mut err = std::io::stderr().lock();
+        let _ = err.write_all(&relayed.stderr);
+        let _ = err.flush();
+    }
+
+    ExitCode::from(relayed.exit as u8)
 }
 
 /// Extraction succeeded.

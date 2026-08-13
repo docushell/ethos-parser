@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 5
+    "engine_owned": 6
   },
   "fixtures": [
     {
@@ -229,6 +229,15 @@
       "sha256": "sha256:218c2ad51efc30835771be062e7baae0a08fca14d01c260ba142cb72163f9783",
       "owner": "engine",
       "notes": "Carries a /FontDescriptor that RESOLVES and answers nothing \u2014 no /Ascent, no /Descent, no /FontBBox, no embedded program \u2014 so resolve_font_ink walks the descriptor and still declines to measure. That route is what only this fixture covers: the three M3 engine fixtures also pair a known advance with absent geometry, but they carry no descriptor at all, and synthetic/simple-text never reaches the metrics branch because its advance is unknown too. /Widths IS supplied here, so the advance is known and the absence is attributable to the font's silence about ink extent alone. Drives the M5 geometry-omission path."
+    },
+    {
+      "id": "broken-font-encoding",
+      "root": "engine",
+      "group": "engine",
+      "path": "broken-font-encoding/document.pdf",
+      "sha256": "sha256:25d30af7a36bd1b1b9209cbdbb650cf8c3fbdad628356b9abfa664342e9512e2",
+      "owner": "engine",
+      "notes": "Carries an /Encoding whose /Differences remap codes 200-202 to glyph names no vendored table resolves, so those codes cannot be decoded at all. In WinAnsiEncoding the same three codes are E-grave/E-acute/E-circumflex, so a reader that ignored /Differences \u2014 or fell back to the base encoding on a glyph-name miss \u2014 would emit mojibake the document does not contain, inside a perfectly well-formed artifact. A reader substituting U+FFFD would be no better. v0.1 drops the affected run whole, keeps the decodable run, and declares broken-font-encoding with the count (parity checklist P10)."
     }
   ]
 }

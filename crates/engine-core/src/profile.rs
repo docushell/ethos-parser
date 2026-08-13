@@ -195,6 +195,91 @@ impl PageBudget {
     }
 }
 
+/// Whether the one bounded cross-reference repair is in force.
+///
+/// **On the profile because it changes which documents produce an artifact at all.** A build that
+/// repairs reads `synthetic/table-regular-grid`; a build that refuses exits 2 on it. Two artifacts
+/// from those builds are not comparable, and the profile hash is what says so.
+///
+/// The repair itself is `engine_pdf::xref` and is bounded to one malformation — 19-byte entries
+/// where PDF 32000-1 §7.5.4 requires 20 — under preconditions that make it offset-preserving.
+/// This enum only records *whether* it runs. `engine-core` owns no PDF machinery
+/// (`docs/04-ARCHITECTURE.md` §1); a mode name is data, and nothing here can parse anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Adjacently tagged, matching `PageBudget`, and that is load-bearing rather than cosmetic:
+// serde does NOT honour `deny_unknown_fields` on an *internally* tagged enum, so
+// `{"mode":"refuse","future_knob":true}` would parse, drop the knob, and re-hash to a digest
+// different from the one it arrived with. The nested-field test catches exactly that.
+#[serde(tag = "mode", content = "detail", deny_unknown_fields)]
+pub enum XrefRepair {
+    /// Refuse the malformation, as v0 did.
+    #[serde(rename = "refuse")]
+    Refuse,
+    /// Pad 19-byte entries to the specified 20. The v0.1 default.
+    ///
+    /// Renamed explicitly rather than derived: `rename_all = "kebab-case"` turns `Pad19To20V1`
+    /// into `pad19-to20-v1`, which is not the id the repair publishes as
+    /// `engine_pdf::xref::XREF_REPAIR_V1`. Two spellings of one repair is exactly the drift a
+    /// versioned id exists to prevent, and a test asserts the two strings are equal.
+    #[serde(rename = "pad-19-to-20-v1")]
+    Pad19To20V1,
+}
+
+impl XrefRepair {
+    /// Whether a repair may be attempted.
+    pub fn is_enabled(self) -> bool {
+        matches!(self, Self::Pad19To20V1)
+    }
+}
+
+/// Which verifier this profile is bound to, if any.
+///
+/// **The engine does not verify** (`docs/07-VERIFY-BOUNDARY.md`). It can *invoke* a verifier, and
+/// from v0.1 `engine verify` spawns the Ethos CLI and relays its report bytes. That makes which
+/// verifier answered part of the run's identity, so it is pinned here: a verifier swap is
+/// fingerprint-visible, exactly as `backend` makes a `lopdf` swap visible.
+///
+/// [`VerifierPin::NotPinned`] is the default and is a real statement rather than a missing field:
+/// *this profile describes a run that did not consult a verifier.* Every classify, extract and
+/// ground artifact carries it, because none of them verify anything.
+///
+/// A version string alone would not be enough — two builds of the same Ethos version can differ —
+/// so the digest of the binary's bytes is carried with it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Adjacently tagged for the same reason as `XrefRepair` — see the note there.
+#[serde(
+    rename_all = "snake_case",
+    tag = "mode",
+    content = "identity",
+    deny_unknown_fields
+)]
+pub enum VerifierPin {
+    /// No verifier was consulted.
+    NotPinned,
+    /// A specific verifier binary answered.
+    Pinned {
+        /// What the binary reports for `--version`, trimmed.
+        version: String,
+        /// Digest of the verifier binary's bytes.
+        sha256: Sha256Hex,
+    },
+}
+
+impl VerifierPin {
+    /// Pin a verifier by its reported version and the digest of its bytes.
+    pub fn pinned(version: impl Into<String>, sha256: Sha256Hex) -> Self {
+        Self::Pinned {
+            version: version.into().trim().to_string(),
+            sha256,
+        }
+    }
+
+    /// Whether a verifier is pinned.
+    pub fn is_pinned(&self) -> bool {
+        matches!(self, Self::Pinned { .. })
+    }
+}
+
 impl Default for Capabilities {
     fn default() -> Self {
         Self::V0
@@ -239,6 +324,13 @@ pub struct Profile {
     pub reading_order_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
+    /// Whether the bounded cross-reference repair runs. New at v0.1.
+    ///
+    /// On the profile because it changes *which documents produce an artifact at all* — the
+    /// strongest kind of output-affecting knob there is.
+    pub xref_repair: XrefRepair,
+    /// Which verifier this run is bound to. New at v0.1, [`VerifierPin::NotPinned`] by default.
+    pub verifier: VerifierPin,
 }
 
 impl Default for Profile {
@@ -253,6 +345,8 @@ impl Default for Profile {
             page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
+            xref_repair: XrefRepair::Pad19To20V1,
+            verifier: VerifierPin::NotPinned,
         }
     }
 }
@@ -342,6 +436,8 @@ mod tests {
             page_budget: _,
             reading_order_rule: _,
             cmap_data_version: _,
+            xref_repair: _,
+            verifier: _,
         } = &base;
 
         /// One named single-field mutation.
@@ -351,6 +447,23 @@ mod tests {
             (
                 "parser_version",
                 Box::new(|p: &mut Profile| p.parser_version = "9.9.9-mutated".into()),
+            ),
+            (
+                // v0.1. The strongest output-affecting knob in the set: it changes which
+                // documents produce an artifact at all.
+                "xref_repair",
+                Box::new(|p: &mut Profile| p.xref_repair = XrefRepair::Refuse),
+            ),
+            (
+                // v0.1. `engine verify` spawns a verifier, so which one answered is part of the
+                // run's identity — a swap must be fingerprint-visible, the way a backend swap is.
+                "verifier",
+                Box::new(|p: &mut Profile| {
+                    p.verifier = VerifierPin::pinned(
+                        "ethos 9.9.9",
+                        Sha256Hex::from_hex(&"ab".repeat(32)).expect("well formed"),
+                    )
+                }),
             ),
             (
                 "backend.name",
@@ -465,7 +578,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.1.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.2.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -474,12 +587,15 @@ mod tests {
              emits no element/span hierarchy for an offset to index into; it lands at M5), and \
              the new `page_budget` knob. Moved again at M7, for the workspace 0.0.0 -> 0.1.0 \
              bump that freezes v0: `parser_version` is a profile field, so the version bump IS a \
-             profile change. Artifacts from before and after are correctly non-comparable, \
-             because the profile that produced them really did change."
+             profile change. Moved a third time at v0.1 (0.2.0), for three reasons at once — the \
+             version bump, the new `xref_repair` knob, and the new `verifier` pin. That one is \
+             the largest identity change since M1: `xref_repair` decides whether a 19-byte xref \
+             table produces an artifact at all. Artifacts from before and after are correctly \
+             non-comparable, because the profile that produced them really did change."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:d2ebf3ef397d46621b78165c3bd6537e4a5df62c8d370a0d4c3350d0876d21fc"
+            "sha256:8357e5ba077c36c0de617d0f5ba3c986f8bfb028478c1bc72ee7769d4b7f2497"
         );
     }
 

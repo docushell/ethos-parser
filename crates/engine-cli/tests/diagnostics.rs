@@ -265,13 +265,15 @@ fn the_flag_adds_one_stderr_line_and_changes_no_stdout_byte() {
 /// the one somebody turned it on to investigate.
 #[test]
 fn a_failing_run_still_reports_its_diagnostics() {
-    let pdf = conformance("synthetic/table-regular-grid/document.pdf");
+    // `corrupt-header-valid`, not `table-regular-grid`: v0.1 repairs the latter
+    // (docs/01-CONTRACT.md §12), and this test needs a document that genuinely fails.
+    let pdf = conformance("failure/corrupt-header-valid/document.pdf");
     let out = engine(&["classify", pdf.to_str().unwrap(), "--diagnostics"]);
 
     assert_eq!(
         out.status.code(),
         Some(2),
-        "the hostile xref fixture exits 2"
+        "an unrepairable malformation exits 2"
     );
     assert!(
         out.stdout.is_empty(),

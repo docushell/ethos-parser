@@ -13,6 +13,8 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   absent-font-metrics        a /FontDescriptor that exists and carries NO usable ink
                              metrics, so geometry is typed-absent while the advance is
                              known — the geometry-omission path at M5                 [M5]
+  broken-font-encoding       /Differences pointing at glyph names no table carries, so a
+                             naive reader emits mojibake and this one drops the run  [v0.1]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -47,7 +49,7 @@ LAST_CHAR = 126
 DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
 
 
-def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None) -> bytes:
+def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None, differences=None) -> bytes:
     # `descriptor` is one of DESCRIPTOR_KINDS. Left unannotated so this script runs on any
     # python3 a reviewer happens to have — `str | None` in a signature is evaluated at import
     # time and raises before 3.10, which would make regenerating fixtures depend on the
@@ -64,8 +66,19 @@ def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None) -> bytes:
         None,  # content stream, filled below
         (
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
-            "/Encoding /WinAnsiEncoding /FirstChar %d /LastChar %d /Widths [%s]%s >>"
-            % (FIRST_CHAR, LAST_CHAR, widths, " /FontDescriptor 6 0 R" if descriptor else "")
+            "/Encoding %s /FirstChar %d /LastChar %d /Widths [%s]%s >>"
+            % (
+                (
+                    "<< /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [%s] >>"
+                    % differences
+                )
+                if differences
+                else "/WinAnsiEncoding",
+                FIRST_CHAR,
+                LAST_CHAR,
+                widths,
+                " /FontDescriptor 6 0 R" if descriptor else "",
+            )
         ).encode(),
     ]
     if descriptor == "metrics":
@@ -146,6 +159,29 @@ FIXTURES = {
     # the run with its native locator and typed-absent geometry; the grounding projection omits
     # it, counts it, and declares it.
     "absent-font-metrics": "BT /F1 24 Tf 72 72 Td (No ink metrics) Tj ET",
+    # v0.1 / parity checklist P10. Two runs under a font whose /Differences point at glyph names
+    # no vendored table carries.
+    #
+    # Run 1 is plain ASCII and decodes. Run 2 is codes 200/201/202, which /Differences remaps to
+    # names that resolve to nothing — so the codes cannot be decoded at all.
+    #
+    # **The mojibake this fixture exists to refuse**: in WinAnsiEncoding those three codes are
+    # E-grave, E-acute and E-circumflex. A reader that ignored /Differences, or that fell back to
+    # the base encoding when a glyph name missed, would emit "\u00c8\u00c9\u00ca" — text the
+    # document does not contain, in an artifact that looks perfectly well-formed. A reader that
+    # substituted U+FFFD would be no better. This engine drops the run and declares
+    # `broken-font-encoding` with the count.
+    "broken-font-encoding": (
+        "BT /F1 24 Tf "
+        "1 0 0 1 72 110 Tm (Readable) Tj "
+        "1 0 0 1 72 40 Tm (\\310\\311\\312) Tj "
+        "ET"
+    ),
+}
+
+# name -> /Differences array body. Only the broken-encoding fixture carries one.
+DIFFERENCES = {
+    "broken-font-encoding": "200 /nonexistentglyphone /nonexistentglyphtwo /nonexistentglyphthree",
 }
 
 # name -> descriptor kind. Absent from this map means no descriptor at all.
@@ -160,7 +196,11 @@ def main() -> int:
     for name, content in FIXTURES.items():
         d = root / name
         d.mkdir(parents=True, exist_ok=True)
-        pdf = build_pdf(content, descriptor=DESCRIPTORS.get(name))
+        pdf = build_pdf(
+            content,
+            descriptor=DESCRIPTORS.get(name),
+            differences=DIFFERENCES.get(name),
+        )
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")
     return 0

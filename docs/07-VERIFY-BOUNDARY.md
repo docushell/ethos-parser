@@ -77,7 +77,8 @@ internal type. See §6.
 
 ### Stage 0 — v0: the engine does not verify
 
-The happy path terminates at a **validated** grounding artifact, not a verified one:
+**Shipped and frozen at M7.** The happy path terminates at a **validated** grounding artifact, not
+a verified one:
 
 ```
 classify → extract → ground → grounding-check
@@ -91,11 +92,16 @@ ethos grounding check <file> --source-artifact <pdf>
 ```
 
 **Shipped at M6, and the criterion is now a passing test rather than a plan.** Of the 15
-Ethos-owned fixtures, **11 reach a grounding artifact and both checkers agree** on `structure`,
-`source_binding`, `representation_sha256` and `counts`; the other **4 cannot be read by this
-backend at all** — a 19-byte xref, a corrupt xref, an invalid header, an encrypted file — and a
-separate test asserts each still exits 2 with no artifact, so the four are excluded *visibly*
-rather than quietly. The harness fails if the two lists do not partition the corpus exactly.
+Ethos-owned fixtures, **12 reach a grounding artifact and both checkers agree** on `structure`,
+`source_binding`, `representation_sha256` and `counts`; the other **3 cannot be read by this
+backend at all** — a corrupt xref, an invalid header, an encrypted file — and a separate test
+asserts each still exits 2 with no artifact, so the three are excluded *visibly* rather than
+quietly. The harness fails if the two lists do not partition the corpus exactly.
+
+**The count moved at v0.1, from 11/4.** The 19-byte-xref document that used to sit in the refused
+list is now read: `docs/01-CONTRACT.md` §8.1 decided repair-or-refuse in favour of one bounded,
+declared repair. Both lists come from a live walk of the corpus, so this number is measured on
+every run rather than asserted here.
 
 One correction to the wording this section used to carry: `grounding-check` is **not** "a
 reimplementation of the JSON Schema validator only". The schema is necessary and not sufficient —
@@ -105,11 +111,25 @@ express. The engine mirrors those rules too. That is still a long way short of v
 the line has not moved: no claim, no verdict, no `grounded`, no evidence tier, and a grep test in
 the oracle harness enforces it.
 
-**No verification code exists in the tree at v0.** Not a stub, not a feature flag, not a
-`TODO`-shaped module. **Asserted in CI as of M7**, by the job `v0-no-verify` — `ci/forbidden-tokens.sh
-verification`, a grep over `crates/*/src` for `evidence_tier`, `is_grounded`,
-`all_evidence_grounded`, `verdict`, `verify_claim` and `claim_verified`. It is a job rather than a
-review item, and `docs/03-V0-SCOPE.md` §5 names it.
+**No verification _semantics_ exist in the tree.** The wording matters and changed at v0.1, so it
+is worth being exact about what is and is not in here:
+
+| In the tree | Not in the tree, and asserted so |
+| --- | --- |
+| A spawn shim — `engine_core::verifier` — that runs a verifier and forwards its bytes | Any type for a report, a claim, a check, an evidence tier, or a result |
+| A `verify` subcommand and a `Profile::verifier` pin | Any code that reads, re-derives, summarizes or second-guesses what the verifier said |
+
+Through v0 the sentence here read *"no verification code exists in the tree"*, and that was true
+until Stage 1 shipped. It would be false now, and leaving it would be the kind of doc that
+survives by nobody checking it. What has not changed is the rule underneath: **the engine has no
+opinion about whether a document supports a claim**, and it cannot acquire one by accident,
+because there is nothing in it that could hold such an opinion.
+
+**Asserted in CI as of M7**, by the job `v0-no-verify` — `ci/forbidden-tokens.sh verification`, a
+grep over `crates/*/src` for `evidence_tier`, `is_grounded`, `all_evidence_grounded`, `verdict`,
+`verify_claim` and `claim_verified`. It is a job rather than a review item, `docs/03-V0-SCOPE.md`
+§5 names it, and **it still passes with the shim in the tree** — which is the check that the shim
+really is only a shim.
 
 Bare `grounded` is deliberately **not** in that list. `GroundedBox` is real, supported API — the
 type whose only constructor takes a measurement state, so a box cannot be built from a boolean —
@@ -119,19 +139,34 @@ adjacent rule would get itself disabled.
 
 ### Stage 1 — v0.1: shell out to the Ethos CLI
 
-Verification arrives as a **declared capability**, not as an implementation.
+**Shipped.** Verification arrives as a **declared capability**, not as an implementation:
 
-| Rule | Detail |
+```bash
+engine verify grounding.json --citations claims.json [--fail-on-ungrounded] [--config F] [--out F]
+```
+
+| Rule | How it is held |
 | --- | --- |
-| **Absence is a named error** | Never a skip, never a stub report, never a default-pass |
-| **Pin the verifier's identity** | `sha256(ethos)` and `ethos --version` go into ethos-engine's profile, so a verifier swap is **fingerprint-visible** |
-| **Relay report bytes verbatim** | Never re-derive `all_evidence_grounded`, `capability_limits`, or `evidence_tier` from them. **Re-deriving is how a second authority is born by accident** |
-| **Spawn cost is acknowledged, not optimised** | ~19–22 ms measured floor. At the 20,000 docs/day design target (≈14/minute) it is irrelevant. Do not optimise it away |
+| **Absence is a named error** | No verifier ⇒ exit 2, **no report on stdout**, a named `missing_part`. Never a skip, never a stub, never a default-pass. `ETHOS_BIN` is authoritative: set and unresolvable is a hard error, not a fallback |
+| **Pin the verifier's identity** | `Profile::verifier` carries `ethos --version` **and** the sha256 of the binary's bytes. Both move `profile_sha256`, so a rebuild of the same version is as visible as a version change — a version-only pin would not have been |
+| **Relay report bytes verbatim** | `engine verify` stdout is **byte-identical** to `ethos verify` with the same arguments, asserted on the grounded and the ungrounded path. `engine_core::verifier` has no type for a report, a claim, a check or a result: there is nothing to re-derive because nothing is read |
+| **The gate is the product** | `--fail-on-ungrounded` exits 1 *and* writes the report. Without it the report is still written and the verifier's own exit status is forwarded — an ungrounded claim is never a silent skip either way |
+| **1 and 2 never collapse** | "the verifier refused" and "the run did not happen" are different answers, kept apart for the same reason the classify exit codes are |
+| **Spawn cost is acknowledged, not optimised** | ~19–22 ms measured floor. At the 20,000 docs/day design target (≈14/minute) it is irrelevant. No daemon, no socket, no cache |
+
+The adapter id is **declared, not sniffed**: the engine passes `--grounding ethos-grounding-json`,
+measured against the pinned binary rather than remembered. `ethos verify` can infer the type, but
+declaring it turns a wrong input into a usage error instead of a silent fall back to native-document
+loading — and a usage refusal relays as exit 2 with no report, which is the honest answer.
 
 This matches the established estate pattern: the parse API already spawns the ODL Java CLI and the
 Ethos Rust CLI once per invocation behind a byte-size admission gate.
 
-*(Unmeasured, cheap spike: per-invocation `ethos verify` cost.)*
+**What Stage 1 did not do**, and the grep gate proves it: no report parsing, no re-derivation of
+`all_evidence_grounded` or `capability_limits` or an evidence tier, no claim type anywhere in
+`engine-pdf` or `engine-grounding`. The engine gained a way to *run* a verifier, not an opinion.
+
+*(Still unmeasured, cheap spike: per-invocation `ethos verify` cost.)*
 
 ### Stage 2 — later: link `ethos-verify` as a crate
 

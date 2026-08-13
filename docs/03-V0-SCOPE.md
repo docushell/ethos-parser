@@ -120,10 +120,13 @@ and the engine-owned fixture is an additional test asset, not part of that count
 
 Two of these are known-hostile and both are load-bearing:
 
-- **`table-regular-grid` does not open under `lopdf`.** Its xref entries are 19 bytes
+- **`table-regular-grid` did not open under `lopdf`, and now does.** Its xref entries are 19 bytes
   (`0000000015 00000 n\n`) where PDF 32000-1 §7.5.4 requires exactly 20 (`…n \n`, trailing space).
   PDFium repairs it; `lopdf` rejects it. One valid document in ~26 on Ethos's own corpus. **v0
-  declares this as a limitation and exits 2.** Repair-or-refuse is a v0.1 decision.
+  declared the limitation and exited 2; v0.1 decided repair-or-refuse in favour of one bounded,
+  declared repair** (`01-CONTRACT.md` §8.1) and it now reads — carrying `xref-entry-padded` and
+  moving the oracle partition to 12 compared / 3 refused. It is still a *table* document read as
+  single-column text in stream order: the tables limitation is unchanged, and v0.1 is not v1.
 - **`simple-text` breaks both surveyed classifiers, in opposite directions.** pdf-inspector calls it
   TEXT-BASED while reporting `Pages with text: 0` (under-routes); LiteParse calls it `no-text` and
   demands OCR (over-routes). Neither is wrong about the document — both thresholds are calibrated for

@@ -30,6 +30,7 @@
 //! | [`ids`] | Stable-id allocation and the ordering discipline |
 //! | [`error`] | The six-variant error taxonomy |
 //! | [`diagnostics`] | Volatile observations, quarantined off the artifact and off by default |
+//! | [`verifier`] | Spawning a verifier and relaying its bytes — **never** reading them |
 //!
 //! # Boundary
 //!
@@ -67,6 +68,7 @@ pub mod identity;
 pub mod ids;
 pub mod profile;
 pub mod representation;
+pub mod verifier;
 
 pub use assurance::{
     codes, page_binding_status, Assurance, CoverageSummary, Limitation, LimitationScope,
@@ -84,9 +86,14 @@ pub use identity::{
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, CMAP_DATA_VERSION,
-    READING_ORDER_RULE_V0,
+    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, VerifierPin, XrefRepair,
+    CMAP_DATA_VERSION, READING_ORDER_RULE_V0,
 };
+pub use verifier::{
+    relay, RelayRequest, Relayed, VerifierBinary, GROUNDING_ADAPTER, RELAY_OK, RELAY_REFUSED,
+    RELAY_UNAVAILABLE,
+};
+
 pub use representation::{
     DocumentRepresentation, NativeLocator, Node, NodeGeometry, NodeKind, PageRecord, PdfLocator,
     ProcessingRun, ProcessorIdentity, RepresentationPayload, SourceIdentity, StructuralLocator,

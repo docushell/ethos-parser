@@ -435,18 +435,41 @@ fn unrotated_pages_report_rotation_zero() {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn the_hostile_xref_fixture_fails_to_open_with_a_named_error() {
+fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
     let profile = Profile::default();
-    let e = Document::open(
-        &conformance("synthetic/table-regular-grid/document.pdf"),
-        &profile,
-    )
-    .expect_err("19-byte xref entries where PDF 32000-1 §7.5.4 requires 20");
+    let path = conformance("synthetic/table-regular-grid/document.pdf");
 
-    assert_eq!(e.code(), "malformed");
+    // v0 refused this: 19-byte xref entries where PDF 32000-1 §7.5.4 requires 20. v0.1 repairs
+    // that one class (docs/01-CONTRACT.md §12), so the document now yields its real content.
+    let doc = Document::open(&path, &profile).expect("v0.1 repairs the 19-byte xref class");
+    assert_eq!(doc.xref_entries_padded(), Some(6));
+
+    let a = engine_pdf::extract(&doc, &profile).expect("and then extracts normally");
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Name", "Score", "Alpha", "10", "Beta", "12"],
+        "the repaired document must yield the text it actually contains — a repair that \
+         produced plausible-but-different content would be far worse than the refusal it replaced"
+    );
+
+    // The repair is on the wire, not just in the parser.
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
     assert!(
-        !e.to_string().is_empty(),
-        "the failure must be named, not a panic"
+        codes.contains(&engine_pdf::limitations::XREF_ENTRY_PADDED),
+        "a repaired open must declare itself: {codes:?}"
+    );
+
+    // Tables remain out of scope: this is a table document read as single-column text in stream
+    // order, and the artifact says so rather than implying a table was understood.
+    assert!(
+        codes.contains(&"tables-not-extracted"),
+        "the table limitation still stands on a table document: {codes:?}"
     );
 }
 
@@ -696,4 +719,164 @@ fn an_absent_advance_is_absent_not_zero() {
     // The origin is unaffected — it comes from the content stream, not the font.
     assert_eq!(r.locator.origin_x, 7200);
     assert_eq!(r.locator.origin_y, 7200);
+}
+
+// -------------------------------------------------------------------------------------------
+// v0.1 — broken font encodings are limitations, never mojibake (parity checklist P10)
+// -------------------------------------------------------------------------------------------
+
+/// **A font that cannot map a code loses its run, and says so.**
+///
+/// The failure this replaces was not subtle: through v0 one unmappable glyph anywhere refused the
+/// whole document, so a page with a single bad code yielded nothing at all. The failure it
+/// *refuses to introduce* is the one every other reader has — emitting the base encoding's
+/// characters for codes `/Differences` remapped, producing text the document does not contain
+/// inside a perfectly well-formed artifact.
+#[test]
+fn a_broken_font_encoding_drops_its_run_and_declares_it() {
+    let a = extract_ok(engine_fx("broken-font-encoding"));
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+
+    // The decodable run survives, exactly.
+    assert_eq!(
+        texts,
+        vec!["Readable"],
+        "text the font CAN map must be extracted normally; only the unmappable run is lost"
+    );
+
+    // And the mojibake a naive reader would emit is absent. Codes 200/201/202 are
+    // E-grave/E-acute/E-circumflex in WinAnsiEncoding, which is what a reader that ignored
+    // `/Differences` — or fell back to the base encoding on a glyph-name miss — would produce.
+    let all_text = texts.join("");
+    for ch in ['\u{c8}', '\u{c9}', '\u{ca}', '\u{fffd}'] {
+        assert!(
+            !all_text.contains(ch),
+            "the artifact contains U+{:04X}, which the document does not say. A substituted \
+             character in an evidence artifact is indistinguishable downstream from one the \
+             document really carried.",
+            ch as u32
+        );
+    }
+
+    // The loss is declared, with a count.
+    let lim = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_pdf::limitations::BROKEN_FONT_ENCODING)
+        .expect("a dropped run must be declared, not silently absent");
+    assert!(
+        lim.detail.contains("1 text run"),
+        "the declaration must say how much is missing: {}",
+        lim.detail
+    );
+
+    // The page was read, so its state is `processed` and the terminal state is `complete`.
+    // Deliberate, and worth recording: `partial` in this contract means pages were never
+    // attempted, not that some text on a read page was undecodable. The limitation is what
+    // carries "the text here is incomplete", and it says so in as many words.
+    assert_eq!(
+        a.assurance.terminal_state,
+        engine_core::ProcessingTerminalState::Complete
+    );
+    assert!(
+        lim.detail.contains("must not infer"),
+        "the declaration must warn against reading absence as blankness: {}",
+        lim.detail
+    );
+}
+
+/// A clean document declares no encoding limitation.
+///
+/// Guards the guard: a limitation attached unconditionally would make the test above pass on any
+/// document at all.
+#[test]
+fn a_document_that_decodes_cleanly_claims_no_encoding_problem() {
+    let a = extract_ok(engine_fx("measured-ink-box"));
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == engine_pdf::limitations::BROKEN_FONT_ENCODING),
+        "a document with no encoding holes must not claim one"
+    );
+}
+
+/// **A document whose text layer decodes to nothing is refused outright.**
+///
+/// The line between "declare" and "refuse". An artifact carrying zero runs would be
+/// indistinguishable from a genuinely blank page, and that is a difference a caller must be able
+/// to see — so this one is `docs/01-CONTRACT.md` §8 territory rather than a limitation.
+#[test]
+fn a_document_that_decodes_nothing_is_refused_rather_than_emptied() {
+    // Built here rather than by editing the fixture: removing a run from a PDF's content stream
+    // moves every byte after it, so the xref offsets and `/Length` both go stale and the
+    // document fails to *open* — which would have tested the trailer parser, not the encoding.
+    let doc = pdf_with_only_unmappable_text();
+
+    let profile = Profile::default();
+    let d = Document::open_bytes(&doc, &profile).expect("still a structurally valid PDF");
+    let e = engine_pdf::extract(&d, &profile)
+        .expect_err("a document with no decodable text has no usable text layer");
+
+    assert_eq!(e.code(), "unsupported", "got {e}");
+    assert!(
+        e.to_string().contains("text layer is unusable"),
+        "the refusal must name what went wrong: {e}"
+    );
+}
+
+/// One page, one font whose `/Differences` resolve to nothing, one run of unmappable codes.
+///
+/// The same shape `fixtures/engine/broken-font-encoding` carries, minus the readable run. Offsets
+/// are computed, so the document is genuinely well-formed and the only thing wrong with it is the
+/// encoding.
+fn pdf_with_only_unmappable_text() -> Vec<u8> {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let stream = b"BT /F1 24 Tf 1 0 0 1 72 40 Tm (\\310\\311\\312) Tj ET";
+
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] \
+           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        format!("<< /Length {} >>\nstream\n", stream.len())
+            .into_bytes()
+            .into_iter()
+            .chain(stream.iter().copied())
+            .chain(b"\nendstream".iter().copied())
+            .collect(),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Type /Encoding \
+             /BaseEncoding /WinAnsiEncoding /Differences [200 /nonexistentglyphone \
+             /nonexistentglyphtwo /nonexistentglyphthree] >> /FirstChar 32 /LastChar 126 \
+             /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    ];
+
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, body) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref_at = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+    out.extend_from_slice(b"0000000000 65535 f \n");
+    for off in &offsets {
+        // Exactly 20 bytes, per PDF 32000-1 §7.5.4 — this document is not exercising the repair.
+        out.extend_from_slice(format!("{off:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
 }

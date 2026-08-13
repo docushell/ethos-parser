@@ -46,7 +46,7 @@ const ETHOS_OWNED_FIXTURE_COUNT: usize = 15;
 /// `docs/07-VERIFY-BOUNDARY.md` and `docs/README.md`**, and without an assertion a regression that
 /// made the extractor refuse six more documents would move them quietly into the refused list,
 /// leave the suite green, and leave three docs saying 11.
-const ORACLE_AGREED_COUNT: usize = 11;
+const ORACLE_AGREED_COUNT: usize = 12;
 
 /// The fixture the first oracle comparison runs on (`docs/05-MILESTONES.md` M0).
 const M0_FIXTURE: &str = "synthetic/simple-text";

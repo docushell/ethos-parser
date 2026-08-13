@@ -257,6 +257,10 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
     }
 
     let mut limitations = lim::classify_limitations(sample_n);
+    // A repaired open is never silent: every artifact derived from one says so.
+    if let Some(padded) = doc.xref_entries_padded() {
+        limitations.push(lim::xref_entry_padded(padded));
+    }
     if budget_binds {
         // Declared exactly when the page states point at it, so the cross-check that every gap
         // names a declared limitation cannot pass for the wrong reason.

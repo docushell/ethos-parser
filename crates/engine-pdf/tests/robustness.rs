@@ -357,8 +357,9 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 28] = [
+const EXPECTED_SURVIVORS: [&str; 30] = [
     "absent-font-metrics/junk-after-eof",
+    "broken-font-encoding/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/flip-tail-byte",
@@ -382,6 +383,7 @@ const EXPECTED_SURVIVORS: [&str; 28] = [
     "synthetic/list-items/junk-after-eof",
     "synthetic/rotation-90/junk-after-eof",
     "synthetic/simple-text/junk-after-eof",
+    "synthetic/table-regular-grid/junk-after-eof",
     "synthetic/two-columns/flip-tail-byte",
     "synthetic/two-columns/junk-after-eof",
     "synthetic/two-lines/flip-tail-byte",
@@ -654,8 +656,9 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        23,
-        "the manifest should declare 23 fixtures across three roots"
+        24,
+        "the manifest should declare 24 fixtures across three roots (23 at M7, plus v0.1's \
+         broken-font-encoding)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

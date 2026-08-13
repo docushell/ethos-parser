@@ -72,15 +72,9 @@ if [ -z "$files" ]; then
   exit 1
 fi
 
-# Guard the exclusion: `//`-stripping is only safe because there are no block comments to hide a
-# token inside. If one ever lands, this says so rather than silently under-scanning.
-if grep -l '/\*' $files >/dev/null 2>&1; then
-  echo "::error::a /* */ block comment appeared in crates/*/src; this scan only strips // comments" >&2
-  grep -ln '/\*' $files >&2
-  exit 1
-fi
-
-hits=$(
+# The scannable corpus: comments stripped, test modules skipped. Computed once, because the
+# block-comment guard below has to inspect the same text this scans and not the raw file.
+code=$(
   for f in $files; do
     awk -v F="$f" '
       # Skip the test module only — two of them list these tokens as data — and resume at its
@@ -90,8 +84,23 @@ hits=$(
       in_tests { next }
       { line = $0; sub(/[ \t]*\/\/.*$/, "", line); if (line ~ /[^ \t]/) print F ":" NR ": " line }
     ' "$f"
-  done | grep -inE "$pattern" || true
+  done
 )
+
+# Guard the exclusion: `//`-stripping is only safe because there is no block comment to hide a
+# token inside. If one ever lands, say so rather than silently under-scanning.
+#
+# Checked against the STRIPPED text, not the raw file. The first version scanned the raw file and
+# fired on `crates/*/src` written in a doc comment — prose about the scan's own scope, containing
+# `/*`, failing the scan. A `/*` inside a `//` comment is not a block comment, and a guard that
+# cannot tell the difference is one somebody eventually disables.
+if printf '%s\n' "$code" | grep -q '/\*'; then
+  echo "::error::a /* */ block comment appeared in crates/*/src; this scan only strips // comments" >&2
+  printf '%s\n' "$code" | grep -n '/\*' >&2
+  exit 1
+fi
+
+hits=$(printf '%s\n' "$code" | grep -inE "$pattern" || true)
 
 scanned=$(echo "$files" | wc -l | tr -d ' ')
 

@@ -143,6 +143,11 @@ fn crate_exports(crate_name: &str) -> BTreeSet<String> {
 // -------------------------------------------------------------------------------------------
 
 /// `engine-core` — every module is contract, so every module is public.
+///
+/// The `verifier` block is v0.1: the engine spawns a verifier and relays its bytes, and that has
+/// to be reachable as a library call because `engine-cli` exports nothing. Note what is NOT here
+/// — no report type, no claim, no check, no result. There is nothing to export because the engine
+/// never reads what it forwards.
 const CORE: &[&str] = &[
     "ArtifactBinding",
     "ArtifactIdentity",
@@ -162,6 +167,7 @@ const CORE: &[&str] = &[
     "DiagnosticsRun",
     "DocumentRepresentation",
     "EngineError",
+    "GROUNDING_ADAPTER",
     "GeometryAbsence",
     "GeometryPresence",
     "HostInfo",
@@ -186,6 +192,9 @@ const CORE: &[&str] = &[
     "ProcessingTerminalState",
     "ProcessorIdentity",
     "Profile",
+    "RELAY_OK",
+    "RELAY_REFUSED",
+    "RELAY_UNAVAILABLE",
     "QRect",
     "QRectError",
     "QUANTUM_PER_POINT",
@@ -194,6 +203,8 @@ const CORE: &[&str] = &[
     "REPRESENTATION_ARTIFACT_TYPE",
     "REPRESENTATION_SCHEMA_VERSION",
     "RefusalCode",
+    "RelayRequest",
+    "Relayed",
     "RepresentationPayload",
     "Sha256Hex",
     "SourceIdentity",
@@ -201,6 +212,9 @@ const CORE: &[&str] = &[
     "StructuralLocator",
     "SynthesizedAt",
     "TextRunAttributes",
+    "VerifierBinary",
+    "VerifierPin",
+    "XrefRepair",
     "assurance",
     "c14n",
     "c14n_bytes",
@@ -215,10 +229,12 @@ const CORE: &[&str] = &[
     "profile",
     "profile_sha256",
     "quantize",
+    "relay",
     "representation",
     "sha256_hex",
     "sha256_hex_bytes",
     "sort_ids",
+    "verifier",
 ];
 
 /// `engine-pdf` — narrowed at M7. The parsing machinery is `pub(crate)`; only `exit` and

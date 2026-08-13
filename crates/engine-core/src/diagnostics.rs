@@ -74,6 +74,8 @@ pub enum Stage {
     Ground,
     /// `engine grounding-check`
     GroundingCheck,
+    /// `engine verify` — the one stage that spawns another process (v0.1).
+    Verify,
 }
 
 impl Stage {
@@ -84,6 +86,7 @@ impl Stage {
             Self::Extract => "extract",
             Self::Ground => "ground",
             Self::GroundingCheck => "grounding-check",
+            Self::Verify => "verify",
         }
     }
 }
@@ -257,6 +260,7 @@ mod tests {
             (Stage::Extract, "extract"),
             (Stage::Ground, "ground"),
             (Stage::GroundingCheck, "grounding-check"),
+            (Stage::Verify, "verify"),
         ] {
             assert_eq!(stage.as_str(), name);
             assert_eq!(serde_json::to_value(stage).unwrap(), name);

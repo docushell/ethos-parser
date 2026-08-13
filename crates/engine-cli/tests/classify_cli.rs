@@ -108,8 +108,12 @@ fn exit_two_for_every_could_not_read_case() {
             conformance("failure/invalid-header/document.pdf"),
         ),
         (
-            "19-byte xref",
-            conformance("synthetic/table-regular-grid/document.pdf"),
+            // v0.1 repairs the 19-byte xref class, so `table-regular-grid` moved OUT of this
+            // list and into `the_repaired_xref_fixture_exits_zero_and_declares_it` below.
+            // `corrupt-header-valid` takes its place: also a malformed structure, and NOT the
+            // repairable class — which is the property worth guarding here.
+            "corrupt xref",
+            conformance("failure/corrupt-header-valid/document.pdf"),
         ),
         ("missing file", repo_root().join("no/such/file.pdf")),
     ] {

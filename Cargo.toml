@@ -24,10 +24,14 @@ members = [
 exclude = ["fuzz"]
 
 [workspace.package]
-# v0, frozen at M7. `parser_version` is read from this (`Profile::default`), so the bump is an
+# v0.1 (0.2.0). `parser_version` is read from this (`Profile::default`), so the bump is an
 # identity event: `profile_sha256` moves, and every artifact produced before and after is
-# correctly non-comparable. That is the design, not a regression — see CHANGELOG M7.
-version = "0.1.0"
+# correctly non-comparable. That is the design, not a regression — see CHANGELOG.
+#
+# The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), and this
+# roadmap row — "v0.1" in docs/02-ROADMAP.md — ships as 0.2.0. Two new profile fields and a
+# fifth subcommand are more than a patch.
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -48,9 +52,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.1.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.1.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.1.0" }
+engine-core = { path = "crates/engine-core", version = "0.2.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.2.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.2.0" }
 
 [profile.release]
 strip = "symbols"
