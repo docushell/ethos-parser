@@ -64,9 +64,17 @@ enum Command {
     /// from is where the declaration lives.
     Ground(GroundArgs),
 
-    /// Validate a grounding artifact against its schema and source bytes.
-    /// **Not implemented until M6.**
-    GroundingCheck(PathArg),
+    /// Validate a grounding artifact: structure, and optionally its binding to source bytes.
+    ///
+    /// **Structure and binding only** — no claims, no verdict, no `grounded`, no evidence tier.
+    /// The engine validates; it never verifies (`docs/07-VERIFY-BOUNDARY.md`).
+    ///
+    /// Exit codes: **0** valid (and matched, or not checked) · **1** invalid structure, or a
+    /// source that does not bind · **2** the input could not be read at all. Ethos returns 2 for
+    /// both of the last two; the engine keeps them apart, because a caller that cannot tell a
+    /// failing check from an unreadable file is the defect this project refuses. Both agree on
+    /// zero versus non-zero, which is what a shell predicate reads.
+    GroundingCheck(GroundingCheckArgs),
 }
 
 #[derive(clap::Args)]
@@ -89,6 +97,20 @@ struct ExtractArgs {
 }
 
 #[derive(clap::Args)]
+struct GroundingCheckArgs {
+    /// The `ethos.grounding.v1` JSON to validate.
+    path: PathBuf,
+
+    /// The PDF the artifact claims to describe.
+    ///
+    /// Supplying it turns `source_binding` from `not_checked` into `matched` or `mismatched`.
+    /// Omitting it is not a pass — it is a question that was not asked. Named to match the Ethos
+    /// CLI so the oracle harness reads the same either way.
+    #[arg(long, value_name = "PDF")]
+    source_artifact: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
 struct GroundArgs {
     /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
     path: PathBuf,
@@ -107,7 +129,7 @@ fn main() -> ExitCode {
         Command::Classify(args) => run_classify(args),
         Command::Extract(args) => run_extract(args),
         Command::Ground(args) => run_ground(args),
-        Command::GroundingCheck(_) => not_implemented("grounding-check", "M6"),
+        Command::GroundingCheck(args) => run_grounding_check(args),
     }
 }
 
@@ -233,6 +255,55 @@ fn run_ground(args: GroundArgs) -> ExitCode {
 /// Projection succeeded.
 const PROJECTED: i32 = 0;
 
+/// Validate a grounding artifact and print the report.
+///
+/// Thin, like the rest: read bytes, call the library, print canonical bytes, map the outcome to
+/// an exit code. **The report is printed on every outcome the checker can describe**, including
+/// the failing ones — a caller that gets a non-zero exit and no report has to guess why, and the
+/// report is the machine-readable part. Only an input that could not be read at all produces no
+/// report, because there is nothing to report about.
+fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
+    let grounding = match std::fs::read(&args.path) {
+        Ok(b) => b,
+        Err(e) => {
+            return fail(&EngineError::Io {
+                detail: format!("{}: {e}", args.path.display()),
+            })
+        }
+    };
+
+    let source = match &args.source_artifact {
+        None => None,
+        Some(p) => match std::fs::read(p) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                return fail(&EngineError::Io {
+                    detail: format!("{}: {e}", p.display()),
+                })
+            }
+        },
+    };
+
+    let report = match engine_grounding::grounding_check(&grounding, source.as_deref()) {
+        Ok(r) => r,
+        // A non-PDF source, or an input past the accepted ceiling. Ethos refuses these before
+        // writing any report and so does this: "these bytes are not the source" would be a
+        // different and wrong statement about a file that is not a document at all.
+        Err(e) => return fail(&e),
+    };
+
+    match report.to_canonical_bytes() {
+        Ok(bytes) => {
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(&bytes);
+            let _ = out.write_all(b"\n");
+            let _ = out.flush();
+            ExitCode::from(report.exit_code() as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
 /// Extraction succeeded.
 ///
 /// Deliberately not reusing `SIMPLE`: exit 0 means different things for the two subcommands, and
@@ -245,18 +316,5 @@ const EXTRACTED: i32 = 0;
 /// be mistaken for a real one by something reading the pipe.
 fn fail(e: &EngineError) -> ExitCode {
     eprintln!("engine: {} [{}]", e, e.code());
-    ExitCode::from(COULD_NOT_READ as u8)
-}
-
-/// A subcommand that exists in the surface but has no implementation yet.
-///
-/// Exits 2 (could-not-read) rather than 0, and says which milestone owns it. Printing usage and
-/// exiting 0 would let a script conclude the work happened.
-fn not_implemented(name: &str, milestone: &str) -> ExitCode {
-    eprintln!(
-        "engine: `{name}` is not implemented — it lands at {milestone}.\n\
-         See docs/05-MILESTONES.md. Exiting {COULD_NOT_READ} (could-not-read) rather than \
-         pretending the work happened."
-    );
     ExitCode::from(COULD_NOT_READ as u8)
 }

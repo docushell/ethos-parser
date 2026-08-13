@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M5 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
+**Status:** **M6 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
 extracts position-aware text runs from it (M3): an exhaustive operator table that fails closed,
 `PdfLocator` on every run, measured or typed-absent ink boxes, synthesized-character flags, and
 the ligature caveat on the wire. As of M4 every artifact also carries the **L1 gate** — declared
@@ -8,7 +8,9 @@ capabilities, named limitations, per-page processing state, a coverage summary t
 and a terminal state where **partial is not a degraded success**. As of M5 `engine extract` emits
 **`DocumentRepresentation v0`** — the canonical evidence record, with a fingerprint over its own
 payload and geometry deliberately outside it — and `engine ground` projects that record into
-`ethos.grounding.v1`, validated against a pinned snapshot of Ethos's own schema. **Next: M6.**
+`ethos.grounding.v1`, validated against a pinned snapshot of Ethos's own schema. As of M6
+`engine grounding-check` validates a grounding artifact's structure and its binding to source
+bytes, and **agrees with the Ethos CLI on every fixture that reaches one**. **Next: M7.**
 
 ---
 
@@ -18,21 +20,25 @@ payload and geometry deliberately outside it — and `engine ground` projects th
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M6.** M0–M5 are done and committed; do not re-author the workspace, the contract
-   types, the classifier, the extractor, the assurance envelope, the representation, or the
-   projection. M6 adds `grounding-check` — **JSON Schema validation only**, never verification —
-   and the byte-identical oracle agreement across all 15 fixtures. Note that Ethos computes
-   `representation_sha256` as a hash of the grounding **file's raw bytes**, which is not the same
-   thing as the representation's own `representation_c14n_sha256`
+5. **Implement M7.** M0–M6 are done and committed; do not re-author the workspace, the contract
+   types, the classifier, the extractor, the assurance envelope, the representation, the
+   projection, or the checker. M7 freezes the public API, wires `03-V0-SCOPE.md` §5 line by line
+   as CI jobs, and adds the fuzz and mutation layers. Two things M6 leaves for it: the engine's
+   own `--diagnostics` flag does not exist yet, and the `ethos` binary in the sibling tree is
+   **older than its own source** (it prints the validation report bare; the ref CI pins wraps it
+   in an in-toto Statement) — the oracle harness reads both, but a rebuild there is worth doing
+   deliberately
 
 **Before you touch anything, run the gate** so you know the baseline you inherited:
 
 ```bash
-cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
+cargo test --workspace --locked
 ```
 
-Green, with `oracle_agrees_on_simple_text` failing when unskipped, is the correct state — not a bug
-to fix. That one exclusion holds until M6.
+**No exclusion.** `oracle_agrees_on_simple_text` failed by design from M0 to M5 and carried a
+diagnostic naming what was missing; M6 replaced the panic with the comparison it always described.
+If you find yourself adding `--skip` to get a green build, stop: that test is the only thing
+proving this engine and the verifier read an artifact the same way.
 
 **`engine-core` is closed to format concepts.** All PDF work lives in `engine-pdf`, which depends
 on `engine-core` and never the other way round. A test scans `engine-core`'s sources and fails if a
@@ -74,8 +80,8 @@ Then, as needed:
 | **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | M1 | **done** |
 | **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | **done** |
 | **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | **done** |
-| **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | **next** |
-| **M7** | CLI + library freeze + v0 exit criteria green | M6 | — |
+| **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | **done** |
+| **M7** | CLI + library freeze + v0 exit criteria green | M6 | **next** |
 
 M2 and M3 both depended only on M1; both are done. Everything else is a chain.
 

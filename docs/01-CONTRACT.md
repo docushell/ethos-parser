@@ -492,7 +492,11 @@ emit what the oracle tolerates, never the reverse.
 | `counts` | `{pages, elements, spans, tables}` |
 
 M6's exit criterion is agreement with `ethos grounding check <file> --source-artifact <pdf>` on
-exactly these four, across all 15 fixtures.
+exactly these four. **Measured at M6:** 11 of the 15 Ethos-owned fixtures reach a grounding
+artifact and agree; the other 4 cannot be opened by this backend at all and are asserted to fail
+closed instead. Because every fixture in that corpus yields typed-absent geometry, all 11 agreeing
+artifacts are `1 page / 0 elements / 0 spans` — so the element, span and table rules are compared
+against the oracle using a **benchmark** document, not one of the 15.
 
 ---
 

@@ -83,16 +83,27 @@ The happy path terminates at a **validated** grounding artifact, not a verified 
 classify → extract → ground → grounding-check
 ```
 
-`grounding-check` is a reimplementation of the **JSON Schema validator only** — never the verifier —
-and it has a deterministic external oracle:
+`grounding-check` validates **structure and source binding only** — never the verifier — and it has
+a deterministic external oracle:
 
 ```bash
 ethos grounding check <file> --source-artifact <pdf>
 ```
 
-**Exit criterion:** across all 15 fixtures, ethos-engine's validator and Ethos agree byte-identically
-on `structure`, `source_binding`, `representation_sha256` and `counts`. A CI job, not a claim.
-(`05-MILESTONES.md` M6.)
+**Shipped at M6, and the criterion is now a passing test rather than a plan.** Of the 15
+Ethos-owned fixtures, **11 reach a grounding artifact and both checkers agree** on `structure`,
+`source_binding`, `representation_sha256` and `counts`; the other **4 cannot be read by this
+backend at all** — a 19-byte xref, a corrupt xref, an invalid header, an encrypted file — and a
+separate test asserts each still exits 2 with no artifact, so the four are excluded *visibly*
+rather than quietly. The harness fails if the two lists do not partition the corpus exactly.
+
+One correction to the wording this section used to carry: `grounding-check` is **not** "a
+reimplementation of the JSON Schema validator only". The schema is necessary and not sufficient —
+Ethos's parser enforces id uniqueness, reference resolution, page ordering, boxes inside their
+page, capability/array agreement and character-offset validity, none of which JSON Schema can
+express. The engine mirrors those rules too. That is still a long way short of verification, and
+the line has not moved: no claim, no verdict, no `grounded`, no evidence tier, and a grep test in
+the oracle harness enforces it.
 
 **No verification code exists in the tree at v0.** Not a stub, not a feature flag, not a
 `TODO`-shaped module. M7 asserts this with a grep test in CI rather than by inspection.

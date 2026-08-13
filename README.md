@@ -23,21 +23,22 @@ Extraction interprets content streams against an **exhaustive** operator table �
 operator stops the parse instead of being skipped — puts a native locator on every run, and
 reports an ink box only when it was measured.
 
-`engine-grounding` is still a skeleton, and the oracle test fails on purpose with a diagnostic
-naming everything still missing.
+`engine-grounding` projects the record into `ethos.grounding.v1` and validates one, and the oracle
+test compares its verdict against the Ethos CLI's on every fixture that reaches an artifact.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
-- **Next milestone:** **M4** — capabilities and coverage
+- **Next milestone:** **M7** — API freeze, fuzz and mutation layers, v0 exit criteria as CI jobs
   ([`docs/05-MILESTONES.md`](docs/05-MILESTONES.md))
 
 ## Building
 
 ```bash
-cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
+cargo test --workspace --locked
 ```
 
-That exclusion is deliberate and is the M0 gate. `oracle_agrees_on_simple_text` fails until M6, with
-a diagnostic naming each missing milestone. Do not `#[ignore]` or delete it to get a green run.
+No exclusion: `oracle_agrees_on_simple_text` failed by design from M0 through M5 and
+runs the real comparison as of M6. Adding `--skip` to get a green build would delete the only
+thing proving this engine and the verifier read an artifact the same way.
 
 The oracle harness needs the Ethos repo for its fixture corpus and CLI. It resolves
 `../ethos/fixtures` and `../ethos/target/release/ethos` by default; override with `ETHOS_FIXTURES`
@@ -50,8 +51,10 @@ named reason codes on two orthogonal axes — never a confidence score. Extracti
 text runs with required native locators and measured ink boxes, or typed absence where the metrics do
 not exist. No tables, no OCR, no Markdown, no office formats, no verification.
 
-v0 is complete when its validator agrees byte-identically with the Ethos CLI across all 15
-conformance fixtures.
+v0 is complete when every line of `docs/03-V0-SCOPE.md` §5 is a green CI job. The validator half of
+that is already there: it agrees with the Ethos CLI on `structure`, `source_binding`,
+`representation_sha256` and `counts` for all 11 conformance fixtures that reach a grounding
+artifact, and the other 4 are asserted to fail closed rather than quietly skipped.
 
 ## What it will never do
 

@@ -115,18 +115,11 @@ jobs:
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
-        # M0: `oracle_agrees_on_simple_text` fails by design until M6. Everything else must be
-        # green. This exclusion is the milestone gate, stated the same way in
-        # docs/05-MILESTONES.md M0 acceptance.
-        # DELETE THIS EXCLUSION AT M6 — it is the last thing M6 does.
-        run: cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text
-
-      - name: oracle status (expected to fail until M6)
-        continue-on-error: true
-        env:
-          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
-          ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
-        run: cargo test --workspace --locked oracle_agrees_on_simple_text
+        # M6: the exclusion is gone. `oracle_agrees_on_simple_text` was the M0 gate — it failed
+        # by design for six milestones and now runs the real comparison, so the bare command is
+        # the gate. Re-adding a `--skip` here to get a green build would delete the only thing
+        # that proves this engine and the verifier read an artifact the same way.
+        run: cargo test --workspace --locked
 
       # Installed rather than run via EmbarkStudios/cargo-deny-action, for two reasons:
       #   1. That action exposes no input to pin the cargo-deny version — its only version

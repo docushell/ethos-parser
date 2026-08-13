@@ -500,13 +500,17 @@ fn the_pattern_matchers_accept_and_reject_the_right_strings() {
     }
 }
 
-/// The subset validator never becomes production validation code.
+/// The **subset validator** never becomes production validation code.
 ///
-/// M6 owns `grounding-check`, and it owes agreement with an external oracle. A validator that
-/// quietly graduated from the test layer into the library would make that comparison
-/// self-referential — the engine would be checking its own homework with the same code that
-/// produced the answer. Keeping it in `tests/` is the whole safeguard, so it is asserted rather
-/// than remembered.
+/// M6 gave `engine-grounding` a real `check` module, so "no validation in src/" is no longer the
+/// rule and would now be false. The rule that still matters is narrower and is the one that keeps
+/// the oracle honest: **the production checker must not be this file**.
+///
+/// If `grounding-check` graded artifacts with the same schema-driven subset validator that the
+/// conformance tests use, then "the engine agrees with Ethos" would partly mean "the engine agrees
+/// with itself". The production checker is an independent transcription of Ethos's own
+/// `grounding_json.rs` rules; this file is a JSON Schema interpreter. Two different instruments,
+/// deliberately, and the machinery of this one must not appear in `src/`.
 #[test]
 fn the_subset_validator_is_test_only() {
     // Recursive: a guard that inspects one file is a guard against one file.
@@ -530,16 +534,23 @@ fn the_subset_validator_is_test_only() {
     assert!(code.len() > 500, "the source scan found almost nothing");
 
     for banned in [
-        "fn validate",
+        // The subset interpreter's own machinery. Its presence in `src/` would mean the
+        // production path had been pointed at the test instrument.
         "matches_pattern",
         "IMPLEMENTED",
         "schema_path",
+        "PINNED_SCHEMA_SHA256",
+        // And the production checker must not read the schema file at runtime at all: it
+        // mirrors Ethos's parser, and a checker that needed a data file on disk would fail
+        // differently depending on how it was installed.
         "include_str!",
+        ".schema.json",
     ] {
         assert!(
             !code.contains(banned),
-            "`{banned}` appears in engine-grounding's library. Schema validation is M6's, and it \
-             must not be able to grade itself against the code that emitted the artifact."
+            "`{banned}` appears in engine-grounding's library. The production checker mirrors \
+             Ethos's own rules; it must not be, or read, this file's schema interpreter, or \
+             agreement with the oracle becomes partly agreement with ourselves."
         );
     }
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos:schema:grounding-validation-report:1",
+  "title": "Ethos Grounding Validation Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_type", "schema_version", "structure", "source_binding"],
+  "properties": {
+    "artifact_type": { "const": "ethos.grounding_validation.v1" },
+    "schema_version": { "const": "1.0.0" },
+    "structure": { "enum": ["valid", "invalid"] },
+    "source_binding": { "enum": ["matched", "mismatched", "not_checked"] },
+    "representation_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "counts": { "type": "object", "additionalProperties": false, "required": ["pages", "elements", "spans", "tables"], "properties": { "pages": { "type": "integer", "minimum": 0 }, "elements": { "type": "integer", "minimum": 0 }, "spans": { "type": "integer", "minimum": 0 }, "tables": { "type": "integer", "minimum": 0 } } },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "allOf": [
+    { "if": { "properties": { "structure": { "const": "valid" } } }, "then": { "required": ["representation_sha256", "counts"] } },
+    { "if": { "properties": { "structure": { "const": "invalid" } } }, "then": { "required": ["error"] } }
+  ],
+  "$defs": {
+    "error": { "type": "object", "additionalProperties": false, "required": ["code", "path", "message"], "properties": { "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }, "path": { "type": "string", "maxLength": 1024 }, "message": { "type": "string", "maxLength": 2048 } } }
+  }
+}

@@ -5,6 +5,7 @@
 | File | Origin | `sha256` of the snapshot |
 | --- | --- | --- |
 | `ethos-grounding-source.schema.json` | `../ethos/schemas/ethos-grounding-source.schema.json` (`$id` `urn:ethos:schema:grounding-source:1`) | `8d41c1e08f49ec0ca4878ac0ec3ccf3a79f7b9ffa31aa26ad0a60a6f27b319de` |
+| `ethos-grounding-validation-report.schema.json` | `../ethos/schemas/ethos-grounding-validation-report.schema.json` (`$id` `urn:ethos:schema:grounding-validation-report:1`) | `eed7e2f3575a6d57f25a7b29bbdc6597255e4d9018c8f06b50546f03d45b6f11` |
 
 ## Why a snapshot rather than a path
 
@@ -30,3 +31,24 @@ snapshot were the thing that went missing, the conformance test would fail outri
 
 Updating the snapshot is a deliberate act: copy the file, update the digest above, and say in the
 commit what changed upstream and what it means for the projection.
+
+## What the report snapshot is for, and what it is not
+
+`ethos-grounding-validation-report.schema.json` describes the shape `engine grounding-check`
+emits. It is pinned for the same reason as the source schema: so the shape this engine writes has
+one fixed description a reader can check against.
+
+**It is not what the checker validates against.** `engine-grounding`'s `check` module mirrors
+Ethos's *parser* — `ethos-core/src/grounding_json.rs` — rule for rule and in its order, because
+the schema is necessary and not sufficient. Id uniqueness, reference resolution, page ordering,
+boxes inside their page, capability/array agreement, character offsets that index their element's
+text, table cell occupancy: none of that is expressible in JSON Schema, and a checker that
+validated only the schema would call artifacts valid that the oracle calls invalid.
+
+## One thing worth knowing about the built oracle
+
+The `ethos` binary in the sibling tree's `target/release/` is **older than its own source**. It
+prints the validation report bare; the committed source (and the ref CI pins) wraps it in an
+in-toto Statement, with the report at `predicate`. The oracle harness reads both shapes and
+refuses anything else rather than guessing, so a rebuild of Ethos changes nothing here — but if
+you are comparing output by hand, that is why two runs can look different.

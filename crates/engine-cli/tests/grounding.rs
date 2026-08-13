@@ -301,8 +301,8 @@ fn the_source_digest_binds_to_the_fixture_bytes() {
         let g = ground(&path).source;
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(
-            g.source.sha256.hex(),
-            engine_core::sha256_hex_bytes(&bytes),
+            g.source.sha256,
+            format!("sha256:{}", engine_core::sha256_hex_bytes(&bytes)),
             "{id}: the artifact must bind to the exact bytes it was produced from"
         );
     }

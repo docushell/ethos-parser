@@ -46,11 +46,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod check;
+
+pub use check::{
+    grounding_check, Counts, ReportError, SourceBinding, Structure, ValidationReport,
+    VALIDATION_ARTIFACT_TYPE, VALIDATION_SCHEMA_VERSION,
+};
+
 use serde::{Deserialize, Serialize};
 
-use engine_core::{
-    c14n_bytes, Capabilities, DocumentRepresentation, EngineError, PageRecord, Sha256Hex,
-};
+use engine_core::{c14n_bytes, Capabilities, DocumentRepresentation, EngineError, PageRecord};
 
 /// Artifact type. A const in the schema, so a const here.
 pub const GROUNDING_ARTIFACT_TYPE: &str = "ethos.grounding.v1";
@@ -117,8 +122,16 @@ pub use grounded_box::GroundedBox;
 pub struct Source {
     /// `application/pdf` — a const in the schema.
     pub media_type: String,
-    /// Digest of the exact source bytes.
-    pub sha256: Sha256Hex,
+    /// Digest of the exact source bytes, `sha256:<64 hex>`.
+    ///
+    /// **A plain `String` on purpose, and it is the checker that decides this.** Emission always
+    /// builds it from a validated [`engine_core::Sha256Hex`], so nothing this engine writes can
+    /// be malformed. Parsing is the other direction: Ethos reads this field as a string and
+    /// reports a bad digest as `invalid_field` at **`/source`**. A self-validating type here
+    /// would reject it earlier, during deserialization, and report path `/` — the same verdict
+    /// at the wrong place, which is half an agreement. The strictness lives where it belongs, in
+    /// `check::validate`, at Ethos's path.
+    pub sha256: String,
 }
 
 /// `{name, version}` — who produced the artifact.
@@ -166,7 +179,12 @@ pub struct Page {
     /// Height in integer centipoints, after rotation.
     pub height: i64,
     /// 0, 90, 180 or 270.
-    pub rotation: i64,
+    ///
+    /// **`u16`, matching Ethos's own field type**, so a negative rotation is refused during
+    /// deserialization — `invalid_field` at `/` — exactly as the verifier refuses it. Typing it
+    /// `i64` and range-checking later reached the same verdict at a different path, which the
+    /// oracle compares.
+    pub rotation: u16,
 }
 
 /// One citable element.
@@ -429,7 +447,9 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
             schema_version: GROUNDING_SCHEMA_VERSION.to_string(),
             source: Source {
                 media_type: payload.source.media_type.clone(),
-                sha256: payload.source.sha256.clone(),
+                // From a validated `Sha256Hex`, so the wire string is well formed by
+                // construction even though the field itself does not enforce it.
+                sha256: payload.source.sha256.to_string(),
             },
             producer: Producer {
                 name: payload.processing_run.processor.name.clone(),
@@ -466,7 +486,9 @@ fn page_of(p: &PageRecord) -> Page {
         index: p.index,
         width: p.width,
         height: p.height,
-        rotation: p.rotation,
+        // The representation validates rotation into {0, 90, 180, 270} before this runs, so the
+        // narrowing cannot lose information; it is checked rather than asserted all the same.
+        rotation: u16::try_from(p.rotation).unwrap_or(u16::MAX),
     }
 }
 

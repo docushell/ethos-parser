@@ -46,6 +46,8 @@ M5. Skipping ahead means rewriting.
   - **The M0 gate, stated exactly** — these two together, because a bare `cargo test --workspace`
     exits non-zero at M0 *by design* and asserting otherwise would be a contradiction:
     - `cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text` is **green**
+      *(historical: this exclusion was the M0 gate and was deleted at M6, when the test began
+      running the real comparison. The gate today is the bare command.)*
     - the unskipped `oracle_agrees_on_simple_text` **fails** with the named M1–M6 diagnostic
     <br>**Do not resolve this by making the bare command green.** Every mechanical route —
     `#[ignore]`, deleting the test, weakening it to a `return` — destroys the milestone, and the
@@ -390,8 +392,12 @@ M5. Skipping ahead means rewriting.
 - **Goal:** Agreement with the oracle. The engine's validator and Ethos's read the same artifact and
   say the same thing, byte for byte, across the whole corpus.
 
-- **In:** `grounding-check` implementing **JSON Schema validation only**, plus source-byte binding via
-  `--source-artifact`; the `ethos.grounding_validation.v1` report shape; `crates/engine-cli/tests/oracle.rs` extended to
+- **In:** `grounding-check` implementing **structure and source-byte binding only**, via
+  `--source-artifact`. *(Corrected at M6: this line said "JSON Schema validation only". The schema
+  is necessary and not sufficient — Ethos's parser enforces id uniqueness, reference resolution,
+  page ordering, boxes inside their page, capability/array agreement and offset validity, none of
+  which JSON Schema expresses, and a schema-only checker would disagree with the oracle it is
+  required to match. The engine mirrors the parser. This is still nowhere near verification.)*; the `ethos.grounding_validation.v1` report shape; `crates/engine-cli/tests/oracle.rs` extended to
   all 15 fixtures; the double-run byte-identity harness.
 
 - **Out:** **Any verification semantics whatsoever.** `grounding-check` validates structure and
@@ -417,7 +423,9 @@ M5. Skipping ahead means rewriting.
     diagnostics are off by default.
   - **Oracle absence is loud**: with the `ethos` binary unavailable, the test **fails** with a named
     error. It never skips, never passes vacuously, never emits a stub report.
-  - Exit codes: **0** valid, **1** invalid, **2** could-not-read.
+  - Exit codes: **0** valid *(and matched, or not checked)*, **1** invalid structure *or a source
+    that does not bind*, **2** could-not-read. Ethos returns 2 for the middle two; the engine keeps
+    them apart and both agree on zero-versus-non-zero, which is what a shell predicate reads.
 
 - **Review checklist:**
   - [ ] `grounding-check` contains no verification logic — grep for claim, verdict, `grounded`,

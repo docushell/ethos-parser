@@ -167,31 +167,36 @@ fn the_sample_flag_changes_the_profile_and_the_observation() {
     );
 }
 
-/// Subcommands that do not exist yet exit 2, naming the milestone that owns them.
+/// **Every subcommand is implemented as of M6**, and none of them claims otherwise.
 ///
-/// `extract` left this list at M3 and `ground` at M5. Exiting 0 with usage text would let a
-/// script conclude the work happened.
+/// This test used to assert the opposite for whichever subcommands had not landed yet, and it
+/// shrank by one row per milestone. It is inverted rather than deleted because the property it
+/// guarded still matters in the other direction: a subcommand that prints usage and exits 0, or
+/// that says "not implemented", would let a script conclude work happened that did not.
 #[test]
-fn unimplemented_subcommands_exit_two_rather_than_pretend() {
-    // One entry left: `grounding-check` lands at M6. Kept as a loop so the next milestone
-    // removes a row rather than rewriting the test.
-    let sub = "grounding-check";
-    let out = Command::new(env!("CARGO_BIN_EXE_engine"))
-        .arg(sub)
-        .arg(conformance("synthetic/simple-text/document.pdf"))
-        .output()
-        .expect("runs");
-    assert_eq!(
-        out.status.code(),
-        Some(2),
-        "`{sub}` is unimplemented; exiting 0 would let a script conclude the work happened"
-    );
-    assert!(out.stdout.is_empty(), "`{sub}` must emit no artifact");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains('M'),
-        "`{sub}` should name the milestone that owns it; got: {stderr}"
-    );
+fn no_subcommand_claims_to_be_unimplemented() {
+    let pdf = conformance("synthetic/simple-text/document.pdf");
+    for sub in ["classify", "extract", "ground", "grounding-check"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_engine"))
+            .arg(sub)
+            .arg(&pdf)
+            .output()
+            .expect("runs");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !stderr.contains("not implemented"),
+            "`{sub}` still reports itself unimplemented: {stderr}"
+        );
+
+        // Handed a PDF, the two that expect JSON refuse it by name rather than by milestone.
+        if matches!(sub, "ground" | "grounding-check") {
+            assert_ne!(out.status.code(), Some(0), "`{sub}` must refuse a PDF");
+            assert!(
+                !stderr.is_empty() || !out.stdout.is_empty(),
+                "`{sub}` must say something about why"
+            );
+        }
+    }
 }
 
 /// `ground` is implemented, and refuses input that is not a representation.

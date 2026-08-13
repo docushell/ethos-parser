@@ -9,6 +9,188 @@ that has acceptance criteria.
 
 ## [Unreleased]
 
+### M6 — `grounding-check` validator + oracle agreement + double-run identity
+
+**The bare `cargo test --workspace --locked` is green for the first time since the repo existed.**
+`oracle_agrees_on_simple_text` was written in the first commit to fail, with a diagnostic naming
+what was missing; it failed for six milestones and now runs the comparison it always described.
+
+**Added — `engine-grounding::check`**
+
+- `grounding_check(grounding_json, source_pdf_bytes) -> ValidationReport`, plus `ValidationReport`,
+  `Structure`, `SourceBinding`, `Counts`, `ReportError`. Emits `ethos.grounding_validation.v1`.
+- **Structure and binding only.** No claim, no verdict, no `grounded`, no evidence tier, no quote
+  matching, and nothing re-derived from a verifier's report. A grep test over the check path
+  enforces it — with the unit-test module cut out first, because a test that asserts those tokens
+  are absent has to name them, and a scan that cannot tell a rule from its enforcement fires on
+  itself. (It did, once.)
+
+**Added — `engine grounding-check [--source-artifact <pdf>]`**
+
+The last unimplemented subcommand. `no_subcommand_claims_to_be_unimplemented` replaces the test
+that used to assert the opposite — inverted rather than deleted, because the property still
+matters in the other direction.
+
+**`representation_sha256` is the hash of the grounding file's raw bytes**
+
+Measured from `../ethos/crates/ethos-core/src/grounding_json.rs`, where `parse_grounding_json`
+does `hash.update(bytes)` on the slice it was handed, and confirmed by running the binary: for our
+own artifact it returned exactly `sha256sum g.json`. It is **not**
+`DocumentRepresentation::representation_c14n_sha256`, which digests a representation's payload
+subtree — a different input for a different purpose. The two sharing most of a name is precisely
+why M5 renamed ours, and a test pins the distinction: appending a newline to an artifact changes
+this digest while leaving `counts` identical, because it follows the bytes and not the meaning.
+
+**Why the checker mirrors Ethos's parser and not just the pinned schema**
+
+The schema is necessary and not sufficient. Id uniqueness, reference resolution, page ordering,
+boxes inside their page, capability/array agreement, character offsets that index their element's
+text, table cell occupancy — none of it is expressible in JSON Schema, and a checker validating
+only the schema would call artifacts valid that the oracle calls invalid. The rules are
+transcribed **in Ethos's order**, because the order decides which code an artifact with two faults
+reports, and the harness compares the code and the path, not just the verdict.
+
+That fidelity work found six real gaps, all fixed rather than tolerated. The first surfaced on the
+checker's own first run: `source.sha256` was typed as a self-validating `Sha256Hex`, so a
+malformed digest was rejected during deserialization and reported at path `/`, where Ethos reports
+`invalid_field` at `/source` — the same verdict at the wrong place, which is half an agreement.
+The wire type is now a plain string and the strictness lives in the checker at Ethos's path;
+emission is unaffected, because `project()` still builds it from a validated digest.
+
+The other five were found by **hunting for divergence** rather than by testing the inputs that
+came to mind, and every one of them agreed on `structure` while disagreeing on the reason:
+
+| input | engine said | Ethos says |
+| --- | --- | --- |
+| a float where an integer belongs | `invalid_field` `/` | `invalid_json` `/` |
+| an integer past `2^53-1` | `invalid_invariant` `/pages/0` | `limit_exceeded` `/` |
+| an oversized multibyte string | `limit_exceeded` `/elements/0/text` | `limit_exceeded` `/` |
+| an unknown field inside a page | `unknown_field` `/` | `unknown_field` `/pages/0/zzz` |
+| `null` where a string belongs | `invalid_field` `/` | `invalid_json` `/` |
+
+The cause was structural: `deny_unknown_fields` and typed deserialization reach the right verdict
+by the wrong route, and can only ever say `/`. Ethos refuses these **before** any field is typed,
+in a strict value pass, and then walks the value tree to report an unknown field's exact path. The
+checker now does both, in that order, and a `adversarial_inputs_agree_on_verdict_code_and_path`
+test pins nine such inputs against the live oracle so they cannot come back.
+
+**One ordering difference survives and is documented rather than chased**: Ethos's deserializer is
+streaming, so an artifact broken in *two* different ways reports whichever fault appears first in
+the bytes, while the engine's walk reports whichever rule comes first in its own order. Both call
+such an input invalid with an error present, and all four compared fields are identical — only the
+code can differ, and only for an artifact that is already broken twice.
+
+**Oracle matrix**
+
+| | |
+| --- | --- |
+| Ethos-owned fixtures compared and agreed | **11 / 15** |
+| Fixtures this backend cannot read at all | **4** — `table-regular-grid` (19-byte xref), `corrupt-header-valid`, `invalid-header`, `password-protected` |
+
+The four are excluded **visibly**: the harness requires the agreed and refused lists to partition
+the corpus exactly, prints each refusal with its reason, and a separate test asserts each still
+exits 2 with no artifact on stdout. A fixture that started quietly emitting an empty artifact
+would move between the lists and be caught.
+
+**Exit codes: finer than Ethos, never contradictory**
+
+| Outcome | engine | Ethos |
+| --- | --- | --- |
+| valid + `matched` / `not_checked` | 0 | 0 |
+| valid + `mismatched` | **1** | 2 |
+| invalid structure | **1** | 2 |
+| could not read the input | 2 | 2 |
+
+Both agree on zero versus non-zero, which is what a shell predicate reads. Where they differ the
+engine keeps its own taxonomy (`03-V0-SCOPE.md` §3.1): 1 is "I read it and the answer is no", 2 is
+"I could not read it". Collapsing those is the LiteParse defect this project exists to refuse. The
+oracle criterion is agreement on the **report**, and the report distinguishes them either way.
+
+**The built oracle is older than its own source, and the harness had to handle it**
+
+The `ethos` binary in the sibling tree prints the validation report bare. The committed source —
+and the ref CI pins, `ETHOS_ORACLE_REF` — wraps it in an in-toto Statement with the report at
+`predicate`. So the local run and the CI run see different shapes. `extract_report` reads either
+and **refuses anything else rather than guessing** which field holds the verdict; hunting for the
+first object with a `structure` key would be exactly the best-effort parsing of an unrecognised
+shape §8 forbids. A unit test feeds it both envelopes, because the local run alone would never
+exercise the wrapped path.
+
+**Double-run byte identity, on files**
+
+`classify → extract → ground → grounding-check`, twice, into separate directories, comparing bytes
+on disk across every openable conformance fixture. Not parsed equality — a value comparison passes
+while the files differ by key order or a trailing newline, and the contract is about artifacts a
+consumer stores.
+
+**CI, and the docs that still taught people to bypass it**
+
+`--skip oracle_agrees_on_simple_text` is deleted from the workflow, and so is the informational
+`continue-on-error` step that used to report the oracle's expected failure. The bare command is the
+gate now.
+
+The audit caught the embarrassing half of that: the **root `README.md`** — the first thing a new
+reader runs — still printed the `--skip` command and still said "next milestone: M4". The CI
+comment added by this change says re-adding a skip "would delete the only thing that proves this
+engine and the verifier read an artifact the same way", while the front door taught exactly that.
+Corrected, along with `01-CONTRACT.md` §11 and `05-MILESTONES.md` M6, which both still claimed
+agreement "across all 15 fixtures", and M6's "In" line, which still specified **JSON Schema
+validation only** — a decision this milestone deliberately reversed and never recorded.
+
+`ORACLE_AGREED_COUNT = 11` is now pinned beside `ETHOS_OWNED_FIXTURE_COUNT = 15` and asserted, for
+the reason the 15 already was: the number is quoted in three docs, and without the assertion a
+regression that refused six more documents would move them quietly to the refused list and leave
+the suite green.
+
+**What the corpus agreement can and cannot show — stated plainly, because the number reads stronger
+than it is**
+
+All 15 Ethos-owned fixtures are standard-14 Helvetica with no font descriptor, so every node's
+geometry is typed-absent and **every grounding artifact the corpus produces is `1 page / 0 elements
+/ 0 spans`**. Eleven agreements over eleven copies of that shape exercise the identity, source,
+coordinate-system, capability and page rules — and never reach the element loop, the span loop, the
+offsets rule or the table rules, which is most of what the checker does. An adversarial audit found
+this and it was the right catch. `the_oracle_agrees_on_an_artifact_with_real_elements_and_spans`
+now compares a benchmark document that projects 1975 elements and 1975 spans, and breaks a rule
+*inside* the element loop to prove both checkers locate it identically. It is a benchmark document
+rather than one of the 15, so it does not touch the oracle count.
+
+**Six more fidelity gaps, found by audit, all fixed**
+
+The differential corpus above was written by the same person who wrote the checker, which is a weak
+form of evidence. An independent audit drove ~119 crafted artifacts through both binaries and found
+six divergences the corpus missed:
+
+| input | engine said | Ethos says |
+| --- | --- | --- |
+| `kind` longer than 256 bytes | `invalid` | **`valid`** |
+| a table cell's `text` past the byte limit | **`valid`** | `invalid` |
+| `rotation: -90` | `invalid_invariant` `/pages/0/rotation` | `invalid_field` `/` |
+| a *value* containing the text "duplicate field" | `duplicate_key` | `invalid_field` |
+| an invalid artifact plus a non-PDF source | no report at all | a full report |
+
+Two of those are the serious kind. **The cell-text hole let the engine say `valid` where the
+verifier says `invalid`** — the one direction `01-CONTRACT.md` §11 forbids, and the exact failure a
+consumer would hit by shipping an artifact this engine had blessed. **The `kind` limit was invented
+here**: 256 comes from the JSON Schema, Ethos's parser has no length bound on `kind` at all, and
+for a *checker* the oracle wins — being stricter than the verifier does not make the engine safer,
+it makes the two disagree. The `rotation` field is now `u16`, matching Ethos's own type, so the
+refusal happens at the same stage. Error classification no longer substring-matches text a
+*document* can control.
+
+The last one was a comment asserting the opposite of the code: `check.rs` claimed the PDF magic
+check ran "before the artifact parses… the same order Ethos uses". Ethos parses first and reads the
+source second, and the difference was visible — an invalid artifact with an unusable source got a
+report from the oracle and nothing from the engine. Order corrected, comment corrected.
+
+**Fixed — a harness bug that looked like a product bug**
+
+Two oracle tests walk the same corpus and Cargo runs them in parallel threads of one process, so
+scratch directories named from the pid and fixture id collided: one test deleted the working
+directory of the other mid-run, and it surfaced as "the engine printed no report". An atomic
+counter makes the isolation real rather than probable. Worth recording because the symptom
+pointed squarely at the wrong component.
+
 ### M5 — `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter
 
 The canonical evidence record, and the projection a verifier consumes. `engine extract` now emits
