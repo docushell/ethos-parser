@@ -3,11 +3,187 @@
 All notable changes to ethos-engine. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-This project is pre-release and has no published versions. Entries are grouped by **milestone**
-(`docs/05-MILESTONES.md`) rather than by version number, because a milestone is the unit of work
-that has acceptance criteria.
+Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather than by version
+number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
+frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased]
+## [0.1.0] — v0, frozen
+
+**Not tagged.** The freeze is in-tree; creating the tag and any release is a separate, deliberate
+act. Everything below is committed and green under `cargo test --workspace --locked`.
+
+### M7 — CLI + library freeze + v0 exit criteria as CI jobs
+
+**No new capability.** M7 is the milestone that closes v0 rather than extending it: it makes the
+exit criteria checkable, makes the public surface a decision, and adds the two test layers §5 asks
+for. One behaviour change landed, and it is a hardening the mutation work found — see below.
+
+#### Version: 0.0.0 → 0.1.0, and the profile hash moves
+
+`parser_version` is a `Profile` field, so a version bump **is** a profile change:
+
+```
+profile_sha256  f34be632…6faf1e   ->   d2ebf3ef…6d21fc
+```
+
+That is the design working, not a regression. Artifacts produced before and after are correctly
+non-comparable, because the profile that produced them really did change. Two pins moved with it:
+`the_default_profile_is_pinned` and `docs/draft-schemas/profile.draft.json`'s example. Nothing else
+in the suite depended on the value — the oracle comparison is over `structure`, `source_binding`,
+`representation_sha256` and `counts`, none of which carry the profile.
+
+#### Added — `--diagnostics`
+
+Opt-in, global across all four subcommands, **off by default**.
+
+- **stdout is untouched.** The artifact is byte-identical with the flag and without, and
+  `the_flag_adds_one_stderr_line_and_changes_no_stdout_byte` asserts exactly that per subcommand.
+  A default run writes *nothing* to stderr at all.
+- **One JSON object on stderr**, carrying stage, engine version, wall-clock microseconds, input
+  path and size, build target, and resident bytes where the platform reports one cheaply
+  (Linux only; `None` elsewhere, which is a typed absence rather than a zero).
+- **Not an artifact, deliberately.** No `artifact_type`, no `schema_version`, no `profile_sha256`,
+  and not canonicalized — it uses plain `serde_json`, not `c14n`. An object that looked like an
+  artifact would eventually be consumed like one, and then a timing would be inside somebody's
+  hash.
+- **New:** `engine_core::diagnostics` — `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`,
+  `DIAGNOSTICS_VERSION`. The library assembles the observation; the CLI only picks the stream,
+  which is the whole of what a thin shell may do.
+- `no_diagnostics_field_name_appears_in_any_artifact` walks every key of all four artifacts at
+  every depth and asserts none is diagnostics-class. Checking that two runs match would have
+  passed for an artifact carrying a `host` field on a machine where the host never changes.
+
+#### Changed — the public API is now a list
+
+`docs/PUBLIC-API.md` is new and enumerates every supported export per crate.
+`crates/engine-cli/tests/public_api.rs` fails if a crate root and that document disagree in either
+direction.
+
+**`engine-pdf`'s parsing machinery is `pub(crate)`:** `ops`, `content`, `cmap`, `encoding`,
+`fonts`, `metrics`, `text_state`, `thresholds`, `nodes`, `magic`, `classify`, `document`,
+`extract`, `represent`, `reasons`. Everything a caller needs is re-exported at the crate root by
+name. `exit` and `limitations` stay public — the latter because its constants are wire vocabulary
+a consumer matches on after reading an artifact.
+
+**Narrowing found dead code, which is the argument for narrowing.** With the modules public the
+compiler could not see that these had no readers:
+
+| Item | Disposition |
+| --- | --- |
+| `Font::subtype`, `Font::base_font` | **Removed.** Parsed and stored since M3, never read. `/BaseFont` is no longer read at all |
+| `SimpleEncoding::base` | **Removed.** No callers anywhere |
+| `ToUnicode::len` / `is_empty`, `Matrix::apply`, `Operator::token` / `ALL` | `#[cfg(test)]` — used only by the tests that prove the tables round-trip |
+
+`tests/extraction.rs::an_unknown_operator_produces_no_artifact` was rewritten to go through the
+public API — a real document with one operator token overwritten in place — instead of driving the
+interpreter directly. That was the only thing keeping `ops` and `content` public, and the
+replacement is a stronger test: it asserts the property a caller depends on.
+
+#### Fixed — a fail-closed path that was the call site's guarantee, not the type's
+
+`Interpreter::run` returned `Err` on an unrecognised operator and left everything shown before it
+sitting in `self.shown`. **No artifact was ever wrong** — `extract` propagates with `?` and drops
+the interpreter — but the guarantee lived at the call site, and the test meant to cover it passed
+for the wrong reason: it ran a stream that had shown nothing yet, so it would have held even if
+partial output were kept. `run` now clears `shown` and `undecodable` on the error path, and the
+test shows real text first, with a control asserting the unmutated stream does produce output.
+
+#### Added — fixture mutation over the whole manifest
+
+`crates/engine-pdf/tests/robustness.rs`. All **23** manifest fixtures × **6** deterministic
+mutations = 130 mutants; the 8 pairs that cannot be built are pinned with reasons rather than
+skipped. Mutations: empty, truncate-to-16, a byte flipped in the last tenth, `%PDF` overwritten,
+junk after `%%EOF`, and a same-length operator substitution injecting a token outside Table A.1.
+
+Every mutant must either be refused with one of the six taxonomy codes, or read — and a mutant
+that reads must bind to **its own** digest. The third outcome, an artifact that reads as though
+the original had been parsed, is what the suite exists to forbid; nothing downstream could detect
+it. No mutant panics.
+
+**28 survivors, pinned and triaged into two classes.** `junk-after-eof` on everything that opens
+(a reader reaches the trailer via `startxref`, so appended bytes are outside every declared
+offset), and `flip-tail-byte` on four documents where `lopdf` recovers by scanning for the catalog
+instead of trusting a damaged trailer reference — inspected, not assumed: on `synthetic/two-lines`
+the flipped byte is the `t` of `/Root`. The same mutation refuses on eleven other fixtures.
+
+**One triage finding is worth recording.** Widening the operator match to be whitespace-delimited
+(half the corpus writes `(text) Tj\n`, which a space-delimited search missed entirely) made the
+mutation appear to apply to the two NIST benchmarks. It was not applying: the hit in
+`nist-sp-800-63b` is at offset 301887, inside a Flate stream, surrounded by binary. Overwriting it
+corrupts compressed data and fails on *decompression* — the test would have gone green while
+proving nothing about operator handling. Compressed documents are now excluded from that mutation.
+
+#### Added — `cargo-fuzz` on the PDF entry point
+
+`fuzz/`, **excluded from the workspace** so `libfuzzer-sys` never enters the graph `cargo deny`
+inspects or `cargo build --workspace` compiles. Two targets, because libFuzzer's coverage feedback
+is per-target and one binary that sometimes classifies and sometimes extracts explores both worse
+than either alone:
+
+- `open_and_classify` — `Document::open_bytes` → `classify` → `to_canonical_bytes`
+- `open_and_extract` — the deep path through the interpreter, CMaps, font metrics and quantization
+
+An `EngineError` is a pass; a panic is a release blocker. CI budget is 60s per target with
+`-timeout=10` for hang prevention and `-max_len=65536`, on nightly **installed only in that job** —
+the workspace MSRV stays 1.88. Four degenerate seeds are committed in `fuzz/seeds/`;
+`fuzz/seed-corpus.sh` adds the five engine-owned fixtures at run time. The Ethos conformance corpus
+is not seeded from: those fixtures are read-only and referenced by hash, and a fuzz corpus is a
+copy.
+
+#### Added — `docs/03-V0-SCOPE.md` §5 as fifteen named CI jobs
+
+A matrix in `.github/workflows/ci.yml`, one entry per criterion, each named after the criterion so
+a reviewer sees which line is green. `check` still runs the whole suite as the umbrella gate and is
+deliberately not the proof — one tick cannot tell you the classification bound still holds.
+
+`v0-classify-bound` is its own job so a timing wobble is legible as that gate rather than as an
+unexplained suite failure, and runs `--exact --test-threads=1`. The load-bearing assertion remains
+the instrumented counter (`pages_content_scanned == 8` on 492 pages), which cannot flake.
+
+Two criteria are greps, so they are greps: `ci/forbidden-tokens.sh` runs `v0-no-confidence` and
+`v0-no-verify` over `crates/*/src`, needing no toolchain. It strips `//` comments (the repo argues
+these rules at length in prose) and the `mod tests` block (two of them list the banned tokens *as
+data*). **The first version skipped from `mod tests` to end of file** on the reasoning that test
+modules come last; they do, and it was still wrong — a probe appended after one sailed through
+clean. It now resumes at the closing brace.
+
+`crates/engine-cli/tests/v0_exit_criteria.rs` closes the loop: every §5 line is ticked and names a
+job, every named job exists, every matrix entry is claimed by a criterion, **no `--skip` appears
+anywhere in CI**, and **no job's filter matches zero tests**.
+
+The last two are the ways this scheme could go hollow while staying green. A `--skip` is the
+cheapest way to turn a red criterion green and it deletes the criterion in the process. A filter
+naming a renamed test is quieter still: `cargo test -- a_renamed_test` selects nothing, libtest
+prints `ok. 0 passed`, and the job passes having checked nothing at all — with every box still
+ticked and every job still present. Every filter token in the workflow is now required to occur
+inside some test function's name.
+
+#### Added — library-only thin-shell proofs
+
+`crates/engine-cli/tests/library_surface.rs`. The existing CLI tests assert the binary's stdout
+equals the library's bytes, which on its own is circular: it proves the two agree, not that the
+library alone can produce the artifact. If a subcommand grew a step the CLI performed itself, both
+sides would include it and both tests would pass. These do not spawn the binary, and
+`no_test_in_this_file_spawns_the_binary` asserts that about the source.
+
+Also new there: `every_geometry_bearing_artifact_declares_its_coordinate_system`, which asserts the
+§5 line in both directions — the representation and grounding artifacts declare a frame, and the
+classification, which carries no geometry, does not.
+
+#### Documentation
+
+- **`docs/PUBLIC-API.md`** — new. Three crate tables, what is internal and why, and the CLI↔library
+  thin-shell mapping with the test names on both sides.
+- **`README.md`** — rewritten. It said "M3 complete" three milestones later. Now states v0 frozen,
+  the four subcommands, the §5 job map, and an explicit performance posture: the only quantitative
+  claim is the bound-test counter, and no bake-off table appears anywhere.
+- **`docs/03-V0-SCOPE.md` §5** — all fifteen boxes ticked, each naming its job, plus a §5.1 table
+  of what each job actually runs.
+- **`docs/README.md`**, **`docs/05-MILESTONES.md`** — M7 marked done; next work is v0.1, a roadmap
+  item rather than an M-number.
+- **`docs/07-VERIFY-BOUNDARY.md`** — re-read, unchanged. It still describes reality:
+  `grounding-check` validates structure and binding, nothing verifies a claim, and the boundary is
+  now a CI job rather than a review item.
 
 ### M6 — `grounding-check` validator + oracle agreement + double-run identity
 

@@ -49,12 +49,18 @@ impl ToUnicode {
         self.code_bytes
     }
 
-    /// Number of mappings.
+    /// Number of mappings. Test-only.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    /// Whether the map is empty.
+    /// Whether the map is empty. Test-only.
+    ///
+    /// Both this and [`ToUnicode::len`] became `#[cfg(test)]` at M7, when `cmap` stopped being a
+    /// public module: nothing outside the tests reads either, and a private module's unused
+    /// accessor is dead code the compiler was previously unable to see.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }

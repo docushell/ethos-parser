@@ -108,6 +108,27 @@ impl<'a> Interpreter<'a> {
     ///   skipped, because a skipped operator can silently move or delete text.
     /// - [`EngineError::Malformed`] — an operator whose operands are the wrong shape.
     pub fn run(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
+        match self.run_inner(ops) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // **Fail closed means the partial output goes too.** Through M6 this method
+                // returned `Err` and left everything shown before the bad operator sitting in
+                // `self.shown`. Nothing read it — `extract` propagates with `?` and drops the
+                // interpreter — so no artifact was ever wrong. But the guarantee was the call
+                // site's, not the type's, and the test that was supposed to cover it passed
+                // only because it never showed text before the refusal (M7 triage).
+                //
+                // Discarding here makes it the type's guarantee: there is no state a later
+                // caller could read and mistake for a complete parse of a document this
+                // interpreter refused.
+                self.shown.clear();
+                self.undecodable.clear();
+                Err(e)
+            }
+        }
+    }
+
+    fn run_inner(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
         for op in ops {
             let token = op.operator.as_str();
             let Some(operator) = Operator::from_token(token) else {
@@ -442,6 +463,10 @@ mod tests {
 
     #[test]
     fn an_unknown_operator_is_refused_by_name() {
+        // The table's own answer first: a token outside PDF 32000-1 Table A.1 resolves to
+        // nothing, and the interpreter turns that into a hard error rather than a skip.
+        assert_eq!(crate::ops::Operator::from_token("UnknownOp"), None);
+
         let fonts = no_fonts();
         let mut i = Interpreter::new(&fonts);
         let e = i.run(&ops("q 1 0 0 1 0 0 cm UnknownOp Q")).unwrap_err();
@@ -449,6 +474,68 @@ mod tests {
         assert!(
             e.to_string().contains("UnknownOp"),
             "the error must name the token: {e}"
+        );
+        assert!(
+            i.shown.is_empty(),
+            "no partial output may survive a fail-closed parse"
+        );
+    }
+
+    /// A usable font, so a test can actually reach the show-text path.
+    ///
+    /// `no_fonts()` cannot: `Tf` on an empty map fails first, with `missing_part`, which is
+    /// correct behaviour and the wrong thing to be testing when the subject is an operator.
+    fn one_font() -> BTreeMap<String, Font> {
+        use crate::encoding::{BaseEncoding, SimpleEncoding};
+        use crate::fonts::{Decoder, WidthSource};
+        use engine_core::GeometryAbsence;
+
+        let mut m = BTreeMap::new();
+        m.insert(
+            "F1".to_string(),
+            Font {
+                id: "F1".into(),
+                decoder: Decoder::Simple(SimpleEncoding::new(
+                    BaseEncoding::WinAnsi,
+                    BTreeMap::new(),
+                )),
+                widths: WidthSource::Widths {
+                    first_char: 32,
+                    widths: vec![500.0; 95],
+                    type3_scale_x: None,
+                },
+                ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            },
+        );
+        m
+    }
+
+    /// Fail-closed means *nothing* survives, including text shown before the bad token.
+    ///
+    /// Moved here at M7 from `tests/extraction.rs`, which reached into this module to assert it
+    /// and so made `content` and `ops` public for one test. Strengthened in the move: the
+    /// original ran against an interpreter that had shown nothing yet, so it would have held even
+    /// if partial output were kept. This one shows real text first, then hits the bad token.
+    #[test]
+    fn text_shown_before_an_unknown_operator_is_discarded_too() {
+        let fonts = one_font();
+
+        // Control: without the bad token the same stream does show text, so the assertion below
+        // is about the refusal and not about a stream that never produced anything.
+        let mut ok = Interpreter::new(&fonts);
+        ok.run(&ops("BT /F1 12 Tf 10 10 Td (hello) Tj ET"))
+            .expect("the control stream is valid");
+        assert_eq!(ok.shown.len(), 1, "the control must show text");
+
+        let mut i = Interpreter::new(&fonts);
+        let e = i
+            .run(&ops("BT /F1 12 Tf 10 10 Td (hello) Tj UnknownOp ET"))
+            .unwrap_err();
+        assert_eq!(e.code(), "unsupported");
+        assert!(
+            i.shown.is_empty(),
+            "a run that refused must not leave {} shown item(s) behind",
+            i.shown.len()
         );
     }
 

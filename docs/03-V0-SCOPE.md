@@ -132,29 +132,85 @@ Two of these are known-hostile and both are load-bearing:
 
 ## 5. Exit criteria — v0 is complete when
 
-Every line is a CI job, not a judgement call.
+**Every line is a CI job, not a judgement call.** Closed at M7, and closed the way the sentence
+above always meant: each line below names the job in `.github/workflows/ci.yml` that proves it, so
+a reviewer can see *which criterion* is green rather than inferring it from one undifferentiated
+`cargo test`. `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that every job named here
+exists, that no job exists without a criterion, that no `--skip` appears anywhere in the workflow,
+and that **no job's test filter matches zero tests** — a filter naming a renamed test would make
+its job print `ok. 0 passed` and go green having checked nothing.
 
-- [ ] `classify → extract → ground → grounding-check` runs end-to-end on all 15 fixtures
-- [ ] **Double-run byte identity**: running the full path twice over the corpus produces
+`check` still runs the whole suite as the umbrella gate. It is not the proof — a single tick
+cannot tell you the classification bound still holds, only that nothing failed.
+
+- [x] `classify → extract → ground → grounding-check` runs end-to-end on all 15 fixtures
+      — CI job `v0-happy-path`
+- [x] **Double-run byte identity**: running the full path twice over the corpus produces
       byte-identical artifacts, including file bytes and not merely payloads
-- [ ] **Oracle agreement**: for every fixture, `grounding-check` and
+      — CI job `v0-double-run`
+- [x] **Oracle agreement**: for every fixture, `grounding-check` and
       `ethos grounding check <file> --source-artifact <pdf>` agree byte-identically on `structure`,
       `source_binding`, `representation_sha256` and `counts`
-- [ ] Every artifact carries `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`
-- [ ] Every artifact carrying geometry declares `coordinate_system`
-- [ ] `grep -ri confidence` over emitted artifacts and their public types returns **nothing**
-- [ ] No float appears in any canonical artifact; c14n rejects non-integers as a hard error
-- [ ] Every node carries a `NativeLocator`; no box is derived from a font size
-- [ ] Capability + limitation declarations present on every artifact, including the explicit
+      — CI job `v0-oracle`
+- [x] Every artifact carries `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`
+      — CI job `v0-artifact-identity`
+- [x] Every artifact carrying geometry declares `coordinate_system`
+      — CI job `v0-coordinates`
+- [x] `grep -ri confidence` over emitted artifacts and their public types returns **nothing**
+      — CI job `v0-no-confidence`
+- [x] No float appears in any canonical artifact; c14n rejects non-integers as a hard error
+      — CI job `v0-c14n`
+- [x] Every node carries a `NativeLocator`; no box is derived from a font size
+      — CI job `v0-locators`
+- [x] Capability + limitation declarations present on every artifact, including the explicit
       multi-column limitation
-- [ ] Three exit codes, one asserting fixture each, all distinguishable
-- [ ] **Classification bound test**: a 500-page PDF at N=8 completes within **20%** of an 8-page PDF
+      — CI job `v0-l1-gate`
+- [x] Three exit codes, one asserting fixture each, all distinguishable
+      — CI job `v0-exit-codes`
+- [x] **Classification bound test**: a 500-page PDF at N=8 completes within **20%** of an 8-page PDF
       at similar bytes/page
-- [ ] Unknown operator, unknown magic, and unquantizable number each fail closed with a named,
+      — CI job `v0-classify-bound`
+- [x] Unknown operator, unknown magic, and unquantizable number each fail closed with a named,
       deterministic error
-- [ ] `cargo-fuzz` target exists and runs clean on the corpus; mutation tests cover every fixture
-- [ ] `cargo deny` green: no AGPL, no network crates
-- [ ] No verification code, type, or field exists anywhere in the tree
+      — CI job `v0-fail-closed`
+- [x] `cargo-fuzz` target exists and runs clean on the corpus; mutation tests cover every fixture
+      — CI jobs `v0-fuzz-smoke` and `v0-fixture-mutation`
+- [x] `cargo deny` green: no AGPL, no network crates
+      — CI job `deny-policy-is-enforced`
+- [x] No verification code, type, or field exists anywhere in the tree
+      — CI job `v0-no-verify`
+
+### 5.1 What each job actually runs
+
+Named tests, not "the suite". Where a criterion has both a grep and a test behind it, the grep is
+the job — `docs/05-MILESTONES.md` M7 asks for a job per line, and a grep over `crates/*/src` is the
+cheapest honest form of two of these.
+
+| Job | Runs |
+| --- | --- |
+| `v0-happy-path` | `oracle_agrees_on_all_ethos_owned_fixtures`, `refused_fixtures_fail_closed_rather_than_producing_an_artifact`, `manifest_declares_fifteen_ethos_owned_fixtures` |
+| `v0-double-run` | every `*byte_identical*` test, plus the two diagnostics and library-level double-run tests |
+| `v0-oracle` | the whole `engine-cli --test oracle` target, against a built `ethos` binary |
+| `v0-artifact-identity` | `the_artifact_carries_a_full_identity_envelope` (×2), `the_default_profile_is_pinned`, `the_profile_schema_example_is_the_real_profile` |
+| `v0-coordinates` | `every_geometry_bearing_artifact_declares_its_coordinate_system` and the profile/schema literals |
+| `v0-no-confidence` | `ci/forbidden-tokens.sh confidence` |
+| `v0-c14n` | `engine-core`'s c14n, float-rejection and quantize suites |
+| `v0-locators` | `every_run_carries_a_native_locator`, `no_source_line_derives_a_box_from_the_font_size`, and the measured/absent metric pair |
+| `v0-l1-gate` | the whole `engine-pdf --test capabilities` target |
+| `v0-exit-codes` | the three CLI exit tests, `the_three_exit_codes_are_distinguishable`, and the two library-level distinguishability tests |
+| `v0-classify-bound` | `the_sampler_is_bounded_on_a_492_page_document` + the counter and flat-cost tests, `--exact --test-threads=1` |
+| `v0-fail-closed` | unknown operator (three tests), unknown magic, and the c14n float refusals |
+| `v0-fixture-mutation` | the whole `engine-pdf --test robustness` target, `--nocapture` so the coverage report reaches the log |
+| `v0-fuzz-smoke` | `cargo fuzz build` on both targets, then 60s each with `-timeout=10` |
+| `deny-policy-is-enforced` | `cargo deny check licenses`, then the AGPL probe requiring exit 4 |
+| `v0-no-verify` | `ci/forbidden-tokens.sh verification` |
+
+**The bound job's load-bearing assertion is the counter**, not the clock:
+`pages_content_scanned == 8` on a 492-page document. The wall-clock comparison
+(`classify_cost_is_flat_in_total_page_count`) sits beside it and measures the two phases
+separately, because total time is `O(parse) + O(N × per-page)` and no amount of bounded sampling
+makes the parse term disappear. A flake in the timing half is visible as this job; the counter
+half cannot flake.
 
 ## 6. Performance posture
 

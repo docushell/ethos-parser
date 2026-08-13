@@ -17,9 +17,17 @@ members = [
     "crates/engine-grounding",
     "crates/engine-cli",
 ]
+# `fuzz/` is a cargo-fuzz package, not a member (M7). Excluding it keeps `libfuzzer-sys` — a
+# nightly-only sanitizer shim — out of the workspace dependency graph, which is what `cargo deny
+# check` inspects and what `cargo build --workspace` compiles. The fuzz crate depends on the
+# engine; nothing in the engine depends on it. See `fuzz/Cargo.toml`.
+exclude = ["fuzz"]
 
 [workspace.package]
-version = "0.0.0"
+# v0, frozen at M7. `parser_version` is read from this (`Profile::default`), so the bump is an
+# identity event: `profile_sha256` moves, and every artifact produced before and after is
+# correctly non-comparable. That is the design, not a regression — see CHANGELOG M7.
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -40,9 +48,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.0.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.0.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.0.0" }
+engine-core = { path = "crates/engine-core", version = "0.1.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.1.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.1.0" }
 
 [profile.release]
 strip = "symbols"

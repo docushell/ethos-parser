@@ -1,0 +1,448 @@
+// Copyright 2026 The ethos-engine maintainers
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! The public API freeze, as a test (`docs/05-MILESTONES.md` M7).
+//!
+//! `docs/PUBLIC-API.md` claims to list every supported export. A document that claims that and is
+//! not checked becomes wrong on the first PR that adds a `pub use` — quietly, and in the direction
+//! that matters, because the new export is supported from the moment someone imports it.
+//!
+//! So the list is pinned here and cross-checked against both the crate roots and the document.
+//! Three ways to fail, and each names a different mistake:
+//!
+//! | Failure | Meaning |
+//! | --- | --- |
+//! | An export not in [`FROZEN`] | The surface grew. Intended? Then pin it and changelog it |
+//! | A [`FROZEN`] entry not exported | The surface shrank. That is a breaking change |
+//! | A [`FROZEN`] entry missing from `PUBLIC-API.md` | The document stopped describing the code |
+//!
+//! # Why it reads source text
+//!
+//! Because the alternative is `rustdoc --output-format json`, which is nightly-only, and this
+//! workspace pins a stable toolchain everywhere on purpose (`rust-toolchain.toml`). Scanning the
+//! crate root for `pub` items is the same technique the contract guards in
+//! `engine-core/tests/contract_invariants.rs` already use, and it is exact for the thing being
+//! scanned: **a crate root**, where every export is a single declaration and nothing is generated.
+//!
+//! # What it does not cover, stated rather than implied
+//!
+//! **Methods defined outside `lib.rs`.** `Document::open_bytes` gaining a sibling would not fail
+//! this test; `engine_pdf` gaining a `pub mod` or a `pub use` would. That is the boundary this is
+//! built to hold — a *module or item* becoming reachable — because that is the change that
+//! happens by accident. A new method on an already-public type is a deliberate act on a type
+//! whose docs say it is supported, and `docs/PUBLIC-API.md` describes those by name.
+//!
+//! Items that happen to live in a crate root — `engine-pdf`'s inline `exit` module, and
+//! `engine-grounding`'s `GroundedBox`/`OmissionReport` methods — are covered, and are pinned
+//! below. The asymmetry is a property of where the code sits, not a rule.
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf()
+}
+
+/// Every name a crate root exports.
+///
+/// Handles the four shapes that appear in these files: `pub mod x;`, an inline `pub mod x { … }`,
+/// a braced `pub use path::{a, b};` possibly spanning lines, and a bare `pub use path::Item;`.
+/// Comment lines are dropped first so prose naming an item is not mistaken for an export.
+fn crate_exports(crate_name: &str) -> BTreeSet<String> {
+    let path = repo_root().join(format!("crates/{crate_name}/src/lib.rs"));
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
+
+    let code: String = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut names = BTreeSet::new();
+
+    for line in code.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("pub mod ") {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                names.insert(name);
+            }
+        }
+        for kw in [
+            "pub const ",
+            "pub fn ",
+            "pub struct ",
+            "pub enum ",
+            "pub type ",
+        ] {
+            if let Some(rest) = t.strip_prefix(kw) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+            }
+        }
+    }
+
+    // `pub use` statements, brace-aware and newline-tolerant.
+    let mut rest = code.as_str();
+    while let Some(at) = rest.find("pub use ") {
+        rest = &rest[at + "pub use ".len()..];
+        let end = rest.find(';').expect("a `pub use` statement ends in `;`");
+        let stmt = &rest[..end];
+        rest = &rest[end + 1..];
+
+        if let (Some(open), Some(close)) = (stmt.find('{'), stmt.rfind('}')) {
+            for item in stmt[open + 1..close].split(',') {
+                let item = item.trim();
+                if !item.is_empty() {
+                    names.insert(item.to_string());
+                }
+            }
+        } else if let Some(last) = stmt.rsplit("::").next() {
+            let last = last.trim();
+            if !last.is_empty() {
+                names.insert(last.to_string());
+            }
+        }
+    }
+
+    assert!(
+        names.len() > 5,
+        "the export scan found only {} name(s) in {crate_name}; the scanner is broken, not the \
+         crate",
+        names.len()
+    );
+    names
+}
+
+// -------------------------------------------------------------------------------------------
+// The frozen surface
+// -------------------------------------------------------------------------------------------
+
+/// `engine-core` — every module is contract, so every module is public.
+const CORE: &[&str] = &[
+    "ArtifactBinding",
+    "ArtifactIdentity",
+    "Assurance",
+    "BackendIdentity",
+    "C14nError",
+    "CMAP_DATA_VERSION",
+    "CRATE_NAME",
+    "Capabilities",
+    "CoordinateOrigin",
+    "CoordinateSystem",
+    "CoordinateUnit",
+    "CoverageSummary",
+    "DIAGNOSTICS_VERSION",
+    "DerivationClass",
+    "Diagnostics",
+    "DiagnosticsRun",
+    "DocumentRepresentation",
+    "EngineError",
+    "GeometryAbsence",
+    "GeometryPresence",
+    "HostInfo",
+    "IdAllocator",
+    "IdKind",
+    "Limitation",
+    "LimitationScope",
+    "MAX_SAFE_INT",
+    "NativeLocator",
+    "Node",
+    "NodeGeometry",
+    "NodeId",
+    "NodeKind",
+    "PageBindingResult",
+    "PageBudget",
+    "PageRecord",
+    "PageState",
+    "PageStateEntry",
+    "PdfLocator",
+    "ProcessingGaps",
+    "ProcessingRun",
+    "ProcessingTerminalState",
+    "ProcessorIdentity",
+    "Profile",
+    "QRect",
+    "QRectError",
+    "QUANTUM_PER_POINT",
+    "QuantizeError",
+    "READING_ORDER_RULE_V0",
+    "REPRESENTATION_ARTIFACT_TYPE",
+    "REPRESENTATION_SCHEMA_VERSION",
+    "RefusalCode",
+    "RepresentationPayload",
+    "Sha256Hex",
+    "SourceIdentity",
+    "Stage",
+    "StructuralLocator",
+    "SynthesizedAt",
+    "TextRunAttributes",
+    "assurance",
+    "c14n",
+    "c14n_bytes",
+    "codes",
+    "derivation",
+    "diagnostics",
+    "error",
+    "geom",
+    "identity",
+    "ids",
+    "page_binding_status",
+    "profile",
+    "profile_sha256",
+    "quantize",
+    "representation",
+    "sha256_hex",
+    "sha256_hex_bytes",
+    "sort_ids",
+];
+
+/// `engine-pdf` — narrowed at M7. The parsing machinery is `pub(crate)`; only `exit` and
+/// `limitations` remain public modules, and `limitations` because its constants are wire
+/// vocabulary a consumer matches on.
+///
+/// `SIMPLE`/`NEEDS_ATTENTION`/`COULD_NOT_READ`/`exit_code` are `exit`'s own members. The scanner
+/// sees them because `exit` is an inline `pub mod` in `lib.rs`, and listing them is right: they
+/// are as public as the module holding them, and the exit-code mapping is exactly the kind of
+/// thing an embedding caller needs so it routes outcomes the way the binary does.
+const PDF: &[&str] = &[
+    "CLASSIFICATION_ARTIFACT_TYPE",
+    "CLASSIFICATION_SCHEMA_VERSION",
+    "COULD_NOT_READ",
+    "CRATE_NAME",
+    "Classification",
+    "Document",
+    "NEEDS_ATTENTION",
+    "SIMPLE",
+    "EXTRACT_ARTIFACT_TYPE",
+    "EXTRACT_SCHEMA_VERSION",
+    "ExtractArtifact",
+    "LayoutComplexityReason",
+    "OcrNeedReason",
+    "PROCESSOR_NAME",
+    "PageClassification",
+    "PageExtract",
+    "PdfLocator",
+    "SourceRef",
+    "SynthesisReason",
+    "SynthesizedChar",
+    "TextRun",
+    "check_pdf_magic",
+    "classify",
+    "exit",
+    "exit_code",
+    "extract",
+    "limitations",
+    "to_representation",
+];
+
+/// `engine-grounding` — the projection, the artifact shape, and the validator.
+///
+/// `from_presence`, `to_array` and `is_lossy` are methods defined in this crate root rather than
+/// in a submodule, so the scanner sees them. They are as public as the types carrying them, and
+/// `from_presence` in particular is the one constructor `GroundedBox` has — the item most worth
+/// pinning in the whole crate, since its absence is what stops a box being built from a boolean.
+const GROUNDING: &[&str] = &[
+    "CRATE_NAME",
+    "Cell",
+    "Counts",
+    "Element",
+    "GEOMETRY_ABSENT_OMITTED",
+    "GROUNDING_ARTIFACT_TYPE",
+    "GROUNDING_SCHEMA_VERSION",
+    "GroundedBox",
+    "GroundingCapabilities",
+    "GroundingCoordinateSystem",
+    "GroundingSource",
+    "OmissionReport",
+    "Page",
+    "Producer",
+    "Projection",
+    "ReportError",
+    "Source",
+    "SourceBinding",
+    "Span",
+    "Structure",
+    "Table",
+    "VALIDATION_ARTIFACT_TYPE",
+    "VALIDATION_SCHEMA_VERSION",
+    "ValidationReport",
+    "check",
+    "from_presence",
+    "grounding_check",
+    "is_lossy",
+    "project",
+    "to_array",
+    "to_canonical_bytes",
+];
+
+const FROZEN: [(&str, &[&str]); 3] = [
+    ("engine-core", CORE),
+    ("engine-pdf", PDF),
+    ("engine-grounding", GROUNDING),
+];
+
+// -------------------------------------------------------------------------------------------
+// The tests
+// -------------------------------------------------------------------------------------------
+
+/// **The exports are exactly the frozen list.**
+#[test]
+fn the_public_surface_is_the_frozen_one() {
+    for (crate_name, frozen) in FROZEN {
+        let actual = crate_exports(crate_name);
+        let expected: BTreeSet<String> = frozen.iter().map(|s| s.to_string()).collect();
+
+        let added: Vec<&String> = actual.difference(&expected).collect();
+        let removed: Vec<&String> = expected.difference(&actual).collect();
+
+        assert!(
+            added.is_empty(),
+            "`{crate_name}` exports {} item(s) the freeze does not list: {added:?}\n\n\
+             An export is a promise. If it is meant to be supported, add it to FROZEN and to \
+             docs/PUBLIC-API.md and say so in CHANGELOG.md. If it is machinery, make it \
+             `pub(crate)` — that is what M7 did to the parser's insides.",
+            added.len()
+        );
+        assert!(
+            removed.is_empty(),
+            "`{crate_name}` no longer exports {} frozen item(s): {removed:?}\n\n\
+             This is a breaking change for anyone who imported them. Intended removals are \
+             allowed and wanted — they just have to be deliberate, which means editing FROZEN, \
+             docs/PUBLIC-API.md and CHANGELOG.md in the same commit.",
+            removed.len()
+        );
+    }
+}
+
+/// **`docs/PUBLIC-API.md` names every frozen item.**
+///
+/// The document is the thing a caller reads; the list above is the thing the compiler agrees
+/// with. Without this, the two drift and the readable one loses.
+#[test]
+fn the_public_api_document_names_every_frozen_item() {
+    let path = repo_root().join("docs/PUBLIC-API.md");
+    let doc = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
+
+    let mut missing = Vec::new();
+    for (crate_name, frozen) in FROZEN {
+        for item in frozen {
+            // Backticked, so a word appearing in prose does not count as documentation of an
+            // export. `CRATE_NAME` is described once in prose for all three crates rather than
+            // repeated in each table.
+            if !doc.contains(&format!("`{item}`")) {
+                missing.push(format!("{crate_name}::{item}"));
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "docs/PUBLIC-API.md does not name {} exported item(s):\n  {}\n\n\
+         Every supported export is documented, or it is not supported.",
+        missing.len(),
+        missing.join("\n  ")
+    );
+}
+
+/// **The internal modules stay internal.**
+///
+/// Named individually rather than derived, because this is the list M7 narrowed and the point is
+/// that a later PR reverting one is visible. `the_public_surface_is_the_frozen_one` would also
+/// catch it; this says *why* it matters in the failure message.
+#[test]
+fn the_parsing_machinery_is_not_public() {
+    let exports = crate_exports("engine-pdf");
+    for internal in [
+        "ops",
+        "content",
+        "cmap",
+        "encoding",
+        "fonts",
+        "metrics",
+        "text_state",
+        "thresholds",
+        "nodes",
+        "magic",
+        "document",
+        "represent",
+        "reasons",
+    ] {
+        assert!(
+            !exports.contains(internal),
+            "`engine_pdf::{internal}` is public again. It carries `f64` fields, borrow-scoped \
+             handles or calibration constants — implementation, not contract. Whatever a caller \
+             needs from it should be re-exported at the crate root by name."
+        );
+    }
+}
+
+/// **`engine-cli` is a binary and exports nothing.**
+///
+/// Asserted against the manifest rather than by looking for a `lib.rs`, because the absence of a
+/// file is weak evidence: cargo would happily build a library target the day someone adds one.
+#[test]
+fn the_cli_has_no_library_target() {
+    let dir = repo_root().join("crates/engine-cli");
+    assert!(
+        !dir.join("src/lib.rs").is_file(),
+        "engine-cli grew a src/lib.rs. The CLI is a thin shell over the library; a library \
+         target here would be a second place for behaviour to live (docs/04-ARCHITECTURE.md §1)."
+    );
+
+    let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).expect("engine-cli manifest");
+    assert!(
+        !manifest.contains("[lib]"),
+        "engine-cli's manifest declares a [lib] target"
+    );
+    assert!(
+        manifest.contains("[[bin]]"),
+        "engine-cli must declare its binary target explicitly"
+    );
+}
+
+/// Guard the guard: the scanner must find what is actually there, and miss what is not.
+#[test]
+fn the_export_scanner_reads_the_shapes_these_files_use() {
+    let core = crate_exports("engine-core");
+    // `pub mod x;`
+    assert!(core.contains("c14n"), "plain `pub mod` not seen");
+    // braced multi-line `pub use`
+    assert!(core.contains("Sha256Hex"), "braced `pub use` not seen");
+    // `pub const`
+    assert!(core.contains("CRATE_NAME"), "`pub const` not seen");
+
+    let pdf = crate_exports("engine-pdf");
+    // inline `pub mod x { … }` — no semicolon
+    assert!(pdf.contains("exit"), "inline `pub mod` not seen");
+    // and the narrowing really took
+    assert!(
+        !pdf.contains("ops"),
+        "`pub(crate) mod` counted as an export"
+    );
+}

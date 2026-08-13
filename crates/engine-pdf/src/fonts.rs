@@ -76,10 +76,6 @@ pub enum Decoder {
 pub struct Font {
     /// Resource name, e.g. `F1`.
     pub id: String,
-    /// `/Subtype`, e.g. `Type1`, `TrueType`, `Type3`.
-    pub subtype: String,
-    /// `/BaseFont`, when present.
-    pub base_font: Option<String>,
     /// How to turn codes into characters.
     pub decoder: Decoder,
     /// How to turn codes into advances.
@@ -274,11 +270,11 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
         .map(|n| String::from_utf8_lossy(n).to_string())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let base_font = fd
-        .get(b"BaseFont")
-        .ok()
-        .and_then(|o| o.as_name().ok())
-        .map(|n| String::from_utf8_lossy(n).to_string());
+    // `/BaseFont` is deliberately not read. It was parsed and stored through M6 and nothing ever
+    // looked at it — the decoder comes from `/ToUnicode` or the encoding, the advance from
+    // `/Widths`, and the ink box from the embedded program or the descriptor. A font name would
+    // only be useful for substituting metrics this profile refuses to substitute, so carrying it
+    // was state with no reader. Removed at M7 with the rest of the API freeze.
 
     // 1. Decoder — ToUnicode wins when the document ships one.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
@@ -298,8 +294,7 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
 
     Ok(Font {
         id: id.to_string(),
-        subtype,
-        base_font,
+
         decoder,
         widths,
         ink,
@@ -455,8 +450,6 @@ mod tests {
     fn font_with(widths: WidthSource, ink: FontInk) -> Font {
         Font {
             id: "F1".into(),
-            subtype: "Type1".into(),
-            base_font: Some("Helvetica".into()),
             decoder: Decoder::Simple(SimpleEncoding::new(BaseEncoding::WinAnsi, BTreeMap::new())),
             widths,
             ink,

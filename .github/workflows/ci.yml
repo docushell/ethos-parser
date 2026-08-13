@@ -134,6 +134,250 @@ jobs:
       - name: deny
         run: cargo deny check
 
+  # -----------------------------------------------------------------------------------------
+  # docs/03-V0-SCOPE.md §5 — every exit criterion, as its own named job
+  # -----------------------------------------------------------------------------------------
+  #
+  # M7's acceptance is that §5 is CI, not prose: a reviewer must be able to see *which line* is
+  # green. `check` above runs the whole suite and is the umbrella gate; it is deliberately not
+  # the proof, because one undifferentiated green tick cannot tell you that the classification
+  # bound still holds — it can only tell you that nothing failed.
+  #
+  # So each criterion is a matrix entry with the criterion's own id as its job name. Re-running
+  # the same tests under a label costs runner time and buys the thing this milestone is for: a
+  # timing flake in the bound test shows up as `v0-classify-bound` failing, not as a mysterious
+  # `cargo test`.
+  #
+  # `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that every `- [x]` line in §5 names a
+  # job id that appears in this file. Adding a criterion without a job, or renaming a job without
+  # updating §5, fails there.
+  #
+  # Two flags keep the setup honest per entry:
+  #   corpus  — check out the Ethos tree for its read-only fixtures
+  #   oracle  — additionally build `ethos`, the slowest step, needed only where a test runs it
+  #   rust    — install the pinned toolchain; false for the two criteria that are greps
+  v0-exit-criteria:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v0-happy-path
+            criterion: "classify -> extract -> ground -> grounding-check on all 15 fixtures"
+            corpus: true
+            oracle: true
+            rust: true
+            run: cargo test -p engine-cli --test oracle --locked -- manifest_declares_fifteen_ethos_owned_fixtures oracle_agrees_on_all_ethos_owned_fixtures refused_fixtures_fail_closed_rather_than_producing_an_artifact
+
+          - id: v0-double-run
+            criterion: "double-run byte identity, on files and not merely payloads"
+            corpus: true
+            oracle: true
+            rust: true
+            run: cargo test --workspace --locked -- byte_identical two_runs_with_diagnostics_still_produce_identical_artifacts two_library_runs_produce_identical_bytes
+
+          - id: v0-oracle
+            criterion: "byte-identical agreement with `ethos grounding check`"
+            corpus: true
+            oracle: true
+            rust: true
+            run: cargo test -p engine-cli --test oracle --locked
+
+          - id: v0-artifact-identity
+            criterion: "artifact_type, schema_version, parser_version, profile_sha256 on every artifact"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test --workspace --locked -- the_artifact_carries_a_full_identity_envelope the_default_profile_is_pinned artifact_identity_round_trips_through_c14n the_profile_schema_example_is_the_real_profile
+
+          - id: v0-coordinates
+            criterion: "every artifact carrying geometry declares coordinate_system"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test --workspace --locked -- every_geometry_bearing_artifact_declares_its_coordinate_system coordinate_system_is_hash_sensitive_in_principle the_field_exact_literals_are_what_the_schema_names
+
+          - id: v0-no-confidence
+            criterion: "grep -ri confidence over emitted artifacts and public types returns nothing"
+            corpus: false
+            oracle: false
+            rust: false
+            run: ci/forbidden-tokens.sh confidence
+
+          - id: v0-c14n
+            criterion: "no float in any canonical artifact; c14n rejects non-integers as a hard error"
+            corpus: false
+            oracle: false
+            rust: true
+            run: cargo test -p engine-core --locked -- c14n float quantize integers_at_the_2_53_boundary no_public_type_emits_a_decimal_number
+
+          - id: v0-locators
+            criterion: "every node carries a NativeLocator; no box is derived from a font size"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test -p engine-pdf --test extraction --locked -- every_run_carries_a_native_locator no_source_line_derives_a_box_from_the_font_size measured_metrics_produce_a_box_that_is_not_the_font_size a_font_without_metrics_yields_typed_absence
+
+          - id: v0-l1-gate
+            criterion: "capability and limitation declarations, including multi-column"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test -p engine-pdf --test capabilities --locked
+
+          - id: v0-exit-codes
+            criterion: "three exit codes, one asserting fixture each, all distinguishable"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test --workspace --locked -- exit_zero exit_one exit_two the_three_exit_codes_are_distinguishable every_open_failure_mode_is_distinguishable the_library_refuses_what_the_binary_refuses
+
+          # Its own job, deliberately (M7 forced decision #7). The load-bearing assertion is the
+          # instrumented counter — `pages_content_scanned <= N` on a 492-page document — and the
+          # wall-clock comparison sits beside it. Isolated here so a timing wobble on a shared
+          # runner is legible as *this* gate rather than as an unexplained suite failure.
+          # `--test-threads=1` so the timing phase is not competing with other tests.
+          - id: v0-classify-bound
+            criterion: "500-page at N=8 within 20% of an 8-page document at similar bytes/page"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test -p engine-pdf --test classification --locked -- --exact --test-threads=1 the_sampler_is_bounded_on_a_492_page_document pages_content_scanned_is_always_min_of_n_and_page_count classify_cost_is_flat_in_total_page_count
+
+          - id: v0-fail-closed
+            criterion: "unknown operator, unknown magic and unquantizable number each fail closed"
+            corpus: true
+            oracle: false
+            rust: true
+            run: cargo test --workspace --locked -- an_unknown_operator_produces_no_artifact an_unknown_operator_is_refused_by_name text_shown_before_an_unknown_operator_is_discarded_too unknown_magic_fails_closed floats_are_rejected_at_every_depth a_float_is_an_error_not_a_rounding
+
+          - id: v0-fixture-mutation
+            criterion: "mutation tests cover every fixture in the manifest"
+            corpus: true
+            oracle: false
+            rust: true
+            # --nocapture so the coverage report reaches the log: 23 fixtures, the mutants each
+            # took, and the pairs that could not be built. A mutation job that printed only
+            # "ok" would be indistinguishable from one covering three files.
+            run: cargo test -p engine-pdf --test robustness --locked -- --nocapture
+
+          - id: v0-no-verify
+            criterion: "no verification code, type, or field exists anywhere in the tree"
+            corpus: false
+            oracle: false
+            rust: false
+            run: ci/forbidden-tokens.sh verification
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Ethos (fixture corpus)
+        if: matrix.corpus
+        uses: actions/checkout@v4
+        with:
+          repository: docushell/ethos
+          ref: ${{ env.ETHOS_ORACLE_REF }}
+          path: ethos-oracle
+          persist-credentials: false
+
+      # The two grep criteria carry `rust: false`: they scan source text and need no compiler,
+      # so they skip the toolchain and the cache entirely and finish in seconds.
+      - uses: dtolnay/rust-toolchain@master
+        if: matrix.rust
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.rust
+        with:
+          workspaces: |
+            .
+            ethos-oracle
+          # One cache per criterion would evict itself constantly; they compile the same
+          # workspace, so they share.
+          shared-key: v0-exit-criteria
+
+      - name: Build the oracle
+        if: matrix.oracle
+        working-directory: ethos-oracle
+        run: cargo build --release --locked --bin ethos
+
+      - name: ${{ matrix.id }} — ${{ matrix.criterion }}
+        env:
+          RUSTFLAGS: "-D warnings"
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
+          ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
+        # No `--skip`, here or anywhere. An exclusion added to make a criterion green would
+        # delete the criterion (docs/05-MILESTONES.md M6).
+        run: ${{ matrix.run }}
+
+  # -----------------------------------------------------------------------------------------
+  # §5: `cargo-fuzz` target exists and runs clean on the corpus
+  # -----------------------------------------------------------------------------------------
+  #
+  # Its own job because it is the one thing here that needs nightly: `cargo-fuzz` builds with
+  # `-Z sanitizer=address`, which stable does not accept. Nightly is installed **only** in this
+  # job — the workspace MSRV stays 1.88 and every other job compiles with it.
+  #
+  # A short budget on purpose. This is a gate against panics on inputs shaped like the corpus,
+  # not a fuzzing campaign: 60s per target catches a crash a refactor introduced, and finding
+  # the deep bugs is a job for a long-running fuzzer outside PR latency. `-timeout=10` fails an
+  # input that hangs rather than letting the job burn its wall clock on one pathological file.
+  #
+  # `fuzz/` is excluded from the workspace, so this compiles a separate crate against the same
+  # engine sources and `cargo deny check` never sees `libfuzzer-sys`.
+  v0-fuzz-smoke:
+    name: v0-fuzz-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./fuzz
+          shared-key: fuzz
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      # Build both targets first: a target that no longer compiles against the engine API is the
+      # most likely way this rots, and it is worth failing on that before spending any budget.
+      - name: Build the fuzz targets
+        working-directory: fuzz
+        run: |
+          cargo fuzz build open_and_classify
+          cargo fuzz build open_and_extract
+
+      - name: Seed the corpora
+        run: |
+          ./fuzz/seed-corpus.sh open_and_classify
+          ./fuzz/seed-corpus.sh open_and_extract
+
+      - name: Fuzz open_and_classify
+        working-directory: fuzz
+        run: cargo fuzz run open_and_classify -- -max_total_time=60 -timeout=10 -max_len=65536
+
+      - name: Fuzz open_and_extract
+        working-directory: fuzz
+        run: cargo fuzz run open_and_extract -- -max_total_time=60 -timeout=10 -max_len=65536
+
+      # A crash file is the whole point of the job, so make it retrievable rather than only
+      # visible as a red tick.
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
   # Forced decision #14 ("no AGPL") is only real if it is tested. A policy nobody proves is a
   # policy that has already drifted.
   #

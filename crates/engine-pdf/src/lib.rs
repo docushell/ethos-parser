@@ -14,42 +14,57 @@
 
 //! `engine-pdf` — the PDF reader.
 //!
-//! # What exists at M2
+//! # The v0 surface
 //!
-//! [`Document`] opens a PDF once, and [`classify`] reports what it observed: per-page counts and
-//! named reason codes on two orthogonal axes, with a derived boolean. Nothing here renders a
-//! verdict, scores quality, or decides where a document should be routed.
+//! Three stages over one handle. [`Document`] opens a PDF **once** and every stage borrows it
+//! (`docs/04-ARCHITECTURE.md` §2.1):
+//!
+//! | Call | Produces |
+//! | --- | --- |
+//! | [`classify`] | Per-page counts and named reason codes on two orthogonal axes, plus a derived boolean |
+//! | [`extract`] | Position-aware text runs with native locators, measured ink boxes or typed absence, and synthesized-character flags |
+//! | [`to_representation`] | `DocumentRepresentation v0` — the canonical record, sealed with its fingerprint |
+//!
+//! Nothing here renders a verdict, scores quality, or decides where a document should be routed.
+//! The classifier emits counts and reasons; the caller owns the policy.
 //!
 //! # Boundary
 //!
-//! This crate contains no grounding concept. It produces observations and, at M3, representation
-//! nodes; projecting them is `engine-grounding`'s job.
+//! This crate contains no grounding concept. It produces observations and representation nodes;
+//! projecting them is `engine-grounding`'s job.
 //!
-//! # Not yet implemented
+//! # What is public, and what is not
 //!
-//! Extraction (M3): content-stream interpretation with an enumerated operator set, `NativeLocator`
-//! emission, measured ink boxes, vendored CMaps, synthesized-character flags. The classifier walks
-//! content streams to *count* operators; it does not interpret them, and it decodes no text.
+//! The items re-exported below, plus [`exit`] and [`limitations`], are the supported surface —
+//! `docs/PUBLIC-API.md` is the list, and `crates/engine-cli/tests/public_api.rs` fails if this
+//! file grows an export that document does not name.
+//!
+//! The parsing machinery — the operator table, the content-stream interpreter, font and CMap
+//! resolution, encoding tables, text state, thresholds — is **private**. It was public through
+//! M6 and narrowed at M7: those modules carry `f64` fields, borrow-scoped handles and calibration
+//! constants that are implementation, not contract. Anything genuinely needed by a caller is
+//! re-exported here by name.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-pub mod classify;
-pub mod cmap;
-pub mod content;
-pub mod document;
-pub mod encoding;
-pub mod extract;
-pub mod fonts;
 pub mod limitations;
-pub mod magic;
-pub mod metrics;
-pub mod nodes;
-pub mod ops;
-pub mod reasons;
-pub mod represent;
-pub mod text_state;
-pub mod thresholds;
+
+pub(crate) mod classify;
+pub(crate) mod cmap;
+pub(crate) mod content;
+pub(crate) mod document;
+pub(crate) mod encoding;
+pub(crate) mod extract;
+pub(crate) mod fonts;
+pub(crate) mod magic;
+pub(crate) mod metrics;
+pub(crate) mod nodes;
+pub(crate) mod ops;
+pub(crate) mod reasons;
+pub(crate) mod represent;
+pub(crate) mod text_state;
+pub(crate) mod thresholds;
 
 #[cfg(test)]
 mod test_support;

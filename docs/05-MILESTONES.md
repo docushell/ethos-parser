@@ -1,22 +1,24 @@
 # 05 — v0 milestones
 
-**Status:** bootstrap authority · **This is the code-review map.** Every v0 PR belongs to exactly one
-milestone.
+**Status:** **all seven complete — v0 shipped at v0.1.0** · **This is the code-review map.** Every
+v0 PR belonged to exactly one milestone. Kept as the historical record and as the acceptance list
+each milestone was actually held to; work after this is versions, not M-numbers
+(`02-ROADMAP.md`).
 
 **Start at M0.** Do not start M1 until M0's acceptance tests are green. The order is not a
 suggestion — M1 freezes the types M3 emits, M4 declares what M5 projects, and M6 cannot exist before
 M5. Skipping ahead means rewriting.
 
-| ID | Milestone | Gist |
-| --- | --- | --- |
-| **M0** | Repo skeleton + toolchain + deny + failing oracle harness | The harness exists and fails honestly |
-| **M1** | Contract types + c14n / quanta + `schema_version` on the wire | The artifact shape, frozen in code |
-| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | Observation without judgement |
-| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | The evidence itself |
-| **M4** | Capabilities + typed absence + explicit multi-column limitation | The L1 gate |
-| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | The canonical record and its projection |
-| **M6** | `grounding-check` validator + double-run byte identity on the corpus | Agreement with the oracle |
-| **M7** | CLI + library freeze + v0 exit criteria green | v0 |
+| ID | Milestone | Gist | State |
+| --- | --- | --- | --- |
+| **M0** | Repo skeleton + toolchain + deny + failing oracle harness | The harness exists and fails honestly | done |
+| **M1** | Contract types + c14n / quanta + `schema_version` on the wire | The artifact shape, frozen in code | done |
+| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | Observation without judgement | done |
+| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | The evidence itself | done |
+| **M4** | Capabilities + typed absence + explicit multi-column limitation | The L1 gate | done |
+| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | The canonical record and its projection | done |
+| **M6** | `grounding-check` validator + double-run byte identity on the corpus | Agreement with the oracle | done |
+| **M7** | CLI + library freeze + v0 exit criteria green | v0 | **done** |
 
 ---
 
@@ -471,12 +473,30 @@ M5. Skipping ahead means rewriting.
   - Double-run byte identity green across the corpus.
 
 - **Review checklist:**
-  - [ ] Public API reviewed deliberately — every exported item is intended to be supported
-  - [ ] No performance number appears in README or docs without a committed harness producing it
-  - [ ] No competitor comparison, ranking, or bake-off table anywhere
-  - [ ] Every `03-V0-SCOPE.md` §5 item maps to a named CI job
-  - [ ] Version, `schema_version`, and `parser_version` are consistent and tagged
-  - [ ] `07-VERIFY-BOUNDARY.md` still describes reality — nothing verification-shaped shipped
+  - [x] Public API reviewed deliberately — every exported item is intended to be supported.
+        `docs/PUBLIC-API.md` is the list; `public_api.rs` fails if the two disagree
+  - [x] No performance number appears in README or docs without a committed harness producing it.
+        The README's only quantitative claim is the bound-test counter, which
+        `v0-classify-bound` prints
+  - [x] No competitor comparison, ranking, or bake-off table anywhere
+  - [x] Every `03-V0-SCOPE.md` §5 item maps to a named CI job — and `v0_exit_criteria.rs` checks
+        the mapping in both directions
+  - [x] Version and `parser_version` are consistent at **0.1.0**. **Not tagged:** tagging is a
+        decider step, so the freeze is in-tree and the tag is a separate deliberate act
+  - [x] `07-VERIFY-BOUNDARY.md` still describes reality — re-read at M7; nothing
+        verification-shaped shipped, and the `v0-no-verify` grep is now a job
+
+- **What M7 actually changed**, for the record, since "freeze and prove" reads like a no-op:
+  - `--diagnostics`, opt-in, stderr-only, structurally outside every fingerprint
+  - `engine-pdf`'s parsing machinery narrowed to `pub(crate)`; the narrowing surfaced five dead
+    items the compiler could not previously see, two of which were genuinely unread state
+  - a fixture-mutation suite over all 23 manifest fixtures, with survivors pinned and triaged —
+    one triage finding was a mutation that "applied" to the two NIST benchmarks by matching bytes
+    inside a Flate stream, which would have gone green while proving nothing
+  - `Interpreter::run` now discards partial output on refusal. Nothing downstream was ever wrong,
+    but the guarantee was the call site's rather than the type's, and the test meant to cover it
+    passed for the wrong reason
+  - workspace 0.0.0 → 0.1.0, which moves `profile_sha256` by design
 
 - **Depends on:** M6.
 

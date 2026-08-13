@@ -465,19 +465,21 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.0.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.1.0","quantum_per_point":100,"reading_order_rule":"single-column-v1"}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
              added an output-affecting knob by accident.\n\n\
              Moved deliberately at M4, twice: `capabilities.char_offsets` true -> false (v0 \
              emits no element/span hierarchy for an offset to index into; it lands at M5), and \
-             the new `page_budget` knob. Artifacts from before and after are correctly \
-             non-comparable, because the profile that produced them really did change."
+             the new `page_budget` knob. Moved again at M7, for the workspace 0.0.0 -> 0.1.0 \
+             bump that freezes v0: `parser_version` is a profile field, so the version bump IS a \
+             profile change. Artifacts from before and after are correctly non-comparable, \
+             because the profile that produced them really did change."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f34be6328f858e09c241cb51c7b0dbb0fe065ecbf5f00e9942cd6bbcdd6faf1e"
+            "sha256:d2ebf3ef397d46621b78165c3bd6537e4a5df62c8d370a0d4c3350d0876d21fc"
         );
     }
 

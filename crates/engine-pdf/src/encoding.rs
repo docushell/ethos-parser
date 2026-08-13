@@ -81,11 +81,6 @@ impl SimpleEncoding {
         Self { base, differences }
     }
 
-    /// The base encoding in force.
-    pub fn base(&self) -> BaseEncoding {
-        self.base
-    }
-
     /// Decode one byte.
     ///
     /// # Errors

@@ -1,0 +1,47 @@
+# ethos-engine fuzz targets.
+#
+# **Deliberately not a workspace member** (`../Cargo.toml` excludes it). `libfuzzer-sys` and
+# `arbitrary` would otherwise enter the workspace dependency graph, where `cargo deny check`
+# inspects them and `cargo build --workspace` compiles them — putting a nightly-only sanitizer
+# shim into the dependency set of a shipped library for no benefit. The fuzz crate depends on the
+# engine; the engine depends on nothing here.
+#
+# Its own `[workspace]` table below makes that explicit from this side too, so `cargo` inside
+# `fuzz/` resolves against `fuzz/Cargo.lock` rather than reaching up.
+
+[package]
+name = "engine-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+engine-core = { path = "../crates/engine-core" }
+engine-pdf = { path = "../crates/engine-pdf" }
+
+[[bin]]
+name = "open_and_classify"
+path = "fuzz_targets/open_and_classify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "open_and_extract"
+path = "fuzz_targets/open_and_extract.rs"
+test = false
+doc = false
+bench = false
+
+# `debug = 1` keeps line numbers in a crash report without the size of full debug info; the rest
+# is cargo-fuzz's standard shape.
+[profile.release]
+debug = 1

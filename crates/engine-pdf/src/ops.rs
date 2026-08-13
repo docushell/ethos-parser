@@ -323,7 +323,13 @@ impl Operator {
         })
     }
 
-    /// The token this operator is written as.
+    /// The token this operator is written as. Test-only.
+    ///
+    /// The parse direction is [`Operator::from_token`]; nothing in the engine writes a content
+    /// stream, so the inverse exists to let `every_operator_round_trips_through_its_token` prove
+    /// the table has no gaps or duplicates. `cfg(test)` since M7, when `ops` became private and
+    /// the compiler could finally see that.
+    #[cfg(test)]
     pub fn token(self) -> &'static str {
         use Operator::*;
         match self {
@@ -404,6 +410,7 @@ impl Operator {
     }
 
     /// Every operator, for tests that must cover the whole table.
+    #[cfg(test)]
     pub const ALL: [Self; 73] = {
         use Operator::*;
         [

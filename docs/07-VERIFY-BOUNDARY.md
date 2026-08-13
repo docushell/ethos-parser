@@ -106,7 +106,16 @@ the line has not moved: no claim, no verdict, no `grounded`, no evidence tier, a
 the oracle harness enforces it.
 
 **No verification code exists in the tree at v0.** Not a stub, not a feature flag, not a
-`TODO`-shaped module. M7 asserts this with a grep test in CI rather than by inspection.
+`TODO`-shaped module. **Asserted in CI as of M7**, by the job `v0-no-verify` — `ci/forbidden-tokens.sh
+verification`, a grep over `crates/*/src` for `evidence_tier`, `is_grounded`,
+`all_evidence_grounded`, `verdict`, `verify_claim` and `claim_verified`. It is a job rather than a
+review item, and `docs/03-V0-SCOPE.md` §5 names it.
+
+Bare `grounded` is deliberately **not** in that list. `GroundedBox` is real, supported API — the
+type whose only constructor takes a measurement state, so a box cannot be built from a boolean —
+and banning the substring would forbid the one type whose job is refusing to invent geometry. The
+ban is on the verification *concept*, and a token list that fired on the mechanism enforcing an
+adjacent rule would get itself disabled.
 
 ### Stage 1 — v0.1: shell out to the Ethos CLI
 

@@ -114,31 +114,46 @@ fn the_quote_show_text_operators_do_not_lose_text() {
 // 2. Unknown operator fails closed
 // -------------------------------------------------------------------------------------------
 
+/// An unrecognised operator stops the parse, **through the public API**.
+///
+/// Rewritten at M7 as part of the API freeze. The earlier version reached into
+/// `engine_pdf::ops` and `engine_pdf::content` to drive the interpreter directly, which made two
+/// internal modules part of the published surface for the sake of one assertion. The interpreter
+/// is now tested where it lives (`content.rs`), and this asserts the property a caller actually
+/// depends on: a real document, one operator token overwritten in place, refused with a named
+/// error and no artifact.
+///
+/// The substitution is same-length, so `/Length` stays honest and the document remains
+/// structurally valid — the refusal is about the operator and nothing else.
 #[test]
 fn an_unknown_operator_produces_no_artifact() {
-    use engine_pdf::ops::Operator;
+    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    let at = original
+        .windows(4)
+        .position(|w| w == b" Tj ")
+        .expect("the fixture shows text with a Tj operator");
+    let mut mutant = original.clone();
+    mutant[at + 1..at + 3].copy_from_slice(b"Zq");
 
-    // Direct assertion on the table: a token outside PDF 32000-1 Table A.1 resolves to nothing,
-    // and the interpreter turns that into a hard error rather than a skip.
-    assert_eq!(Operator::from_token("UnknownOp"), None);
+    let profile = Profile::default();
 
-    let fonts = std::collections::BTreeMap::new();
-    let mut interp = engine_pdf::content::Interpreter::new(&fonts);
-    let ops = lopdf::content::Content::decode(b"q 1 0 0 1 0 0 cm UnknownOp Q")
-        .expect("decodes")
-        .operations;
-
-    let e = interp
-        .run(&ops)
-        .expect_err("an unknown operator must stop the parse");
-    assert_eq!(e.code(), "unsupported");
+    // The control: unmodified, this fixture extracts.
     assert!(
-        e.to_string().contains("UnknownOp"),
-        "the token must be named: {e}"
+        Document::open_bytes(&original, &profile)
+            .and_then(|d| engine_pdf::extract(&d, &profile))
+            .is_ok(),
+        "the control must extract, or the mutant proves nothing"
     );
+
+    let doc = Document::open_bytes(&mutant, &profile)
+        .expect("the document is still structurally valid — only the operator changed");
+    let e =
+        engine_pdf::extract(&doc, &profile).expect_err("an unknown operator must stop the parse");
+
+    assert_eq!(e.code(), "unsupported", "got {e}");
     assert!(
-        interp.shown.is_empty(),
-        "no partial output may survive a fail-closed parse"
+        e.to_string().contains("Zq"),
+        "the offending token must be named: {e}"
     );
 }
 

@@ -14,18 +14,26 @@
 
 //! `engine` — the ethos-engine command line.
 //!
-//! Four subcommands at v0; `classify` is implemented as of M2. The CLI is a **thin shell** over
-//! the library so the two cannot diverge: it parses arguments, opens the document once, calls
-//! `engine_pdf`, prints canonical bytes, and maps the result to an exit code. No classification
-//! logic lives here.
+//! Four subcommands, all implemented as of v0: `classify`, `extract`, `ground`,
+//! `grounding-check`. The CLI is a **thin shell** over the library so the two cannot diverge: it
+//! parses arguments, opens the document once, calls the library, prints canonical bytes, and maps
+//! the result to an exit code. No classification, extraction, projection or validation logic lives
+//! here, and `docs/PUBLIC-API.md` names the library entry point behind each subcommand.
+//!
+//! # stdout is the artifact
+//!
+//! Every subcommand writes canonical bytes to stdout and nothing else. Failures, the grounding
+//! omission note, and `--diagnostics` all go to stderr, so a caller redirecting stdout to a file
+//! gets an artifact whose bytes are identical across runs (`docs/04-ARCHITECTURE.md` §2).
 
 #![forbid(unsafe_code)]
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use engine_core::diagnostics::{DiagnosticsRun, Stage};
 use engine_core::{EngineError, Profile};
 use engine_pdf::exit::{exit_code, COULD_NOT_READ};
 use engine_pdf::Document;
@@ -40,6 +48,15 @@ use engine_pdf::Document;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+
+    /// Write volatile run diagnostics — timing, host, input path, resident memory — to stderr.
+    ///
+    /// Off by default, and it changes nothing on stdout. Diagnostics are the only place volatile
+    /// data is allowed to exist (`docs/01-CONTRACT.md` §4): they are never canonicalized, never
+    /// fingerprinted, and never part of an artifact. Turning this on does not make two runs
+    /// produce different artifacts — that is the property being protected.
+    #[arg(long, global = true)]
+    diagnostics: bool,
 }
 
 #[derive(Subcommand)]
@@ -116,21 +133,60 @@ struct GroundArgs {
     path: PathBuf,
 }
 
-#[derive(clap::Args)]
-struct PathArg {
-    /// Input path.
-    #[arg(value_name = "PATH")]
-    _path: PathBuf,
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let diag = cli.diagnostics;
     match cli.command {
-        Command::Classify(args) => run_classify(args),
-        Command::Extract(args) => run_extract(args),
-        Command::Ground(args) => run_ground(args),
-        Command::GroundingCheck(args) => run_grounding_check(args),
+        Command::Classify(args) => {
+            let path = args.path.clone();
+            timed(Stage::Classify, diag, &path, || run_classify(args))
+        }
+        Command::Extract(args) => {
+            let path = args.path.clone();
+            timed(Stage::Extract, diag, &path, || run_extract(args))
+        }
+        Command::Ground(args) => {
+            let path = args.path.clone();
+            timed(Stage::Ground, diag, &path, || run_ground(args))
+        }
+        Command::GroundingCheck(args) => {
+            let path = args.path.clone();
+            timed(Stage::GroundingCheck, diag, &path, || {
+                run_grounding_check(args)
+            })
+        }
     }
+}
+
+/// Run a subcommand, and — only when asked — describe the run on stderr.
+///
+/// The wrapper exists so the timing region is the *whole* subcommand including its output write,
+/// and so no early return inside a subcommand can skip the report. The exit code is passed
+/// through untouched: a diagnostics failure must never change what a caller's `&&` chain sees,
+/// because then observing the engine would change it.
+///
+/// Everything reported is assembled by `engine_core::diagnostics` — this function measures a
+/// region and chooses a stream, which is the whole of what a shell is allowed to do.
+fn timed(stage: Stage, enabled: bool, path: &Path, run: impl FnOnce() -> ExitCode) -> ExitCode {
+    let observation = DiagnosticsRun::begin(stage);
+    let code = run();
+    if enabled {
+        // Read after the run, not before: for a subcommand that failed to open the file this is
+        // the only size available, and asking twice would be one more thing to keep in agreement.
+        let bytes = std::fs::metadata(path).ok().map(|m| m.len());
+        let d = observation.finish(Some(path.display().to_string()), bytes);
+        match d.to_json_line() {
+            Ok(line) => {
+                let mut err = std::io::stderr().lock();
+                let _ = err.write_all(&line);
+                let _ = err.flush();
+            }
+            // Reported, not fatal, and not on stdout. A diagnostic that could fail a run would be
+            // a reason not to turn diagnostics on.
+            Err(e) => eprintln!("engine: diagnostics unavailable: {e} [{}]", e.code()),
+        }
+    }
+    code
 }
 
 fn run_classify(args: ClassifyArgs) -> ExitCode {

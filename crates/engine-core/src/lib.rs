@@ -29,6 +29,7 @@
 //! | [`assurance`] | The L1 gate: [`Limitation`], [`PageState`], [`CoverageSummary`], terminal state |
 //! | [`ids`] | Stable-id allocation and the ordering discipline |
 //! | [`error`] | The six-variant error taxonomy |
+//! | [`diagnostics`] | Volatile observations, quarantined off the artifact and off by default |
 //!
 //! # Boundary
 //!
@@ -59,6 +60,7 @@
 pub mod assurance;
 pub mod c14n;
 pub mod derivation;
+pub mod diagnostics;
 pub mod error;
 pub mod geom;
 pub mod identity;
@@ -73,6 +75,7 @@ pub use assurance::{
 };
 pub use c14n::{c14n_bytes, sha256_hex, sha256_hex_bytes, C14nError};
 pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
+pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_VERSION};
 pub use error::EngineError;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
 pub use identity::{

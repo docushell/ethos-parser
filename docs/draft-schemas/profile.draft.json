@@ -140,7 +140,7 @@
       "cmap_data_version": "annex-d-encodings-1",
       "coordinate_system": { "origin": "top-left", "unit": "centipoint" },
       "page_budget": { "mode": "unlimited" },
-      "parser_version": "0.0.0",
+      "parser_version": "0.1.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1"
     }

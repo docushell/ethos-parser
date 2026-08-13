@@ -1,16 +1,37 @@
 # ethos-engine — implementation documentation
 
-**Status:** **M6 complete.** `engine-pdf` opens a PDF once and both classifies it (M2) and
-extracts position-aware text runs from it (M3): an exhaustive operator table that fails closed,
-`PdfLocator` on every run, measured or typed-absent ink boxes, synthesized-character flags, and
-the ligature caveat on the wire. As of M4 every artifact also carries the **L1 gate** — declared
-capabilities, named limitations, per-page processing state, a coverage summary that reconciles,
-and a terminal state where **partial is not a degraded success**. As of M5 `engine extract` emits
-**`DocumentRepresentation v0`** — the canonical evidence record, with a fingerprint over its own
-payload and geometry deliberately outside it — and `engine ground` projects that record into
-`ethos.grounding.v1`, validated against a pinned snapshot of Ethos's own schema. As of M6
-`engine grounding-check` validates a grounding artifact's structure and its binding to source
-bytes, and **agrees with the Ethos CLI on every fixture that reaches one**. **Next: M7.**
+**Status:** **M7 complete — v0 is done and frozen, at v0.1.0.**
+
+`engine-pdf` opens a PDF once and both classifies it (M2) and extracts position-aware text runs
+from it (M3): an exhaustive operator table that fails closed, `PdfLocator` on every run, measured
+or typed-absent ink boxes, synthesized-character flags, and the ligature caveat on the wire. As of
+M4 every artifact also carries the **L1 gate** — declared capabilities, named limitations, per-page
+processing state, a coverage summary that reconciles, and a terminal state where **partial is not a
+degraded success**. As of M5 `engine extract` emits **`DocumentRepresentation v0`** — the canonical
+evidence record, with a fingerprint over its own payload and geometry deliberately outside it — and
+`engine ground` projects that record into `ethos.grounding.v1`, validated against a pinned snapshot
+of Ethos's own schema. As of M6 `engine grounding-check` validates a grounding artifact's structure
+and its binding to source bytes, and **agrees with the Ethos CLI on every fixture that reaches
+one**.
+
+M7 added no capability. It closed v0 instead:
+
+- **`03-V0-SCOPE.md` §5 is CI.** Fifteen criteria, fifteen named jobs, and
+  `v0_exit_criteria.rs` fails if a box is ticked against a job nobody wrote — or if a `--skip`
+  reappears anywhere in the workflow.
+- **The public API is a list**, not whatever happened to be `pub`. See
+  [`PUBLIC-API.md`](PUBLIC-API.md). `engine-pdf`'s parsing machinery is `pub(crate)`, and
+  narrowing it exposed dead code the compiler had been unable to see.
+- **`--diagnostics`** exists: opt-in, stderr-only, outside every fingerprint.
+- **Fuzz and mutation layers.** `cargo-fuzz` on the PDF entry point, and every fixture in the
+  manifest damaged six ways with the survivors pinned and triaged.
+- **One fail-closed hardening**, found by the mutation triage: the content interpreter kept text
+  shown before an unrecognised operator. No artifact was ever wrong — `extract` propagates and
+  drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
+  the test that was meant to cover it passed for the wrong reason. It is the type's now.
+
+**Next: v0.1** — `ethos verify` as a declared capability, and the xref repair-or-refuse decision.
+Not started, and deliberately not an M-number: the milestone chain ends at v0.
 
 ---
 
@@ -20,14 +41,18 @@ bytes, and **agrees with the Ethos CLI on every fixture that reaches one**. **Ne
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **Implement M7.** M0–M6 are done and committed; do not re-author the workspace, the contract
+5. **M0–M7 are done and committed. v0 is frozen.** Do not re-author the workspace, the contract
    types, the classifier, the extractor, the assurance envelope, the representation, the
-   projection, or the checker. M7 freezes the public API, wires `03-V0-SCOPE.md` §5 line by line
-   as CI jobs, and adds the fuzz and mutation layers. Two things M6 leaves for it: the engine's
-   own `--diagnostics` flag does not exist yet, and the `ethos` binary in the sibling tree is
+   projection, or the checker — and do not widen the public API without editing
+   [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. The next work is
+   **v0.1** (`ethos verify` as a declared capability; the xref repair-or-refuse decision), and it
+   is a roadmap item rather than an M-number
+
+   One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it
-   in an in-toto Statement) — the oracle harness reads both, but a rebuild there is worth doing
-   deliberately
+   in an in-toto Statement). The oracle harness reads both shapes and every oracle test passes, so
+   a rebuild there is a deliberate act with its own commit — `ETHOS_ORACLE_REF` is pinned in
+   `.github/workflows/ci.yml` precisely so a verifier swap is visible
 
 **Before you touch anything, run the gate** so you know the baseline you inherited:
 
@@ -65,6 +90,7 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
+| [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
 
@@ -81,9 +107,11 @@ Then, as needed:
 | **M4** | Capabilities + typed absence + explicit multi-column limitation | M3 | **done** |
 | **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | M4 | **done** |
 | **M6** | `grounding-check` validator + double-run byte identity on the corpus | M5 | **done** |
-| **M7** | CLI + library freeze + v0 exit criteria green | M6 | **next** |
+| **M7** | CLI + library freeze + v0 exit criteria green | M6 | **done** |
 
-M2 and M3 both depended only on M1; both are done. Everything else is a chain.
+M2 and M3 both depended only on M1; both are done. Everything else is a chain, and the chain ends
+here: **v0 is complete at v0.1.0.** What follows is versions, not milestones — see
+[`02-ROADMAP.md`](02-ROADMAP.md).
 
 ---
 
