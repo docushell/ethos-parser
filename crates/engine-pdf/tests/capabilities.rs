@@ -131,6 +131,8 @@ fn proof_table() -> Vec<Proof> {
         structural_locators,
         form_fields,
         annotations,
+        images,
+        page_screenshots,
     } = c;
 
     vec![
@@ -176,6 +178,32 @@ fn proof_table() -> Vec<Proof> {
             // not touched. A reader that only reordered could be reordering everything.
             proof_test: Some("multi_column_order_is_read_and_single_column_is_left_alone"),
             why_not: None,
+        },
+        Proof {
+            field: "images",
+            claimed: images,
+            // v1-S6. The claim is "this profile looks", so the proof covers both halves: a page
+            // that PAINTS an image yields a node with a placement and a digest, and a page that
+            // merely declares one in its resources yields none. Those two are the whole of what
+            // the flag means, and a proof of either alone would be a proof of half a capability.
+            proof_test: Some("an_image_is_a_node_with_a_placement_and_a_digest"),
+            why_not: None,
+        },
+        Proof {
+            field: "page_screenshots",
+            claimed: page_screenshots,
+            proof_test: None,
+            why_not: Some(
+                "No page raster is produced, at any resolution, and this is a decision rather \
+                 than a gap left open. Rendering a page needs a PDF renderer — glyph \
+                 rasterization, shadings, blend modes, image filters — and this workspace has \
+                 none: PDFium is admitted only caller-provided under an explicit ADR, no AGPL \
+                 renderer clears the licence allowlist, and shelling out to an external \
+                 converter would put an unpinned binary between the document and the artifact. \
+                 `page-raster-not-emitted` is declared on every artifact and `raster_dpi` \
+                 records the not-emitted state on the profile, so a renderer arriving later \
+                 moves `profile_sha256` instead of silently changing what an artifact means.",
+            ),
         },
         Proof {
             field: "structural_locators",

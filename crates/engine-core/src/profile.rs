@@ -75,6 +75,27 @@ pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
 /// of them is a new id rather than a quiet redefinition of this one.
 pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 
+/// The rule v1-S6 ships for images and text findings: what is observed, and how.
+///
+/// One id covering both because they are one pass over one content stream, reading the same
+/// graphics state: the current transformation matrix places an image, and the text rendering mode
+/// and the visible page box decide what a run is flagged with. Splitting them would suggest a
+/// document could be under one and not the other.
+///
+/// What is part of it, and therefore what a change to it must move this string for:
+///
+/// - which `Do` calls become nodes — `/Subtype /Image` only, never `/Form`, never inline `BI`
+/// - how a painted rectangle is derived — the CTM applied to the unit square, axis-aligned or
+///   typed-absent, never the bitmap's pixel dimensions
+/// - what the digest covers — the stream's stored bytes, still encoded
+/// - what counts as invisible — text rendering modes 3 and 7
+/// - what counts as off-page — the origin outside `/CropBox`, or `/MediaBox` where no crop box is
+///   declared, after `/Rotate`
+///
+/// **It does not cover contrast.** Nothing here reads colour, and a profile under this id makes no
+/// claim about whether text was legible — see `codes::LOW_CONTRAST_NOT_DETECTED`.
+pub const OBSERVATION_RULE_V1: &str = "page-observations-v1";
+
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `engine-pdf` because the profile is `engine-core`'s and a rule id is
@@ -308,6 +329,32 @@ pub struct Capabilities {
     /// provable and separately absent: a document can carry comments and no form, or a form and
     /// no comments, and one flag covering both would be true on the strength of either.
     pub annotations: bool,
+    /// Images a page paints with `Do` are emitted as nodes (v1-S6).
+    ///
+    /// **True since v1-S6**, and the claim is the narrow one this type always makes — *this
+    /// profile looks*. A page that paints none yields no image nodes, and that is an answer.
+    ///
+    /// It does not claim every image is found: an image drawn inside a form XObject is not seen,
+    /// because this profile does not descend into them, and an **inline** image (`BI`/`ID`/`EI`)
+    /// is counted and declared rather than emitted. Both are separately declared limitations.
+    ///
+    /// It emphatically does not claim to know what any picture *shows*. No node carries a
+    /// description, and none ever will under this profile: that is OCR or a model's opinion, and
+    /// neither is evidence.
+    pub images: bool,
+    /// Page rasters are emitted at a pinned DPI (v1-S6).
+    ///
+    /// **False, and this is the honest answer rather than a deferral.** Rendering a page means a
+    /// PDF renderer — glyph rasterization, shadings, blend modes, image filters — and this
+    /// workspace has none, deliberately: `docs/00-NORTH-STAR.md` #14 admits PDFium only
+    /// caller-provided under an explicit ADR, and `deny.toml` is an allowlist that no AGPL
+    /// renderer clears. Shelling out to `pdftoppm` would put an unpinned binary between the
+    /// document and the artifact.
+    ///
+    /// The partnering limitation is declared on every artifact, and
+    /// [`Profile::raster_dpi`] carries the not-emitted state explicitly so that a future renderer
+    /// arriving is a profile-hash event rather than a silent change of meaning.
+    pub page_screenshots: bool,
 }
 
 impl Capabilities {
@@ -327,7 +374,40 @@ impl Capabilities {
         structural_locators: true,
         form_fields: true,
         annotations: true,
+        images: true,
+        page_screenshots: false,
     };
+}
+
+/// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
+///
+/// # A declared state, not an absent field
+///
+/// The same discipline [`PageBudget`] is under, for the same reason. `{"mode":"not_emitted"}` says
+/// *this profile considered rasters and emits none*; an omitted `Option` would leave a reader
+/// unable to tell that from a build that has no such knob at all — and would let a future renderer
+/// arrive without moving `profile_sha256`, so an artifact with rasters and one without would
+/// compare as though they came from the same reader.
+///
+/// It is on the profile because a DPI is output-affecting in the strongest sense: raster pixels are
+/// a **second coordinate system**, and two artifacts rendered at different resolutions describe the
+/// same page with different numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// Adjacently tagged with `deny_unknown_fields`, matching `XrefRepair` and `PageBudget`, and for
+// the reason recorded there: serde does NOT honour `deny_unknown_fields` on an *internally*
+// tagged enum, so `{"mode":"not_emitted","dpi":300}` would parse, drop the field, and re-hash to
+// a digest different from the one it arrived with. A profile knob that can be silently discarded
+// is worse than no knob.
+#[serde(
+    rename_all = "snake_case",
+    tag = "mode",
+    content = "dpi",
+    deny_unknown_fields
+)]
+#[non_exhaustive]
+pub enum RasterDpi {
+    /// No raster is produced. See [`Capabilities::page_screenshots`].
+    NotEmitted,
 }
 
 /// How many pages a run may process before it stops.
@@ -532,6 +612,14 @@ pub struct Profile {
     pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
+    /// Version id of the image and text-finding rule in force. New at v1-S6.
+    ///
+    /// See [`OBSERVATION_RULE_V1`]. On the profile because it decides which `Do` calls become
+    /// nodes, how a painted rectangle is derived, and what counts as invisible or off-page —
+    /// every one of which changes what an artifact says the document contains.
+    pub observation_rule: String,
+    /// The resolution page rasters are emitted at. New at v1-S6, [`RasterDpi::NotEmitted`] today.
+    pub raster_dpi: RasterDpi,
     /// Whether the bounded cross-reference repair runs. New at v0.1.
     ///
     /// On the profile because it changes *which documents produce an artifact at all* — the
@@ -556,6 +644,8 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
+            observation_rule: OBSERVATION_RULE_V1.to_string(),
+            raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
         }
@@ -645,9 +735,13 @@ mod tests {
                     structural_locators: _,
                     form_fields: _,
                     annotations: _,
+                    images: _,
+                    page_screenshots: _,
                 },
             page_budget: _,
             reading_order_rule: _,
+            observation_rule: _,
+            raster_dpi: _,
             table_detection:
                 TableDetection {
                     ruled: _,
@@ -840,7 +934,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.7.0","quantum_per_point":100,"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.8.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -881,11 +975,23 @@ mod tests {
              either side of it can list the same runs, with the same text and the same origins, \
              in a different sequence — and a consumer that concatenated them would get two \
              different documents. That is precisely why the rule id is a profile field and why \
-             it took a new name instead of a version bump on the old one."
+             it took a new name instead of a version bump on the old one.\n\n\
+             Moved a ninth time at v1-S6 (0.8.0): the version, the new `observation_rule` and \
+             `raster_dpi` fields, and TWO capability flips — `images` false -> true, and \
+             `page_screenshots` arriving as an explicit false. The first is a claim: artifacts \
+             before it carried no image node because none was ever looked for, and ones after \
+             carry them or say the document paints none. The second is the opposite kind of \
+             entry and just as load-bearing — a field that says `no raster, and that was decided` \
+             rather than leaving a reader unable to tell a build with no renderer from a build \
+             where nobody thought about it. This release also REPAIRED the page-box transform, \
+             which discarded the box origin; on every document in either corpus that origin is \
+             (0, 0) and the repair is the identity, so no coordinate in any existing artifact \
+             moves — but a document with an offset box would have been wrong before and is right \
+             now, which is a difference the hash should carry."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:1131244222e618442352e40da58cb6231b11f4b7140db7421671a258700de113"
+            "sha256:3de478c92c536b7ed10999be655515ce70bf37f2b5aec5031614145ad53d5ace"
         );
     }
 

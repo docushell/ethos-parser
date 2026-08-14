@@ -148,6 +148,9 @@ pub fn to_representation(
                         .collect(),
                     font_id: run.font_id.clone(),
                     font_size: run.font_size,
+                    // v1-S6. Carried through unchanged. The node is here because the run is
+                    // here; a finding never decides whether it gets projected.
+                    findings: run.findings.clone(),
                 }),
             });
             geometry.push(NodeGeometry {
@@ -182,6 +185,44 @@ pub fn to_representation(
                 // measure — counting it as one would inflate the ink-measurement limitation with
                 // nodes that were never going to have ink. Its rectangle is on the locator,
                 // where it can say it is *declared* rather than measured.
+                presence: engine_core::GeometryPresence::Absent(
+                    engine_core::GeometryAbsence::NotApplicableToKind,
+                ),
+            });
+        }
+
+        // v1-S6. Images, after this page's runs and objects, so no earlier ordinal moves. An
+        // image is not a run and never enters the reading order: `gutter-columns-v1` sorts
+        // `TextRun`s by origin, and a picture has no baseline to sort by. It follows the text on
+        // its page in a documented second sequence, exactly as widgets do.
+        for (i, image) in page.images.iter().enumerate() {
+            nodes.push(Node {
+                id: image.id.clone(),
+                kind: NodeKind::Image,
+                parent: page_id.clone(),
+                ordinal: (page.runs.len() + page.objects.len() + i + 1) as u32,
+                // **Empty, and it stays empty.** An image node carries no text because this
+                // engine reads none from it: pixels are not decoded, nothing is recognised, and
+                // a description would be a model's opinion rather than the document's content.
+                text: String::new(),
+                native_locator: NativeLocator::PdfImage(image.locator.clone()),
+                // No structure tree citation is resolved for images. `/OBJR` binds widgets by
+                // object reference (v1-S4) and a tagged `/Figure` would be the analogue here —
+                // but binding one needs the same exact-equality join S3 built for text, over a
+                // key images do not carry, so nothing is claimed rather than something guessed.
+                structural_locator: None,
+                // The placement and the digest are read from the document: the matrix it set and
+                // the bytes it stores. Nothing here is inferred.
+                derivation: engine_core::DerivationClass::Extracted,
+                attributes: engine_core::NodeAttributes::Image(image.attributes.clone()),
+            });
+            geometry.push(NodeGeometry {
+                node: image.id.clone(),
+                // **`NotApplicableToKind`**, for the reason an annotation's is: this field means
+                // *measured ink from font metrics*, and an image has no glyphs to measure. Its
+                // area is on the locator as a `PaintedRect`, where it says it came from the
+                // page's own matrix — a third provenance that must not be flattened into the
+                // other two.
                 presence: engine_core::GeometryPresence::Absent(
                     engine_core::GeometryAbsence::NotApplicableToKind,
                 ),
@@ -268,15 +309,18 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
     Limitation::document(
         codes::NON_TEXT_NODES_NOT_PROJECTED,
         format!(
-            "{non_text} of {total} node(s) in this representation are form fields or annotations \
-             rather than text runs, so they are OMITTED from any `ethos.grounding.v1` projection \
-             of it. That schema carries `elements` and `spans`, each requiring a bbox that means \
-             MEASURED INK; an annotation's `/Rect` is a rectangle the author declared, and \
-             emitting the two under one key with nothing to distinguish them would flatten the \
-             difference. The nodes are all still here, with their text, their object ids and \
-             their declared rectangles — the gap is in what the target schema can express, not in \
-             what was read. This is a DIFFERENT count from `geometry-absent-not-groundable`, \
-             which means the ink box could not be measured."
+            "{non_text} of {total} node(s) in this representation are form fields, annotations or \
+             images rather than text runs, so they are OMITTED from any `ethos.grounding.v1` \
+             projection of it. That schema carries `elements` and `spans`, each requiring a bbox \
+             that means MEASURED INK — and these nodes carry two other kinds of rectangle \
+             entirely. An annotation's `/Rect` is a number the author wrote into a dictionary \
+             saying where a widget sits. An image's rectangle is the page's own transformation \
+             matrix applied to the unit square, computed by this reader. Emitting all three under \
+             one key, with nothing on the wire to tell them apart, would flatten exactly the \
+             distinction they exist to keep. The nodes are all still here, with their text, their \
+             object ids, their digests and their rectangles — the gap is in what the target \
+             schema can express, not in what was read. This is a DIFFERENT count from \
+             `geometry-absent-not-groundable`, which means an ink box could not be measured."
         ),
     )
 }

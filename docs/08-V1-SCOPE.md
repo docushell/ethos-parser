@@ -71,7 +71,7 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | **done** |
 | **S4** | Forms and annotations as typed, distinguishable nodes | **done** |
 | **S5** | Multi-column reading order, with a stable versioned rule | **done** |
-| **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | not started |
+| **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | **done** |
 | **S7** | Labelled-set harness; the > 0.489 gate; v1 declared done | not started |
 
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later
@@ -130,6 +130,8 @@ limitation. v1 flips capabilities, so that rule is where its honesty lives.
 | `tables` | false | **true** | S1 (ruled), widened by S2 |
 | `structural_locators` | false | **true** | S3 |
 | `multi_column_reading_order` | false | **true** | S5 |
+| `images` | — | **true** | S6 |
+| `page_screenshots` | — | false | **not shipped** — no renderer this project may depend on; see `09-V1-MILESTONES.md` S6 |
 | `char_offsets` | false | true | whichever slice makes elements coarser than spans |
 | `form_fields` | — | **true** | S4 |
 | `annotations` | — | **true** | S4 |

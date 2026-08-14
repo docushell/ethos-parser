@@ -27,7 +27,7 @@
 
 use engine_core::{
     quantize, ArtifactIdentity, Assurance, DerivationClass, EngineError, IdAllocator, IdKind,
-    PageState, PageStateEntry, Profile, Sha256Hex, QUANTUM_PER_POINT,
+    PageState, PageStateEntry, Profile, Sha256Hex, TextFinding, QUANTUM_PER_POINT,
 };
 use serde::{Deserialize, Serialize};
 
@@ -212,6 +212,11 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
+    // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
+    let mut inline_images: u32 = 0;
+    let mut unresolved_xobjects: u32 = 0;
+    let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
+        std::collections::BTreeMap::new();
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -237,6 +242,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 })?;
 
         let geom = PageGeometry::resolve(doc, page_dict)?;
+        // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
+        // the runs end up in. Computed once per page rather than per run.
+        let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc.inner(), page_dict)?;
 
         for font in fonts.values() {
@@ -255,8 +263,14 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 detail: format!("page {page_number}: {e}"),
             })?;
 
-        let mut interp = Interpreter::new(&fonts);
+        // v1-S6. The page's `/XObject` names, so `Do` can be resolved to an object number. The
+        // interpreter still never holds a `Document` — it gets names and ids, and extraction
+        // sorts `/Image` from `/Form` where the document is already in scope.
+        let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
+        let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
         interp.run(&decoded.operations)?;
+        inline_images = inline_images.saturating_add(interp.inline_images);
+        unresolved_xobjects = unresolved_xobjects.saturating_add(interp.unresolved_xobjects);
 
         // v0.1: a font that cannot map a code drops its run rather than failing the document.
         // Accumulated across pages so the artifact declares one honest total.
@@ -327,6 +341,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 structural: bind_structure(structure.as_ref(), page_id, shown.mcid, shown.artifact),
                 // Text and origins are read from the document's own encoding.
                 derivation: DerivationClass::Extracted,
+                // v1-S6. Observations about the run, never a reason to withhold it. Both are
+                // computed from evidence the page supplies: the text rendering mode the content
+                // stream set, and the visible box the page declares.
+                findings: run_findings(shown.render_mode, origin_x, origin_y, &visible),
             });
         }
 
@@ -498,9 +516,43 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             }
         }
 
+        // v1-S6. One node per `Do`, in the order the page painted them. A `/Form` yields
+        // nothing here — this profile does not descend into form XObjects, which stays declared
+        // as `form-xobject-text-not-descended` — and neither does an XObject with no readable
+        // `/Subtype`: emitting a node for an unlabelled stream would put a picture on the wire
+        // the document never called one.
+        let mut images = Vec::new();
+        if profile.capabilities.images {
+            for placement in &interp.images {
+                let Some(attributes) =
+                    crate::images::image_attributes(doc.inner(), placement.object)
+                else {
+                    continue;
+                };
+                let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
+                images.push(crate::nodes::ImageRecord {
+                    id: alloc.next(IdKind::Image)?,
+                    locator: engine_core::PdfImageLocator {
+                        page: page_number,
+                        object: placement.object.0,
+                        generation: u32::from(placement.object.1),
+                        rect: crate::images::painted_rect(corners),
+                    },
+                    attributes,
+                });
+            }
+        }
+
+        for run in &runs {
+            for f in &run.findings {
+                *findings_seen.entry(f.as_code()).or_insert(0) += 1;
+            }
+        }
+
         pages.push(PageExtract {
             tables,
             objects,
+            images,
             index: page_number,
             width: quantize(geom.display_width, QUANTUM_PER_POINT).map_err(quantize_err)?,
             height: quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?,
@@ -563,6 +615,19 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     }
     if unresolved_field_parents > 0 {
         limitations.push(lim::form_field_parent_unresolved(unresolved_field_parents));
+    }
+
+    // v1-S6. Findings are counted where they were observed and declared once, so a consumer
+    // reading only the assurance block learns they exist. **Every counted run is still in the
+    // artifact** — this is a summary of what is there, never a record of what was removed.
+    for (code, count) in &findings_seen {
+        limitations.push(lim::text_finding(code, *count));
+    }
+    if inline_images > 0 {
+        limitations.push(lim::inline_images_not_emitted(inline_images));
+    }
+    if unresolved_xobjects > 0 {
+        limitations.push(lim::xobject_name_unresolved(unresolved_xobjects));
     }
 
     // **Encoding holes: declare, or refuse outright.**
@@ -670,6 +735,38 @@ fn reorder_page(
     }
 }
 
+/// What was observed about one run, beyond its text (v1-S6).
+///
+/// Both findings come from evidence the page itself supplies — the rendering mode its content
+/// stream set, and the box it declares as visible. Neither is an appearance judgement, and
+/// neither removes anything: the run this describes is in the artifact with its text and its
+/// origin intact, which is the whole of checklist O21.
+fn run_findings(
+    render_mode: i64,
+    origin_x: i64,
+    origin_y: i64,
+    visible: &PageBox,
+) -> Vec<TextFinding> {
+    let mut out = Vec::new();
+    // Modes 3 and 7 fill nothing and stroke nothing (32000-1 Table 106). Mode 7 also adds the
+    // glyphs to the clip path, which is a different purpose and the same visible result: no ink.
+    // Mode 4 through 6 DO paint and are deliberately not flagged — a rule that called every
+    // clipping mode invisible would report ordinary text as hidden.
+    if render_mode == 3 || render_mode == 7 {
+        out.push(TextFinding::InvisibleRenderMode);
+    }
+    // The origin, because the origin is the run's address and the one coordinate this engine
+    // treats as identity. An ink box would be a better test and most runs do not have one.
+    let q = f64::from(QUANTUM_PER_POINT);
+    let (x, y) = (origin_x as f64 / q, origin_y as f64 / q);
+    if x < visible.x0 || x > visible.x1 || y < visible.y0 || y > visible.y1 {
+        out.push(TextFinding::OffPage);
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 fn quantize_err(_: engine_core::QuantizeError) -> EngineError {
     EngineError::Malformed {
         what: "coordinate".into(),
@@ -677,48 +774,101 @@ fn quantize_err(_: engine_core::QuantizeError) -> EngineError {
     }
 }
 
-/// Page box and rotation, and the transform into the declared coordinate system.
-struct PageGeometry {
-    media_width: f64,
-    media_height: f64,
+/// A page box, normalised so the low corner really is the low corner.
+///
+/// PDF permits either diagonal — `[612 792 0 0]` describes the same page as `[0 0 612 792]`
+/// (32000-1 §7.9.5) — so every box is normalised on the way in and nothing downstream has to
+/// wonder which corner it holds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PageBox {
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+}
+
+impl PageBox {
+    fn from_corners(a: f64, b: f64, c: f64, d: f64) -> Self {
+        Self {
+            x0: a.min(c),
+            y0: b.min(d),
+            x1: a.max(c),
+            y1: b.max(d),
+        }
+    }
+
+    fn width(self) -> f64 {
+        self.x1 - self.x0
+    }
+
+    fn height(self) -> f64 {
+        self.y1 - self.y0
+    }
+
+    /// The part of `self` that `other` also covers, or `None` when they do not overlap.
+    ///
+    /// A `/CropBox` reaching outside the `/MediaBox` is clipped to it, per 32000-1 §14.11.2:
+    /// the visible page is the intersection, not whichever box is larger.
+    fn intersect(self, other: Self) -> Option<Self> {
+        let r = Self {
+            x0: self.x0.max(other.x0),
+            y0: self.y0.max(other.y0),
+            x1: self.x1.min(other.x1),
+            y1: self.y1.min(other.y1),
+        };
+        (r.x1 > r.x0 && r.y1 > r.y0).then_some(r)
+    }
+}
+
+/// Page boxes and rotation, and the transform into the declared coordinate system.
+pub(crate) struct PageGeometry {
+    /// The page's `/MediaBox`, normalised. **Its origin is load-bearing** — see
+    /// [`PageGeometry::to_top_left`].
+    media: PageBox,
+    /// The box a viewer actually shows: `/CropBox` clipped to the media box, or the media box
+    /// where the page declares no crop box (v1-S6).
+    ///
+    /// Read for one reason: an off-page finding has to be measured against the box content is
+    /// *visible* in, and that is this one. Measuring against `/MediaBox` on a page that crops
+    /// would report ordinary trimmed content as off-page — a fabricated finding, which is worse
+    /// than no finding at all.
+    visible: PageBox,
     rotation: i64,
     display_width: f64,
     display_height: f64,
 }
 
 impl PageGeometry {
-    fn resolve(doc: &Document, page_dict: &lopdf::Dictionary) -> Result<Self, EngineError> {
-        // /MediaBox may be inherited; lopdf resolves inheritance for us where it can.
-        let media = crate::fonts::resolve_array(doc.inner(), page_dict.get(b"MediaBox").ok())
-            .or_else(|| {
-                crate::fonts::resolve_dict(doc.inner(), page_dict.get(b"Parent").ok())
-                    .and_then(|p| crate::fonts::resolve_array(doc.inner(), p.get(b"MediaBox").ok()))
-            })
-            .ok_or(EngineError::MissingPart {
+    pub(crate) fn resolve(
+        doc: &Document,
+        page_dict: &lopdf::Dictionary,
+    ) -> Result<Self, EngineError> {
+        let media =
+            Self::box_from(doc, page_dict, b"MediaBox").ok_or(EngineError::MissingPart {
                 part: "/MediaBox".into(),
             })?;
 
-        if media.len() != 4 {
-            return Err(EngineError::Malformed {
-                what: "/MediaBox".into(),
-                detail: format!("expected four numbers, found {}", media.len()),
-            });
-        }
-        let n = |i: usize| -> f64 {
-            match &media[i] {
-                lopdf::Object::Integer(v) => *v as f64,
-                lopdf::Object::Real(v) => f64::from(*v),
-                _ => 0.0,
-            }
-        };
-        let (x0, y0, x1, y1) = (n(0), n(1), n(2), n(3));
-        let media_width = (x1 - x0).abs();
-        let media_height = (y1 - y0).abs();
+        // v1-S6. The visible box: `/CropBox` clipped to the media box, or the media box where no
+        // crop box is declared. A crop box that does not overlap the media box at all describes
+        // nothing visible, and rather than emit an empty page geometry the media box stands —
+        // the document contradicted itself and the larger, always-present box is the safer of the
+        // two answers.
+        let visible = Self::box_from(doc, page_dict, b"CropBox")
+            .and_then(|c| c.intersect(media))
+            .unwrap_or(media);
 
-        let rotation = page_dict
-            .get(b"Rotate")
-            .ok()
-            .and_then(|o| o.as_i64().ok())
+        // `/Rotate` is inheritable (32000-1 Table 30), and its value may be an indirect
+        // reference or a real. Reading it with `as_i64()` off the page dictionary alone made a
+        // `/Rotate 90` on the `/Pages` node — or `/Rotate 90 0 R` — silently mean zero, and a
+        // page rotated by a wrong amount puts every coordinate in the wrong place.
+        let rotation = Self::inherited(doc, page_dict, b"Rotate")
+            .and_then(
+                |o| match crate::fonts::resolve_object(doc.inner(), Some(&o)) {
+                    Some(lopdf::Object::Integer(v)) => Some(v),
+                    Some(lopdf::Object::Real(v)) => Some(f64::from(v) as i64),
+                    _ => None,
+                },
+            )
             .unwrap_or(0)
             .rem_euclid(360);
         if !matches!(rotation, 0 | 90 | 180 | 270) {
@@ -728,20 +878,68 @@ impl PageGeometry {
             });
         }
 
-        // A quarter turn swaps the visible dimensions.
+        // A quarter turn swaps the visible dimensions. Taken from the VISIBLE box, because that
+        // is the page a reader sees and the box every coordinate here is expressed against.
         let (display_width, display_height) = if rotation % 180 == 0 {
-            (media_width, media_height)
+            (visible.width(), visible.height())
         } else {
-            (media_height, media_width)
+            (visible.height(), visible.width())
         };
 
         Ok(Self {
-            media_width,
-            media_height,
+            media,
+            visible,
             rotation,
             display_width,
             display_height,
         })
+    }
+
+    /// A page box by name, normalised, resolving indirect references and one `/Parent` hop.
+    fn box_from(doc: &Document, page_dict: &lopdf::Dictionary, key: &[u8]) -> Option<PageBox> {
+        let array = crate::fonts::resolve_array(
+            doc.inner(),
+            Self::inherited(doc, page_dict, key).as_ref(),
+        )?;
+        if array.len() != 4 {
+            return None;
+        }
+        let n = |i: usize| -> Option<f64> {
+            match crate::fonts::resolve_object(doc.inner(), array.get(i))? {
+                lopdf::Object::Integer(v) => Some(v as f64),
+                lopdf::Object::Real(v) => Some(f64::from(v)),
+                _ => None,
+            }
+        };
+        let (a, b, c, d) = (n(0)?, n(1)?, n(2)?, n(3)?);
+        if !(a.is_finite() && b.is_finite() && c.is_finite() && d.is_finite()) {
+            return None;
+        }
+        let r = PageBox::from_corners(a, b, c, d);
+        (r.width() > 0.0 && r.height() > 0.0).then_some(r)
+    }
+
+    /// A key from the page dictionary, or from an ancestor that declares it.
+    ///
+    /// Bounded at [`INHERITANCE_MAX_DEPTH`] hops. An unbounded walk over a `/Parent` chain a
+    /// document controls is a hang a document can cause, and a cycle is a document this reader
+    /// must survive rather than spin on.
+    fn inherited(
+        doc: &Document,
+        page_dict: &lopdf::Dictionary,
+        key: &[u8],
+    ) -> Option<lopdf::Object> {
+        if let Ok(v) = page_dict.get(key) {
+            return Some(v.clone());
+        }
+        let mut node = crate::fonts::resolve_dict(doc.inner(), page_dict.get(b"Parent").ok())?;
+        for _ in 0..INHERITANCE_MAX_DEPTH {
+            if let Ok(v) = node.get(key) {
+                return Some(v.clone());
+            }
+            node = crate::fonts::resolve_dict(doc.inner(), node.get(b"Parent").ok())?;
+        }
+        None
     }
 
     /// Map a user-space point into the declared top-left system, applying `/Rotate`.
@@ -749,16 +947,66 @@ impl PageGeometry {
     /// Derived by asking where each corner lands under a clockwise quarter turn, rather than by
     /// pattern-matching a formula: for `/Rotate 90` the bottom-left corner becomes the top-left,
     /// which fixes the mapping uniquely.
+    ///
+    /// # The box origin is subtracted, and that was a repair (v1-S6)
+    ///
+    /// Through v1-S5 this used only the box's *width and height* and threw its origin away, so a
+    /// page whose `/MediaBox` is `[0 20 612 812]` — a legal and not unusual box — had every
+    /// coordinate in the artifact shifted by 20 points, with the top of the page landing at
+    /// `y = -20`. Nothing caught it because **not one document in either corpus declares a box
+    /// whose origin is other than `(0, 0)`**, measured across all 67 PDFs available to this
+    /// repository; on such a page `x0 = y0 = 0` and the subtraction below is the identity, which
+    /// is why this change moves no existing golden.
+    ///
+    /// It had to be fixed before v1-S6 could ship an off-page finding at all: a bounds test
+    /// against a frame the content is systematically offset from reports ordinary text at the top
+    /// of a page as off-page, and a **fabricated** security finding is worse than no finding.
     fn to_top_left(&self, x: f64, y: f64) -> (f64, f64) {
+        let b = self.media;
         match self.rotation {
-            90 => (y, x),
-            180 => (self.media_width - x, y),
-            270 => (self.media_height - y, self.media_width - x),
+            90 => (y - b.y0, x - b.x0),
+            180 => (b.x1 - x, y - b.y0),
+            270 => (b.y1 - y, b.x1 - x),
             // 0, and anything else is refused before reaching here.
-            _ => (x, self.media_height - y),
+            _ => (x - b.x0, b.y1 - y),
         }
     }
+
+    /// Map a point in the declared top-left system back into PDF user space (v1-S6).
+    ///
+    /// The exact inverse of [`Self::to_top_left`], and it exists for one caller: the annotated
+    /// overlay, which holds rectangles in the artifact's coordinate system and has to write them
+    /// into a PDF, where annotations are in user space. Deriving the inverse here rather than at
+    /// the call site keeps the two transforms in one place, where a test can check that composing
+    /// them is the identity.
+    pub(crate) fn to_user_space(&self, x: f64, y: f64) -> (f64, f64) {
+        let b = self.media;
+        match self.rotation {
+            90 => (y + b.x0, x + b.y0),
+            180 => (b.x1 - x, y + b.y0),
+            270 => (b.x1 - y, b.y1 - x),
+            _ => (x + b.x0, b.y1 - y),
+        }
+    }
+
+    /// The visible page box, mapped into the declared top-left system (v1-S6).
+    ///
+    /// Both corners go through [`Self::to_top_left`] and are then normalised, because a rotation
+    /// can exchange which corner is which — deriving the frame from the same transform the
+    /// content goes through is what makes the comparison meaningful.
+    fn visible_in_display_space(&self) -> PageBox {
+        let (ax, ay) = self.to_top_left(self.visible.x0, self.visible.y0);
+        let (bx, by) = self.to_top_left(self.visible.x1, self.visible.y1);
+        PageBox::from_corners(ax, ay, bx, by)
+    }
 }
+
+/// How far a `/Parent` chain is walked for an inheritable page attribute.
+///
+/// Same reasoning and the same shape as the structure walk's depth bound: a chain the document
+/// controls must not decide how long this process runs, and a cycle must be survived rather than
+/// spun on.
+const INHERITANCE_MAX_DEPTH: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -766,9 +1014,10 @@ mod tests {
 
     fn geom(w: f64, h: f64, rot: i64) -> PageGeometry {
         let (dw, dh) = if rot % 180 == 0 { (w, h) } else { (h, w) };
+        let media = PageBox::from_corners(0.0, 0.0, w, h);
         PageGeometry {
-            media_width: w,
-            media_height: h,
+            media,
+            visible: media,
             rotation: rot,
             display_width: dw,
             display_height: dh,

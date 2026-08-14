@@ -47,9 +47,10 @@ Two entries are worth knowing before you debug against them:
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **eleven**
-are `engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the
-Ethos corpus genuinely cannot cover.
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **26** are
+`engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
+corpus genuinely cannot cover. The manifest's `counts.engine_owned` is the number a test checks;
+this table names the ones whose reason for existing is not obvious from the fixture itself.
 
 | Fixture | Slice | What only it proves |
 | --- | --- | --- |
@@ -64,6 +65,13 @@ Ethos corpus genuinely cannot cover.
 | `unruled-near-miss` | v1-S2 | Columns that align on two rows and miss on the third by five points: **no table**, plus a named refusal |
 | `both-table-rules` | v1-S2 | One painted grid and one aligned-text grid on a page, so the artifact carries two tables under two rule ids |
 | `ruled-wins-shared-region` | v1-S2 | A painted grid whose text is *also* a clean alignment grid — one table comes out, and it is the ruled one |
+| `tagged-structure-roles` · `tagged-rolemap` · `tagged-table-agrees` · `tagged-table-disagrees` · `tagged-cycle` | v1-S3 | The four structural-locator states, `/RoleMap` remapping, a tagged grid that agrees and one that does not, and a `/K` cycle that must be survived rather than spun on |
+| `form-field-value` · `annotation-contents` · `form-orphan-widget` · `form-xfa-stub` | v1-S4 | A field value no `Tj` draws, a hidden annotation that must still be a node, a broken `/Parent` chain declared rather than repaired, and an `/XFA` packet declared and never parsed |
+| `two-column-14-lines` · `two-column-15-lines` | v1-S5 | The ±1-line anti-cliff pair — see below |
+| `image-xobject-drawn` | v1-S6 | An image **painted** with `Do` under a real `cm`: the rect is the matrix (120×60 pt), the pixel count is 2×2, and the two must not be confusable |
+| `image-declared-not-drawn` | v1-S6 | The same image **declared and never drawn** — zero image nodes, capability still true |
+| `invisible-render-mode` | v1-S6 | A string under `3 Tr`: present, flagged, and never filtered (checklist O21) |
+| `off-page-and-offset-box` | v1-S6 | A `/MediaBox` origin that is not `(0,0)` plus a `/CropBox` — the coordinate repair and the off-page finding in one page |
 
 **Why the corpus cannot cover the table fixtures.** No fixture in the Ethos conformance corpus
 contains a single path operator, so nothing there can exercise ruled detection at all. And
@@ -108,6 +116,29 @@ So: **edit them together or not at all.** Changing the line count in one without
 letting their columns creep closer than the rule's 12pt gutter floor, leaves a test that still
 passes while testing nothing. The line counts are not numbers the engine knows — the rule measures
 whitespace — they are chosen to sit where a line-counting rule would give itself away.
+
+### The v1-S6 image pair answers two different questions
+
+`image-xobject-drawn` and `image-declared-not-drawn` carry the **same image object in the same
+`/Resources` dictionary**. The only difference is one `Do`. That is deliberate, and it pins a
+distinction the two stages genuinely disagree about — correctly:
+
+| | classify | extract |
+| --- | --- | --- |
+| `image-xobject-drawn` | `embedded-images`, `image_count: 1` | one image node |
+| `image-declared-not-drawn` | `embedded-images`, `image_count: 1` | **zero** image nodes |
+
+Classify counts image XObjects a page's resources **declare**. Extraction emits a node per `Do`
+that **paints** one. Neither is wrong, and a reader who expects them to agree has misread one of
+them. Before v1-S6 no fixture in either corpus contained an image XObject at all.
+
+### `off-page-and-offset-box` is also the coordinate-repair fixture
+
+Its `/MediaBox` is `[0 20 300 220]` — an origin that is **not** `(0, 0)`, which no other document
+here has, and which is why the discarded-origin defect in the page transform survived six slices.
+Its `/CropBox` is smaller than its media box, so "outside the page" has different answers depending
+on which box you measure against. Changing either box silently turns this fixture into one that
+tests neither thing.
 
 ## Regenerating the engine-owned fixtures
 

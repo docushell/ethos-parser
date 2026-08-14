@@ -82,6 +82,20 @@ enum Command {
     /// from is where the declaration lives.
     Ground(GroundArgs),
 
+    /// Draw what was detected onto a copy of the document (v1-S6).
+    ///
+    /// Emits a PDF — **the one subcommand whose stdout is not canonical JSON** — carrying an
+    /// annotation over every table box, image placement and flagged run the extract found, plus a
+    /// per-page note counting what was found and what has no rectangle to draw. That last part is
+    /// the point: an overlay that drew only the boxes it had would make a partly-read document
+    /// look fully read.
+    ///
+    /// **It annotates; it does not edit.** No content stream is touched, no text is removed, and
+    /// the document's own annotations are kept. This is not a redaction tool.
+    ///
+    /// Exit codes: **0** the overlay was written · **2** the document could not be read.
+    Overlay(OverlayArgs),
+
     /// Validate a grounding artifact: structure, and optionally its binding to source bytes.
     ///
     /// **Structure and binding only** — no claims, no verdict, no `grounded`, no evidence tier.
@@ -181,10 +195,20 @@ struct GroundArgs {
     path: PathBuf,
 }
 
+#[derive(clap::Args)]
+struct OverlayArgs {
+    /// The PDF to annotate.
+    path: PathBuf,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let diag = cli.diagnostics;
     match cli.command {
+        Command::Overlay(args) => {
+            let path = args.path.clone();
+            timed(Stage::Extract, diag, &path, || run_overlay(args))
+        }
         Command::Classify(args) => {
             let path = args.path.clone();
             timed(Stage::Classify, diag, &path, || run_classify(args))
@@ -265,6 +289,30 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
             Err(e) => fail(&e),
         },
         Err(e) => fail(e),
+    }
+}
+
+/// `engine overlay` — the annotated PDF (v1-S6).
+///
+/// The document is opened once and the extract taken from that same handle, so the overlay cannot
+/// describe a different parse from the one `engine extract` would report. `build` re-checks the
+/// binding on the digest anyway, because "the caller passed the right file" is an assumption and
+/// the digest is a fact.
+fn run_overlay(args: OverlayArgs) -> ExitCode {
+    let profile = Profile::default();
+    let result = Document::open(&args.path, &profile).and_then(|doc| {
+        let extract = engine_pdf::extract(&doc, &profile)?;
+        engine_pdf::build_overlay(&doc, &extract, &profile)
+    });
+
+    match result {
+        Ok(bytes) => {
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(&bytes);
+            let _ = out.flush();
+            ExitCode::from(EXTRACTED as u8)
+        }
+        Err(e) => fail(&e),
     }
 }
 

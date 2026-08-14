@@ -20,7 +20,9 @@
     "verifier",
     "table_detection",
     "struct_tree_rule",
-    "form_annotation_rule"
+    "form_annotation_rule",
+    "observation_rule",
+    "raster_dpi"
   ],
   "properties": {
     "parser_version": {
@@ -138,18 +140,25 @@
       "type": "string",
       "minLength": 1,
       "description": "Version id of the forms-and-annotations rule in force (v1-S4). Decides which form-field and annotation nodes exist: which flag bits are named, how a fully-qualified field name is built, and the fact that a widget's rendering is never read as page text. Named for what it does rather than the structure it reads, because engine-core carries no format concept.",
-      "examples": ["form-annotations-v1"]
+      "examples": [
+        "form-annotations-v1"
+      ]
     },
     "struct_tree_rule": {
       "type": "string",
       "minLength": 1,
       "description": "Version id of the structure-tree rule in force (v1-S3). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser.",
-      "examples": ["struct-tree-v1"]
+      "examples": [
+        "struct-tree-v1"
+      ]
     },
     "table_detection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ruled", "unruled"],
+      "required": [
+        "ruled",
+        "unruled"
+      ],
       "description": "The table-detection rules in force. An object rather than a string since v1-S2: with two rules running, a single id could not say whether a run looked for unruled tables and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
@@ -158,9 +167,20 @@
         },
         "unruled": {
           "type": "string",
-          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author — which is why the two ids are separate."
+          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author \u2014 which is why the two ids are separate."
         }
       }
+    },
+    "observation_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the image and text-finding rule in force (v1-S6). Decides which `Do` calls become image nodes, how a painted rectangle is derived from the page's own matrix, and what counts as invisible or off-page text.",
+      "examples": [
+        "page-observations-v1"
+      ]
+    },
+    "raster_dpi": {
+      "$ref": "#/$defs/raster_dpi"
     }
   },
   "$defs": {
@@ -176,7 +196,9 @@
         "multi_column_reading_order",
         "structural_locators",
         "form_fields",
-        "annotations"
+        "annotations",
+        "images",
+        "page_screenshots"
       ],
       "description": "L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
       "$comment": "Two rules bind this object in both directions, and both are enforced by tests rather than by review. No `true` without a named proof test: crates/engine-pdf/tests/capabilities.rs maps each true field to a test function and fails the build when the named test does not exist. No `false` without a declared limitation: Capabilities::declared_limitations() derives one per false field, exhaustively, so a consumer never infers a gap from silence.",
@@ -203,15 +225,23 @@
         },
         "form_fields": {
           "type": "boolean",
-          "$comment": "true since v1-S4 — proof: a_form_fields_value_is_a_node_and_never_a_text_run"
+          "$comment": "true since v1-S4 \u2014 proof: a_form_fields_value_is_a_node_and_never_a_text_run"
         },
         "annotations": {
           "type": "boolean",
-          "$comment": "true since v1-S4 — proof: an_annotations_contents_is_a_node_and_never_a_text_run"
+          "$comment": "true since v1-S4 \u2014 proof: an_annotations_contents_is_a_node_and_never_a_text_run"
         },
         "structural_locators": {
           "type": "boolean",
           "$comment": "FALSE in v0. An mcid IS captured where a page's content stream supplies one via BDC, and never invented where it does not \u2014 but the tagged-structure tree is not read, so there is no role path and an absent mcid is not evidence the document is untagged. Claiming the capability on the strength of the partial half would promise an address consumers could not rely on."
+        },
+        "images": {
+          "type": "boolean",
+          "$comment": "true since v1-S6 \u2014 proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared. Carries no description, caption or alt text \u2014 that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
+        },
+        "page_screenshots": {
+          "type": "boolean",
+          "$comment": "false at v1-S6, by decision rather than omission. Rendering needs a PDF renderer; PDFium is admitted only caller-provided under an explicit ADR, no AGPL renderer clears the licence allowlist, and shelling out to a converter would put an unpinned binary between the document and the artifact. Partnered by `page-raster-not-emitted`, with `raster_dpi` recording the not-emitted state so a renderer arriving later moves profile_sha256."
         }
       }
     },
@@ -252,6 +282,22 @@
           "description": "Process at most this many pages; the rest are quarantined and declared, and the run's terminal state is partial."
         }
       ]
+    },
+    "raster_dpi": {
+      "type": "object",
+      "description": "The resolution page rasters are emitted at, or a declared reason there are none (v1-S6). A DECLARED STATE rather than an absent field, exactly as page_budget is: {\"mode\":\"not_emitted\"} says this profile considered rasters and emits none, where an omitted key would leave a reader unable to tell that from a build with no such knob at all \u2014 and would let a future renderer arrive without moving profile_sha256.",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "not_emitted"
+          ]
+        }
+      },
+      "$comment": "Adjacently tagged with a `dpi` content key in Rust, so a future {\"mode\":\"dpi\",\"dpi\":300} is additive. Internally tagged would silently drop an unknown sibling key and re-hash as though it had never been there."
     }
   },
   "examples": [
@@ -268,7 +314,9 @@
         "structural_locators": true,
         "form_fields": true,
         "annotations": true,
-        "tables": true
+        "tables": true,
+        "images": true,
+        "page_screenshots": false
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
@@ -279,7 +327,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.7.0",
+      "parser_version": "0.8.0",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
@@ -293,7 +341,11 @@
         "unruled": "unruled-align-v1"
       },
       "struct_tree_rule": "struct-tree-v1",
-      "form_annotation_rule": "form-annotations-v1"
+      "form_annotation_rule": "form-annotations-v1",
+      "observation_rule": "page-observations-v1",
+      "raster_dpi": {
+        "mode": "not_emitted"
+      }
     }
   ]
 }

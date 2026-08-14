@@ -357,7 +357,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 45] = [
+const EXPECTED_SURVIVORS: [&str; 49] = [
     "absent-font-metrics/junk-after-eof",
     // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
     // appended past `%%EOF` leave a readable document.
@@ -372,6 +372,12 @@ const EXPECTED_SURVIVORS: [&str; 45] = [
     "foreign/opendataloader/real/flip-tail-byte",
     "foreign/opendataloader/real/junk-after-eof",
     "horizontal-scaling-tz/junk-after-eof",
+    // v1-S6's four. All survive `junk-after-eof` and nothing else — the same answer every other
+    // engine-authored fixture gives, because the parse is driven from the xref table
+    // `startxref` names and bytes appended past `%%EOF` are never read.
+    "image-declared-not-drawn/junk-after-eof",
+    "image-xobject-drawn/junk-after-eof",
+    "invisible-render-mode/junk-after-eof",
     "irs-form-1040-2025/flip-tail-byte",
     "irs-form-1040-2025/junk-after-eof",
     "measured-ink-box/junk-after-eof",
@@ -379,6 +385,7 @@ const EXPECTED_SURVIVORS: [&str; 45] = [
     "nist-sp-800-53r5/junk-after-eof",
     "nist-sp-800-63b/flip-tail-byte",
     "nist-sp-800-63b/junk-after-eof",
+    "off-page-and-offset-box/junk-after-eof",
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
@@ -625,10 +632,18 @@ fn an_injected_unknown_operator_stops_the_parse() {
 ///   substitution is the only kind that keeps `/Length` honest, so there is nothing to do here
 ///   without re-encoding the document — which would be authoring a fixture, not mutating one.
 ///   The `FlateDecode` exclusion is deliberate and was a triage finding; see `Mutation::apply`.
-const EXPECTED_INAPPLICABLE: [&str; 10] = [
+const EXPECTED_INAPPLICABLE: [&str; 12] = [
     "failure/corrupt-header-valid/truncate-16",
     "failure/corrupt-header-valid/unknown-operator",
     "failure/image-only-or-blank-page/unknown-operator",
+    // v1-S6's two image fixtures. Their *content* streams are plaintext, but the image XObject
+    // they carry declares `/FlateDecode`, and this mutation excludes any document containing that
+    // token whole-file. The exclusion is deliberately conservative — see `Mutation::apply` — and
+    // widening it to inspect which stream the hit lands in would trade a real safety property for
+    // two more cases. The operator-handling path these fixtures do not cover is covered by every
+    // other engine-owned fixture.
+    "image-declared-not-drawn/unknown-operator",
+    "image-xobject-drawn/unknown-operator",
     "failure/invalid-header/truncate-16",
     "failure/invalid-header/unknown-operator",
     "failure/password-protected/unknown-operator",
@@ -680,12 +695,13 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        40,
-        "the manifest should declare 40 fixtures across three roots (23 at M7, plus v0.1's \
+        44,
+        "the manifest should declare 44 fixtures across three roots (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
          five tagged ones, v1-S4's four form/annotation ones — form-field-value, \
-         annotation-contents, form-orphan-widget and form-xfa-stub — and v1-S5's two-column \
-         pair: two-column-14-lines and two-column-15-lines)"
+         annotation-contents, form-orphan-widget and form-xfa-stub — v1-S5's two-column pair, \
+         and v1-S6's four: image-xobject-drawn, image-declared-not-drawn, \
+         invisible-render-mode and off-page-and-offset-box)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

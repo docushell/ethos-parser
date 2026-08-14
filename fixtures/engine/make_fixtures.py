@@ -43,6 +43,20 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              count, which is exactly what pdf-inspector's does at this
                              boundary                                                   [v1-S5]
 
+  image-xobject-drawn        a 2x2 /FlateDecode image XObject PAINTED with `Do` under a real
+                             `cm`, so the placement rect comes from the matrix and not from the
+                             pixel count; the corpus contains NO image XObject anywhere, so
+                             without this the whole image path is untested         [v1-S6]
+  image-declared-not-drawn   the SAME image declared in /Resources and never drawn. Classify
+                             counts a resource; extract emits a node per `Do`. Zero nodes here
+                             is the right answer and this fixture is what says so   [v1-S6]
+  invisible-render-mode      a string drawn under `3 Tr`. The text must be PRESENT and flagged,
+                             never filtered — checklist O21, the OpenDataLoader defect [v1-S6]
+  off-page-and-offset-box    a /MediaBox whose origin is NOT (0,0), plus a /CropBox, plus one
+                             run outside the crop box. No document in either corpus has a
+                             non-zero box origin, which is why the coordinate defect v1-S6
+                             repaired went unnoticed for six slices                 [v1-S6]
+
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
 
@@ -102,6 +116,28 @@ def two_column_stream(left_lines: int, right_lines: int) -> str:
     return "".join(ops)
 
 
+
+# A 2x2 8-bit greyscale image, deflated. Four sample bytes, one per pixel.
+#
+# Written as a literal rather than built with zlib at generation time so that regenerating these
+# fixtures cannot depend on the zlib version a reviewer happens to have — the same reasoning that
+# keeps every other byte in this file fixed. `IMAGE_SAMPLES` is what it decodes to, asserted below
+# rather than trusted.
+IMAGE_SAMPLES = bytes([0x00, 0x55, 0xAA, 0xFF])
+IMAGE_STREAM = bytes(
+    [0x78, 0xDA, 0x63, 0x08, 0x5D, 0xF5, 0x1F, 0x00, 0x03, 0x56, 0x01, 0xFF]
+)
+
+
+def _image_object() -> bytes:
+    """Object 6: the image XObject both image fixtures share."""
+    return (
+        b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
+        b"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\n"
+        b"stream\n%s\nendstream" % (len(IMAGE_STREAM), IMAGE_STREAM)
+    )
+
+
 def build_pdf(
     content: str,
     media=(0, 0, 300, 144),
@@ -110,6 +146,7 @@ def build_pdf(
     extra_objects=None,
     catalog_extra="",
     page_extra="",
+    resources_extra="",
 ) -> bytes:
     # `extra_objects` is a list of object bodies appended after the fixed five, numbered from 6.
     # Object numbering here is fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font),
@@ -119,6 +156,14 @@ def build_pdf(
     # the page. A tagged fixture uses the first for /StructTreeRoot; a form fixture uses it for
     # /AcroForm and the second for /Annots. Written by the caller rather than derived, so the
     # reference numbers in a fixture are the ones a reviewer reads in its own definition.
+    #
+    # `resources_extra` splices INSIDE /Resources, which is where an /XObject sub-dictionary has
+    # to live (v1-S6). `page_extra` cannot serve: it lands after /Contents, outside the resource
+    # dictionary entirely, so an image declared through it would be invisible to a `Do`.
+    #
+    # It also suppresses the automatic /StructTreeRoot below. Object 6 is claimed by whichever
+    # extra a fixture has, and the tagged fixtures were the only users until v1-S6 — so without
+    # this, an image XObject would silently become the document's structure-tree root.
     #
     # Refused together with a descriptor rather than silently renumbering: a descriptor also
     # claims object 6, and a fixture where the same number means two things is a fixture nobody
@@ -136,15 +181,17 @@ def build_pdf(
         (
             "<< /Type /Catalog /Pages 2 0 R%s%s >>"
             % (
-                " /StructTreeRoot 6 0 R" if (extra_objects and not catalog_extra) else "",
+                " /StructTreeRoot 6 0 R"
+                if (extra_objects and not catalog_extra and not resources_extra)
+                else "",
                 catalog_extra,
             )
         ).encode(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         (
             "<< /Type /Page /Parent 2 0 R /MediaBox [%d %d %d %d] "
-            "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R%s >>"
-            % (media + (page_extra,))
+            "/Resources << /Font << /F1 5 0 R >>%s >> /Contents 4 0 R%s >>"
+            % (media + (resources_extra, page_extra))
         ).encode(),
         None,  # content stream, filled below
         (
@@ -432,6 +479,41 @@ FIXTURES = {
         "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Dynamic form.) Tj ET"
     ),
     # v1-S3's non-terminating tree. The text is ordinary; the structure is not.
+    # v1-S6's IMAGE golden. The image is 2x2 samples and is painted into a 120x60 point
+    # rectangle at (40, 60) by the `cm` — so the placement rect and the pixel count are
+    # unmistakably different numbers, which is the confusion the locator exists to prevent.
+    # `q`/`Q` bracket it so the matrix does not leak into anything after it.
+    "image-xobject-drawn": (
+        "q 120 0 0 60 40 60 cm /Im1 Do Q "
+        "BT /F1 12 Tf 1 0 0 1 40 30 Tm (Below the image) Tj ET"
+    ),
+    # The SAME image, declared and never drawn. `Do` is what makes a node; a resource nobody
+    # painted is a resource, and zero image nodes is the correct answer.
+    "image-declared-not-drawn": "BT /F1 12 Tf 1 0 0 1 40 60 Tm (No Do here) Tj ET",
+    # v1-S6's HIDDEN-TEXT golden, and the whole of checklist O21 in one page. The second string
+    # is drawn under `3 Tr` — invisible on screen, perfectly legible to anything reading the text
+    # layer. It must come out of the engine PRESENT and FLAGGED. A reader that filtered it would
+    # return a page that looks clean, which is the OpenDataLoader defect.
+    "invisible-render-mode": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Visible sentence) Tj "
+        "3 Tr 1 0 0 1 40 70 Tm (Hidden instruction) Tj "
+        "0 Tr 1 0 0 1 40 40 Tm (Visible again) Tj ET"
+    ),
+    # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
+    #
+    # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
+    #   * the box origin is NOT (0, 0) — the case that hid the discarded-origin defect, since not
+    #     one document in either corpus has such a box;
+    #   * the visible box is strictly smaller than the media box, so "outside the page" has a
+    #     meaning that differs depending on which box you measure against.
+    #
+    # The first run sits inside the crop box. The second sits below it — still inside the media
+    # box, so a reader measuring against /MediaBox alone would call it on-page. It is not: a
+    # viewer does not show it.
+    "off-page-and-offset-box": (
+        "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Inside the crop box) Tj "
+        "1 0 0 1 40 30 Tm (Below the crop box) Tj ET"
+    ),
     # v1-S5's ANTI-CLIFF pair. Identical but for one line, and they must read identically.
     # See `two_column_stream` for why fourteen and fifteen are the two numbers.
     "two-column-14-lines": two_column_stream(7, 7),
@@ -524,6 +606,12 @@ STRUCTURE = {
 # this engine ever copied a widget's value or an annotation's comment into the text layer, the
 # string would turn up in a `text_run` and the assertion would catch it. A fixture whose field
 # value also appeared in its page content could not tell the two apart.
+# name -> extra object bodies for the image fixtures. Object 6, like every other extra.
+IMAGE_OBJECTS = {
+    "image-xobject-drawn": [_image_object()],
+    "image-declared-not-drawn": [_image_object()],
+}
+
 FORM_OBJECTS = {
     # A single text field. Its widget IS the field — one dictionary carrying both `/FT` and
     # `/Subtype /Widget`, which is how a one-widget field is normally written — so it must produce
@@ -572,6 +660,8 @@ PAGE_EXTRA = {
     "annotation-contents": " /Annots [6 0 R 7 0 R]",
     "form-orphan-widget": " /Annots [7 0 R]",
     "form-xfa-stub": " /Annots [7 0 R]",
+    # v1-S6. The crop box the off-page finding is measured against.
+    "off-page-and-offset-box": " /CropBox [0 40 300 200]",
 }
 
 
@@ -588,6 +678,19 @@ MEDIA = {
     # Wide enough for a real gutter (x=40 and x=240) and tall enough for the fifteenth line.
     "two-column-14-lines": (0, 0, 400, 300),
     "two-column-15-lines": (0, 0, 400, 300),
+    "image-xobject-drawn": (0, 0, 300, 200),
+    "image-declared-not-drawn": (0, 0, 300, 200),
+    "invisible-render-mode": (0, 0, 300, 144),
+    # **A box whose origin is not (0, 0)** — the case no document in either corpus has, and
+    # therefore the case that hid a coordinate defect through six slices. Every y here is offset
+    # by 20 points from the naive reading.
+    "off-page-and-offset-box": (0, 20, 300, 220),
+}
+
+# name -> /Resources fragment. Only the image fixtures declare an /XObject.
+RESOURCES_EXTRA = {
+    "image-xobject-drawn": " /XObject << /Im1 6 0 R >>",
+    "image-declared-not-drawn": " /XObject << /Im1 6 0 R >>",
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.
@@ -612,9 +715,12 @@ def main() -> int:
             media=MEDIA.get(name, (0, 0, 300, 144)),
             descriptor=DESCRIPTORS.get(name),
             differences=DIFFERENCES.get(name),
-            extra_objects=STRUCTURE.get(name) or FORM_OBJECTS.get(name),
+            extra_objects=(
+                STRUCTURE.get(name) or FORM_OBJECTS.get(name) or IMAGE_OBJECTS.get(name)
+            ),
             catalog_extra=CATALOG_EXTRA.get(name, ""),
             page_extra=PAGE_EXTRA.get(name, ""),
+            resources_extra=RESOURCES_EXTRA.get(name, ""),
         )
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")

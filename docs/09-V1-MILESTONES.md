@@ -14,7 +14,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | **done** |
 | **S4** | Forms and annotations as typed nodes | S1 | **done** |
 | **S5** | Multi-column reading order, versioned rule | S2 | **done** |
-| **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | not started |
+| **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | **done** |
 | **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
 
 ---
@@ -437,9 +437,92 @@ scheduled; it is not part of S6 or S7.
 
 - **Acceptance tests:**
   - [ ] Screenshots are deterministic at a pinned DPI, and the DPI is a profile field
-  - [ ] A hidden-text fixture produces a finding, not a filtered text layer
+        — **half met, and the other half is a named leftover.** `raster_dpi` IS a profile field
+        and carries `{"mode":"not_emitted"}`; no screenshot is produced, because no renderer
+        exists that this project is allowed to depend on. See the leftovers below
+  - [x] A hidden-text fixture produces a finding, not a filtered text layer
 
 - **Depends on:** S3.
+
+### What S6 settled
+
+1. **Findings are observations, and the run stays.** `invisible-render-mode` and `off-page` are
+   flags on a `TextRun` that is still in the artifact, in reading order, with its text and origin
+   intact — plus a document-scoped count so a consumer reading only the assurance block learns
+   they exist. Nothing is filtered, nothing is scored. OpenDataLoader deletes low-contrast text
+   and returns a page that looks clean; that is the defect O21 names and the one this shape
+   exists to refuse.
+
+2. **`Tr` was already tracked and read by nothing.** Measured before writing anything: invisible
+   text was never dropped — the state was set at `content.rs` and no code path ever compared it
+   to 3. So the defect was **silent mixing**, not data loss, and S6 is additive rather than a
+   repair. Half of O21's exit criterion ("the run stays in the representation") was already true;
+   what was missing is that anyone could tell.
+
+3. **An image node is a placement and a digest, never a picture and never a caption.** Page,
+   object number, the rectangle the `Do` painted into, and a sha256 over the stream **as stored**.
+   Encoded rather than decoded, so the fingerprint cannot depend on this engine's inflate; a
+   digest rather than a payload, because an artifact is a record about a document and not a second
+   copy of it. No description, alt text or characterization — that is OCR or a model's opinion,
+   and O20 says neither is evidence.
+
+4. **The painted rect is the matrix, not the pixel count.** A PDF image is defined on the unit
+   square and the CTM decides where it lands, so the area is a real measurement of the document's
+   own matrix. `/Width` and `/Height` are kept, named `pixel_width`/`pixel_height`, in different
+   units and a different field — a 4000×3000 photograph scaled into a 2cm thumbnail is 2cm of
+   page, and conflating the two is the pdf-inspector defect in another costume.
+
+5. **A third kind of box, kept apart from the other two.** `GeometryPresence::Measured` means ink
+   measured from font metrics. `AnnotationRect` means a rectangle the author declared. `PaintedRect`
+   means the page's own matrix applied to the unit square. Three provenances, three types; a
+   rotated placement is `NotAxisAligned` rather than a bounding box, because a bounding box claims
+   page area the picture does not cover.
+
+6. **`Do` is interpreted for `/Image` and still not descended for `/Form`.** The operator stays
+   fail-closed; a `Do` whose *name* does not resolve is counted and declared rather than refused,
+   because rejecting the document would turn files that read today into failures. Inline images
+   (`BI`/`ID`/`EI`) are counted too — they have no object number and no separate stream, so they
+   cannot be nodes, and an uncounted skip would let "no image nodes" read as "no images".
+
+7. **The overlay marks and never edits.** A deterministic lopdf copy with `/Square` annotations
+   over tables, image placements and flagged runs, plus a per-page note that counts what has **no**
+   rectangle to draw — O10's exit criterion is that absence is visible, not just presence. The
+   source document's own annotations are kept and its bytes are untouched. This is not
+   `--sanitize`, and a source-scan test bans the operations that would make it one.
+
+8. **Screenshots are not shipped, by decision.** Rendering a page needs a PDF renderer; PDFium is
+   admitted only caller-provided under an explicit ADR (`00-NORTH-STAR.md` #14), no AGPL renderer
+   clears `deny.toml`'s allowlist, and shelling out to `pdftoppm` would put an unpinned binary
+   between the document and the artifact. `raster_dpi` records the not-emitted state on the
+   profile anyway, so a renderer arriving later is a `profile_sha256` event rather than a silent
+   change of meaning.
+
+9. **A coordinate repair, found while building the off-page rule.** The page transform used the
+   box's width and height and **discarded its origin**, so every coordinate on a page whose
+   `/MediaBox` does not start at `(0, 0)` was shifted. Not one document in either corpus has such
+   a box — measured across all 67 PDFs available here — which is why it survived six slices. It
+   had to be fixed before an off-page finding could be honest: a bounds test against a frame the
+   content is offset from reports ordinary text as off-page, and a **fabricated** security finding
+   is worse than none. `/CropBox` is now read as the visible box, and `/Rotate` inheritance and its
+   indirect-reference form are handled for the same reason.
+
+10. **Classify is unchanged, and answers a different question.** It counts image XObjects a page's
+    `/Resources` **declare**; extraction emits a node per `Do` that **paints** one. The
+    `image-declared-not-drawn` fixture pins both answers at once: `embedded-images` from classify,
+    zero image nodes from extract. Neither is wrong.
+
+### Leftovers, named
+
+- **Page rasters** (`page-raster-not-emitted`). See settled point 8. Not scheduled; it needs an
+  ADR that this repository has no convention for and a renderer it has no dependency for.
+- **Low-contrast text** (`low-contrast-not-detected`). Not possible without new machinery, which
+  decision 6 of the slice made the condition: the twelve colour operators are recognised and
+  discarded, `/ExtGState` is never resolved so alpha is unreachable, and the graphics state has no
+  colour slot. Doing it needs a colour-space model plus a contrast **threshold** — the same shape
+  as the vowel-frequency test this project already refuses for `garbled`.
+- **Images inside form XObjects.** Not seen, because this profile does not descend into them;
+  `form-xobject-text-not-descended` covers the text half and the image half is the same gap.
+- **Structure-order reading**, still. Unchanged from v1-S5 and still not scheduled.
 
 ---
 

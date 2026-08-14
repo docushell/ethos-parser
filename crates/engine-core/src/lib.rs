@@ -88,9 +88,10 @@ pub use identity::{
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
-    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, TableDetection,
-    VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, READING_ORDER_RULE_V0,
-    READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
+    profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
+    VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, OBSERVATION_RULE_V1,
+    READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1,
+    TABLE_DETECTION_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
@@ -105,10 +106,11 @@ pub use verifier::{
 
 pub use representation::{
     AnnotationAttributes, AnnotationRect, DocumentRepresentation, FieldValue, FormFieldAttributes,
-    NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, PageRecord, PdfArtifactLocator,
-    PdfLocator, PdfObjectLocator, PdfTaggedLocator, ProcessingRun, ProcessorIdentity,
-    RepresentationPayload, SourceIdentity, StructuralLocator, SynthesizedAt, TextRunAttributes,
-    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    ImageAttributes, ImageMediaType, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind,
+    PageRecord, PaintedRect, PdfArtifactLocator, PdfImageLocator, PdfLocator, PdfObjectLocator,
+    PdfTaggedLocator, ProcessingRun, ProcessorIdentity, RepresentationPayload, SourceIdentity,
+    StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE,
+    REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

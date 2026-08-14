@@ -58,10 +58,12 @@ pub(crate) mod encoding;
 pub(crate) mod extract;
 pub(crate) mod fonts;
 pub(crate) mod forms;
+pub(crate) mod images;
 pub(crate) mod magic;
 pub(crate) mod metrics;
 pub(crate) mod nodes;
 pub(crate) mod ops;
+pub(crate) mod overlay;
 pub(crate) mod reading_order;
 pub(crate) mod reasons;
 pub(crate) mod represent;
@@ -82,7 +84,8 @@ pub use classify::{
 pub use document::Document;
 pub use extract::{extract, ExtractArtifact, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION};
 pub use magic::check_pdf_magic;
-pub use nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
+pub use nodes::{ImageRecord, PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
+pub use overlay::{build_overlay, OVERLAY_ARTIFACT_TYPE};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};
 pub use represent::{to_representation, PROCESSOR_NAME};
 

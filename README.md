@@ -14,7 +14,7 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list rather than
 whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
 
-Five subcommands, one library, one document load:
+Six subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
@@ -22,7 +22,14 @@ engine extract         document.pdf                      # DocumentRepresentatio
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
 engine verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
+engine overlay         document.pdf                      # an annotated PDF          · 0 / 2
 ```
+
+**`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
+was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds
+a per-page note counting what has **no** rectangle to draw. That last part is the point: an overlay
+showing only the boxes it has would make a partly-read page look fully read. It annotates and never
+edits; the document's own annotations and content streams are untouched.
 
 **`verify` invokes a verifier; it does not verify.** It spawns the pinned Ethos CLI and forwards
 its report bytes verbatim — byte-identical to running `ethos verify` with the same arguments. The
@@ -52,9 +59,12 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
   `(page, mcid)`, so a node carries the role path its author gave it (S3); and form fields and
   annotations as nodes of their own kind, whose text is never mixed into the page's (S4); and
   multi-column reading order from the page's own whitespace, under `gutter-columns-v1`, so a
-  two-column document reads column-major and a single-column one is not touched at all (S5).
-  **Next is S6** — images, DPI screenshots, and hidden or off-page findings — followed by S7, the
-  labelled-set gate. Neither is started.
+  two-column document reads column-major and a single-column one is not touched at all (S5); and
+  images as located, fingerprinted nodes, hidden and off-page text reported as findings that never
+  remove the text they describe, and an annotated overlay that shows what has **no** box as well as
+  what does (S6). **Next is S7**, the labelled-set gate, and it is not started. Page rasters are a
+  named leftover rather than part of S6: rendering needs a PDF renderer, and this build depends on
+  no C++ stack and no AGPL code by decision.
 
 ## Building
 

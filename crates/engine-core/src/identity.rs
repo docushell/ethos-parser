@@ -71,6 +71,25 @@ impl Sha256Hex {
         Self::parse(format!("sha256:{hex}"))
     }
 
+    /// The digest of some bytes. **Infallible by construction** (v1-S6).
+    ///
+    /// # Why this exists rather than `parse(sha256_hex_bytes(…))`
+    ///
+    /// Because that spelling is wrong in a way that compiles and then fails quietly.
+    /// [`crate::c14n::sha256_hex_bytes`] returns *bare* hex and [`Self::parse`] requires the
+    /// `sha256:` prefix, so the pair returns `Err` for every input — and a caller writing
+    /// `.ok()?` gets `None`, which at a `let … else { continue }` is an element silently missing
+    /// from an artifact. That is exactly what happened while v1-S6 was being written: every image
+    /// node vanished, no error was raised anywhere, and the only symptom was an empty array that
+    /// looked like an honest "found none".
+    ///
+    /// Hashing bytes cannot fail and the output is always 64 lowercase hex digits, so the
+    /// fallible spelling was never describing a real possibility. Removing the failure mode beats
+    /// handling it.
+    pub fn of_bytes(bytes: &[u8]) -> Self {
+        Self(format!("sha256:{}", crate::c14n::sha256_hex_bytes(bytes)))
+    }
+
     /// The full `sha256:<hex>` form, as it appears on the wire.
     pub fn as_str(&self) -> &str {
         &self.0

@@ -2290,3 +2290,333 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 }
+
+// -------------------------------------------------------------------------------------------
+// 15. Images, findings and the overlay (v1-S6)
+// -------------------------------------------------------------------------------------------
+
+/// **The `images` proof, both halves** (v1-S6).
+///
+/// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.
+/// A page that merely declares the same image in its resources and never draws it yields none —
+/// because `Do` is what makes a placement, and a resource nobody painted is a resource.
+///
+/// The two fixtures are the same image object in the same dictionary, so the only difference
+/// between them is the `Do`. That is what makes the pair a proof rather than two observations.
+#[test]
+fn an_image_is_a_node_with_a_placement_and_a_digest() {
+    let a = extract_ok(engine_fx("image-xobject-drawn"));
+    assert!(a.assurance.capabilities.images);
+
+    let images: Vec<_> = a.pages.iter().flat_map(|p| p.images.iter()).collect();
+    assert_eq!(images.len(), 1, "one `Do`, one node");
+    let img = images[0];
+
+    // The digest covers the stream AS STORED. Recomputed here from the file's own bytes rather
+    // than trusted: an image node's whole claim is "these bytes", and a test that only checked
+    // the field was well-formed would pass on a digest of the wrong thing.
+    let raw = std::fs::read(engine_fx("image-xobject-drawn")).expect("fixture readable");
+    let start = find(&raw, b"stream\n", find(&raw, b"/Subtype /Image", 0)) + b"stream\n".len();
+    let end = find(&raw, b"\nendstream", start);
+    let expected = engine_core::Sha256Hex::of_bytes(&raw[start..end]);
+    assert_eq!(
+        img.attributes.stream_sha256, expected,
+        "the digest must be over the encoded stream the file actually holds"
+    );
+    assert_eq!(img.attributes.stream_bytes, (end - start) as u64);
+
+    // `/FlateDecode` samples are not a file. Claiming `image/png` because the bytes are deflated
+    // would send a consumer to open something as a format it is not.
+    assert_eq!(img.attributes.filters, vec!["FlateDecode".to_string()]);
+    assert_eq!(
+        img.attributes.media_type,
+        engine_core::ImageMediaType::PdfEncodedSamples
+    );
+
+    // **The placement is the matrix, not the pixel count.** The fixture's image is 2x2 samples
+    // and its `cm` paints it into 120x60 points at (40, 60). Those numbers must not be confusable.
+    assert_eq!(img.attributes.pixel_width, Some(2));
+    assert_eq!(img.attributes.pixel_height, Some(2));
+    let rect = img
+        .locator
+        .rect
+        .painted()
+        .expect("an axis-aligned `cm` produces a rectangle");
+    assert_eq!(
+        (rect.x0(), rect.y0(), rect.x1(), rect.y1()),
+        (4_000, 8_000, 16_000, 14_000),
+        "120x60 points at (40,60) in a 200-point-tall page, in the declared top-left system"
+    );
+    assert!(
+        rect.x1() - rect.x0() != i64::from(img.attributes.pixel_width.unwrap()),
+        "the painted width and the sample count must not be the same number, or this fixture \
+         cannot tell the two apart"
+    );
+
+    // Not a run, and not text. An image node carries no text at all — a description would be a
+    // model's opinion and reading pixels would be OCR, and neither is evidence (checklist O20).
+    let rep = engine_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let image_nodes: Vec<_> = rep
+        .payload()
+        .nodes
+        .iter()
+        .filter(|n| n.kind == engine_core::NodeKind::Image)
+        .collect();
+    assert_eq!(image_nodes.len(), 1);
+    assert!(
+        image_nodes[0].text.is_empty(),
+        "an image node carries no text"
+    );
+    assert!(matches!(
+        image_nodes[0].native_locator,
+        engine_core::NativeLocator::PdfImage(_)
+    ));
+    assert!(
+        !runs(&a).iter().any(|r| r.text.contains("Im1")),
+        "an image's resource name is not text and must never appear as one"
+    );
+
+    // Half two: the SAME image, declared and never drawn.
+    let none = extract_ok(engine_fx("image-declared-not-drawn"));
+    assert!(
+        none.assurance.capabilities.images,
+        "the capability is a property of the profile, not of the document"
+    );
+    assert_eq!(
+        none.pages.iter().map(|p| p.images.len()).sum::<usize>(),
+        0,
+        "a resource nobody painted is a resource; `Do` is what makes a placement"
+    );
+}
+
+/// Byte offset of `needle` at or after `from`.
+fn find(haystack: &[u8], needle: &[u8], from: usize) -> usize {
+    haystack[from..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|i| i + from)
+        .unwrap_or_else(|| {
+            panic!(
+                "fixture shape changed: {:?} not found",
+                String::from_utf8_lossy(needle)
+            )
+        })
+}
+
+/// **Checklist O21, and the defect it names.**
+///
+/// Invisible text is REPORTED and KEPT. OpenDataLoader deletes low-contrast text before returning
+/// a page, so the page it returns looks clean and its caller cannot tell a scrubbed document from
+/// an innocent one. This engine flags and keeps.
+///
+/// Note what this test would have looked like before v1-S6: the hidden string was **already**
+/// present in the artifact — `Tr` was tracked in the text state from v0 and read by nothing — so
+/// nothing had to be un-deleted. What was missing is that anyone could tell it apart from prose.
+#[test]
+fn invisible_text_is_flagged_and_never_removed() {
+    let a = extract_ok(engine_fx("invisible-render-mode"));
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Visible sentence", "Hidden instruction", "Visible again"],
+        "all three runs are in the artifact, in reading order — the hidden one is not filtered, \
+         not moved, and not marked up inside its own text"
+    );
+
+    let flagged: Vec<&str> = runs(&a)
+        .iter()
+        .filter(|r| {
+            r.findings
+                .contains(&engine_core::TextFinding::InvisibleRenderMode)
+        })
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(
+        flagged,
+        vec!["Hidden instruction"],
+        "exactly the run drawn under `3 Tr`, and not the ones drawn around it"
+    );
+
+    // Counted on the wire, so a consumer reading the assurance block learns of it without
+    // diffing node lists.
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::INVISIBLE_RENDER_MODE_TEXT)
+        .expect("the observation is declared as well as flagged");
+    assert_eq!(l.scope, engine_core::LimitationScope::Document);
+    assert!(l.detail.contains("NONE was removed"));
+
+    // The flag survives the projection: a finding that reached the extract and not the record
+    // would be invisible to every consumer.
+    let rep = engine_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let hidden = rep
+        .payload()
+        .nodes
+        .iter()
+        .find(|n| n.text == "Hidden instruction")
+        .expect("the node is in the record");
+    match &hidden.attributes {
+        engine_core::NodeAttributes::TextRun(t) => assert_eq!(
+            t.findings,
+            vec![engine_core::TextFinding::InvisibleRenderMode]
+        ),
+        other => panic!("expected a text run, got {other:?}"),
+    }
+}
+
+/// **Off-page text, and the coordinate repair it depends on** (v1-S6).
+///
+/// The fixture's `/MediaBox` is `[0 20 300 220]` — an origin that is not `(0, 0)`, which not one
+/// document in either corpus has — and its `/CropBox` is smaller still. Both facts matter:
+///
+/// * Through v1-S5 the page transform discarded the box origin, so every coordinate on such a
+///   page was shifted by 20 points. The repair is asserted here by the y values themselves.
+/// * A run below the crop box is inside the media box. Measuring against `/MediaBox` alone would
+///   call it on-page, which is why the visible box is the one the rule uses.
+#[test]
+fn off_page_text_is_flagged_against_the_visible_box() {
+    let a = extract_ok(engine_fx("off-page-and-offset-box"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 2, "both runs are in the artifact");
+
+    // The origin translation, asserted as a number. User-space y=120 in a box topping out at 220
+    // is 100 points down; y=30 is 190 down. Under the pre-repair transform — which used only the
+    // box's HEIGHT, 200 — they would have been 80 and 170.
+    assert_eq!(r[0].locator.origin_y, 10_000, "220 - 120 = 100pt");
+    assert_eq!(r[1].locator.origin_y, 19_000, "220 - 30 = 190pt");
+
+    let flagged: Vec<&str> = r
+        .iter()
+        .filter(|x| x.findings.contains(&engine_core::TextFinding::OffPage))
+        .map(|x| x.text.as_str())
+        .collect();
+    assert_eq!(
+        flagged,
+        vec!["Below the crop box"],
+        "the run below `/CropBox` is off the visible page; the one inside it is not"
+    );
+
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::OFF_PAGE_TEXT)
+        .expect("counted as well as flagged");
+    assert_eq!(l.scope, engine_core::LimitationScope::Document);
+    assert!(l.detail.contains("none was removed"));
+}
+
+/// **The overlay is deterministic, and it does not touch what it draws on** (v1-S6).
+///
+/// Byte identity holds per fresh build, which is the whole of the trap: lopdf's writer mutates the
+/// document it saves, so a cached `Document` saved twice produces two different files. This test
+/// builds twice from scratch, which is what the shipped code does.
+#[test]
+fn the_overlay_is_byte_identical_and_leaves_the_source_alone() {
+    let path = engine_fx("image-xobject-drawn");
+    let before = std::fs::read(&path).expect("fixture readable");
+
+    let build = || {
+        let profile = Profile::default();
+        let doc = Document::open(&path, &profile).expect("opens");
+        let extract = engine_pdf::extract(&doc, &profile).expect("extracts");
+        engine_pdf::build_overlay(&doc, &extract, &profile).expect("overlays")
+    };
+    let first = build();
+    let second = build();
+    assert_eq!(first, second, "two independent builds are byte-identical");
+    assert!(first.starts_with(b"%PDF-"), "the overlay is a PDF");
+
+    let after = std::fs::read(&path).expect("fixture still readable");
+    assert_eq!(
+        before, after,
+        "the source document's bytes are untouched — this annotates, it does not edit"
+    );
+
+    // O10's exit criterion: the overlay distinguishes present geometry from typed absence. An
+    // overlay that drew only the boxes it had would make a partly-read page look fully read.
+    let text = String::from_utf8_lossy(&first);
+    assert!(
+        text.contains("ethos-engine: image "),
+        "the painted image is marked"
+    );
+    assert!(
+        text.contains("NO rectangle this overlay can draw"),
+        "and the count of what could NOT be drawn is on the page too"
+    );
+    assert!(
+        text.contains("EthosEngineOverlay"),
+        "the artifact says what it is and what it was drawn from"
+    );
+}
+
+/// **Earlier slices are untouched by images and findings** (v1-S6).
+#[test]
+fn observing_images_changes_no_earlier_slices_answer() {
+    // S5: two-columns still column-major, still not a table.
+    let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+    let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"]
+    );
+    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
+    assert!(two.pages.iter().all(|p| p.tables.is_empty()));
+    assert!(
+        two.pages.iter().all(|p| p.images.is_empty()),
+        "no `Do` on this page, so no image node"
+    );
+    assert!(
+        runs(&two).iter().all(|r| r.findings.is_empty()),
+        "ordinary visible text on an ordinary page carries no findings — a rule that flagged \
+         everything would be as useless as one that flagged nothing"
+    );
+
+    // S2's and S1's goldens.
+    let golden = extract_ok(conformance("synthetic/table-regular-grid/document.pdf"));
+    let t: Vec<_> = golden.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!((t.len(), t[0].rows, t[0].columns), (1, 3, 2));
+    let ruled = extract_ok(engine_fx("ruled-table-grid"));
+    assert_eq!(ruled.pages.iter().flat_map(|p| p.tables.iter()).count(), 1);
+
+    // S4: the 1040 still yields no table, and its widgets are still not runs.
+    let form = extract_ok(path_in("benchmark", "irs-form-1040-2025.pdf"));
+    assert_eq!(form.pages.iter().map(|p| p.tables.len()).sum::<usize>(), 0);
+    let widget_texts: Vec<String> = form
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .map(|o| o.text.clone())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let run_texts: Vec<&str> = runs(&form).iter().map(|r| r.text.as_str()).collect();
+    for w in &widget_texts {
+        assert!(
+            !run_texts.contains(&w.as_str()),
+            "a widget's value must never appear as a text run: {w:?}"
+        );
+    }
+}
+
+/// `failure/image-only-or-blank-page` has **no image in it**, and the engine must not claim one.
+///
+/// The fixture's name is a lie about its content: all 431 bytes of it are an empty content stream
+/// and an empty `/Resources`. It is the blank half of "image-only or blank page". Pinned because
+/// v1-S6 is exactly the slice where somebody reads the name, expects an image, and "fixes" the
+/// classifier until it reports one — which would be a fabricated finding on a document that
+/// contains nothing.
+#[test]
+fn the_image_only_fixture_is_blank_and_is_reported_as_blank() {
+    let a = extract_ok(conformance("failure/image-only-or-blank-page/document.pdf"));
+    assert!(runs(&a).is_empty(), "a blank page has no runs");
+    assert!(
+        a.pages.iter().all(|p| p.images.is_empty()),
+        "and no images, because there is no image in the file"
+    );
+    assert!(
+        a.pages.iter().all(|p| p.tables.is_empty()),
+        "and no fabricated table"
+    );
+}

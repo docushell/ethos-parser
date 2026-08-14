@@ -7,6 +7,174 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S6, as 0.8.0
+
+The sixth slice of v1 (`docs/09-V1-MILESTONES.md`): **the rest of v1's observational surface** —
+images as located, fingerprinted nodes; hidden and off-page text reported as findings; an annotated
+overlay. **Not tagged.** v1 is six slices of seven — S7 is not started.
+
+**Page screenshots are NOT in this release**, and that is a decision rather than an omission. See
+below.
+
+### Measured before anything was written
+
+Three questions, answered against the code rather than assumed:
+
+1. **Is `Tr = 3` invisible text dropped today?** **No — emitted, and unflagged.** `Tr` was parsed
+   into the text state from v0 onward and read by *nothing*: a workspace grep for `render_mode`
+   returned the declaration, the default and the assignment, and no comparison against 3 anywhere.
+   So this slice is **additive, not a repair**: the text was never lost, and half of checklist
+   O21's exit criterion ("the run stays in the representation") was already satisfied. The defect
+   was **silent mixing** — an OCR layer, a hidden instruction and visible prose all arrived at a
+   consumer identical.
+2. **Does `Do` fail closed on an image XObject?** **No — a deliberate no-op**, with the operand
+   never read, so a `Do` with a missing name and a `Do` drawing a photograph were the same event.
+3. **What does `failure/image-only-or-blank-page` classify as?** `no-text` — and it turns out
+   **the fixture contains no image at all**. All 431 bytes of it are an empty content stream and an
+   empty `/Resources`; it is the blank half of "image-only or blank page". `no-text` is the correct
+   answer, and a test now pins it, because this is exactly the slice where somebody reads the name,
+   expects an image, and "fixes" the classifier into fabricating one.
+
+Also measured: **no fixture in either owned corpus contains an image XObject** — 22 engine-owned,
+15 conformance, all zero — so every fixture this slice needed had to be authored.
+
+### Added — `page-observations-v1`
+
+One rule id over one pass, because images and findings read the same graphics state: the current
+transformation matrix places an image, and the text rendering mode and the visible page box decide
+what a run is flagged with.
+
+**Images.** `Do` is now interpreted for `/Subtype /Image`. Each placement becomes a
+`NodeKind::Image` carrying page, object number, the rectangle the `Do` painted into, a sha256 over
+the stream **as stored**, its `/Filter` chain, its declared pixel dimensions and whether it is a
+stencil mask.
+
+- **The rect is the matrix, not the pixel count.** A PDF image is defined on the unit square and
+  the CTM decides where it lands, so the area is a measurement of the document's own matrix. The
+  golden fixture is 2×2 samples painted into 120×60 points precisely so the two numbers cannot be
+  confused; `/Width` and `/Height` ride separately as `pixel_width`/`pixel_height`.
+- **The digest covers encoded bytes.** Decoding first would make the fingerprint depend on this
+  engine's inflate implementation, and two readers disagreeing about what one file contains is what
+  a fingerprint exists to deny. A digest rather than a payload, because an artifact is a record
+  *about* a document, not a second copy of it.
+- **A media type only where the bytes really are a file.** `/DCTDecode` is `image/jpeg` and
+  `/JPXDecode` is `image/jp2`; everything else — Flate, LZW, CCITT, JBIG2, unfiltered — is
+  `pdf_encoded_samples`, because saving those bytes to a `.png` produces a file nothing can open.
+  Nothing is sniffed from the payload.
+- **No description, caption or alt text, ever under this profile.** Reading pixels is OCR, which v1
+  does not do; a model's account of a picture is not evidence (checklist O20). A source-scan test
+  bans the field names.
+
+**Findings.** `TextFinding::{InvisibleRenderMode, OffPage}` on the run, plus a document-scoped count
+in `assurance.limitations`. **The run stays** — same text, same origin, same place in reading order.
+OpenDataLoader deletes low-contrast text and returns a page that looks clean, so its caller cannot
+tell a scrubbed document from an innocent one; that is the defect O21 names.
+
+`invisible-render-mode` covers `Tr 3` and `Tr 7`. Modes 4–6 paint and are deliberately not flagged.
+The engine does **not** decide what it is looking at: the same mode carries a scanner's OCR layer,
+which is ordinary, and a prompt hidden behind an image, which is not, and nothing in the content
+stream tells them apart.
+
+### Added — the annotated overlay, and `engine overlay`
+
+A deterministic lopdf copy of the document with `/Square` annotations over table boxes, image
+placements and flagged runs, plus a per-page `/Text` note. **The note is the part that satisfies
+O10**, whose exit criterion is that the overlay distinguishes present geometry from typed absence:
+it counts the nodes on that page with *no* rectangle to draw — a run whose font supplies no ink
+metrics, an image placed by a non-axis-aligned matrix — so a partly-read page cannot look fully
+read. Its own rectangle is the page corner and says so, because there is no honest place to anchor
+a marker for content whose position is what is unknown.
+
+**It annotates and never edits.** No content stream is touched, no text is removed, and the
+document's own annotations are kept. This is not `--sanitize`, and a source-scan test bans the
+operations that would make it one. Byte identity holds per fresh build — lopdf's writer *mutates*
+the document it saves, so the overlay clones per call and never saves a cached document twice.
+
+Zero new dependencies: `lopdf` already writes, its objects live in a `BTreeMap`, it generates no
+`/ID`, and its only clock is behind a feature this build does not enable.
+
+### Fixed — the page-box origin was discarded
+
+`to_top_left` used the box's **width and height** and threw away its origin, so a page whose
+`/MediaBox` is `[0 20 612 812]` — legal, and not unusual — had every coordinate in the artifact
+shifted by 20 points, with the top of the page landing at `y = -20`.
+
+**Not one document in either corpus declares a box whose origin is other than `(0, 0)`**, measured
+across all 67 PDFs available to this repository, which is why it survived six slices. On such a page
+the subtraction is the identity, so **no existing golden moves**.
+
+It had to be fixed before an off-page finding could exist at all: a bounds test against a frame the
+content is systematically offset from reports ordinary text at the top of a page as off-page, and a
+**fabricated** security finding is worse than no finding. `off-page-and-offset-box` is the fixture
+the corpus lacked. `/Rotate` inheritance and its indirect-reference and real-number forms are
+handled for the same reason — a wrongly-unrotated page puts every coordinate somewhere else.
+
+`/CropBox` is now read as the **visible** box, clipped to the media box. Off-page is measured
+against it, because measuring against `/MediaBox` on a page that crops would report ordinary trimmed
+content as off-page. All three benchmark documents declare a `/CropBox`; all three declare one equal
+to their media box, so this changes nothing on the current corpus and everything on a document that
+actually crops.
+
+### Fixed — a silent skip, caught by its own symptom
+
+`Sha256Hex::parse(sha256_hex_bytes(…))` returns `Err` for every input: the first produces bare hex,
+the second requires the `sha256:` prefix. Written with `.ok()?` at a `let … else { continue }`, it
+made **every image node vanish** with no error anywhere — an empty array that looked exactly like an
+honest "found none". `Sha256Hex::of_bytes` is infallible by construction, because hashing cannot
+fail and the fallible spelling was never describing a real possibility.
+
+### Not shipped, and why
+
+- **Page screenshots** (`page-raster-not-emitted`, `page_screenshots: false`). Rendering a page
+  means a PDF renderer — glyph rasterization, shadings, blend modes, image filters. PDFium is
+  admitted only caller-provided under an explicit ADR (`00-NORTH-STAR.md` #14) and this repository
+  has no ADR convention to write one in; no AGPL renderer clears `deny.toml`'s allowlist; and
+  shelling out to `pdftoppm` would put an unpinned binary between the document and the artifact.
+  A half-built rasterizer would be worse than the gap.
+
+  **`raster_dpi` is on the profile anyway**, carrying `{"mode":"not_emitted"}` — a declared state
+  rather than an absent field, so a renderer arriving later moves `profile_sha256` instead of
+  silently changing what an artifact means.
+- **Low-contrast text** (`low-contrast-not-detected`). Not possible without new machinery: the
+  twelve colour operators are recognised and discarded, `/ExtGState` is never resolved so alpha is
+  unreachable, and the graphics state carries no colour slot. Doing it needs a colour-space model
+  plus a contrast **threshold** — the same shape as the vowel-frequency test this project already
+  refuses for `garbled`, and a wrong one would flag ordinary light-grey body text as hidden.
+- **Inline images** (`inline-images-not-emitted`) and **unresolved `Do` names**
+  (`xobject-name-unresolved`). Both counted and declared rather than skipped. An inline image has no
+  object number and no separate stream, so it cannot be a node; an unresolved name is a bounded
+  malformation, and refusing the document over it would turn files that read today into failures.
+
+### Changed
+
+- `capabilities.images` false → **true**, with a both-halves proof: a page that paints an image
+  yields a node, a page that only declares one yields none. `capabilities.page_screenshots` arrives
+  as an explicit `false`.
+- `non-text-nodes-not-projected` reworded: it said "form fields or annotations", which became false
+  the moment an image node existed. `ethos.grounding.v1` carries one kind of box and it means
+  measured ink; an image's painted rectangle is a **third** provenance, and flattening it in is what
+  v1-S4 refused for declared rectangles.
+- Classify is **untouched**. It counts image XObjects a page's `/Resources` declare; extraction
+  emits a node per `Do` that paints one. `image-declared-not-drawn` pins both answers at once —
+  `embedded-images` from classify, zero image nodes from extract — and neither is wrong.
+- `engine-pdf` gained an `overlay` and an `images` module, both `pub(crate)`; the CLI stays a thin
+  shell. New exports: `build_overlay`, `OVERLAY_ARTIFACT_TYPE`, `ImageRecord`, and in `engine-core`
+  `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `RasterDpi`,
+  `OBSERVATION_RULE_V1`.
+
+### Identity
+
+`profile_sha256` moves from `sha256:1131244222…0de113` to
+**`sha256:3de478c92c536b7ed10999be655515ce70bf37f2b5aec5031614145ad53d5ace`** — the version, the new
+`observation_rule` and `raster_dpi` fields, and two capability flips.
+
+**586 tests pass**, up from 573. Oracle partition still 12 / 3; `two-columns` still column-major and
+still not a table; the 1040 still yields 0 tables and its widgets are still never runs; `fmt`,
+`clippy -D warnings`, `cargo deny check` and both grep gates are clean. The fixture manifest declares
+44 fixtures, up from 40.
+
+---
+
 ## [Unreleased] — v1-S5, as 0.7.0
 
 The fifth slice of v1 (`docs/09-V1-MILESTONES.md`): **reading order becomes a rule instead of a

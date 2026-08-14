@@ -88,6 +88,8 @@ pub enum IdKind {
     FormField,
     /// An annotation (v1-S4).
     Annotation,
+    /// A painted image (v1-S6).
+    Image,
 }
 
 impl IdKind {
@@ -100,6 +102,7 @@ impl IdKind {
             Self::Table => "t",
             Self::FormField => "f",
             Self::Annotation => "a",
+            Self::Image => "i",
         }
     }
 }
@@ -120,6 +123,7 @@ pub struct IdAllocator {
     next_table: u64,
     next_form_field: u64,
     next_annotation: u64,
+    next_image: u64,
 }
 
 impl IdAllocator {
@@ -133,6 +137,7 @@ impl IdAllocator {
             next_table: 1,
             next_form_field: 1,
             next_annotation: 1,
+            next_image: 1,
         }
     }
 
@@ -155,6 +160,7 @@ impl IdAllocator {
             IdKind::Table => &mut self.next_table,
             IdKind::FormField => &mut self.next_form_field,
             IdKind::Annotation => &mut self.next_annotation,
+            IdKind::Image => &mut self.next_image,
         };
         if *counter > crate::MAX_SAFE_INT as u64 {
             return Err(EngineError::ResourceLimit {
@@ -176,6 +182,7 @@ impl IdAllocator {
             IdKind::Table => self.next_table,
             IdKind::FormField => self.next_form_field,
             IdKind::Annotation => self.next_annotation,
+            IdKind::Image => self.next_image,
         }) - 1
     }
 }

@@ -119,6 +119,38 @@ pub mod codes {
     /// true of is the S3 lesson — `structural-locators-not-claimed` survived its slice the same
     /// way.
     pub const MULTI_COLUMN_READING_ORDER: &str = "multi-column-reading-order";
+    /// Text on this document was drawn in an invisible rendering mode (v1-S6).
+    ///
+    /// **A count of an observation, not a warning.** Every affected run is still in the artifact,
+    /// with its text and its origin; this says how many there are so a consumer reading a summary
+    /// learns of them without diffing node lists.
+    pub const INVISIBLE_RENDER_MODE_TEXT: &str = "invisible-render-mode-text";
+    /// Text on this document sits outside the visible page box (v1-S6).
+    ///
+    /// Same posture as [`Self::INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    pub const OFF_PAGE_TEXT: &str = "off-page-text";
+    /// Low-contrast text is not detected, at any threshold (v1-S6).
+    ///
+    /// The leftover beside the two findings that did ship. Nothing in this profile reads colour:
+    /// the twelve colour operators are accepted and discarded, `/ExtGState` is never resolved, so
+    /// alpha is unreachable, and the graphics state carries no colour slot to put a value in.
+    /// Detecting contrast would need all of that plus a threshold — and a threshold over
+    /// appearance is the `garbled` trap this project already refuses once.
+    pub const LOW_CONTRAST_NOT_DETECTED: &str = "low-contrast-not-detected";
+    /// Inline images are counted and not emitted as nodes (v1-S6).
+    ///
+    /// `BI`/`ID`/`EI` embeds sample data directly in the content stream rather than in an XObject,
+    /// so it has no object number to address and no stream to digest independently. It is counted
+    /// so that "this page has no image nodes" cannot be read as "this page has no images".
+    pub const INLINE_IMAGES_NOT_EMITTED: &str = "inline-images-not-emitted";
+    /// [`Capabilities::images`] is true: what an image node does and does not say.
+    pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
+    /// A `Do` named an XObject this profile could not resolve (v1-S6).
+    pub const XOBJECT_NAME_UNRESOLVED: &str = "xobject-name-unresolved";
+    /// [`Capabilities::images`] is false: no image is located or fingerprinted.
+    pub const IMAGES_NOT_EMITTED: &str = "images-not-emitted";
+    /// [`Capabilities::page_screenshots`] is false: no page raster is produced.
+    pub const PAGE_RASTER_NOT_EMITTED: &str = "page-raster-not-emitted";
     /// [`Capabilities::multi_column_reading_order`] is true: the rule reads geometry only.
     ///
     /// The narrower leftover that replaced [`Self::MULTI_COLUMN_READING_ORDER`] on the default
@@ -310,6 +342,8 @@ impl Capabilities {
             structural_locators,
             form_fields,
             annotations,
+            images,
+            page_screenshots,
         } = *self;
 
         let mut out = Vec::new();
@@ -363,6 +397,59 @@ impl Capabilities {
                  a table.",
             ));
         }
+        if images {
+            // The third limitation partnering a TRUE capability, and the one most likely to be
+            // misread: "images: true" invites a reader to expect the pictures.
+            out.push(Limitation::profile(
+                codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
+                "An image node says WHERE a picture was drawn and WHICH BYTES it is — page, \
+                 object number, the rectangle the `Do` painted into, and a sha256 over the \
+                 stream as stored. It does not carry the picture, and it does not say what the \
+                 picture SHOWS. There is no description, caption or alt text on any image node \
+                 and there will not be one under this profile: reading text out of pixels is OCR, \
+                 which this version does not do, and a model's account of an image is not \
+                 evidence. The digest covers the ENCODED bytes, so a consumer decoding them needs \
+                 the `/Filter` chain named beside it; where those bytes are not a standalone file \
+                 the media type says so rather than guessing one. Two further gaps are counted \
+                 separately where they occur: images drawn inside form XObjects are not seen, and \
+                 inline images are counted rather than emitted.",
+            ));
+        } else {
+            out.push(Limitation::profile(
+                codes::IMAGES_NOT_EMITTED,
+                "No image is located, measured or fingerprinted. The absence of image nodes is \
+                 NOT evidence that a document contains no images — classification may still count \
+                 image XObjects a page's resources declare, which is a different question from \
+                 where any of them was drawn.",
+            ));
+        }
+        if !page_screenshots {
+            out.push(Limitation::profile(
+                codes::PAGE_RASTER_NOT_EMITTED,
+                "No page raster is produced, at any resolution. Rendering a page means a PDF \
+                 renderer — glyph rasterization, shadings, blend modes, image filters — and this \
+                 build has none by decision rather than by omission: PDFium is admitted only \
+                 caller-provided under an explicit ADR, no AGPL renderer clears the dependency \
+                 licence allowlist, and shelling out to an external converter would put an \
+                 unpinned binary between the document and the artifact. `raster_dpi` records the \
+                 not-emitted state on the profile rather than leaving the field absent, so a \
+                 renderer arriving later moves `profile_sha256` and artifacts from before and \
+                 after are correctly non-comparable.",
+            ));
+        }
+        // Declared unconditionally, because it is true under every profile this build can
+        // produce: no code path reads colour at all.
+        out.push(Limitation::profile(
+            codes::LOW_CONTRAST_NOT_DETECTED,
+            "Text that is invisible BY COLOUR — white on white, or fully transparent — is not \
+             detected, and no threshold for it exists. The twelve colour operators are recognised \
+             and discarded, `/ExtGState` is never resolved so alpha is unreachable, and the \
+             graphics state carries no colour to compare. This is deliberately not approximated: \
+             a contrast threshold is the same shape as the vowel-frequency test this project \
+             refuses for `garbled`, and a wrong one would flag ordinary light-grey body text as \
+             hidden. The findings that ARE reported — invisible rendering mode and off-page text \
+             — rest on the content stream's own state rather than on an appearance judgement.",
+        ));
         if !measured_ink_boxes {
             out.push(Limitation::profile(
                 codes::MEASURED_INK_BOXES_NOT_EMITTED,
@@ -1062,6 +1149,8 @@ mod tests {
             spans: false,
             char_offsets: false,
             tables: false,
+            images: false,
+            page_screenshots: false,
             measured_ink_boxes: false,
             multi_column_reading_order: false,
             structural_locators: false,
@@ -1078,6 +1167,8 @@ mod tests {
             codes::STRUCTURAL_LOCATORS_NOT_CLAIMED,
             codes::FORM_FIELDS_NOT_EXTRACTED,
             codes::ANNOTATIONS_NOT_EXTRACTED,
+            codes::IMAGES_NOT_EMITTED,
+            codes::PAGE_RASTER_NOT_EMITTED,
         ] {
             assert!(
                 declared.iter().any(|l| l.code == code),
@@ -1086,8 +1177,11 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            8,
-            "one limitation per false capability, plus none for the true ones"
+            11,
+            "one limitation per false capability, plus `low-contrast-not-detected`, which is \
+             declared UNCONDITIONALLY because no profile this build can produce reads colour — \
+             it is not partnered to a capability in either direction, and pretending otherwise \
+             would mean inventing a `contrast` flag nothing sets"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1104,6 +1198,12 @@ mod tests {
             structural_locators: true,
             form_fields: true,
             annotations: true,
+            images: true,
+            // Genuinely all-true, including the one no build can currently satisfy. The point of
+            // this literal is to check what survives when nothing is switched off, so leaving a
+            // flag false here would quietly turn a false-capability limitation into evidence
+            // about true ones.
+            page_screenshots: true,
         };
         let all_declared = all.declared_limitations();
         let remaining: Vec<&str> = all_declared.iter().map(|l| l.code.as_str()).collect();
@@ -1111,11 +1211,14 @@ mod tests {
             remaining,
             vec![
                 codes::STROKE_RULED_TABLES_NOT_DETECTED,
+                codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
+                codes::LOW_CONTRAST_NOT_DETECTED,
                 codes::READING_ORDER_GEOMETRIC_ONLY,
             ],
-            "an all-true profile keeps exactly the two limitations that partner TRUE \
-             capabilities: what the table rules still miss, and what the reading-order rule \
-             still cannot see"
+            "an all-true profile keeps the limitations that partner TRUE capabilities — what the \
+             table rules still miss, what an image node does NOT say, and what the reading-order \
+             rule cannot see — plus `low-contrast-not-detected`, which is unconditional because \
+             no profile this build can produce reads colour at all"
         );
         assert!(
             !remaining.contains(&"unruled-tables-not-detected"),

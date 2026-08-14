@@ -140,6 +140,17 @@ pub enum NativeLocator {
     /// `docs/01-CONTRACT.md` §5.1 makes the locator a union precisely so a new *kind* of address
     /// is a new variant rather than a lie in an old one.
     PdfObject(PdfObjectLocator),
+    /// A painted image's address: page, XObject number, and the rectangle the `Do` filled (v1-S6).
+    ///
+    /// **A third variant rather than a reuse of [`Self::PdfObject`], because the rectangle means
+    /// something else.** An annotation's `/Rect` is a number the author wrote into a dictionary.
+    /// An image's rectangle is *computed* — the current transformation matrix applied to the unit
+    /// square the image is defined on — so filing it under [`AnnotationRect::Declared`] would
+    /// claim the document stated something it never stated. `docs/01-CONTRACT.md` §5.1 makes the
+    /// locator a union so a new *kind* of address is a new variant rather than a lie in an old one,
+    /// and "declared by the author" versus "derived from the page's own matrix" is exactly that
+    /// kind of difference.
+    PdfImage(PdfImageLocator),
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -214,6 +225,72 @@ impl AnnotationRect {
     pub fn declared(self) -> Option<QRect> {
         match self {
             Self::Declared(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
+/// A painted image's address (v1-S6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfImageLocator {
+    /// 1-based page number, as the document numbers its own pages.
+    pub page: u32,
+    /// The object number of the image XObject that was drawn.
+    ///
+    /// **The same object may appear on many pages and many times on one page.** Each `Do` is its
+    /// own node with its own rectangle, and they share this number — which is the fact a consumer
+    /// needs to know that one picture was placed five times rather than five pictures placed once.
+    pub object: u32,
+    /// Its generation number. Usually 0; carried because an object id is both halves.
+    pub generation: u32,
+    /// The area on the page this placement covered.
+    pub rect: PaintedRect,
+}
+
+/// The area a `Do` painted an image into, or a typed reason there is no rectangle (v1-S6).
+///
+/// # Not [`crate::derivation::GeometryPresence`], and not [`AnnotationRect`]
+///
+/// Three kinds of box now exist in this record and the whole point is that they stay apart.
+/// `GeometryPresence::Measured` means **ink measured from font metrics**. [`AnnotationRect`]
+/// means **a rectangle the author declared** in a dictionary. This means **the page's own
+/// transformation matrix, applied to the unit square** every PDF image is defined on
+/// (32000-1 §8.9.5.2) — computed by this engine from evidence the content stream supplies, which
+/// is a third provenance and gets a third type.
+///
+/// **It is never the bitmap's pixel dimensions.** A 4000×3000 photograph scaled into a 2cm
+/// thumbnail is 2cm of page, and reporting its pixel count as a box would be the pdf-inspector
+/// defect (`height` and the type size being one variable) wearing different clothes. The pixel
+/// dimensions are kept, separately and clearly labelled, on [`ImageAttributes`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "value")]
+#[non_exhaustive]
+pub enum PaintedRect {
+    /// The matrix mapped the unit square onto this axis-aligned rectangle.
+    Painted(QRect),
+    /// The matrix rotates or skews, so the placement is not an axis-aligned rectangle.
+    ///
+    /// A rotated image really does cover a parallelogram, and its bounding box is a **larger**
+    /// area than the image occupies — reporting one would claim page area the picture does not
+    /// cover. The node is still emitted: refusing an element because its geometry is oblique
+    /// would delete evidence over a box, which is the wrong trade in both directions.
+    ///
+    /// This is deliberately *not* what the ruled-table detector does with an oblique rectangle —
+    /// that one drops the rectangle, because a rule line it cannot place is not evidence of a
+    /// grid. An image it cannot place is still an image that was drawn.
+    NotAxisAligned,
+    /// The matrix produced coordinates this profile cannot express.
+    ///
+    /// Non-finite, or outside the quantizable integer range. As above, the node survives its box.
+    Malformed,
+}
+
+impl PaintedRect {
+    /// The rectangle, if the placement was axis-aligned and expressible.
+    pub fn painted(self) -> Option<QRect> {
+        match self {
+            Self::Painted(r) => Some(r),
             _ => None,
         }
     }
@@ -340,6 +417,19 @@ pub enum NodeKind {
     /// consumer that cannot tell a reviewer's note from the page's own words cannot cite either
     /// one safely.
     Annotation,
+    /// An image the page painted with `Do` (v1-S6).
+    ///
+    /// **A placement, not a picture.** The node says *an image XObject was drawn here, and these
+    /// bytes are it* — page, object number, the rectangle the `Do` painted into, and a digest of
+    /// the stream as stored. Nothing is decoded, nothing is recognised, and the node carries no
+    /// description, caption or alt text: text derived from pixels is OCR, which is out of v1
+    /// entirely, and a model's account of a picture is not evidence (checklist O20).
+    ///
+    /// Passing the rule "do not add a kind for a fact some existing node already carries": no run
+    /// holds an image, no table cell does, and the classifier's `embedded-images` reason counts
+    /// *declared resources* on a page without saying where any of them was drawn or which bytes
+    /// it was. Without a kind of its own an image is simply absent from the record.
+    Image,
 }
 
 impl NodeKind {
@@ -352,6 +442,7 @@ impl NodeKind {
             Self::TextRun => "text_run",
             Self::FormField => "form_field",
             Self::Annotation => "annotation",
+            Self::Image => "image",
         }
     }
 }
@@ -382,6 +473,8 @@ pub enum NodeAttributes {
     FormField(FormFieldAttributes),
     /// An annotation's facts (v1-S4).
     Annotation(AnnotationAttributes),
+    /// A painted image's facts (v1-S6).
+    Image(ImageAttributes),
 }
 
 impl NodeAttributes {
@@ -391,8 +484,149 @@ impl NodeAttributes {
             Self::TextRun(_) => NodeKind::TextRun,
             Self::FormField(_) => NodeKind::FormField,
             Self::Annotation(_) => NodeKind::Annotation,
+            Self::Image(_) => NodeKind::Image,
         }
     }
+}
+
+/// What a painted image XObject declares about itself (v1-S6).
+///
+/// **Everything here is read from the stream dictionary or computed over its bytes.** Nothing is
+/// decoded, nothing is recognised, and there is no field for a description — a caption produced by
+/// a model is not evidence (checklist O20), and text read out of pixels is OCR, which v1 does not
+/// do at all.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageAttributes {
+    /// `sha256:` over the stream's bytes **exactly as the file stores them**, still encoded.
+    ///
+    /// # Why the encoded bytes, and why a digest rather than the bytes
+    ///
+    /// Encoded, because those are the bytes that are actually in the document. Decoding first
+    /// would make the digest depend on this engine's decoder — two readers with different
+    /// inflate implementations would disagree about what the same file contains, which is the
+    /// property a fingerprint exists to deny.
+    ///
+    /// A digest rather than a payload, because an artifact is a record *about* a document, not a
+    /// second copy of it. Inlining megabytes of JPEG would make the canonical JSON unreadable, and
+    /// would put the picture in two places to drift. This identifies the bytes and lets a consumer
+    /// go and get them; it does not replace them.
+    pub stream_sha256: Sha256Hex,
+    /// Length in bytes of the stream this digest covers.
+    ///
+    /// Beside the digest so a reader can tell a zero-length stream from an absent one without
+    /// fetching anything: `sha256:e3b0c442…` is the digest of nothing, and a consumer should not
+    /// have to know that constant to notice.
+    pub stream_bytes: u64,
+    /// The `/Filter` chain, outermost first, exactly as the document spells it.
+    ///
+    /// Empty means the stream declares no filter — raw samples. Kept verbatim rather than
+    /// normalised, because the filter names are what say whether [`Self::stream_sha256`] covers a
+    /// file some other tool can open.
+    pub filters: Vec<String>,
+    /// Whether the stored bytes are a standalone image file, and of what type.
+    pub media_type: ImageMediaType,
+    /// `/Width` in samples, as the dictionary declares it.
+    ///
+    /// **Not a box, and in different units from every rectangle in this record.** Named
+    /// `pixel_width` rather than `width` for exactly that reason: the area this image covers on
+    /// the page is [`PdfImageLocator::rect`], and the two are unrelated numbers. Absent when the
+    /// dictionary omits it or gives a value this profile cannot read — never defaulted to zero,
+    /// which would read as a degenerate image rather than an unread field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pixel_width: Option<u32>,
+    /// `/Height` in samples. See [`Self::pixel_width`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pixel_height: Option<u32>,
+    /// `/ImageMask true`: the stream is a 1-bit stencil, painting the current colour through a
+    /// mask rather than carrying image data of its own.
+    ///
+    /// Reported because a stencil mask is a different thing from a picture, and a consumer
+    /// counting "images on this page" should be able to tell them apart.
+    pub image_mask: bool,
+}
+
+/// Whether an image stream's stored bytes are a file in their own right (v1-S6).
+///
+/// # The distinction, and why it is not an `Option<String>`
+///
+/// A `/DCTDecode` stream **is** a JPEG: write those bytes to disk and an image viewer opens them.
+/// A `/FlateDecode` stream is not a file at all — it is PDF-specific sample data whose meaning
+/// depends on `/ColorSpace`, `/BitsPerComponent` and `/Decode` in the same dictionary. Calling the
+/// second one `image/png` because it is compressed, or leaving both as `None`, would tell a
+/// consumer the same thing about two genuinely different situations.
+///
+/// [`Self::stream_sha256`](ImageAttributes::stream_sha256) covers the stored bytes either way. This
+/// says whether those bytes travel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "value")]
+#[non_exhaustive]
+pub enum ImageMediaType {
+    /// The stored bytes are a standalone file of this media type.
+    ///
+    /// Only where the filter chain says so outright: `/DCTDecode` is `image/jpeg` and
+    /// `/JPXDecode` is `image/jp2`. Nothing is sniffed from the payload — guessing a type from
+    /// leading bytes is a decoder's job, and a wrong guess here would send a consumer to open
+    /// something as a format it is not.
+    Standalone(String),
+    /// The bytes are PDF-encoded samples, not a file in any image format.
+    ///
+    /// The honest answer for `/FlateDecode`, `/LZWDecode`, `/RunLengthDecode`, `/CCITTFaxDecode`,
+    /// `/JBIG2Decode` and unfiltered streams alike. Their filters are still named in
+    /// [`ImageAttributes::filters`]; what this says is that saving the bytes to a `.png` would
+    /// produce a file nothing can open.
+    PdfEncodedSamples,
+}
+
+/// Something observed about a text run that a consumer must not learn about by accident (v1-S6).
+///
+/// # An observation. Never a filter, and never a verdict
+///
+/// This is checklist O21, and the rule is one sentence: **the run stays.** OpenDataLoader deletes
+/// low-contrast text before returning a page, so the page it returns looks clean and the reader has
+/// no way to know anything was removed. Removing evidence because it looks suspicious is how a
+/// document that hides an instruction and a document that contains nothing become the same
+/// artifact.
+///
+/// So a finding is data attached to a node that is still there, with its text, its origin and its
+/// locator intact. It does not say the document is malicious, does not score it, and does not
+/// change what any other stage does — `docs/07-VERIFY-BOUNDARY.md` applies here as everywhere:
+/// this engine reports, it does not judge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum TextFinding {
+    /// The run was drawn in text rendering mode 3 or 7 — painted with no fill and no stroke.
+    ///
+    /// `Tr 3` is how a scanner's OCR layer is laid under a page image, which is ordinary and
+    /// useful. It is also how text is hidden from a human reader while staying perfectly legible
+    /// to anything that reads the text layer. **This profile does not decide which one it is
+    /// looking at**; it reports that the mode was set, and leaves the two indistinguishable cases
+    /// distinguishable by context a consumer has and this engine does not.
+    InvisibleRenderMode,
+    /// The run's origin lies outside the page's visible box.
+    ///
+    /// Measured against `/CropBox` where the page declares one and `/MediaBox` otherwise — the
+    /// box a viewer actually shows — after `/Rotate`. Content outside it is in the file and is
+    /// not on the page.
+    OffPage,
+}
+
+impl TextFinding {
+    /// The code this finding is counted under in `assurance.limitations`.
+    ///
+    /// One string, used in both places. The per-node flag and the document-level count are two
+    /// views of one observation, and giving them two spellings is how they drift into looking
+    /// like two different findings.
+    pub fn as_code(self) -> &'static str {
+        match self {
+            Self::InvisibleRenderMode => crate::codes::INVISIBLE_RENDER_MODE_TEXT,
+            Self::OffPage => crate::codes::OFF_PAGE_TEXT,
+        }
+    }
+
+    /// Every finding this profile can report.
+    pub const ALL: [Self; 2] = [Self::InvisibleRenderMode, Self::OffPage];
 }
 
 /// What an interactive form field declares about itself (v1-S4).
@@ -523,6 +757,21 @@ pub struct TextRunAttributes {
     pub font_id: String,
     /// Font size in integer centipoints. **Never used as a box height.**
     pub font_size: i64,
+    /// What was observed about this run that a reader would not see in its text (v1-S6).
+    ///
+    /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
+    /// still a run**: same text, same origin, same locator, same position in reading order. The
+    /// findings are additive information, never a reason to remove anything — see [`TextFinding`].
+    ///
+    /// Sorted and deduplicated, so two artifacts describing the same run cannot differ by the
+    /// order two observations happened to be made in.
+    ///
+    /// `default` beside `skip_serializing_if` is load-bearing, not tidiness: without it the
+    /// artifact serializes with the key omitted and then fails to deserialize its own output. A
+    /// `Vec` is not an `Option`, which serde treats as optional on its own — the same trap v1-S4's
+    /// `unrecognized_flag_bits` fell into, recorded there and avoided here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<TextFinding>,
 }
 
 /// A character the reader authored rather than read, flagged where it was created.
@@ -1093,6 +1342,7 @@ mod tests {
                 char_codes: vec![0x68, 0x65, 0x6c, 0x6c, 0x6f],
                 scalar_code_mismatch: false,
                 synthesized: Vec::new(),
+                findings: Vec::new(),
                 font_id: "F1".into(),
                 font_size: 2400,
             }),

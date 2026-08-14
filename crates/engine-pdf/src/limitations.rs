@@ -376,6 +376,72 @@ pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     )
 }
 
+/// A text finding, counted and declared (v1-S6).
+///
+/// **Document-scoped, because it is a fact about this document** rather than about the profile.
+/// The runs it counts are all still in the artifact, with their text, their origins and their
+/// place in reading order — this is a summary so that a consumer reading the assurance block
+/// learns the observation exists without diffing node lists. It is not a record of anything
+/// removed, because nothing was removed.
+pub fn text_finding(code: &str, count: u32) -> Limitation {
+    let detail = match code {
+        engine_core::codes::INVISIBLE_RENDER_MODE_TEXT => format!(
+            "{count} text run(s) were drawn in an INVISIBLE rendering mode — `Tr 3` or `Tr 7`, \
+             which fill nothing and stroke nothing (PDF 32000-1 Table 106). Every one of them is \
+             in this artifact, with its text and its origin, and NONE was removed: text that is \
+             invisible to a human reader is still text a machine reads, and deleting it would \
+             make a document that hides an instruction indistinguishable from one that says \
+             nothing. This profile does not decide what it is looking at. The same mode carries a \
+             scanner's OCR layer under a page image, which is ordinary and useful, and a prompt \
+             hidden behind a picture, which is not — and nothing in the content stream tells the \
+             two apart. A consumer with context this engine does not have decides; the engine \
+             reports."
+        ),
+        engine_core::codes::OFF_PAGE_TEXT => format!(
+            "{count} text run(s) have an origin OUTSIDE the page's visible box — outside \
+             `/CropBox` where the page declares one, outside `/MediaBox` otherwise, measured \
+             after `/Rotate`. They are in the file and not on the page. Every one is in this \
+             artifact and none was removed, for the reason invisible text is not removed: content \
+             a reader cannot see is still content a machine reads. Ordinary causes exist — \
+             printer's marks, a trimmed bleed area, an editing remnant — and this profile does \
+             not distinguish them from deliberate concealment, because the geometry does not."
+        ),
+        other => format!("{count} run(s) carry the `{other}` observation."),
+    };
+    Limitation::document(code, detail)
+}
+
+/// Inline images were drawn and are not nodes (v1-S6).
+pub fn inline_images_not_emitted(count: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::INLINE_IMAGES_NOT_EMITTED,
+        format!(
+            "{count} inline image(s) (`BI` … `ID` … `EI`) were drawn on this document and are NOT \
+             emitted as image nodes. An inline image carries its samples in the content stream \
+             itself, so it has no object number to address it by and no independent stream to \
+             digest — the two things an image node IS. Counted rather than skipped, because \
+             without this an artifact showing no image nodes could not be told apart from a \
+             document that draws no images. The pixels were never read and no filter was run."
+        ),
+    )
+}
+
+/// A `Do` named an XObject this profile could not resolve (v1-S6).
+pub fn xobject_name_unresolved(count: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::XOBJECT_NAME_UNRESOLVED,
+        format!(
+            "{count} `Do` operator(s) named an XObject this profile could not resolve — a name \
+             absent from the page's `/Resources /XObject`, a resource embedded directly rather \
+             than by reference, or an operand that is not a name. The page drew something; this \
+             reader cannot say what, so it emits no node for it and counts it here instead. \
+             **Not a refusal**: the operator is known, the document is malformed only in this \
+             bounded way, and rejecting the whole file over it would turn documents that read \
+             today into failures. Not a silent skip either — that is what this count is for."
+        ),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

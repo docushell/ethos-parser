@@ -43,10 +43,10 @@ the items re-exported at the crate root.
 | `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `OBSERVATION_RULE_V1`, `RasterDpi`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
@@ -130,15 +130,16 @@ Do not persist it as a record or feed it to a fingerprint — `docs/01-CONTRACT.
 | Kind | Supported items |
 | --- | --- |
 | Handle | `Document` — `open`, `open_bytes`, `source_sha256`, `byte_len`, `page_count` |
-| Stages | `classify`, `extract`, `to_representation` |
-| Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator` |
+| Stages | `classify`, `extract`, `to_representation`, `build_overlay` |
+| Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord` |
 | Reason vocabulary | `OcrNeedReason`, `LayoutComplexityReason` |
 | Format detection | `check_pdf_magic` |
 | Modules | `exit` (`SIMPLE`, `NEEDS_ATTENTION`, `COULD_NOT_READ`, `exit_code`) · `limitations` (limitation-code constants and builders) |
-| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `PROCESSOR_NAME`, `CRATE_NAME` |
+| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `PROCESSOR_NAME`, `CRATE_NAME` |
 
 **Internal, do not use:** `ops`, `content`, `cmap`, `encoding`, `fonts`, `metrics`, `text_state`,
-`thresholds`, `nodes`, `magic`, `classify`, `document`, `extract`, `represent`, `reasons` as
+`thresholds`, `nodes`, `magic`, `classify`, `document`, `extract`, `represent`, `reasons`,
+`images`, `overlay`, `reading_order` as
 *modules*. The items named above are re-exported at the crate root and that is the address to use;
 the module paths are not.
 

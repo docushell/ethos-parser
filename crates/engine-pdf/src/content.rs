@@ -76,6 +76,32 @@ pub struct ShownText {
     pub artifact: bool,
     /// Indices into `text` this reader inserted.
     pub synthesized_indices: Vec<u32>,
+    /// The text rendering mode in force when this run was shown (v1-S6).
+    ///
+    /// `Tr` was tracked in the text state from v0 onward and **read by nothing** — so a run
+    /// painted in mode 3 arrived at a consumer indistinguishable from visible prose. The text was
+    /// never dropped, which is the half that mattered; what was missing is that anyone could
+    /// tell. This carries the mode out of the interpreter so extraction can flag it.
+    pub render_mode: i64,
+}
+
+/// One image XObject a page painted with `Do`, in **user space** (v1-S6).
+///
+/// The rectangle is the current transformation matrix applied to the unit square every PDF image
+/// is defined on (32000-1 §8.9.5.2), so it is the area the placement actually covered — not the
+/// bitmap's pixel dimensions, which are a different quantity in different units.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImagePlacement {
+    /// The XObject's own object id, so a consumer can tell one picture placed five times from
+    /// five pictures placed once.
+    pub object: lopdf::ObjectId,
+    /// The four corners of the transformed unit square, in user space, in the order
+    /// `(0,0) (1,0) (1,1) (0,1)`.
+    ///
+    /// All four rather than a bounding box, because whether the placement is axis-aligned is
+    /// decided from them: a rotated image covers a parallelogram, and its bounding box would
+    /// claim page area the picture does not cover.
+    pub corners: [(f64, f64); 4],
 }
 
 /// One axis-aligned rectangle a page's path operators drew, in **user space**.
@@ -138,6 +164,12 @@ struct Subpath {
 /// Interprets one page's content stream.
 pub struct Interpreter<'a> {
     fonts: &'a std::collections::BTreeMap<String, Font>,
+    /// The page's `/XObject` resources, by resource name (v1-S6).
+    ///
+    /// `None` when the caller supplied none, which is not the same as an empty map: an empty map
+    /// means the page declares no XObjects, and `None` means nobody looked. A `Do` under `None`
+    /// counts as unresolved rather than silently succeeding.
+    xobjects: Option<std::collections::BTreeMap<String, lopdf::ObjectId>>,
     gs_stack: Vec<GraphicsState>,
     gs: GraphicsState,
     ts: TextState,
@@ -166,6 +198,22 @@ pub struct Interpreter<'a> {
     /// Those may carry an `/MCID` this profile did not resolve, so their content can look
     /// untagged when it is not. Counted rather than assumed away.
     pub props_by_name: u32,
+    /// Image XObjects this page painted, in the order it painted them (v1-S6).
+    pub images: Vec<ImagePlacement>,
+    /// `Do` calls naming an XObject this profile could not resolve (v1-S6).
+    ///
+    /// A name absent from `/Resources /XObject`, or a resource that is not a stream. Counted and
+    /// declared rather than refused: a `Do` whose name does not resolve drew nothing this reader
+    /// can describe, and rejecting the whole document over it would turn files that parse today
+    /// into failures. Counted rather than ignored, because "no image nodes" must not be able to
+    /// mean "there were images and the reader lost them".
+    pub unresolved_xobjects: u32,
+    /// Inline images (`BI`/`ID`/`EI`) this page drew (v1-S6).
+    ///
+    /// Not emitted as nodes: an inline image has no object number to address and no independent
+    /// stream to digest, because its samples live in the content stream itself. Counted so the
+    /// absence of a node for it is visible on the artifact.
+    pub inline_images: u32,
 }
 
 impl<'a> Interpreter<'a> {
@@ -184,7 +232,24 @@ impl<'a> Interpreter<'a> {
             pending: Vec::new(),
             dropped_runs: 0,
             props_by_name: 0,
+            images: Vec::new(),
+            unresolved_xobjects: 0,
+            inline_images: 0,
+            xobjects: None,
         }
+    }
+
+    /// Supply the page's `/XObject` resource dictionary, so `Do` can be resolved (v1-S6).
+    ///
+    /// Separate from [`Self::new`] because a caller that has no resources — every unit test in
+    /// this module — must still be able to build an interpreter, and because it makes the
+    /// dependency visible at the one call site that has a document to hand.
+    pub fn with_xobjects(
+        mut self,
+        xobjects: std::collections::BTreeMap<String, lopdf::ObjectId>,
+    ) -> Self {
+        self.xobjects = Some(xobjects);
+        self
     }
 
     /// The `/MCID` of the **innermost** open sequence.
@@ -472,11 +537,28 @@ impl<'a> Interpreter<'a> {
                 self.subpath = Subpath::default();
                 self.pending.clear();
             }
-            // Shading and images. `Do` may draw a form XObject containing text; this profile
-            // does not descend into them, and that is a declared limitation rather than a
-            // silent omission — see `extract`'s `not_decoded`.
-            Shading | XObject => {}
-            BeginInlineImage | InlineImageData | EndInlineImage => {}
+            // v1-S6. `Do` names an XObject in the page's resources. An `/Image` is a placement
+            // this profile records; a `/Form` is content this profile still does not descend
+            // into, and `form-xobject-text-not-descended` is where that stays declared.
+            //
+            // **Fail-closed still applies to the OPERATOR, not to the operand.** An unrecognised
+            // operator stops the parse, as it always has. A `Do` naming a resource that does not
+            // resolve is a different situation: the document is malformed in a bounded way, the
+            // page drew something this reader cannot describe, and refusing the whole document
+            // over it would turn files that parse today into failures. It is counted, and the
+            // count is declared.
+            XObject => self.draw_xobject(operands),
+            Shading => {}
+            // Inline images carry their samples in the content stream itself, so there is no
+            // object to address and no separate stream to digest. Counted, and declared — an
+            // uncounted skip here would let "this page has no image nodes" read as "this page has
+            // no images", which is the silent drop this project refuses.
+            //
+            // lopdf collapses the whole `BI … ID … EI` sequence into one operand-less `BI`
+            // operation, and on a *filtered* inline image it recovers by scanning forward to
+            // `EI`. So this arm is the only place the engine can learn one happened at all.
+            BeginInlineImage => self.inline_images = self.inline_images.saturating_add(1),
+            InlineImageData | EndInlineImage => {}
             // Type 3 glyph metrics, meaningful only inside a glyph procedure.
             Type3Width | Type3WidthBBox => {}
             // Compatibility sections: PDF 32000-1 §7.8.2 says unrecognised operators inside
@@ -564,9 +646,60 @@ impl<'a> Interpreter<'a> {
             mcid: self.current_mcid(),
             artifact: self.inside_artifact(),
             synthesized_indices: synthesized.to_vec(),
+            // v1-S6. Carried out of the text state so extraction can flag it. The run is pushed
+            // either way — this is an observation about the run, never a reason to withhold it.
+            render_mode: self.ts.render_mode,
         });
 
         Ok(())
+    }
+
+    /// `Do` — record an image placement, or count a name that did not resolve (v1-S6).
+    ///
+    /// # The unit square is the whole trick
+    ///
+    /// A PDF image is defined on the unit square: whatever its pixel dimensions, the content
+    /// stream draws it into `(0,0)…(1,1)` and the current transformation matrix decides where
+    /// that lands and how big it is (32000-1 §8.9.5.2). So the area a placement covers is exactly
+    /// the CTM applied to four corners — a real measurement of the document's own matrix, not an
+    /// inference, and specifically **not** the bitmap's `/Width` and `/Height`, which are a
+    /// different quantity in different units and would be a box derived from a property that is
+    /// not a box.
+    ///
+    /// All four corners are kept rather than a bounding box, because whether the placement is
+    /// axis-aligned is decided from them further downstream. A rotated image genuinely covers a
+    /// parallelogram, and its bounding box claims page area the picture does not cover.
+    ///
+    /// # What is not resolved here
+    ///
+    /// The XObject's `/Subtype`. This module has an object id and no document, by design — the
+    /// interpreter never held a `Document` and giving it one to look up a subtype would hand the
+    /// content-stream reader the whole object graph. Extraction sorts `/Image` from `/Form`,
+    /// where the document is already in scope.
+    fn draw_xobject(&mut self, operands: &[lopdf::Object]) {
+        let name = match operands.first() {
+            Some(lopdf::Object::Name(n)) => String::from_utf8_lossy(n).into_owned(),
+            // `Do` with no operand, or an operand that is not a name. The document is malformed;
+            // nothing here can say what it meant to draw.
+            _ => {
+                self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
+                return;
+            }
+        };
+        let Some(object) = self.xobjects.as_ref().and_then(|x| x.get(&name)).copied() else {
+            self.unresolved_xobjects = self.unresolved_xobjects.saturating_add(1);
+            return;
+        };
+        let m = self.gs.ctm;
+        self.images.push(ImagePlacement {
+            object,
+            corners: [
+                m.apply(0.0, 0.0),
+                m.apply(1.0, 0.0),
+                m.apply(1.0, 1.0),
+                m.apply(0.0, 1.0),
+            ],
+        });
     }
 
     /// `TJ` — strings interleaved with positioning adjustments.

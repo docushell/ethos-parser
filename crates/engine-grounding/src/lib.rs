@@ -442,6 +442,20 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         // ids and their rectangles intact.
         form_fields: _,
         annotations: _,
+        // v1-S6. Also deliberately nothing, and for a **third** reason rather than the same one.
+        //
+        // An image node's rectangle is not a declared `/Rect` and not measured ink: it is the
+        // page's own transformation matrix applied to the unit square. `ethos.grounding.v1` has
+        // one kind of box and it means measured ink, so a painted rectangle projected as a `bbox`
+        // would be the third provenance flattened into the first — the distinction v1-S4 refused
+        // to flatten, refused again here.
+        //
+        // Omitted, counted, and declared in the representation. The node keeps its object number,
+        // its digest and its rectangle in the record, which is where a consumer that needs them
+        // goes.
+        images: _,
+        // Nothing to project: no raster is produced at all under this profile.
+        page_screenshots: _,
     } = caps;
 
     if char_offsets {

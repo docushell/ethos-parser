@@ -116,6 +116,16 @@ pub struct TextRun {
     pub structural: Option<engine_core::StructuralLocator>,
     /// How this run came to exist. `Extracted` for text read from the content stream.
     pub derivation: DerivationClass,
+    /// What was observed about this run beyond its text (v1-S6).
+    ///
+    /// **The run is here either way.** A finding is added to a node, never a reason to drop one:
+    /// OpenDataLoader deletes low-contrast text before returning a page, so its caller cannot
+    /// tell a clean document from a scrubbed one, and that is the defect checklist O21 names.
+    ///
+    /// Sorted and deduplicated, so two runs observed the same way cannot differ by the order the
+    /// observations happened to be made in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<engine_core::TextFinding>,
 }
 
 impl TextRun {
@@ -156,6 +166,28 @@ pub struct PageExtract {
     /// no content-stream operator mentions. Merging them into the run list is the one thing this
     /// slice exists to prevent.
     pub objects: Vec<PageObjectRecord>,
+    /// Images this page painted with `Do` (v1-S6).
+    ///
+    /// **Empty means the walk looked and found none**, as for `tables` and `objects`. One entry
+    /// per placement, in the order the page painted them — the same XObject drawn five times is
+    /// five entries sharing one object number, which is the fact a consumer needs to tell that
+    /// from five different pictures.
+    ///
+    /// Separate from `runs` for the reason `objects` is: an image is not text, it has no
+    /// baseline, and nothing about it belongs in a reading order over glyphs.
+    pub images: Vec<ImageRecord>,
+}
+
+/// One image placement, as extraction records it (v1-S6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageRecord {
+    /// Stable id, allocated like any other node's.
+    pub id: NodeId,
+    /// Page, XObject number, and the rectangle this placement painted into.
+    pub locator: engine_core::PdfImageLocator,
+    /// What the stream dictionary declares, and the digest of its bytes.
+    pub attributes: engine_core::ImageAttributes,
 }
 
 /// One annotation or form field, as extraction records it (v1-S4).
@@ -198,6 +230,7 @@ mod tests {
             },
             geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             mcid: None,
+            findings: Vec::new(),
             structural: None,
             derivation: DerivationClass::Extracted,
         }

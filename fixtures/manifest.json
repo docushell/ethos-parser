@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 22
+    "engine_owned": 26
   },
   "fixtures": [
     {
@@ -382,6 +382,42 @@
       "sha256": "sha256:65c21a911189d038897d2fa0b479b95588e0112e463a231d51e994e033d49828",
       "owner": "engine",
       "notes": "v1-S5 anti-cliff pair, half two. The SAME page with ONE line added to the left column. Fifteen lines is the other side of the boundary a line-count rule flips on. Expect the SAME column-major order, which is the whole point: the rule measures a gutter, and a gutter does not move when a line is added."
+    },
+    {
+      "id": "image-xobject-drawn",
+      "root": "engine",
+      "group": "engine",
+      "path": "image-xobject-drawn/document.pdf",
+      "sha256": "sha256:10159521d266dc84eb1e1cee61a27455745633b2a219afc2c9684625c32f12d0",
+      "owner": "engine",
+      "notes": "v1-S6 image golden. A 2x2 /FlateDecode image XObject PAINTED with `Do` under `120 0 0 60 40 60 cm`. Expect one image node whose rect is the MATRIX (120x60 points at (40,60)) and not the pixel count (2x2), a digest over the encoded stream, and media type `pdf_encoded_samples` \u2014 deflated samples are not a file. NO fixture in either owned corpus contains an image XObject, so without this the whole image path is untested."
+    },
+    {
+      "id": "image-declared-not-drawn",
+      "root": "engine",
+      "group": "engine",
+      "path": "image-declared-not-drawn/document.pdf",
+      "sha256": "sha256:fc51aae517900d58e78966431da613924692ecf4b3870a32d6a9297a1a59efff",
+      "owner": "engine",
+      "notes": "v1-S6, the other half of the images proof. The SAME image object declared in /Resources and never drawn. Expect ZERO image nodes with the capability still true: `Do` is what makes a placement. Classify still counts the declared resource and reports `embedded-images`, which is a different question honestly answered."
+    },
+    {
+      "id": "invisible-render-mode",
+      "root": "engine",
+      "group": "engine",
+      "path": "invisible-render-mode/document.pdf",
+      "sha256": "sha256:05c83f21891db55e5e81f9c3543e9b2bcae2b45954ba33a45b96be54574e4e0b",
+      "owner": "engine",
+      "notes": "v1-S6 hidden-text golden, and checklist O21 in one page. Three strings, the middle one under `3 Tr`. Expect all three PRESENT in reading order, the middle one flagged `invisible-render-mode`, and the count declared. A reader that filtered it would return a page that looks clean \u2014 the OpenDataLoader defect."
+    },
+    {
+      "id": "off-page-and-offset-box",
+      "root": "engine",
+      "group": "engine",
+      "path": "off-page-and-offset-box/document.pdf",
+      "sha256": "sha256:68e879058103240dbec7c0ccf19c3bd9f6e2c20d14dfc8eb13663ce8d9cbe9ff",
+      "owner": "engine",
+      "notes": "v1-S6 off-page golden, and the coordinate-repair golden. /MediaBox [0 20 300 220] \u2014 an origin that is NOT (0,0), which no document in either corpus has \u2014 plus /CropBox [0 40 300 200] and one run below it. Expect y=10000 and y=19000 (the origin is subtracted, which it was not through v1-S5) and exactly the second run flagged `off-page`, measured against the CROP box rather than the media box."
     }
   ]
 }

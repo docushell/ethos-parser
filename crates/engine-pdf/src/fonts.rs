@@ -432,6 +432,21 @@ pub(crate) fn resolve_array<'a>(
     }
 }
 
+/// Follow one indirect reference, if the object is one (v1-S6).
+///
+/// A page attribute may be written either way — `/Rotate 90` and `/Rotate 90 0 R` mean the same
+/// thing — and a reader that handles only the direct form silently reads the indirect one as
+/// absent. That is how a rotated page becomes an unrotated one, and every coordinate on it wrong.
+pub(crate) fn resolve_object<'a>(
+    doc: &'a lopdf::Document,
+    obj: Option<&'a lopdf::Object>,
+) -> Option<lopdf::Object> {
+    match obj? {
+        lopdf::Object::Reference(r) => doc.get_object(*r).ok().cloned(),
+        other => Some(other.clone()),
+    }
+}
+
 pub(crate) fn resolve_stream<'a>(
     doc: &'a lopdf::Document,
     obj: Option<&'a lopdf::Object>,
