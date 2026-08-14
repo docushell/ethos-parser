@@ -432,14 +432,33 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
                 .into(),
         ));
     }
-    if tables {
-        return Err(malformed(
-            "the profile claims tables, which v0 does not detect or emit. A claimed capability \
-             with no array is rejected by the consuming validator, and an empty array would be a \
-             claim to have looked."
-                .into(),
-        ));
-    }
+    // v1-S1: the claim is now honoured rather than refused. `tables: true` means the detector
+    // looked, so the array is present — **possibly empty**, which is the artifact saying it
+    // looked and found none. `None` and `Some(vec![])` are different artifacts and the consuming
+    // validator treats the difference as meaning what it says.
+    let projected_tables: Vec<Table> = payload
+        .tables
+        .iter()
+        .map(|t| Table {
+            id: t.id.as_str().to_string(),
+            page: t.page.as_str().to_string(),
+            bbox: t.bbox.to_array(),
+            cells: t
+                .cells
+                .iter()
+                .map(|c| Cell {
+                    row: c.position.row,
+                    col: c.position.column,
+                    row_span: c.position.rowspan,
+                    col_span: c.position.colspan,
+                    bbox: c.bbox.to_array(),
+                    // The concatenation the record already holds. Not recomputed here: two
+                    // places deriving the same text is two places for it to drift.
+                    text: c.text.clone(),
+                })
+                .collect(),
+        })
+        .collect();
 
     Ok(Projection {
         source: GroundingSource {
@@ -469,8 +488,9 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
             // Present iff claimed. `None` and `Some(vec![])` are different artifacts, and the
             // consuming validator treats the mismatch as an error rather than a nicety.
             spans: if spans_claimed { Some(spans) } else { None },
-            // Always absent at v0: `tables: true` is rejected above, so this cannot be `Some`.
-            tables: None,
+            // Present iff claimed, exactly like `spans`. From v1-S1 the capability is true, so
+            // this is `Some` — and an empty vec is a real answer, not a missing one.
+            tables: if tables { Some(projected_tables) } else { None },
         },
         omission: OmissionReport {
             nodes_total: payload.nodes.len() as u32,

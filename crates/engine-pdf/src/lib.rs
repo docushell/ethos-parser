@@ -63,6 +63,7 @@ pub(crate) mod nodes;
 pub(crate) mod ops;
 pub(crate) mod reasons;
 pub(crate) mod represent;
+pub(crate) mod tables;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;
 pub(crate) mod xref;

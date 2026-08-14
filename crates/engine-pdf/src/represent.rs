@@ -59,9 +59,36 @@ pub fn to_representation(
     let mut pages = Vec::with_capacity(extract.pages.len());
     let mut nodes = Vec::new();
     let mut geometry: Vec<NodeGeometry> = Vec::new();
+    let mut tables: Vec<engine_core::TableRecord> = Vec::new();
 
     for page in &extract.pages {
         let page_id = alloc.next(IdKind::Page)?;
+
+        // v1-S1. Tables carry forward the ids the detector already allocated — re-allocating
+        // here would give a cell's `table_id` a different value from its table's `id`, and the
+        // structural half of the cross-check addresses cells through exactly that link.
+        for t in &page.tables {
+            let mut cells = Vec::with_capacity(t.cells.len());
+            for c in &t.cells {
+                cells.push(engine_core::TableCellRecord {
+                    id: alloc.next(IdKind::Element)?,
+                    position: c.position.clone(),
+                    bbox: rect_to_qrect(c.rect)?,
+                    text: c.text.clone(),
+                });
+            }
+            tables.push(engine_core::TableRecord {
+                id: t.id.clone(),
+                page: page_id.clone(),
+                bbox: rect_to_qrect(t.rect)?,
+                rows: t.rows,
+                columns: t.columns,
+                cells,
+                // Never Extracted. The ruling lines and the runs are; the grid over them is not.
+                derivation: crate::tables::TABLE_DERIVATION,
+                locator_check: t.check.clone(),
+            });
+        }
         pages.push(PageRecord {
             id: page_id.clone(),
             // The document's own number, not this record's position. They differ the moment a
@@ -166,6 +193,7 @@ pub fn to_representation(
         coordinate_system: profile.coordinate_system,
         pages,
         nodes,
+        tables,
         assurance,
     };
 
@@ -193,6 +221,14 @@ fn geometry_absent_limitation(not_groundable: u32, total: u32) -> Limitation {
              the count that reconciles them."
         ),
     )
+}
+
+/// A detected rectangle as the contract's rectangle type.
+fn rect_to_qrect(r: crate::tables::QuantRect) -> Result<engine_core::QRect, EngineError> {
+    engine_core::QRect::new(r.x0, r.y0, r.x1, r.y1).map_err(|e| EngineError::Malformed {
+        what: "table geometry".into(),
+        detail: e.to_string(),
+    })
 }
 
 #[cfg(test)]

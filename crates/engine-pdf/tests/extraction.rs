@@ -465,11 +465,16 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
         "a repaired open must declare itself: {codes:?}"
     );
 
-    // Tables remain out of scope: this is a table document read as single-column text in stream
-    // order, and the artifact says so rather than implying a table was understood.
+    // This is a table document with NO ruling lines — its grid is text position alone — so the
+    // v1-S1 ruled detector finds nothing, and the artifact says which kind of looking it did.
+    // Rewritten at v1-S1: `tables-not-extracted` was the partner of `tables: false` and is gone.
     assert!(
-        codes.contains(&"tables-not-extracted"),
-        "the table limitation still stands on a table document: {codes:?}"
+        codes.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED),
+        "an unruled table document must say the detector only looks for ruled ones: {codes:?}"
+    );
+    assert!(
+        !codes.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
+        "the false-capability partner is gone now that tables are detected: {codes:?}"
     );
 }
 
@@ -879,4 +884,149 @@ fn pdf_with_only_unmappable_text() -> Vec<u8> {
         .as_bytes(),
     );
     out
+}
+
+// -------------------------------------------------------------------------------------------
+// v1-S1 — ruled tables (docs/09-V1-MILESTONES.md S1)
+// -------------------------------------------------------------------------------------------
+
+/// **The ruled golden.** A 3×3 grid the document drew, with one merge and one empty cell.
+#[test]
+fn a_ruled_grid_is_reconstructed_with_spans_and_parent_ids() {
+    let a = extract_ok(engine_fx("ruled-table-grid"));
+    let page = &a.pages[0];
+    assert_eq!(page.tables.len(), 1, "one drawn grid, one table");
+
+    let t = &page.tables[0];
+    assert_eq!((t.rows, t.columns), (3, 3));
+    assert_eq!(t.cells.len(), 8, "9 slots, one cell covering two of them");
+
+    // Zero-based, and span 1 means not merged.
+    let cell = |row, col| {
+        t.cells
+            .iter()
+            .find(|c| c.position.row == row && c.position.column == col)
+            .unwrap_or_else(|| panic!("no cell at ({row}, {col})"))
+    };
+    assert_eq!(cell(0, 0).text, "Name");
+    assert_eq!(cell(0, 1).text, "Q1");
+    assert_eq!(cell(0, 2).text, "Q2");
+    assert_eq!(cell(1, 0).text, "Alpha");
+    assert_eq!(cell(1, 1).text, "10");
+
+    // The merged cell owns both slots it covers.
+    let merged = cell(2, 1);
+    assert_eq!(merged.position.colspan, 2, "row 2 columns 1-2 are one cell");
+    assert_eq!(merged.position.rowspan, 1);
+    assert_eq!(merged.text, "n/a");
+    assert_eq!(merged.position.slots().len(), 2);
+
+    // Every cell names its parent, and no cell claims a span of zero.
+    for c in &t.cells {
+        assert_eq!(
+            c.position.table_id, t.id,
+            "a cell without its table is unaddressable"
+        );
+        assert!(c.position.is_well_formed(), "{:?}", c.position);
+    }
+}
+
+/// **Fabrication 0.** A cell whose rectangle encloses no text is empty, not borrowed.
+#[test]
+fn a_cell_enclosing_no_text_is_empty_rather_than_filled_from_nearby() {
+    let a = extract_ok(engine_fx("ruled-table-grid"));
+    let t = &a.pages[0].tables[0];
+    let empty = t
+        .cells
+        .iter()
+        .find(|c| c.position.row == 1 && c.position.column == 2)
+        .expect("row 1 column 2 exists");
+
+    assert_eq!(
+        empty.text, "",
+        "the fixture puts no text in this cell; anything here came from a neighbour"
+    );
+    assert!(empty.run_indices.is_empty());
+}
+
+/// **Fabrication 0, as a property rather than an example.**
+///
+/// Every cell's text is the concatenation of the runs assigned to it, in order — so it is a
+/// rearrangement of text the document contains and can never be a novel string.
+#[test]
+fn every_cell_text_is_built_only_from_extracted_runs() {
+    for name in ["ruled-table-grid", "ruled-table-overlap"] {
+        let a = extract_ok(engine_fx(name));
+        for page in &a.pages {
+            let run_texts: Vec<&str> = page.runs.iter().map(|r| r.text.as_str()).collect();
+            for t in &page.tables {
+                for c in &t.cells {
+                    let rebuilt: String = c.run_indices.iter().map(|i| run_texts[*i]).collect();
+                    assert_eq!(
+                        c.text, rebuilt,
+                        "{name}: a cell's text must be exactly its assigned runs"
+                    );
+                    for i in &c.run_indices {
+                        assert!(*i < run_texts.len(), "{name}: run index out of range");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// **The cross-check agrees on the golden**, and disagrees on the hostile fixture.
+#[test]
+fn the_locator_cross_check_reports_agreement_and_disagreement() {
+    use engine_core::CheckStatus;
+
+    let good = extract_ok(engine_fx("ruled-table-grid"));
+    let t = &good.pages[0].tables[0];
+    assert_eq!(t.check.outcome, CheckStatus::Ok, "{:?}", t.check);
+    assert_eq!(t.check.check_id, engine_core::LOCATOR_CHECK_V1);
+
+    // The hostile fixture draws overlapping rectangles. The engine must SAY so — and must not
+    // nudge a coordinate to make the grid tile.
+    let bad = extract_ok(engine_fx("ruled-table-overlap"));
+    let hostile = bad
+        .pages
+        .iter()
+        .flat_map(|p| p.tables.iter())
+        .find(|t| !matches!(t.check.outcome, CheckStatus::Ok))
+        .expect("the overlap fixture must produce a mismatch");
+
+    match &hostile.check.outcome {
+        CheckStatus::Mismatch {
+            structural,
+            geometric,
+        } => {
+            assert!(
+                !structural.is_empty() || !geometric.is_empty(),
+                "a mismatch must name what disagreed"
+            );
+        }
+        other => panic!("expected a mismatch, got {other:?}"),
+    }
+}
+
+/// **Looked, found none.** A text-only page produces an empty table list, not an absent one and
+/// not a fabricated table around the page.
+#[test]
+fn a_page_with_no_ruling_lines_reports_an_empty_table_list() {
+    // `synthetic/table-regular-grid` is the case worth naming: its 3×2 grid is laid out by text
+    // position with NO path operators at all, so the ruled detector correctly finds nothing.
+    // That is an S2 fixture wearing an S1 name (docs/08-V1-SCOPE.md §5).
+    for path in [
+        conformance("synthetic/table-regular-grid/document.pdf"),
+        conformance("synthetic/simple-text/document.pdf"),
+    ] {
+        let a = extract_ok(path.clone());
+        for page in &a.pages {
+            assert!(
+                page.tables.is_empty(),
+                "{path:?}: a page with no ruling lines has no ruled table — and certainly not a \
+                 1x1 one around the page"
+            );
+        }
+    }
 }

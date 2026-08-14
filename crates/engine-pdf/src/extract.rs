@@ -248,7 +248,29 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             });
         }
 
+        // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
+        // user space and go through the SAME transform and quantum as a glyph origin — a table
+        // whose geometry lived in a different coordinate system from the text inside it would be
+        // uncheckable by construction.
+        let mut table_rects = Vec::with_capacity(interp.rects.len());
+        for r in &interp.rects {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_rects.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
+        let origins: Vec<crate::tables::RunOrigin<'_>> = runs
+            .iter()
+            .map(|r| crate::tables::RunOrigin {
+                x: r.locator.origin_x,
+                y: r.locator.origin_y,
+                text: r.text.as_str(),
+            })
+            .collect();
+        let tables = crate::tables::detect(page_number, &table_rects, &origins, &mut alloc)?;
+        drop(origins);
+
         pages.push(PageExtract {
+            tables,
             index: page_number,
             width: quantize(geom.display_width, QUANTUM_PER_POINT).map_err(quantize_err)?,
             height: quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?,

@@ -129,6 +129,12 @@ pub struct PageExtract {
     pub rotation: i64,
     /// Runs in reading order.
     pub runs: Vec<TextRun>,
+    /// Ruled tables detected on this page (v1-S1).
+    ///
+    /// **Empty means the detector looked and found none** — never "did not look". The capability
+    /// says which of those two a reader is seeing, and `ethos.grounding.v1` draws the same
+    /// distinction with an absent key versus an empty array.
+    pub tables: Vec<crate::tables::DetectedTable>,
 }
 
 #[cfg(test)]

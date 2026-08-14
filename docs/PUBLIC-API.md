@@ -43,7 +43,7 @@ the items re-exported at the crate root.
 | `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `TABLE_DETECTION_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
 | `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `StructuralLocator`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
@@ -51,10 +51,23 @@ the items re-exported at the crate root.
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
 | `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` — **new at v0.1** |
+| `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1` — **new at v1-S1** |
 
 Plus `CRATE_NAME`, which exists so the M0 link harness can assert the workspace builds.
 
 **Internal, do not use:** nothing. Every module in this crate is contract.
+
+**The `tables` module is v1-S1.** `TableCellPosition` carries `(row, column, rowspan, colspan,
+table_id)` with zero-based indices and span 1 meaning *not merged*, and `CellSlot` enumerates
+every slot a merged cell occupies — addressing cells by array index with an implied span of 1 is
+the shipped Ethos ODL-adapter defect, and its real cost is that no cross-check can run afterwards.
+
+`SlotCover` is the **structural** half of the locator cross-check and is derived from indices and
+spans alone; `GeometricFault` is the geometric half and is derived from boxes alone. A test asserts
+no geometry reaches `SlotCover`, because a check whose two halves shared an input would agree with
+itself. `LocatorCheck` rides on the artifact rather than in `--diagnostics`: a mismatch changes
+whether a cell is trustworthy, which is a statement the artifact makes, not an observation about
+the run.
 
 **The `verifier` module is v0.1, and what it does *not* export is the point.** There is no report
 type, no claim, no check, no result — the engine spawns a verifier and forwards its bytes without

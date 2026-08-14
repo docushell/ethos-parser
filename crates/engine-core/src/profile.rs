@@ -39,6 +39,17 @@ use crate::identity::{CoordinateSystem, Sha256Hex};
 /// it gets a new id here rather than silently replacing this one.
 pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
 
+/// The table-detection rule v1-S1 ships: ruled grids reconstructed from painted rectangles.
+///
+/// Named here rather than in `engine-pdf` because the profile is `engine-core`'s and a rule id is
+/// data. The rule itself — the lattice tolerance, what counts as a grid — lives with the detector,
+/// and a test asserts the two strings agree so they cannot drift into naming different things.
+///
+/// **The unruled half is not in this rule.** A table implied by alignment is a different
+/// derivation under a different id (`docs/09-V1-MILESTONES.md` S2), and rolling it into this one
+/// would make two very different inferences share an identity.
+pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
+
 /// Identity of the character-decoding data this profile carries.
 ///
 /// Names what is **actually** vendored rather than what was planned. At M3 that is the
@@ -109,8 +120,13 @@ pub struct Capabilities {
     /// capability), so claiming it would oblige every span to carry them. It flips at v1, when
     /// grouping makes elements coarser than spans and the offsets start carrying information.
     pub char_offsets: bool,
-    /// Tables are detected and emitted. **v0: false** — tables are M-later, v1 scope.
-    /// (grounding-aligned)
+    /// Tables are detected and emitted. (grounding-aligned)
+    ///
+    /// **v1-S1: true**, and what it claims is precise — *this profile looked for tables*. It does
+    /// not claim every table is found. `ethos.grounding.v1` encodes exactly that distinction:
+    /// an absent `tables` key means the producer did not look, an empty array means it looked and
+    /// found none, and a non-empty one is tables. The ruled detector is the whole of S1, so a
+    /// table drawn without rules is a real miss and is declared as a limitation until S2.
     pub tables: bool,
     /// Ink boxes come from measured font metrics rather than being absent.
     pub measured_ink_boxes: bool,
@@ -138,7 +154,7 @@ impl Capabilities {
     pub const V0: Self = Self {
         spans: true,
         char_offsets: false,
-        tables: false,
+        tables: true,
         measured_ink_boxes: true,
         multi_column_reading_order: false,
         structural_locators: false,
@@ -322,6 +338,13 @@ pub struct Profile {
     pub page_budget: PageBudget,
     /// Version id of the reading-order rule in force.
     pub reading_order_rule: String,
+    /// Version id of the table-detection rule in force. New at v1-S1.
+    ///
+    /// A plain versioned string, like `reading_order_rule`, because the *rule* is the identity:
+    /// the lattice tolerance, what counts as a grid, and how a merged cell is recognised are all
+    /// part of it. Changing any of them takes a new id rather than silently redefining this one,
+    /// so artifacts from two detectors are correctly non-comparable.
+    pub table_detection: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
     /// Whether the bounded cross-reference repair runs. New at v0.1.
@@ -344,6 +367,7 @@ impl Default for Profile {
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
+            table_detection: TABLE_DETECTION_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -435,6 +459,7 @@ mod tests {
                 },
             page_budget: _,
             reading_order_rule: _,
+            table_detection: _,
             cmap_data_version: _,
             xref_repair: _,
             verifier: _,
@@ -447,6 +472,11 @@ mod tests {
             (
                 "parser_version",
                 Box::new(|p: &mut Profile| p.parser_version = "9.9.9-mutated".into()),
+            ),
+            (
+                // v1-S1. Which grids are found, and therefore which cells exist.
+                "table_detection",
+                Box::new(|p: &mut Profile| p.table_detection = "other-rule-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -492,8 +522,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.char_offsets = true),
             ),
             (
+                // Mutated toward `false`: `tables` is TRUE as of v1-S1, and a mutation to the
+                // value a field already holds tests nothing.
                 "capabilities.tables",
-                Box::new(|p: &mut Profile| p.capabilities.tables = true),
+                Box::new(|p: &mut Profile| p.capabilities.tables = false),
             ),
             (
                 "capabilities.measured_ink_boxes",
@@ -578,7 +610,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":false},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.2.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.3.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","table_detection":"ruled-rects-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -591,11 +623,15 @@ mod tests {
              version bump, the new `xref_repair` knob, and the new `verifier` pin. That one is \
              the largest identity change since M1: `xref_repair` decides whether a 19-byte xref \
              table produces an artifact at all. Artifacts from before and after are correctly \
-             non-comparable, because the profile that produced them really did change."
+             non-comparable, because the profile that produced them really did change. Moved a \
+             fourth time at v1-S1 (0.3.0): the version, the new `table_detection` rule, and \
+             `capabilities.tables` flipping false -> true. That last one is not a knob but a \
+             CLAIM — artifacts before it did not look for tables and artifacts after it did, \
+             which is exactly the kind of difference a profile hash exists to make visible."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8357e5ba077c36c0de617d0f5ba3c986f8bfb028478c1bc72ee7769d4b7f2497"
+            "sha256:fad389aea00732320a5bed0e513d196993b366fd2c7bf3a6c3a51baf57ef9a14"
         );
     }
 
@@ -626,7 +662,9 @@ mod tests {
     #[test]
     fn v0_capabilities_are_honest_about_what_is_missing() {
         let c = Capabilities::V0;
-        assert!(!c.tables, "tables are not v0 scope");
+        // `tables` flipped to true at v1-S1. What it claims is "this profile looked", not "every
+        // table is found" — the unruled case is a real miss and rides as its own limitation.
+        assert!(c.tables, "v1-S1 looks for ruled tables");
         assert!(
             !c.multi_column_reading_order,
             "v0 reads single-column and declares the limitation"

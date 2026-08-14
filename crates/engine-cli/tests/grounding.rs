@@ -288,7 +288,9 @@ fn the_field_exact_literals_are_what_the_schema_names() {
     assert_eq!(g.source.media_type, "application/pdf");
     assert_eq!(g.coordinate_system.unit, "centipoint");
     assert_eq!(g.coordinate_system.origin, "top-left");
-    assert!(!g.capabilities.tables, "v0 emits no tables");
+    // v1-S1: the capability is true — the detector looked. Whether it FOUND anything is the
+    // array's business, and on this fixture (no ruling lines) it found none.
+    assert!(g.capabilities.tables, "v1-S1 looks for ruled tables");
     assert!(g.capabilities.spans);
     assert!(!g.capabilities.char_offsets);
     assert_eq!(g.producer.name, "ethos-engine");
@@ -708,9 +710,12 @@ fn the_artifact_satisfies_the_invariants_the_schema_cannot_express() {
             "{label}: the spans array must be present exactly when the capability is claimed"
         );
         assert_eq!(g.capabilities.tables, g.tables.is_some(), "{label}");
+        // v1-S1 inverted this one, and the inversion is the whole point of the encoding:
+        // `tables: true` means the key is PRESENT — possibly an empty array, which says "looked,
+        // found none". An absent key would say "did not look", which is no longer true.
         assert!(
-            v.get("tables").is_none(),
-            "{label}: tables:false means the key is ABSENT, not an empty array"
+            v.get("tables").is_some(),
+            "{label}: tables:true means the key is PRESENT, empty array included"
         );
         // char_offsets requires spans, and offsets are present exactly when claimed.
         assert!(

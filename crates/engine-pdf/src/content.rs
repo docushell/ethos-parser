@@ -72,6 +72,49 @@ pub struct ShownText {
     pub synthesized_indices: Vec<u32>,
 }
 
+/// One axis-aligned rectangle a page's path operators drew, in **user space**.
+///
+/// v1-S1. Captured because a ruled table is a table the document *drew*: the ruling lines are
+/// evidence, not an inference about layout. `docs/08-V1-SCOPE.md` §5 is why that distinction is
+/// worth a slice boundary.
+///
+/// Held as `f64` here and quantized on the way to the artifact, exactly as a glyph origin is —
+/// `docs/01-CONTRACT.md` §4 keeps floats off the wire, not out of the interpreter.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathRect {
+    /// Smaller x, in user space.
+    pub x0: f64,
+    /// Smaller y.
+    pub y0: f64,
+    /// Larger x.
+    pub x1: f64,
+    /// Larger y.
+    pub y1: f64,
+}
+
+impl PathRect {
+    fn from_corners(a: (f64, f64), b: (f64, f64)) -> Self {
+        Self {
+            x0: a.0.min(b.0),
+            y0: a.1.min(b.1),
+            x1: a.0.max(b.0),
+            y1: a.1.max(b.1),
+        }
+    }
+}
+
+/// A subpath under construction.
+///
+/// Tracks only what is needed to decide "is this an axis-aligned rectangle": the points, and
+/// whether anything disqualifying happened. A curve or a diagonal disqualifies it permanently —
+/// **the alternative is tessellating a Bézier into fake ruling lines**, which would invent a
+/// table edge the document never drew.
+#[derive(Debug, Default)]
+struct Subpath {
+    points: Vec<(f64, f64)>,
+    disqualified: bool,
+}
+
 /// Interprets one page's content stream.
 pub struct Interpreter<'a> {
     fonts: &'a std::collections::BTreeMap<String, Font>,
@@ -83,6 +126,15 @@ pub struct Interpreter<'a> {
     pub shown: Vec<ShownText>,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
     pub undecodable: Vec<String>,
+    /// Axis-aligned rectangles this page painted, in user space (v1-S1).
+    ///
+    /// Only **painted** subpaths land here. A path built and then discarded with `n`, or used
+    /// solely as a clip, drew no ink and is not a ruling line.
+    pub rects: Vec<PathRect>,
+    /// The subpath being built.
+    subpath: Subpath,
+    /// Rectangles from the current path, pending a painting operator.
+    pending: Vec<PathRect>,
     /// How many runs were dropped because a font could not map one of their codes.
     ///
     /// Separate from [`Interpreter::undecodable`]'s length: one run can carry several
@@ -102,6 +154,9 @@ impl<'a> Interpreter<'a> {
             mcid_stack: Vec::new(),
             shown: Vec::new(),
             undecodable: Vec::new(),
+            rects: Vec::new(),
+            subpath: Subpath::default(),
+            pending: Vec::new(),
             dropped_runs: 0,
         }
     }
@@ -130,6 +185,9 @@ impl<'a> Interpreter<'a> {
                 // interpreter refused.
                 self.shown.clear();
                 self.undecodable.clear();
+                self.rects.clear();
+                self.pending.clear();
+                self.subpath = Subpath::default();
                 self.dropped_runs = 0;
                 Err(e)
             }
@@ -152,6 +210,39 @@ impl<'a> Interpreter<'a> {
             self.dispatch(operator, &op.operands)?;
         }
         Ok(())
+    }
+
+    /// Whether the current CTM maps axis-aligned rectangles to axis-aligned rectangles.
+    ///
+    /// True for scale-and-translate (and axis-swapping 90° rotations). False for any skew or
+    /// off-axis rotation, where a rectangle's image is a parallelogram and its bounding box would
+    /// be four edges the document did not draw.
+    fn ctm_is_axis_aligned(&self) -> bool {
+        let m = self.gs.ctm;
+        (approx_eq(m.b, 0.0) && approx_eq(m.c, 0.0)) || (approx_eq(m.a, 0.0) && approx_eq(m.d, 0.0))
+    }
+
+    /// Turn the subpath under construction into a rectangle, if it is one.
+    ///
+    /// A rectangle is four or five points (the fifth closing back to the first), all segments
+    /// axis-aligned, spanning exactly two distinct x values and two distinct y values. Anything
+    /// else — an L, a triangle, a polyline, a curve — is discarded rather than approximated.
+    fn flush_subpath(&mut self) {
+        let sub = std::mem::take(&mut self.subpath);
+        if sub.disqualified || !self.ctm_is_axis_aligned() {
+            return;
+        }
+        let pts = &sub.points;
+        if pts.len() < 4 || pts.len() > 5 {
+            return;
+        }
+        let xs: Vec<f64> = distinct(pts.iter().map(|p| p.0));
+        let ys: Vec<f64> = distinct(pts.iter().map(|p| p.1));
+        if xs.len() != 2 || ys.len() != 2 {
+            return;
+        }
+        self.pending
+            .push(PathRect::from_corners((xs[0], ys[0]), (xs[1], ys[1])));
     }
 
     /// The exhaustive match. **No wildcard arm.**
@@ -246,8 +337,52 @@ impl<'a> Interpreter<'a> {
             | Flatness | ExtGState => {}
             StrokeColorSpace | FillColorSpace | StrokeColor | StrokeColorN | FillColor
             | FillColorN | StrokeGray | FillGray | StrokeRgb | FillRgb | StrokeCmyk | FillCmyk => {}
-            // Path construction and painting: geometry that is not text.
-            MoveTo | LineTo | CurveTo | CurveToV | CurveToY | ClosePath | Rectangle => {}
+            // --- path construction: interpreted as of v1-S1 ---------------------------------
+            //
+            // These were acknowledged-skips through v0.1. A ruled table is a table the document
+            // *drew*, so the ruling lines are evidence and have to be read (`docs/08-V1-SCOPE.md`
+            // §5). Only axis-aligned geometry is captured, and only after a painting operator
+            // says ink reached the page.
+            Rectangle => {
+                // `re x y w h` — a complete subpath in its own right.
+                let (x, y, w, h) = (
+                    num(operands, 0)?,
+                    num(operands, 1)?,
+                    num(operands, 2)?,
+                    num(operands, 3)?,
+                );
+                let a = self.gs.ctm.apply(x, y);
+                let b = self.gs.ctm.apply(x + w, y + h);
+                // A rotated or skewed CTM turns a rectangle into a parallelogram. Capturing its
+                // bounding box would invent edges the document never drew, so it is dropped.
+                if self.ctm_is_axis_aligned() {
+                    self.pending.push(PathRect::from_corners(a, b));
+                }
+                self.subpath = Subpath::default();
+            }
+            MoveTo => {
+                self.flush_subpath();
+                let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
+                self.subpath.points.push(p);
+            }
+            LineTo => {
+                let p = self.gs.ctm.apply(num(operands, 0)?, num(operands, 1)?);
+                if let Some(&prev) = self.subpath.points.last() {
+                    // A diagonal is not a ruling line, and a rectangle inferred from one would be
+                    // an edge nobody drew.
+                    if !approx_eq(prev.0, p.0) && !approx_eq(prev.1, p.1) {
+                        self.subpath.disqualified = true;
+                    }
+                }
+                self.subpath.points.push(p);
+            }
+            ClosePath => self.flush_subpath(),
+            // **Curves are never tessellated into ruling lines.** Flattening a Bézier would
+            // manufacture straight edges for a table the document drew with curves — the
+            // clearest possible case of inventing geometry. The subpath is disqualified instead.
+            CurveTo | CurveToV | CurveToY => self.subpath.disqualified = true,
+
+            // --- painting: ink reached the page, so the pending rectangles are real ----------
             Stroke
             | CloseStroke
             | Fill
@@ -256,9 +391,22 @@ impl<'a> Interpreter<'a> {
             | FillStroke
             | FillStrokeEvenOdd
             | CloseFillStroke
-            | CloseFillStrokeEvenOdd
-            | EndPath => {}
-            Clip | ClipEvenOdd => {}
+            | CloseFillStrokeEvenOdd => {
+                self.flush_subpath();
+                self.rects.append(&mut self.pending);
+            }
+            // `n` ends a path **without painting it**. Nothing was drawn, so nothing is a ruling
+            // line — this is also the operator that ends a clip-only path.
+            EndPath => {
+                self.subpath = Subpath::default();
+                self.pending.clear();
+            }
+            // A clip path bounds what is visible; it draws nothing. Treating one as a table edge
+            // would find a grid in every document that clips to its margins.
+            Clip | ClipEvenOdd => {
+                self.subpath = Subpath::default();
+                self.pending.clear();
+            }
             // Shading and images. `Do` may draw a form XObject containing text; this profile
             // does not descend into them, and that is a declared limitation rather than a
             // silent omission — see `extract`'s `not_decoded`.
@@ -410,6 +558,30 @@ fn num(operands: &[lopdf::Object], i: usize) -> Result<f64, EngineError> {
     }
 }
 
+/// Tolerance for "the same coordinate", in user-space units.
+///
+/// One hundredth of a point — the quantum text origins are already rounded to
+/// (`docs/01-CONTRACT.md` §4). Coordinates closer together than the artifact can express are the
+/// same coordinate, and using a different tolerance here than the wire uses would let the
+/// interpreter distinguish points the artifact cannot.
+const COORD_EPSILON: f64 = 1.0 / engine_core::QUANTUM_PER_POINT as f64;
+
+fn approx_eq(a: f64, b: f64) -> bool {
+    (a - b).abs() < COORD_EPSILON
+}
+
+/// The distinct values in an iterator, within [`COORD_EPSILON`], sorted.
+fn distinct(values: impl Iterator<Item = f64>) -> Vec<f64> {
+    let mut out: Vec<f64> = Vec::new();
+    for v in values {
+        if !out.iter().any(|e| approx_eq(*e, v)) {
+            out.push(v);
+        }
+    }
+    out.sort_by(|a, b| a.partial_cmp(b).expect("path coordinates are finite"));
+    out
+}
+
 fn matrix_operands(operands: &[lopdf::Object]) -> Result<Matrix, EngineError> {
     if operands.len() < 6 {
         return Err(EngineError::Malformed {
@@ -529,6 +701,114 @@ mod tests {
             },
         );
         m
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // v1-S1 — path capture
+    // ---------------------------------------------------------------------------------------
+
+    #[test]
+    fn a_painted_rectangle_is_captured_in_user_space() {
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("40 80 100 40 re S")).unwrap();
+
+        assert_eq!(i.rects.len(), 1);
+        let r = i.rects[0];
+        assert!(approx_eq(r.x0, 40.0) && approx_eq(r.y0, 80.0));
+        assert!(approx_eq(r.x1, 140.0) && approx_eq(r.y1, 120.0));
+    }
+
+    #[test]
+    fn an_unpainted_path_draws_no_ruling_line() {
+        // `n` ends the path without painting. Nothing reached the page, so nothing is evidence
+        // of a rule — this is also how a clip-only path ends.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("40 80 100 40 re n")).unwrap();
+        assert!(i.rects.is_empty(), "an unpainted path is not a ruling line");
+    }
+
+    #[test]
+    fn a_clip_path_is_not_a_ruling_line() {
+        // Every document that clips to its margins would otherwise contain a one-cell table.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("0 0 612 792 re W n")).unwrap();
+        assert!(i.rects.is_empty());
+    }
+
+    #[test]
+    fn a_rectangle_drawn_as_four_lines_is_captured() {
+        // Real documents draw grids both ways. `m`/`l`/`h` closing back on itself is a rectangle
+        // as much as `re` is.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("40 80 m 140 80 l 140 120 l 40 120 l h S"))
+            .unwrap();
+        assert_eq!(i.rects.len(), 1, "got {:?}", i.rects);
+        let r = i.rects[0];
+        assert!(approx_eq(r.x0, 40.0) && approx_eq(r.x1, 140.0));
+    }
+
+    #[test]
+    fn a_diagonal_is_never_turned_into_a_rectangle() {
+        // The bounding box of a triangle is three edges the document did not draw.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("40 80 m 140 120 l 40 120 l h S")).unwrap();
+        assert!(i.rects.is_empty(), "got {:?}", i.rects);
+    }
+
+    #[test]
+    fn a_curve_is_never_flattened_into_ruling_lines() {
+        // Tessellating a Bezier would manufacture straight edges for a table drawn with curves —
+        // the clearest possible case of inventing geometry (docs/09-V1-MILESTONES.md S1).
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("40 80 m 140 80 l 140 120 40 120 40 80 c h S"))
+            .unwrap();
+        assert!(i.rects.is_empty(), "got {:?}", i.rects);
+    }
+
+    #[test]
+    fn a_rotated_ctm_drops_the_rectangle_rather_than_boxing_it() {
+        // Under a 45-degree CTM a rectangle's image is a diamond, and its bounding box is four
+        // edges nobody drew. Dropped, not approximated.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        let c = std::f64::consts::FRAC_1_SQRT_2;
+        i.run(&ops(&format!("{c} {c} -{c} {c} 0 0 cm 40 80 100 40 re S")))
+            .unwrap();
+        assert!(i.rects.is_empty(), "got {:?}", i.rects);
+    }
+
+    #[test]
+    fn the_ctm_is_applied_to_captured_geometry() {
+        // A scale-and-translate CTM keeps a rectangle a rectangle, so it is captured — in the
+        // coordinates the page actually paints it at.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("2 0 0 2 10 20 cm 40 80 100 40 re S")).unwrap();
+        assert_eq!(i.rects.len(), 1);
+        let r = i.rects[0];
+        assert!(approx_eq(r.x0, 90.0), "got {r:?}");
+        assert!(approx_eq(r.y0, 180.0), "got {r:?}");
+        assert!(
+            approx_eq(r.x1, 290.0) && approx_eq(r.y1, 260.0),
+            "got {r:?}"
+        );
+    }
+
+    #[test]
+    fn a_refused_parse_discards_captured_geometry_too() {
+        // The same fail-closed rule the shown runs are under (M7): nothing a refused parse
+        // touched may survive to be read as a complete reading of the page.
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        let e = i.run(&ops("40 80 100 40 re S UnknownOp")).unwrap_err();
+        assert_eq!(e.code(), "unsupported");
+        assert!(i.rects.is_empty(), "geometry must go with the text");
     }
 
     /// Fail-closed means *nothing* survives, including text shown before the bad token.

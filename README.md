@@ -44,9 +44,10 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
 
 - **Start here:** [`docs/README.md`](docs/README.md)
 - **The frozen surface:** [`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)
-- **What is next:** v1 — tables with a locator cross-check, tagged-PDF consumption, multi-column
-  with a stable rule, forms and annotations ([`docs/02-ROADMAP.md`](docs/02-ROADMAP.md)). Not
-  started.
+- **v1 is in progress**, one slice at a time
+  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 is done**: ruled tables from
+  vector paths, `CellSlot` occupancy, and the locator cross-check. S2 (unruled tables) through S7
+  (the labelled-set gate) are not started.
 
 ## Building
 

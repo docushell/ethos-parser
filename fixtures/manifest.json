@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 6
+    "engine_owned": 8
   },
   "fixtures": [
     {
@@ -238,6 +238,24 @@
       "sha256": "sha256:25d30af7a36bd1b1b9209cbdbb650cf8c3fbdad628356b9abfa664342e9512e2",
       "owner": "engine",
       "notes": "Carries an /Encoding whose /Differences remap codes 200-202 to glyph names no vendored table resolves, so those codes cannot be decoded at all. In WinAnsiEncoding the same three codes are E-grave/E-acute/E-circumflex, so a reader that ignored /Differences \u2014 or fell back to the base encoding on a glyph-name miss \u2014 would emit mojibake the document does not contain, inside a perfectly well-formed artifact. A reader substituting U+FFFD would be no better. v0.1 drops the affected run whole, keeps the decodable run, and declares broken-font-encoding with the count (parity checklist P10)."
+    },
+    {
+      "id": "ruled-table-grid",
+      "root": "engine",
+      "group": "engine",
+      "path": "ruled-table-grid/document.pdf",
+      "sha256": "sha256:a3e49cdb84292ec133a70345d858592d6a280846b53b026abf98072f22326c80",
+      "owner": "engine",
+      "notes": "The v1-S1 ruled-table golden. A 3x3 lattice DRAWN with stroked `re` rectangles, one cell merged across columns 1-2 and one cell deliberately left empty. Two properties are the point: the merge makes CellSlot occupancy do real work (a cell spanning two columns must own both slots, which the shipped Ethos ODL adapter does not), and the empty cell is the fabrication-0 case (rectangles enclosing no text must yield empty text, never a neighbour's). Authored because the Ethos conformance corpus contains NO path operators at all -- `synthetic/table-regular-grid` lays its grid out with text position alone, so the ruled detector has nothing there to run on."
+    },
+    {
+      "id": "ruled-table-overlap",
+      "root": "engine",
+      "group": "engine",
+      "path": "ruled-table-overlap/document.pdf",
+      "sha256": "sha256:30c4f7c0d1cd48268ae2f97eb413476034e13a497ed7a1d99db979d26dd88ee1",
+      "owner": "engine",
+      "notes": "The v1-S1 cross-check hostile. Two rectangles claim the same lattice face, so the structural CellSlot cover cannot be exact and the geometric derivation sees an overlap. The engine must REPORT the disagreement on the artifact and never nudge a coordinate to make the grid tile (docs/01-CONTRACT.md 5.4)."
     }
   ]
 }

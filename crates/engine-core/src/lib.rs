@@ -31,6 +31,7 @@
 //! | [`error`] | The six-variant error taxonomy |
 //! | [`diagnostics`] | Volatile observations, quarantined off the artifact and off by default |
 //! | [`verifier`] | Spawning a verifier and relaying its bytes — **never** reading them |
+//! | [`tables`] | Table occupancy: `CellSlot`, spans, and the structural half of the cross-check |
 //!
 //! # Boundary
 //!
@@ -68,6 +69,7 @@ pub mod identity;
 pub mod ids;
 pub mod profile;
 pub mod representation;
+pub mod tables;
 pub mod verifier;
 
 pub use assurance::{
@@ -87,8 +89,13 @@ pub use identity::{
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, VerifierPin, XrefRepair,
-    CMAP_DATA_VERSION, READING_ORDER_RULE_V0,
+    CMAP_DATA_VERSION, READING_ORDER_RULE_V0, TABLE_DETECTION_V1,
 };
+pub use tables::{
+    CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
+    TableCellRecord, TableRecord, LOCATOR_CHECK_V1,
+};
+
 pub use verifier::{
     relay, RelayRequest, Relayed, VerifierBinary, GROUNDING_ADAPTER, RELAY_OK, RELAY_REFUSED,
     RELAY_UNAVAILABLE,

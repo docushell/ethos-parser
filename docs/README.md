@@ -1,6 +1,17 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v0.1 shipped, as 0.2.0.** v0 was frozen at M7 (0.1.0) and its exit criteria have not
+**Status:** **v1-S1 shipped, as 0.3.0.** v1 is the DocuShell replacement gate and is seven slices
+long (`08-V1-SCOPE.md`); this is the first. Ruled tables are reconstructed from the rectangles a
+document actually drew, every cell is cross-checked two independent ways, and fabrication is 0.
+**The > 0.489 accuracy gate is S7's**, not this slice's — see `08-V1-SCOPE.md` §3 for why chasing
+it earlier would be tuning against nobody's number.
+
+Two measurements shaped the slice and are worth knowing before reading the detector: no fixture in
+the Ethos conformance corpus contains a single path operator (so `synthetic/table-regular-grid` is
+an S2 fixture wearing an S1 name), and a first version of the detector fabricated a 662-cell table
+on `irs-form-1040-2025` before the coherence precondition landed.
+
+**Previously: v0.1, as 0.2.0.** v0 was frozen at M7 (0.1.0) and its exit criteria have not
 moved; this is the roadmap row after it (`02-ROADMAP.md`), and it is the first work that is a
 *version* rather than a milestone.
 
@@ -50,8 +61,8 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**Next: v0.1** — `ethos verify` as a declared capability, and the xref repair-or-refuse decision.
-Not started, and deliberately not an M-number: the milestone chain ends at v0.
+**Next: v1-S2** — unruled tables, from alignment rather than ruling lines
+(`09-V1-MILESTONES.md`). Not started.
 
 ---
 
@@ -61,12 +72,12 @@ Not started, and deliberately not an M-number: the milestone chain ends at v0.
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **M0–M7 are done and committed. v0 is frozen.** Do not re-author the workspace, the contract
-   types, the classifier, the extractor, the assurance envelope, the representation, the
-   projection, or the checker — and do not widen the public API without editing
-   [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. The next work is
-   **v0.1** (`ethos verify` as a declared capability; the xref repair-or-refuse decision), and it
-   is a roadmap item rather than an M-number
+5. **M0–M7 are done and v0 is frozen; v0.1 and v1-S1 shipped on top.** Do not re-author the
+   workspace, the contract types, the classifier, the extractor, the assurance envelope, the
+   representation, the projection, or the checker — and do not widen the public API without
+   editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
+   read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
+   first: v1 is **seven slices**, the next is S2, and the > 0.489 gate belongs to S7 alone
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it
@@ -110,6 +121,8 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
+| [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 is measured once at S7 · the ruled/unruled split · capability flip plan | Before any v1 work |
+| [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S7**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |

@@ -385,6 +385,66 @@ jobs:
         run: ${{ matrix.run }}
 
   # -----------------------------------------------------------------------------------------
+  # v1-S1 gates — the first slice of v1 (docs/09-V1-MILESTONES.md)
+  # -----------------------------------------------------------------------------------------
+  #
+  # A third matrix, for the same reason v0.1 got a second one: v0's §5 map is frozen and does not
+  # grow to accommodate later work. `v0_exit_criteria.rs` scopes its "every entry is claimed by a
+  # criterion" assertion to the `v0-exit-criteria` block precisely so these can exist.
+  v1s1-gates:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v1s1-paths
+            gate: "axis-aligned path capture; curves and diagonals never become ruling lines"
+            run: "cargo test -p engine-pdf --lib --locked -- content::tests"
+
+          - id: v1s1-ruled-tables
+            gate: "ruled grids, CellSlot occupancy, merged spans, and fabrication 0"
+            run: "cargo test --workspace --locked -- tables:: ruled_grid cell_enclosing_no_text every_cell_text_is_built_only_from_extracted_runs no_ruling_lines"
+
+          - id: v1s1-cross-check
+            gate: "geometric vs structural derivations compared, and disagreement reported"
+            run: "cargo test --workspace --locked -- locator_cross_check overlapping_rectangles the_cover_sees_no_geometry a_merged_cell_occupies"
+
+          - id: v1s1-capability
+            gate: "capabilities.tables is true, proved, and partnered by its scope limitation"
+            run: "cargo test --workspace --locked -- every_true_capability_names_a_proof_test a_changed_capability_set_changes_the_artifacts_profile_hash every_false_capability_declares_a_limitation the_xref_posture"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Ethos (fixture corpus)
+        uses: actions/checkout@v4
+        with:
+          repository: docushell/ethos
+          ref: ${{ env.ETHOS_ORACLE_REF }}
+          path: ethos-oracle
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            ethos-oracle
+          shared-key: v0-exit-criteria
+
+      - name: ${{ matrix.id }} — ${{ matrix.gate }}
+        env:
+          RUSTFLAGS: "-D warnings"
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
+        run: ${{ matrix.run }}
+
+  # -----------------------------------------------------------------------------------------
   # §5: `cargo-fuzz` target exists and runs clean on the corpus
   # -----------------------------------------------------------------------------------------
   #

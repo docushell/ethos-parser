@@ -15,6 +15,10 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              known — the geometry-omission path at M5                 [M5]
   broken-font-encoding       /Differences pointing at glyph names no table carries, so a
                              naive reader emits mojibake and this one drops the run  [v0.1]
+  ruled-table-grid           a 3x3 grid DRAWN with `re` rectangles, one merged cell and
+                             one empty cell — the ruled-table golden               [v1-S1]
+  ruled-table-overlap        two rectangles claiming the same lattice face, so the
+                             locator cross-check must report mismatch              [v1-S1]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -177,6 +181,60 @@ FIXTURES = {
         "1 0 0 1 72 40 Tm (\\310\\311\\312) Tj "
         "ET"
     ),
+    # v1-S1's ruled-table golden. The Ethos conformance corpus contains NO path operators at all
+    # — `synthetic/table-regular-grid` lays its grid out with text position alone — so the ruled
+    # detector has nothing there to run on and this fixture is the golden instead.
+    #
+    # A 3x3 lattice, drawn as stroked `re` cell rectangles:
+    #
+    #     x:  40      140     240     340
+    #     y160 +-------+-------+-------+
+    #          | Name  |  Q1   |  Q2   |   row 0
+    #     y120 +-------+-------+-------+
+    #          | Alpha |  10   |(empty)|   row 1
+    #      y80 +-------+-------+-------+
+    #          | Beta  |      n/a      |   row 2, cols 1-2 MERGED
+    #      y40 +-------+---------------+
+    #
+    # Two properties are deliberate. The **merged** cell in row 2 makes CellSlot occupancy do real
+    # work: a cell that spans two columns must own both slots, which is the shipped Ethos
+    # ODL-adapter defect (memo s16) this engine refuses to repeat. The **empty** cell at row 1
+    # col 2 is the fabrication-0 case: rectangles enclosing no text must produce an empty cell,
+    # never the neighbouring "10" or "Q2".
+    "ruled-table-grid": (
+        "1 w "
+        # row 0
+        "40 120 100 40 re S 140 120 100 40 re S 240 120 100 40 re S "
+        # row 1
+        "40 80 100 40 re S 140 80 100 40 re S 240 80 100 40 re S "
+        # row 2: col 0, then one rectangle spanning columns 1 and 2
+        "40 40 100 40 re S 140 40 200 40 re S "
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 134 Tm (Name) Tj 1 0 0 1 150 134 Tm (Q1) Tj 1 0 0 1 250 134 Tm (Q2) Tj "
+        "1 0 0 1 50 94 Tm (Alpha) Tj 1 0 0 1 150 94 Tm (10) Tj "
+        "1 0 0 1 50 54 Tm (Beta) Tj 1 0 0 1 150 54 Tm (n/a) Tj "
+        "ET"
+    ),
+    # v1-S1's cross-check hostile. Two rectangles overlap, so one lattice face is claimed twice
+    # and the structural CellSlot cover cannot be exact. The engine must REPORT that and never
+    # nudge a coordinate to make it tile.
+    "ruled-table-overlap": (
+        "1 w "
+        "40 80 100 40 re S 140 80 100 40 re S "
+        # This one starts inside the second cell rather than on its edge: it claims a face
+        # another rectangle already owns.
+        "40 40 200 40 re S 140 40 100 40 re S "
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 94 Tm (A) Tj 1 0 0 1 150 94 Tm (B) Tj "
+        "1 0 0 1 50 54 Tm (C) Tj "
+        "ET"
+    ),
+}
+
+# name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
+MEDIA = {
+    "ruled-table-grid": (0, 0, 400, 200),
+    "ruled-table-overlap": (0, 0, 300, 160),
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.
@@ -198,6 +256,7 @@ def main() -> int:
         d.mkdir(parents=True, exist_ok=True)
         pdf = build_pdf(
             content,
+            media=MEDIA.get(name, (0, 0, 300, 144)),
             descriptor=DESCRIPTORS.get(name),
             differences=DIFFERENCES.get(name),
         )

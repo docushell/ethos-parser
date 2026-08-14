@@ -144,6 +144,11 @@ fn crate_exports(crate_name: &str) -> BTreeSet<String> {
 
 /// `engine-core` — every module is contract, so every module is public.
 ///
+/// The `tables` block is v1-S1: the table occupancy model (`CellSlot`, `TableCellPosition`,
+/// `SlotCover`) and the artifact records that carry it. `SlotCover` is the **structural** half of
+/// the locator cross-check and sees no geometry at all — that separation is what makes the check
+/// two independent derivations rather than one restated twice.
+///
 /// The `verifier` block is v0.1: the engine spawns a verifier and relays its bytes, and that has
 /// to be reachable as a library call because `engine-cli` exports nothing. Note what is NOT here
 /// — no report type, no claim, no check, no result. There is nothing to export because the engine
@@ -157,6 +162,8 @@ const CORE: &[&str] = &[
     "CMAP_DATA_VERSION",
     "CRATE_NAME",
     "Capabilities",
+    "CellSlot",
+    "CheckStatus",
     "CoordinateOrigin",
     "CoordinateSystem",
     "CoordinateUnit",
@@ -168,13 +175,16 @@ const CORE: &[&str] = &[
     "DocumentRepresentation",
     "EngineError",
     "GROUNDING_ADAPTER",
+    "GeometricFault",
     "GeometryAbsence",
     "GeometryPresence",
     "HostInfo",
     "IdAllocator",
     "IdKind",
+    "LOCATOR_CHECK_V1",
     "Limitation",
     "LimitationScope",
+    "LocatorCheck",
     "MAX_SAFE_INT",
     "NativeLocator",
     "Node",
@@ -192,14 +202,14 @@ const CORE: &[&str] = &[
     "ProcessingTerminalState",
     "ProcessorIdentity",
     "Profile",
-    "RELAY_OK",
-    "RELAY_REFUSED",
-    "RELAY_UNAVAILABLE",
     "QRect",
     "QRectError",
     "QUANTUM_PER_POINT",
     "QuantizeError",
     "READING_ORDER_RULE_V0",
+    "RELAY_OK",
+    "RELAY_REFUSED",
+    "RELAY_UNAVAILABLE",
     "REPRESENTATION_ARTIFACT_TYPE",
     "REPRESENTATION_SCHEMA_VERSION",
     "RefusalCode",
@@ -207,10 +217,16 @@ const CORE: &[&str] = &[
     "Relayed",
     "RepresentationPayload",
     "Sha256Hex",
+    "SlotCover",
+    "SlotFault",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",
     "SynthesizedAt",
+    "TABLE_DETECTION_V1",
+    "TableCellPosition",
+    "TableCellRecord",
+    "TableRecord",
     "TextRunAttributes",
     "VerifierBinary",
     "VerifierPin",
@@ -234,6 +250,7 @@ const CORE: &[&str] = &[
     "sha256_hex",
     "sha256_hex_bytes",
     "sort_ids",
+    "tables",
     "verifier",
 ];
 

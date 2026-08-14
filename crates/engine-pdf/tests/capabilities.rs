@@ -153,8 +153,11 @@ fn proof_table() -> Vec<Proof> {
         Proof {
             field: "tables",
             claimed: tables,
-            proof_test: None,
-            why_not: Some("Tables are v1 scope; v0 emits no table array."),
+            // v1-S1. The claim is "this profile looked", and the proof is a document that drew a
+            // grid, whose cells come back with the right spans, the right parents and the right
+            // text — including the empty one.
+            proof_test: Some("a_ruled_grid_is_reconstructed_with_spans_and_parent_ids"),
+            why_not: None,
         },
         Proof {
             field: "measured_ink_boxes",
@@ -783,23 +786,40 @@ fn a_changed_capability_set_changes_the_artifacts_profile_hash() {
     let path = conformance("synthetic/simple-text/document.pdf");
     let base = extract_with(path.clone(), &Profile::default());
 
-    let claiming = Profile {
+    // v1-S1 inverted this: `tables` is TRUE by default now, so the profile that must be
+    // non-comparable is the one that does NOT claim it.
+    let not_claiming = Profile {
         capabilities: Capabilities {
-            tables: true,
+            tables: false,
             ..Capabilities::V0
         },
         ..Profile::default()
     };
-    let changed = extract_with(path, &claiming);
+    let changed = extract_with(path, &not_claiming);
 
     assert_ne!(
         base.identity.profile_sha256, changed.identity.profile_sha256,
-        "a profile claiming tables must not be comparable with one that does not"
+        "a profile that did not look for tables must not be comparable with one that did"
     );
-    assert!(changed.assurance.capabilities.tables);
+    assert!(!changed.assurance.capabilities.tables);
+
+    // The two limitations swap, which is the whole point of the pair: a profile that did not look
+    // declares `tables-not-extracted`, and one that did declares the SCOPE of its looking.
+    let unclaimed = codes(&changed.assurance.limitations);
     assert!(
-        !codes(&changed.assurance.limitations).contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
-        "a claimed capability must stop declaring its own limitation"
+        unclaimed.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
+        "a false capability owes its own limitation: {unclaimed:?}"
+    );
+    assert!(
+        !unclaimed.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED),
+        "a profile that never looked must not claim it looked only for ruled tables: {unclaimed:?}"
+    );
+
+    let claimed = codes(&base.assurance.limitations);
+    assert!(
+        claimed.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED)
+            && !claimed.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
+        "and the default profile declares the scope rather than the absence: {claimed:?}"
     );
 }
 

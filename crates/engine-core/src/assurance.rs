@@ -69,6 +69,14 @@ pub mod codes {
     pub const CHAR_OFFSETS_NOT_EMITTED: &str = "char-offsets-not-emitted";
     /// [`Capabilities::tables`] is false: no table is detected or emitted.
     pub const TABLES_NOT_EXTRACTED: &str = "tables-not-extracted";
+    /// [`Capabilities::tables`] is **true**, and the detector finds ruled tables only.
+    ///
+    /// The one limitation here that partners a `true` capability rather than a `false` one, and
+    /// deliberately so. `tables: true` claims *this profile looked* — it does not claim every
+    /// table is found, and a table drawn without ruling lines is a real miss (v1-S2). Without
+    /// this, an empty `tables` array would read as "there are no tables here", when what it
+    /// means is "there are no **ruled** tables here".
+    pub const UNRULED_TABLES_NOT_DETECTED: &str = "unruled-tables-not-detected";
     /// [`Capabilities::measured_ink_boxes`] is false: geometry is typed-absent throughout.
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
     /// [`Capabilities::multi_column_reading_order`] is false: order is single-column.
@@ -213,12 +221,28 @@ impl Capabilities {
                  `char_start`/`char_end` must not infer them from concatenation order.",
             ));
         }
-        if !tables {
+        if tables {
+            // **A limitation partnering a TRUE capability.** Every other arm here declares what a
+            // `false` capability does not do; this one declares the scope of what a `true` one
+            // does. `tables: true` says the detector looked, and a reader seeing an empty array
+            // needs to know it looked for *ruled* tables — otherwise "no tables found" reads as
+            // "this document has no tables", which is a much stronger claim than v1-S1 makes.
+            out.push(Limitation::profile(
+                codes::UNRULED_TABLES_NOT_DETECTED,
+                "Tables are detected from RULING LINES only: the rectangles and axis-aligned \
+                 edges a document actually painted. A table laid out by alignment alone — no \
+                 rules drawn — is NOT found, and an empty `tables` array therefore means `no \
+                 ruled table was found here`, never `this page has no table`. The unruled case \
+                 is a separate detection rule under its own derivation and lands at v1-S2. \
+                 Curves are never flattened into ruling lines, so a grid drawn with Béziers is \
+                 also missed rather than approximated.",
+            ));
+        } else {
             out.push(Limitation::profile(
                 codes::TABLES_NOT_EXTRACTED,
                 "No table is detected, reconstructed, or emitted. Ruling lines may still be \
                  counted as a layout reason code, which is an observation about the page and not \
-                 a table. Tables land at v1 with the locator cross-check as their test.",
+                 a table.",
             ));
         }
         if !measured_ink_boxes {
@@ -893,9 +917,16 @@ mod tests {
                 "`{code}` must be declared when its capability is false"
             );
         }
-        assert_eq!(declared.len(), 6, "one limitation per false capability");
+        assert_eq!(
+            declared.len(),
+            6,
+            "one limitation per false capability, plus none for the true ones"
+        );
 
-        // And the mirror: a profile claiming everything declares none of them.
+        // The mirror, with one deliberate exception. A profile claiming everything declares no
+        // *false-capability* limitations — but `tables: true` still declares the SCOPE of what it
+        // looked for, because "the detector found no ruled table" and "this page has no table"
+        // are different statements and only the first one is true (v1-S1).
         let all = Capabilities {
             spans: true,
             char_offsets: true,
@@ -904,7 +935,13 @@ mod tests {
             multi_column_reading_order: true,
             structural_locators: true,
         };
-        assert!(all.declared_limitations().is_empty());
+        let all_declared = all.declared_limitations();
+        let remaining: Vec<&str> = all_declared.iter().map(|l| l.code.as_str()).collect();
+        assert_eq!(
+            remaining,
+            vec![codes::UNRULED_TABLES_NOT_DETECTED],
+            "the only limitation an all-true profile keeps is the ruled-only scope"
+        );
     }
 
     #[test]

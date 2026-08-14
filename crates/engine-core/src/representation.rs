@@ -64,7 +64,7 @@ use crate::ids::NodeId;
 pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.engine.representation.v0";
 
 /// Shape version of the representation artifact. **DRAFT**.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.1.0";
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.2.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -324,6 +324,14 @@ pub struct RepresentationPayload {
     pub pages: Vec<PageRecord>,
     /// Ordered typed nodes, in reading order, grouped by page.
     pub nodes: Vec<Node>,
+    /// Ruled tables, in page order (v1-S1).
+    ///
+    /// **An empty array means the detector looked and found none**, never that it did not look —
+    /// `capabilities.tables` says which. Carried as its own array rather than as `nodes`: a table
+    /// cell's text is a concatenation of runs that are *already* nodes, and emitting it twice
+    /// would create a second place for the same text to live and a second place for it to drift.
+    #[serde(default)]
+    pub tables: Vec<crate::tables::TableRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,
     /// coverage, terminal state.
     pub assurance: Assurance,
@@ -730,6 +738,7 @@ mod tests {
             coordinate_system: CoordinateSystem::V0,
             pages,
             nodes,
+            tables: Vec::new(),
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

@@ -804,7 +804,10 @@ fn an_invalid_artifact_is_refused_by_both_with_the_same_code_and_path() {
         ),
         ("coordinate unit", "\"centipoint\"", "\"point\""),
         ("page index", "\"index\":1", "\"index\":2"),
-        ("capabilities", "\"tables\":false", "\"tables\":true"),
+        // v1-S1 inverted this break. `tables` is now TRUE and the array is present, so the
+        // deliberate fault is claiming the capability is false while the key is still there —
+        // the same capability-versus-array mismatch, from the other side.
+        ("capabilities", "\"tables\":true", "\"tables\":false"),
     ];
 
     let original = std::fs::read_to_string(&grounding).expect("read");

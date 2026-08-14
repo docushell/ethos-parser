@@ -17,7 +17,8 @@
     "reading_order_rule",
     "cmap_data_version",
     "xref_repair",
-    "verifier"
+    "verifier",
+    "table_detection"
   ],
   "properties": {
     "parser_version": {
@@ -129,6 +130,10 @@
           }
         }
       }
+    },
+    "table_detection": {
+      "type": "string",
+      "description": "Version id of the table-detection rule in force (v1-S1). `ruled-rects-v1` finds grids from painted rectangles only; the unruled case is a different rule under a different id."
     }
   },
   "$defs": {
@@ -224,7 +229,7 @@
         "multi_column_reading_order": false,
         "spans": true,
         "structural_locators": false,
-        "tables": false
+        "tables": true
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
@@ -235,7 +240,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.2.0",
+      "parser_version": "0.3.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1",
       "xref_repair": {
@@ -243,7 +248,8 @@
       },
       "verifier": {
         "mode": "not_pinned"
-      }
+      },
+      "table_detection": "ruled-rects-v1"
     }
   ]
 }

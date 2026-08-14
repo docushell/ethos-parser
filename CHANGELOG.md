@@ -7,6 +7,99 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S1, as 0.3.0
+
+The first slice of v1 (`docs/09-V1-MILESTONES.md`): vector-path capture, ruled tables from those
+paths, `CellSlot` occupancy, and the geometric-versus-structural locator cross-check. **Not
+tagged.** v1 is one slice of seven — S2 through S7 are listed as not started, and the > 0.489 gate
+is S7's, not this one's.
+
+### Added — v1 has an implementation map (S0)
+
+`docs/08-V1-SCOPE.md` and `docs/09-V1-MILESTONES.md`, written **before** the detector so the
+unruled half could not drift into this slice by accident. They record what v1 is, what it is not,
+why 0.489 is measured once at S7 rather than chased at every slice, and the ruled/unruled split:
+a ruling line is evidence the author drew, an alignment cluster is an inference a detector made,
+and those deserve different derivation classes and different tests.
+
+### Added — vector path capture
+
+`re` and axis-aligned `m`/`l`/`h` are interpreted rather than acknowledged-and-skipped. Only
+**painted** subpaths are captured: a path ended with `n`, or used as a clip, drew no ink and is not
+a ruling line — otherwise every document that clips to its margins would contain a table.
+
+Three things are deliberately refused rather than approximated, each with a test:
+
+- **Bézier curves are never flattened.** Tessellating one into straight edges would manufacture
+  ruling lines for a table the document drew with curves.
+- **A diagonal never becomes a rectangle.** The bounding box of a triangle is three edges nobody
+  drew.
+- **A rotated or skewed CTM drops the rectangle.** Its image is a parallelogram, and boxing it
+  would invent four edges.
+
+### Added — ruled tables, `CellSlot`, and the cross-check
+
+`engine_core::tables` carries the occupancy model: `TableCellPosition { row, column, rowspan,
+colspan, table_id }`, zero-based, span 1 meaning *not merged*, and `CellSlot` enumerating every
+slot a merged cell owns. Addressing cells by array index with an implied span of 1 is the shipped
+Ethos ODL-adapter defect (memo §16), and its real cost is not cosmetic: with spans discarded there
+is nothing left for a cross-check to check.
+
+**The cross-check's two halves share no input.** `SlotCover` derives occupancy from indices and
+spans alone and never sees a box; the geometric half derives containment, overlap and tiling from
+boxes alone and never sees an index. A test asserts no geometric identifier reaches `SlotCover`,
+because a check whose halves came from one source would agree with itself. The result rides on the
+**artifact**, not in `--diagnostics`: a mismatch changes whether a cell is trustworthy, which is a
+statement the artifact makes rather than an observation about the run. Status is a typed vocabulary
+— `ok` / `mismatch` / `not_applicable` — never a score.
+
+### The two findings that shaped the slice
+
+**`synthetic/table-regular-grid` has no path operators at all.** Its 3×2 grid is laid out by text
+position — six `Tm`/`Tj` pairs, zero `re` — and no fixture in the Ethos conformance corpus draws a
+single rule. So the ruled detector cannot be demonstrated on that corpus, and v1-S1 authors
+`fixtures/engine/ruled-table-grid` (3×3, one merged cell, one deliberately empty cell) as the
+golden. The fixture with "table" in its name is an **S2** fixture, and until S2 it correctly
+reports `tables: []` plus a limitation. Measured, not assumed — decision #4 asked for exactly that.
+
+**A first version of the detector fabricated a 662-cell table on a tax form.** Building one lattice
+from every rectangle on a page means a document that merely *contains* boxes becomes a grid:
+`irs-form-1040-2025` produced two tables, one with a cell spanning 75 rows by 45 columns, and Ethos
+rejected the artifact outright. The fix is a **coherence precondition** — every lattice face must
+be covered by a rectangle the document painted — plus a cap on lattice size. The form now yields
+zero tables and validates again; the golden is unchanged. Overlaps are deliberately *not* excluded
+by that precondition: an overlap is a real disagreement and belongs in the cross-check, where it is
+reported, rather than in a precondition, where it would be silently dropped.
+
+### Changed — `capabilities.tables` is true, and what that claims is narrow
+
+`tables: true` means **this profile looked**. It does not mean every table is found.
+`ethos.grounding.v1` already encodes that distinction — absent key means did not look, empty array
+means looked and found none — and the projection now fills the array rather than refusing the
+capability.
+
+The `tables-not-extracted` limitation is gone as the false-capability partner, replaced by
+`unruled-tables-not-detected`: **the only limitation in the set that partners a `true` capability
+rather than a `false` one.** Without it an empty array reads as "this page has no table", when what
+it means is "no *ruled* table was found here".
+
+### Changed — schema and version
+
+`REPRESENTATION_SCHEMA_VERSION` 0.1.0 → **0.2.0**: the payload grew a `tables` array. No
+`ethos.grounding.v2` was invented — Ethos's v1 already has `tables`, and the projection fills it.
+
+Workspace 0.2.0 → **0.3.0**, and `profile_sha256` moves `8357e5ba…7f2497` →
+`fad389ae…ef9a14` for three reasons: the version, the new `table_detection` rule id, and
+`capabilities.tables` flipping. That last one is not a knob but a **claim** — artifacts before it
+did not look for tables and artifacts after it did, which is exactly what a profile hash exists to
+make visible.
+
+### Oracle
+
+`ethos grounding check` accepts the tables payload and agrees with the engine's own checker
+byte-for-byte on it — `counts.tables: 1`, `structure: valid`, `source_binding: matched`, identical
+`representation_sha256`. The partition is still 12 readable / 3 refused.
+
 ## [Unreleased] — v0.1, as 0.2.0
 
 The roadmap row after v0 (`docs/02-ROADMAP.md`): citation verification as a declared capability,

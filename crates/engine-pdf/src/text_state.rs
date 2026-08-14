@@ -71,12 +71,11 @@ impl Matrix {
         }
     }
 
-    /// Transform a point. Test-only.
+    /// Transform a point.
     ///
-    /// The extractor composes matrices and reads [`Matrix::x_scale`]; it never transforms a bare
-    /// point through this. Kept because it is what the composition tests assert against, and
-    /// scoped to `cfg(test)` at M7 so that stays visible.
-    #[cfg(test)]
+    /// `cfg(test)` at M7, when nothing outside the composition tests transformed a bare point.
+    /// v1-S1 gave it a real caller: path geometry arrives in user space and has to be carried
+    /// through the CTM the same way a glyph origin is.
     pub fn apply(self, x: f64, y: f64) -> (f64, f64) {
         (
             self.a * x + self.c * y + self.e,
