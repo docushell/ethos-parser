@@ -29,9 +29,10 @@ exclude = ["fuzz"]
 # correctly non-comparable. That is the design, not a regression — see CHANGELOG.
 #
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
-# roadmap row shipped as 0.2.0, and v1's first slice ships as 0.3.0. v1 itself is not done — S1
-# of seven — so this is not 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green.
-version = "0.3.0"
+# roadmap row shipped as 0.2.0, v1's first slice shipped as 0.3.0, and its second ships as 0.4.0.
+# v1 itself is not done — S2 of seven — so this is not 1.0.0 and will not be until
+# docs/09-V1-MILESTONES.md S7 is green.
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -52,9 +53,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.3.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.3.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.3.0" }
+engine-core = { path = "crates/engine-core", version = "0.4.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.4.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.4.0" }
 
 [profile.release]
 strip = "symbols"

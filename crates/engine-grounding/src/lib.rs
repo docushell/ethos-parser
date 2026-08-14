@@ -256,13 +256,20 @@ pub struct GroundingSource {
     /// an empty array and an absent key mean different things and only one of them is legal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spans: Option<Vec<Span>>,
-    /// Tables. **Absent iff `!capabilities.tables`**, which at v0 means always absent. An empty
-    /// array here is not "no tables found", it is a claim to have looked.
+    /// Tables. **Absent iff `!capabilities.tables`**. An empty array here is not "no tables
+    /// found", it is a claim to have looked — and since v1-S2 that claim covers both the ruled
+    /// and the unruled rule.
+    ///
+    /// Which rule found a given table is **not** carried here. `ethos.grounding.v1` is
+    /// `additionalProperties: false` and this crate's copy of its schema is byte-pinned against
+    /// Ethos's, so the projection stays a move of cells, boxes and text. The rule id lives on the
+    /// representation's `TableRecord::detection_rule`, which is where a consumer that needs it
+    /// looks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tables: Option<Vec<Table>>,
 }
 
-/// A table. Declared for shape only — v0 never emits one.
+/// A table, as `ethos.grounding.v1` carries one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Table {
@@ -276,7 +283,7 @@ pub struct Table {
     pub cells: Vec<Cell>,
 }
 
-/// One table cell. Declared for shape only — v0 never emits one.
+/// One table cell, as `ethos.grounding.v1` carries one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cell {

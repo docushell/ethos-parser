@@ -811,15 +811,21 @@ fn a_changed_capability_set_changes_the_artifacts_profile_hash() {
         "a false capability owes its own limitation: {unclaimed:?}"
     );
     assert!(
-        !unclaimed.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED),
-        "a profile that never looked must not claim it looked only for ruled tables: {unclaimed:?}"
+        !unclaimed.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED),
+        "a profile that never looked must not declare the scope of its looking: {unclaimed:?}"
     );
 
     let claimed = codes(&base.assurance.limitations);
     assert!(
-        claimed.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED)
+        claimed.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED)
             && !claimed.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
         "and the default profile declares the scope rather than the absence: {claimed:?}"
+    );
+    // v1-S2: the scope narrowed. The blanket "alignment is never inspected" code is retired,
+    // because the alignment rule now runs on every document this profile reads.
+    assert!(
+        !claimed.contains(&"unruled-tables-not-detected"),
+        "the ruled-only limitation is retired at v1-S2, not carried forward: {claimed:?}"
     );
 }
 

@@ -10,7 +10,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | --- | --- | --- | --- |
 | **S0** | v1 scope + this document | — | **done** |
 | **S1** | Vector paths · ruled tables · `CellSlot` · locator cross-check | S0 | **done** |
-| **S2** | Unruled tables: alignment / whitespace dual-mode | S1 | not started |
+| **S2** | Unruled tables: alignment / whitespace dual-mode | S1 | **done** |
 | **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | not started |
 | **S4** | Forms and annotations as typed nodes | S1 | not started |
 | **S5** | Multi-column reading order, versioned rule | S2 | not started |
@@ -121,11 +121,69 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 - **Out:** Everything S1 excluded that S2 does not name.
 
 - **Acceptance tests:**
-  - [ ] `table-regular-grid` emits its 3×2 grid with correct text per cell
-  - [ ] The alignment rule has a version id in the profile, distinct from the ruled one, and a
+  - [x] `table-regular-grid` emits its 3×2 grid with correct text per cell
+  - [x] The alignment rule has a version id in the profile, distinct from the ruled one, and a
         document detected both ways records which rule fired
-  - [ ] A near-miss fixture (columns that nearly align) does **not** produce a table, and says why
-  - [ ] Fabrication still 0; cross-check still runs on unruled tables
+  - [x] A near-miss fixture (columns that nearly align) does **not** produce a table, and says why
+  - [x] Fabrication still 0; cross-check still runs on unruled tables
+
+- **The rule, as shipped** (`unruled-align-v1`): column and row lines by folding run origins
+  within 150 centipoints; a gutter floor of 1 200 centipoints between column lines and 600 between
+  row lines; at least 2 × 2; **every lattice face must contain a run origin**; the runs must arrive
+  in row-major face order; a 4 096-face cap. Cells are always span 1, cell boxes are the lattice
+  faces so the grid tiles, and the table's box is the origins' extent plus a declared 300-centipoint
+  padding — never a font size. Text is assigned by **origin**, exactly as the ruled rule does.
+
+- **Five decisions worth keeping, four of them measured:**
+
+  1. **A separate rule id, not a bump.** `ruled-rects-v1` means *the document drew this grid*;
+     `unruled-align-v1` means *a detector inferred it*. Those are claims of very different
+     strength, and one id could not tell them apart. `TableRecord.detection_rule` carries the
+     answer per table, because a document can hold both kinds and `derivation` is `Computed` for
+     both.
+
+  2. **`table_detection` became a structure.** A single string could not distinguish "looked for
+     unruled tables and found none" from "never looked". A plain struct with `deny_unknown_fields`
+     rather than an internally-tagged enum, for the reason v0.1 measured: internally-tagged
+     representations silently drop unknown keys and would re-hash to a different digest than they
+     arrived with.
+
+  3. **Coherence is the alignment analogue of S1's coverage precondition.** S1 requires every face
+     to be covered by a painted rectangle; S2 requires every face to contain a placed run. Both
+     demand the lattice be explained by evidence face by face, and both exist to refuse the same
+     thing. Measured on `irs-form-1040-2025`: its text implies **23 276** faces on page 1 from
+     1 146 runs and **10 848** on page 2 from 830. It still yields **0 tables**, and now says it
+     looked and refused.
+
+  4. **Fold, do not grow.** Growing groups until a gutter appears *chains* — origins each within a
+     gutter of the next collapse into one "column" nothing aligns to. Measured: two lines of
+     word-split prose came out as a 2 × 3 table. Folding within a tolerance cannot chain past it.
+     The cost is that a cell whose text was `Tj`-split a few points wide opens a column instead,
+     and is missed; that is the declared price of not fabricating.
+
+  5. **Emission order is evidence, not a threshold.** `synthetic/two-columns` is four runs in a
+     flawless 2 × 2 — geometrically identical to a two-row table. What separates them is in the
+     file: a table is written across the rows, columns are written down. So a candidate whose runs
+     do not arrive in row-major face order is refused. Every alternative discriminator is a number
+     tuned until the fixtures fall the right side of it. Reading order is untouched; this reads
+     the order, it does not change it.
+
+- **Decision 8 resolved as (b): thin ruling lines are a declared leftover.** A grid stroked as bare
+  line segments still fails the ruled rule's coverage precondition, and
+  `stroke-ruled-tables-not-detected` names that. Measured before deciding:
+  `irs-form-1040-2025` carries **520 axis-aligned stroked segments** alongside the 396 rectangles
+  that produced S1's 662-cell fabrication. Admitting 520 more edges to that lattice is the same
+  experiment with more input, so a stroked-line rule needs its own closed-face coherence — every
+  face bounded by four edges — and its own measurement pass against that form. That is a slice of
+  work, not a widening of this one.
+
+- **The blanket limitation is gone, not reworded.** `unruled-tables-not-detected` said alignment is
+  never inspected. That stopped being true, and a limitation that outlives the gap it describes is
+  worse than none, because a reader acts on it. What replaced it is narrower on both sides: the
+  profile-scoped `stroke-ruled-tables-not-detected`, and a **conditional** document-scoped
+  `unruled-table-candidate-refused` that appears only where a candidate was actually built and
+  refused. A page below 2 × 2 never had a candidate and declares nothing — otherwise the near-miss
+  disclosure would ride on every document in existence and carry no information.
 
 - **Depends on:** S1.
 

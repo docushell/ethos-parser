@@ -201,6 +201,31 @@ pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
     )
 }
 
+/// The document-scoped limitation for pages where the alignment rule refused a candidate grid.
+///
+/// **The near-miss disclosure** (`docs/09-V1-MILESTONES.md` S2, decision 7). Columns that almost
+/// line up must not become a table — but a reader who sees only `tables: []` cannot tell that
+/// case from a page with nothing grid-shaped on it at all. This says which pages the alignment
+/// rule looked hard at, and which precondition each one failed.
+///
+/// **Not a confidence field.** It reports that a refusal happened and names the rule that
+/// refused. It never grades how close the candidate came, because a "0.8 table" is exactly the
+/// number `docs/01-CONTRACT.md` §9 forbids.
+pub fn unruled_candidate_refused(refusals: &[(u32, crate::unruled::Refusal)]) -> Limitation {
+    let mut detail = String::from(
+        "On some pages the alignment rule built a candidate grid from the text's own positions \
+         and REFUSED it, so no table was emitted there. This is the difference between `no grid \
+         was implied here` and `a grid was implied and judged incoherent`, and only the second \
+         one is reported below. Nothing was repaired, relaxed or partially emitted: a candidate \
+         either satisfies every precondition of `unruled-align-v1` or it produces no table. \
+         Refused by page:",
+    );
+    for (page, r) in refusals {
+        detail.push_str(&format!("\n  - page {page}: {}", r.detail()));
+    }
+    Limitation::document(engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED, detail)
+}
+
 /// The document-scoped limitation for a run stopped by the configured page budget.
 pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     Limitation::document(

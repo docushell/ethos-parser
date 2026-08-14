@@ -19,6 +19,13 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              one empty cell — the ruled-table golden               [v1-S1]
   ruled-table-overlap        two rectangles claiming the same lattice face, so the
                              locator cross-check must report mismatch              [v1-S1]
+  unruled-near-miss          columns that align on two rows and miss on the third, so the
+                             alignment rule must refuse rather than round them
+                             together                                              [v1-S2]
+  both-table-rules           one painted grid AND one aligned-text grid on the same page,
+                             so the artifact carries two tables under two rule ids [v1-S2]
+  ruled-wins-shared-region   a painted grid whose text ALSO forms a clean alignment grid;
+                             exactly one table comes out, and it is the ruled one  [v1-S2]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -229,12 +236,77 @@ FIXTURES = {
         "1 0 0 1 50 54 Tm (C) Tj "
         "ET"
     ),
+    # v1-S2's NEAR MISS. Three rows, two columns, and no path operators — the shape the
+    # alignment rule is built for, spoiled by five points.
+    #
+    #     x:  50            200
+    #         Name          Score      <- aligned
+    #         Alpha         10         <- aligned
+    #         Beta            12       <- 205, not 200
+    #
+    # Five points is 500 centipoints: well past the 150 the rule folds together, and well under
+    # the 1200 it requires between two real columns. So the origins imply THREE column lines,
+    # two of them half a gutter apart, and the answer is no table plus a named refusal.
+    #
+    # The tempting alternative is to round 205 back to 200 because it is "obviously" the same
+    # column. That is choosing between two alignments the document does not choose between, and
+    # a reader would have no way to know a coordinate had been moved. Whether the author meant a
+    # third column or fumbled the second is not knowable from the file.
+    "unruled-near-miss": (
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 160 Tm (Name) Tj 1 0 0 1 200 160 Tm (Score) Tj "
+        "1 0 0 1 50 120 Tm (Alpha) Tj 1 0 0 1 200 120 Tm (10) Tj "
+        "1 0 0 1 50 80 Tm (Beta) Tj 1 0 0 1 205 80 Tm (12) Tj "
+        "ET"
+    ),
+    # v1-S2's WHICH-RULE-FIRED fixture. One page, two grids, two kinds of evidence:
+    #
+    #   top     a 2x2 grid the document PAINTS with `re`, text inside it   -> ruled-rects-v1
+    #   bottom  a 2x2 grid implied by text alignment alone, no rectangles  -> unruled-align-v1
+    #
+    # The artifact must carry BOTH, each naming the rule that produced it. A single
+    # `table_detection` string on the profile could never express this: the profile says which
+    # rules ran, and only a per-table field can say which one found any given table.
+    "both-table-rules": (
+        "1 w "
+        "40 260 100 40 re S 140 260 100 40 re S "
+        "40 220 100 40 re S 140 220 100 40 re S "
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 274 Tm (R1) Tj 1 0 0 1 150 274 Tm (R2) Tj "
+        "1 0 0 1 50 234 Tm (R3) Tj 1 0 0 1 150 234 Tm (R4) Tj "
+        "1 0 0 1 50 140 Tm (Ua) Tj 1 0 0 1 200 140 Tm (Ub) Tj "
+        "1 0 0 1 50 100 Tm (Uc) Tj 1 0 0 1 200 100 Tm (Ud) Tj "
+        "ET"
+    ),
+    # v1-S2's ARBITRATION fixture. A painted 2x2 grid whose four runs are ALSO a flawless 2x2
+    # alignment — so both rules can describe this region, and exactly one of them may.
+    #
+    # Ruled wins. A ruling line is evidence the author left; an alignment cluster is a decision
+    # this engine made, and preferring ours would be preferring our inference to their statement.
+    # The two grids are never averaged either: that would produce a grid neither rule found, with
+    # no rule id that honestly describes it.
+    # The cell rectangles are ADJACENT (40-140 and 140-240), not spaced. A gap between them
+    # would leave an uncovered lattice face, the ruled rule's coherence precondition would
+    # refuse the grid, and the fixture would silently test the opposite of what it claims —
+    # measured while authoring it, which is why this note is here.
+    "ruled-wins-shared-region": (
+        "1 w "
+        "40 80 100 40 re S 140 80 100 40 re S "
+        "40 40 100 40 re S 140 40 100 40 re S "
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 94 Tm (A) Tj 1 0 0 1 200 94 Tm (B) Tj "
+        "1 0 0 1 50 54 Tm (C) Tj 1 0 0 1 200 54 Tm (D) Tj "
+        "ET"
+    ),
 }
 
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
+    "unruled-near-miss": (0, 0, 300, 200),
+    "both-table-rules": (0, 0, 320, 320),
+    "ruled-wins-shared-region": (0, 0, 300, 160),
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.

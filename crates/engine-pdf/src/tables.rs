@@ -91,7 +91,9 @@ pub struct QuantRect {
 }
 
 impl QuantRect {
-    fn as_qrect(self) -> Result<QRect, EngineError> {
+    /// A well-formed [`QRect`], or the detection is refused rather than emitted with geometry
+    /// the contract cannot express.
+    pub fn as_qrect_checked(self) -> Result<QRect, EngineError> {
         QRect::new(self.x0, self.y0, self.x1, self.y1).map_err(|e| EngineError::Malformed {
             what: "table geometry".into(),
             detail: e.to_string(),
@@ -155,6 +157,13 @@ pub struct DetectedTable {
     pub cells: Vec<DetectedCell>,
     /// The cross-check result for this table.
     pub check: LocatorCheck,
+    /// Which rule produced this table (v1-S2).
+    ///
+    /// Exactly one of `engine_core::TABLE_DETECTION_V1` or
+    /// `engine_core::TABLE_DETECTION_UNRULED_V1`. Set from those constants at the two places a
+    /// table is built, never spelled out here — a rule id written twice is a rule id that can
+    /// drift, which is the whole reason it is a pinned constant.
+    pub rule: String,
 }
 
 // -------------------------------------------------------------------------------------------
@@ -171,12 +180,83 @@ pub struct RunOrigin<'a> {
     pub text: &'a str,
 }
 
-/// Detect ruled tables on one page.
+/// Detect every table on one page, ruled first and then unruled (v1-S2).
+///
+/// # Arbitration, and why ruled wins
+///
+/// The two rules answer different questions and can both answer for the same region. When they
+/// do, the ruled table is kept and the unruled one is dropped:
+///
+/// - A ruling line is **evidence the author left**. An alignment cluster is **a decision this
+///   engine made**. Where both exist, the author's is the better answer, and preferring ours
+///   would be preferring our inference to their statement.
+/// - The two grids are never averaged or merged. Two derivations of one region that disagree are
+///   a real disagreement; splitting the difference would produce a grid neither rule found, with
+///   no rule id that honestly describes it.
+///
+/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v1`
+/// knows the author drew it, and nothing was lost that a second, weaker derivation of the same
+/// cells would have added.
+///
+/// Unruled detection runs only on runs whose origins fall **outside** every accepted ruled table,
+/// so a ruled table's own text can never also seed an alignment lattice.
 ///
 /// # Errors
 ///
 /// [`EngineError::Malformed`] if a rectangle will not quantize into a well-formed box.
 pub fn detect(
+    page: u32,
+    rects: &[QuantRect],
+    runs: &[RunOrigin<'_>],
+    alloc: &mut IdAllocator,
+) -> Result<Detected, EngineError> {
+    let mut tables = detect_ruled(page, rects, runs, alloc)?;
+
+    // Only runs no ruled table already claims. A run inside an accepted ruled table is spoken
+    // for; letting it also vote on an alignment lattice would let one piece of text produce two
+    // tables that both claim it.
+    let leftover: Vec<usize> = (0..runs.len())
+        .filter(|i| {
+            let r = &runs[*i];
+            !tables
+                .iter()
+                .any(|t| r.x >= t.rect.x0 && r.x < t.rect.x1 && r.y >= t.rect.y0 && r.y < t.rect.y1)
+        })
+        .collect();
+
+    let unruled = crate::unruled::detect(page, runs, &leftover, alloc)?;
+    let refusal = unruled.refusal;
+    if let Some(t) = unruled.table {
+        // Belt and braces on the arbitration. The leftover filter already excludes runs inside a
+        // ruled table, but a lattice inferred from runs *around* one could still box it in, and
+        // two tables claiming one region is the thing this must not emit.
+        if !tables.iter().any(|r| r.rect.overlaps(t.rect)) {
+            tables.push(t);
+        }
+    }
+
+    Ok(Detected { tables, refusal })
+}
+
+/// What one page's detection produced.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Detected {
+    /// The tables, ruled first.
+    pub tables: Vec<DetectedTable>,
+    /// Why the alignment rule refused a candidate here, if it built one and refused it.
+    ///
+    /// `None` means it never got as far as a candidate — there was nothing lattice-shaped to
+    /// refuse. This is a *disclosure*, not a score: it names the precondition that failed and
+    /// never grades how close the candidate came (`docs/01-CONTRACT.md` §9).
+    pub refusal: Option<crate::unruled::Refusal>,
+}
+
+/// Detect ruled tables on one page.
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] if a rectangle will not quantize into a well-formed box.
+pub fn detect_ruled(
     page: u32,
     rects: &[QuantRect],
     runs: &[RunOrigin<'_>],
@@ -249,7 +329,7 @@ pub fn detect(
 
     // A well-formed box for the table, or the whole detection is refused rather than emitted with
     // geometry the contract cannot express.
-    table_rect.as_qrect()?;
+    table_rect.as_qrect_checked()?;
 
     Ok(vec![DetectedTable {
         id,
@@ -259,6 +339,7 @@ pub fn detect(
         columns: lattice.columns(),
         cells: detected,
         check,
+        rule: engine_core::TABLE_DETECTION_V1.to_string(),
     }])
 }
 
@@ -535,7 +616,7 @@ mod tests {
 
     #[test]
     fn no_rectangles_means_no_table_rather_than_an_empty_one() {
-        let t = detect(1, &[], &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &[], &[], &mut alloc()).unwrap();
         assert!(t.is_empty(), "a page with no rules has no ruled table");
     }
 
@@ -543,13 +624,13 @@ mod tests {
     fn a_single_rectangle_is_not_a_grid() {
         // One box is an underline, a highlight, a border — not a table. Calling it a 1×1 table
         // would find one on most pages in existence.
-        let t = detect(1, &[r(0, 0, 100, 100)], &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &[r(0, 0, 100, 100)], &[], &mut alloc()).unwrap();
         assert!(t.is_empty(), "got {t:?}");
     }
 
     #[test]
     fn a_plain_grid_is_detected_and_cross_checks_ok() {
-        let t = detect(1, &grid_2x2(), &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap();
         assert_eq!(t.len(), 1);
         let table = &t[0];
         assert_eq!((table.rows, table.columns), (2, 2));
@@ -566,7 +647,7 @@ mod tests {
             r(0, 100, 100, 200),
             r(100, 100, 200, 200),
         ];
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         let table = &t[0];
         assert_eq!(table.cells.len(), 3, "the merge is one cell, not two");
 
@@ -586,7 +667,7 @@ mod tests {
         // `irs-form-1040-2025`: without it, its scattered field boxes produced a 662-cell grid
         // with a cell spanning 75 rows by 45 columns, and Ethos rejected the artifact outright.
         let rects = vec![r(0, 0, 100, 100), r(100, 0, 200, 100), r(0, 100, 100, 200)];
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         assert!(t.is_empty(), "got {t:?}");
     }
 
@@ -600,7 +681,7 @@ mod tests {
             r(400, 300, 420, 310),
             r(50, 500, 70, 510),
         ];
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         assert!(
             t.is_empty(),
             "a page with boxes on it is not a table: {t:?}"
@@ -611,7 +692,7 @@ mod tests {
     fn an_outer_border_is_not_mistaken_for_a_cell() {
         let mut rects = grid_2x2();
         rects.push(r(0, 0, 200, 200)); // the table's own border
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         let table = &t[0];
         assert_eq!(table.cells.len(), 4, "the border is not a fifth cell");
         assert_eq!(table.check.outcome, CheckStatus::Ok, "{:?}", table.check);
@@ -627,7 +708,7 @@ mod tests {
             r(0, 100, 100, 200),
             r(100, 100, 200, 200),
         ];
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         let table = &t[0];
 
         match &table.check.outcome {
@@ -665,7 +746,7 @@ mod tests {
             },
             // Nothing in the bottom row: those cells must come out EMPTY.
         ];
-        let t = detect(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
         let table = &t[0];
 
         let cell = |row, col| {
@@ -701,7 +782,7 @@ mod tests {
                 text: "b",
             },
         ];
-        let t = detect(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
         for c in &t[0].cells {
             let expected: String = c.run_indices.iter().map(|i| runs[*i].text).collect();
             assert_eq!(
@@ -721,7 +802,7 @@ mod tests {
         // column. Outward rather than inward so the face stays covered: an inward nudge would be
         // testing the coverage precondition instead of the clustering.
         rects[3].x0 -= 1;
-        let t = detect(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
         assert_eq!(
             (t[0].rows, t[0].columns),
             (2, 2),
@@ -739,7 +820,7 @@ mod tests {
 
     #[test]
     fn the_check_record_carries_its_own_version() {
-        let t = detect(1, &grid_2x2(), &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap();
         assert_eq!(t[0].check.check_id, LOCATOR_CHECK_V1);
         assert!(!t[0].check.check_version.is_empty());
     }

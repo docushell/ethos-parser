@@ -7,6 +7,136 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S2, as 0.4.0
+
+The second slice of v1 (`docs/09-V1-MILESTONES.md`): tables a document implies by **alignment**
+rather than by painted rectangles, under their own rule id, plus a per-table record of which rule
+fired. **Not tagged.** v1 is two slices of seven — S3 through S7 are not started, and the > 0.489
+gate is S7's.
+
+### Added — `unruled-align-v1`, a second detection rule
+
+A grid inferred from where a document placed text. Pinned as
+`engine_core::TABLE_DETECTION_UNRULED_V1`, and **a separate id rather than a bump of
+`ruled-rects-v1`**: one means *the author drew this grid* and the other means *a detector decided
+this was one*, and an artifact that could not tell them apart would be flattening the stronger
+claim into the weaker.
+
+The rule, in full — origins folded into lines within 150 centipoints; a gutter floor of 1 200
+centipoints between column lines and 600 between row lines; at least 2 × 2; **every lattice face
+must contain a run origin**; the runs must arrive in row-major face order; a 4 096-face cap. Cells
+are always span 1 and never empty, cell boxes are the lattice faces so the grid tiles, and the
+table's box is the origins' extent plus a declared 300-centipoint padding — never a font size.
+
+`synthetic/table-regular-grid` is now the golden it always was: six `Tm`/`Tj` pairs, zero path
+operators, and a 3 × 2 table with `Name`/`Score`/`Alpha`/`10`/`Beta`/`12` in the right cells,
+cross-check `ok`.
+
+### Added — every table says which rule found it
+
+`TableRecord.detection_rule` — `ruled-rects-v1` or `unruled-align-v1`, **per table**, because one
+document can hold both kinds and `derivation` is `Computed` for both. A new engine-owned fixture
+`both-table-rules` carries one grid of each and the artifact records both ids.
+
+Ruled wins where both rules could describe one region (`ruled-wins-shared-region`): unruled
+detection runs only on runs no accepted ruled table already claims, and an overlapping unruled
+table is dropped rather than emitted alongside. The two grids are never averaged — that would
+produce a grid neither rule found, under a rule id describing neither.
+
+### Changed — `profile.table_detection` is a structure, and `profile_sha256` moves
+
+Was `"ruled-rects-v1"`; is now `{"ruled": "ruled-rects-v1", "unruled": "unruled-align-v1"}`. With
+two rules running, one string had to mean two things: a reader could not tell "looked for unruled
+tables and found none" from "never looked", which is the same empty-array-versus-absent-key
+distinction the contract draws everywhere else.
+
+A plain struct with `deny_unknown_fields`, **not** an internally-tagged enum — v0.1 measured that
+internally-tagged representations buffer through a map and drop keys they do not recognise, so a
+profile carrying a third rule id would deserialize with it discarded and re-hash to a different
+digest than it arrived with.
+
+The default profile hash is now
+`sha256:b24fc93984ef60916037c59553474e42eaf9339922e7c22af19cdc9856f11f82`, moved by the version
+bump and the new shape together. Artifacts from before and after are correctly non-comparable:
+one looked for ruled grids only, the other also inferred grids from alignment.
+
+### Removed — `unruled-tables-not-detected`
+
+Deleted rather than reworded. It said a table laid out by alignment alone is not found, which
+stopped being true the moment this slice shipped, and a limitation that outlives the gap it
+describes is worse than none because a reader acts on it.
+
+Two narrower declarations replace it:
+
+- **`stroke-ruled-tables-not-detected`** (profile-scoped). A grid stroked as bare ruling lines
+  still fails the ruled rule's coverage precondition. Genuinely true of every document this build
+  reads — see the thin-lines note below.
+- **`unruled-table-candidate-refused`** (document-scoped, **conditional**). Present only where the
+  alignment rule built a candidate and refused it, naming the page and the precondition that
+  failed. A page below 2 × 2 never had a candidate and declares nothing: a near-miss disclosure
+  riding on every document in existence would carry no information, which is exactly what was
+  wrong with the code it replaced.
+
+### Non-regressions, measured
+
+- **`irs-form-1040-2025` still yields 0 tables.** Alignment repeats S1's 662-cell mistake with a
+  different input if unguarded: this form's text implies **23 276** lattice faces on page 1 from
+  1 146 runs and **10 848** on page 2 from 830. The coherence precondition and the cap both refuse
+  it, and the artifact now says it looked and refused. A test pins no 75 × 45 cell and no lattice.
+- **The S1 ruled goldens are byte-identical** to their v1-S1 output apart from the new
+  `detection_rule` field — verified by building `5662f24` in a worktree and diffing, not assumed.
+- **`synthetic/two-columns` still reads `single-column-v1`** with its multi-column limitation, and
+  now emits no table. It is four runs in a flawless 2 × 2 and geometrically indistinguishable from
+  a two-row table; what distinguishes it is in the file, and the rule reads it (below).
+- **Oracle partition still 12 / 3**, including the now-populated `table-regular-grid`.
+- Cross-check independence, fabrication 0, and double-run byte identity all still hold, with the
+  fabrication property widened to cover unruled tables.
+
+### Two defects found while building this, both by tests
+
+- **Growing column groups until a gutter appears chains.** Origins each inside the next one's
+  gutter collapse into a single "column" nothing aligns to; measured, two lines of word-split
+  prose came out as a 2 × 3 table. `unruled-align-v1` folds within a tolerance instead, which
+  cannot chain past it. The cost is declared: a cell whose text was `Tj`-split a few points wide
+  opens a column and the lattice is refused, so that table is missed rather than fabricated.
+- **v1-S1's cross-check independence guard was vacuous.** It scanned "every line before the first
+  `#[cfg(test)]`", and that attribute sits on a `use` at the top of `tables.rs` — so it read one
+  line (`use serde::…`) and could not fail whatever leaked into `SlotCover`. It now scans the
+  structural types by name and asserts it reached them. No defect was hiding behind it; the guard
+  simply was not guarding.
+
+### Thin ruling lines: declared, not attempted (decision 8b)
+
+`irs-form-1040-2025` carries **520 axis-aligned stroked segments** alongside the 396 rectangles
+that produced S1's 662-cell fabrication. Admitting 520 more edges to that lattice is the same
+experiment with more input, so a stroked-line rule needs its own closed-face coherence — every
+face bounded by four edges — and its own measurement pass against that form. That is a slice of
+work rather than a widening of this one, and until it happens the gap is named by
+`stroke-ruled-tables-not-detected`.
+
+### Fixtures
+
+Three engine-owned CC0 additions (`fixtures/engine/`, `engine_owned` 8 → 11):
+
+- **`unruled-near-miss`** — three rows, two columns, and one value five points off the column the
+  other two share. Past the fold tolerance and under the gutter floor, so: no table, plus a named
+  refusal. Rounding 205 back to 200 would move a coordinate a reader had no way to know was moved.
+- **`both-table-rules`** — a painted grid and an aligned-text grid on one page.
+- **`ruled-wins-shared-region`** — a painted grid whose text is also a clean alignment grid.
+
+### API
+
+`engine_core::{TableDetection, TABLE_DETECTION_UNRULED_V1}` added to the frozen surface and to
+`docs/PUBLIC-API.md`. The alignment detector itself stays `pub(crate)`: its tolerances and
+`Refusal` vocabulary move whenever the rule version does, and a caller pinned to them would be
+pinned to a version of the rule rather than to the contract.
+
+`ethos.grounding.v1` is unchanged — it is `additionalProperties: false` and byte-pinned against
+Ethos's own schema, so the projection stays a move of cells, boxes and text. The rule id lives on
+the representation only.
+
+---
+
 ## [Unreleased] — v1-S1, as 0.3.0
 
 The first slice of v1 (`docs/09-V1-MILESTONES.md`): vector-path capture, ruled tables from those

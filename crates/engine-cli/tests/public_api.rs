@@ -223,9 +223,11 @@ const CORE: &[&str] = &[
     "Stage",
     "StructuralLocator",
     "SynthesizedAt",
+    "TABLE_DETECTION_UNRULED_V1",
     "TABLE_DETECTION_V1",
     "TableCellPosition",
     "TableCellRecord",
+    "TableDetection",
     "TableRecord",
     "TextRunAttributes",
     "VerifierBinary",
@@ -425,6 +427,11 @@ fn the_parsing_machinery_is_not_public() {
         "document",
         "represent",
         "reasons",
+        // v1-S2. The alignment detector's tolerances and `Refusal` vocabulary are the rule's
+        // insides: they move whenever `unruled-align-v1` becomes `-v2`, and a caller pinned to
+        // them would be pinned to a version of the rule rather than to the contract. What a
+        // caller needs — which rule found a table — is on `TableRecord::detection_rule`.
+        "unruled",
     ] {
         assert!(
             !exports.contains(internal),

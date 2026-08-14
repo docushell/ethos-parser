@@ -38,24 +38,38 @@ Two entries are worth knowing before you debug against them:
   valid document in ~26 on this corpus. v0 exited 2 and **declared** the limitation; v0.1 pads the
   entries under published preconditions and reads it, declaring `xref-entry-padded` on every
   artifact (`docs/01-CONTRACT.md` §8.1). If you are debugging against an older build, that exit-2
-  is expected behaviour there, not a bug.
+  is expected behaviour there, not a bug. **It is also the v1-S2 unruled golden**: six `Tm`/`Tj`
+  pairs and zero path operators, so it was invisible to the ruled detector and now yields its 3×2
+  grid under `unruled-align-v1`.
 - **`failure/memory-limit-simulated` is byte-identical to `synthetic/simple-text`.** Observed, not
   assumed — both hash to `f2f6ab91…`. The limit is simulated by configuration, not by a distinct
   document. A test asserting "different fixture ⇒ different bytes" would be wrong here.
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; five are
-`engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
-corpus genuinely cannot cover.
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **eleven**
+are `engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the
+Ethos corpus genuinely cannot cover.
 
-| Fixture | Milestone | What only it proves |
+| Fixture | Slice | What only it proves |
 | --- | --- | --- |
 | `show-text-quote-operators` | M3 | The `'` and `"` operators, whose omission is pdf-inspector's disqualifying defect |
 | `horizontal-scaling-tz` | M3 | `Tz` changes the advance |
 | `synthesized-space-tj` | M3 | A `TJ` gap wide enough that a space was intended and never written |
 | `measured-ink-box` | M3 | A `/FontDescriptor` with real ascent/descent, so ink is **measured** |
 | `absent-font-metrics` | M5 | A descriptor that exists and declares **no ink extent**, with the advance known |
+| `broken-font-encoding` | v0.1 | `/Differences` pointing at glyph names no table carries, so the run is dropped rather than turned into mojibake |
+| `ruled-table-grid` | v1-S1 | A 3×3 grid **drawn** with `re`, one merged cell and one empty cell — the ruled golden |
+| `ruled-table-overlap` | v1-S1 | Two rectangles claiming one lattice face, so the cross-check must report mismatch and repair nothing |
+| `unruled-near-miss` | v1-S2 | Columns that align on two rows and miss on the third by five points: **no table**, plus a named refusal |
+| `both-table-rules` | v1-S2 | One painted grid and one aligned-text grid on a page, so the artifact carries two tables under two rule ids |
+| `ruled-wins-shared-region` | v1-S2 | A painted grid whose text is *also* a clean alignment grid — one table comes out, and it is the ruled one |
+
+**Why the corpus cannot cover the table fixtures.** No fixture in the Ethos conformance corpus
+contains a single path operator, so nothing there can exercise ruled detection at all. And
+`synthetic/table-regular-grid` covers exactly one unruled shape — a clean, complete grid. The near
+miss, the two-rules page and the shared region are the cases where a detector goes wrong, and none
+of them exists upstream.
 
 **Why `absent-font-metrics` is not redundant**, since the answer is narrower than it first looks
 and the first draft of this paragraph got it wrong:

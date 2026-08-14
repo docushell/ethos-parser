@@ -132,8 +132,20 @@
       }
     },
     "table_detection": {
-      "type": "string",
-      "description": "Version id of the table-detection rule in force (v1-S1). `ruled-rects-v1` finds grids from painted rectangles only; the unruled case is a different rule under a different id."
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruled", "unruled"],
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2: with two rules running, a single id could not say whether a run looked for unruled tables and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "properties": {
+        "ruled": {
+          "type": "string",
+          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v1`."
+        },
+        "unruled": {
+          "type": "string",
+          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author — which is why the two ids are separate."
+        }
+      }
     }
   },
   "$defs": {
@@ -240,7 +252,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.3.0",
+      "parser_version": "0.4.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1",
       "xref_repair": {
@@ -249,7 +261,10 @@
       "verifier": {
         "mode": "not_pinned"
       },
-      "table_detection": "ruled-rects-v1"
+      "table_detection": {
+        "ruled": "ruled-rects-v1",
+        "unruled": "unruled-align-v1"
+      }
     }
   ]
 }

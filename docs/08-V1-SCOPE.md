@@ -67,7 +67,7 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | --- | --- | --- |
 | **S0** | This document and `09-V1-MILESTONES.md` | **done** |
 | **S1** | Vector paths · ruled tables from rectangles · `TableCellPosition` / `CellSlot` · locator cross-check | **done** |
-| **S2** | Unruled tables: alignment / whitespace dual-mode | not started |
+| **S2** | Unruled tables: alignment / whitespace dual-mode | **done** |
 | **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | not started |
 | **S4** | Forms and annotations as typed, distinguishable nodes | not started |
 | **S5** | Multi-column reading order, with a stable versioned rule | not started |
@@ -77,10 +77,12 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later
 work `M8` would imply v0's acceptance list continued into it, and it did not.
 
-## 5. The ruled/unruled split, and why S1 stops where it does
+## 5. The ruled/unruled split, and why S1 stopped where it did
 
 `06-STEAL-REFUSE.md` P12 describes a dual-mode detector: ruled tables from ruling lines, unruled
-from alignment. S1 implements **the ruled half only**.
+from alignment. S1 implemented **the ruled half only**; S2 added the other half as a *separate
+rule under a separate id*, which is the whole point of the split rather than an accident of
+sequencing.
 
 The split is not arbitrary sequencing. A ruling line is *evidence in the document* — the author
 drew it. An alignment cluster is *an inference about the document* — the author drew nothing, and
@@ -92,8 +94,16 @@ second's guesswork.
 `synthetic/table-regular-grid` contains **no path operators at all** — its 3×2 grid is laid out by
 text position alone (six `Tm`/`Tj` pairs, zero `re`). Nothing in the conformance corpus draws a
 rule. So the ruled detector cannot be demonstrated on that corpus, and S1 authors an engine-owned
-CC0 fixture that does draw one. `table-regular-grid` is an **S2** fixture wearing an S1 name, and
-until S2 it correctly reports "looked, found none".
+CC0 fixture that does draw one. `table-regular-grid` was an **S2** fixture wearing an S1 name, and
+until S2 it correctly reported "looked, found none". **S2 shipped and it is now the unruled
+golden**, emitting its 3×2 grid under `unruled-align-v1`.
+
+**Both halves shipped, and both name themselves.** Every table carries `detection_rule`, and the
+profile lists both ids rather than one string, because "the document drew this grid" and "a
+detector inferred this grid" are the two claims this split exists to keep apart. Where both rules
+could describe one region, the ruled one wins and the unruled one is dropped: the author's
+evidence outranks our inference, and the two grids are never averaged into a third that neither
+rule found.
 
 ## 6. Standing rules, carried forward from v0
 
@@ -124,8 +134,13 @@ limitation. v1 flips capabilities, so that rule is where its honesty lives.
 
 **A capability flips when the proof exists, not when the code lands.** `tables: true` means *this
 profile looked for tables*, which is why an empty array is a real answer and an absent key is a
-different one. It does not mean every table is found — S1's narrower limitation says so in as many
-words, and S2 removes it.
+different one. It does not mean every table is found.
+
+S1 declared the gap as `unruled-tables-not-detected`. S2 shipped the alignment rule, so that
+sentence became false and **the code was deleted rather than reworded** — a limitation that
+outlives the gap it describes is worse than none, because a reader acts on it. What "looked" now
+covers is both rules, and the remaining leftover is narrower:
+`stroke-ruled-tables-not-detected`, for a grid drawn as bare stroked ruling lines.
 
 ---
 

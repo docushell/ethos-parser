@@ -465,16 +465,35 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
         "a repaired open must declare itself: {codes:?}"
     );
 
-    // This is a table document with NO ruling lines — its grid is text position alone — so the
-    // v1-S1 ruled detector finds nothing, and the artifact says which kind of looking it did.
-    // Rewritten at v1-S1: `tables-not-extracted` was the partner of `tables: false` and is gone.
+    // This is a table document with NO ruling lines — its grid is text position alone. v1-S1
+    // found nothing here and declared `unruled-tables-not-detected`; v1-S2 ships the alignment
+    // rule, so the table IS found and that limitation is **gone rather than reworded**. A
+    // limitation that outlives the gap it describes is worse than none, because a reader acts
+    // on it.
     assert!(
-        codes.contains(&engine_core::codes::UNRULED_TABLES_NOT_DETECTED),
-        "an unruled table document must say the detector only looks for ruled ones: {codes:?}"
+        !codes.contains(&"unruled-tables-not-detected"),
+        "v1-S2 detects this document's table, so the ruled-only limitation must be absent: \
+         {codes:?}"
     );
     assert!(
         !codes.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
         "the false-capability partner is gone now that tables are detected: {codes:?}"
+    );
+    // The leftover that IS still true: a grid stroked as bare ruling lines is not read as ruled.
+    assert!(
+        codes.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED),
+        "the narrowed leftover must still be declared: {codes:?}"
+    );
+
+    // And the table itself: the S2 golden. Six `Tm`/`Tj` pairs, zero path operators, 3x2.
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 1, "the alignment rule must find this grid");
+    let t = tables[0];
+    assert_eq!((t.rows, t.columns), (3, 2));
+    assert_eq!(
+        t.rule,
+        engine_core::TABLE_DETECTION_UNRULED_V1,
+        "which rule fired is on the table, not inferred from the profile"
     );
 }
 
@@ -982,7 +1001,12 @@ fn the_locator_cross_check_reports_agreement_and_disagreement() {
 
     let good = extract_ok(engine_fx("ruled-table-grid"));
     let t = &good.pages[0].tables[0];
-    assert_eq!(t.check.outcome, CheckStatus::Ok, "{:?}", t.check);
+    assert_eq!(
+        t.check.outcome,
+        engine_core::CheckStatus::Ok,
+        "{:?}",
+        t.check
+    );
     assert_eq!(t.check.check_id, engine_core::LOCATOR_CHECK_V1);
 
     // The hostile fixture draws overlapping rectangles. The engine must SAY so — and must not
@@ -1009,24 +1033,335 @@ fn the_locator_cross_check_reports_agreement_and_disagreement() {
     }
 }
 
-/// **Looked, found none.** A text-only page produces an empty table list, not an absent one and
-/// not a fabricated table around the page.
+/// **Looked, found none.** A page whose text implies no grid produces an empty table list, not an
+/// absent one and not a fabricated table around the page.
+///
+/// Narrowed at v1-S2. Through S1 this also covered `synthetic/table-regular-grid`, whose 3×2 grid
+/// is laid out by text position with no path operators at all — S1 could only look for painted
+/// rectangles, so it correctly found nothing there. S2 ships the alignment rule and that document
+/// became the golden, so it moved to
+/// `the_alignment_rule_finds_the_grid_the_ruled_rule_could_not`. What is left here is the case
+/// that must stay empty under *both* rules: prose.
 #[test]
-fn a_page_with_no_ruling_lines_reports_an_empty_table_list() {
-    // `synthetic/table-regular-grid` is the case worth naming: its 3×2 grid is laid out by text
-    // position with NO path operators at all, so the ruled detector correctly finds nothing.
-    // That is an S2 fixture wearing an S1 name (docs/08-V1-SCOPE.md §5).
+fn a_page_that_implies_no_grid_reports_an_empty_table_list() {
     for path in [
-        conformance("synthetic/table-regular-grid/document.pdf"),
         conformance("synthetic/simple-text/document.pdf"),
+        conformance("synthetic/two-lines/document.pdf"),
     ] {
         let a = extract_ok(path.clone());
         for page in &a.pages {
             assert!(
                 page.tables.is_empty(),
-                "{path:?}: a page with no ruling lines has no ruled table — and certainly not a \
-                 1x1 one around the page"
+                "{path:?}: a page of prose has no table — and certainly not a 1x1 one around the \
+                 page"
             );
         }
     }
+}
+
+/// **The S2 golden.** The document S1 measured as un-findable, found.
+///
+/// `synthetic/table-regular-grid` is six `Tm`/`Tj` pairs and **zero path operators**: its grid is
+/// text position alone. v1-S1 reported `tables: []` on it and said so in a limitation. The whole
+/// of v1-S2 is that this document now yields its table, with the same guarantees the ruled rule
+/// gives — `CellSlot`-complete, cross-checked, and carrying only text the document contains.
+#[test]
+fn the_alignment_rule_finds_the_grid_the_ruled_rule_could_not() {
+    let a = extract_ok(conformance("synthetic/table-regular-grid/document.pdf"));
+
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 1, "exactly one table, not one per row");
+    let t = tables[0];
+
+    assert_eq!((t.rows, t.columns), (3, 2));
+    assert_eq!(t.cells.len(), 6, "every face is a cell");
+    assert_eq!(
+        t.rule,
+        engine_core::TABLE_DETECTION_UNRULED_V1,
+        "and it says which rule found it, rather than leaving that to be inferred"
+    );
+
+    // Zero-based, span 1 = not merged, every cell naming its parent.
+    for c in &t.cells {
+        assert_eq!((c.position.rowspan, c.position.colspan), (1, 1));
+        assert!(!c.position.is_merged());
+        assert_eq!(c.position.table_id, t.id, "a cell is addressable alone");
+    }
+    assert!(t
+        .cells
+        .iter()
+        .any(|c| c.position.row == 0 && c.position.column == 0));
+
+    // The text, cell by cell. This is the acceptance criterion in full: not "a 3x2 grid" but
+    // "a 3x2 grid with the right words in the right cells".
+    let at = |row: u32, column: u32| {
+        t.cells
+            .iter()
+            .find(|c| c.position.row == row && c.position.column == column)
+            .unwrap_or_else(|| panic!("no cell at ({row}, {column})"))
+            .text
+            .as_str()
+    };
+    assert_eq!(
+        [at(0, 0), at(0, 1), at(1, 0), at(1, 1), at(2, 0), at(2, 1)],
+        ["Name", "Score", "Alpha", "10", "Beta", "12"]
+    );
+
+    // Both derivations of this grid agree.
+    assert_eq!(
+        t.check.outcome,
+        engine_core::CheckStatus::Ok,
+        "{:?}",
+        t.check
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// 12. Which rule fired (v1-S2)
+// -------------------------------------------------------------------------------------------
+
+/// Every table names the rule that produced it, and a page with both kinds carries both.
+///
+/// `both-table-rules` paints a 2×2 grid with `re` and, lower down, lays a second 2×2 grid out by
+/// text position alone. The profile can say which rules *ran*; only a per-table field can say
+/// which one found any given table, and this is the fixture that makes the difference visible.
+#[test]
+fn a_page_with_both_kinds_of_grid_records_both_rules() {
+    let a = extract_ok(engine_fx("both-table-rules"));
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 2, "one grid of each kind: {tables:?}");
+
+    let ruled = tables
+        .iter()
+        .find(|t| t.rule == engine_core::TABLE_DETECTION_V1)
+        .expect("the painted grid must be found by the ruled rule");
+    let unruled = tables
+        .iter()
+        .find(|t| t.rule == engine_core::TABLE_DETECTION_UNRULED_V1)
+        .expect("the aligned-text grid must be found by the alignment rule");
+
+    assert_eq!((ruled.rows, ruled.columns), (2, 2));
+    assert_eq!((unruled.rows, unruled.columns), (2, 2));
+
+    // The text went where the document put it, and nowhere else. `DetectedTable` is
+    // `pub(crate)` machinery rather than published API, so this reads the cells inline instead
+    // of naming the type — the M7 freeze is not widened for a test's convenience.
+    let mut ruled_text: Vec<&str> = ruled.cells.iter().map(|c| c.text.as_str()).collect();
+    let mut unruled_text: Vec<&str> = unruled.cells.iter().map(|c| c.text.as_str()).collect();
+    ruled_text.sort_unstable();
+    unruled_text.sort_unstable();
+    assert_eq!(ruled_text, vec!["R1", "R2", "R3", "R4"]);
+    assert_eq!(unruled_text, vec!["Ua", "Ub", "Uc", "Ud"]);
+
+    // Neither derivation claims the other's region.
+    assert!(
+        !(ruled.rect.x0 < unruled.rect.x1
+            && unruled.rect.x0 < ruled.rect.x1
+            && ruled.rect.y0 < unruled.rect.y1
+            && unruled.rect.y0 < ruled.rect.y1),
+        "two tables must not overlap: {:?} vs {:?}",
+        ruled.rect,
+        unruled.rect
+    );
+
+    for t in [ruled, unruled] {
+        assert_eq!(
+            t.check.outcome,
+            engine_core::CheckStatus::Ok,
+            "{:?}",
+            t.check
+        );
+    }
+}
+
+/// Where both rules could describe one region, the **ruled** one wins and the other is dropped.
+///
+/// `ruled-wins-shared-region` paints a 2×2 grid whose four runs are also a flawless 2×2
+/// alignment. Without arbitration that is two tables claiming the same cells; with it, one.
+///
+/// Ruled wins because a ruling line is evidence the author left and an alignment cluster is a
+/// decision this engine made. The two grids are never averaged either — that would produce a
+/// grid neither rule found, under a rule id that describes neither.
+#[test]
+fn where_both_rules_could_fire_the_ruled_one_wins() {
+    let a = extract_ok(engine_fx("ruled-wins-shared-region"));
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+
+    assert_eq!(
+        tables.len(),
+        1,
+        "one region, one table — never one per rule: {tables:?}"
+    );
+    assert_eq!(
+        tables[0].rule,
+        engine_core::TABLE_DETECTION_V1,
+        "the author drew this grid, so the author's derivation is the one kept"
+    );
+    assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
+    assert_eq!(tables[0].cells.len(), 4);
+}
+
+/// **The near miss is a non-event, and it is declared.**
+///
+/// `unruled-near-miss` is three rows and two columns of text — except that on the last row the
+/// right-hand value sits five points off the column the other two share. Five points is past the
+/// tolerance the rule folds together and under the gutter it requires between real columns, so
+/// there is no table here.
+///
+/// The declaration is the other half. Without it, this page and a page of ordinary prose both
+/// say `tables: []`, and only one of them means "a grid was implied here and judged incoherent".
+#[test]
+fn columns_that_almost_align_produce_no_table_and_say_why() {
+    let a = extract_ok(engine_fx("unruled-near-miss"));
+
+    for page in &a.pages {
+        assert!(
+            page.tables.is_empty(),
+            "a near miss is not a table: {:?}",
+            page.tables
+        );
+    }
+
+    let refused = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED)
+        .expect("a refused candidate must be declared, not silently absent");
+
+    assert_eq!(refused.scope, engine_core::LimitationScope::Document);
+    assert!(
+        refused.detail.contains("page 1"),
+        "the declaration must say WHERE: {}",
+        refused.detail
+    );
+
+    // Typed vocabulary, never a score (`docs/01-CONTRACT.md` §9). "Nearly a table" is a
+    // confidence field wearing a different hat.
+    let lower = refused.detail.to_ascii_lowercase();
+    for scored in ["confidence", "probability", "score of", "likelihood"] {
+        assert!(
+            !lower.contains(scored),
+            "`{scored}` in a refusal detail: {}",
+            refused.detail
+        );
+    }
+}
+
+/// A page that implies nothing grid-shaped declares **no** refusal.
+///
+/// The other half of the near-miss disclosure. If every document carried it, it would carry no
+/// information — which is exactly what was wrong with the blanket `unruled-tables-not-detected`
+/// this slice retired.
+#[test]
+fn a_page_with_no_candidate_declares_no_refusal() {
+    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED),
+        "nothing was refused here, so nothing may say it was"
+    );
+}
+
+/// **The 1040 does not acquire a fabricated lattice from alignment.**
+///
+/// v1-S1 measured the rectangle version of this mistake: one lattice built from every rectangle
+/// on this form gave a 662-cell table with a cell spanning 75 rows by 45 columns, and Ethos
+/// rejected the artifact outright. Alignment is the same mistake with a different input — the
+/// form's labels and values imply a lattice of tens of thousands of faces — and the coherence
+/// precondition is what refuses it.
+///
+/// Measured: page 1 implies 23 276 faces from 1 146 runs, page 2 implies 10 848 from 830.
+#[test]
+fn the_tax_form_does_not_become_an_alignment_lattice() {
+    let a = extract_ok(path_in("benchmark", "irs-form-1040-2025.pdf"));
+
+    for page in &a.pages {
+        for t in &page.tables {
+            // If this form ever does yield a table, it must be a real one — never the 75×45 cell.
+            assert!(
+                t.rows <= 64 && t.columns <= 64,
+                "page {}: a {}x{} lattice on a tax form is the v1-S1 fabrication returning",
+                page.index,
+                t.rows,
+                t.columns
+            );
+            for c in &t.cells {
+                assert!(
+                    c.position.rowspan <= 8 && c.position.colspan <= 8,
+                    "page {}: a cell spanning {}x{} is not a cell",
+                    page.index,
+                    c.position.rowspan,
+                    c.position.colspan
+                );
+            }
+        }
+    }
+
+    let total: usize = a.pages.iter().map(|p| p.tables.len()).sum();
+    assert_eq!(
+        total, 0,
+        "this form implies no coherent grid and must yield no table; if a later rule change \
+         makes it yield one, that is a deliberate decision needing its own evidence"
+    );
+
+    // And it says it looked and refused, rather than staying silent about it.
+    assert!(
+        a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED),
+        "the refusal is the informative part of finding nothing here"
+    );
+}
+
+/// **Fabrication 0, over the unruled goldens too.**
+///
+/// The v1-S1 property, widened to every table this engine emits regardless of which rule found
+/// it: a cell's text is exactly the concatenation of the runs assigned to it, in order, and never
+/// a novel string.
+#[test]
+fn no_table_cell_carries_text_the_document_did_not_put_there() {
+    for fixture in [
+        "ruled-table-grid",
+        "ruled-table-overlap",
+        "both-table-rules",
+        "ruled-wins-shared-region",
+    ] {
+        let a = extract_ok(engine_fx(fixture));
+        assert_cells_are_concatenations(&a, fixture);
+    }
+    let a = extract_ok(conformance("synthetic/table-regular-grid/document.pdf"));
+    assert_cells_are_concatenations(&a, "table-regular-grid");
+}
+
+fn assert_cells_are_concatenations(a: &ExtractArtifact, what: &str) {
+    let mut seen_a_table = false;
+    for page in &a.pages {
+        for t in &page.tables {
+            seen_a_table = true;
+            for c in &t.cells {
+                let expected: String = c
+                    .run_indices
+                    .iter()
+                    .map(|i| page.runs[*i].text.as_str())
+                    .collect();
+                assert_eq!(
+                    c.text, expected,
+                    "{what}: cell ({}, {}) under `{}` carries text that is not its runs",
+                    c.position.row, c.position.column, t.rule
+                );
+                if c.run_indices.is_empty() {
+                    assert!(
+                        c.text.is_empty(),
+                        "{what}: a cell enclosing no run must be EMPTY, never borrowed from a \
+                         neighbour"
+                    );
+                }
+            }
+        }
+    }
+    assert!(seen_a_table, "{what}: expected at least one table to check");
 }

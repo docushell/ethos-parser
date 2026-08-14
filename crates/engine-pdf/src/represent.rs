@@ -86,6 +86,10 @@ pub fn to_representation(
                 cells,
                 // Never Extracted. The ruling lines and the runs are; the grid over them is not.
                 derivation: crate::tables::TABLE_DERIVATION,
+                // v1-S2. Carried per table, because one document can hold both kinds and
+                // `derivation` is `Computed` for both — only this field distinguishes "the
+                // author drew this grid" from "a detector inferred it".
+                detection_rule: t.rule.to_string(),
                 locator_check: t.check.clone(),
             });
         }

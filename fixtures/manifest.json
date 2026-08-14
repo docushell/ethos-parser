@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 8
+    "engine_owned": 11
   },
   "fixtures": [
     {
@@ -256,6 +256,33 @@
       "sha256": "sha256:30c4f7c0d1cd48268ae2f97eb413476034e13a497ed7a1d99db979d26dd88ee1",
       "owner": "engine",
       "notes": "The v1-S1 cross-check hostile. Two rectangles claim the same lattice face, so the structural CellSlot cover cannot be exact and the geometric derivation sees an overlap. The engine must REPORT the disagreement on the artifact and never nudge a coordinate to make the grid tile (docs/01-CONTRACT.md 5.4)."
+    },
+    {
+      "id": "unruled-near-miss",
+      "root": "engine",
+      "group": "engine",
+      "path": "unruled-near-miss/document.pdf",
+      "sha256": "sha256:f5a694ed21ac7947fd239ec962d13202c57a34a3422f264123d6af07893b1bcd",
+      "owner": "engine",
+      "notes": "v1-S2 NEAR MISS. Three rows, two columns, no path operators \u2014 and on the last row the right column sits at x=205 instead of 200. Five points is past the 150 centipoints the alignment rule folds together and under the 1200 it requires between two real columns, so the origins imply three column lines, two of them half a gutter apart. Expect `tables: []` plus a named refusal: rounding 205 back to 200 would move a coordinate a reader had no way to know was moved."
+    },
+    {
+      "id": "both-table-rules",
+      "root": "engine",
+      "group": "engine",
+      "path": "both-table-rules/document.pdf",
+      "sha256": "sha256:ad6c3f6dfde83f41520765f868c28ada5b0472c0050e3f0173521afa0b45c258",
+      "owner": "engine",
+      "notes": "v1-S2 WHICH-RULE-FIRED. One page carrying a 2x2 grid the document PAINTS with `re` and a separate 2x2 grid implied by text alignment alone. Expect two tables, one `ruled-rects-v1` and one `unruled-align-v1`. The profile says which rules ran; only a per-table field can say which one found a given table."
+    },
+    {
+      "id": "ruled-wins-shared-region",
+      "root": "engine",
+      "group": "engine",
+      "path": "ruled-wins-shared-region/document.pdf",
+      "sha256": "sha256:0ba1883ac36d0e980d79f5c258c7770f7fe8027df812d2f62ebbc2d33058dde4",
+      "owner": "engine",
+      "notes": "v1-S2 ARBITRATION. A painted 2x2 grid whose four runs are also a flawless 2x2 alignment, so both rules can describe the region and exactly one may. Expect ONE table, `ruled-rects-v1`: a ruling line is evidence the author left, an alignment cluster is a decision this engine made, and the two grids are never averaged into a third nobody found."
     }
   ]
 }

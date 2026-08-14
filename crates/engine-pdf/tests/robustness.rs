@@ -357,8 +357,9 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 32] = [
+const EXPECTED_SURVIVORS: [&str; 35] = [
     "absent-font-metrics/junk-after-eof",
+    "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
@@ -374,6 +375,7 @@ const EXPECTED_SURVIVORS: [&str; 32] = [
     "nist-sp-800-63b/junk-after-eof",
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
+    "ruled-wins-shared-region/junk-after-eof",
     "show-text-quote-operators/junk-after-eof",
     "synthesized-space-tj/junk-after-eof",
     "synthetic/heading-export/flip-tail-byte",
@@ -390,6 +392,7 @@ const EXPECTED_SURVIVORS: [&str; 32] = [
     "synthetic/two-columns/junk-after-eof",
     "synthetic/two-lines/flip-tail-byte",
     "synthetic/two-lines/junk-after-eof",
+    "unruled-near-miss/junk-after-eof",
 ];
 
 // -------------------------------------------------------------------------------------------
@@ -658,9 +661,10 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        26,
-        "the manifest should declare 26 fixtures across three roots (23 at M7, plus v0.1's \
-         broken-font-encoding and v1-S1's two ruled-table fixtures)"
+        29,
+        "the manifest should declare 29 fixtures across three roots (23 at M7, plus v0.1's \
+         broken-font-encoding, v1-S1's two ruled-table fixtures, and v1-S2's three: \
+         unruled-near-miss, both-table-rules and ruled-wins-shared-region)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

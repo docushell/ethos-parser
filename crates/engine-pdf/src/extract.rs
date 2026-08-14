@@ -134,6 +134,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // encoding could not map it, and the first failure's reason for the declaration's detail.
     let mut encoding_dropped_runs: u32 = 0;
     let mut encoding_detail = String::new();
+    // v1-S2. Pages where the alignment rule built a candidate lattice and refused it, with the
+    // precondition that failed. Collected rather than declared per page so the artifact carries
+    // one limitation naming every such page instead of one per page.
+    let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -266,7 +270,15 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 text: r.text.as_str(),
             })
             .collect();
-        let tables = crate::tables::detect(page_number, &table_rects, &origins, &mut alloc)?;
+        // v1-S2: ruled first, then the alignment rule on whatever text no ruled table claims.
+        let detected = crate::tables::detect(page_number, &table_rects, &origins, &mut alloc)?;
+        let tables = detected.tables;
+        // A refused candidate is recorded once per page it happened on. Without this, a near-miss
+        // page and a page with no grid-shaped text at all would both say `tables: []`, and only
+        // one of them means "the alignment rule looked at something and decided against it".
+        if let Some(r) = detected.refusal {
+            unruled_refusals.push((page_number, r));
+        }
         drop(origins);
 
         pages.push(PageExtract {
@@ -290,6 +302,13 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         if b < page_count {
             limitations.push(lim::resource_limit_pages(b, page_count));
         }
+    }
+
+    // v1-S2. Only when a candidate was actually built and refused — a page whose text implied
+    // nothing grid-shaped produced no candidate and gets no declaration, because declaring a
+    // refusal that did not happen is as misleading as omitting one that did.
+    if !unruled_refusals.is_empty() {
+        limitations.push(lim::unruled_candidate_refused(&unruled_refusals));
     }
 
     // **Encoding holes: declare, or refuse outright.**

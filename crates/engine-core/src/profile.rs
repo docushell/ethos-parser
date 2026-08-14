@@ -39,16 +39,36 @@ use crate::identity::{CoordinateSystem, Sha256Hex};
 /// it gets a new id here rather than silently replacing this one.
 pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
 
-/// The table-detection rule v1-S1 ships: ruled grids reconstructed from painted rectangles.
+/// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `engine-pdf` because the profile is `engine-core`'s and a rule id is
 /// data. The rule itself — the lattice tolerance, what counts as a grid — lives with the detector,
 /// and a test asserts the two strings agree so they cannot drift into naming different things.
 ///
 /// **The unruled half is not in this rule.** A table implied by alignment is a different
-/// derivation under a different id (`docs/09-V1-MILESTONES.md` S2), and rolling it into this one
-/// would make two very different inferences share an identity.
+/// derivation under a different id ([`TABLE_DETECTION_UNRULED_V1`]), and rolling it into this one
+/// would make two very different inferences share an identity — which is exactly what a versioned
+/// rule id exists to prevent.
 pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
+
+/// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
+///
+/// A separate id from [`TABLE_DETECTION_V1`], not a bump of it. The two answer different
+/// questions about a document:
+///
+/// | Rule | Evidence | What it means when it fires |
+/// | --- | --- | --- |
+/// | `ruled-rects-v1` | rectangles the author **painted** | the document drew this grid |
+/// | `unruled-align-v1` | where the author **placed text** | a detector inferred this grid |
+///
+/// Sharing one id between them would make an artifact unable to say which of those two happened,
+/// and "the document drew it" is a far stronger claim than "we inferred it". Every table on the
+/// wire names the rule that produced it (`TableRecord::detection_rule`).
+///
+/// Its tolerances — the cluster width, the gutter floor, the coherence precondition and the
+/// lattice cap — are part of the rule. Changing any of them takes a new id rather than silently
+/// redefining this one, so artifacts from two detectors stay correctly non-comparable.
+pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 
 /// Identity of the character-decoding data this profile carries.
 ///
@@ -89,6 +109,52 @@ impl Default for BackendIdentity {
     }
 }
 
+/// Which table-detection rules are in force, named one by one.
+///
+/// # Why this is a structure and not a string
+///
+/// v1-S1 shipped `table_detection` as a single string, because there was a single rule. v1-S2
+/// added a second one, and a single string then has to mean two things at once: a reader seeing
+/// `"ruled-rects-v1"` cannot tell whether the run looked for unruled tables and found none, or
+/// never looked. Those are different documents to a consumer, and collapsing them is precisely
+/// the "empty array versus absent key" distinction the contract makes everywhere else.
+///
+/// So both rules are named, always. A future slice that retires or adds one changes this shape
+/// and moves the hash, which is the event a reader wants visible.
+///
+/// # `deny_unknown_fields`, and why not an internally-tagged enum
+///
+/// v0.1 measured this: serde's internally-tagged representations **buffer through a map and drop
+/// keys they do not recognise**, so `deny_unknown_fields` does not reach inside one. A profile
+/// written by a newer engine — carrying a third rule id — would deserialize with that id silently
+/// discarded and then re-hash to a different digest than the one it arrived with, claiming a
+/// comparability it does not have. A plain struct denies unknown fields for real, so an
+/// unrecognised rule fails closed instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TableDetection {
+    /// Version id of the rule that reconstructs grids from painted rectangles.
+    ///
+    /// See [`TABLE_DETECTION_V1`].
+    pub ruled: String,
+    /// Version id of the rule that infers grids from text alignment.
+    ///
+    /// See [`TABLE_DETECTION_UNRULED_V1`]. Present because this profile **runs** it: an artifact
+    /// naming it and carrying `tables: []` means the alignment rule looked and refused, not that
+    /// nobody looked.
+    pub unruled: String,
+}
+
+impl Default for TableDetection {
+    /// Both rules v1-S2 ships, enabled.
+    fn default() -> Self {
+        Self {
+            ruled: TABLE_DETECTION_V1.to_string(),
+            unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
+        }
+    }
+}
+
 /// What this profile claims it can do.
 ///
 /// The first three mirror `ethos.grounding.v1`'s required `capabilities` object exactly, so the
@@ -122,11 +188,16 @@ pub struct Capabilities {
     pub char_offsets: bool,
     /// Tables are detected and emitted. (grounding-aligned)
     ///
-    /// **v1-S1: true**, and what it claims is precise — *this profile looked for tables*. It does
-    /// not claim every table is found. `ethos.grounding.v1` encodes exactly that distinction:
-    /// an absent `tables` key means the producer did not look, an empty array means it looked and
-    /// found none, and a non-empty one is tables. The ruled detector is the whole of S1, so a
-    /// table drawn without rules is a real miss and is declared as a limitation until S2.
+    /// **True since v1-S1**, and what it claims is precise — *this profile looked for tables*. It
+    /// does not claim every table is found. `ethos.grounding.v1` encodes exactly that
+    /// distinction: an absent `tables` key means the producer did not look, an empty array means
+    /// it looked and found none, and a non-empty one is tables.
+    ///
+    /// What "looked" covers widened at v1-S2. S1 looked only for grids the document painted, and
+    /// declared the alignment case as a limitation; S2 runs both rules, so that limitation is
+    /// retired and `tables: []` now means *neither* rule found one. The leftover is narrower and
+    /// still declared: a grid drawn as bare stroked ruling lines
+    /// (`codes::STROKE_RULED_TABLES_NOT_DETECTED`).
     pub tables: bool,
     /// Ink boxes come from measured font metrics rather than being absent.
     pub measured_ink_boxes: bool,
@@ -338,13 +409,13 @@ pub struct Profile {
     pub page_budget: PageBudget,
     /// Version id of the reading-order rule in force.
     pub reading_order_rule: String,
-    /// Version id of the table-detection rule in force. New at v1-S1.
+    /// The table-detection rules in force. New at v1-S1, widened to a structure at v1-S2.
     ///
-    /// A plain versioned string, like `reading_order_rule`, because the *rule* is the identity:
-    /// the lattice tolerance, what counts as a grid, and how a merged cell is recognised are all
-    /// part of it. Changing any of them takes a new id rather than silently redefining this one,
-    /// so artifacts from two detectors are correctly non-comparable.
-    pub table_detection: String,
+    /// The *rules* are the identity: the lattice tolerances, what counts as a grid, and how a
+    /// merged cell is recognised are all part of them. Changing any of that takes a new id rather
+    /// than silently redefining one, so artifacts from two detectors are correctly
+    /// non-comparable. [`TableDetection`] says why this stopped being a single string.
+    pub table_detection: TableDetection,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
     /// Whether the bounded cross-reference repair runs. New at v0.1.
@@ -367,7 +438,7 @@ impl Default for Profile {
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
-            table_detection: TABLE_DETECTION_V1.to_string(),
+            table_detection: TableDetection::default(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -459,7 +530,11 @@ mod tests {
                 },
             page_budget: _,
             reading_order_rule: _,
-            table_detection: _,
+            table_detection:
+                TableDetection {
+                    ruled: _,
+                    unruled: _,
+                },
             cmap_data_version: _,
             xref_repair: _,
             verifier: _,
@@ -474,9 +549,16 @@ mod tests {
                 Box::new(|p: &mut Profile| p.parser_version = "9.9.9-mutated".into()),
             ),
             (
-                // v1-S1. Which grids are found, and therefore which cells exist.
-                "table_detection",
-                Box::new(|p: &mut Profile| p.table_detection = "other-rule-v9".into()),
+                // v1-S1. Which ruled grids are found, and therefore which cells exist.
+                "table_detection.ruled",
+                Box::new(|p: &mut Profile| p.table_detection.ruled = "other-rule-v9".into()),
+            ),
+            (
+                // v1-S2. The unruled rule is a SEPARATE knob: a run that inferred grids from
+                // alignment produced different tables from one that did not, and an artifact
+                // whose hash could not tell those apart would claim a comparability it lacks.
+                "table_detection.unruled",
+                Box::new(|p: &mut Profile| p.table_detection.unruled = "other-align-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -610,7 +692,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.3.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","table_detection":"ruled-rects-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.4.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -627,11 +709,78 @@ mod tests {
              fourth time at v1-S1 (0.3.0): the version, the new `table_detection` rule, and \
              `capabilities.tables` flipping false -> true. That last one is not a knob but a \
              CLAIM — artifacts before it did not look for tables and artifacts after it did, \
-             which is exactly the kind of difference a profile hash exists to make visible."
+             which is exactly the kind of difference a profile hash exists to make visible.\n\n\
+             Moved a fifth time at v1-S2 (0.4.0): the version, and `table_detection` widening \
+             from a single string to a structure naming BOTH rules. Same class of change as the \
+             fourth — an artifact from before this looked for ruled grids only, and one from \
+             after also inferred grids from alignment, so the two really did come from different \
+             detectors and must not be compared cell for cell."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:fad389aea00732320a5bed0e513d196993b366fd2c7bf3a6c3a51baf57ef9a14"
+            "sha256:b24fc93984ef60916037c59553474e42eaf9339922e7c22af19cdc9856f11f82"
+        );
+    }
+
+    /// Both rules are named on the profile, and either one moving moves the identity (v1-S2).
+    ///
+    /// The reason `table_detection` stopped being a string. With one id, an artifact could not
+    /// distinguish "looked for unruled tables and found none" from "never looked", and a reader
+    /// comparing two such artifacts cell for cell would be comparing different detectors.
+    #[test]
+    fn the_profile_names_both_table_rules_and_either_one_moves_the_hash() {
+        let base = Profile::default();
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V1);
+        assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
+        assert_ne!(
+            TABLE_DETECTION_V1, TABLE_DETECTION_UNRULED_V1,
+            "two inferences sharing one identity is what a versioned rule id exists to prevent"
+        );
+
+        // Both appear on the wire, under their own keys.
+        let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
+        assert!(
+            s.contains(
+                r#""table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"}"#
+            ),
+            "{s}"
+        );
+
+        let mut ruled_moved = base.clone();
+        ruled_moved.table_detection.ruled = "ruled-rects-v2".into();
+        assert_ne!(hash(&base), hash(&ruled_moved), "the ruled id is identity");
+
+        let mut unruled_moved = base.clone();
+        unruled_moved.table_detection.unruled = "unruled-align-v2".into();
+        assert_ne!(
+            hash(&base),
+            hash(&unruled_moved),
+            "and so is the unruled one — a run that inferred grids from alignment produced \
+             different tables from one that did not"
+        );
+
+        // And the two knobs are not each other: moving one must not produce the other's digest.
+        assert_ne!(hash(&ruled_moved), hash(&unruled_moved));
+    }
+
+    /// An unknown rule id fails closed rather than deserializing with the key dropped.
+    ///
+    /// `deny_unknown_fields` on a plain struct denies for real. v0.1 measured that an
+    /// internally-tagged enum does not: it buffers through a map and discards keys it does not
+    /// know, so a profile from a newer engine would re-hash to a digest different from the one it
+    /// arrived with — claiming a comparability it does not have.
+    #[test]
+    fn an_unknown_table_rule_key_is_refused() {
+        let bad = r#"{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1","tagged":"x-v1"}"#;
+        assert!(
+            serde_json::from_str::<TableDetection>(bad).is_err(),
+            "a third rule id must fail closed, not vanish and change the hash"
+        );
+
+        let good = r#"{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"}"#;
+        assert_eq!(
+            serde_json::from_str::<TableDetection>(good).unwrap(),
+            TableDetection::default()
         );
     }
 
@@ -663,8 +812,9 @@ mod tests {
     fn v0_capabilities_are_honest_about_what_is_missing() {
         let c = Capabilities::V0;
         // `tables` flipped to true at v1-S1. What it claims is "this profile looked", not "every
-        // table is found" — the unruled case is a real miss and rides as its own limitation.
-        assert!(c.tables, "v1-S1 looks for ruled tables");
+        // table is found". v1-S2 widened what "looked" covers: ruled AND unruled, which is why
+        // the blanket `unruled-tables-not-detected` limitation is gone rather than reworded.
+        assert!(c.tables, "v1-S2 looks for ruled and unruled tables");
         assert!(
             !c.multi_column_reading_order,
             "v0 reads single-column and declares the limitation"

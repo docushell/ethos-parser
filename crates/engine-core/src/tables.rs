@@ -302,6 +302,24 @@ pub struct TableRecord {
     /// Always `Computed`: the ruling lines and the text are Extracted, and the grid, the indices,
     /// the spans and the concatenation are an inference over them (`docs/01-CONTRACT.md` §6).
     pub derivation: crate::derivation::DerivationClass,
+    /// **Which rule found this table** — `ruled-rects-v1` or `unruled-align-v1` (v1-S2).
+    ///
+    /// Per table, not per document, because one document can carry both kinds and the difference
+    /// matters to a consumer:
+    ///
+    /// | Value | What the document did | What the engine did |
+    /// | --- | --- | --- |
+    /// | `ruled-rects-v1` | painted the grid | read it |
+    /// | `unruled-align-v1` | placed text in columns | inferred it |
+    ///
+    /// `derivation` is `Computed` either way — both are inferences over Extracted evidence — so
+    /// it cannot carry this distinction, and the profile cannot either: it says which rules *ran*,
+    /// not which one produced any given table. Only a per-table field can answer "did the author
+    /// draw this grid, or did we decide it was one".
+    ///
+    /// A plain string, matching the rule-id-as-data convention `Profile::table_detection` uses,
+    /// and matching the ids pinned there.
+    pub detection_rule: String,
     /// The locator cross-check for this table.
     ///
     /// **On the artifact, not in `--diagnostics`.** A mismatch changes whether a cell is
@@ -402,20 +420,60 @@ mod tests {
         assert!(cell(0, 0, 1, 1).is_well_formed());
     }
 
-    #[test]
-    fn the_cover_sees_no_geometry() {
-        // Guard the independence the cross-check depends on. If a bounding box ever reaches this
-        // type, the two halves of E6 stop being two halves.
+    /// The source of one item, delimited by the declaration that follows it.
+    ///
+    /// Anchored on declarations rather than on line numbers so that reordering the file breaks
+    /// the test loudly instead of quietly shrinking what it reads.
+    fn source_between(from: &str, to: &str) -> String {
         let src = include_str!("tables.rs");
-        let code: String = src
+        let start = src.find(from).unwrap_or_else(|| {
+            panic!("`{from}` is gone; this guard no longer reads what it names")
+        });
+        let rest = &src[start..];
+        let end = rest
+            .find(to)
+            .unwrap_or_else(|| panic!("`{to}` is gone; this guard no longer reads what it names"));
+        rest[..end]
             .lines()
-            .take_while(|l| !l.trim_start().starts_with("#[cfg(test)]"))
             .filter(|l| !l.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
-            .join("\n");
+            .join("\n")
+    }
+
+    #[test]
+    fn the_cover_sees_no_geometry() {
+        // Guard the independence the cross-check depends on. If a bounding box ever reaches the
+        // structural half, the two halves of E6 stop being two halves and the check agrees with
+        // itself.
+        //
+        // **This reads the structural types specifically, not "the file up to the tests".** The
+        // v1-S1 spelling took lines `take_while(|l| !l.starts_with("#[cfg(test)]"))`, which stops
+        // at the `#[cfg(test)] use crate::ids::IdKind;` import at the TOP of this file — so it
+        // scanned exactly one line (`use serde::...`) and could not fail. `TableCellRecord` and
+        // `TableRecord` legitimately carry `bbox`, which is why widening the old scan to the
+        // whole file was never an option: the region is what matters, so the region is what is
+        // named.
+        let structural = format!(
+            "{}\n{}",
+            // CellSlot + TableCellPosition and their impls: the cover's only inputs.
+            source_between("pub struct CellSlot", "/// The structural derivation"),
+            // SlotCover and its impl: the derivation itself.
+            source_between(
+                "pub struct SlotCover",
+                "/// One way a slot cover can be wrong"
+            ),
+        );
+
+        // Sanity: the scan must actually reach the code, or every assertion below is vacuous.
+        assert!(
+            structural.contains("fn derive") && structural.contains("fn slots"),
+            "the guard did not reach SlotCover::derive and TableCellPosition::slots; it is \
+             reading the wrong region and would pass regardless of what leaked in"
+        );
+
         for geometric in ["QRect", "bbox", "GeometryPresence", "x0", "y0"] {
             assert!(
-                !code.contains(geometric),
+                !structural.contains(geometric),
                 "`{geometric}` reached the structural half of the cross-check; the two halves \
                  must derive from different inputs or they agree with themselves"
             );

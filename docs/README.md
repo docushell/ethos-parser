@@ -1,15 +1,32 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1-S1 shipped, as 0.3.0.** v1 is the DocuShell replacement gate and is seven slices
-long (`08-V1-SCOPE.md`); this is the first. Ruled tables are reconstructed from the rectangles a
-document actually drew, every cell is cross-checked two independent ways, and fabrication is 0.
-**The > 0.489 accuracy gate is S7's**, not this slice's — see `08-V1-SCOPE.md` §3 for why chasing
-it earlier would be tuning against nobody's number.
+**Status:** **v1-S2 shipped, as 0.4.0.** v1 is the DocuShell replacement gate and is seven slices
+long (`08-V1-SCOPE.md`); two are done. Tables now come from **two** rules, and every table on the
+wire names the one that produced it:
 
-Two measurements shaped the slice and are worth knowing before reading the detector: no fixture in
-the Ethos conformance corpus contains a single path operator (so `synthetic/table-regular-grid` is
-an S2 fixture wearing an S1 name), and a first version of the detector fabricated a 662-cell table
-on `irs-form-1040-2025` before the coherence precondition landed.
+| Rule | Evidence | Claim |
+| --- | --- | --- |
+| `ruled-rects-v1` (S1) | rectangles the author painted | the document drew this grid |
+| `unruled-align-v1` (S2) | where the author placed text | a detector inferred this grid |
+
+Both are cross-checked two independent ways, and fabrication is 0 under both. **The > 0.489
+accuracy gate is S7's**, not either slice's — see `08-V1-SCOPE.md` §3 for why chasing it earlier
+would be tuning against nobody's number.
+
+Four measurements shaped these two slices and are worth knowing before reading the detectors:
+
+1. No fixture in the Ethos conformance corpus contains a single path operator, so
+   `synthetic/table-regular-grid` was an S2 fixture wearing an S1 name. It is now the S2 golden.
+2. A first ruled detector fabricated a **662-cell** table on `irs-form-1040-2025`, with a cell
+   spanning 75 rows by 45 columns, before the coherence precondition landed.
+3. Alignment repeats that mistake with a different input: the same form's text implies **23 276**
+   lattice faces on page 1 and **10 848** on page 2. The unruled coherence precondition is what
+   refuses both, and the form still yields 0 tables.
+4. Growing column groups until a gap appears **chains**, turning two lines of word-split prose
+   into a 2 × 3 table. `unruled-align-v1` folds by tolerance instead, which cannot chain.
+
+**Previously: v1-S1, as 0.3.0.** Ruled tables from vector paths, `CellSlot` occupancy, and the
+geometric-versus-structural locator cross-check.
 
 **Previously: v0.1, as 0.2.0.** v0 was frozen at M7 (0.1.0) and its exit criteria have not
 moved; this is the roadmap row after it (`02-ROADMAP.md`), and it is the first work that is a
@@ -61,7 +78,7 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**Next: v1-S2** — unruled tables, from alignment rather than ruling lines
+**Next: v1-S3** — tagged-PDF consumption, putting the `mcid` v0 already captures to use
 (`09-V1-MILESTONES.md`). Not started.
 
 ---
@@ -72,12 +89,12 @@ M7 added no capability. It closed v0 instead:
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **M0–M7 are done and v0 is frozen; v0.1 and v1-S1 shipped on top.** Do not re-author the
+5. **M0–M7 are done and v0 is frozen; v0.1, v1-S1 and v1-S2 shipped on top.** Do not re-author the
    workspace, the contract types, the classifier, the extractor, the assurance envelope, the
    representation, the projection, or the checker — and do not widen the public API without
    editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
    read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
-   first: v1 is **seven slices**, the next is S2, and the > 0.489 gate belongs to S7 alone
+   first: v1 is **seven slices**, the next is S3, and the > 0.489 gate belongs to S7 alone
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it
