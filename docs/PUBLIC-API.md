@@ -43,15 +43,15 @@ the items re-exported at the crate root.
 | `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1`, `STRUCT_TREE_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `StructuralLocator`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
 | `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` — **new at v0.1** |
-| `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1` — **new at v1-S1** |
+| `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1` — **new at v1-S1** · `TaggedGridCheck`, `TaggedGridStatus`, `TaggedGridFault`, `TAGGED_GRID_CHECK_V1` — **new at v1-S3** |
 
 Plus `CRATE_NAME`, which exists so the M0 link harness can assert the workspace builds.
 
@@ -68,6 +68,20 @@ no geometry reaches `SlotCover`, because a check whose two halves shared an inpu
 itself. `LocatorCheck` rides on the artifact rather than in `--diagnostics`: a mismatch changes
 whether a cell is trustworthy, which is a statement the artifact makes, not an observation about
 the run.
+
+**The tagged-versus-geometric check is v1-S3, and it is a *second* check rather than a wider
+first one.** `LOCATOR_CHECK_V1` compares a table's own indices against its own boxes;
+`TAGGED_GRID_CHECK_V1` compares the grid the document's **structure tree** declares against the
+grid a detector found. Overloading one id with both would leave a reader unable to tell which pair
+of derivations disagreed. `TaggedGridCheck` rides on `TableRecord` as an **absent key** where the
+tree describes no table on that page — absent is not the same as agreement.
+
+`StructuralLocator` gained two variants at v1-S3. `PdfTagged` carries the role path the document's
+own tree gives a node, with `standard_role_path` present only when `/RoleMap` actually remapped
+something; `PdfArtifact` marks content the page called furniture rather than body text. Those runs
+are **kept in `nodes`** — a reader that deletes running heads has silently edited the document
+(parity checklist O21/O22). The pre-existing `PdfMcid` now means something narrower and more
+useful: an id the content stream supplied that **no structure element claims**.
 
 **The `verifier` module is v0.1, and what it does *not* export is the point.** There is no report
 type, no claim, no check, no result — the engine spawns a verifier and forwards its bytes without

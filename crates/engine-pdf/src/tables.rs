@@ -157,6 +157,9 @@ pub struct DetectedTable {
     pub cells: Vec<DetectedCell>,
     /// The cross-check result for this table.
     pub check: LocatorCheck,
+    /// The tagged-versus-geometric check, when the document's tree describes a table on this
+    /// page (v1-S3). Filled in by the extractor, which is where both derivations meet.
+    pub tagged_check: Option<engine_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
     /// Exactly one of `engine_core::TABLE_DETECTION_V1` or
@@ -339,6 +342,7 @@ pub fn detect_ruled(
         columns: lattice.columns(),
         cells: detected,
         check,
+        tagged_check: None,
         rule: engine_core::TABLE_DETECTION_V1.to_string(),
     }])
 }

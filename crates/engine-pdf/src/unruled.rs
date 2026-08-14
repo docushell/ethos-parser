@@ -411,6 +411,7 @@ pub fn detect(
             columns: columns.len() as u32,
             cells,
             check,
+            tagged_check: None,
             rule: engine_core::TABLE_DETECTION_UNRULED_V1.to_string(),
         }),
         refusal: None,

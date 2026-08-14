@@ -7,6 +7,134 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S3, as 0.5.0
+
+The third slice of v1 (`docs/09-V1-MILESTONES.md`): the document's **tagged-structure tree**, read
+and bound to text, so a node can carry the role path its author gave it. **Not tagged.** v1 is
+three slices of seven — S4 through S7 are not started.
+
+### Added — `struct-tree-v1`, reading `/StructTreeRoot`
+
+v0 copied `/MCID` off `BDC` and could say nothing about what it meant: an id resolved against
+nothing. This walks the catalog's structure tree — `/K` over arrays, references, structure
+elements, `/MCR` marked-content references and bare integers, with `/Pg` inherited down the tree
+and an `/MCR`'s own `/Pg` winning over it — and supplies the other half of the join.
+
+**The join is exact equality on `(page object, mcid)`.** Nothing fuzzy, nothing nearest-match: an
+mcid means one thing on one page, and a looser join would file text under a heading that does not
+claim it. A test swaps in an id the tree never cites and asserts it binds to neither neighbour.
+
+`/RoleMap` is read as data. A document that maps its own `/Para` onto `/P` has told us what it
+means, so the mapping is applied — and an unmapped custom type is emitted as itself. Deciding
+`/Odd` "must mean" `/P` because it sits where a paragraph would is the inference this refuses.
+
+**Fail closed on a tree that does not terminate.** `/K` cycles and nesting past 64 levels are
+refused by name with no artifact. Walking a cycle does not terminate; stopping partway would
+report a structure the document does not have.
+
+### Added — four structural-locator states, because they are four different facts
+
+`StructuralLocator` gained two variants beside `PdfMcid`:
+
+| State | What happened |
+| --- | --- |
+| `pdf_tagged` | the tree cites this `(page, mcid)` — the author placed this text here |
+| `pdf_mcid` | the stream gave an id and **no structure element claims it** |
+| `pdf_artifact` | the page marked this as furniture, deliberately outside the tree |
+| absent | the page marked nothing here |
+
+Collapsing any two loses something real. `PdfMcid` now means something narrower and more useful
+than it did: an id that resolved against nothing, counted as the gap it is.
+
+**`pdf_artifact` runs stay in `nodes`.** A reader that deletes running heads and folios has
+silently edited the document (parity checklist O21/O22), and the edit is undetectable downstream.
+The content stream's tag is now kept alongside its id — v0 discarded it, which left `/Artifact`
+indistinguishable from `/P` and the only options "call furniture body text" or "delete it".
+
+`PdfTaggedLocator.role_path` is the raw `/S` names, **never laundered**, with
+`standard_role_path` present only when `/RoleMap` actually remapped something — so its presence is
+the signal that a custom type was in play.
+
+### Added — `tagged-vs-geometric-v1`, a second check rather than a wider first one
+
+Where the tree describes a `/Table` and a detector found a table on the same page, the two grids
+are compared and the result rides on `TableRecord.tagged_check`.
+
+**A new check id, deliberately.** `geometric-vs-structural-v1` compares a table's own indices
+against its own boxes; this compares the document's tags against a detector's grid. One id meaning
+both would leave a reader unable to tell which pair of derivations disagreed.
+
+The halves share no input — the tree walk reads no box, and neither detector reads a `/S` — and a
+guard test asserts it by name, in the shape v1-S2 fixed `SlotCover`'s guard into. Disagreements
+are typed (`RowCountDiffers`, `ColumnCountDiffers`, `SlotOnlyInTagged`, `SlotOnlyInDetected`),
+never scored, and **nothing is repaired**: the hostile fixture's detector still reports its 2×2
+while the tree's claim of a third row sits beside it.
+
+Decision 7 resolved as **diagnostic-only**. No third `tagged-struct-v1` detector was added: a
+tagged table's cells are already addressable through the role paths on its runs, so a table whose
+cells this engine positioned would add reach that nothing lacked. Where the tree describes a table
+no detector found, `tagged-table-without-geometric-table` says so and no table is emitted.
+
+### Changed — `capabilities.structural_locators` is true, and `profile_sha256` moves
+
+v0 through v1-S2 left it false and said exactly why: an `mcid` with the tree unread is not an
+address. The tree is read now, so the claim this flag makes — *this profile looks* — is true.
+
+Its proof test covers **both halves**: a tagged document whose runs come back with the roles its
+own tree gives them, and an untagged one that gains nothing. A test that only checked the first
+could be satisfied by an engine that invents roles; one that only checked the second, by an engine
+that never looks.
+
+New profile field `struct_tree_rule`. The default profile hash is now
+`sha256:8cc7607fc8e0203e8e64192fbbb2ac7689bf46d1c6a1c8d4d02be53c4de2ed22`, moved by the version
+bump, the new rule id and the capability flip together. `REPRESENTATION_SCHEMA_VERSION` 0.2.0 →
+0.3.0 and `EXTRACT_SCHEMA_VERSION` 0.1.0 → 0.2.0: both shapes gained fields and both types are
+`deny_unknown_fields`, so these are breaking reads rather than additive ones.
+
+`structural-locators-not-claimed` is **not** removed — it is the partner of a `false` capability
+and still fires for a profile that turns the feature off. What replaced it for the default profile
+is four *conditional* document-scoped codes, each present only where it is true:
+`untagged-structure-tree-absent`, `structure-mcid-unbound`, `structure-item-without-content`, and
+`mcid-property-list-by-name` (a `BDC` whose property list indirects through `/Properties`, which
+this profile does not resolve — an **unread** id is not an **absent** one).
+
+### Non-regressions
+
+S3 attaches addresses; it changes no earlier slice's answer, and a test asserts all of it at once:
+
+- **No reordering.** The walk produces a lookup keyed by `(page, mcid)`; the node list stays in
+  content-stream order. `synthetic/two-columns` still reads `single-column-v1` in the same order.
+  Emitting nodes in `/K` order is a reading-order rule and belongs to S5 — a guard test asserts the
+  module contains no sort.
+- **No new `NodeKind`s.** A role path on the existing `TextRun` carries the answer; `Paragraph`
+  and `TableCell` variants would put one fact in two places, which is the reasoning S1 used when it
+  refused to emit cells as nodes.
+- **No using tags to fix a detector.** `irs-form-1040-2025` still yields 0 tables and
+  `unruled-near-miss` is still a near miss. S2's golden is still a 3×2 `unruled-align-v1` table and
+  `ruled-table-grid` is still ruled.
+- Oracle partition still 12 / 3.
+
+### Fixtures
+
+Five engine-owned CC0 additions (`engine_owned` 11 → 16):
+`tagged-structure-roles` (one run in each of the four locator states, including the artifact and
+the unmarked one), `tagged-rolemap`, `tagged-table-agrees`, `tagged-table-disagrees` (the tree
+claims a third row whose content the page never wrote), and `tagged-cycle`. `make_fixtures.py`
+grew an `extra_objects` parameter that numbers structure objects from 6 and adds
+`/StructTreeRoot 6 0 R` to the catalog; it refuses to combine that with a `/FontDescriptor`, which
+also claims object 6.
+
+### API
+
+`engine_core::{PdfTaggedLocator, PdfArtifactLocator, TaggedGridCheck, TaggedGridStatus,
+TaggedGridFault, STRUCT_TREE_RULE_V1, TAGGED_GRID_CHECK_V1}` added to the frozen surface and to
+`docs/PUBLIC-API.md`. The tree walk stays `pub(crate)`.
+
+`ethos.grounding.v1` is unchanged — it is `additionalProperties: false` and byte-pinned against
+Ethos's own schema, so role paths stay on the representation and never enter the projection.
+
+---
+
 ## [Unreleased] — v1-S2, as 0.4.0
 
 The second slice of v1 (`docs/09-V1-MILESTONES.md`): tables a document implies by **alignment**

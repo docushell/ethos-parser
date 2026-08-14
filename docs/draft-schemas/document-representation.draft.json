@@ -12,7 +12,7 @@
       "const": "ethos.engine.representation.v0",
       "$comment": "At the TOP LEVEL, before any payload (§2), so a reader can fail closed on an unrecognised shape before parsing it (§8). Mirrors representation.identity.artifact_type, and a parse-time check refuses an artifact where the two disagree — a mirror that can disagree is worse than no mirror."
     },
-    "schema_version": { "const": "0.1.0" },
+    "schema_version": { "const": "0.3.0" },
     "representation": {
       "$ref": "#/$defs/payload",
       "$comment": "THE HASHED SUBTREE. representation_c14n_sha256 is the digest of exactly this member and nothing else."

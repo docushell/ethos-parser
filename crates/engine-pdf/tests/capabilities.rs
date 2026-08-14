@@ -177,12 +177,12 @@ fn proof_table() -> Vec<Proof> {
         Proof {
             field: "structural_locators",
             claimed: structural_locators,
-            proof_test: None,
-            why_not: Some(
-                "An `mcid` captured from BDC is not a structural address: no role path, and no \
-                 tagged-structure tree is read. Claiming the capability on the strength of the \
-                 partial half would promise an address consumers could not rely on.",
-            ),
+            // v1-S3. The claim is "this profile looks", and the proof has to cover both halves
+            // of that: a tagged document whose runs come back with the role path its own tree
+            // gives them, AND an untagged one that gains nothing. One without the other proves
+            // half a capability — a reader that only found roles could be inventing them.
+            proof_test: Some("the_structure_tree_supplies_role_paths_and_absence_stays_absent"),
+            why_not: None,
         },
     ]
 }

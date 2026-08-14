@@ -326,10 +326,96 @@ pub struct TableRecord {
     /// trustworthy, which makes it part of what the artifact says rather than an observation
     /// about the run that produced it.
     pub locator_check: LocatorCheck,
+    /// The tagged-versus-geometric check, when the document's structure tree describes a table on
+    /// this page (v1-S3).
+    ///
+    /// **Absent means the tree said nothing about a table here** — either the document is
+    /// untagged, or its tree describes no `/Table` on this page. That is not the same as the two
+    /// derivations agreeing, so it is an absent key rather than an `Ok`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tagged_check: Option<TaggedGridCheck>,
 }
 
 /// The identity of the locator cross-check, carried on every check record.
 pub const LOCATOR_CHECK_V1: &str = "geometric-vs-structural-v1";
+
+/// The identity of the tagged-versus-geometric check (v1-S3).
+///
+/// **A different check, not a wider one.** [`LOCATOR_CHECK_V1`] compares a table's *own* indices
+/// against its *own* boxes; this compares the grid the **document's structure tree** declares
+/// against the grid a detector found. Overloading one id with both would make a status
+/// uninterpretable — a reader could not tell which pair of derivations disagreed.
+pub const TAGGED_GRID_CHECK_V1: &str = "tagged-vs-geometric-v1";
+
+/// One way the document's tags and a detector's grid can disagree.
+///
+/// **Typed, and never a score.** These are compared and counted; "how badly do they disagree" is
+/// not a question this answers, because the answer would be the confidence field
+/// `docs/01-CONTRACT.md` §9 forbids.
+///
+/// Nothing here is repaired. When the tree says three rows and the detector found two, the
+/// artifact says so and keeps the detector's two — because picking the tree's answer would be
+/// this engine deciding which of two disagreeing sources to believe, with nothing on the wire to
+/// record that it did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "fault")]
+pub enum TaggedGridFault {
+    /// The tree and the detector count rows differently.
+    RowCountDiffers {
+        /// Rows the structure tree declares.
+        tagged: u32,
+        /// Rows the detector found.
+        detected: u32,
+    },
+    /// The tree and the detector count columns differently.
+    ColumnCountDiffers {
+        /// Columns the structure tree declares.
+        tagged: u32,
+        /// Columns the detector found.
+        detected: u32,
+    },
+    /// A slot the tree's cells cover and the detector's do not.
+    SlotOnlyInTagged(CellSlot),
+    /// A slot the detector's cells cover and the tree's do not.
+    SlotOnlyInDetected(CellSlot),
+}
+
+/// The outcome of comparing the document's tags against a detected grid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum TaggedGridStatus {
+    /// The tree and the detector describe the same grid.
+    Ok,
+    /// They do not. The disagreements are named; nothing was changed to reconcile them.
+    Mismatch {
+        /// What differs.
+        faults: Vec<TaggedGridFault>,
+    },
+    /// The check could not run.
+    NotApplicable {
+        /// Why.
+        reason: String,
+    },
+}
+
+/// The tagged-versus-geometric check record, when the document's tree describes this table.
+///
+/// # The halves share no input, which is the whole point
+///
+/// The tagged half reads `/S`, `/TR`, `/TD`, `/RowSpan` and `/ColSpan` and **never a box**. The
+/// geometric half reads painted rectangles or text origins and **never a structure type**. So an
+/// agreement is two independent readings of one table arriving at the same grid, which is worth
+/// something; a check whose halves shared a source would agree with itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaggedGridCheck {
+    /// Which check this is. [`TAGGED_GRID_CHECK_V1`].
+    pub check_id: String,
+    /// Its version.
+    pub check_version: String,
+    /// What it found.
+    pub outcome: TaggedGridStatus,
+}
 
 #[cfg(test)]
 mod tests {

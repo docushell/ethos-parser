@@ -1,19 +1,40 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1-S2 shipped, as 0.4.0.** v1 is the DocuShell replacement gate and is seven slices
-long (`08-V1-SCOPE.md`); two are done. Tables now come from **two** rules, and every table on the
-wire names the one that produced it:
+**Status:** **v1-S3 shipped, as 0.5.0.** v1 is the DocuShell replacement gate and is seven slices
+long (`08-V1-SCOPE.md`); three are done.
+
+**S3 reads the document's own tagged-structure tree.** `/StructTreeRoot` is walked, `/RoleMap` is
+applied where the file supplies one, and a run is bound to a role path on **exact `(page, mcid)`
+equality** — nothing fuzzy. `capabilities.structural_locators` flipped to true, and what it claims
+is that *this profile looks*: an untagged document gets no roles and declares
+`untagged-structure-tree-absent`. Its proof test covers both halves, because a test that only
+found roles could be satisfied by an engine that invents them.
+
+A node's structural address is now one of four things, and they are four different facts:
+
+| State | What happened |
+| --- | --- |
+| `pdf_tagged` | the tree cites this `(page, mcid)` — the author placed this text here |
+| `pdf_mcid` | the stream gave an id and **no structure element claims it** |
+| `pdf_artifact` | the page marked this as furniture, deliberately outside the tree |
+| absent | the page marked nothing here |
+
+Artifact runs stay in `nodes`, flagged — deleting running heads is an undeclared edit to the
+document, and undetectable downstream.
+
+**S1 and S2 gave tables two rules**, and every table on the wire names the one that produced it:
 
 | Rule | Evidence | Claim |
 | --- | --- | --- |
 | `ruled-rects-v1` (S1) | rectangles the author painted | the document drew this grid |
 | `unruled-align-v1` (S2) | where the author placed text | a detector inferred this grid |
 
-Both are cross-checked two independent ways, and fabrication is 0 under both. **The > 0.489
-accuracy gate is S7's**, not either slice's — see `08-V1-SCOPE.md` §3 for why chasing it earlier
-would be tuning against nobody's number.
+Both are cross-checked two independent ways, and fabrication is 0 under both. S3 adds a **second**
+check — `tagged-vs-geometric-v1` — comparing the grid a document's tags declare against the grid a
+detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' — see
+`08-V1-SCOPE.md` §3 for why chasing it earlier would be tuning against nobody's number.
 
-Four measurements shaped these two slices and are worth knowing before reading the detectors:
+Four measurements shaped the table slices and are worth knowing before reading the detectors:
 
 1. No fixture in the Ethos conformance corpus contains a single path operator, so
    `synthetic/table-regular-grid` was an S2 fixture wearing an S1 name. It is now the S2 golden.
@@ -25,8 +46,9 @@ Four measurements shaped these two slices and are worth knowing before reading t
 4. Growing column groups until a gap appears **chains**, turning two lines of word-split prose
    into a 2 × 3 table. `unruled-align-v1` folds by tolerance instead, which cannot chain.
 
-**Previously: v1-S1, as 0.3.0.** Ruled tables from vector paths, `CellSlot` occupancy, and the
-geometric-versus-structural locator cross-check.
+**Previously: v1-S2, as 0.4.0.** Unruled tables from text alignment, under their own rule id, with
+every table naming the rule that found it. **And v1-S1, as 0.3.0**: ruled tables from vector
+paths, `CellSlot` occupancy, and the geometric-versus-structural locator cross-check.
 
 **Previously: v0.1, as 0.2.0.** v0 was frozen at M7 (0.1.0) and its exit criteria have not
 moved; this is the roadmap row after it (`02-ROADMAP.md`), and it is the first work that is a
@@ -78,7 +100,7 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**Next: v1-S3** — tagged-PDF consumption, putting the `mcid` v0 already captures to use
+**Next: v1-S4** — forms and annotations as typed, distinguishable nodes
 (`09-V1-MILESTONES.md`). Not started.
 
 ---
@@ -89,12 +111,12 @@ M7 added no capability. It closed v0 instead:
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **M0–M7 are done and v0 is frozen; v0.1, v1-S1 and v1-S2 shipped on top.** Do not re-author the
+5. **M0–M7 are done and v0 is frozen; v0.1 and v1-S1 through v1-S3 shipped on top.** Do not re-author the
    workspace, the contract types, the classifier, the extractor, the assurance envelope, the
    representation, the projection, or the checker — and do not widen the public API without
    editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
    read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
-   first: v1 is **seven slices**, the next is S3, and the > 0.489 gate belongs to S7 alone
+   first: v1 is **seven slices**, the next is S4, and the > 0.489 gate belongs to S7 alone
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it

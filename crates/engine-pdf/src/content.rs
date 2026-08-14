@@ -68,6 +68,12 @@ pub struct ShownText {
     pub font_size: f64,
     /// Marked-content id in force, if any.
     pub mcid: Option<i64>,
+    /// Whether **any** enclosing marked-content sequence is an `/Artifact` (v1-S3).
+    ///
+    /// The whole stack, not the innermost frame: an artifact sequence with a `/Span` nested
+    /// inside it is still artifact content, and asking only the innermost frame would call that
+    /// span body text.
+    pub artifact: bool,
     /// Indices into `text` this reader inserted.
     pub synthesized_indices: Vec<u32>,
 }
@@ -103,6 +109,20 @@ impl PathRect {
     }
 }
 
+/// One open marked-content sequence (v1-S3).
+///
+/// v0 tracked only the id, which was enough to copy an `/MCID` onto a run and not enough for
+/// anything else. Keeping the tag as well is what lets `/Artifact` be told from `/P` — and the
+/// alternative to telling them apart is either calling running heads body text or deleting them,
+/// the second being an undeclared edit to the document.
+#[derive(Debug, Clone, Copy)]
+struct MarkedContent {
+    /// Whether this sequence's tag is `/Artifact`.
+    artifact: bool,
+    /// Its `/MCID`, when the property list was inline and carried one.
+    mcid: Option<i64>,
+}
+
 /// A subpath under construction.
 ///
 /// Tracks only what is needed to decide "is this an axis-aligned rectangle": the points, and
@@ -121,7 +141,7 @@ pub struct Interpreter<'a> {
     gs_stack: Vec<GraphicsState>,
     gs: GraphicsState,
     ts: TextState,
-    mcid_stack: Vec<Option<i64>>,
+    mc_stack: Vec<MarkedContent>,
     /// Runs collected so far.
     pub shown: Vec<ShownText>,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
@@ -141,6 +161,11 @@ pub struct Interpreter<'a> {
     /// unmappable codes, and what a caller needs to know is how many pieces of text are
     /// **missing from the artifact**, not how many diagnostics were produced.
     pub dropped_runs: u32,
+    /// How many `BDC` sequences supplied their property list **by name** (v1-S3).
+    ///
+    /// Those may carry an `/MCID` this profile did not resolve, so their content can look
+    /// untagged when it is not. Counted rather than assumed away.
+    pub props_by_name: u32,
 }
 
 impl<'a> Interpreter<'a> {
@@ -151,14 +176,32 @@ impl<'a> Interpreter<'a> {
             gs_stack: Vec::new(),
             gs: GraphicsState::default(),
             ts: TextState::default(),
-            mcid_stack: Vec::new(),
+            mc_stack: Vec::new(),
             shown: Vec::new(),
             undecodable: Vec::new(),
             rects: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
             dropped_runs: 0,
+            props_by_name: 0,
         }
+    }
+
+    /// The `/MCID` of the **innermost** open sequence.
+    ///
+    /// Innermost rather than nearest-enclosing-with-an-id, which is the v0 behaviour preserved
+    /// verbatim. A nested sequence that declares no id is its own content item, and reaching past
+    /// it to borrow an ancestor's id would file this text under a structure element that does not
+    /// claim it.
+    fn current_mcid(&self) -> Option<i64> {
+        self.mc_stack.last().and_then(|m| m.mcid)
+    }
+
+    /// Whether any open sequence is an `/Artifact`.
+    ///
+    /// The whole stack: artifact content stays artifact content however deeply it is nested.
+    fn inside_artifact(&self) -> bool {
+        self.mc_stack.iter().any(|m| m.artifact)
     }
 
     /// Interpret a decoded content stream.
@@ -316,12 +359,34 @@ impl<'a> Interpreter<'a> {
             }
 
             // --- marked content: the mcid bridge ---
+            //
+            // v1-S3 also keeps the **tag**, which v0 discarded. Without it an `/Artifact`
+            // sequence is indistinguishable from body text, and the only two ways to handle
+            // artifacts are then "treat running heads as prose" or "delete them" — the second
+            // being an undeclared document mutation (parity checklist O21/O22).
             BeginMarkedContentProps => {
-                self.mcid_stack.push(mcid_from_props(operands));
+                let artifact = is_artifact(marked_content_tag(operands));
+                if props_given_by_name(operands) {
+                    // The id may exist and this reader did not see it. Counted so the artifact
+                    // can say so: an unread id and an absent id are different facts, and only
+                    // one of them means "this content is outside the structure tree".
+                    self.props_by_name = self.props_by_name.saturating_add(1);
+                }
+                self.mc_stack.push(MarkedContent {
+                    artifact,
+                    mcid: mcid_from_props(operands),
+                });
             }
-            BeginMarkedContent => self.mcid_stack.push(None),
+            BeginMarkedContent => {
+                self.mc_stack.push(MarkedContent {
+                    artifact: is_artifact(marked_content_tag(operands)),
+                    // `BMC` carries no property list, so there is no id to capture and none is
+                    // invented.
+                    mcid: None,
+                });
+            }
             EndMarkedContent => {
-                self.mcid_stack.pop();
+                self.mc_stack.pop();
             }
             MarkedPoint | MarkedPointProps => {}
 
@@ -496,7 +561,8 @@ impl<'a> Interpreter<'a> {
             advance: advance_known.then_some(advance_total * scale),
             font_id,
             font_size: self.ts.font_size,
-            mcid: self.mcid_stack.last().copied().flatten(),
+            mcid: self.current_mcid(),
+            artifact: self.inside_artifact(),
             synthesized_indices: synthesized.to_vec(),
         });
 
@@ -632,11 +698,46 @@ fn array_operand(operands: &[lopdf::Object], i: usize) -> Result<Vec<lopdf::Obje
 /// Pull `/MCID` out of a `BDC` property list.
 ///
 /// Returns `None` when the document does not supply one. **Never invented** — Workbench rule 3.
+///
+/// A property list given as a *name* referring to the page's `/Properties` resource is not
+/// resolved here, so its id is absent rather than wrong. That absence is a declared gap
+/// (`mcid-property-list-by-name`), not a claim that the sequence had no id.
 fn mcid_from_props(operands: &[lopdf::Object]) -> Option<i64> {
     match operands.get(1)? {
         lopdf::Object::Dictionary(d) => d.get(b"MCID").ok()?.as_i64().ok(),
         _ => None,
     }
+}
+
+/// Whether a `BDC`/`BMC` property list was supplied **by name** rather than inline.
+///
+/// PDF 32000-1 §14.6.2 allows either. A name indirects through the page's `/Properties`
+/// resource dictionary, which this profile does not resolve — so the sequence may well carry an
+/// `/MCID` this reader did not see. Detected so it can be declared: silently treating it as
+/// "no id" would make an unread id indistinguishable from an absent one.
+fn props_given_by_name(operands: &[lopdf::Object]) -> bool {
+    matches!(operands.get(1), Some(lopdf::Object::Name(_)))
+}
+
+/// The tag operand of a `BDC`/`BMC`, which is always the first.
+///
+/// Returns `None` for a malformed operand rather than erroring: an unreadable tag means this
+/// reader does not know whether the sequence is an artifact, and the honest consequence is to
+/// treat it as ordinary content rather than to refuse a document over a marked-content label.
+fn marked_content_tag(operands: &[lopdf::Object]) -> Option<&[u8]> {
+    match operands.first()? {
+        lopdf::Object::Name(n) => Some(n.as_slice()),
+        _ => None,
+    }
+}
+
+/// Whether a marked-content tag is `/Artifact`.
+///
+/// Compared exactly. `/Artifact` is a standard tag with a fixed spelling (§14.8.2.2), and
+/// accepting near-misses would mean deciding that some other tag the document chose means
+/// "furniture" — which is the document's call, not this reader's.
+fn is_artifact(tag: Option<&[u8]>) -> bool {
+    tag == Some(b"Artifact".as_slice())
 }
 
 #[cfg(test)]
@@ -891,19 +992,62 @@ mod tests {
         let fonts = no_fonts();
         let mut i = Interpreter::new(&fonts);
         i.run(&ops("/P <</MCID 7>> BDC EMC")).unwrap();
-        assert!(i.mcid_stack.is_empty(), "EMC pops the scope");
+        assert_eq!(i.current_mcid(), None, "EMC pops the scope");
 
         let mut j = Interpreter::new(&fonts);
         j.run(&ops("/P <</MCID 7>> BDC")).unwrap();
-        assert_eq!(j.mcid_stack.last().copied().flatten(), Some(7));
+        assert_eq!(j.current_mcid(), Some(7));
 
         let mut k = Interpreter::new(&fonts);
         k.run(&ops("/P BMC")).unwrap();
         assert_eq!(
-            k.mcid_stack.last().copied().flatten(),
+            k.current_mcid(),
             None,
             "BMC has no MCID, and none is invented"
         );
+    }
+
+    #[test]
+    fn an_artifact_sequence_is_flagged_through_any_nesting() {
+        // v1-S3. `/Artifact` marks page furniture — running heads, folios, rules. The whole
+        // stack is asked, not the innermost frame: a `/Span` nested inside an artifact is still
+        // artifact content, and reading only the innermost would call it body text.
+        let fonts = no_fonts();
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("/Artifact BMC")).unwrap();
+        assert!(i.inside_artifact());
+
+        let mut j = Interpreter::new(&fonts);
+        j.run(&ops("/Artifact BMC /Span <</MCID 3>> BDC")).unwrap();
+        assert!(j.inside_artifact(), "nesting does not un-mark an artifact");
+        assert_eq!(j.current_mcid(), Some(3), "the inner id is still captured");
+
+        let mut k = Interpreter::new(&fonts);
+        k.run(&ops("/Artifact BMC EMC")).unwrap();
+        assert!(!k.inside_artifact(), "EMC pops the artifact scope");
+
+        // And ordinary content is not an artifact just because something was marked.
+        let mut m = Interpreter::new(&fonts);
+        m.run(&ops("/P <</MCID 0>> BDC")).unwrap();
+        assert!(!m.inside_artifact());
+    }
+
+    #[test]
+    fn a_property_list_given_by_name_is_counted_rather_than_read_as_absent() {
+        // v1-S3. `BDC` may name a `/Properties` entry instead of writing the dictionary inline
+        // (§14.6.2). This profile does not resolve that, so the id is unknown — and an UNREAD id
+        // is not an ABSENT one. Counted so the artifact can declare the difference.
+        let fonts = no_fonts();
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("/P /MC0 BDC")).unwrap();
+        assert_eq!(i.current_mcid(), None, "nothing is invented for it");
+        assert_eq!(i.props_by_name, 1, "but the gap is counted");
+
+        let mut j = Interpreter::new(&fonts);
+        j.run(&ops("/P <</MCID 4>> BDC")).unwrap();
+        assert_eq!(j.props_by_name, 0, "an inline property list is not a gap");
     }
 
     #[test]

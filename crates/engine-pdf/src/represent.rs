@@ -33,8 +33,8 @@ use engine_core::assurance::{codes, Limitation};
 use engine_core::{
     ArtifactIdentity, Assurance, DocumentRepresentation, EngineError, IdAllocator, IdKind,
     NativeLocator, Node, NodeGeometry, NodeKind, PageRecord, PdfLocator, ProcessingRun,
-    ProcessorIdentity, Profile, RepresentationPayload, SourceIdentity, StructuralLocator,
-    SynthesizedAt, TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    ProcessorIdentity, Profile, RepresentationPayload, SourceIdentity, SynthesizedAt,
+    TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 use crate::extract::ExtractArtifact;
@@ -91,6 +91,10 @@ pub fn to_representation(
                 // author drew this grid" from "a detector inferred it".
                 detection_rule: t.rule.to_string(),
                 locator_check: t.check.clone(),
+                // v1-S3. Present only where the document's structure tree describes a table on
+                // this page — an absent key means the tree said nothing here, which is not the
+                // same as the two derivations agreeing.
+                tagged_check: t.tagged_check.clone(),
             });
         }
         pages.push(PageRecord {
@@ -119,9 +123,11 @@ pub fn to_representation(
                     origin_y: run.locator.origin_y,
                     advance: run.locator.advance,
                 }),
-                // Captured where the document supplied one, absent where it did not. Never
-                // invented, and an absent id is not evidence the document is untagged.
-                structural_locator: run.mcid.map(StructuralLocator::PdfMcid),
+                // v1-S3. Resolved during extraction, against the document's own structure
+                // tree: a role path where the tree cites this run, a bare marked-content id
+                // where it does not, `pdf_artifact` where the page called this furniture, and
+                // absent where the page marked nothing. Never invented at any of the four.
+                structural_locator: run.structural.clone(),
                 derivation: run.derivation,
                 attributes: TextRunAttributes {
                     char_codes: run.char_codes.clone(),
@@ -371,15 +377,34 @@ mod tests {
     }
 
     #[test]
-    fn the_mcid_becomes_a_structural_locator_where_the_document_supplies_one() {
-        // No conformance fixture carries an MCID, so the honest assertion is the negative one:
-        // absent means absent, and nothing is invented. `capabilities.structural_locators` is
-        // false for exactly this reason.
+    fn an_untagged_document_gains_no_structural_locator() {
+        // No conformance fixture carries an MCID or a structure tree, so the assertion here is
+        // the negative one — and at v1-S3 it is a *stronger* statement than it was.
+        //
+        // Through v1-S2 this proved only that nothing was invented while nobody was looking:
+        // `capabilities.structural_locators` was false, so absence proved little. The capability
+        // is true now, meaning this profile DID read the catalog for a `/StructTreeRoot` — and
+        // still emitted no role for a document that declares none. That is the P14 defect
+        // refused with the machinery present and running, rather than absent.
         let repr = represent(&conformance_fixture("synthetic/simple-text/document.pdf"));
         for node in &repr.payload().nodes {
-            assert!(node.structural_locator.is_none());
+            assert!(
+                node.structural_locator.is_none(),
+                "an untagged document must gain no role, not even a plausible one"
+            );
         }
-        assert!(!repr.payload().assurance.capabilities.structural_locators);
+        assert!(
+            repr.payload().assurance.capabilities.structural_locators,
+            "v1-S3 looks for a structure tree on every document"
+        );
+        assert!(
+            repr.payload()
+                .assurance
+                .limitations
+                .iter()
+                .any(|l| l.code == codes::UNTAGGED_STRUCTURE_TREE_ABSENT),
+            "and says so when it finds none, rather than leaving the absence unexplained"
+        );
     }
 
     #[test]

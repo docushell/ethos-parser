@@ -68,7 +68,7 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S0** | This document and `09-V1-MILESTONES.md` | **done** |
 | **S1** | Vector paths · ruled tables from rectangles · `TableCellPosition` / `CellSlot` · locator cross-check | **done** |
 | **S2** | Unruled tables: alignment / whitespace dual-mode | **done** |
-| **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | not started |
+| **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | **done** |
 | **S4** | Forms and annotations as typed, distinguishable nodes | not started |
 | **S5** | Multi-column reading order, with a stable versioned rule | not started |
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | not started |
@@ -128,7 +128,7 @@ limitation. v1 flips capabilities, so that rule is where its honesty lives.
 | Capability | v0 | v1 target | Flipped by |
 | --- | --- | --- | --- |
 | `tables` | false | **true** | S1 (ruled), widened by S2 |
-| `structural_locators` | false | true | S3 |
+| `structural_locators` | false | **true** | S3 |
 | `multi_column_reading_order` | false | true | S5 |
 | `char_offsets` | false | true | whichever slice makes elements coarser than spans |
 

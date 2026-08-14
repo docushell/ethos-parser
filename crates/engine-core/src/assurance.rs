@@ -115,6 +115,45 @@ pub mod codes {
     pub const MULTI_COLUMN_READING_ORDER: &str = "multi-column-reading-order";
     /// [`Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
+
+    /// The document declares **no** tagged-structure tree, so no role path exists to report.
+    ///
+    /// Document-scoped and conditional. The honest answer for an untagged file, and the reason
+    /// `capabilities.structural_locators` being true is a claim about *looking* rather than about
+    /// finding: this profile read the catalog, found no `/StructTreeRoot`, and invented nothing.
+    /// A role deduced from a font size would be indistinguishable on the wire from one the author
+    /// wrote, which is the defect the parity checklist records as P14.
+    pub const UNTAGGED_STRUCTURE_TREE_ABSENT: &str = "untagged-structure-tree-absent";
+
+    /// The content stream marked text with an id **no structure element claims**.
+    ///
+    /// Document-scoped and conditional. A real hole in the join, and distinct from an untagged
+    /// document: here there *is* a tree and it does not reach this content. The run keeps its bare
+    /// marked-content id and gains no role path, because none was found.
+    pub const STRUCTURE_MCID_UNBOUND: &str = "structure-mcid-unbound";
+
+    /// The structure tree cites content **no run carried**.
+    ///
+    /// Document-scoped and conditional. The mirror of [`STRUCTURE_MCID_UNBOUND`]: the tree says
+    /// there is content at some `(page, mcid)` and the content stream never marked any. Counted,
+    /// and never filled with a fabricated run — an empty node standing in for cited-but-absent
+    /// content would be text this engine authored.
+    pub const STRUCTURE_ITEM_WITHOUT_CONTENT: &str = "structure-item-without-content";
+
+    /// The structure tree describes a `/Table` that neither detector found.
+    ///
+    /// Document-scoped and conditional. The tree's claim is reported and **no table is emitted
+    /// for it**: cells placed from `/TD` elements alone would be cells this engine positioned,
+    /// and a consumer could not tell them from cells reconstructed off the page.
+    pub const TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE: &str = "tagged-table-without-geometric-table";
+
+    /// A `BDC` supplied its property list **by name**, so any id in it went unread.
+    ///
+    /// Document-scoped and conditional. PDF 32000-1 §14.6.2 allows a property list to indirect
+    /// through the page's `/Properties` resource; this profile does not resolve that, so the
+    /// sequence may carry an `/MCID` this reader never saw. Declared because an *unread* id and an
+    /// *absent* id are different facts, and only the second means "outside the structure tree".
+    pub const MCID_PROPERTY_LIST_BY_NAME: &str = "mcid-property-list-by-name";
     /// A configured page budget stopped processing before the document ended.
     ///
     /// Document-scoped, and only present when the budget actually bit.

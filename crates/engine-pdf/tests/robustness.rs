@@ -357,7 +357,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 35] = [
+const EXPECTED_SURVIVORS: [&str; 39] = [
     "absent-font-metrics/junk-after-eof",
     "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
@@ -392,6 +392,13 @@ const EXPECTED_SURVIVORS: [&str; 35] = [
     "synthetic/two-columns/junk-after-eof",
     "synthetic/two-lines/flip-tail-byte",
     "synthetic/two-lines/junk-after-eof",
+    // v1-S3's tagged fixtures. `tagged-cycle` is deliberately NOT here: its structure tree does
+    // not terminate, so extraction refuses the mutant for the same reason it refuses the
+    // original, and the mutant never survives.
+    "tagged-rolemap/junk-after-eof",
+    "tagged-structure-roles/junk-after-eof",
+    "tagged-table-agrees/junk-after-eof",
+    "tagged-table-disagrees/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
 ];
 
@@ -661,10 +668,11 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        29,
-        "the manifest should declare 29 fixtures across three roots (23 at M7, plus v0.1's \
-         broken-font-encoding, v1-S1's two ruled-table fixtures, and v1-S2's three: \
-         unruled-near-miss, both-table-rules and ruled-wins-shared-region)"
+        34,
+        "the manifest should declare 34 fixtures across three roots (23 at M7, plus v0.1's \
+         broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
+         five tagged ones: tagged-structure-roles, tagged-rolemap, tagged-table-agrees, \
+         tagged-table-disagrees and tagged-cycle)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

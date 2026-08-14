@@ -89,12 +89,13 @@ pub use identity::{
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, TableDetection,
-    VerifierPin, XrefRepair, CMAP_DATA_VERSION, READING_ORDER_RULE_V0, TABLE_DETECTION_UNRULED_V1,
-    TABLE_DETECTION_V1,
+    VerifierPin, XrefRepair, CMAP_DATA_VERSION, READING_ORDER_RULE_V0, STRUCT_TREE_RULE_V1,
+    TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
-    TableCellRecord, TableRecord, LOCATOR_CHECK_V1,
+    TableCellRecord, TableRecord, TaggedGridCheck, TaggedGridFault, TaggedGridStatus,
+    LOCATOR_CHECK_V1, TAGGED_GRID_CHECK_V1,
 };
 
 pub use verifier::{
@@ -103,9 +104,10 @@ pub use verifier::{
 };
 
 pub use representation::{
-    DocumentRepresentation, NativeLocator, Node, NodeGeometry, NodeKind, PageRecord, PdfLocator,
-    ProcessingRun, ProcessorIdentity, RepresentationPayload, SourceIdentity, StructuralLocator,
-    SynthesizedAt, TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    DocumentRepresentation, NativeLocator, Node, NodeGeometry, NodeKind, PageRecord,
+    PdfArtifactLocator, PdfLocator, PdfTaggedLocator, ProcessingRun, ProcessorIdentity,
+    RepresentationPayload, SourceIdentity, StructuralLocator, SynthesizedAt, TextRunAttributes,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

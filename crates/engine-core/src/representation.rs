@@ -64,7 +64,7 @@ use crate::ids::NodeId;
 pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.engine.representation.v0";
 
 /// Shape version of the representation artifact. **DRAFT**.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.2.0";
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.3.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -152,15 +152,84 @@ pub struct PdfLocator {
 
 /// A structural address, where the node kind defines one.
 ///
-/// v0 emits marked-content ids only, and only where the page's own content stream supplies one.
-/// The tagged-structure tree is not read, so an absent id is **not** evidence the document is
-/// untagged — which is why `capabilities.structural_locators` is false and says so.
+/// # Three answers, and they are not the same answer (v1-S3)
+///
+/// v0 through v1-S2 emitted marked-content ids only: the `BDC` operand, captured verbatim, with
+/// no idea what it referred to. v1-S3 reads the document's `/StructTreeRoot`, so a node can now
+/// carry the address the **author** gave it. The variants are the three distinct things that can
+/// be true, and collapsing any two of them would lose information a consumer needs:
+///
+/// | Variant | What happened |
+/// | --- | --- |
+/// | [`Self::PdfTagged`] | the tree cites this `(page, mcid)`, so the author placed this text here |
+/// | [`Self::PdfMcid`] | the content stream gave an id and **the tree did not cite it** |
+/// | [`Self::PdfArtifact`] | the content stream marked this as page furniture, outside the tree |
+/// | absent | the content stream marked nothing here at all |
+///
+/// A `PdfMcid` on a tagged document is a real gap and is counted as one; it is not the same as a
+/// document with no tree, and neither is the same as text the author deliberately excluded from
+/// its structure. Nothing here is inferred: no role is guessed from a font size or a text prefix,
+/// which is the defect the parity checklist records as P14.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum StructuralLocator {
-    /// A PDF marked-content id, captured verbatim from `BDC`.
+    /// A PDF marked-content id, captured verbatim from `BDC`, **which no structure element
+    /// claims**.
+    ///
+    /// Either the document has no structure tree, or it has one and this id is not in it. The
+    /// assurance block's limitations say which; this variant alone does not, because a node
+    /// cannot see the document.
     PdfMcid(i64),
+    /// The address the document's own structure tree gives this content.
+    PdfTagged(PdfTaggedLocator),
+    /// Content the page marked as an **artifact**: running heads, folios, rules, decoration.
+    ///
+    /// Page furniture the author deliberately kept out of the structure tree (PDF 32000-1
+    /// §14.8.2.2). It is flagged, **never dropped** — the parity checklist's O21/O22 are about
+    /// exactly this: a reader that deletes running heads has silently edited the document, and a
+    /// consumer cannot tell the difference between text that was not there and text that was
+    /// removed on its behalf.
+    PdfArtifact(PdfArtifactLocator),
+}
+
+/// A node's address in the document's tagged-structure tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfTaggedLocator {
+    /// The marked-content id the tree cited to reach this content.
+    pub mcid: i64,
+    /// Structure types from the root down, **exactly as the document wrote them** in `/S`.
+    ///
+    /// Never laundered. A document using a custom type gets its custom name here, so a consumer
+    /// reading this path sees what the file says rather than what this engine made of it.
+    pub role_path: Vec<String>,
+    /// The same path after the document's own `/RoleMap` is applied.
+    ///
+    /// **Present only when the map actually changed something**, so its presence is the signal
+    /// that a custom type was in play. A `/RoleMap` is the document telling us what its custom
+    /// types mean; applying it is reading the file, and guessing without one would not be
+    /// (`docs/09-V1-MILESTONES.md` S3, decision 8).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standard_role_path: Option<Vec<String>>,
+    /// The innermost element's `/ID`, when it declares one.
+    ///
+    /// Absent means the document supplied none. Never minted here — an identifier this engine
+    /// invented would not address anything in the file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_id: Option<String>,
+}
+
+/// A node the page marked as an artifact rather than as content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfArtifactLocator {
+    /// The marked-content id, when the artifact sequence carried one.
+    ///
+    /// Usually absent: an artifact is by definition not a structure content item, so it has no
+    /// reason to be numbered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcid: Option<i64>,
 }
 
 /// What a node is.

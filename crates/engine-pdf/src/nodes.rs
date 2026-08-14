@@ -100,8 +100,20 @@ pub struct TextRun {
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
+    ///
+    /// **Extracted**: the raw `BDC` operand, kept as the join key it is. [`Self::structural`] is
+    /// the *result* of joining it against the document's structure tree, which is a different
+    /// derivation and so a different field — a reader can check one against the other.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcid: Option<i64>,
+    /// The structural address this run resolved to (v1-S3).
+    ///
+    /// Absent when the page marked nothing here. Present as `pdf_tagged` when the document's
+    /// structure tree cites this run's `(page, mcid)`, as `pdf_mcid` when the content stream gave
+    /// an id no structure element claims, and as `pdf_artifact` when the page marked this as
+    /// furniture rather than content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structural: Option<engine_core::StructuralLocator>,
     /// How this run came to exist. `Extracted` for text read from the content stream.
     pub derivation: DerivationClass,
 }
@@ -160,6 +172,7 @@ mod tests {
             },
             geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             mcid: None,
+            structural: None,
             derivation: DerivationClass::Extracted,
         }
     }

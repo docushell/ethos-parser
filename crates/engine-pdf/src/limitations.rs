@@ -226,6 +226,104 @@ pub fn unruled_candidate_refused(refusals: &[(u32, crate::unruled::Refusal)]) ->
     Limitation::document(engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED, detail)
 }
 
+/// The document-scoped limitation for a file that carries no tagged-structure tree.
+///
+/// **The honest answer for an untagged document**, and the reason
+/// `capabilities.structural_locators: true` is a claim about *looking* rather than about finding.
+/// This profile read the catalog, found no `/StructTreeRoot`, and invented nothing — no role
+/// deduced from a font size, no table inferred from a `"Table 3:"` prefix (parity checklist P14).
+pub fn untagged_structure_tree_absent() -> Limitation {
+    Limitation::document(
+        engine_core::codes::UNTAGGED_STRUCTURE_TREE_ABSENT,
+        "This document's catalog declares no `/StructTreeRoot`, so it carries no tagged-structure \
+         tree and NO ROLE PATH EXISTS to report. Marked-content ids are still captured verbatim \
+         where the content stream supplies them, and they are still not structural addresses — an \
+         id with no tree to resolve it against names nothing. Nothing is inferred to fill the gap: \
+         a heading guessed from a type size, or a table from a caption's wording, would be \
+         indistinguishable on the wire from structure the author actually wrote, which is worse \
+         than reporting none.",
+    )
+}
+
+/// The document-scoped limitation for marked content the structure tree never claims.
+///
+/// Distinct from an untagged document: here there **is** a tree and it does not reach this
+/// content. The runs keep their bare marked-content ids and gain no role path.
+pub fn structure_mcid_unbound(runs: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::STRUCTURE_MCID_UNBOUND,
+        format!(
+            "{runs} text run(s) carry a marked-content id that NO structure element in this \
+             document's tree claims. This document is tagged; its tree simply does not reach that \
+             content. Those runs are present and complete, with exact origins, and carry their \
+             marked-content id alone rather than a role path — the id is the join key, and a join \
+             that found nothing produces no address. No nearest-match was attempted: binding a run \
+             to a role path the tree did not give it would file text under a heading that does not \
+             claim it."
+        ),
+    )
+}
+
+/// The document-scoped limitation for tree citations no run answered.
+///
+/// The mirror of [`structure_mcid_unbound`]. Never filled in: a node standing in for
+/// cited-but-absent content would be text this engine authored.
+pub fn structure_item_without_content(items: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::STRUCTURE_ITEM_WITHOUT_CONTENT,
+        format!(
+            "This document's structure tree cites {items} marked-content item(s) that NO run on \
+             the named page carried. The tree says there is content there and the content stream \
+             did not mark any. Counted rather than filled: an empty node standing in for cited \
+             content would be a node this engine authored, and a consumer could not tell it from \
+             one the document produced. A reader must not conclude from this that those pages are \
+             blank — only that the tree and the content stream disagree about what is marked."
+        ),
+    )
+}
+
+/// The document-scoped limitation for `BDC` property lists supplied by name.
+///
+/// An **unread** id and an **absent** id are different facts, and only the second means "this
+/// content is outside the structure tree".
+pub fn mcid_property_list_by_name(sequences: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::MCID_PROPERTY_LIST_BY_NAME,
+        format!(
+            "{sequences} marked-content sequence(s) supplied their property list as a NAME \
+             indirecting through the page's `/Properties` resource (PDF 32000-1 §14.6.2) rather \
+             than inline. This profile does not resolve that indirection, so any `/MCID` in those \
+             property lists went unread and their content can look unmarked when it is not. \
+             Declared rather than silently treated as `no id`: an id this reader did not resolve \
+             is not the same as an id the document did not write."
+        ),
+    )
+}
+
+/// The document-scoped limitation for a tagged table no detector found.
+///
+/// **No table is invented to match the tags.** A grid emitted on the strength of `/TD` elements
+/// alone would have cells this engine placed rather than cells reconstructed from the page, and a
+/// consumer could not tell the two apart. The tree's claim is reported instead, so the gap is
+/// visible without being filled (`docs/09-V1-MILESTONES.md` S3, decision 7).
+pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
+    let list: Vec<String> = pages.iter().map(u32::to_string).collect();
+    Limitation::document(
+        engine_core::codes::TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE,
+        format!(
+            "This document's structure tree describes a `/Table` on page(s) {} that NEITHER table \
+             detector found — the page paints no grid of rectangles there and its text implies no \
+             coherent alignment lattice. The tree's claim is recorded here and NO table is \
+             emitted for it: cells placed from `/TD` elements alone would be cells this engine \
+             positioned, indistinguishable on the wire from cells reconstructed off the page \
+             itself. The text is present and complete either way, with exact origins, and each \
+             run carries the role path the tree gave it — so the table's content is addressable \
+             even though its grid is not.",
+            list.join(", ")
+        ),
+    )
+}
+
 /// The document-scoped limitation for a run stopped by the configured page budget.
 pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     Limitation::document(

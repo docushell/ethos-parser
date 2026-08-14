@@ -723,3 +723,36 @@ fn the_profile_schema_example_is_the_real_profile() {
         );
     }
 }
+
+/// The representation draft schema pins the shape version the code actually emits.
+///
+/// **Found stale while shipping v1-S3**: the schema still said `0.1.0` while the code had said
+/// `0.2.0` since v1-S1. `docs/draft-schemas/README.md` tells readers these describe what the
+/// engine emits, and a version constant that drifted is exactly the kind of wrong a reader cannot
+/// see. The profile schema already had this guard; the representation one did not, which is why
+/// only the profile stayed honest.
+#[test]
+fn the_representation_schema_pins_the_version_the_code_emits() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/document-representation.draft.json");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    assert_eq!(
+        schema["properties"]["schema_version"]["const"].as_str(),
+        Some(engine_core::REPRESENTATION_SCHEMA_VERSION),
+        "document-representation.draft.json pins a schema_version the code no longer emits. \
+         Update the schema in the same commit that bumps the constant — docs/draft-schemas/\
+         README.md tells readers this file describes what the engine actually produces."
+    );
+    assert_eq!(
+        schema["properties"]["artifact_type"]["const"].as_str(),
+        Some(engine_core::REPRESENTATION_ARTIFACT_TYPE),
+        "and the artifact type with it"
+    );
+}

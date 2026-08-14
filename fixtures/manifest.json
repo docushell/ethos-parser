@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 11
+    "engine_owned": 16
   },
   "fixtures": [
     {
@@ -283,6 +283,51 @@
       "sha256": "sha256:0ba1883ac36d0e980d79f5c258c7770f7fe8027df812d2f62ebbc2d33058dde4",
       "owner": "engine",
       "notes": "v1-S2 ARBITRATION. A painted 2x2 grid whose four runs are also a flawless 2x2 alignment, so both rules can describe the region and exactly one may. Expect ONE table, `ruled-rects-v1`: a ruling line is evidence the author left, an alignment cluster is a decision this engine made, and the two grids are never averaged into a third nobody found."
+    },
+    {
+      "id": "tagged-structure-roles",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-structure-roles/document.pdf",
+      "sha256": "sha256:1627db94913f270f6e48090c0a59e3542b5ec82bf7770c95a91d0fbecd10676b",
+      "owner": "engine",
+      "notes": "v1-S3 STRUCTURAL-LOCATOR GOLDEN. Five runs, four locator states: mcid 0 and 1 are cited by the /StructTreeRoot (role path Document/P), mcid 5 is marked and claimed by nothing, one run sits inside an /Artifact sequence, and one is never marked at all. Collapsing any two of those would lose a real distinction \u2014 'outside the tree', 'not marked', and 'marked as furniture' are three different statements. The artifact run stays in `nodes`, flagged and never dropped."
+    },
+    {
+      "id": "tagged-rolemap",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-rolemap/document.pdf",
+      "sha256": "sha256:5bc8ae19e2d9eb5b54f348b155484a2d900a0537de2f9fe522f5be2aa8e1a750",
+      "owner": "engine",
+      "notes": "v1-S3 /RoleMap. The document maps its custom /Para onto /P and says nothing about /Odd. The mapped element gains a standard_role_path; the unmapped one keeps its own name and gains nothing. Deciding /Odd 'must mean' /P because it sits where a paragraph would is the inference this slice refuses."
+    },
+    {
+      "id": "tagged-table-agrees",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-table-agrees/document.pdf",
+      "sha256": "sha256:6f668a1b53d1b2d5de7af5d728dd2b8aedb4c30b4e7651a4bf7460d4dabffd38",
+      "owner": "engine",
+      "notes": "v1-S3 TAGGED-VS-GEOMETRIC, agreeing. A painted 2x2 grid whose four cells are also tagged /TD under /Table/TR. The two derivations share no input \u2014 the tree walk reads no box and the detector reads no /S \u2014 so `ok` here is two independent readings arriving at one grid."
+    },
+    {
+      "id": "tagged-table-disagrees",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-table-disagrees/document.pdf",
+      "sha256": "sha256:9bf00c15aee0da59ef59605e96a3da3f2923cb9766a0cd2334cea779b750448c",
+      "owner": "engine",
+      "notes": "v1-S3 TAGGED-VS-GEOMETRIC, hostile. Same painted 2x2 and same four marked cells; the tree claims THREE rows, the third citing content the page never wrote. Expect a mismatch naming the row disagreement, `structure-item-without-content` for the two uncited items, and the detector's 2x2 left exactly as it was \u2014 no repair, and no run invented to satisfy the tree."
+    },
+    {
+      "id": "tagged-cycle",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-cycle/document.pdf",
+      "sha256": "sha256:9d9c064e6e184caa67fa265f011b07f6dfc7d298accb2a2e03faf777a987a4ba",
+      "owner": "engine",
+      "notes": "v1-S3 FAIL-CLOSED. /K points back at an ancestor. Walking it does not terminate and stopping partway would report a structure the document does not have, so extraction refuses with a named `malformed` error and produces no artifact."
     }
   ]
 }

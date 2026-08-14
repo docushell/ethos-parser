@@ -70,6 +70,17 @@ pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
 /// redefining this one, so artifacts from two detectors stay correctly non-comparable.
 pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 
+/// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
+///
+/// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
+/// is applied, how deep `/K` may nest before the walk refuses, and the fact that the join is exact
+/// equality rather than anything looser — all of them decide which runs come out with a role path.
+/// Changing any takes a new id rather than silently redefining this one.
+///
+/// **It names a reading, not an inference.** Every role this rule reports is one the document
+/// wrote down; a file with no tree produces no roles and says so.
+pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
+
 /// Identity of the character-decoding data this profile carries.
 ///
 /// Names what is **actually** vendored rather than what was planned. At M3 that is the
@@ -206,11 +217,18 @@ pub struct Capabilities {
     pub multi_column_reading_order: bool,
     /// Structural locators (`mcid`, tagged-structure roles) are captured.
     ///
-    /// **v0: false**, and this one is a judgement call worth recording. A marked-content id
-    /// *is* captured where a page's content stream supplies one via `BDC`, and never invented
-    /// where it does not — but the tagged-structure tree is not read, so there is no role path,
-    /// and an absent `mcid` is not evidence the document is untagged. Claiming the capability
-    /// on the strength of the partial half would promise an address consumers could not rely on.
+    /// **True since v1-S3.** v0 through v1-S2 left this false on purpose and said why: a
+    /// marked-content id was captured where a page's content stream supplied one, but the
+    /// tagged-structure tree was never read, so there was no role path and an id resolved
+    /// against nothing. Claiming the capability on the strength of that half would have promised
+    /// an address consumers could not rely on.
+    ///
+    /// v1-S3 reads `/StructTreeRoot` and binds runs to it by exact `(page, mcid)` equality, so
+    /// the claim is now the one this flag is for: **this profile looks**. It does not claim every
+    /// document has structure. An untagged file produces no role paths and declares
+    /// `untagged-structure-tree-absent`; a tagged file whose tree misses some marked content
+    /// declares `structure-mcid-unbound` with a count. Both are real answers, and neither is a
+    /// role invented to fill the gap.
     pub structural_locators: bool,
 }
 
@@ -228,7 +246,7 @@ impl Capabilities {
         tables: true,
         measured_ink_boxes: true,
         multi_column_reading_order: false,
-        structural_locators: false,
+        structural_locators: true,
     };
 }
 
@@ -416,6 +434,12 @@ pub struct Profile {
     /// than silently redefining one, so artifacts from two detectors are correctly
     /// non-comparable. [`TableDetection`] says why this stopped being a single string.
     pub table_detection: TableDetection,
+    /// Version id of the structure-tree rule in force. New at v1-S3.
+    ///
+    /// See [`STRUCT_TREE_RULE_V1`]. On the profile because it decides which runs come out
+    /// carrying a role path: the recognised structure types, the `/RoleMap` handling, the depth
+    /// bound and the exactness of the `(page, mcid)` join are all part of it.
+    pub struct_tree_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
     /// Whether the bounded cross-reference repair runs. New at v0.1.
@@ -439,6 +463,7 @@ impl Default for Profile {
             page_budget: PageBudget::Unlimited,
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
             table_detection: TableDetection::default(),
+            struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -535,6 +560,7 @@ mod tests {
                     ruled: _,
                     unruled: _,
                 },
+            struct_tree_rule: _,
             cmap_data_version: _,
             xref_repair: _,
             verifier: _,
@@ -559,6 +585,12 @@ mod tests {
                 // whose hash could not tell those apart would claim a comparability it lacks.
                 "table_detection.unruled",
                 Box::new(|p: &mut Profile| p.table_detection.unruled = "other-align-v9".into()),
+            ),
+            (
+                // v1-S3. Which runs come out with a role path, and therefore whether a consumer
+                // can address text structurally at all.
+                "struct_tree_rule",
+                Box::new(|p: &mut Profile| p.struct_tree_rule = "other-tree-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -618,8 +650,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.multi_column_reading_order = true),
             ),
             (
+                // Mutated toward `false`: it is TRUE as of v1-S3, and a mutation to the value a
+                // field already holds tests nothing.
                 "capabilities.structural_locators",
-                Box::new(|p: &mut Profile| p.capabilities.structural_locators = true),
+                Box::new(|p: &mut Profile| p.capabilities.structural_locators = false),
             ),
             (
                 "page_budget",
@@ -692,7 +726,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":false,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.4.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.5.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -714,11 +748,16 @@ mod tests {
              from a single string to a structure naming BOTH rules. Same class of change as the \
              fourth — an artifact from before this looked for ruled grids only, and one from \
              after also inferred grids from alignment, so the two really did come from different \
-             detectors and must not be compared cell for cell."
+             detectors and must not be compared cell for cell.\n\n\
+             Moved a sixth time at v1-S3 (0.5.0): the version, the new `struct_tree_rule`, and \
+             `capabilities.structural_locators` flipping false -> true. Another CLAIM rather \
+             than a knob — artifacts before it never read a document's structure tree and \
+             artifacts after it do, so a role path present in one and absent from the other says \
+             nothing about the two documents and everything about the two profiles."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b24fc93984ef60916037c59553474e42eaf9339922e7c22af19cdc9856f11f82"
+            "sha256:8cc7607fc8e0203e8e64192fbbb2ac7689bf46d1c6a1c8d4d02be53c4de2ed22"
         );
     }
 
@@ -826,10 +865,15 @@ mod tests {
              element and a span are the same object, so an offset would always be 0..len. It \
              flips at v1 with grouping — and with a test"
         );
+        // Flipped at v1-S3. Through v1-S2 this was false and the reason was exact: an `mcid`
+        // captured from `BDC` is not a structural address, because with the tree unread it
+        // resolves against nothing. S3 reads `/StructTreeRoot`, so the claim this flag makes —
+        // *this profile looks* — is now true. It still does not claim every document has
+        // structure: an untagged file declares `untagged-structure-tree-absent` and gets no
+        // roles, which is a real answer rather than a gap.
         assert!(
-            !c.structural_locators,
-            "an `mcid` captured from BDC is not a structural address: no role path, and an \
-             absent id is not evidence the document is untagged"
+            c.structural_locators,
+            "v1-S3 reads the tagged-structure tree and binds runs to it by (page, mcid)"
         );
     }
 

@@ -42,7 +42,7 @@ use crate::nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, Te
 pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.engine.extract.v0";
 
 /// Shape version of the extract artifact. **DRAFT**.
-pub const EXTRACT_SCHEMA_VERSION: &str = "0.1.0";
+pub const EXTRACT_SCHEMA_VERSION: &str = "0.2.0";
 
 /// The extract artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,6 +105,38 @@ impl ExtractArtifact {
     }
 }
 
+/// Resolve one run's structural address (v1-S3).
+///
+/// The precedence is the point, so it is stated rather than left to fall out of the `if`s:
+///
+/// 1. **Artifact wins.** The page itself said this content is furniture and outside the structure
+///    tree (§14.8.2.2). That is the document's own statement about its own content, and it
+///    outranks anything a join could conclude. The run stays in the artifact — flagged, never
+///    dropped.
+/// 2. **A tree citation binds.** Only on exact `(page, mcid)` equality. Nothing fuzzy, nothing
+///    nearest-match: an mcid means one thing on one page, and a looser join would file text under
+///    a heading that does not claim it.
+/// 3. **Otherwise the bare id**, exactly as v0 emitted it. This is a *smaller* claim than a bound
+///    role path, and the difference is preserved rather than smoothed over.
+/// 4. **Otherwise nothing**, because the page marked nothing here.
+fn bind_structure(
+    tree: Option<&crate::structure::StructureTree>,
+    page: lopdf::ObjectId,
+    mcid: Option<i64>,
+    artifact: bool,
+) -> Option<engine_core::StructuralLocator> {
+    use engine_core::{PdfArtifactLocator, StructuralLocator};
+
+    if artifact {
+        return Some(StructuralLocator::PdfArtifact(PdfArtifactLocator { mcid }));
+    }
+    let mcid = mcid?;
+    match tree.and_then(|t| t.locator_for(page, mcid)) {
+        Some(found) => Some(StructuralLocator::PdfTagged(found.clone())),
+        None => Some(StructuralLocator::PdfMcid(mcid)),
+    }
+}
+
 /// Extract text runs from an already-open document.
 ///
 /// # Errors
@@ -138,6 +170,16 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // precondition that failed. Collected rather than declared per page so the artifact carries
     // one limitation naming every such page instead of one per page.
     let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
+
+    // v1-S3. Read the document's own structure tree ONCE, off the same handle every other stage
+    // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
+    // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
+    let structure = crate::structure::read(doc.inner())?;
+    // Counted while binding, declared afterwards, and only when non-zero.
+    let mut mcids_unbound: u32 = 0;
+    let mut unclaimed_tree_items: u32 = 0;
+    let mut props_by_name: u32 = 0;
+    let mut tagged_without_geometric: Vec<u32> = Vec::new();
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -247,10 +289,35 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 },
                 geometry,
                 mcid: shown.mcid,
+                // v1-S3. The join against the document's structure tree, or the honest lesser
+                // answer when the tree does not reach this run. `bind_structure` never invents:
+                // an unbound id stays an unbound id.
+                structural: bind_structure(structure.as_ref(), page_id, shown.mcid, shown.artifact),
                 // Text and origins are read from the document's own encoding.
                 derivation: DerivationClass::Extracted,
             });
         }
+
+        // Which of the tree's citations this page's runs actually answered. A cited pair that no
+        // run claims is a real hole — the tree says there is content there and the content stream
+        // did not mark any — and it is counted rather than filled with a fabricated run.
+        if let Some(tree) = structure.as_ref() {
+            for &(pg, mcid) in tree.keys() {
+                if pg == page_id && !runs.iter().any(|r| r.mcid == Some(mcid)) {
+                    unclaimed_tree_items += 1;
+                }
+            }
+        }
+        mcids_unbound += runs
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r.structural,
+                    Some(engine_core::StructuralLocator::PdfMcid(_))
+                )
+            })
+            .count() as u32;
+        props_by_name = props_by_name.saturating_add(interp.props_by_name);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
         // user space and go through the SAME transform and quantum as a glyph origin — a table
@@ -272,7 +339,37 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             .collect();
         // v1-S2: ruled first, then the alignment rule on whatever text no ruled table claims.
         let detected = crate::tables::detect(page_number, &table_rects, &origins, &mut alloc)?;
-        let tables = detected.tables;
+        let mut tables = detected.tables;
+
+        // v1-S3: the document's own tags, compared against what the detectors found. The two
+        // derivations meet here and nowhere else — the tree walk never saw a box, and neither
+        // detector ever saw a structure type.
+        //
+        // Paired by position: the nth `/Table` the tree describes on this page against the nth
+        // table found on it. Anything cleverer would be matching two grids by geometry, and the
+        // tagged half has no geometry to match with.
+        if let Some(tree) = structure.as_ref() {
+            let tagged_here: Vec<&crate::structure::TaggedTable> = tree
+                .tables
+                .iter()
+                .filter(|t| t.page == Some(page_id))
+                .collect();
+            for (i, tagged) in tagged_here.iter().enumerate() {
+                match tables.get_mut(i) {
+                    Some(found) => {
+                        let positions: Vec<engine_core::TableCellPosition> =
+                            found.cells.iter().map(|c| c.position.clone()).collect();
+                        found.tagged_check =
+                            Some(tagged.check_against(found.rows, found.columns, &positions));
+                    }
+                    // The tree says there is a table here and no detector found one. **No table
+                    // is invented to match the tags**: a grid emitted on the strength of `/TD`
+                    // elements alone would have cells this engine placed, and a consumer could
+                    // not tell them from cells a detector reconstructed from the page.
+                    None => tagged_without_geometric.push(page_number),
+                }
+            }
+        }
         // A refused candidate is recorded once per page it happened on. Without this, a near-miss
         // page and a page with no grid-shaped text at all would both say `tables: []`, and only
         // one of them means "the alignment rule looked at something and decided against it".
@@ -309,6 +406,30 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // refusal that did not happen is as misleading as omitting one that did.
     if !unruled_refusals.is_empty() {
         limitations.push(lim::unruled_candidate_refused(&unruled_refusals));
+    }
+
+    // v1-S3. Four facts about the structure tree, each declared only where it is true. A
+    // capability that says "this profile looks" is worth having only if the artifact also says
+    // what the looking found, and "found nothing" has more than one cause.
+    match structure.as_ref() {
+        None => limitations.push(lim::untagged_structure_tree_absent()),
+        Some(tree) => {
+            if mcids_unbound > 0 {
+                limitations.push(lim::structure_mcid_unbound(mcids_unbound));
+            }
+            if unclaimed_tree_items > 0 {
+                limitations.push(lim::structure_item_without_content(unclaimed_tree_items));
+            }
+            let _ = tree;
+        }
+    }
+    if props_by_name > 0 {
+        limitations.push(lim::mcid_property_list_by_name(props_by_name));
+    }
+    if !tagged_without_geometric.is_empty() {
+        limitations.push(lim::tagged_table_without_geometric_table(
+            &tagged_without_geometric,
+        ));
     }
 
     // **Encoding holes: declare, or refuse outright.**

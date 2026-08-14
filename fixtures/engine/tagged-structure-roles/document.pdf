@@ -1,0 +1,48 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 160] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 293 >>
+stream
+BT /F1 12 Tf /P <</MCID 0>> BDC 1 0 0 1 40 110 Tm (First paragraph) Tj EMC /P <</MCID 1>> BDC 1 0 0 1 40 90 Tm (Second paragraph) Tj EMC /P <</MCID 5>> BDC 1 0 0 1 40 70 Tm (Marked but unclaimed) Tj EMC /Artifact BMC 1 0 0 1 40 50 Tm (Running head) Tj EMC 1 0 0 1 40 30 Tm (Never marked) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+6 0 obj
+<< /Type /StructTreeRoot /K 7 0 R >>
+endobj
+7 0 obj
+<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] >>
+endobj
+8 0 obj
+<< /Type /StructElem /S /P /P 7 0 R /Pg 3 0 R /K 0 >>
+endobj
+9 0 obj
+<< /Type /StructElem /S /P /P 7 0 R /Pg 3 0 R /K 1 >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000080 00000 n 
+0000000137 00000 n 
+0000000263 00000 n 
+0000000607 00000 n 
+0000001122 00000 n 
+0000001174 00000 n 
+0000001252 00000 n 
+0000001321 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1390
+%%EOF

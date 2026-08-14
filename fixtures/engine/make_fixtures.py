@@ -60,7 +60,25 @@ LAST_CHAR = 126
 DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
 
 
-def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None, differences=None) -> bytes:
+def build_pdf(
+    content: str,
+    media=(0, 0, 300, 144),
+    descriptor=None,
+    differences=None,
+    extra_objects=None,
+) -> bytes:
+    # `extra_objects` is a list of object bodies appended after the fixed five, numbered from 6.
+    # A tagged fixture writes its own /StructTreeRoot as the FIRST of them, so the catalog can
+    # name `6 0 R` without the caller having to compute an offset — object numbering here is
+    # fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font), and keeping it that way
+    # is what makes these files readable by hand.
+    #
+    # Refused together with a descriptor rather than silently renumbering: a descriptor also
+    # claims object 6, and a fixture where the same number means two things is a fixture nobody
+    # can check by eye.
+    assert not (
+        extra_objects and descriptor
+    ), "a /FontDescriptor and extra objects both claim object 6; give the fixture one or the other"
     # `descriptor` is one of DESCRIPTOR_KINDS. Left unannotated so this script runs on any
     # python3 a reviewer happens to have — `str | None` in a signature is evaluated at import
     # time and raises before 3.10, which would make regenerating fixtures depend on the
@@ -68,7 +86,10 @@ def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None, differences
     assert descriptor in DESCRIPTOR_KINDS, f"unknown descriptor kind {descriptor!r}"
     widths = " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1))
     objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
+        (
+            "<< /Type /Catalog /Pages 2 0 R%s >>"
+            % (" /StructTreeRoot 6 0 R" if extra_objects else "")
+        ).encode(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         (
             "<< /Type /Page /Parent 2 0 R /MediaBox [%d %d %d %d] "
@@ -114,6 +135,9 @@ def build_pdf(content: str, media=(0, 0, 300, 144), descriptor=None, differences
             b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
             b"/ItalicAngle 0 /StemV 88 >>"
         )
+    for body in extra_objects or []:
+        objects.append(body.encode() if isinstance(body, str) else body)
+
     stream = content.encode()
     objects[3] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)
 
@@ -298,13 +322,140 @@ FIXTURES = {
         "1 0 0 1 50 54 Tm (C) Tj 1 0 0 1 200 54 Tm (D) Tj "
         "ET"
     ),
+    # v1-S3's golden. Four runs, one per structural-locator state — see STRUCTURE above.
+    "tagged-structure-roles": (
+        "BT /F1 12 Tf "
+        "/P <</MCID 0>> BDC 1 0 0 1 40 110 Tm (First paragraph) Tj EMC "
+        "/P <</MCID 1>> BDC 1 0 0 1 40 90 Tm (Second paragraph) Tj EMC "
+        "/P <</MCID 5>> BDC 1 0 0 1 40 70 Tm (Marked but unclaimed) Tj EMC "
+        "/Artifact BMC 1 0 0 1 40 50 Tm (Running head) Tj EMC "
+        "1 0 0 1 40 30 Tm (Never marked) Tj "
+        "ET"
+    ),
+    # v1-S3's /RoleMap fixture. MCID 0 is /Para, which the document maps to /P; MCID 1 is /Odd,
+    # which it maps to nothing and which therefore stays /Odd.
+    "tagged-rolemap": (
+        "BT /F1 12 Tf "
+        "/Para <</MCID 0>> BDC 1 0 0 1 40 100 Tm (Mapped to P) Tj EMC "
+        "/Odd <</MCID 1>> BDC 1 0 0 1 40 70 Tm (Not mapped) Tj EMC "
+        "ET"
+    ),
+    # v1-S3's agreeing pair: a painted 2x2 grid whose four cells are also tagged /TD.
+    "tagged-table-agrees": (
+        "1 w "
+        "40 80 100 40 re S 140 80 100 40 re S "
+        "40 40 100 40 re S 140 40 100 40 re S "
+        "BT /F1 12 Tf "
+        "/TD <</MCID 0>> BDC 1 0 0 1 50 94 Tm (A) Tj EMC "
+        "/TD <</MCID 1>> BDC 1 0 0 1 150 94 Tm (B) Tj EMC "
+        "/TD <</MCID 2>> BDC 1 0 0 1 50 54 Tm (C) Tj EMC "
+        "/TD <</MCID 3>> BDC 1 0 0 1 150 54 Tm (D) Tj EMC "
+        "ET"
+    ),
+    # v1-S3's disagreeing pair. Same painted 2x2 grid and same four marked cells; the tree claims
+    # a third row whose content the page never wrote.
+    "tagged-table-disagrees": (
+        "1 w "
+        "40 80 100 40 re S 140 80 100 40 re S "
+        "40 40 100 40 re S 140 40 100 40 re S "
+        "BT /F1 12 Tf "
+        "/TD <</MCID 0>> BDC 1 0 0 1 50 94 Tm (A) Tj EMC "
+        "/TD <</MCID 1>> BDC 1 0 0 1 150 94 Tm (B) Tj EMC "
+        "/TD <</MCID 2>> BDC 1 0 0 1 50 54 Tm (C) Tj EMC "
+        "/TD <</MCID 3>> BDC 1 0 0 1 150 54 Tm (D) Tj EMC "
+        "ET"
+    ),
+    # v1-S3's non-terminating tree. The text is ordinary; the structure is not.
+    "tagged-cycle": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Text under a cyclic tree) Tj ET"
+    ),
 }
+
+# v1-S3. Structure-tree objects, numbered from 6 (see build_pdf). The first entry is always the
+# /StructTreeRoot, because that is the number the catalog names.
+#
+# Written out by hand rather than generated, so a reviewer can read the tree and the content
+# stream side by side and check the (page, mcid) join by eye — which is the whole property these
+# fixtures exist to pin.
+STRUCTURE = {
+    # The four states a structural locator can be in, one run each. A tagged document is not
+    # uniformly tagged, and every one of these four is a different fact:
+    #
+    #   MCID 0  cited by the tree            -> pdf_tagged, role path Document/P
+    #   MCID 5  marked, cited by nothing     -> pdf_mcid, and a counted gap
+    #   /Artifact BMC                        -> pdf_artifact, kept in nodes, not body text
+    #   no BDC at all                        -> absent, because the page marked nothing
+    #
+    # A reader that collapsed any two of these would lose something real: "outside the tree",
+    # "not marked", and "marked as furniture" are three different statements about one page.
+    "tagged-structure-roles": [
+        "<< /Type /StructTreeRoot /K 7 0 R >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] >>",
+        "<< /Type /StructElem /S /P /P 7 0 R /Pg 3 0 R /K 0 >>",
+        "<< /Type /StructElem /S /P /P 7 0 R /Pg 3 0 R /K 1 >>",
+    ],
+    # A /RoleMap: the document telling us what its own custom type means. /Para maps to /P and
+    # /Odd maps to nothing, so one is understood and the other is emitted as itself. Guessing
+    # that /Odd means /P because it sits where a paragraph would is the inference this refuses.
+    "tagged-rolemap": [
+        "<< /Type /StructTreeRoot /K 7 0 R /RoleMap << /Para /P >> >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] >>",
+        "<< /Type /StructElem /S /Para /P 7 0 R /Pg 3 0 R /K 0 >>",
+        "<< /Type /StructElem /S /Odd /P 7 0 R /Pg 3 0 R /K 1 >>",
+    ],
+    # A tagged 2x2 table over a painted 2x2 grid: the tree and the geometry agree, so the
+    # tagged-vs-geometric check is `ok`. The two derivations share no input — the tree walk never
+    # reads a box and the detector never reads /S — which is what makes agreement mean something.
+    "tagged-table-agrees": [
+        "<< /Type /StructTreeRoot /K 7 0 R >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R] >>",
+        "<< /Type /StructElem /S /Table /P 7 0 R /K [9 0 R 12 0 R] >>",
+        "<< /Type /StructElem /S /TR /P 8 0 R /K [10 0 R 11 0 R] >>",
+        "<< /Type /StructElem /S /TD /P 9 0 R /Pg 3 0 R /K 0 >>",
+        "<< /Type /StructElem /S /TD /P 9 0 R /Pg 3 0 R /K 1 >>",
+        "<< /Type /StructElem /S /TR /P 8 0 R /K [13 0 R 14 0 R] >>",
+        "<< /Type /StructElem /S /TD /P 12 0 R /Pg 3 0 R /K 2 >>",
+        "<< /Type /StructElem /S /TD /P 12 0 R /Pg 3 0 R /K 3 >>",
+    ],
+    # The hostile pair. The page paints a 2x2 grid and marks four cells; the TREE claims THREE
+    # rows, the third citing marked content that the content stream never wrote.
+    #
+    # Two findings, and neither is repaired: the tagged and geometric derivations disagree about
+    # the row count, and two cited content items have no run. The tempting fix is to trust one
+    # side — emit the tree's 3x2, or quietly ignore the extra row — and both would be this engine
+    # choosing which of two disagreeing sources to believe, with nothing on the wire to say it did.
+    "tagged-table-disagrees": [
+        "<< /Type /StructTreeRoot /K 7 0 R >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R] >>",
+        "<< /Type /StructElem /S /Table /P 7 0 R /K [9 0 R 12 0 R 15 0 R] >>",
+        "<< /Type /StructElem /S /TR /P 8 0 R /K [10 0 R 11 0 R] >>",
+        "<< /Type /StructElem /S /TD /P 9 0 R /Pg 3 0 R /K 0 >>",
+        "<< /Type /StructElem /S /TD /P 9 0 R /Pg 3 0 R /K 1 >>",
+        "<< /Type /StructElem /S /TR /P 8 0 R /K [13 0 R 14 0 R] >>",
+        "<< /Type /StructElem /S /TD /P 12 0 R /Pg 3 0 R /K 2 >>",
+        "<< /Type /StructElem /S /TD /P 12 0 R /Pg 3 0 R /K 3 >>",
+        "<< /Type /StructElem /S /TR /P 8 0 R /K [16 0 R 17 0 R] >>",
+        "<< /Type /StructElem /S /TD /P 15 0 R /Pg 3 0 R /K 4 >>",
+        "<< /Type /StructElem /S /TD /P 15 0 R /Pg 3 0 R /K 5 >>",
+    ],
+    # `/K` pointing back at an ancestor. Walking it does not terminate, and stopping partway would
+    # report a structure the document does not have — so it is refused by name.
+    "tagged-cycle": [
+        "<< /Type /StructTreeRoot /K 7 0 R >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R] >>",
+        "<< /Type /StructElem /S /Sect /P 7 0 R /Pg 3 0 R /K [7 0 R] >>",
+    ],
+}
+
 
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
+    "tagged-structure-roles": (0, 0, 300, 160),
+    "tagged-table-agrees": (0, 0, 300, 160),
+    "tagged-table-disagrees": (0, 0, 300, 160),
     "both-table-rules": (0, 0, 320, 320),
     "ruled-wins-shared-region": (0, 0, 300, 160),
 }
@@ -331,6 +482,7 @@ def main() -> int:
             media=MEDIA.get(name, (0, 0, 300, 144)),
             descriptor=DESCRIPTORS.get(name),
             differences=DIFFERENCES.get(name),
+            extra_objects=STRUCTURE.get(name),
         )
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")

@@ -18,7 +18,8 @@
     "cmap_data_version",
     "xref_repair",
     "verifier",
-    "table_detection"
+    "table_detection",
+    "struct_tree_rule"
   ],
   "properties": {
     "parser_version": {
@@ -131,6 +132,12 @@
         }
       }
     },
+    "struct_tree_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the structure-tree rule in force (v1-S3). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser.",
+      "examples": ["struct-tree-v1"]
+    },
     "table_detection": {
       "type": "object",
       "additionalProperties": false,
@@ -174,7 +181,7 @@
         },
         "tables": {
           "type": "boolean",
-          "$comment": "false in v0 \u2014 tables are v1 scope"
+          "$comment": "true since v1-S1 (ruled), widened at v1-S2 (unruled)"
         },
         "measured_ink_boxes": {
           "type": "boolean",
@@ -240,7 +247,7 @@
         "measured_ink_boxes": true,
         "multi_column_reading_order": false,
         "spans": true,
-        "structural_locators": false,
+        "structural_locators": true,
         "tables": true
       },
       "classify_sample_pages": 8,
@@ -252,7 +259,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.4.0",
+      "parser_version": "0.5.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1",
       "xref_repair": {
@@ -264,7 +271,8 @@
       "table_detection": {
         "ruled": "ruled-rects-v1",
         "unruled": "unruled-align-v1"
-      }
+      },
+      "struct_tree_rule": "struct-tree-v1"
     }
   ]
 }

@@ -11,7 +11,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S0** | v1 scope + this document | — | **done** |
 | **S1** | Vector paths · ruled tables · `CellSlot` · locator cross-check | S0 | **done** |
 | **S2** | Unruled tables: alignment / whitespace dual-mode | S1 | **done** |
-| **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | not started |
+| **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | **done** |
 | **S4** | Forms and annotations as typed nodes | S1 | not started |
 | **S5** | Multi-column reading order, versioned rule | S2 | not started |
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | not started |
@@ -201,9 +201,61 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
   the document is untagged.
 
 - **Acceptance tests:**
-  - [ ] A tagged fixture yields role paths; an untagged one yields the declared absence, unchanged
-  - [ ] `structural_locators: true` has a proof test and its limitation is removed
-  - [ ] Tagged and geometric derivations of the same table are cross-checked against each other
+  - [x] A tagged fixture yields role paths; an untagged one yields the declared absence, unchanged
+  - [x] `structural_locators: true` has a proof test and its limitation is removed
+  - [x] Tagged and geometric derivations of the same table are cross-checked against each other
+
+- **The rule, as shipped** (`struct-tree-v1`): read the catalog's `/StructTreeRoot`; recurse `/K`
+  over arrays, references, structure elements, `/MCR` marked-content references and bare mcid
+  integers; inherit `/Pg` down the tree and let an `/MCR`'s own `/Pg` win over it; apply `/RoleMap`
+  where the document supplies one; bind a run **only** on exact `(page object, mcid)` equality.
+  Cycles and nesting past 64 levels are refused by name. Recognised for the table check, after
+  `/RoleMap`: `Table`, `TR`, `TD`, `TH`, with `/RowSpan` and `/ColSpan` read from `/A` attribute
+  dictionaries or from the element, defaulting to 1 and never 0.
+
+- **Four locator states, because they are four different facts.** `StructuralLocator` gained two
+  variants rather than one:
+
+  | State | What happened |
+  | --- | --- |
+  | `pdf_tagged` | the tree cites this `(page, mcid)` — the author placed this text here |
+  | `pdf_mcid` | the stream gave an id and **no structure element claims it** |
+  | `pdf_artifact` | the page marked this as furniture, deliberately outside the tree |
+  | absent | the page marked nothing here |
+
+  Collapsing any two loses something real. `pdf_artifact` runs stay in `nodes`, flagged — a reader
+  that deletes running heads has silently edited the document (checklist O21/O22), and the edit is
+  undetectable downstream.
+
+- **Decision 7 resolved as diagnostic-only.** A `/Table` in the tree is compared against a table a
+  detector found on the same page and the result rides on `TableRecord.tagged_check` under a
+  **new** id, `tagged-vs-geometric-v1`. It is not `geometric-vs-structural-v1` widened: that one
+  compares a table's own indices against its own boxes, and one id meaning both would leave a
+  reader unable to tell which pair of derivations disagreed. No third `tagged-struct-v1` rule was
+  needed — a tagged table's cells are already addressable through the role paths on its runs, so
+  emitting a table whose cells this engine positioned would add reach nothing lacked. Where the
+  tree describes a table and no detector found one, `tagged-table-without-geometric-table` says so
+  and **no table is emitted**.
+
+- **Three things this slice deliberately does not do:**
+
+  1. **No reordering.** The walk produces a lookup keyed by `(page, mcid)`; the node list stays in
+     content-stream order. Emitting nodes in `/K` order is a reading-order rule and belongs to S5,
+     and a guard test asserts this module contains no sort. `synthetic/two-columns` still reads
+     `single-column-v1`, in the same order as before.
+  2. **No new `NodeKind`s.** A role path on the existing `TextRun` carries the answer, so
+     `Paragraph`/`Heading`/`TableCell` variants would put the same fact in two places — the same
+     reasoning S1 used when it refused to emit cells as nodes.
+  3. **No using tags to fix a detector.** The 1040 still yields 0 tables and the unruled near miss
+     is still a near miss. A tagged grid does not rescue an untagged one, and an alignment lattice
+     is not nudged into existence because a tree mentions a table elsewhere.
+
+- **Absence is named on both sides, and never invented on either.** Four conditional
+  document-scoped limitations, each present only where it is true:
+  `untagged-structure-tree-absent` (no tree at all), `structure-mcid-unbound` (marked content the
+  tree does not claim), `structure-item-without-content` (the tree cites content no run carried),
+  and `mcid-property-list-by-name` (a `BDC` whose property list indirects through `/Properties`,
+  which this profile does not resolve — an *unread* id is not an *absent* one).
 
 - **Depends on:** S1.
 

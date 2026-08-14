@@ -1365,3 +1365,376 @@ fn assert_cells_are_concatenations(a: &ExtractArtifact, what: &str) {
     }
     assert!(seen_a_table, "{what}: expected at least one table to check");
 }
+
+// -------------------------------------------------------------------------------------------
+// 13. The tagged-structure tree (v1-S3)
+// -------------------------------------------------------------------------------------------
+
+/// **The `structural_locators` proof.** Both halves, because one without the other proves nothing.
+///
+/// A capability that says *this profile looks* is proven by a document where looking finds
+/// something **and** a document where it finds nothing. A test that only checked the first could
+/// be satisfied by an engine that invents roles; a test that only checked the second could be
+/// satisfied by one that never looks at all.
+#[test]
+fn the_structure_tree_supplies_role_paths_and_absence_stays_absent() {
+    use engine_core::StructuralLocator;
+
+    // Half one: a tagged document yields the roles ITS OWN TREE gives.
+    let tagged = extract_ok(engine_fx("tagged-structure-roles"));
+    let bound: Vec<&engine_core::PdfTaggedLocator> = runs(&tagged)
+        .iter()
+        .filter_map(|r| match &r.structural {
+            Some(StructuralLocator::PdfTagged(t)) => Some(t),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(bound.len(), 2, "two runs are cited by the tree");
+    for t in &bound {
+        assert_eq!(
+            t.role_path,
+            vec!["Document".to_string(), "P".to_string()],
+            "the path is the one the document wrote, root first"
+        );
+    }
+    assert!(
+        tagged.assurance.capabilities.structural_locators,
+        "the capability is what this test proves"
+    );
+
+    // Half two: an untagged document gains nothing, with the machinery present and running.
+    let untagged = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    for r in runs(&untagged) {
+        assert!(
+            r.structural.is_none(),
+            "an untagged document must gain no role: {:?}",
+            r.structural
+        );
+    }
+    let codes: Vec<&str> = untagged
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    assert!(
+        codes.contains(&engine_core::codes::UNTAGGED_STRUCTURE_TREE_ABSENT),
+        "and must say why it found none: {codes:?}"
+    );
+    assert!(
+        !codes.contains(&engine_core::codes::STRUCTURAL_LOCATORS_NOT_CLAIMED),
+        "the false-capability partner is retired now that the tree is read: {codes:?}"
+    );
+}
+
+/// **Four states, four meanings.** A tagged document is not uniformly tagged.
+///
+/// `tagged-structure-roles` carries one run of each, and collapsing any two would lose something
+/// real: "outside the tree", "not marked at all", and "marked as furniture" are three different
+/// statements about one page.
+#[test]
+fn every_structural_locator_state_is_distinguishable() {
+    use engine_core::StructuralLocator;
+
+    let a = extract_ok(engine_fx("tagged-structure-roles"));
+    let by_text = |t: &str| {
+        runs(&a)
+            .into_iter()
+            .find(|r| r.text == t)
+            .unwrap_or_else(|| panic!("no run reading {t:?}"))
+            .structural
+            .clone()
+    };
+
+    match by_text("First paragraph") {
+        Some(StructuralLocator::PdfTagged(t)) => {
+            assert_eq!(t.mcid, 0);
+            assert_eq!(t.role_path, vec!["Document", "P"]);
+            assert!(
+                t.standard_role_path.is_none(),
+                "nothing was remapped, so no remapped path is emitted"
+            );
+        }
+        other => panic!("cited content must bind: {other:?}"),
+    }
+
+    // Marked with an id the tree never mentions. A SMALLER claim than a role path, and the
+    // difference is preserved rather than smoothed over.
+    assert_eq!(
+        by_text("Marked but unclaimed"),
+        Some(StructuralLocator::PdfMcid(5)),
+        "an id no structure element claims stays a bare id"
+    );
+
+    // Page furniture. Present in the artifact, flagged — never deleted.
+    match by_text("Running head") {
+        Some(StructuralLocator::PdfArtifact(_)) => {}
+        other => panic!("an /Artifact sequence must be flagged as one: {other:?}"),
+    }
+
+    // The page marked nothing here, so there is nothing to report.
+    assert_eq!(by_text("Never marked"), None);
+
+    // **The artifact run is still in the node list.** A reader that drops running heads has
+    // silently edited the document (parity checklist O21/O22), and the edit is undetectable
+    // downstream.
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert!(
+        texts.contains(&"Running head"),
+        "artifact content is classified, never dropped: {texts:?}"
+    );
+    assert_eq!(texts.len(), 5, "every run survives: {texts:?}");
+}
+
+/// **A run outside marked content does not make the document untagged.**
+///
+/// Two absences that must never be conflated: this document HAS a tree, and one of its runs sits
+/// outside it. Reporting `untagged-structure-tree-absent` here would be false.
+#[test]
+fn an_unmarked_run_in_a_tagged_document_is_not_an_untagged_document() {
+    let a = extract_ok(engine_fx("tagged-structure-roles"));
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+
+    assert!(
+        !codes.contains(&engine_core::codes::UNTAGGED_STRUCTURE_TREE_ABSENT),
+        "this document carries a tree; only its coverage is partial: {codes:?}"
+    );
+    assert!(
+        codes.contains(&engine_core::codes::STRUCTURE_MCID_UNBOUND),
+        "and the partial coverage is what gets declared: {codes:?}"
+    );
+}
+
+/// **The join is exact.** An id the tree does not cite binds nothing, and binds nothing *nearby*.
+#[test]
+fn the_mcid_join_is_exact_equality_and_never_nearest_match() {
+    use engine_core::StructuralLocator;
+
+    let a = extract_ok(engine_fx("tagged-structure-roles"));
+    // The tree cites 0 and 1. The content stream also marks 5. A nearest-match join would give
+    // run 5 the role path of the closest cited id; an exact one gives it nothing.
+    let unbound = runs(&a)
+        .into_iter()
+        .find(|r| r.mcid == Some(5))
+        .expect("the fixture marks mcid 5");
+    assert_eq!(
+        unbound.structural,
+        Some(StructuralLocator::PdfMcid(5)),
+        "5 is not 0 and is not 1, so it binds to neither"
+    );
+
+    // And every bound run's locator names its own id, not a neighbour's.
+    for r in runs(&a) {
+        if let Some(StructuralLocator::PdfTagged(t)) = &r.structural {
+            assert_eq!(
+                Some(t.mcid),
+                r.mcid,
+                "a bound locator must carry the id that bound it"
+            );
+        }
+    }
+}
+
+/// **`/RoleMap` is read as data; an unmapped custom type is never guessed at.**
+#[test]
+fn a_role_map_is_applied_and_an_unmapped_role_stays_itself() {
+    use engine_core::StructuralLocator;
+
+    let a = extract_ok(engine_fx("tagged-rolemap"));
+    let tagged = |text: &str| match runs(&a)
+        .into_iter()
+        .find(|r| r.text == text)
+        .unwrap_or_else(|| panic!("no run reading {text:?}"))
+        .structural
+        .clone()
+    {
+        Some(StructuralLocator::PdfTagged(t)) => t,
+        other => panic!("{text:?} must be bound: {other:?}"),
+    };
+
+    // /Para -> /P, because the document's own /RoleMap says so.
+    let mapped = tagged("Mapped to P");
+    assert_eq!(
+        mapped.role_path,
+        vec!["Document", "Para"],
+        "the raw path is never laundered: a consumer sees what the file says"
+    );
+    assert_eq!(
+        mapped.standard_role_path.as_deref(),
+        Some(["Document".to_string(), "P".to_string()].as_slice()),
+        "and the mapped path rides alongside, present because a mapping applied"
+    );
+
+    // /Odd maps to nothing, so it stays /Odd. Deciding it "must mean" /P because it sits where a
+    // paragraph would is precisely the inference this slice refuses.
+    let unmapped = tagged("Not mapped");
+    assert_eq!(unmapped.role_path, vec!["Document", "Odd"]);
+    assert!(
+        unmapped.standard_role_path.is_none(),
+        "no mapping applied, so no mapped path is invented: {:?}",
+        unmapped.standard_role_path
+    );
+}
+
+/// **A `/K` cycle is refused by name**, not walked and not half-reported.
+#[test]
+fn a_cyclic_structure_tree_fails_closed() {
+    let path = engine_fx("tagged-cycle");
+    let profile = Profile::default();
+    let doc = Document::open(&path, &profile).expect("the document itself is well formed");
+
+    let e = engine_pdf::extract(&doc, &profile)
+        .expect_err("a tree that does not terminate must not produce an artifact");
+
+    assert_eq!(e.code(), "malformed", "got {e}");
+    let msg = e.to_string();
+    assert!(
+        msg.contains("cycle") || msg.contains("cycles"),
+        "the refusal must name what was wrong: {msg}"
+    );
+}
+
+/// **Tagged and geometric agree**, and the agreement means something because the halves are
+/// independent.
+#[test]
+fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
+    use engine_core::TaggedGridStatus;
+
+    let a = extract_ok(engine_fx("tagged-table-agrees"));
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 1);
+    let t = tables[0];
+
+    assert_eq!((t.rows, t.columns), (2, 2));
+    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V1);
+
+    let check = t
+        .tagged_check
+        .as_ref()
+        .expect("the tree describes a table here, so the check runs");
+    assert_eq!(check.check_id, engine_core::TAGGED_GRID_CHECK_V1);
+    assert_ne!(
+        check.check_id,
+        engine_core::LOCATOR_CHECK_V1,
+        "this is a second check, not a widening of the first"
+    );
+    assert_eq!(check.outcome, TaggedGridStatus::Ok, "{check:?}");
+
+    // Both cross-checks pass, and they are asking different questions.
+    assert_eq!(t.check.outcome, engine_core::CheckStatus::Ok);
+}
+
+/// **Tagged and geometric disagree**: named, counted, and nothing repaired.
+#[test]
+fn a_tagged_table_that_contradicts_the_painted_grid_reports_a_mismatch() {
+    use engine_core::{TaggedGridFault, TaggedGridStatus};
+
+    let a = extract_ok(engine_fx("tagged-table-disagrees"));
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 1);
+    let t = tables[0];
+
+    // **Nothing was repaired.** The detector found a 2x2 and still reports a 2x2; the tree's
+    // claim of a third row is recorded beside it rather than adopted.
+    assert_eq!(
+        (t.rows, t.columns),
+        (2, 2),
+        "the geometric grid is untouched by the disagreement"
+    );
+    assert_eq!(t.cells.len(), 4);
+
+    let check = t.tagged_check.as_ref().expect("the check must run");
+    match &check.outcome {
+        TaggedGridStatus::Mismatch { faults } => {
+            assert!(
+                faults.iter().any(|f| matches!(
+                    f,
+                    TaggedGridFault::RowCountDiffers {
+                        tagged: 3,
+                        detected: 2
+                    }
+                )),
+                "the row disagreement must be named: {faults:?}"
+            );
+            assert!(
+                faults
+                    .iter()
+                    .any(|f| matches!(f, TaggedGridFault::SlotOnlyInTagged(_))),
+                "and the slots only the tree claims: {faults:?}"
+            );
+        }
+        other => panic!("expected a mismatch, got {other:?}"),
+    }
+
+    // The tree cited two content items the page never marked. Counted, never filled with a
+    // fabricated run.
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    assert!(
+        codes.contains(&engine_core::codes::STRUCTURE_ITEM_WITHOUT_CONTENT),
+        "{codes:?}"
+    );
+    assert_eq!(
+        runs(&a).len(),
+        4,
+        "no run was invented to satisfy the tree's extra citations"
+    );
+}
+
+/// **The tagged check is absent where the tree says nothing** — absent, not `Ok`.
+#[test]
+fn a_table_with_no_tagged_counterpart_carries_no_tagged_check() {
+    let a = extract_ok(engine_fx("ruled-table-grid"));
+    for page in &a.pages {
+        for t in &page.tables {
+            assert!(
+                t.tagged_check.is_none(),
+                "an untagged document's table has nothing to compare against, and `Ok` would \
+                 claim an agreement that was never tested"
+            );
+        }
+    }
+}
+
+/// **Earlier slices are untouched by reading the tree.**
+///
+/// S3 attaches addresses. It does not reorder nodes, and it does not let tags nudge a detector:
+/// using the tree to "fix" an unruled near miss or to find a table on the 1040 is exactly the
+/// scope creep this asserts against.
+#[test]
+fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
+    // S2's golden is still a 3x2 unruled table.
+    let golden = extract_ok(conformance("synthetic/table-regular-grid/document.pdf"));
+    let t: Vec<_> = golden.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(t.len(), 1);
+    assert_eq!((t[0].rows, t[0].columns), (3, 2));
+    assert_eq!(t[0].rule, engine_core::TABLE_DETECTION_UNRULED_V1);
+
+    // The near miss is still a near miss; tags did not rescue it (there are none).
+    let near = extract_ok(engine_fx("unruled-near-miss"));
+    assert!(near.pages.iter().all(|p| p.tables.is_empty()));
+
+    // two-columns still reads single-column, in content-stream order, and is still not a table.
+    let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V0);
+    let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Right top", "Right bottom", "Left top", "Left bottom"],
+        "node order is the content stream's, and S3 does not touch it"
+    );
+    assert!(two.pages.iter().all(|p| p.tables.is_empty()));
+
+    // And the 1040 still yields no table.
+    let form = extract_ok(path_in("benchmark", "irs-form-1040-2025.pdf"));
+    assert_eq!(form.pages.iter().map(|p| p.tables.len()).sum::<usize>(), 0);
+}
