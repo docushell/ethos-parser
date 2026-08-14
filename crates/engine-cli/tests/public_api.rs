@@ -216,6 +216,7 @@ const CORE: &[&str] = &[
     "QUANTUM_PER_POINT",
     "QuantizeError",
     "READING_ORDER_RULE_V0",
+    "READING_ORDER_RULE_V1",
     "RELAY_OK",
     "RELAY_REFUSED",
     "RELAY_UNAVAILABLE",

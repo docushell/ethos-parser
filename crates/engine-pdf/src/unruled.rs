@@ -81,9 +81,11 @@
 //!    author emitted its cells out of order is missed rather than guessed at, which is the trade
 //!    this slice makes everywhere.
 //!
-//!    Reading order itself is untouched. This *reads* the emission order as evidence; it never
-//!    reorders anything. Multi-column reading order stays `single-column-v1` with its declared
-//!    limitation until v1-S5.
+//!    Reading order itself is untouched **by this module**. This *reads* the emission order as
+//!    evidence; it never reorders anything. v1-S5 added a reading-order rule elsewhere
+//!    (`crate::reading_order`), and it runs AFTER detection precisely so this precondition still
+//!    sees the order the content stream produced — a rule that reordered first would be feeding
+//!    the detector its own output.
 //!
 //! 6. **A lattice-size cap.** Past [`MAX_FACES`] this is refused outright rather than emitted
 //!    truncated. A truncated table is a table with cells missing and no way to say so.
@@ -110,8 +112,9 @@
 //! nothing plays that part for alignment.
 //!
 //! **No reordering.** The lattice groups origins; it never touches the page's Extracted node
-//! list. Reading order stays `single-column-v1` and multi-column stays a declared limitation
-//! until v1-S5.
+//! list. v1-S5's `gutter-columns-v1` does reorder that list, and it does so after this module has
+//! run and answered — a table's runs then travel as one atom, keeping the order its cell text was
+//! concatenated in.
 //!
 //! # Fabrication is impossible here, not merely avoided
 //!

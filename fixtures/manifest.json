@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 20
+    "engine_owned": 22
   },
   "fixtures": [
     {
@@ -364,6 +364,24 @@
       "sha256": "sha256:73d51b88f3b944cf2f6e6859198fe8b6e968a123f38656ba5263c52612815c46",
       "owner": "engine",
       "notes": "v1-S4 XFA. An /AcroForm carrying /XFA beside a static field. Expect `xfa-forms-not-extracted` declared, the static sibling's value still read, and no attempt to parse the XML packet (checklist L15)."
+    },
+    {
+      "id": "two-column-14-lines",
+      "root": "engine",
+      "group": "engine",
+      "path": "two-column-14-lines/document.pdf",
+      "sha256": "sha256:af55bc130a8d9259a73b600563baa3eebb6f148c99385b0888ba13b8f5e2e963",
+      "owner": "engine",
+      "notes": "v1-S5 anti-cliff pair, half one. Two columns of seven lines, written RIGHT column first. Fourteen lines is one side of pdf-inspector's `min_lines < 15` boundary. Expect column-major order (L1..L7 then R1..R7) under `gutter-columns-v1`, and no table: the emission is not row-major, so the alignment rule refuses."
+    },
+    {
+      "id": "two-column-15-lines",
+      "root": "engine",
+      "group": "engine",
+      "path": "two-column-15-lines/document.pdf",
+      "sha256": "sha256:65c21a911189d038897d2fa0b479b95588e0112e463a231d51e994e033d49828",
+      "owner": "engine",
+      "notes": "v1-S5 anti-cliff pair, half two. The SAME page with ONE line added to the left column. Fifteen lines is the other side of the boundary a line-count rule flips on. Expect the SAME column-major order, which is the whole point: the rule measures a gutter, and a gutter does not move when a line is added."
     }
   ]
 }

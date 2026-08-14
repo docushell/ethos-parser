@@ -7,6 +7,153 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S5, as 0.7.0
+
+The fifth slice of v1 (`docs/09-V1-MILESTONES.md`): **reading order becomes a rule instead of a
+declared limitation.** `synthetic/two-columns` reads column-major. v1 is five slices of seven — S6
+and S7 are not started.
+
+**This is the first change that reorders evidence rather than adding it.** Two artifacts either
+side of it can list the same runs, with the same text and the same origins, in a different
+sequence — and a consumer that concatenated them would get two different documents. That is why
+the rule id is a profile field, why it took a new name rather than a version bump, and why
+`profile_sha256` moves.
+
+### Added — `gutter-columns-v1`
+
+Runs are ordered by **whitespace in page space**. A vertical band no run's horizontal extent
+crosses, at least 12pt wide, cuts a page into column bands read left to right; inside a band the
+same sweep runs horizontally to order blocks top to bottom, and each block may split into columns
+again. Every coordinate is an `i64` in centipoints; no float enters the decision.
+
+**Nothing counts lines.** pdf-inspector flips multi-column on `min_lines < 15`, so fourteen lines
+come out row-interleaved and fifteen come out column-major and a one-line edit reorders a whole
+page (`docs/03-V0-SCOPE.md` §3.2). Two engine-owned CC0 fixtures sit on either side of exactly
+that boundary — `two-column-14-lines` and `two-column-15-lines`, the same page differing by one
+line in the left column — and read identically. A port of the line-count rule fails on that pair
+and nowhere else in the corpus.
+
+**A new id, not a bump of `single-column-v1`.** That string still means what it always meant —
+content-stream order, nothing reordered — and a profile that turns the capability off still uses
+it. `READING_ORDER_RULE_V0` stays exported and stays spelled the same; `READING_ORDER_RULE_V1`
+joins it on the frozen surface.
+
+### Added — the guard that decides the rule
+
+Adjacent bands must overlap **vertically** over at least half the height of the shorter one, and
+the overlap must be strictly positive. Columns run beside each other; a heading above an indented
+list does not, and an x-axis sweep alone reads the two identically. The cost is stated rather than
+hidden: a two-column page whose first column holds a single line is **not** reordered, because one
+baseline has no height and that picture is also what a deep indent looks like.
+
+A run whose font supplies no advance gets a declared minimum extent of 3pt — a floor, never a
+measurement, and never derived from a font size. The floor makes cuts *more* likely, not fewer,
+which is said plainly in the source: the overlap guard is what carries the decision, not the width.
+
+### Changed — one order, and only one
+
+The run array **is** the reading order. `ordinal` is its index and the span ids are laid over it,
+so `s1` is the first run a human should read rather than the first the content stream drew. There
+is no parallel reading-order index: O4's defect was id order ≠ array order, and a second sequence
+would have reproduced it under a new name. `DetectedCell::run_indices` are remapped through the
+permutation — the one failure here that no artifact would otherwise show.
+
+Because the span counter is independent of the table and annotation counters, re-laying the same
+contiguous ids over the permuted list is *identical* to having allocated them after the reorder,
+without moving ids that have nothing to do with reading order.
+
+### Changed — `synthetic/two-columns`'s golden, reversed in the open
+
+Through v1-S4 that fixture asserted `Right top, Right bottom, Left top, Left bottom` and its test
+called the result *"visibly wrong reading order, and honest about it."* It now asserts
+`Left top, Left bottom, Right top, Right bottom`. The honesty is replaced by a rule, and the
+replacement is announced: a different `reading_order_rule`, a different `profile_sha256`, and a
+test that derives the expected sequence from the **origins** rather than from the strings "Left"
+and "Right", so a fixture whose labels stopped matching its geometry could not quietly pass.
+
+`two-columns` is still **not** a table. Column-major is `Left top, Left bottom, Right top, Right
+bottom`; row-major would be `Left top, Right top, Left bottom, Right bottom`. Those are different
+sequences, the emission is still not row-major, `unruled-align-v1` still refuses, and the refusal
+is still declared. A test asserts the row-major sequence is *not* what comes out, so "fixing"
+two-columns by turning it into a 2×2 grid fails the build.
+
+### Changed — the limitation retires the way S2's did
+
+`multi-column-reading-order` — *a multi-column document is read in the WRONG ORDER* — is **gone**
+from the default profile rather than reworded, because a stale limitation is acted on. It is kept
+in the vocabulary for a profile that turns the capability off, where the sentence is still true;
+that is the S3 lesson, where `structural-locators-not-claimed` survived its own slice for the same
+reason.
+
+What replaced it is narrower and partners a **true** capability, as
+`stroke-ruled-tables-not-detected` does for tables: `reading-order-geometric-only` says the order
+is built from whitespace and nothing else, so column structure carried only by a tag tree is not
+seen, and a run with no advance is judged against a floor.
+
+### Two defects found by measuring, not by reasoning
+
+Both were caught by running the rule over `cfpb-home-loan-toolkit`, a real two-column booklet, and
+comparing column-majorness against stream order page by page.
+
+1. **The sweep's sort leaked into the answer.** Groups were returned in the order the sweep had
+   sorted them into, so a block the recursion then declined to cut came back ordered by baseline —
+   a global y-then-x sort of the page, reached sideways, and precisely what S5 decision 10 forbids.
+   On that booklet it turned pages that were *already* column-major in the content stream into
+   line-by-line row-major reading, which is worse than doing nothing. A cut now decides two things
+   only: how atoms are grouped, and what order the groups go in. What order the atoms inside a
+   group go in is content-stream order.
+2. **The horizontal cut was too eager.** Cutting at every gap at once slices a two-column region
+   into one block per line, and emitting those top to bottom is row-major reading arrived at from
+   the other direction. It now takes only its widest gap — which peels off whatever full-width
+   heading was hiding the gutter and hands each half back to the vertical cut — with ties cut
+   together, so evenly-set body text separates in one step rather than one recursion per line.
+
+After both: on that document 7 pages became more column-major, 18 were untouched, and 1 shifted by
+a single block boundary where a table's runs are now gathered together. `irs-form-1040-2025` is
+**not reordered on either page** — a dense form has no page-height gutter, and the rule does
+nothing where it has no evidence.
+
+### Unchanged, and tested to be
+
+- **Tables are atoms.** A run inside an accepted table box belongs to one indivisible object
+  holding content-stream order, so a cut cannot shred a grid into fake columns of cell fragments.
+  S1's and S2's goldens are unchanged, every cell's text still concatenates from the runs the cell
+  names, and fabrication is still 0.
+- **Single-column pages are byte-identical** apart from the version and the profile hash.
+  `two-lines`, `simple-text`, `list-items`, `heading-export` and `hyphenated-line-break` all come
+  out in exactly the order they came out at v0 — the rule finds no gutter and returns the identity.
+- **Classify is untouched.** The sorter reads origins; it is not gated on a classification, and no
+  `multi-column` layout reason was added. That entry stays in `thresholds::NOT_DETECTED` with its
+  reasoning rewritten: reading a two-column page correctly is a different claim from reporting that
+  a page is two-column, and routing extract policy through classify is what S2 refused.
+- **`/Annots` order is untouched.** Form fields and annotations stay in the order the author wrote
+  the array, after all of a page's text, exactly as S4 left them. Interleaving widgets into the
+  text order by `/Rect` would mix two sources.
+- **`structure.rs` still contains no sort**, and its guard test still says so. `/K` order is a
+  different rule over different evidence.
+- **The 1040** still yields 0 tables and its 199-widget neighbourhood; form and annotation strings
+  are still never `TextRun`s.
+
+### Leftover, named
+
+**Structure-order reading.** A document whose column structure exists only in its tag tree is not
+reordered. That would be a different rule with its own id and its own fixture, and it is not
+scheduled — not S6, not S7.
+
+### Identity
+
+`profile_sha256` moves from `sha256:95bd8b68…8bd87` to
+**`sha256:1131244222e618442352e40da58cb6231b11f4b7140db7421671a258700de113`** — the version bump,
+`reading_order_rule` moving to `gutter-columns-v1`, and
+`capabilities.multi_column_reading_order` flipping false → true. Artifacts from before and after
+are correctly non-comparable, and for this slice that is load-bearing rather than bookkeeping.
+
+**573 tests pass**, up from 554. Oracle partition still 12 / 3; double-run byte identity holds;
+`fmt`, `clippy -D warnings`, `cargo deny check` and both grep gates are clean. The fixture manifest
+declares 40 fixtures, up from 38.
+
+---
+
 ## [Unreleased] — v1-S4, as 0.6.0
 
 The fourth slice of v1 (`docs/09-V1-MILESTONES.md`): a form field's value and an annotation's

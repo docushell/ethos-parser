@@ -410,6 +410,36 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         }
         drop(origins);
 
+        // v1-S5. **Reading order, and the only order there is.**
+        //
+        // Runs are in content-stream order at this point. The rule reads the page's whitespace
+        // and says what order a human reads it in; `reorder_page` then makes the run list *be*
+        // that order — array position, span id and ordinal all together, so nothing downstream
+        // has to consult a second index to know what comes first. A parallel `reading_order`
+        // field beside a stream-ordered array would be two answers to one question, which is the
+        // defect this slice is here to avoid rather than introduce.
+        //
+        // **After detection, deliberately.** Both detectors read origins, not sequence, so
+        // neither cares — but a table's box is what makes its runs one atom, and it does not
+        // exist until detection has accepted one. Running the rule first would let a cut fall
+        // through a grid before anything knew it was a grid.
+        if profile.capabilities.multi_column_reading_order {
+            let geometry: Vec<crate::reading_order::RunGeometry> = runs
+                .iter()
+                .map(|r| crate::reading_order::RunGeometry {
+                    x: r.locator.origin_x,
+                    y: r.locator.origin_y,
+                    advance: r.locator.advance,
+                })
+                .collect();
+            let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
+            reorder_page(
+                &mut runs,
+                &mut tables,
+                &crate::reading_order::order(&geometry, &boxes),
+            );
+        }
+
         // v1-S4. Annotations and form fields, from the page's own `/Annots`. Walked here rather
         // than from `/AcroForm` downward because a field's node needs a page and a field
         // dictionary does not name one — its widget does, by being on that page.
@@ -578,6 +608,66 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         pages,
         assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
     })
+}
+
+/// Put one page's runs into reading order, and put its identity there with them (v1-S5).
+///
+/// `order[i]` is the stream index of the run that belongs at position `i`.
+///
+/// # One order, not an order and an index
+///
+/// Three things move together here, and the point is that they cannot come apart:
+///
+/// 1. **The array.** `runs` ends up in reading order, so a consumer that iterates it reads the
+///    document. There is no second field saying "…but actually read them like this".
+/// 2. **The span ids.** The allocator handed out `s1…sN` down the content stream; they are
+///    re-laid over the permuted list so `s1` is the first run a human should read. Since the
+///    allocator's span counter is independent of the table and object counters, re-laying the
+///    same contiguous ids in the new positions is **identical** to having allocated them after
+///    the reorder — which is what the slice asks for, without moving table and annotation ids
+///    that have nothing to do with reading order. `ordinal` is array position, assigned in
+///    `crate::represent`, so it follows for free and stays monotone.
+/// 3. **`DetectedCell::run_indices`.** These address the page's run list, and the list just
+///    moved, so they are remapped. Left alone they would silently point at whatever run now
+///    occupies the old slot — a cell claiming text it does not contain, which is the one failure
+///    here that no artifact would show.
+///
+/// A table's runs are contiguous in the new order and keep their relative sequence (they are one
+/// atom), so a cell's remapped indices stay ascending and still concatenate to the `text` the
+/// detector built. `cell_text_survives_the_reordering` is the proof over real fixtures.
+fn reorder_page(
+    runs: &mut Vec<TextRun>,
+    tables: &mut [crate::tables::DetectedTable],
+    order: &[usize],
+) {
+    // The single-column case, which is most pages: the rule found no gutter and returned the
+    // identity. Returning early is not just an optimization — it is the assertion that such a
+    // page is byte-identical to what v0 emitted, because nothing at all happened to it.
+    if order.iter().enumerate().all(|(i, &old)| i == old) {
+        return;
+    }
+
+    let ids: Vec<engine_core::NodeId> = runs.iter().map(|r| r.id.clone()).collect();
+    let mut slot: Vec<Option<TextRun>> = runs.drain(..).map(Some).collect();
+    let mut position = vec![0usize; slot.len()];
+
+    for (new, &old) in order.iter().enumerate() {
+        position[old] = new;
+        let mut run = slot[old]
+            .take()
+            .expect("`order` is a permutation, so no index is visited twice");
+        run.id = ids[new].clone();
+        runs.push(run);
+    }
+
+    for table in tables {
+        for cell in &mut table.cells {
+            for i in &mut cell.run_indices {
+                *i = position[*i];
+            }
+            cell.run_indices.sort_unstable();
+        }
+    }
 }
 
 fn quantize_err(_: engine_core::QuantizeError) -> EngineError {
@@ -749,11 +839,28 @@ mod tests {
         }
     }
 
+    /// The rule id the default profile names, and the one it no longer does (v1-S5).
+    ///
+    /// v0 named `single-column-v1`, meaning content-stream order with nothing reordered. The new
+    /// rule got a **new id** rather than a bump of that one, because the old string still has a
+    /// true meaning and a profile that turns the capability off still uses it. Pinning both here
+    /// is what stops a later slice from quietly redefining either.
     #[test]
-    fn the_reading_order_rule_is_stream_order_at_v0() {
-        // Single-column: runs come out in the order the content stream shows them, with no
-        // reordering transform applied. The rule id lives on the profile so a future rule gets a
-        // new id rather than replacing this one silently.
-        assert_eq!(Profile::default().reading_order_rule, "single-column-v1");
+    fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
+        assert_eq!(
+            Profile::default().reading_order_rule,
+            engine_core::READING_ORDER_RULE_V1
+        );
+        assert_eq!(
+            engine_core::READING_ORDER_RULE_V1,
+            "gutter-columns-v1",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        assert_ne!(
+            engine_core::READING_ORDER_RULE_V1,
+            engine_core::READING_ORDER_RULE_V0,
+            "two rules that order runs differently must not share an id"
+        );
+        assert_eq!(engine_core::READING_ORDER_RULE_V0, "single-column-v1");
     }
 }

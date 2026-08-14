@@ -37,6 +37,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   form-xfa-stub              an /AcroForm carrying /XFA, which is declared and never parsed
                                                                                         [v1-S4]
 
+  two-column-14-lines        two columns of seven lines, written right column first
+  two-column-15-lines        the SAME page with ONE line added to the left column — the pair
+                             exists to prove the reading-order rule does not flip on a line
+                             count, which is exactly what pdf-inspector's does at this
+                             boundary                                                   [v1-S5]
+
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
 
@@ -68,6 +74,32 @@ LAST_CHAR = 126
 # The third is NOT reachable by simply omitting the descriptor: it proves the reader looked at a
 # descriptor, found nothing usable in it, and still refused to invent a box.
 DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
+
+
+def two_column_stream(left_lines: int, right_lines: int) -> str:
+    """A two-column page, written RIGHT column first, on a 400x300 media box.
+
+    v1-S5's anti-cliff pair. pdf-inspector decides multi-column on `min_lines < 15`: fourteen
+    lines on a page come out row-interleaved and fifteen come out column-major, so a one-line
+    edit reorders the whole document (docs/03-V0-SCOPE.md 3.2). Seven lines per column is
+    fourteen; adding one line to the left column is fifteen. A port of that rule would read the
+    two files in different orders, and `gutter-columns-v1` must read them in the same one.
+
+    The line count is chosen to sit on that boundary and for no other reason. It is not a number
+    the engine knows: the rule measures the whitespace between x=40+width and x=240, which is the
+    same on both sides of the pair, and a fixture with 3 or 300 lines per column would test the
+    same thing less pointedly.
+
+    Right column first, so content-stream order and reading order genuinely disagree — a fixture
+    whose stream already matched the answer would pass whether or not the rule ran.
+    """
+    ops = ["BT /F1 12 Tf "]
+    for i in range(right_lines):
+        ops.append(f"1 0 0 1 240 {260 - i * 20} Tm (R{i + 1}) Tj ")
+    for i in range(left_lines):
+        ops.append(f"1 0 0 1 40 {260 - i * 20} Tm (L{i + 1}) Tj ")
+    ops.append("ET")
+    return "".join(ops)
 
 
 def build_pdf(
@@ -400,6 +432,10 @@ FIXTURES = {
         "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Dynamic form.) Tj ET"
     ),
     # v1-S3's non-terminating tree. The text is ordinary; the structure is not.
+    # v1-S5's ANTI-CLIFF pair. Identical but for one line, and they must read identically.
+    # See `two_column_stream` for why fourteen and fifteen are the two numbers.
+    "two-column-14-lines": two_column_stream(7, 7),
+    "two-column-15-lines": two_column_stream(8, 7),
     "tagged-cycle": (
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Text under a cyclic tree) Tj ET"
     ),
@@ -549,6 +585,9 @@ MEDIA = {
     "tagged-table-disagrees": (0, 0, 300, 160),
     "both-table-rules": (0, 0, 320, 320),
     "ruled-wins-shared-region": (0, 0, 300, 160),
+    # Wide enough for a real gutter (x=40 and x=240) and tall enough for the fifteenth line.
+    "two-column-14-lines": (0, 0, 400, 300),
+    "two-column-15-lines": (0, 0, 400, 300),
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.

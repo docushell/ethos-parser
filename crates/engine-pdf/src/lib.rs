@@ -62,6 +62,7 @@ pub(crate) mod magic;
 pub(crate) mod metrics;
 pub(crate) mod nodes;
 pub(crate) mod ops;
+pub(crate) mod reading_order;
 pub(crate) mod reasons;
 pub(crate) mod represent;
 pub(crate) mod structure;

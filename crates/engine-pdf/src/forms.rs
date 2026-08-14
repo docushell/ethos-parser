@@ -137,8 +137,13 @@ pub struct PageObjects {
     /// The objects, in the order the page lists them.
     ///
     /// **The document's own order**, not sorted by position. `/Annots` is an array the author
-    /// wrote, and reordering it would be this engine imposing a reading order on annotations
-    /// while `single-column-v1` still governs the text — two different orders from one profile.
+    /// wrote, and reordering it would be this engine imposing an order on annotations that came
+    /// from a different source than the one governing the text.
+    ///
+    /// v1-S5 did not change this. Its rule orders `TextRun`s by page geometry; widgets are not
+    /// runs and are not interleaved into that order by `/Rect`, because the two orders answer to
+    /// two authorities — the page's whitespace and the author's array. They stay a documented
+    /// second sequence, after all of a page's text and monotone within itself.
     pub objects: Vec<PageObject>,
     /// Widgets whose `/Parent` chain could not be resolved.
     pub unresolved_parents: u32,

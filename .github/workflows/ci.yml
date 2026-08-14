@@ -221,7 +221,7 @@ jobs:
             run: cargo test -p engine-pdf --test extraction --locked -- every_run_carries_a_native_locator no_source_line_derives_a_box_from_the_font_size measured_metrics_produce_a_box_that_is_not_the_font_size a_font_without_metrics_yields_typed_absence
 
           - id: v0-l1-gate
-            criterion: "capability and limitation declarations, including multi-column"
+            criterion: "capability and limitation declarations, including the reading-order pair"
             corpus: true
             oracle: false
             rust: true

@@ -21,7 +21,7 @@ PDF only. One happy path, everything in service of it.
 | 8 | **Ink bbox from measured font metrics, or typed absence** | `ttf-parser` over the embedded font program, falling back to FontDescriptor `/Ascent`, `/Descent`, `/FontBBox`. **Never `height = font_size`** |
 | 9 | **`synthesized` flags** | Every character the reader invented — inserted spaces above all — flagged at emission |
 | 10 | **`char_codes` with the ligature caveat declared** | Glyph codes travel with the text; ligature expansion yields more scalars than codes and the artifact says so |
-| 11 | **Single-column reading order + an explicit multi-column limitation** | See §3.2 |
+| 11 | **Single-column reading order + an explicit multi-column limitation** | See §3.2. **Retired at v1-S5**, which shipped `gutter-columns-v1` and flipped the capability |
 | 12 | **Content-based format detection** | Magic bytes, not extension. Unknown magic fails closed |
 | 13 | **Error taxonomy** | Typed variants, distinguishable by a caller. Not one `ParseError(String)` |
 | 14 | **Canonical representation: c14n + integer quanta + profile-pinned ids** | `01-CONTRACT.md` §4 |
@@ -48,7 +48,7 @@ Not "not yet done." Out — a PR adding one of these to v0 is rejected on scope,
 | **MCP server** | v1.2 | First adapter after CLI + lib — and its locator-handle discipline must be settled before the first tool exists |
 | **Python / Node SDKs** | v1.2 | — |
 | **Verification of any kind** | see `07-VERIFY-BOUNDARY.md` | Stage 0: the engine does not verify. The happy path terminates at a *validated* artifact |
-| **Multi-column reading order** | v1 | Needs a stable rule and a fixture, not a cliff-shaped heuristic |
+| **Multi-column reading order** | v1 | Needed a stable rule and a fixture, not a cliff-shaped heuristic. **Shipped at v1-S5** as `gutter-columns-v1`, with the ±1-line fixture pair as the proof |
 | **Forms, annotations, vector paths, screenshots** | v1 | — |
 | **WASM / napi bindings** | v2+ | Driven by adopter demand, not by completeness |
 
@@ -85,17 +85,38 @@ could not open this" — password-protected, invalid-header, corrupt-header and 
 exit 1, identically to "this document is complex" (memo §18.3). Failing closed with an
 indistinguishable signal is still a defect. Test it: a fixture per code, asserted per fixture.
 
-### 3.2 The multi-column limitation, stated plainly
+### 3.2 The multi-column limitation, stated plainly — and retired at v1-S5
 
-v0 reads single-column. A two-column document will be read in the **wrong order**, and the artifact
-**declares that** as a capability limitation rather than silently producing interleaved text.
+**v0 declared this limitation. v1-S5 shipped the rule that replaced it.** The paragraph below is
+kept in the past tense rather than deleted, because it is the reasoning that decided what v1 was
+allowed to ship, and a slice that later reached for a line count would be reversing a decision this
+section made rather than making a new one.
 
-This is deliberate. pdf-inspector flips multi-column detection on `min_lines < 15` at
+v0 read single-column. A two-column document was read in the **wrong order**, and the artifact
+**declared that** as a capability limitation rather than silently producing interleaved text.
+
+That was deliberate. pdf-inspector flips multi-column detection on `min_lines < 15` at
 `layout.rs:1793` — fourteen lines per column produces row-interleaved order, fifteen produces
 column-major, measured on generated fixtures. A one-line edit to a document reorders the whole page.
-A cliff-shaped heuristic cannot sit under a determinism contract. Multi-column ships at v1 when it
-has a stable rule and a fixture, not before. Fixture today: `synthetic/two-columns`, whose golden
-asserts the *declared limitation*, not correct order.
+A cliff-shaped heuristic cannot sit under a determinism contract. Multi-column was to ship at v1
+when it had a stable rule and a fixture, not before. The fixture through v1-S4 was
+`synthetic/two-columns`, whose golden asserted the *declared limitation*, not correct order.
+
+**What shipped (v1-S5, 0.7.0).** `reading_order_rule` moved from `single-column-v1` to
+`gutter-columns-v1`, `capabilities.multi_column_reading_order` is `true`, and the
+`multi-column-reading-order` limitation is gone from the default profile — gone rather than
+reworded, because a stale limitation is acted on. The rule cuts on vertical whitespace in page
+space and nothing else: no line count, no run count, no threshold on any tally, and no extent
+derived from a font size. Where a page shows no gutter it is not reordered at all, which is what
+single-column means and is why every single-column fixture reads exactly as it did at v0.
+
+The `synthetic/two-columns` golden **reversed** in that slice, in the open: it now asserts
+`Left top, Left bottom, Right top, Right bottom`. Two engine-owned fixtures sit on either side of
+pdf-inspector's boundary — `two-column-14-lines` and `two-column-15-lines`, the same page differing
+by one line — and read the same way, which is the property that section was always asking for. The
+narrower `reading-order-geometric-only` limitation took the retired one's place and says what the
+rule still cannot see: column structure that exists only in a tag tree, and runs whose font supplies
+no advance.
 
 ## 4. Fixture corpus
 
@@ -245,7 +266,7 @@ fork/exec alone consumes the entire budget.
 | --- | --- | --- |
 | 1 | **`DocumentRepresentation v0` is a target, not a shipped type.** ethos-engine will be its first implementation, so it risks diverging from what DocuShell eventually needs | Emit it, validate against the companion document's field list, **treat the first implementation as the reference and plan a review round**. Every uncertain field carries `TODO(re-read DocumentRepresentation v0 field list)`. This is an accepted, explicit decision — not something to discover in review (memo §16.13) |
 | 2 | **`lopdf`'s ~4% open-failure rate** on a corpus PDFium handles | Declare it; keep PDFium/Ethos available for documents it rejects; **measure the rate on a real corpus**, not 26 fixtures |
-| 3 | **Multi-column reading order has no stable rule yet** | v0 ships single-column plus an explicit limitation rather than a cliff-shaped heuristic |
+| 3 | **Multi-column reading order has no stable rule yet** | v0 shipped single-column plus an explicit limitation rather than a cliff-shaped heuristic. **Closed at v1-S5**: the rule cuts on geometric gutters, and `two-column-14-lines`/`-15-lines` hold it to producing the same order across the one-line edit that moves pdf-inspector's |
 | 4 | **Ink-box work is the only unbounded item in v0** | Time-box it. Typed absence is an acceptable v0 answer for hard fonts |
 | 5 | **MCP locator-handle discipline is easy to get wrong** | An API-shape decision, settled before the first tool exists. Out of v0 entirely, which is itself the mitigation |
 | 6 | **Two engines could drift into two answers** | Stage 0 forbids verification entirely; the oracle test is the guard |

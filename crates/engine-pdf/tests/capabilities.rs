@@ -170,11 +170,12 @@ fn proof_table() -> Vec<Proof> {
         Proof {
             field: "multi_column_reading_order",
             claimed: multi_column_reading_order,
-            proof_test: None,
-            why_not: Some(
-                "v0 reads single-column; no stable multi-column rule exists. The limitation is \
-                 declared on every artifact and pinned by the two-columns golden.",
-            ),
+            // v1-S5. The claim is "this profile orders by page geometry", and the proof has to
+            // cover both halves of that or it proves half a capability: a document the stream
+            // wrote in the wrong order comes out column-major, AND a single-column document is
+            // not touched. A reader that only reordered could be reordering everything.
+            proof_test: Some("multi_column_order_is_read_and_single_column_is_left_alone"),
+            why_not: None,
         },
         Proof {
             field: "structural_locators",
@@ -354,57 +355,97 @@ fn every_false_capability_declares_a_limitation_on_the_wire() {
 }
 
 // -------------------------------------------------------------------------------------------
-// 2. `synthetic/two-columns` declares the multi-column limitation
+// 2. `synthetic/two-columns` reads column-major, and the limitation it used to carry is gone
 // -------------------------------------------------------------------------------------------
 
-/// The golden asserts the **declaration**, not correct reading order.
+/// **The `multi_column_reading_order` proof, both halves** (v1-S5).
 ///
-/// `docs/03-V0-SCOPE.md` §3.2: v0 reads single-column, a two-column document comes out in the
-/// wrong order, and the artifact says so rather than silently producing interleaved text.
-/// Asserting correct order here would be asserting a capability v0 does not have.
+/// # What this test used to assert
+///
+/// Through v1-S4 it was `two_columns_declares_the_multi_column_limitation`, and it asserted the
+/// *declaration* rather than correct order — that a two-column document came out
+/// right-column-first and that the artifact said so. Its own comment read: *"Asserting correct
+/// order here would be asserting a capability v0 does not have."*
+///
+/// v1-S5 gives the profile that capability, so the test asserts the capability. The limitation it
+/// used to look for must now be **absent**, and absent rather than reworded: a reader who finds
+/// `multi-column-reading-order` on an artifact acts on it, and acting on it here would mean
+/// distrusting an order that is correct.
+///
+/// # Why both halves
+///
+/// A reader that reordered everything would pass the first half and be worse than useless. So the
+/// single-column fixture is checked in the same test: it must come back in exactly the order the
+/// content stream drew it, with no reordering at all.
 #[test]
-fn two_columns_declares_the_multi_column_limitation() {
+fn multi_column_order_is_read_and_single_column_is_left_alone() {
     let a = extract_ok(conformance("synthetic/two-columns/document.pdf"));
 
     assert!(
-        !a.assurance.capabilities.multi_column_reading_order,
-        "v0 must not claim multi-column reading order"
+        a.assurance.capabilities.multi_column_reading_order,
+        "v1-S5 claims multi-column reading order"
+    );
+    assert_eq!(a.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
+
+    // Half one: the content stream writes the right column first, and the artifact does not.
+    let texts: Vec<&str> = a.runs().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"],
+        "column-major: left band top to bottom, then right"
     );
 
+    // The retired declaration. Gone, not reworded.
+    assert!(
+        !codes(&a.assurance.limitations).contains(&engine_core::codes::MULTI_COLUMN_READING_ORDER),
+        "this profile reads this document in the right order, so it must not carry a limitation \
+         saying it does not: {:?}",
+        codes(&a.assurance.limitations)
+    );
+
+    // And the narrower one that replaced it, which is a real statement about a real leftover.
     let l = a
         .assurance
         .limitations
         .iter()
-        .find(|l| l.code == engine_core::codes::MULTI_COLUMN_READING_ORDER)
+        .find(|l| l.code == engine_core::codes::READING_ORDER_GEOMETRIC_ONLY)
         .unwrap_or_else(|| {
             panic!(
-                "the multi-column limitation is missing from the two-columns artifact: {:?}",
+                "the rule's own scope must be declared beside the capability: {:?}",
                 codes(&a.assurance.limitations)
             )
         });
     assert_eq!(l.scope, engine_core::LimitationScope::Profile);
     assert!(
-        l.detail.contains("WRONG ORDER"),
-        "the declaration must say what actually happens to the reader's text: {}",
+        l.detail.contains("WHITESPACE IN PAGE SPACE"),
+        "the declaration must say what the order was built from: {}",
         l.detail
     );
 
-    // The order really is wrong, which is why the declaration is load-bearing rather than
-    // defensive. Pinned here so nobody later reads the limitation as hypothetical.
-    let texts: Vec<&str> = a.runs().map(|r| r.text.as_str()).collect();
+    // Half two: a single-column document is not touched. Same profile, same rule id, and the
+    // two runs come back in the order they were drawn.
+    let single = extract_ok(conformance("synthetic/two-lines/document.pdf"));
+    let single_texts: Vec<&str> = single.runs().map(|r| r.text.as_str()).collect();
     assert_eq!(
-        texts,
-        vec!["Right top", "Right bottom", "Left top", "Left bottom"],
-        "stream order puts the right column first — the declared limitation, observed"
+        single_texts,
+        vec!["First line", "Second line"],
+        "no gutter, no reordering — the rule does nothing where it has no evidence"
+    );
+    assert_eq!(
+        single.reading_order_rule,
+        engine_core::READING_ORDER_RULE_V1
     );
 
-    // Classification declares it too: the capability belongs to the profile, not to one stage.
+    // Classification declares the capability too: it belongs to the profile, not to one stage.
     let c = classify_with(
         conformance("synthetic/two-columns/document.pdf"),
         &Profile::default(),
     );
     assert!(
-        codes(&c.assurance.limitations).contains(&engine_core::codes::MULTI_COLUMN_READING_ORDER)
+        !codes(&c.assurance.limitations).contains(&engine_core::codes::MULTI_COLUMN_READING_ORDER)
+    );
+    assert!(
+        codes(&c.assurance.limitations).contains(&engine_core::codes::READING_ORDER_GEOMETRIC_ONLY)
     );
 }
 

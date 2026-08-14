@@ -38,8 +38,9 @@
     },
     "reading_order_rule": {
       "type": "string",
-      "$comment": "`single-column-v1` at v0: runs appear in content-stream order with no reordering. A two-column document therefore comes out column-by-column in whatever order the stream wrote them, which is visibly wrong and honestly so. Multi-column ships at v1 with a stable rule; pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page.",
+      "$comment": "`gutter-columns-v1` since v1-S5: runs are ordered by whitespace in page space, so a two-column document reads column-major and a page showing no gutter keeps content-stream order untouched. Nothing counts lines — pdf-inspector's rule flips on min_lines < 15, so a one-line edit reorders a whole page, and the two-column-14-lines/-15-lines fixture pair exists to hold this rule to the opposite. `single-column-v1` is v0's value and still legal: content-stream order with no reordering, which leaves a multi-column document visibly wrong and declares it.",
       "examples": [
+        "gutter-columns-v1",
         "single-column-v1"
       ]
     },

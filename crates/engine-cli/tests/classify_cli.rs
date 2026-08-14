@@ -278,8 +278,13 @@ fn both_subcommands_emit_the_assurance_blocks() {
             "\"coverage\"",
             "\"page_states\"",
             "\"terminal_state\"",
-            // The explicit multi-column limitation, on the wire, from the binary.
-            "multi-column-reading-order",
+            // A profile-scope limitation on the wire, from the binary. This used to be
+            // `multi-column-reading-order`, which v1-S5 retired from the default profile along
+            // with the defect it described. The point of the assertion was never that *this*
+            // code appears — it is that a capability's scope reaches stdout rather than living
+            // only in the library — so it now names the limitation that partners the reading
+            // -order capability instead of the one that partnered its absence.
+            "reading-order-geometric-only",
         ] {
             assert!(
                 s.contains(required),

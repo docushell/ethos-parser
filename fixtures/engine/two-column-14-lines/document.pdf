@@ -1,0 +1,32 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 386 >>
+stream
+BT /F1 12 Tf 1 0 0 1 240 260 Tm (R1) Tj 1 0 0 1 240 240 Tm (R2) Tj 1 0 0 1 240 220 Tm (R3) Tj 1 0 0 1 240 200 Tm (R4) Tj 1 0 0 1 240 180 Tm (R5) Tj 1 0 0 1 240 160 Tm (R6) Tj 1 0 0 1 240 140 Tm (R7) Tj 1 0 0 1 40 260 Tm (L1) Tj 1 0 0 1 40 240 Tm (L2) Tj 1 0 0 1 40 220 Tm (L3) Tj 1 0 0 1 40 200 Tm (L4) Tj 1 0 0 1 40 180 Tm (L5) Tj 1 0 0 1 40 160 Tm (L6) Tj 1 0 0 1 40 140 Tm (L7) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000678 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1193
+%%EOF

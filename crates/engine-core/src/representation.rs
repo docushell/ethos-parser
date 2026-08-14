@@ -97,8 +97,13 @@ pub struct ProcessingRun {
     /// Version id of the reading-order rule that ordered the nodes.
     ///
     /// On the artifact so a reader need not fetch the profile to know which rule produced this
-    /// order. `single-column-v1` at v0 — and a two-column document is therefore in the wrong
-    /// order, which `assurance.limitations` declares rather than hides.
+    /// order. `gutter-columns-v1` since v1-S5: nodes are ordered by whitespace in page space, so
+    /// a two-column document reads column-major and a page with no gutter is not reordered at
+    /// all. `single-column-v1` — v0's value, and still a legal one — means content-stream order
+    /// with nothing reordered, and a profile naming it also declares the multi-column limitation.
+    ///
+    /// **Two artifacts under the two ids can list the same runs in a different sequence**, which
+    /// is why the string is here and not only in the profile.
     pub reading_order_rule: String,
 }
 

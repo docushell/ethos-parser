@@ -70,7 +70,7 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S2** | Unruled tables: alignment / whitespace dual-mode | **done** |
 | **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | **done** |
 | **S4** | Forms and annotations as typed, distinguishable nodes | **done** |
-| **S5** | Multi-column reading order, with a stable versioned rule | not started |
+| **S5** | Multi-column reading order, with a stable versioned rule | **done** |
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | not started |
 | **S7** | Labelled-set harness; the > 0.489 gate; v1 declared done | not started |
 
@@ -129,7 +129,7 @@ limitation. v1 flips capabilities, so that rule is where its honesty lives.
 | --- | --- | --- | --- |
 | `tables` | false | **true** | S1 (ruled), widened by S2 |
 | `structural_locators` | false | **true** | S3 |
-| `multi_column_reading_order` | false | true | S5 |
+| `multi_column_reading_order` | false | **true** | S5 |
 | `char_offsets` | false | true | whichever slice makes elements coarser than spans |
 | `form_fields` | — | **true** | S4 |
 | `annotations` | — | **true** | S4 |
@@ -143,6 +143,20 @@ sentence became false and **the code was deleted rather than reworded** — a li
 outlives the gap it describes is worse than none, because a reader acts on it. What "looked" now
 covers is both rules, and the remaining leftover is narrower:
 `stroke-ruled-tables-not-detected`, for a grid drawn as bare stroked ruling lines.
+
+S5 made the same move for reading order. v0 declared `multi-column-reading-order` — *a
+multi-column document is read in the WRONG ORDER* — on every artifact. `gutter-columns-v1` made
+that sentence false, so the code left the default profile rather than being softened. It is
+**kept in the vocabulary**, because a profile may still turn the capability off and for that
+profile the sentence is still true; this is the S3 lesson, where `structural-locators-not-claimed`
+survived its own slice for the same reason. What replaced it is
+`reading-order-geometric-only`: the rule reads whitespace and nothing else, so column structure
+carried only by a tag tree is not seen, and a run whose font supplies no advance is given a
+declared minimum extent rather than a measured one.
+
+**Structure-order reading is a named leftover, not a gap this slice half-filled.** Emitting nodes
+in `/K` order is a different rule over different evidence and would need its own id; `structure.rs`
+still contains no sort, and a guard test in it still says so.
 
 ---
 

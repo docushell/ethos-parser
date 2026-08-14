@@ -96,6 +96,19 @@ them — adding a descriptor to test something new — would silently stop testi
 **The 15-fixture oracle criterion counts only `owner: "ethos"` entries.** Engine-owned fixtures are
 additional test assets and never inflate that number.
 
+### `two-column-14-lines` and `two-column-15-lines` are a pair, and only useful as one
+
+Neither fixture proves anything alone. They are the **same page** — two columns, written right
+column first — differing by one line in the left column, and they sit on either side of
+pdf-inspector's `min_lines < 15` boundary, where fourteen lines produce row-interleaved order and
+fifteen produce column-major (`docs/03-V0-SCOPE.md` §3.2). `gutter-columns-v1` must read both the
+same way, and `one_added_line_does_not_reorder_the_page` asserts exactly that.
+
+So: **edit them together or not at all.** Changing the line count in one without the other, or
+letting their columns creep closer than the rule's 12pt gutter floor, leaves a test that still
+passes while testing nothing. The line counts are not numbers the engine knows — the rule measures
+whitespace — they are chosen to sit where a line-counting rule would give itself away.
+
 ## Regenerating the engine-owned fixtures
 
 ```bash

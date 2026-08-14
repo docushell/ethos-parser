@@ -98,9 +98,15 @@ pub const NOT_DETECTED: [(&str, &str); 2] = [
     ),
     (
         "multi-column",
-        "v0 has no stable multi-column rule. pdf-inspector's flips on a single line of text \
-         (min_lines < 15), so a one-line edit reorders a whole page; a cliff-shaped heuristic \
-         cannot sit under a determinism contract. Ships at v1 with a rule and a fixture.",
+        "No detector emits this LAYOUT REASON, and v1-S5 did not add one. That slice shipped a \
+         reading-order rule — `gutter-columns-v1`, which cuts on whitespace in page space — and \
+         reading a two-column page correctly is a different claim from reporting that a page is \
+         two-column. The classifier answers `what is in this document`; the reading-order rule \
+         answers `in what order`. Gating the sorter on a classification would route extract \
+         policy through classify, which is exactly what v1-S2 refused, and emitting the reason \
+         because the sorter happened to cut would make a page-complexity vocabulary report an \
+         internal decision instead of an observation. If a real layout detector lands, it gets \
+         its own evidence and its own test, and this entry goes in the same commit.",
     ),
 ];
 

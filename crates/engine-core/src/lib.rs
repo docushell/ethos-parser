@@ -90,7 +90,7 @@ pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, READING_ORDER_RULE_V0,
-    STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
+    READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,

@@ -357,7 +357,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 43] = [
+const EXPECTED_SURVIVORS: [&str; 45] = [
     "absent-font-metrics/junk-after-eof",
     // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
     // appended past `%%EOF` leave a readable document.
@@ -405,6 +405,12 @@ const EXPECTED_SURVIVORS: [&str; 43] = [
     "tagged-structure-roles/junk-after-eof",
     "tagged-table-agrees/junk-after-eof",
     "tagged-table-disagrees/junk-after-eof",
+    // v1-S5's anti-cliff pair. Both survive `junk-after-eof` and nothing else, which is the same
+    // answer every other engine-authored fixture gives: the parse is driven from the xref table
+    // `startxref` names, so bytes appended past `%%EOF` are never read. Triaged as the known
+    // class rather than pinned on sight.
+    "two-column-14-lines/junk-after-eof",
+    "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
 ];
 
@@ -674,11 +680,12 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        38,
-        "the manifest should declare 34 fixtures across three roots (23 at M7, plus v0.1's \
+        40,
+        "the manifest should declare 40 fixtures across three roots (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
-         five tagged ones, and v1-S4's four form/annotation ones: form-field-value, \
-         annotation-contents, form-orphan-widget and form-xfa-stub)"
+         five tagged ones, v1-S4's four form/annotation ones — form-field-value, \
+         annotation-contents, form-orphan-widget and form-xfa-stub — and v1-S5's two-column \
+         pair: two-column-14-lines and two-column-15-lines)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

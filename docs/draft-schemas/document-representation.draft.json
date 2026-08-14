@@ -64,8 +64,8 @@
             },
             "reading_order_rule": {
               "type": "string",
-              "examples": ["single-column-v1"],
-              "$comment": "On the artifact so a reader need not fetch the profile. `single-column-v1` means a multi-column document is in the WRONG ORDER, which assurance.limitations declares explicitly rather than hiding."
+              "examples": ["gutter-columns-v1", "single-column-v1"],
+              "$comment": "On the artifact so a reader need not fetch the profile. `gutter-columns-v1` (v1-S5) orders nodes by whitespace in page space: a two-column document reads column-major, and a page with no gutter is not reordered. `single-column-v1` means content-stream order, so a multi-column document is in the WRONG ORDER — which a profile naming it declares in assurance.limitations rather than hiding. Two artifacts under the two ids can list the same runs in a different sequence, so this string is part of reading them."
             }
           }
         },

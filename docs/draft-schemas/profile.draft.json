@@ -71,8 +71,9 @@
     "reading_order_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity: when a stable multi-column rule lands it gets a new id here rather than silently replacing this one.",
+      "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity: `gutter-columns-v1` (v1-S5) orders runs by whitespace in page space, and `single-column-v1` means content-stream order with no reordering. The new rule took a new id rather than bumping the old one, because two artifacts under the two ids can list the same runs in a different sequence.",
       "examples": [
+        "gutter-columns-v1",
         "single-column-v1"
       ]
     },
@@ -198,7 +199,7 @@
         },
         "multi_column_reading_order": {
           "type": "boolean",
-          "$comment": "false in v0 \u2014 single-column only, and the limitation is declared on every artifact and pinned by the synthetic/two-columns golden"
+          "$comment": "true since v1-S5 \u2014 proof: multi_column_order_is_read_and_single_column_is_left_alone. Where the rule finds no gutter it reorders nothing, and reading-order-geometric-only declares what it still cannot see. A profile setting this false declares multi-column-reading-order instead and must also name single-column-v1"
         },
         "form_fields": {
           "type": "boolean",
@@ -262,7 +263,7 @@
       "capabilities": {
         "char_offsets": false,
         "measured_ink_boxes": true,
-        "multi_column_reading_order": false,
+        "multi_column_reading_order": true,
         "spans": true,
         "structural_locators": true,
         "form_fields": true,
@@ -278,9 +279,9 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.6.0",
+      "parser_version": "0.7.0",
       "quantum_per_point": 100,
-      "reading_order_rule": "single-column-v1",
+      "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
         "mode": "pad-19-to-20-v1"
       },

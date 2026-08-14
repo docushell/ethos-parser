@@ -13,7 +13,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S2** | Unruled tables: alignment / whitespace dual-mode | S1 | **done** |
 | **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | **done** |
 | **S4** | Forms and annotations as typed nodes | S1 | **done** |
-| **S5** | Multi-column reading order, versioned rule | S2 | not started |
+| **S5** | Multi-column reading order, versioned rule | S2 | **done** |
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | not started |
 | **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
 
@@ -82,6 +82,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
   - [x] Double-run byte identity on `extract` and `ground` for the ruled golden
   - [x] Flipping `table_detection` moves `profile_sha256`
   - [x] `two-columns` reading order unchanged — still `single-column-v1` plus its limitation
+        *(true as S1 shipped it; S5 is the slice that deliberately changed both)*
   - [x] `public_api.rs` green; path-capture types are not public unless listed
 
 - **Two findings, both measured rather than assumed:**
@@ -243,6 +244,13 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
      content-stream order. Emitting nodes in `/K` order is a reading-order rule and belongs to S5,
      and a guard test asserts this module contains no sort. `synthetic/two-columns` still reads
      `single-column-v1`, in the same order as before.
+
+     **S5 answered half of that and left the other half named.** It replaced the rule — with a
+     *geometric* one, `gutter-columns-v1`, which reads whitespace and never the tag tree — so
+     `two-columns` now reads column-major. The guard test stays green because it was never about
+     whether reading order would change; it was about whether *this module* would be the thing
+     that changed it. Structure-order reading is still a separate rule with no id and no fixture,
+     and it is not scheduled.
   2. **No new `NodeKind`s.** A role path on the existing `TextRun` carries the answer, so
      `Paragraph`/`Heading`/`TableCell` variants would put the same fact in two places — the same
      reasoning S1 used when it refused to emit cells as nodes.
@@ -339,11 +347,82 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
   reorders a whole page (`03-V0-SCOPE.md` §3.2). **Not that rule, and not a variant of it.**
 
 - **Acceptance tests:**
-  - [ ] `synthetic/two-columns` reads in column-major order
-  - [ ] A one-line edit to a fixture does not change its reading order
-  - [ ] The rule id is in the profile and moves `profile_sha256`
+  - [x] `synthetic/two-columns` reads in column-major order
+  - [x] A one-line edit to a fixture does not change its reading order
+  - [x] The rule id is in the profile and moves `profile_sha256`
 
 - **Depends on:** S2.
+
+### What S5 settled
+
+1. **A new id, `gutter-columns-v1`, not a bump of `single-column-v1`.** The old string still has a
+   true meaning — content-stream order — and a profile that turns the capability off still uses
+   it. Bumping in place is the one move that makes two artifacts look comparable while their
+   orders disagree. `READING_ORDER_RULE_V0` stays exported and stays spelled the same.
+
+2. **The evidence is whitespace, and only whitespace.** A vertical band no run's horizontal extent
+   crosses, wider than a named floor, cuts the page into columns read left to right; inside a
+   column the same sweep runs horizontally. Nothing counts lines, runs or characters. The rule
+   is named for what it measures, the way `ruled-rects-v1` and `unruled-align-v1` are, rather than
+   for the XY-Cut family the recursion belongs to.
+
+3. **The guard is vertical overlap, not a width.** Adjacent bands must share at least half the
+   height of the shorter one, and share it strictly. That is what separates two columns from a
+   heading above an indented list, which an x-axis sweep alone reads identically. Its cost is
+   stated rather than hidden: a two-column page whose first column holds a single line is not
+   reordered, because one baseline has no height and that picture is also what a deep indent
+   looks like.
+
+4. **Separate constants from S2, even where the number is equal.** The reading-order gutter floor
+   and `unruled::COLUMN_GUTTER_MIN` both hold 1 200 and are reasoned from the same fact about
+   type. They are two bindings under two rule ids, and a test asserts the reading-order module
+   never reads the detector's. A tuning pass on table detection must not silently reorder every
+   multi-column document in the corpus.
+
+5. **One order.** The run array **is** the reading order; `ordinal` is its index and the span ids
+   are laid over it, so `s1` is the first run a human should read rather than the first the stream
+   drew. There is no parallel reading-order index — O4's defect was id order ≠ array order, and
+   adding a second sequence would have reproduced it under a new name. `DetectedCell::run_indices`
+   are remapped through the permutation, which is the one failure here no artifact would show.
+
+6. **Tables are atoms.** A run inside an accepted `TableRecord.bbox` belongs to one indivisible
+   object holding content-stream order, so a cut cannot shred a grid into fake columns of cell
+   fragments, and a cell's text still concatenates from the runs the cell names. The table is
+   placed among the page's blocks by its own box.
+
+7. **A cut never reorders inside a group it did not cut.** The sweep sorts to *find* the cut and
+   the groups are put back into content-stream order before recursing. Skipping that step was a
+   real defect during this slice: it leaked the sort, so an uncut block came back ordered by
+   baseline — a y-then-x sort of the page reached sideways, which on a real two-column booklet
+   turned pages that were already column-major into line-by-line row-major reading. Measured on
+   `cfpb-home-loan-toolkit`, fixed, and pinned by
+   `a_block_the_rule_declines_to_cut_comes_back_in_stream_order`.
+
+8. **The horizontal cut takes only its widest gap.** Cutting at every gap at once slices a
+   two-column region into one block per line, and emitting those top to bottom is row-major
+   reading arrived at from the other direction. Taking the widest gap peels off whatever full-width
+   thing was hiding the gutter and hands each half back to the vertical cut. Ties cut together, so
+   evenly-set body text separates in one step rather than one recursion per line.
+
+9. **S2 × S5: `two-columns` is still not a table.** Column-major is `Left top, Left bottom, Right
+   top, Right bottom`; row-major is `Left top, Right top, Left bottom, Right bottom`. They are
+   different sequences, the emission is still not row-major, and the alignment rule still refuses
+   — with the refusal still declared. A test asserts the row-major sequence is *not* what comes
+   out, so "fixing" two-columns by turning it into a 2×2 grid fails the build.
+
+10. **Classify is untouched.** The sorter looks at origins and nothing else; it is not gated on a
+    classification, and no `multi-column` layout reason was added. That code stays in
+    `thresholds::NOT_DETECTED` — a reading-order rule is not a page-complexity detector, and
+    routing extract policy through classify is what S2 refused.
+
+### Leftover, named rather than half-done
+
+**Structure-order reading.** A document whose column structure exists only in its tag tree is not
+reordered: the geometric rule finds no gutter and leaves it in content-stream order. Emitting nodes
+in `/K` order is a *different* rule over *different* evidence and needs its own id and its own
+fixture. `structure.rs` still contains no sort and its guard test still says so — the comment there
+naming S5 as the slice that would revisit it is answered by this paragraph, not by the code. Not
+scheduled; it is not part of S6 or S7.
 
 ---
 

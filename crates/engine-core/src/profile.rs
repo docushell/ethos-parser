@@ -31,13 +31,49 @@ use crate::c14n::{c14n_bytes, C14nError};
 use crate::geom::QUANTUM_PER_POINT;
 use crate::identity::{CoordinateSystem, Sha256Hex};
 
-/// The reading-order rule v0 ships: single column, no multi-column detection.
+/// The reading-order rule v0 shipped: single column, no multi-column detection.
 ///
 /// Versioned as a string because the *rule* is part of identity. pdf-inspector's multi-column
 /// detection flips on `min_lines < 15`, so a one-line document edit reorders the whole page; a
 /// cliff-shaped heuristic cannot sit under a determinism contract, and when a stable rule lands
 /// it gets a new id here rather than silently replacing this one.
+///
+/// **v1-S5 landed that rule, and this id kept its meaning rather than acquiring a new one.**
+/// `single-column-v1` means *content-stream order, no reordering* — it always did. The new rule
+/// is [`READING_ORDER_RULE_V1`]. Bumping this string in place would have been the one move that
+/// makes an old artifact and a new one look comparable while their orders disagree, so the
+/// constant stays, exactly as spelled, for every artifact produced before the change and for the
+/// tests that still name it.
 pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
+
+/// The reading-order rule v1-S5 ships: geometric column gutters, then blocks within a column.
+///
+/// # What the id claims
+///
+/// Runs are ordered by **whitespace in page space**, not by stream position, not by the structure
+/// tree, and not by a line count. A vertical band that no run's horizontal extent intersects, and
+/// that is wide enough by the rule's own floor, splits a page into column bands read
+/// left-to-right; within a band the same cut runs horizontally to order blocks top-to-bottom.
+/// **A page with no such gutter keeps content-stream order** — the rule reorders where it has
+/// geometric evidence and does nothing where it has none.
+///
+/// # Why it is not `single-column-v2`
+///
+/// A version bump on the old id would say "same rule, refined". This is a different rule reading
+/// different evidence: the old one read the content stream's sequence, this one reads the page's
+/// whitespace. An artifact under each can disagree about what a document says, in order, and the
+/// two ids are what make that disagreement legible instead of silent.
+///
+/// # Why not the algorithm's name
+///
+/// `xy-cut-v1` would name the family the recursion belongs to. The id names the *evidence* —
+/// gutters between columns — the way [`TABLE_DETECTION_V1`] names painted rectangles and
+/// [`TABLE_DETECTION_UNRULED_V1`] names alignment. A reader deciding whether to trust an order
+/// needs to know what was measured, not which paper the loop came from.
+///
+/// Its constants live with the rule, in `engine-pdf`'s `reading_order` module, and changing any
+/// of them is a new id rather than a quiet redefinition of this one.
+pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
@@ -226,8 +262,20 @@ pub struct Capabilities {
     pub tables: bool,
     /// Ink boxes come from measured font metrics rather than being absent.
     pub measured_ink_boxes: bool,
-    /// Multi-column reading order is detected. **v0: false**, and the corresponding limitation
-    /// is declared on every artifact.
+    /// Multi-column reading order is detected.
+    ///
+    /// **True since v1-S5**, and what it claims is the usual narrow thing — *this profile orders
+    /// text by page geometry rather than by stream position*. It does not claim every layout is
+    /// resolved. Where the page shows no column gutter the rule reorders nothing, and that is an
+    /// answer rather than a gap: content-stream order is what a single-column page means.
+    ///
+    /// v0 through v1-S4 left this false and said so on every artifact, because the known
+    /// heuristic flips on `min_lines < 15` and a one-line edit reordered a whole page. What
+    /// replaced it is a rule over whitespace, whose id is [`READING_ORDER_RULE_V1`] and whose
+    /// floors are compile-time constants, so a document's line count cannot move its order.
+    ///
+    /// A profile may still set this `false`; the partnering limitation is still declared, and
+    /// such a profile must also name [`READING_ORDER_RULE_V0`] so the two agree.
     pub multi_column_reading_order: bool,
     /// Structural locators (`mcid`, tagged-structure roles) are captured.
     ///
@@ -275,7 +323,7 @@ impl Capabilities {
         char_offsets: false,
         tables: true,
         measured_ink_boxes: true,
-        multi_column_reading_order: false,
+        multi_column_reading_order: true,
         structural_locators: true,
         form_fields: true,
         annotations: true,
@@ -458,6 +506,12 @@ pub struct Profile {
     /// different budget is correctly non-comparable with one produced under none.
     pub page_budget: PageBudget,
     /// Version id of the reading-order rule in force.
+    ///
+    /// [`READING_ORDER_RULE_V1`] by default since v1-S5. [`READING_ORDER_RULE_V0`] is still a
+    /// legal value and still means what it always meant — content-stream order — which is what a
+    /// profile setting [`Capabilities::multi_column_reading_order`] back to `false` must also say
+    /// here, so the rule id and the capability cannot disagree about whether anything was
+    /// reordered.
     pub reading_order_rule: String,
     /// The table-detection rules in force. New at v1-S1, widened to a structure at v1-S2.
     ///
@@ -497,7 +551,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V0.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V1.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
@@ -699,8 +753,11 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.measured_ink_boxes = false),
             ),
             (
+                // Mutated toward `false` since v1-S5, which flipped the capability. A mutation
+                // that sets a field to the value it already holds is a test that passes without
+                // testing anything, and the `assert_ne!` below is what catches that.
                 "capabilities.multi_column_reading_order",
-                Box::new(|p: &mut Profile| p.capabilities.multi_column_reading_order = true),
+                Box::new(|p: &mut Profile| p.capabilities.multi_column_reading_order = false),
             ),
             (
                 // Mutated toward `false`: it is TRUE as of v1-S3, and a mutation to the value a
@@ -719,6 +776,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.page_budget = PageBudget::AtMost(0)),
             ),
             (
+                // `xy-cut-v1` is deliberately a name the engine does not ship. v1-S5 considered
+                // it for the real rule and chose `gutter-columns-v1` instead, which leaves this
+                // probe distinct from every id in use — a mutation colliding with the live value
+                // would silently stop testing the field.
                 "reading_order_rule",
                 Box::new(|p: &mut Profile| p.reading_order_rule = "xy-cut-v1".into()),
             ),
@@ -779,7 +840,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.6.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.7.0","quantum_per_point":100,"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -812,11 +873,19 @@ mod tests {
              Two more CLAIMS: an artifact from before this carried no form field and no \
              annotation because none was ever looked for, and one from after carries them or \
              says the document has none. Comparing the two node counts would be comparing two \
-             different questions."
+             different questions.\n\n\
+             Moved an eighth time at v1-S5 (0.7.0): the version, `reading_order_rule` moving \
+             from `single-column-v1` to `gutter-columns-v1`, and \
+             `capabilities.multi_column_reading_order` flipping false -> true. This is the one \
+             identity change so far that reorders EVIDENCE rather than adding it. Two artifacts \
+             either side of it can list the same runs, with the same text and the same origins, \
+             in a different sequence — and a consumer that concatenated them would get two \
+             different documents. That is precisely why the rule id is a profile field and why \
+             it took a new name instead of a version bump on the old one."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:95bd8b68e99b684e476c7d47e8dd8b00da2acdaf0f3e5d57cd631d5f46d8bd87"
+            "sha256:1131244222e618442352e40da58cb6231b11f4b7140db7421671a258700de113"
         );
     }
 
@@ -913,9 +982,14 @@ mod tests {
         // table is found". v1-S2 widened what "looked" covers: ruled AND unruled, which is why
         // the blanket `unruled-tables-not-detected` limitation is gone rather than reworded.
         assert!(c.tables, "v1-S2 looks for ruled and unruled tables");
+        // Flipped at v1-S5. v0 through v1-S4 left this false and said why on every artifact: no
+        // stable rule existed, and the known one flipped on a line count. `gutter-columns-v1`
+        // reads whitespace, so the claim this flag makes — *this profile orders by geometry* —
+        // is now true. It still does not claim every layout is resolved: a page with no gutter
+        // is left in content-stream order, and `reading-order-geometric-only` says so.
         assert!(
-            !c.multi_column_reading_order,
-            "v0 reads single-column and declares the limitation"
+            c.multi_column_reading_order,
+            "v1-S5 orders by page geometry under a versioned rule"
         );
         assert!(
             !c.char_offsets,

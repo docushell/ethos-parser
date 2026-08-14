@@ -682,25 +682,253 @@ fn the_artifact_carries_a_full_identity_envelope() {
         a.identity.profile_sha256,
         Profile::default().profile_sha256().unwrap()
     );
-    assert_eq!(a.reading_order_rule, "single-column-v1");
+    assert_eq!(a.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
     assert_eq!(a.source.media_type, "application/pdf");
 }
 
-/// Reading order is stream order at v0, and `two-columns` shows what that costs.
+/// **The S5 gate.** `two-columns` reads column-major, and the rule id says which rule did it.
+///
+/// # This golden was reversed, deliberately, and this is the note saying so
+///
+/// Through v1-S4 this test asserted `["Right top", "Right bottom", "Left top", "Left bottom"]` —
+/// the content-stream order — and called it *"visibly wrong reading order, and honest about it"*.
+/// That was the right thing to assert while `single-column-v1` was the rule, because the
+/// alternative on offer flipped on `min_lines < 15` and a one-line edit reordered a page.
+///
+/// v1-S5 replaced the honesty with a rule, so the golden reverses. The claim is no longer *"this
+/// comes out wrong and we say so"* but *"this comes out right, and here is the rule that did
+/// it"*. Nothing was quietly fixed: the profile hash moved, `reading_order_rule` is a different
+/// string, and an artifact from either side of the change announces which one it is.
+///
+/// # Geometry decides, not the strings
+///
+/// The runs are named "Left" and "Right", and a test that trusted those names would pass on a
+/// document whose labels lied. The origins are what is asserted against: the left column really
+/// is at the lesser x, and the expected sequence is derived from that.
 #[test]
-fn reading_order_is_stream_order_and_the_limitation_is_visible() {
+fn two_columns_reads_column_major_under_the_new_rule() {
     let a = extract_ok(conformance("synthetic/two-columns/document.pdf"));
-    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    let r = runs(&a);
 
-    // The content stream writes the right column first. v0 does not reorder, so the right
-    // column comes out first — visibly wrong reading order, and honest about it. Multi-column
-    // ships at v1 with a stable rule; pdf-inspector's flips on a single line of text.
+    // Geometry first. Two x positions, two y positions, four runs — a 2x2 arrangement whose
+    // left column is the lesser x, measured rather than taken from the text.
+    let mut xs: Vec<i64> = r.iter().map(|x| x.locator.origin_x).collect();
+    xs.sort_unstable();
+    xs.dedup();
+    assert_eq!(xs.len(), 2, "two columns of origins");
+    let (left_x, right_x) = (xs[0], xs[1]);
+    // Comfortably past `gutter-columns-v1`'s twelve-point floor, asserted from outside the crate
+    // where that constant is not visible. The number is here so the fixture cannot drift into
+    // testing nothing — a two-column fixture whose columns crept together would still pass a
+    // test that only checked the strings.
+    assert!(
+        right_x - left_x >= 1_200,
+        "the fixture's columns are {left_x} and {right_x}, which is under the rule's floor — \
+         this fixture would no longer exercise a column cut"
+    );
+
+    // Column-major: within the left band top to bottom, then the right band. Built from the
+    // origins, so if the fixture's labels ever stopped matching its geometry this expectation
+    // follows the geometry.
+    let mut want: Vec<(i64, i64)> = r
+        .iter()
+        .map(|x| (x.locator.origin_x, x.locator.origin_y))
+        .collect();
+    want.sort_unstable();
+    let got: Vec<(i64, i64)> = r
+        .iter()
+        .map(|x| (x.locator.origin_x, x.locator.origin_y))
+        .collect();
+    assert_eq!(got, want, "left column top-to-bottom, then right column");
+
+    // And the strings, so a reader of this file can see what that means.
+    let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
     assert_eq!(
         texts,
-        vec!["Right top", "Right bottom", "Left top", "Left bottom"],
-        "v0 emits stream order; the multi-column limitation is real and declared"
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"],
+        "the content stream writes the right column FIRST; `gutter-columns-v1` reads the page \
+         instead of the stream"
     );
-    assert_eq!(a.reading_order_rule, "single-column-v1");
+
+    assert_eq!(a.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
+    assert_ne!(a.reading_order_rule, engine_core::READING_ORDER_RULE_V0);
+
+    // Still not a table. S2's discriminator is asserted properly in its own test; this is the
+    // cheap guard that nobody "fixed" two-columns by making it a 2x2 grid.
+    assert!(a.pages.iter().all(|p| p.tables.is_empty()));
+}
+
+/// **The anti-cliff pair, over real PDF bytes** (v1-S5 decision 2).
+///
+/// pdf-inspector decides multi-column on `min_lines < 15`: fourteen lines on a page come out
+/// row-interleaved and fifteen come out column-major, so a one-line edit reorders the whole
+/// document (`docs/03-V0-SCOPE.md` §3.2). These two fixtures are that edit. They are the same
+/// page but for one line in the left column, they sit on either side of that boundary, and they
+/// must read the same way.
+///
+/// **A port of the line-count rule fails here and nowhere else.** Every other fixture in the
+/// corpus is far from fourteen lines; this pair exists to be the place where a tally-based rule
+/// gives itself away.
+#[test]
+fn one_added_line_does_not_reorder_the_page() {
+    let read = |name: &str| -> Vec<String> {
+        let a = extract_ok(engine_fx(name));
+        assert_eq!(a.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
+        assert!(
+            a.pages.iter().all(|p| p.tables.is_empty()),
+            "{name} must not be read as a table, or the runs become one atom and this test \
+             stops exercising the column cut"
+        );
+        runs(&a).iter().map(|r| r.text.clone()).collect()
+    };
+
+    // Fourteen lines: seven per column. The stream writes R1..R7 before L1..L7.
+    assert_eq!(
+        read("two-column-14-lines"),
+        vec!["L1", "L2", "L3", "L4", "L5", "L6", "L7", "R1", "R2", "R3", "R4", "R5", "R6", "R7"],
+    );
+
+    // Fifteen lines: the same page with `L8` added. Same rule, same shape of answer. A rule that
+    // flipped at fifteen would produce a row-interleaved order for exactly one of these two.
+    assert_eq!(
+        read("two-column-15-lines"),
+        vec![
+            "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "R1", "R2", "R3", "R4", "R5", "R6",
+            "R7"
+        ],
+    );
+}
+
+/// **S2 × S5.** Reordering a two-column page does not make it a table.
+///
+/// This is the interaction `docs/09-V1-MILESTONES.md` S5 decision 7 names. Before this slice,
+/// `two-columns` was refused by the alignment rule because its runs arrived right-column-first,
+/// which is not row-major. The reordering could have looked like a fix for that — and it is not
+/// one. Column-major is `Left top, Left bottom, Right top, Right bottom`; row-major would be
+/// `Left top, Right top, Left bottom, Right bottom`. They are different sequences, the emission
+/// is still not row-major, and the precondition still refuses.
+///
+/// The test would fail if someone "fixed" two-columns by turning it into a 2x2 table.
+#[test]
+fn a_reordered_two_column_page_is_still_not_a_row_major_table() {
+    let a = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+
+    assert!(
+        a.pages.iter().all(|p| p.tables.is_empty()),
+        "two-columns is geometrically a 2x2 and is still NOT a table: the alignment rule wants \
+         row-major emission and this page has never had it"
+    );
+
+    // The order really is column-major and really is not row-major. Spelled out because the two
+    // are easy to confuse and only one of them satisfies the detector's precondition.
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"],
+    );
+    assert_ne!(
+        texts,
+        vec!["Left top", "Right top", "Left bottom", "Right bottom"],
+        "that sequence is row-major, and if the runs ever arrived in it the alignment rule would \
+         accept this page as a 2x2 table — which would be a fabricated grid, not a reading order"
+    );
+
+    // And the refusal is declared rather than silent, exactly as S2 left it.
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    assert!(
+        codes.contains(&engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED),
+        "the alignment rule built a candidate here and refused it; that refusal is a disclosure \
+         and must survive the reordering: {codes:?}"
+    );
+}
+
+/// **Tables are atoms** (v1-S5 decision 6), asserted where it would actually break.
+///
+/// `table-regular-grid` has two columns of text 108 points apart — comfortably past the reading
+/// -order rule's gutter floor. Loose on a page, those runs would be cut into two columns and read
+/// down each one. Inside an accepted table they are one object: they keep the order they were
+/// concatenated in, so every cell's text still matches the runs the cell names.
+#[test]
+fn a_detected_table_is_not_shredded_into_columns_by_the_reading_order_rule() {
+    for (name, path) in [
+        (
+            "table-regular-grid",
+            conformance("synthetic/table-regular-grid/document.pdf"),
+        ),
+        ("ruled-table-grid", engine_fx("ruled-table-grid")),
+        ("both-table-rules", engine_fx("both-table-rules")),
+    ] {
+        let a = extract_ok(path);
+        for page in &a.pages {
+            for t in &page.tables {
+                for c in &t.cells {
+                    // The indices were remapped through the reordering; this is the check that
+                    // they were remapped correctly. A cell pointing at the wrong runs would
+                    // claim text it does not contain, and nothing else on the artifact would say
+                    // so.
+                    let from_runs: String = c
+                        .run_indices
+                        .iter()
+                        .map(|i| page.runs[*i].text.as_str())
+                        .collect();
+                    assert_eq!(
+                        from_runs, c.text,
+                        "{name}: cell {:?} names runs whose text is not its text — the reading \
+                         -order permutation did not reach `run_indices`",
+                        c.position
+                    );
+                    // Fabrication-0, restated: every character of a cell came from a run.
+                    assert!(
+                        c.run_indices.iter().all(|i| *i < page.runs.len()),
+                        "{name}: a cell points past the end of the run list"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// **Ordinals are the reading order, not a second opinion about it** (v1-S5 decision 4).
+///
+/// The projection assigns `ordinal` from array position, so this asserts the thing that would
+/// break if anyone reintroduced a parallel index: on the one fixture where array order and
+/// stream order genuinely differ, the ordinals still run 1, 2, 3, 4 down the list, and the span
+/// ids run with them.
+#[test]
+fn ordinals_and_ids_follow_the_reading_order_on_a_reordered_page() {
+    let a = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+    let r = runs(&a);
+    let ids: Vec<&str> = r.iter().map(|x| x.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec!["s1", "s2", "s3", "s4"],
+        "span ids are laid over the reading order, so `s1` is the first run a human should read \
+         — not the first one the content stream drew"
+    );
+
+    let rep = engine_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    let page: Vec<(u32, &str)> = rep
+        .payload()
+        .nodes
+        .iter()
+        .filter(|n| n.kind == engine_core::NodeKind::TextRun)
+        .map(|n| (n.ordinal, n.text.as_str()))
+        .collect();
+    assert_eq!(
+        page,
+        vec![
+            (1, "Left top"),
+            (2, "Left bottom"),
+            (3, "Right top"),
+            (4, "Right bottom")
+        ],
+        "ordinal is monotone in the node list, and the node list is the reading order"
+    );
 }
 
 /// The M3 `not_decoded` gaps, now carried as limitations.
@@ -1723,14 +1951,21 @@ fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
     let near = extract_ok(engine_fx("unruled-near-miss"));
     assert!(near.pages.iter().all(|p| p.tables.is_empty()));
 
-    // two-columns still reads single-column, in content-stream order, and is still not a table.
+    // two-columns is still not a table, and its order is still the reading-order rule's answer
+    // rather than the tag tree's.
+    //
+    // **Updated at v1-S5**, which is what this assertion was always waiting for: the expected
+    // sequence used to be the content stream's, because no rule reordered it. It is now
+    // column-major, and the point of the test is unchanged — S3 did not do that, the geometric
+    // rule did. `/K` order is still not a sorter, and `structure.rs` still contains no sort.
     let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
-    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V0);
+    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
     let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
     assert_eq!(
         texts,
-        vec!["Right top", "Right bottom", "Left top", "Left bottom"],
-        "node order is the content stream's, and S3 does not touch it"
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"],
+        "the order came from the page's whitespace; this document is untagged, so the structure \
+         tree could not have produced it even if it were consulted"
     );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 
@@ -2043,13 +2278,15 @@ fn reading_forms_changes_no_earlier_slices_answer() {
         Some(engine_core::StructuralLocator::PdfArtifact(_))
     )));
 
-    // two-columns: order unchanged, still no table.
+    // two-columns: column-major since v1-S5, still no table. Widgets are not runs, so nothing
+    // the form walk found could have joined the text order — the four strings here are the four
+    // the content stream drew.
     let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
     let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
     assert_eq!(
         texts,
-        vec!["Right top", "Right bottom", "Left top", "Left bottom"]
+        vec!["Left top", "Left bottom", "Right top", "Right bottom"]
     );
-    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V0);
+    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V1);
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 }

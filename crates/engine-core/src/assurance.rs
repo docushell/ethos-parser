@@ -109,10 +109,22 @@ pub mod codes {
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
     /// [`Capabilities::multi_column_reading_order`] is false: order is single-column.
     ///
-    /// **The limitation v0 must declare explicitly** (`docs/03-V0-SCOPE.md` §3.2). A two-column
-    /// document is read in the wrong order and the artifact says so, rather than silently
+    /// **The limitation v0 had to declare explicitly** (`docs/03-V0-SCOPE.md` §3.2). A two-column
+    /// document was read in the wrong order and the artifact said so, rather than silently
     /// producing interleaved text.
+    ///
+    /// **Not on the default profile since v1-S5**, which shipped the rule. Kept, not deleted: a
+    /// profile may still turn the capability off, and when it does this is the true statement
+    /// about what that profile emits. A limitation code that exists only for the profiles it is
+    /// true of is the S3 lesson — `structural-locators-not-claimed` survived its slice the same
+    /// way.
     pub const MULTI_COLUMN_READING_ORDER: &str = "multi-column-reading-order";
+    /// [`Capabilities::multi_column_reading_order`] is true: the rule reads geometry only.
+    ///
+    /// The narrower leftover that replaced [`Self::MULTI_COLUMN_READING_ORDER`] on the default
+    /// profile at v1-S5 — the same move `stroke-ruled-tables-not-detected` made when the
+    /// alignment rule retired `unruled-tables-not-detected`.
+    pub const READING_ORDER_GEOMETRIC_ONLY: &str = "reading-order-geometric-only";
     /// [`Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
 
@@ -358,16 +370,41 @@ impl Capabilities {
                  derived from a font size to fill the gap.",
             ));
         }
-        if !multi_column_reading_order {
+        if multi_column_reading_order {
+            // **A limitation partnering a TRUE capability**, the second one here, and for the
+            // same reason as `tables`: a reader who sees the flag and no limitation concludes
+            // reading order is solved.
+            //
+            // v0 declared `multi-column-reading-order` — "read in the WRONG ORDER" — on every
+            // artifact. v1-S5 shipped the rule, so that sentence became false and the code is
+            // GONE from this arm rather than reworded, exactly as `unruled-tables-not-detected`
+            // went at S2. It survives below for a profile that turns the capability off, which
+            // is a different claim and still a true one.
+            //
+            // What is left is genuinely narrower, and it is the part a consumer can be misled by.
+            out.push(Limitation::profile(
+                codes::READING_ORDER_GEOMETRIC_ONLY,
+                "Reading order is decided by WHITESPACE IN PAGE SPACE and by nothing else. Two \
+                 consequences a consumer must not read past. First, a document whose column \
+                 structure exists only in its tag tree — columns that touch, or two flows \
+                 interleaved without a clear vertical band between them — is NOT reordered, and \
+                 comes out in content-stream order; the structure tree is read for addresses and \
+                 is never consulted as a sorter, because emitting nodes in `/K` order is a \
+                 different rule and would need its own id. Second, a run whose font supplies no \
+                 advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
+                 rather than a measured width and judges gutters against that floor. No extent is \
+                 ever derived from a font size. Where the rule finds no gutter it reorders \
+                 nothing, which is what a single-column page means and not a failure to look.",
+            ));
+        } else {
             out.push(Limitation::profile(
                 codes::MULTI_COLUMN_READING_ORDER,
                 "Reading order is single-column: runs appear in content-stream order with no \
                  reordering. A multi-column document is therefore read in the WRONG ORDER, and \
                  this declaration is the engine saying so rather than silently interleaving \
-                 text. No multi-column detector runs either — pdf-inspector's flips on a single \
-                 line of text (min_lines < 15), so a one-line edit reorders a whole page, and a \
-                 cliff-shaped heuristic cannot sit under a determinism contract. Ships at v1 \
-                 with a stable rule and a fixture.",
+                 text. No multi-column detector runs either. This profile has turned the rule \
+                 off; the default one has it on, under a versioned id, and `reading_order_rule` \
+                 says which of the two produced any given artifact.",
             ));
         }
         if !form_fields {
@@ -1072,26 +1109,77 @@ mod tests {
         let remaining: Vec<&str> = all_declared.iter().map(|l| l.code.as_str()).collect();
         assert_eq!(
             remaining,
-            vec![codes::STROKE_RULED_TABLES_NOT_DETECTED],
-            "the only limitation an all-true profile keeps is the stroked-line-grid scope"
+            vec![
+                codes::STROKE_RULED_TABLES_NOT_DETECTED,
+                codes::READING_ORDER_GEOMETRIC_ONLY,
+            ],
+            "an all-true profile keeps exactly the two limitations that partner TRUE \
+             capabilities: what the table rules still miss, and what the reading-order rule \
+             still cannot see"
         );
         assert!(
             !remaining.contains(&"unruled-tables-not-detected"),
             "v1-S2 ships the alignment rule, so the blanket ruled-only limitation must be GONE, \
              not reworded: a stale limitation is acted on"
         );
+        assert!(
+            !remaining.contains(&codes::MULTI_COLUMN_READING_ORDER),
+            "v1-S5 ships the reading-order rule, so `read in the WRONG ORDER` must be GONE from \
+             a profile that claims the capability — same reason, and the same move S2 made"
+        );
     }
 
+    /// **Both halves of the retirement** (v1-S5).
+    ///
+    /// The default profile no longer says a two-column document is read in the wrong order,
+    /// because it no longer is. A profile that turns the rule off still says it, because for
+    /// that profile it is still true — the code is kept for exactly that reader, the way
+    /// `structural-locators-not-claimed` was kept at S3.
     #[test]
-    fn v0_declares_the_multi_column_limitation() {
-        let a = Assurance::new(Capabilities::V0, 1, processed(1), Vec::new()).unwrap();
-        let l = a
+    fn the_multi_column_limitation_retires_with_the_capability_and_not_before() {
+        let on = Assurance::new(Capabilities::V0, 1, processed(1), Vec::new()).unwrap();
+        assert!(
+            !on.limitations
+                .iter()
+                .any(|l| l.code == codes::MULTI_COLUMN_READING_ORDER),
+            "the default profile orders by geometry and must not declare that it does not"
+        );
+        let kept = on
+            .limitations
+            .iter()
+            .find(|l| l.code == codes::READING_ORDER_GEOMETRIC_ONLY)
+            .expect("what the rule still cannot see is declared in its place");
+        assert_eq!(kept.scope, LimitationScope::Profile);
+        assert!(
+            kept.detail.contains("WHITESPACE IN PAGE SPACE"),
+            "the declaration must say what the order is actually built from: {}",
+            kept.detail
+        );
+
+        let off = Assurance::new(
+            Capabilities {
+                multi_column_reading_order: false,
+                ..Capabilities::V0
+            },
+            1,
+            processed(1),
+            Vec::new(),
+        )
+        .unwrap();
+        let l = off
             .limitations
             .iter()
             .find(|l| l.code == codes::MULTI_COLUMN_READING_ORDER)
-            .expect("v0 reads single-column and must say so");
+            .expect("a profile with the rule off reads single-column and must still say so");
         assert_eq!(l.scope, LimitationScope::Profile);
         assert!(l.detail.contains("WRONG ORDER"));
+        assert!(
+            !off.limitations
+                .iter()
+                .any(|l| l.code == codes::READING_ORDER_GEOMETRIC_ONLY),
+            "the true-capability partner must not be declared by a profile that has the \
+             capability off — it would describe a rule that did not run"
+        );
     }
 
     #[test]

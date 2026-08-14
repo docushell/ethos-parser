@@ -45,13 +45,16 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
 - **Start here:** [`docs/README.md`](docs/README.md)
 - **The frozen surface:** [`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)
 - **v1 is in progress**, one slice at a time
-  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S4 are done**: ruled
+  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S5 are done**: ruled
   tables from vector paths, `CellSlot` occupancy and the locator cross-check (S1); unruled tables
   inferred from text alignment under their own rule id, with every table naming the rule that
   found it (S2); and the document's own tagged-structure tree, read and bound to text by
   `(page, mcid)`, so a node carries the role path its author gave it (S3); and form fields and
-  annotations as nodes of their own kind, whose text is never mixed into the page's (S4). S5
-  (multi-column reading order) through S7 (the labelled-set gate) are not started.
+  annotations as nodes of their own kind, whose text is never mixed into the page's (S4); and
+  multi-column reading order from the page's own whitespace, under `gutter-columns-v1`, so a
+  two-column document reads column-major and a single-column one is not touched at all (S5).
+  **Next is S6** — images, DPI screenshots, and hidden or off-page findings — followed by S7, the
+  labelled-set gate. Neither is started.
 
 ## Building
 
