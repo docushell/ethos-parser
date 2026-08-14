@@ -115,6 +115,24 @@ content as off-page. All three benchmark documents declare a `/CropBox`; all thr
 to their media box, so this changes nothing on the current corpus and everything on a document that
 actually crops.
 
+### Fixed — a two-frame page, caught by probing this slice's own change
+
+v1-S6 briefly took a page's declared width and height from the **`/CropBox`** while every
+coordinate stayed in the **`/MediaBox`** frame. Two frames on one page — and
+`DocumentRepresentation::seal` refuses an artifact whose measured box falls outside its declared
+page, so **a document that crops stopped producing an artifact at all**, exiting 2 with *"the
+measurement or the coordinate transform is wrong"*. It was right.
+
+Nothing caught it: no document in either corpus crops (all three benchmark PDFs declare a
+`/CropBox` equal to their `/MediaBox`), and every other engine fixture supplies no ink metrics, so
+no measured box existed anywhere that could fall outside a page. Found by building a probe page by
+hand — `/MediaBox [0 0 300 200]`, `/CropBox [50 50 250 150]`, real font metrics, text in the
+cropped-away margin — which is now the `crop-box-smaller-than-media` fixture.
+
+Page dimensions come from the media box, which is the frame coordinates are expressed in. The crop
+box is still read and is still what an off-page finding is measured against; that is a different
+question with its own answer on the run.
+
 ### Fixed — a silent skip, caught by its own symptom
 
 `Sha256Hex::parse(sha256_hex_bytes(…))` returns `Err` for every input: the first produces bare hex,
@@ -168,10 +186,10 @@ fail and the fallible spelling was never describing a real possibility.
 **`sha256:3de478c92c536b7ed10999be655515ce70bf37f2b5aec5031614145ad53d5ace`** — the version, the new
 `observation_rule` and `raster_dpi` fields, and two capability flips.
 
-**586 tests pass**, up from 573. Oracle partition still 12 / 3; `two-columns` still column-major and
+**587 tests pass**, up from 573. Oracle partition still 12 / 3; `two-columns` still column-major and
 still not a table; the 1040 still yields 0 tables and its widgets are still never runs; `fmt`,
 `clippy -D warnings`, `cargo deny check` and both grep gates are clean. The fixture manifest declares
-44 fixtures, up from 40.
+45 fixtures, up from 40.
 
 ---
 

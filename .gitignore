@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 .DS_Store
+
+# Python bytecode from importing make_fixtures.py in a probe.
+__pycache__/

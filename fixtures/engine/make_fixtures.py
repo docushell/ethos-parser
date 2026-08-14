@@ -56,6 +56,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              run outside the crop box. No document in either corpus has a
                              non-zero box origin, which is why the coordinate defect v1-S6
                              repaired went unnoticed for six slices                 [v1-S6]
+  crop-box-smaller-than-media
+                             a /CropBox strictly inside the /MediaBox, with a font carrying REAL
+                             ink metrics and text in the cropped-away margin. The only fixture
+                             where a MEASURED box sits outside the crop box — which is what makes
+                             it catch a page reporting one box's dimensions beside the other
+                             box's coordinates                                       [v1-S6]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -499,6 +505,16 @@ FIXTURES = {
         "3 Tr 1 0 0 1 40 70 Tm (Hidden instruction) Tj "
         "0 Tr 1 0 0 1 40 40 Tm (Visible again) Tj ET"
     ),
+    # v1-S6's TWO-FRAME golden. /CropBox [50 50 250 150] is strictly inside /MediaBox
+    # [0 0 300 200], and the text sits at y=180 — inside the media box, in the margin the crop
+    # box removes. The font carries real ascent/descent (see DESCRIPTORS below), so its ink box is
+    # MEASURED rather than typed-absent, and that is the whole point: `seal` refuses an artifact
+    # whose measured box falls outside its declared page, so a page reporting the crop box's
+    # dimensions beside media-box coordinates stops producing an artifact at all.
+    #
+    # Every other fixture here supplies no ink metrics, so no measured box exists to fall out of
+    # any page — which is exactly why nothing caught this until a probe was built by hand.
+    "crop-box-smaller-than-media": "BT /F1 24 Tf 1 0 0 1 60 180 Tm (Near the top) Tj ET",
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -662,6 +678,7 @@ PAGE_EXTRA = {
     "form-xfa-stub": " /Annots [7 0 R]",
     # v1-S6. The crop box the off-page finding is measured against.
     "off-page-and-offset-box": " /CropBox [0 40 300 200]",
+    "crop-box-smaller-than-media": " /CropBox [50 50 250 150]",
 }
 
 
@@ -685,6 +702,7 @@ MEDIA = {
     # therefore the case that hid a coordinate defect through six slices. Every y here is offset
     # by 20 points from the naive reading.
     "off-page-and-offset-box": (0, 20, 300, 220),
+    "crop-box-smaller-than-media": (0, 0, 300, 200),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -702,6 +720,9 @@ DIFFERENCES = {
 DESCRIPTORS = {
     "measured-ink-box": "metrics",
     "absent-font-metrics": "no-metrics",
+    # Real metrics, so the ink box is MEASURED — without this the fixture proves nothing, because
+    # a typed-absent box can never fall outside a page.
+    "crop-box-smaller-than-media": "metrics",
 }
 
 

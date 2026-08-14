@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 26
+    "engine_owned": 27
   },
   "fixtures": [
     {
@@ -418,6 +418,15 @@
       "sha256": "sha256:68e879058103240dbec7c0ccf19c3bd9f6e2c20d14dfc8eb13663ce8d9cbe9ff",
       "owner": "engine",
       "notes": "v1-S6 off-page golden, and the coordinate-repair golden. /MediaBox [0 20 300 220] \u2014 an origin that is NOT (0,0), which no document in either corpus has \u2014 plus /CropBox [0 40 300 200] and one run below it. Expect y=10000 and y=19000 (the origin is subtracted, which it was not through v1-S5) and exactly the second run flagged `off-page`, measured against the CROP box rather than the media box."
+    },
+    {
+      "id": "crop-box-smaller-than-media",
+      "root": "engine",
+      "group": "engine",
+      "path": "crop-box-smaller-than-media/document.pdf",
+      "sha256": "sha256:bc1ec00a9714ee50a10f68ba06ca2f047dd75be600c5b60371c1597e3076189c",
+      "owner": "engine",
+      "notes": "v1-S6 two-frame golden. /CropBox [50 50 250 150] strictly inside /MediaBox [0 0 300 200], a font with REAL ink metrics, and text at y=180 in the margin the crop box removes. Expect an artifact: page dimensions come from the MEDIA box, which is the frame every coordinate is expressed in. Reporting the crop box's size instead makes `seal` refuse the artifact \u2014 a measured box outside its declared page \u2014 so a cropping document stops parsing entirely. The only fixture where a MEASURED box lies outside the crop box."
     }
   ]
 }

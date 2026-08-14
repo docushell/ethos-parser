@@ -878,12 +878,27 @@ impl PageGeometry {
             });
         }
 
-        // A quarter turn swaps the visible dimensions. Taken from the VISIBLE box, because that
-        // is the page a reader sees and the box every coordinate here is expressed against.
+        // A quarter turn swaps the visible dimensions.
+        //
+        // **Taken from the MEDIA box, not the visible one, and the difference is load-bearing.**
+        // Every coordinate in this artifact is expressed in the media box's frame — `to_top_left`
+        // subtracts *its* origin — so the page's declared width and height have to describe that
+        // same frame. Reporting the crop box's size beside media-box coordinates puts two frames
+        // on one page, and `DocumentRepresentation::seal` REFUSES an artifact whose measured box
+        // falls outside its page: a document that crops would stop producing an artifact at all.
+        //
+        // Measured, not reasoned: a probe page with `/MediaBox [0 0 300 200]` and
+        // `/CropBox [50 50 250 150]`, text at user-space y=180 with a font carrying real metrics,
+        // exited 2 with *"node `s1` has a measured box [6000, 277, 20400, 2497] outside its page
+        // [0, 0, 20000, 10000]"*. It is the `crop-box-smaller-than-media` fixture now.
+        //
+        // The crop box is still read, and is still what an off-page finding is measured against —
+        // that is a different question ("is this content visible?") with its own answer on the
+        // run, and `off-page-text` says so in as many words.
         let (display_width, display_height) = if rotation % 180 == 0 {
-            (visible.width(), visible.height())
+            (media.width(), media.height())
         } else {
-            (visible.height(), visible.width())
+            (media.height(), media.width())
         };
 
         Ok(Self {

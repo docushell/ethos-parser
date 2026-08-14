@@ -2620,3 +2620,57 @@ fn the_image_only_fixture_is_blank_and_is_reported_as_blank() {
         "and no fabricated table"
     );
 }
+
+/// **A cropping page still parses, and its coordinates and its dimensions share one frame.**
+///
+/// Found by probing v1-S6's own change rather than by a test failing: page width and height were
+/// briefly taken from the `/CropBox` while every coordinate stayed in the `/MediaBox` frame. Two
+/// frames on one page, and `DocumentRepresentation::seal` refuses an artifact whose measured box
+/// falls outside its declared page — so a document that crops stopped producing an artifact at
+/// all, exiting 2 with *"the measurement or the coordinate transform is wrong"*. It was right.
+///
+/// No document in either corpus crops (all three benchmark PDFs declare a `/CropBox` equal to
+/// their `/MediaBox`), and every other engine fixture supplies no ink metrics, so no measured box
+/// existed anywhere that could fall outside a page. This fixture is both at once.
+#[test]
+fn a_page_that_crops_still_parses_and_keeps_one_coordinate_frame() {
+    let a = extract_ok(engine_fx("crop-box-smaller-than-media"));
+    let page = &a.pages[0];
+
+    // The MEDIA box, because that is the frame `to_top_left` maps into.
+    assert_eq!(
+        (page.width, page.height),
+        (30_000, 20_000),
+        "page dimensions are the media box's, not the crop box's 200x100"
+    );
+
+    let r = runs(&a);
+    assert_eq!(r.len(), 1);
+    let ink = r[0]
+        .geometry
+        .measured()
+        .expect("this fixture's font carries real ascent/descent, which is why it is this fixture");
+    assert!(
+        ink.x1() <= page.width && ink.y1() <= page.height,
+        "the measured box [{}, {}, {}, {}] must fit the declared page [0, 0, {}, {}] — when it \
+         did not, `seal` refused the whole document",
+        ink.x0(),
+        ink.y0(),
+        ink.x1(),
+        ink.y1(),
+        page.width,
+        page.height
+    );
+
+    // The crop box is still read, and is still what off-page is measured against. This run is
+    // outside it, so it carries the finding — and it is still here, with its box, in the artifact.
+    assert!(
+        r[0].findings.contains(&engine_core::TextFinding::OffPage),
+        "text in the cropped-away margin is outside the VISIBLE box and says so"
+    );
+    assert_eq!(r[0].text, "Near the top");
+
+    // The projection seals, which is the assertion that actually failed before the fix.
+    engine_pdf::to_representation(&a, &Profile::default())
+        .expect("a cropping document produces a representation");
+}
