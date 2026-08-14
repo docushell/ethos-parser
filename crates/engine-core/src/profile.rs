@@ -81,6 +81,20 @@ pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 /// wrote down; a file with no tree produces no roles and says so.
 pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 
+/// The forms-and-annotations rule v1-S4 ships.
+///
+/// On the profile because it decides which nodes exist. Which flag bits are named, how a
+/// fully-qualified field name is built, whether a default value stands in for a missing one, and
+/// the fact that a widget's rendering is **not** read as page text are all part of it — change any
+/// and the node set changes.
+///
+/// **Named for what it does, not for the structure it reads.** `engine-core` carries no PDF
+/// concept (`docs/04-ARCHITECTURE.md` §1, and a test enforces it), so the field and the id name
+/// *form fields and annotations* — document ideas any format can have — while the format-specific
+/// walk lives in `engine-pdf`. The same split `table_detection` already uses: a generic field
+/// holding `"ruled-rects-v1"`.
+pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
+
 /// Identity of the character-decoding data this profile carries.
 ///
 /// Names what is **actually** vendored rather than what was planned. At M3 that is the
@@ -230,6 +244,22 @@ pub struct Capabilities {
     /// declares `structure-mcid-unbound` with a count. Both are real answers, and neither is a
     /// role invented to fill the gap.
     pub structural_locators: bool,
+    /// Interactive form fields are read from the AcroForm tree and emitted as nodes (v1-S4).
+    ///
+    /// **True since v1-S4**, and what it claims is that *this profile looks*. A document with no
+    /// `/AcroForm` yields no field nodes and that is a real answer, not a gap — `ethos`'s own
+    /// empty-array-versus-absent-key distinction, applied to a node kind.
+    ///
+    /// It does **not** claim every field is read: XFA packets are not parsed (`xfa-forms-not-\
+    /// extracted`), and a value in a shape this profile cannot express is declared rather than
+    /// guessed at.
+    pub form_fields: bool,
+    /// Annotations are read from each page's `/Annots` and emitted as nodes (v1-S4).
+    ///
+    /// **True since v1-S4.** Separate from [`Self::form_fields`] because they are separately
+    /// provable and separately absent: a document can carry comments and no form, or a form and
+    /// no comments, and one flag covering both would be true on the strength of either.
+    pub annotations: bool,
 }
 
 impl Capabilities {
@@ -247,6 +277,8 @@ impl Capabilities {
         measured_ink_boxes: true,
         multi_column_reading_order: false,
         structural_locators: true,
+        form_fields: true,
+        annotations: true,
     };
 }
 
@@ -440,6 +472,10 @@ pub struct Profile {
     /// carrying a role path: the recognised structure types, the `/RoleMap` handling, the depth
     /// bound and the exactness of the `(page, mcid)` join are all part of it.
     pub struct_tree_rule: String,
+    /// Version id of the forms-and-annotations rule in force. New at v1-S4.
+    ///
+    /// See [`FORM_ANNOTATION_RULE_V1`].
+    pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
     /// Whether the bounded cross-reference repair runs. New at v0.1.
@@ -464,6 +500,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V0.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
+            form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -552,6 +589,8 @@ mod tests {
                     measured_ink_boxes: _,
                     multi_column_reading_order: _,
                     structural_locators: _,
+                    form_fields: _,
+                    annotations: _,
                 },
             page_budget: _,
             reading_order_rule: _,
@@ -561,6 +600,7 @@ mod tests {
                     unruled: _,
                 },
             struct_tree_rule: _,
+            form_annotation_rule: _,
             cmap_data_version: _,
             xref_repair: _,
             verifier: _,
@@ -585,6 +625,19 @@ mod tests {
                 // whose hash could not tell those apart would claim a comparability it lacks.
                 "table_detection.unruled",
                 Box::new(|p: &mut Profile| p.table_detection.unruled = "other-align-v9".into()),
+            ),
+            (
+                // v1-S4. Which form and annotation nodes exist at all.
+                "form_annotation_rule",
+                Box::new(|p: &mut Profile| p.form_annotation_rule = "other-forms-v9".into()),
+            ),
+            (
+                "capabilities.form_fields",
+                Box::new(|p: &mut Profile| p.capabilities.form_fields = false),
+            ),
+            (
+                "capabilities.annotations",
+                Box::new(|p: &mut Profile| p.capabilities.annotations = false),
             ),
             (
                 // v1-S3. Which runs come out with a role path, and therefore whether a consumer
@@ -726,7 +779,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"char_offsets":false,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"page_budget":{"mode":"unlimited"},"parser_version":"0.5.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"measured_ink_boxes":true,"multi_column_reading_order":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.6.0","quantum_per_point":100,"reading_order_rule":"single-column-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -753,11 +806,17 @@ mod tests {
              `capabilities.structural_locators` flipping false -> true. Another CLAIM rather \
              than a knob — artifacts before it never read a document's structure tree and \
              artifacts after it do, so a role path present in one and absent from the other says \
-             nothing about the two documents and everything about the two profiles."
+             nothing about the two documents and everything about the two profiles.\n\n\
+             Moved a seventh time at v1-S4 (0.6.0): the version, the new `form_annotation_rule`, \
+             and `capabilities.form_fields` and `capabilities.annotations` both arriving true. \
+             Two more CLAIMS: an artifact from before this carried no form field and no \
+             annotation because none was ever looked for, and one from after carries them or \
+             says the document has none. Comparing the two node counts would be comparing two \
+             different questions."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8cc7607fc8e0203e8e64192fbbb2ac7689bf46d1c6a1c8d4d02be53c4de2ed22"
+            "sha256:95bd8b68e99b684e476c7d47e8dd8b00da2acdaf0f3e5d57cd631d5f46d8bd87"
         );
     }
 

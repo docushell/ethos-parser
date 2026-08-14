@@ -71,11 +71,26 @@ pub const MAX_DEPTH: usize = 64;
 /// 2's paragraph to page 1's text on any document longer than one page.
 type Key = (ObjectId, i64);
 
+/// The `mcid` recorded for an object the tree cites by `/OBJR` rather than by marked content.
+///
+/// `-1`, and it is a real statement rather than a sentinel dressed as data: an `/OBJR` names the
+/// object directly and there IS no marked-content id involved, so any non-negative value here
+/// would be an id this engine minted. Negative marked-content ids are not legal PDF, so the value
+/// cannot collide with one the document wrote.
+const OBJECT_CITED_NOT_MARKED: i64 = -1;
+
 /// What one walk of a document's structure tree produced.
 #[derive(Debug, Default)]
 pub struct StructureTree {
     /// The bindings, keyed by page and mcid.
     bindings: BTreeMap<Key, PdfTaggedLocator>,
+    /// Bindings for whole objects the tree cites by `/OBJR` — annotations and widgets (v1-S4).
+    ///
+    /// v1-S3 walked `/OBJR` and bound nothing, because there was no node to bind it to yet.
+    /// There is now, and the tree citing a widget is the author saying where that field sits in
+    /// the document's structure. Keyed by object id: an `/OBJR` names the object directly, so
+    /// unlike marked content there is no page-plus-index pair to join on.
+    object_bindings: BTreeMap<ObjectId, PdfTaggedLocator>,
     /// Tables the tree describes, in document order.
     pub tables: Vec<TaggedTable>,
     /// Content items whose page could not be determined, so they bind nothing.
@@ -122,6 +137,11 @@ impl StructureTree {
     /// The role path the tree gives a run, if it cites that run's page and id.
     pub fn locator_for(&self, page: ObjectId, mcid: i64) -> Option<&PdfTaggedLocator> {
         self.bindings.get(&(page, mcid))
+    }
+
+    /// The role path the tree gives a whole object it cites by `/OBJR` (v1-S4).
+    pub fn locator_for_object(&self, object: ObjectId) -> Option<&PdfTaggedLocator> {
+        self.object_bindings.get(&object)
     }
 
     /// Every key the tree cites, so a caller can count the ones no run claimed.
@@ -291,9 +311,35 @@ impl Walker<'_> {
                 }
                 return Ok(());
             }
-            // `/OBJR` — an object reference to an annotation or XObject. Not text, so nothing
-            // here binds a run. Forms and annotations as typed nodes are v1-S4.
-            Some(t) if t == "OBJR" => return Ok(()),
+            // `/OBJR` — an object reference to an annotation, widget or XObject. v1-S3 walked
+            // past these: nothing existed to bind them to. v1-S4 emits annotations and form
+            // fields as nodes, so the citation is recorded and those nodes can carry the role
+            // path the tree gives them.
+            //
+            // Still no text is read from here. An `/OBJR` says *where in the structure* an
+            // object sits, not what it contains.
+            Some(t) if t == "OBJR" => {
+                if let Ok(Object::Reference(oid)) = d.get(b"Obj") {
+                    if !role_path.is_empty() {
+                        let standard: Vec<String> =
+                            role_path.iter().map(|r| self.standard_role(r)).collect();
+                        let mapped = standard != *role_path;
+                        self.tree.object_bindings.insert(
+                            *oid,
+                            PdfTaggedLocator {
+                                // An `/OBJR` is not marked content and has no id of its own.
+                                // `-1` would be a number nobody wrote, so this reuses the
+                                // sentinel-free option: the tree cites the object, not an mcid.
+                                mcid: OBJECT_CITED_NOT_MARKED,
+                                role_path: role_path.to_vec(),
+                                standard_role_path: mapped.then_some(standard),
+                                element_id: None,
+                            },
+                        );
+                    }
+                }
+                return Ok(());
+            }
             _ => {}
         }
 

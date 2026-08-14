@@ -1738,3 +1738,318 @@ fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
     let form = extract_ok(path_in("benchmark", "irs-form-1040-2025.pdf"));
     assert_eq!(form.pages.iter().map(|p| p.tables.len()).sum::<usize>(), 0);
 }
+
+// -------------------------------------------------------------------------------------------
+// 14. Forms and annotations (v1-S4)
+// -------------------------------------------------------------------------------------------
+
+/// Every string a form field or annotation carries, on one document.
+fn object_texts(a: &ExtractArtifact) -> Vec<String> {
+    a.pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .map(|o| o.text.clone())
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// **The `form_fields` proof, and the rule this whole slice exists to enforce.**
+///
+/// A field's `/V` lives in a dictionary. Nothing in the page's content stream draws it, so if it
+/// ever turned up in a `text_run` that would mean this engine had copied it there — the LiteParse
+/// defect (checklist L13), where a widget's value becomes indistinguishable from the page's own
+/// words and a citation "grounded in the document" is really grounded in a form control.
+///
+/// The fixture's page draws the *label* and nothing else, so the value has no innocent route into
+/// the runs. Both halves of the capability are proved here: found where there is a form, absent
+/// where there is not, with the flag true either way.
+#[test]
+fn a_form_fields_value_is_a_node_and_never_a_text_run() {
+    let a = extract_ok(engine_fx("form-field-value"));
+
+    let fields: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter(|o| matches!(o.attributes, engine_core::NodeAttributes::FormField(_)))
+        .collect();
+    assert_eq!(
+        fields.len(),
+        1,
+        "one widget is one node, not a field plus a clone"
+    );
+
+    let engine_core::NodeAttributes::FormField(attrs) = &fields[0].attributes else {
+        unreachable!("filtered above")
+    };
+    assert_eq!(attrs.field_name.as_deref(), Some("applicant_name"));
+    assert_eq!(attrs.field_type.as_deref(), Some("Tx"));
+    assert_eq!(
+        attrs.value,
+        engine_core::FieldValue::Text("Wendell Ashcroft-Byrne".into())
+    );
+    assert_eq!(fields[0].text, "Wendell Ashcroft-Byrne");
+    // `/Ff 2` is bit 2, "required".
+    assert_eq!(attrs.flags, vec!["required".to_string()]);
+
+    // **The assertion the slice is for.** No run carries the value, and none contains it.
+    for r in runs(&a) {
+        assert_ne!(
+            r.text, "Wendell Ashcroft-Byrne",
+            "a field value is not page text"
+        );
+        assert!(
+            !r.text.contains("Ashcroft"),
+            "no fragment of a field value may reach the text layer: {:?}",
+            r.text
+        );
+    }
+    // The printed label IS page text and stays one — the rule is about where a value is read
+    // from, not a claim that nothing near a widget can be a run.
+    assert!(runs(&a).iter().any(|r| r.text == "Applicant name:"));
+
+    // Half two of the capability: a document with no form yields none, flag still true.
+    let none = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    assert!(none.assurance.capabilities.form_fields);
+    assert!(
+        none.pages.iter().all(|p| p.objects.is_empty()),
+        "no form means no field nodes — looked and found none, not a missing capability"
+    );
+}
+
+/// **The `annotations` proof.** A comment is not the page's words.
+///
+/// Same rule from the other side: `/Contents` is a reviewer's text laid *over* a document, and a
+/// consumer that cannot tell it from the document's own words cannot safely cite either.
+#[test]
+fn an_annotations_contents_is_a_node_and_never_a_text_run() {
+    let a = extract_ok(engine_fx("annotation-contents"));
+
+    let annots: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter(|o| matches!(o.attributes, engine_core::NodeAttributes::Annotation(_)))
+        .collect();
+    assert_eq!(annots.len(), 2);
+
+    let texts = object_texts(&a);
+    assert!(texts.contains(&"Check this figure against the appendix".to_string()));
+
+    for r in runs(&a) {
+        for t in &texts {
+            assert_ne!(&r.text, t, "an annotation's text is never a run");
+            assert!(
+                !r.text.contains("appendix") && !r.text.contains("Withheld"),
+                "no annotation text may reach the text layer: {:?}",
+                r.text
+            );
+        }
+    }
+
+    // Subtype and author come through verbatim.
+    let engine_core::NodeAttributes::Annotation(first) = &annots[0].attributes else {
+        unreachable!()
+    };
+    assert_eq!(first.subtype, "Text");
+    assert_eq!(first.title.as_deref(), Some("Reviewer"));
+    assert_eq!(first.name.as_deref(), Some("note-1"));
+
+    // Half two: a document with no annotations, capability still true.
+    let none = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    assert!(none.assurance.capabilities.annotations);
+    assert!(none.pages.iter().all(|p| p.objects.is_empty()));
+}
+
+/// **A hidden annotation is flagged, never deleted.**
+///
+/// `/F` bit 2 asks a viewer not to draw it. That is a rendering instruction, not permission to
+/// remove content from the record — the parity checklist's O21 is exactly this: report, do not
+/// drop. A reader that honoured the flag by deleting would produce an artifact that is silently
+/// missing text, with nothing to say so.
+#[test]
+fn a_hidden_annotation_is_still_a_node_carrying_its_flag() {
+    let a = extract_ok(engine_fx("annotation-contents"));
+
+    let hidden: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter(|o| match &o.attributes {
+            engine_core::NodeAttributes::Annotation(x) => x.flags.contains(&"hidden".to_string()),
+            _ => false,
+        })
+        .collect();
+
+    assert_eq!(
+        hidden.len(),
+        1,
+        "the hidden annotation must survive the walk"
+    );
+    assert_eq!(hidden[0].text, "Withheld pending legal review");
+}
+
+/// **An unresolvable `/Parent` is declared, not repaired.**
+///
+/// LiteParse repairs orphaned widgets in memory and always flattens. Here the widget is emitted
+/// with whatever it declares about itself, the break is on the wire, and the source bytes are
+/// untouched. The visible consequence — a field name shorter than the form intends — is the
+/// honest one.
+#[test]
+fn an_orphan_widget_is_declared_rather_than_repaired() {
+    let path = engine_fx("form-orphan-widget");
+    let before = std::fs::read(&path).expect("fixture readable");
+
+    let a = extract_ok(path.clone());
+
+    assert!(
+        codes_of(&a).contains(&engine_core::codes::FORM_FIELD_PARENT_UNRESOLVED),
+        "the broken link must be declared: {:?}",
+        codes_of(&a)
+    );
+
+    // The widget is still a node, with what it declares about itself.
+    let fields: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter(|o| matches!(o.attributes, engine_core::NodeAttributes::FormField(_)))
+        .collect();
+    assert_eq!(fields.len(), 1, "an orphan is emitted, never skipped");
+    assert_eq!(fields[0].text, "Orphaned value");
+
+    // And the file on disk is byte-identical: no in-memory repair reached it.
+    assert_eq!(
+        std::fs::read(&path).expect("fixture still readable"),
+        before,
+        "the source bytes must be untouched"
+    );
+}
+
+/// **XFA is detected and declared, never parsed.**
+///
+/// The static AcroForm sibling still reads — which is why this is a limitation rather than a
+/// refusal — but a sparse field set on a dynamic form must not read as "this form is blank".
+#[test]
+fn an_xfa_packet_is_declared_and_its_static_sibling_still_reads() {
+    let a = extract_ok(engine_fx("form-xfa-stub"));
+
+    assert!(
+        codes_of(&a).contains(&engine_core::codes::XFA_FORMS_NOT_EXTRACTED),
+        "{:?}",
+        codes_of(&a)
+    );
+    assert!(
+        object_texts(&a).contains(&"Static AcroForm value".to_string()),
+        "a static field beside an XFA packet still reads"
+    );
+    // Nothing tried to read the XML.
+    for r in runs(&a) {
+        assert!(
+            !r.text.contains("xdp"),
+            "the packet is not parsed: {:?}",
+            r.text
+        );
+    }
+}
+
+fn codes_of(a: &ExtractArtifact) -> Vec<&str> {
+    a.assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect()
+}
+
+/// **A form's widgets do not become an alignment lattice.**
+///
+/// v1-S2's detector clusters **run origins**, and a form field is not a run — so 199 widgets on
+/// `irs-form-1040-2025` never enter the clustering at all. That is structural exclusion rather
+/// than a threshold that happens to reject them, which is the stronger guarantee, and this pins
+/// both the mechanism and the outcome.
+#[test]
+fn form_fields_never_feed_the_table_detectors() {
+    let a = extract_ok(path_in("benchmark", "irs-form-1040-2025.pdf"));
+
+    let fields: usize = a
+        .pages
+        .iter()
+        .map(|p| {
+            p.objects
+                .iter()
+                .filter(|o| matches!(o.attributes, engine_core::NodeAttributes::FormField(_)))
+                .count()
+        })
+        .sum();
+    assert!(
+        fields > 100,
+        "this form really does carry widgets: {fields}"
+    );
+
+    assert_eq!(
+        a.pages.iter().map(|p| p.tables.len()).sum::<usize>(),
+        0,
+        "a form's widgets are not a table, and reading them must not make one appear"
+    );
+
+    // A blank text field reports `Absent`, never an empty string: "left unfilled" and "filled in
+    // with nothing" are different facts about a form.
+    let blank = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter(|o| match &o.attributes {
+            engine_core::NodeAttributes::FormField(f) => f.value == engine_core::FieldValue::Absent,
+            _ => false,
+        })
+        .count();
+    assert!(blank > 0, "this form is blank, and says so per field");
+
+    // Its fully-qualified names really are joined from the `/T` path.
+    let named = a
+        .pages
+        .iter()
+        .flat_map(|p| p.objects.iter())
+        .filter_map(|o| match &o.attributes {
+            engine_core::NodeAttributes::FormField(f) => f.field_name.clone(),
+            _ => None,
+        })
+        .find(|n| n.contains('.'))
+        .expect("a hierarchical field name");
+    assert!(named.contains('.'), "{named}");
+}
+
+/// **Earlier slices are untouched by reading forms.**
+#[test]
+fn reading_forms_changes_no_earlier_slices_answer() {
+    // S2's golden.
+    let golden = extract_ok(conformance("synthetic/table-regular-grid/document.pdf"));
+    let t: Vec<_> = golden.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(t.len(), 1);
+    assert_eq!((t[0].rows, t[0].columns), (3, 2));
+    assert_eq!(t[0].rule, engine_core::TABLE_DETECTION_UNRULED_V1);
+
+    // S1's golden.
+    let ruled = extract_ok(engine_fx("ruled-table-grid"));
+    let rt: Vec<_> = ruled.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(rt.len(), 1);
+    assert_eq!(rt[0].rule, engine_core::TABLE_DETECTION_V1);
+
+    // S3's four locator states, still four.
+    let tagged = extract_ok(engine_fx("tagged-structure-roles"));
+    assert_eq!(runs(&tagged).len(), 5);
+    assert!(runs(&tagged).iter().any(|r| matches!(
+        r.structural,
+        Some(engine_core::StructuralLocator::PdfArtifact(_))
+    )));
+
+    // two-columns: order unchanged, still no table.
+    let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
+    let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Right top", "Right bottom", "Left top", "Left bottom"]
+    );
+    assert_eq!(two.reading_order_rule, engine_core::READING_ORDER_RULE_V0);
+    assert!(two.pages.iter().all(|p| p.tables.is_empty()));
+}

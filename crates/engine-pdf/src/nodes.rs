@@ -147,6 +147,32 @@ pub struct PageExtract {
     /// says which of those two a reader is seeing, and `ethos.grounding.v1` draws the same
     /// distinction with an absent key versus an empty array.
     pub tables: Vec<crate::tables::DetectedTable>,
+    /// Form fields and annotations this page carries (v1-S4).
+    ///
+    /// **Empty means the walk looked and found none.** The capabilities say which of those a
+    /// reader is seeing, exactly as they do for `tables`.
+    ///
+    /// Separate from `runs` because these are not runs: their text comes from dictionaries that
+    /// no content-stream operator mentions. Merging them into the run list is the one thing this
+    /// slice exists to prevent.
+    pub objects: Vec<PageObjectRecord>,
+}
+
+/// One annotation or form field, as extraction records it (v1-S4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageObjectRecord {
+    /// Stable id, allocated like any other node's.
+    pub id: NodeId,
+    /// The object number it was read from, and the rectangle it declares.
+    pub locator: engine_core::PdfObjectLocator,
+    /// Its text: a field's value, or an annotation's `/Contents`. Empty where it carries none.
+    pub text: String,
+    /// The kind-specific facts, which also decide the node kind.
+    pub attributes: engine_core::NodeAttributes,
+    /// A role path, when the structure tree cites this object (v1-S4, decision 7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structural: Option<engine_core::StructuralLocator>,
 }
 
 #[cfg(test)]

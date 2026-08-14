@@ -69,7 +69,7 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S1** | Vector paths · ruled tables from rectangles · `TableCellPosition` / `CellSlot` · locator cross-check | **done** |
 | **S2** | Unruled tables: alignment / whitespace dual-mode | **done** |
 | **S3** | Tagged-PDF consumption; the already-captured `mcid` put to use | **done** |
-| **S4** | Forms and annotations as typed, distinguishable nodes | not started |
+| **S4** | Forms and annotations as typed, distinguishable nodes | **done** |
 | **S5** | Multi-column reading order, with a stable versioned rule | not started |
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | not started |
 | **S7** | Labelled-set harness; the > 0.489 gate; v1 declared done | not started |
@@ -131,6 +131,8 @@ limitation. v1 flips capabilities, so that rule is where its honesty lives.
 | `structural_locators` | false | **true** | S3 |
 | `multi_column_reading_order` | false | true | S5 |
 | `char_offsets` | false | true | whichever slice makes elements coarser than spans |
+| `form_fields` | — | **true** | S4 |
+| `annotations` | — | **true** | S4 |
 
 **A capability flips when the proof exists, not when the code lands.** `tables: true` means *this
 profile looked for tables*, which is why an empty array is a real answer and an absent key is a

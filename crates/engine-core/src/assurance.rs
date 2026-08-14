@@ -116,6 +116,38 @@ pub mod codes {
     /// [`Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
 
+    /// [`Capabilities::form_fields`] is false: the document's form-field tree is not read.
+    pub const FORM_FIELDS_NOT_EXTRACTED: &str = "form-fields-not-extracted";
+
+    /// [`Capabilities::annotations`] is false: page annotations are not read.
+    pub const ANNOTATIONS_NOT_EXTRACTED: &str = "annotations-not-extracted";
+
+    /// The document carries a dynamic-form packet this profile does not parse (v1-S4).
+    ///
+    /// Document-scoped and conditional. The packet is an XML form description living beside — or
+    /// instead of — the document's static field tree, and parsing it means reading a second format
+    /// inside the first (checklist L15). Static fields alongside it are still read; what this
+    /// declares is that the *dynamic* form's real content was not, so an empty or sparse field set
+    /// on such a document must not be read as "this form is blank".
+    pub const XFA_FORMS_NOT_EXTRACTED: &str = "xfa-forms-not-extracted";
+
+    /// A form control names a parent field that could not be resolved (v1-S4).
+    ///
+    /// Document-scoped and conditional. LiteParse "repairs orphaned widgets in memory" and always
+    /// flattens; this engine does neither. The control is emitted with whatever it declares itself
+    /// and the unresolved link is **declared**, because a repair nobody recorded is a document
+    /// this engine edited on the reader's behalf (checklist L12).
+    pub const FORM_FIELD_PARENT_UNRESOLVED: &str = "form-field-parent-unresolved";
+
+    /// Nodes whose kind `ethos.grounding.v1` cannot express, omitted from the projection (v1-S4).
+    ///
+    /// Document-scoped and conditional, and **distinct from
+    /// [`GEOMETRY_ABSENT_NOT_GROUNDABLE`]**: that one means "no ink box could be measured", which
+    /// is a gap in what was read. This one means the node was read perfectly well and the target
+    /// schema has nowhere to put it. Folding the two together would make one count answer two
+    /// questions.
+    pub const NON_TEXT_NODES_NOT_PROJECTED: &str = "non-text-nodes-not-projected";
+
     /// The document declares **no** tagged-structure tree, so no role path exists to report.
     ///
     /// Document-scoped and conditional. The honest answer for an untagged file, and the reason
@@ -264,6 +296,8 @@ impl Capabilities {
             measured_ink_boxes,
             multi_column_reading_order,
             structural_locators,
+            form_fields,
+            annotations,
         } = *self;
 
         let mut out = Vec::new();
@@ -334,6 +368,26 @@ impl Capabilities {
                  line of text (min_lines < 15), so a one-line edit reorders a whole page, and a \
                  cliff-shaped heuristic cannot sit under a determinism contract. Ships at v1 \
                  with a stable rule and a fixture.",
+            ));
+        }
+        if !form_fields {
+            out.push(Limitation::profile(
+                codes::FORM_FIELDS_NOT_EXTRACTED,
+                "Interactive form fields are not read. This profile does not walk the document's \
+                 form-field tree, so no field name, type or value is emitted, and the ABSENCE OF \
+                 FIELD NODES IS NOT EVIDENCE that the document carries no form. A field's value \
+                 is held as document metadata rather than drawn as page content, so it is not \
+                 recoverable from the text layer either.",
+            ));
+        }
+        if !annotations {
+            out.push(Limitation::profile(
+                codes::ANNOTATIONS_NOT_EXTRACTED,
+                "Annotations are not read. This profile does not walk each page's annotation \
+                 list, so comments, highlights, stamps and free-text callouts are absent from the \
+                 record — and their absence is not evidence the document carries none. Annotation \
+                 text is markup laid OVER a document rather than content it draws, so it is never \
+                 part of the text layer and cannot be recovered from the runs either.",
             ));
         }
         if !structural_locators {
@@ -974,6 +1028,8 @@ mod tests {
             measured_ink_boxes: false,
             multi_column_reading_order: false,
             structural_locators: false,
+            form_fields: false,
+            annotations: false,
         };
         let declared = none.declared_limitations();
         for code in [
@@ -983,6 +1039,8 @@ mod tests {
             codes::MEASURED_INK_BOXES_NOT_EMITTED,
             codes::MULTI_COLUMN_READING_ORDER,
             codes::STRUCTURAL_LOCATORS_NOT_CLAIMED,
+            codes::FORM_FIELDS_NOT_EXTRACTED,
+            codes::ANNOTATIONS_NOT_EXTRACTED,
         ] {
             assert!(
                 declared.iter().any(|l| l.code == code),
@@ -991,7 +1049,7 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            6,
+            8,
             "one limitation per false capability, plus none for the true ones"
         );
 
@@ -1007,6 +1065,8 @@ mod tests {
             measured_ink_boxes: true,
             multi_column_reading_order: true,
             structural_locators: true,
+            form_fields: true,
+            annotations: true,
         };
         let all_declared = all.declared_limitations();
         let remaining: Vec<&str> = all_declared.iter().map(|l| l.code.as_str()).collect();

@@ -357,11 +357,17 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 39] = [
+const EXPECTED_SURVIVORS: [&str; 43] = [
     "absent-font-metrics/junk-after-eof",
+    // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
+    // appended past `%%EOF` leave a readable document.
+    "annotation-contents/junk-after-eof",
     "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
+    "form-field-value/junk-after-eof",
+    "form-orphan-widget/junk-after-eof",
+    "form-xfa-stub/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/flip-tail-byte",
     "foreign/opendataloader/real/junk-after-eof",
@@ -668,11 +674,11 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        34,
+        38,
         "the manifest should declare 34 fixtures across three roots (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
-         five tagged ones: tagged-structure-roles, tagged-rolemap, tagged-table-agrees, \
-         tagged-table-disagrees and tagged-cycle)"
+         five tagged ones, and v1-S4's four form/annotation ones: form-field-value, \
+         annotation-contents, form-orphan-widget and form-xfa-stub)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

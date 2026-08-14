@@ -89,8 +89,8 @@ pub use identity::{
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, TableDetection,
-    VerifierPin, XrefRepair, CMAP_DATA_VERSION, READING_ORDER_RULE_V0, STRUCT_TREE_RULE_V1,
-    TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
+    VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, READING_ORDER_RULE_V0,
+    STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
@@ -104,8 +104,9 @@ pub use verifier::{
 };
 
 pub use representation::{
-    DocumentRepresentation, NativeLocator, Node, NodeGeometry, NodeKind, PageRecord,
-    PdfArtifactLocator, PdfLocator, PdfTaggedLocator, ProcessingRun, ProcessorIdentity,
+    AnnotationAttributes, AnnotationRect, DocumentRepresentation, FieldValue, FormFieldAttributes,
+    NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, PageRecord, PdfArtifactLocator,
+    PdfLocator, PdfObjectLocator, PdfTaggedLocator, ProcessingRun, ProcessorIdentity,
     RepresentationPayload, SourceIdentity, StructuralLocator, SynthesizedAt, TextRunAttributes,
     REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };

@@ -17,7 +17,7 @@
   "properties": {
     "identity": {
       "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0",
-      "description": "artifact_type is `ethos.engine.extract.v0`; schema_version is `0.2.0` since v1-S3, when `TextRun` gained `structural`. Both DRAFT."
+      "description": "artifact_type is `ethos.engine.extract.v0`; schema_version is `0.3.0` since v1-S4, when `PageExtract` gained `objects`. Both DRAFT."
     },
     "source": {
       "type": "object",

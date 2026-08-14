@@ -45,12 +45,13 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
 - **Start here:** [`docs/README.md`](docs/README.md)
 - **The frozen surface:** [`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)
 - **v1 is in progress**, one slice at a time
-  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S3 are done**: ruled
+  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S4 are done**: ruled
   tables from vector paths, `CellSlot` occupancy and the locator cross-check (S1); unruled tables
   inferred from text alignment under their own rule id, with every table naming the rule that
   found it (S2); and the document's own tagged-structure tree, read and bound to text by
-  `(page, mcid)`, so a node carries the role path its author gave it (S3). S4 (forms and
-  annotations) through S7 (the labelled-set gate) are not started.
+  `(page, mcid)`, so a node carries the role path its author gave it (S3); and form fields and
+  annotations as nodes of their own kind, whose text is never mixed into the page's (S4). S5
+  (multi-column reading order) through S7 (the labelled-set gate) are not started.
 
 ## Building
 

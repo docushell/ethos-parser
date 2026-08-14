@@ -428,6 +428,20 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         measured_ink_boxes: _,
         multi_column_reading_order: _,
         structural_locators: _,
+        // v1-S4. Both deliberately do nothing here, and the decision is the point.
+        //
+        // `ethos.grounding.v1` has `elements` and `spans` and nothing else, and every one of them
+        // carries a `bbox` that means **measured ink**. A form field's value and an annotation's
+        // comment are neither: their rectangles are numbers the author wrote into a dictionary
+        // saying where a widget sits, and projecting them would put declared rectangles and
+        // measured ones under one key with nothing on the wire to tell them apart.
+        //
+        // So those nodes are omitted, counted, and declared in the representation as
+        // `non-text-nodes-not-projected`. The gap is in what the target schema can express, not
+        // in what was read: the nodes are all still in the record, with their text, their object
+        // ids and their rectangles intact.
+        form_fields: _,
+        annotations: _,
     } = caps;
 
     if char_offsets {

@@ -42,7 +42,7 @@ use crate::nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, Te
 pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.engine.extract.v0";
 
 /// Shape version of the extract artifact. **DRAFT**.
-pub const EXTRACT_SCHEMA_VERSION: &str = "0.2.0";
+pub const EXTRACT_SCHEMA_VERSION: &str = "0.3.0";
 
 /// The extract artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +137,36 @@ fn bind_structure(
     }
 }
 
+/// Flip an annotation rectangle into the artifact's declared coordinate system (v1-S4).
+///
+/// The same transform a glyph origin goes through, for the same reason: geometry that lived in a
+/// different coordinate system from the text around it would be uncheckable by construction.
+/// A rectangle that will not quantize becomes `Malformed` rather than a guess — and never a
+/// page-sized box.
+fn to_top_left_rect(
+    geom: &PageGeometry,
+    rect: engine_core::AnnotationRect,
+) -> engine_core::AnnotationRect {
+    use engine_core::AnnotationRect;
+
+    let Some(r) = rect.declared() else {
+        return rect;
+    };
+    let q = f64::from(QUANTUM_PER_POINT);
+    let (ax, ay) = geom.to_top_left(r.x0() as f64 / q, r.y0() as f64 / q);
+    let (bx, by) = geom.to_top_left(r.x1() as f64 / q, r.y1() as f64 / q);
+    let to_q = |v: f64| quantize(v, QUANTUM_PER_POINT).ok();
+    match (to_q(ax), to_q(ay), to_q(bx), to_q(by)) {
+        (Some(x0), Some(y0), Some(x1), Some(y1)) => {
+            match engine_core::QRect::new(x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)) {
+                Ok(r) => AnnotationRect::Declared(r),
+                Err(_) => AnnotationRect::Malformed,
+            }
+        }
+        _ => AnnotationRect::Malformed,
+    }
+}
+
 /// Extract text runs from an already-open document.
 ///
 /// # Errors
@@ -180,6 +210,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     let mut unclaimed_tree_items: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
+    // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
+    let mut unresolved_field_parents: u32 = 0;
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -378,8 +410,67 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         }
         drop(origins);
 
+        // v1-S4. Annotations and form fields, from the page's own `/Annots`. Walked here rather
+        // than from `/AcroForm` downward because a field's node needs a page and a field
+        // dictionary does not name one — its widget does, by being on that page.
+        //
+        // **The interpreter above never saw these.** Their text comes from dictionaries; nothing
+        // in the content stream draws it, and nothing here feeds it back into `runs`.
+        let mut objects = Vec::new();
+        if profile.capabilities.form_fields || profile.capabilities.annotations {
+            let found = crate::forms::read_page_objects(doc.inner(), page_dict);
+            unresolved_field_parents =
+                unresolved_field_parents.saturating_add(found.unresolved_parents);
+
+            for object in found.objects {
+                let is_field = matches!(object.detail, crate::forms::PageObjectDetail::Field(_));
+                // A profile with one capability off still reads the other. The two are separate
+                // claims, so turning one off must not silently take the other with it.
+                if is_field && !profile.capabilities.form_fields {
+                    continue;
+                }
+                if !is_field && !profile.capabilities.annotations {
+                    continue;
+                }
+
+                objects.push(crate::nodes::PageObjectRecord {
+                    id: alloc.next(if is_field {
+                        IdKind::FormField
+                    } else {
+                        IdKind::Annotation
+                    })?,
+                    locator: engine_core::PdfObjectLocator {
+                        page: page_number,
+                        object: object.id.0,
+                        generation: u32::from(object.id.1),
+                        // The `/Rect` arrives in user space and goes through the SAME transform
+                        // and quantum as a glyph origin. A rectangle in a different coordinate
+                        // system from the text around it would be uncheckable by construction.
+                        rect: to_top_left_rect(&geom, object.rect),
+                    },
+                    text: object.text,
+                    attributes: match object.detail {
+                        crate::forms::PageObjectDetail::Field(a) => {
+                            engine_core::NodeAttributes::FormField(a)
+                        }
+                        crate::forms::PageObjectDetail::Annotation(a) => {
+                            engine_core::NodeAttributes::Annotation(a)
+                        }
+                    },
+                    // v1-S4 decision 7: the structure tree may cite a widget by object
+                    // reference. S3 walked `/OBJR` and bound nothing; this is where that
+                    // binding would land. No role is invented when the tree is silent.
+                    structural: structure
+                        .as_ref()
+                        .and_then(|t| t.locator_for_object(object.id))
+                        .map(|l| engine_core::StructuralLocator::PdfTagged(l.clone())),
+                });
+            }
+        }
+
         pages.push(PageExtract {
             tables,
+            objects,
             index: page_number,
             width: quantize(geom.display_width, QUANTUM_PER_POINT).map_err(quantize_err)?,
             height: quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?,
@@ -430,6 +521,18 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         limitations.push(lim::tagged_table_without_geometric_table(
             &tagged_without_geometric,
         ));
+    }
+
+    // v1-S4. An XFA packet is DETECTED and declared, never parsed (checklist L15). Any static
+    // AcroForm fields beside it are still read, which is why this is a limitation rather than a
+    // refusal — but a sparse field set on such a document must not read as "this form is blank".
+    if (profile.capabilities.form_fields || profile.capabilities.annotations)
+        && crate::forms::has_xfa(doc.inner())
+    {
+        limitations.push(lim::xfa_forms_not_extracted());
+    }
+    if unresolved_field_parents > 0 {
+        limitations.push(lim::form_field_parent_unresolved(unresolved_field_parents));
     }
 
     // **Encoding holes: declare, or refuse outright.**

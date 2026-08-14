@@ -19,7 +19,8 @@
     "xref_repair",
     "verifier",
     "table_detection",
-    "struct_tree_rule"
+    "struct_tree_rule",
+    "form_annotation_rule"
   ],
   "properties": {
     "parser_version": {
@@ -132,6 +133,12 @@
         }
       }
     },
+    "form_annotation_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the forms-and-annotations rule in force (v1-S4). Decides which form-field and annotation nodes exist: which flag bits are named, how a fully-qualified field name is built, and the fact that a widget's rendering is never read as page text. Named for what it does rather than the structure it reads, because engine-core carries no format concept.",
+      "examples": ["form-annotations-v1"]
+    },
     "struct_tree_rule": {
       "type": "string",
       "minLength": 1,
@@ -166,7 +173,9 @@
         "tables",
         "measured_ink_boxes",
         "multi_column_reading_order",
-        "structural_locators"
+        "structural_locators",
+        "form_fields",
+        "annotations"
       ],
       "description": "L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
       "$comment": "Two rules bind this object in both directions, and both are enforced by tests rather than by review. No `true` without a named proof test: crates/engine-pdf/tests/capabilities.rs maps each true field to a test function and fails the build when the named test does not exist. No `false` without a declared limitation: Capabilities::declared_limitations() derives one per false field, exhaustively, so a consumer never infers a gap from silence.",
@@ -190,6 +199,14 @@
         "multi_column_reading_order": {
           "type": "boolean",
           "$comment": "false in v0 \u2014 single-column only, and the limitation is declared on every artifact and pinned by the synthetic/two-columns golden"
+        },
+        "form_fields": {
+          "type": "boolean",
+          "$comment": "true since v1-S4 — proof: a_form_fields_value_is_a_node_and_never_a_text_run"
+        },
+        "annotations": {
+          "type": "boolean",
+          "$comment": "true since v1-S4 — proof: an_annotations_contents_is_a_node_and_never_a_text_run"
         },
         "structural_locators": {
           "type": "boolean",
@@ -248,6 +265,8 @@
         "multi_column_reading_order": false,
         "spans": true,
         "structural_locators": true,
+        "form_fields": true,
+        "annotations": true,
         "tables": true
       },
       "classify_sample_pages": 8,
@@ -259,7 +278,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.5.0",
+      "parser_version": "0.6.0",
       "quantum_per_point": 100,
       "reading_order_rule": "single-column-v1",
       "xref_repair": {
@@ -272,7 +291,8 @@
         "ruled": "ruled-rects-v1",
         "unruled": "unruled-align-v1"
       },
-      "struct_tree_rule": "struct-tree-v1"
+      "struct_tree_rule": "struct-tree-v1",
+      "form_annotation_rule": "form-annotations-v1"
     }
   ]
 }

@@ -27,6 +27,16 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   ruled-wins-shared-region   a painted grid whose text ALSO forms a clean alignment grid;
                              exactly one table comes out, and it is the ruled one  [v1-S2]
 
+  form-field-value           a text field whose /V is a string NO Tj on the page draws, so a
+                             reader that copied widget values into the text layer would be
+                             visibly caught                                             [v1-S4]
+  annotation-contents        a /Text annot whose /Contents must never appear as page text, plus
+                             a HIDDEN (/F bit 2) annot that must still be a node        [v1-S4]
+  form-orphan-widget         a widget naming a /Parent object the file does not contain, so the
+                             engine must declare the break rather than repair it        [v1-S4]
+  form-xfa-stub              an /AcroForm carrying /XFA, which is declared and never parsed
+                                                                                        [v1-S4]
+
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
 
@@ -66,12 +76,17 @@ def build_pdf(
     descriptor=None,
     differences=None,
     extra_objects=None,
+    catalog_extra="",
+    page_extra="",
 ) -> bytes:
     # `extra_objects` is a list of object bodies appended after the fixed five, numbered from 6.
-    # A tagged fixture writes its own /StructTreeRoot as the FIRST of them, so the catalog can
-    # name `6 0 R` without the caller having to compute an offset — object numbering here is
-    # fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font), and keeping it that way
-    # is what makes these files readable by hand.
+    # Object numbering here is fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font),
+    # and keeping it that way is what makes these files readable by hand.
+    #
+    # `catalog_extra` and `page_extra` are raw dictionary fragments spliced into the catalog and
+    # the page. A tagged fixture uses the first for /StructTreeRoot; a form fixture uses it for
+    # /AcroForm and the second for /Annots. Written by the caller rather than derived, so the
+    # reference numbers in a fixture are the ones a reviewer reads in its own definition.
     #
     # Refused together with a descriptor rather than silently renumbering: a descriptor also
     # claims object 6, and a fixture where the same number means two things is a fixture nobody
@@ -87,13 +102,17 @@ def build_pdf(
     widths = " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1))
     objects = [
         (
-            "<< /Type /Catalog /Pages 2 0 R%s >>"
-            % (" /StructTreeRoot 6 0 R" if extra_objects else "")
+            "<< /Type /Catalog /Pages 2 0 R%s%s >>"
+            % (
+                " /StructTreeRoot 6 0 R" if (extra_objects and not catalog_extra) else "",
+                catalog_extra,
+            )
         ).encode(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         (
             "<< /Type /Page /Parent 2 0 R /MediaBox [%d %d %d %d] "
-            "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>" % media
+            "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R%s >>"
+            % (media + (page_extra,))
         ).encode(),
         None,  # content stream, filled below
         (
@@ -365,6 +384,21 @@ FIXTURES = {
         "/TD <</MCID 3>> BDC 1 0 0 1 150 54 Tm (D) Tj EMC "
         "ET"
     ),
+    # v1-S4. A printed LABEL beside the field, and nothing else. The label is page text and stays
+    # a run; the field's value is in the dictionary and must never join it.
+    "form-field-value": (
+        "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Applicant name:) Tj ET"
+    ),
+    # v1-S4. Ordinary page text. Neither annotation's /Contents may appear among the runs.
+    "annotation-contents": (
+        "BT /F1 12 Tf 1 0 0 1 40 120 Tm (The figures below are provisional.) Tj ET"
+    ),
+    "form-orphan-widget": (
+        "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Line item:) Tj ET"
+    ),
+    "form-xfa-stub": (
+        "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Dynamic form.) Tj ET"
+    ),
     # v1-S3's non-terminating tree. The text is ordinary; the structure is not.
     "tagged-cycle": (
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Text under a cyclic tree) Tj ET"
@@ -448,6 +482,63 @@ STRUCTURE = {
 }
 
 
+# v1-S4. Form and annotation objects, numbered from 6 like the structure ones.
+#
+# The values here are deliberately strings NO `Tj` on the page draws. That is the whole test: if
+# this engine ever copied a widget's value or an annotation's comment into the text layer, the
+# string would turn up in a `text_run` and the assertion would catch it. A fixture whose field
+# value also appeared in its page content could not tell the two apart.
+FORM_OBJECTS = {
+    # A single text field. Its widget IS the field — one dictionary carrying both `/FT` and
+    # `/Subtype /Widget`, which is how a one-widget field is normally written — so it must produce
+    # exactly ONE node, not a field plus a clone annotation.
+    "form-field-value": [
+        "<< /Fields [7 0 R] >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (applicant_name) "
+        "/V (Wendell Ashcroft-Byrne) /Ff 2 /Rect [40 90 260 112] /P 3 0 R >>",
+    ],
+    # Two annotations that are not widgets. The second is HIDDEN (`/F 2`): it must still be a
+    # node, flagged — deleting it because the document asked a viewer not to draw it would be an
+    # edit this engine made silently (checklist O21).
+    "annotation-contents": [
+        "<< /Type /Annot /Subtype /Text /T (Reviewer) /NM (note-1) "
+        "/Contents (Check this figure against the appendix) /Rect [40 90 60 110] >>",
+        "<< /Type /Annot /Subtype /Text /F 2 "
+        "/Contents (Withheld pending legal review) /Rect [40 40 60 60] >>",
+    ],
+    # A widget naming object 9, which this file does not contain. LiteParse repairs this in
+    # memory; here the widget is emitted with what it declares about ITSELF and the broken link is
+    # declared. Note the field name is therefore incomplete — visibly so, rather than papered over.
+    "form-orphan-widget": [
+        "<< /Fields [7 0 R] >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (line_item) "
+        "/V (Orphaned value) /Parent 9 0 R /Rect [40 90 260 112] /P 3 0 R >>",
+    ],
+    # An /AcroForm carrying /XFA. The static field beside it still reads; the packet does not.
+    "form-xfa-stub": [
+        "<< /Fields [7 0 R] /XFA [(preamble) 8 0 R] >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (static_sibling) "
+        "/V (Static AcroForm value) /Rect [40 90 260 112] /P 3 0 R >>",
+        "<< /Length 9 >>\nstream\n<xdp:xdp>\nendstream",
+    ],
+}
+
+# name -> raw fragment spliced into the catalog dictionary.
+CATALOG_EXTRA = {
+    "form-field-value": " /AcroForm 6 0 R",
+    "form-orphan-widget": " /AcroForm 6 0 R",
+    "form-xfa-stub": " /AcroForm 6 0 R",
+}
+
+# name -> raw fragment spliced into the page dictionary.
+PAGE_EXTRA = {
+    "form-field-value": " /Annots [7 0 R]",
+    "annotation-contents": " /Annots [6 0 R 7 0 R]",
+    "form-orphan-widget": " /Annots [7 0 R]",
+    "form-xfa-stub": " /Annots [7 0 R]",
+}
+
+
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
@@ -482,7 +573,9 @@ def main() -> int:
             media=MEDIA.get(name, (0, 0, 300, 144)),
             descriptor=DESCRIPTORS.get(name),
             differences=DIFFERENCES.get(name),
-            extra_objects=STRUCTURE.get(name),
+            extra_objects=STRUCTURE.get(name) or FORM_OBJECTS.get(name),
+            catalog_extra=CATALOG_EXTRA.get(name, ""),
+            page_extra=PAGE_EXTRA.get(name, ""),
         )
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")

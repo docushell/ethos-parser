@@ -129,6 +129,8 @@ fn proof_table() -> Vec<Proof> {
         measured_ink_boxes,
         multi_column_reading_order,
         structural_locators,
+        form_fields,
+        annotations,
     } = c;
 
     vec![
@@ -182,6 +184,22 @@ fn proof_table() -> Vec<Proof> {
             // gives them, AND an untagged one that gains nothing. One without the other proves
             // half a capability — a reader that only found roles could be inventing them.
             proof_test: Some("the_structure_tree_supplies_role_paths_and_absence_stays_absent"),
+            why_not: None,
+        },
+        Proof {
+            field: "form_fields",
+            claimed: form_fields,
+            // v1-S4. The claim is "this profile looks", so the proof covers both halves: a
+            // document with a form yields its field, and one without yields none while the
+            // capability stays true. And the half that matters most for this slice — the value
+            // does not appear among the page's text runs.
+            proof_test: Some("a_form_fields_value_is_a_node_and_never_a_text_run"),
+            why_not: None,
+        },
+        Proof {
+            field: "annotations",
+            claimed: annotations,
+            proof_test: Some("an_annotations_contents_is_a_node_and_never_a_text_run"),
             why_not: None,
         },
     ]

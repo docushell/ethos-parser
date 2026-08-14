@@ -80,6 +80,14 @@ pub enum IdKind {
     Span,
     /// A table.
     Table,
+    /// An interactive form field (v1-S4).
+    ///
+    /// Its own kind rather than reusing `Element`: a field and a table cell are addressed by
+    /// different consumers for different reasons, and a shared prefix would make an id say less
+    /// than it could at no saving.
+    FormField,
+    /// An annotation (v1-S4).
+    Annotation,
 }
 
 impl IdKind {
@@ -90,6 +98,8 @@ impl IdKind {
             Self::Element => "e",
             Self::Span => "s",
             Self::Table => "t",
+            Self::FormField => "f",
+            Self::Annotation => "a",
         }
     }
 }
@@ -108,6 +118,8 @@ pub struct IdAllocator {
     next_element: u64,
     next_span: u64,
     next_table: u64,
+    next_form_field: u64,
+    next_annotation: u64,
 }
 
 impl IdAllocator {
@@ -119,6 +131,8 @@ impl IdAllocator {
             next_element: 1,
             next_span: 1,
             next_table: 1,
+            next_form_field: 1,
+            next_annotation: 1,
         }
     }
 
@@ -139,6 +153,8 @@ impl IdAllocator {
             IdKind::Element => &mut self.next_element,
             IdKind::Span => &mut self.next_span,
             IdKind::Table => &mut self.next_table,
+            IdKind::FormField => &mut self.next_form_field,
+            IdKind::Annotation => &mut self.next_annotation,
         };
         if *counter > crate::MAX_SAFE_INT as u64 {
             return Err(EngineError::ResourceLimit {
@@ -158,6 +174,8 @@ impl IdAllocator {
             IdKind::Element => self.next_element,
             IdKind::Span => self.next_span,
             IdKind::Table => self.next_table,
+            IdKind::FormField => self.next_form_field,
+            IdKind::Annotation => self.next_annotation,
         }) - 1
     }
 }

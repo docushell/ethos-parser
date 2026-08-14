@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 16
+    "engine_owned": 20
   },
   "fixtures": [
     {
@@ -328,6 +328,42 @@
       "sha256": "sha256:9d9c064e6e184caa67fa265f011b07f6dfc7d298accb2a2e03faf777a987a4ba",
       "owner": "engine",
       "notes": "v1-S3 FAIL-CLOSED. /K points back at an ancestor. Walking it does not terminate and stopping partway would report a structure the document does not have, so extraction refuses with a named `malformed` error and produces no artifact."
+    },
+    {
+      "id": "form-field-value",
+      "root": "engine",
+      "group": "engine",
+      "path": "form-field-value/document.pdf",
+      "sha256": "sha256:e55e5331917d64e771f361121a8bcbc2be76e82648a8a16937cc274b05a499ff",
+      "owner": "engine",
+      "notes": "v1-S4 FORM GOLDEN. One text field whose /V is a string NO Tj on the page draws \u2014 the page prints only the label beside it. Expect one form_field node carrying the value and NO text_run containing any fragment of it: a reader that copied widget values into the text layer, as LiteParse does, would be caught here (checklist L13)."
+    },
+    {
+      "id": "annotation-contents",
+      "root": "engine",
+      "group": "engine",
+      "path": "annotation-contents/document.pdf",
+      "sha256": "sha256:83f689782158d6e0dd5aad2bc7045cb632b8426f4eac35a7d43905edaa8fb069",
+      "owner": "engine",
+      "notes": "v1-S4 ANNOTATION GOLDEN. A /Text annot whose /Contents must never appear among the runs, plus a second annot with /F bit 2 (hidden). Expect two annotation nodes: the hidden one is FLAGGED and KEPT, because honouring a rendering instruction by deleting content is an undeclared edit (checklist O21)."
+    },
+    {
+      "id": "form-orphan-widget",
+      "root": "engine",
+      "group": "engine",
+      "path": "form-orphan-widget/document.pdf",
+      "sha256": "sha256:e2fb7dad45247e9dcc8f7b07ef56ed13af675e1c95ddc20f9dbc4d1182bdb83c",
+      "owner": "engine",
+      "notes": "v1-S4 NO-REPAIR. A widget naming /Parent 9 0 R, an object the file does not contain. LiteParse repairs this in memory; expect instead the widget emitted with what it declares about itself, `form-field-parent-unresolved` on the wire, and the source bytes untouched. The field name is visibly shorter than the form intends rather than papered over."
+    },
+    {
+      "id": "form-xfa-stub",
+      "root": "engine",
+      "group": "engine",
+      "path": "form-xfa-stub/document.pdf",
+      "sha256": "sha256:73d51b88f3b944cf2f6e6859198fe8b6e968a123f38656ba5263c52612815c46",
+      "owner": "engine",
+      "notes": "v1-S4 XFA. An /AcroForm carrying /XFA beside a static field. Expect `xfa-forms-not-extracted` declared, the static sibling's value still read, and no attempt to parse the XML packet (checklist L15)."
     }
   ]
 }

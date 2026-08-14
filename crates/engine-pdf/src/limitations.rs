@@ -324,6 +324,44 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
     )
 }
 
+/// The document-scoped limitation for an XFA packet this profile does not parse (v1-S4).
+///
+/// **Detected, declared, never parsed** (checklist L15). XFA is an XML form description living
+/// beside — or instead of — the static AcroForm, and reading it is a different format inside a
+/// PDF wrapper.
+pub fn xfa_forms_not_extracted() -> Limitation {
+    Limitation::document(
+        engine_core::codes::XFA_FORMS_NOT_EXTRACTED,
+        "This document's `/AcroForm` declares an `/XFA` packet: an XML form description this \
+         profile does NOT parse. Static AcroForm fields alongside it are still read and emitted, \
+         but a dynamic XFA form keeps its real field set and values in that packet — so a sparse \
+         or empty set of field nodes on this document must NOT be read as `this form is blank`. \
+         Parsing XFA is reading a second format inside a PDF wrapper, with its own escaping, its \
+         own versions and its own failure modes; doing it badly would produce field values that \
+         look exactly like ones read from the file's own dictionaries.",
+    )
+}
+
+/// The document-scoped limitation for a widget whose parent field would not resolve (v1-S4).
+///
+/// **The repair that is not performed.** LiteParse repairs orphaned widgets in memory and always
+/// flattens; this engine emits the widget with what it declares about itself and says the link was
+/// broken. A repair nobody recorded hands the reader a document other than the one they have.
+pub fn form_field_parent_unresolved(widgets: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::FORM_FIELD_PARENT_UNRESOLVED,
+        format!(
+            "{widgets} widget annotation(s) name a `/Parent` field that could not be resolved — \
+             a missing object, or a `/Parent` chain that loops. Those widgets ARE emitted, \
+             carrying whatever they declare about themselves; what is missing is the part of \
+             their fully-qualified name, type or value that only an ancestor held. NOTHING WAS \
+             REPAIRED: no parent was inferred from position, no `/Kids` array was rewritten, and \
+             the source bytes are untouched. A field name here may therefore be shorter than the \
+             form intends, or absent — and that is visible rather than papered over."
+        ),
+    )
+}
+
 /// The document-scoped limitation for a run stopped by the configured page budget.
 pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     Limitation::document(

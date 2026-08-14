@@ -1,0 +1,40 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /Annots [6 0 R 7 0 R] >>
+endobj
+4 0 obj
+<< /Length 73 >>
+stream
+BT /F1 12 Tf 1 0 0 1 40 120 Tm (The figures below are provisional.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Text /T (Reviewer) /NM (note-1) /Contents (Check this figure against the appendix) /Rect [40 90 60 110] >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Text /F 2 /Contents (Withheld pending legal review) /Rect [40 40 60 60] >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000080 00000 n 
+0000000137 00000 n 
+0000000285 00000 n 
+0000000408 00000 n 
+0000000923 00000 n 
+0000001071 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1187
+%%EOF

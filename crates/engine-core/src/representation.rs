@@ -64,7 +64,7 @@ use crate::ids::NodeId;
 pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.engine.representation.v0";
 
 /// Shape version of the representation artifact. **DRAFT**.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.3.0";
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.4.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -125,8 +125,16 @@ pub struct ProcessorIdentity {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum NativeLocator {
-    /// The PDF variant. v0 ships this and nothing else.
+    /// A glyph run's address: page, baseline origin, advance.
     Pdf(PdfLocator),
+    /// A PDF **object's** address: page, object number, and the rectangle it declares (v1-S4).
+    ///
+    /// An annotation and a form field are not glyph runs. They have no baseline, no advance, and
+    /// no character origin, so [`PdfLocator`] is the wrong shape for them — and filling it with a
+    /// plausible origin would put a coordinate on the wire that the document does not contain.
+    /// `docs/01-CONTRACT.md` §5.1 makes the locator a union precisely so a new *kind* of address
+    /// is a new variant rather than a lie in an old one.
+    PdfObject(PdfObjectLocator),
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -148,6 +156,62 @@ pub struct PdfLocator {
     /// `None` is not zero. Absent means the reader does not know, and says so.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advance: Option<i64>,
+}
+
+/// A PDF object's address: which page carries it, which object it is, and the box it declares.
+///
+/// The object number is the document's own, so a consumer can find the dictionary this node was
+/// read from without a mapping table — the same reason a text run carries its origin rather than
+/// an index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfObjectLocator {
+    /// 1-based page number, as the document numbers its own pages.
+    pub page: u32,
+    /// The object number this node was read from.
+    pub object: u32,
+    /// Its generation number. Usually 0; carried because an object id is both halves.
+    pub generation: u32,
+    /// The rectangle the object declares, or a typed reason there is none.
+    pub rect: AnnotationRect,
+}
+
+/// The `/Rect` an annotation or widget declares, or why there is none.
+///
+/// **Deliberately not [`crate::derivation::GeometryPresence`].** That type means *measured ink*,
+/// and this rectangle is nothing of the kind: it is a number the author wrote into the dictionary,
+/// saying where the annotation sits. Reporting it as `Measured` would claim a provenance it does
+/// not have, and mixing declared rectangles into the same field as measured ones — with nothing on
+/// the wire to tell them apart — is the flattening this project refuses everywhere else.
+///
+/// **Deliberately not `Option<QRect>`** either, for the reason `GeometryPresence` is not: `None`
+/// would collapse "the dictionary has no `/Rect`" and "it has one this profile cannot express"
+/// into one answer, and they are different facts about the document. Neither becomes a
+/// page-sized box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "value")]
+#[non_exhaustive]
+pub enum AnnotationRect {
+    /// The rectangle the document declared, quantized into the artifact's coordinate system.
+    Declared(QRect),
+    /// The dictionary carries no `/Rect`.
+    NotDeclared,
+    /// It carries one that does not describe a rectangle this profile can express.
+    ///
+    /// Non-numeric operands, the wrong arity, or coordinates outside the quantizable range. The
+    /// annotation is still emitted — refusing the node over its box would delete content because
+    /// its geometry was bad, which is the wrong trade.
+    Malformed,
+}
+
+impl AnnotationRect {
+    /// The rectangle, if one was declared.
+    pub fn declared(self) -> Option<QRect> {
+        match self {
+            Self::Declared(r) => Some(r),
+            _ => None,
+        }
+    }
 }
 
 /// A structural address, where the node kind defines one.
@@ -234,9 +298,18 @@ pub struct PdfArtifactLocator {
 
 /// What a node is.
 ///
-/// v0 emits one kind. The enum exists so that adding `Paragraph` or `TableCell` later is a new
-/// variant rather than a change of meaning for an existing one — and so a reader that meets an
-/// unknown kind fails closed instead of guessing.
+/// # Why this stayed at one variant for four slices, and grew at the fifth
+///
+/// Adding a kind is easy and usually wrong. v1-S1 refused `TableCell` because a cell's text is
+/// already a run, so a cell node would put one string in two places to drift. v1-S3 refused
+/// `Paragraph` and `Heading` because the structure tree's role path already says `P` — a kind
+/// would restate it. The standing rule that came out of both: **do not add a kind for a fact some
+/// existing node already carries.**
+///
+/// v1-S4 is the case that rule was waiting for. A form field's value and an annotation's comment
+/// are **not** in any content stream: nothing draws them, no run holds them, and without a node
+/// of their own they are simply absent from the record. They are a different fact, so they get
+/// different kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -247,6 +320,21 @@ pub enum NodeKind {
     /// content stream drew in one operation. Calling it a block would be a claim about layout
     /// that no code here makes.
     TextRun,
+    /// An interactive form field's value, read from its dictionary (v1-S4).
+    ///
+    /// **Never a text run.** A field's `/V` lives in the AcroForm tree, not in the page's content
+    /// stream, and copying it into a run would put text on the page that the page does not draw.
+    /// The reverse is also true and matters: when a form has been *flattened* at save time, its
+    /// values really were painted onto the page, and those glyphs are runs — this kind is about
+    /// where this engine reads a value from, not about denying that flattened ink is ink.
+    FormField,
+    /// An annotation's own text, read from its dictionary (v1-S4).
+    ///
+    /// A comment, a sticky note, a free-text callout. Markup a reader added *over* the document
+    /// rather than content the document draws, which is exactly why it is distinguishable: a
+    /// consumer that cannot tell a reviewer's note from the page's own words cannot cite either
+    /// one safely.
+    Annotation,
 }
 
 impl NodeKind {
@@ -257,8 +345,158 @@ impl NodeKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TextRun => "text_run",
+            Self::FormField => "form_field",
+            Self::Annotation => "annotation",
         }
     }
+}
+
+/// Facts about a node that only its kind has.
+///
+/// # Why a union rather than one struct with optional fields
+///
+/// A text run has character codes and a font size; a form field has a field type and a value; an
+/// annotation has a subtype and flags. Putting all of them on one struct would mean every node
+/// carrying mostly-null fields, and `deny_unknown_fields` would police the shape while saying
+/// nothing about which fields are *meaningful* for a given kind.
+///
+/// Externally tagged, matching [`NativeLocator`] and [`StructuralLocator`], so a new kind is
+/// additive on the wire and an unrecognised one fails closed.
+///
+/// The tag duplicates [`Node::kind`], which is a drift risk — so it is a **checked** one:
+/// [`Self::kind`] returns the kind these attributes belong to, and a contract test asserts every
+/// node agrees with its own attributes. Redundancy that is tested is a cross-check; redundancy
+/// that is not is two places for the truth to live.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[non_exhaustive]
+pub enum NodeAttributes {
+    /// A glyph run's facts.
+    TextRun(TextRunAttributes),
+    /// A form field's facts (v1-S4).
+    FormField(FormFieldAttributes),
+    /// An annotation's facts (v1-S4).
+    Annotation(AnnotationAttributes),
+}
+
+impl NodeAttributes {
+    /// The node kind these attributes describe.
+    pub fn kind(&self) -> NodeKind {
+        match self {
+            Self::TextRun(_) => NodeKind::TextRun,
+            Self::FormField(_) => NodeKind::FormField,
+            Self::Annotation(_) => NodeKind::Annotation,
+        }
+    }
+}
+
+/// What an interactive form field declares about itself (v1-S4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormFieldAttributes {
+    /// The **fully-qualified** field name: the `/T` of every ancestor, root first, joined by `.`.
+    ///
+    /// PDF's own convention (32000-1 §12.7.3.2), and the name a form's data is keyed by. Absent
+    /// when no `/T` appears anywhere up the chain — some widgets genuinely have no name, and
+    /// minting one would produce a key that addresses nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_name: Option<String>,
+    /// `/FT` as the document spells it — `Tx`, `Btn`, `Ch`, `Sig` — inherited from the nearest
+    /// ancestor that declares one.
+    ///
+    /// Absent when no ancestor declares it. Not guessed from the value's shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_type: Option<String>,
+    /// The field's value, `/V`, in the shape the document wrote it.
+    pub value: FieldValue,
+    /// `/Ff` bits this profile recognises, named, in ascending bit order.
+    ///
+    /// The flags a consumer needs to read a value correctly: whether it is a password, a
+    /// multi-select, a radio group. Unrecognised bits are **not** dropped — see
+    /// [`Self::unrecognized_flag_bits`].
+    pub flags: Vec<String>,
+    /// The raw `/Ff` bits this profile has no name for.
+    ///
+    /// Kept rather than discarded: a flag nobody named is still something the document said, and
+    /// silently dropping it would make an unread field indistinguishable from an unset one.
+    ///
+    /// `default` is load-bearing beside `skip_serializing_if`, not tidiness: without it the
+    /// artifact serializes with the key omitted and then **fails to deserialize its own output**.
+    /// A `Vec` is not an `Option`, which serde treats as optional on its own — the oracle caught
+    /// this on the first real form it ran.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unrecognized_flag_bits: Vec<u32>,
+}
+
+/// A form field's `/V`, in the shape the document wrote it.
+///
+/// **Not normalised into a string.** A checkbox's `/Off` and a text field's `"Off"` are different
+/// things, and a consumer that has to guess which one it is holding has been handed a worse
+/// answer than the file contains.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+#[non_exhaustive]
+pub enum FieldValue {
+    /// A text string, decoded the same way page text is.
+    Text(String),
+    /// A name object — a checkbox or radio state such as `Yes` or `Off`.
+    ///
+    /// Carried as the token the file contains, **never converted to a boolean**: `/Off` and
+    /// `/Yes` are the common spellings but not the only legal ones, and `true`/`false` would be
+    /// this engine's reading rather than the document's text.
+    Name(String),
+    /// A choice field's selection, one entry per selected option.
+    Choice(Vec<String>),
+    /// An integer value.
+    Integer(i64),
+    /// The field declares no `/V`.
+    ///
+    /// A blank form, which is a real and common state. **Never an empty string**: "the author
+    /// left this unfilled" and "the author filled this in with nothing" are different facts.
+    Absent,
+    /// `/V` is present in a shape this profile does not express.
+    ///
+    /// Declared rather than dropped, so an unread value is distinguishable from an unset one.
+    Unsupported,
+}
+
+impl FieldValue {
+    /// The value as text, for the node's `text` field. Empty for every non-textual state.
+    pub fn as_text(&self) -> String {
+        match self {
+            Self::Text(s) | Self::Name(s) => s.clone(),
+            Self::Choice(v) => v.join("\n"),
+            Self::Integer(i) => i.to_string(),
+            Self::Absent | Self::Unsupported => String::new(),
+        }
+    }
+}
+
+/// What an annotation declares about itself (v1-S4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnnotationAttributes {
+    /// `/Subtype` as the document spells it: `Text`, `FreeText`, `Highlight`, `Link`, `Widget`, …
+    ///
+    /// Verbatim, including a subtype this profile has no special handling for. An unknown subtype
+    /// is a node with a name on it, not a node that vanished.
+    pub subtype: String,
+    /// `/NM`, the annotation's own name, when it declares one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// `/T`, conventionally the author of a markup annotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// `/F` bits this profile recognises, named, in ascending bit order.
+    ///
+    /// **Data, not a filter.** `hidden` and `no_view` are reported and the node stays — deleting
+    /// content because the document asked a viewer not to show it is an undeclared edit, and the
+    /// parity checklist's O21 is exactly that: report, do not drop.
+    pub flags: Vec<String>,
+    /// The raw `/F` bits this profile has no name for. Kept for the same reason as `/Ff`'s, and
+    /// `default` for the same reason: an omitted key must still deserialize.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unrecognized_flag_bits: Vec<u32>,
 }
 
 /// Format-specific facts about a node that do not fit the common fields.
@@ -341,8 +579,8 @@ pub struct Node {
     pub structural_locator: Option<StructuralLocator>,
     /// How this node came to exist. `Extracted` for text read from the content stream.
     pub derivation: DerivationClass,
-    /// Format-specific facts.
-    pub attributes: TextRunAttributes,
+    /// Facts only this node's kind has. Its tag must agree with [`Self::kind`].
+    pub attributes: NodeAttributes,
 }
 
 /// Geometry for one node, carried **outside** the fingerprinted payload.
@@ -846,13 +1084,13 @@ mod tests {
             }),
             structural_locator: None,
             derivation: DerivationClass::Extracted,
-            attributes: TextRunAttributes {
+            attributes: NodeAttributes::TextRun(TextRunAttributes {
                 char_codes: vec![0x68, 0x65, 0x6c, 0x6c, 0x6f],
                 scalar_code_mismatch: false,
                 synthesized: Vec::new(),
                 font_id: "F1".into(),
                 font_size: 2400,
-            },
+            }),
         }
     }
 
@@ -1119,6 +1357,7 @@ mod tests {
         assert_eq!(d.payload().pages[0].index, 7);
         match &d.payload().nodes[0].native_locator {
             NativeLocator::Pdf(l) => assert_eq!(l.page, 7),
+            other => panic!("a text run's address is a glyph locator, not {other:?}"),
         }
     }
 

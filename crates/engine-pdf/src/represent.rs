@@ -129,7 +129,7 @@ pub fn to_representation(
                 // absent where the page marked nothing. Never invented at any of the four.
                 structural_locator: run.structural.clone(),
                 derivation: run.derivation,
-                attributes: TextRunAttributes {
+                attributes: engine_core::NodeAttributes::TextRun(TextRunAttributes {
                     char_codes: run.char_codes.clone(),
                     scalar_code_mismatch: run.scalar_code_mismatch,
                     synthesized: run
@@ -148,29 +148,68 @@ pub fn to_representation(
                         .collect(),
                     font_id: run.font_id.clone(),
                     font_size: run.font_size,
-                },
+                }),
             });
             geometry.push(NodeGeometry {
                 node: run.id.clone(),
                 presence: run.geometry,
             });
         }
+
+        // v1-S4. Form fields and annotations, **after** this page's runs so no run's ordinal
+        // moves. Their text was never in a content stream, so nothing here reorders text — the
+        // node list still reads in the order the page drew it, and these follow.
+        for (i, object) in page.objects.iter().enumerate() {
+            nodes.push(Node {
+                id: object.id.clone(),
+                kind: object.attributes.kind(),
+                parent: page_id.clone(),
+                ordinal: (page.runs.len() + i + 1) as u32,
+                text: object.text.clone(),
+                // Not a `PdfLocator`. These have no baseline, no advance and no character
+                // origin, and filling those in with plausible numbers would put coordinates on
+                // the wire that the document does not contain.
+                native_locator: NativeLocator::PdfObject(object.locator.clone()),
+                structural_locator: object.structural.clone(),
+                // The dictionary said this. The engine did not compute it.
+                derivation: engine_core::DerivationClass::Extracted,
+                attributes: object.attributes.clone(),
+            });
+            geometry.push(NodeGeometry {
+                node: object.id.clone(),
+                // **`NotApplicableToKind`, not `NotReportedByReader`.** An annotation has no ink
+                // box because it is not glyphs, which is not a gap in what this reader could
+                // measure — counting it as one would inflate the ink-measurement limitation with
+                // nodes that were never going to have ink. Its rectangle is on the locator,
+                // where it can say it is *declared* rather than measured.
+                presence: engine_core::GeometryPresence::Absent(
+                    engine_core::GeometryAbsence::NotApplicableToKind,
+                ),
+            });
+        }
     }
 
-    let not_groundable = geometry
+    // **Two counts, because they answer two questions** (v1-S4). A text run with no measurable
+    // ink box is a gap in what this reader could measure; a form field is a node the target
+    // schema has nowhere to put. Both are omitted from a grounding projection, and folding them
+    // into one number would make it impossible to tell a document whose fonts carry no metrics
+    // from one that simply has a form on it.
+    let ink_absent = geometry
         .iter()
-        .filter(|g| !g.presence.is_groundable())
+        .zip(&nodes)
+        .filter(|(g, n)| !g.presence.is_groundable() && n.kind == NodeKind::TextRun)
         .count() as u32;
+    let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
 
     // Rebuild the assurance so the geometry declaration travels with everything else M4
     // established. `Assurance::new` re-derives the capability-limited entries and normalizes,
     // so passing the extract's own list back in deduplicates rather than doubling.
     let mut limitations = extract.assurance.limitations.clone();
-    if not_groundable > 0 {
-        limitations.push(geometry_absent_limitation(
-            not_groundable,
-            nodes.len() as u32,
-        ));
+    if ink_absent > 0 {
+        limitations.push(geometry_absent_limitation(ink_absent, nodes.len() as u32));
+    }
+    if non_text > 0 {
+        limitations.push(non_text_nodes_limitation(non_text, nodes.len() as u32));
     }
     let assurance = Assurance::new(
         extract.assurance.capabilities,
@@ -218,6 +257,30 @@ pub fn to_representation(
 /// holding only the grounding artifact must be able to come back to the representation and find
 /// out what is missing from it. Putting the count in the record rather than in a log is what
 /// makes that possible after the fact.
+/// The declaration that some nodes are the wrong **kind** for a grounding artifact (v1-S4).
+///
+/// Deliberately separate from [`geometry_absent_limitation`], which means "no ink box could be
+/// measured". These nodes were read perfectly well; `ethos.grounding.v1` offers `elements` and
+/// `spans` and nothing else, and every `bbox` in it means measured ink. A form field's rectangle
+/// is a number the author wrote saying where a widget sits — projecting it would put declared
+/// rectangles beside measured ones with nothing on the wire to tell them apart.
+fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
+    Limitation::document(
+        codes::NON_TEXT_NODES_NOT_PROJECTED,
+        format!(
+            "{non_text} of {total} node(s) in this representation are form fields or annotations \
+             rather than text runs, so they are OMITTED from any `ethos.grounding.v1` projection \
+             of it. That schema carries `elements` and `spans`, each requiring a bbox that means \
+             MEASURED INK; an annotation's `/Rect` is a rectangle the author declared, and \
+             emitting the two under one key with nothing to distinguish them would flatten the \
+             difference. The nodes are all still here, with their text, their object ids and \
+             their declared rectangles — the gap is in what the target schema can express, not in \
+             what was read. This is a DIFFERENT count from `geometry-absent-not-groundable`, \
+             which means the ink box could not be measured."
+        ),
+    )
+}
+
 fn geometry_absent_limitation(not_groundable: u32, total: u32) -> Limitation {
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,

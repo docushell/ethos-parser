@@ -12,7 +12,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S1** | Vector paths · ruled tables · `CellSlot` · locator cross-check | S0 | **done** |
 | **S2** | Unruled tables: alignment / whitespace dual-mode | S1 | **done** |
 | **S3** | Tagged-PDF consumption; `mcid` put to use | S1 | **done** |
-| **S4** | Forms and annotations as typed nodes | S1 | not started |
+| **S4** | Forms and annotations as typed nodes | S1 | **done** |
 | **S5** | Multi-column reading order, versioned rule | S2 | not started |
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | not started |
 | **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
@@ -272,8 +272,57 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
   doing that.
 
 - **Acceptance tests:**
-  - [ ] A form fixture's field values are nodes of their own kind, absent from page text
-  - [ ] A test asserts no annotation string appears in any text run
+  - [x] A form fixture's field values are nodes of their own kind, absent from page text
+  - [x] A test asserts no annotation string appears in any text run
+
+- **Measured before writing anything.** Extraction reads `get_page_content(page)` and nothing
+  else, so annotation and widget strings were **never** reaching `TextRun` — the LiteParse defect
+  did not exist here and this slice is purely additive. Worth recording because the opposite
+  finding would have made S4 a repair rather than a feature.
+
+- **The rule, as shipped** (`form-annotations-v1`): each page's annotation list is read in the
+  order the document wrote it; a widget resolves **up** its parent chain (bounded at 16, cycles
+  declared) gathering the inheritable name, type, value and flags; everything else becomes an
+  annotation carrying its subtype, `/NM`, `/T` and flags. Flag bits this profile has no name for
+  are **kept** as raw bit positions, because a flag nobody named is still something the document
+  said.
+
+- **Walked from the page, not from the form**, and that is not a detail. A field dictionary names
+  no page; its *widget* does, by sitting in that page's annotation list. Walking from the page
+  gives every node a real parent, produces one node per widget rather than a field plus a clone,
+  and makes an orphan detectable as a field no page walk reached — three things that would
+  otherwise need separate machinery.
+
+- **Two node kinds, and the rule that permitted them.** S1 refused `TableCell` because a cell's
+  text is already a run; S3 refused `Paragraph` because the role path already says `P`. The
+  standing rule from both is *do not add a kind for a fact an existing node already carries* —
+  and a field's value and an annotation's comment are carried by nothing, because no content
+  stream draws them. Without a kind of their own they are simply absent from the record.
+
+- **A new locator variant, not a fabricated origin.** An annotation has no baseline, no advance
+  and no character origin. `NativeLocator::PdfObject` carries page, object number and the
+  declared `/Rect`; `AnnotationRect` is deliberately **not** `GeometryPresence`, because that
+  type means measured ink and a `/Rect` is a number the author wrote. A missing or unusable rect
+  is typed-absent, never a page-sized box.
+
+- **What is declared rather than repaired or dropped:** an unresolvable parent chain
+  (`form-field-parent-unresolved`, with the source bytes provably untouched); a dynamic-form
+  packet (`xfa-forms-not-extracted`, static siblings still read); and nodes the grounding schema
+  cannot express (`non-text-nodes-not-projected`, counted **separately** from
+  `geometry-absent-not-groundable` because "no ink could be measured" and "not text at all" are
+  different facts). A hidden annotation is flagged and **kept** — honouring a rendering
+  instruction by deleting content is an undeclared edit (checklist O21).
+
+- **Decision 7 shipped: `/OBJR` binds.** S3 walked object references and bound nothing because
+  no node existed to bind them to. A form field or annotation the structure tree cites now
+  carries the role path the tree gives it. No role is invented where the tree is silent, and
+  nothing is reordered.
+
+- **`irs-form-1040-2025` measured**: 199 widgets, 126 `Tx` + 73 `Btn`, **0 tables still**. The
+  widgets cannot become an alignment lattice because `unruled-align-v1` clusters *run* origins
+  and a field is not a run — structural exclusion rather than a threshold that happens to reject
+  them. Its 126 text fields report `Absent`, not `""`: a blank form is not a form filled in with
+  nothing. It also carries an XFA packet, now declared.
 
 - **Depends on:** S1.
 

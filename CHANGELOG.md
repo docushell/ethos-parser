@@ -7,6 +7,144 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S4, as 0.6.0
+
+The fourth slice of v1 (`docs/09-V1-MILESTONES.md`): a form field's value and an annotation's
+comment become **nodes of their own kind**, and neither is ever page text. **Not tagged.** v1 is
+four slices of seven — S5 through S7 are not started.
+
+### Measured before anything was written
+
+Extraction reads `get_page_content(page)` and nothing else, so annotation and widget strings were
+**never** reaching `TextRun`. The LiteParse defect this slice guards against (checklist L13) did
+not exist here, which makes S4 purely additive rather than a repair. Recorded because the opposite
+finding would have changed what the slice was.
+
+### Added — `form-annotations-v1`
+
+Each page's annotation list, read in the order the document wrote it. A widget resolves **up** its
+parent chain — bounded at 16, cycles declared — gathering the inheritable name, type, value and
+flags; everything else becomes an annotation carrying its subtype, `/NM`, `/T` and flags.
+
+**Walked from the page, not from the form**, and that is not an implementation detail. A field
+dictionary names no page; its widget does, by sitting in that page's annotation list. Walking that
+way gives every node a real page parent, produces one node per widget rather than a field plus a
+clone, and makes an orphan detectable as a field no page walk reached — three properties that
+would otherwise each need their own machinery.
+
+Flag bits this profile has no name for are **kept** as raw bit positions. A flag nobody named is
+still something the document said, and dropping it would make an unread flag indistinguishable
+from an unset one.
+
+### Added — two node kinds, and the rule that permitted them
+
+v1-S1 refused `TableCell` because a cell's text is already a run. v1-S3 refused `Paragraph`
+because the role path already says `P`. The standing rule from both is *do not add a kind for a
+fact an existing node already carries* — and `FormField` and `Annotation` are exactly the case it
+was waiting for: no content stream draws them, no run holds them, and without kinds of their own
+they are simply absent from the record.
+
+`NodeAttributes` became an externally-tagged union at the same time, because a run's character
+codes and a field's value do not belong on one struct. Its tag duplicates `Node::kind`, which is a
+**checked** redundancy: `NodeAttributes::kind()` returns the kind and a test asserts every node
+agrees with its own attributes. Redundancy that is tested is a cross-check; redundancy that is not
+is two places for the truth to live.
+
+### Added — `NativeLocator::PdfObject`, because a fake origin is worse than a new variant
+
+An annotation has no baseline, no advance and no character origin. Filling `PdfLocator` with a
+plausible origin would put a coordinate on the wire that the document does not contain, so the
+union gained a variant carrying page, object number and the declared rectangle — which is what
+`docs/01-CONTRACT.md` §5.1 makes it a union for.
+
+`AnnotationRect` is deliberately **not** `GeometryPresence`: that type means *measured ink*, and a
+`/Rect` is a number the author wrote. Mixing declared rectangles into the same field as measured
+ones, with nothing on the wire to tell them apart, is the flattening this project refuses
+everywhere else. A missing or unusable rect is typed-absent — never a page-sized box.
+
+### Added — capabilities `form_fields` and `annotations`
+
+Two flags rather than one, because they are separately provable and separately absent: a document
+can carry comments and no form, or a form and no comments, and one flag would be true on the
+strength of either. Each has a proof covering **both halves** — found where they exist, absent
+where they do not, with the flag true either way.
+
+`/OBJR` now binds (decision 7). v1-S3 walked object references and bound nothing because no node
+existed to bind them to; a field or annotation the structure tree cites now carries the role path
+the tree gives it. No role is invented where the tree is silent.
+
+### Declared rather than repaired, dropped, or guessed
+
+- **`form-field-parent-unresolved`** — a widget naming a parent the file does not contain.
+  LiteParse repairs orphaned widgets in memory and always flattens; this emits the widget with
+  what it declares about *itself*, says the link was broken, and a test asserts the source bytes
+  are byte-identical afterwards. The visible consequence — a field name shorter than the form
+  intends — is the honest one.
+- **`xfa-forms-not-extracted`** — a dynamic-form packet, detected and never parsed (checklist
+  L15). Static fields beside it still read, which is why this is a limitation and not a refusal.
+- **`non-text-nodes-not-projected`** — nodes `ethos.grounding.v1` has nowhere to put, counted
+  **separately** from `geometry-absent-not-groundable`. Those two answer different questions: "no
+  ink box could be measured" is a gap in what was read, "not text at all" is a gap in what the
+  target schema can express. One number for both would make it impossible to tell a document whose
+  fonts carry no metrics from one that simply has a form on it.
+- **A hidden annotation stays a node.** `/F` bit 2 asks a viewer not to draw it; honouring that by
+  deleting content would be an undeclared edit with nothing to say it happened (checklist O21).
+- **A blank field reports `Absent`, not `""`.** "Left unfilled" and "filled in with nothing" are
+  different facts about a form.
+- **A checkbox value stays a name.** `/Off` and `/Yes` are not converted to booleans: those are
+  the common spellings, not the only legal ones, and `true`/`false` would be this engine's reading
+  rather than the document's text.
+
+### `irs-form-1040-2025`, measured
+
+199 widgets, 126 `Tx` + 73 `Btn`, **0 tables still**. Its fields cannot become an alignment
+lattice because `unruled-align-v1` clusters *run* origins and a field is not a run — structural
+exclusion rather than a threshold that happens to reject them, which is the stronger guarantee and
+is now pinned by a test. Its 126 text fields report `Absent`; its 73 buttons carry `/Off`. It also
+declares an XFA packet.
+
+### Changed — `profile_sha256` moves, and both schemas bump
+
+New profile field `form_annotation_rule`, plus the two capabilities. The default profile hash is
+now `sha256:95bd8b68e99b684e476c7d47e8dd8b00da2acdaf0f3e5d57cd631d5f46d8bd87`.
+`REPRESENTATION_SCHEMA_VERSION` 0.3.0 → 0.4.0 and `EXTRACT_SCHEMA_VERSION` 0.2.0 → 0.3.0: `Node`
+and `PageExtract` both gained fields on `deny_unknown_fields` types, so these are breaking reads.
+
+### Two defects caught by existing guards, both worth naming
+
+- **The architecture boundary test rejected `acroform` in `engine-core`.** It was right:
+  `docs/04-ARCHITECTURE.md` §1 says that crate learns no format concept. The rule id and profile
+  field are now `form-annotations-v1` / `form_annotation_rule` — named for what the rule *does*,
+  with the format-specific walk in `engine-pdf`. Same split `table_detection` already used: a
+  generic field holding `"ruled-rects-v1"`. The capability limitation prose was reworded off
+  `/AcroForm` and `/Annots` for the same reason.
+- **The oracle caught an artifact that could not read its own output.**
+  `unrecognized_flag_bits` had `skip_serializing_if` without `default`, so the key was omitted on
+  write and required on read. A `Vec` is not an `Option`, which serde treats as optional on its
+  own. Found on the first real form the oracle ran.
+
+### Fixtures
+
+Four engine-owned CC0 additions (`engine_owned` 16 → 20). Every one's value or comment is a string
+**no `Tj` on its page draws**, which is the whole test: a reader that copied dictionary text into
+the text layer would be visibly caught.
+
+`form-field-value` (a field beside a printed label), `annotation-contents` (a comment plus a
+hidden annotation), `form-orphan-widget`, `form-xfa-stub`. `make_fixtures.py` gained
+`catalog_extra` and `page_extra` so a fixture can splice its own `/AcroForm` and `/Annots`.
+
+### API
+
+`engine_core::{NodeAttributes, FormFieldAttributes, AnnotationAttributes, FieldValue,
+PdfObjectLocator, AnnotationRect, FORM_ANNOTATION_RULE_V1}` added to the frozen surface and to
+`docs/PUBLIC-API.md`. `IdKind` gained `FormField` (`f`) and `Annotation` (`a`). The walk stays
+`pub(crate)`.
+
+**554 tests pass**, up from 540. Oracle partition still 12 / 3; S1's, S2's and S3's goldens
+unchanged; `two-columns` still reads `single-column-v1` in the same order.
+
+---
+
 ## [Unreleased] — v1-S3, as 0.5.0
 
 The third slice of v1 (`docs/09-V1-MILESTONES.md`): the document's **tagged-structure tree**, read

@@ -43,10 +43,10 @@ the items re-exported at the crate root.
 | `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1`, `STRUCT_TREE_RULE_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_UNRULED_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
@@ -68,6 +68,23 @@ no geometry reaches `SlotCover`, because a check whose two halves shared an inpu
 itself. `LocatorCheck` rides on the artifact rather than in `--diagnostics`: a mismatch changes
 whether a cell is trustworthy, which is a statement the artifact makes, not an observation about
 the run.
+
+**Two node kinds arrived at v1-S4, and the rule they broke was deliberate.** v1-S1 refused
+`TableCell` because a cell's text is already a run; v1-S3 refused `Paragraph` because the role path
+already says `P`. The standing rule from both — *do not add a kind for a fact an existing node
+already carries* — is exactly why `FormField` and `Annotation` qualify: a field's `/V` and an
+annotation's `/Contents` are in **dictionaries**, drawn by nothing, and without a node of their own
+they are simply absent from the record.
+
+`NodeAttributes` became a union at the same time, because a text run's character codes and a form
+field's value do not belong on one struct. Its tag duplicates `Node::kind`, which is a *checked*
+redundancy: `NodeAttributes::kind()` returns the kind, and a contract test asserts every node
+agrees with its own attributes.
+
+`NativeLocator` gained `PdfObject`. An annotation has no baseline, no advance and no character
+origin, so `PdfLocator` is the wrong shape — and filling it with a plausible origin would put a
+coordinate on the wire the document does not contain. Its `AnnotationRect` is deliberately not
+`GeometryPresence`: that type means *measured ink*, and a `/Rect` is a number the author wrote.
 
 **The tagged-versus-geometric check is v1-S3, and it is a *second* check rather than a wider
 first one.** `LOCATOR_CHECK_V1` compares a table's own indices against its own boxes;
