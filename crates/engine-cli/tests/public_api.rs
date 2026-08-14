@@ -242,6 +242,7 @@ const CORE: &[&str] = &[
     "SynthesizedAt",
     "TABLE_DETECTION_UNRULED_V1",
     "TABLE_DETECTION_V1",
+    "TEXT_CODE_RULE_V1",
     "TableCellPosition",
     "TableCellRecord",
     "TableDetection",

@@ -153,6 +153,9 @@ def build_pdf(
     catalog_extra="",
     page_extra="",
     resources_extra="",
+    font_subtype="Type1",
+    font_extra="",
+    struct_tree=False,
 ) -> bytes:
     # `extra_objects` is a list of object bodies appended after the fixed five, numbered from 6.
     # Object numbering here is fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font),
@@ -167,9 +170,14 @@ def build_pdf(
     # to live (v1-S6). `page_extra` cannot serve: it lands after /Contents, outside the resource
     # dictionary entirely, so an image declared through it would be invisible to a `Do`.
     #
-    # It also suppresses the automatic /StructTreeRoot below. Object 6 is claimed by whichever
-    # extra a fixture has, and the tagged fixtures were the only users until v1-S6 — so without
-    # this, an image XObject would silently become the document's structure-tree root.
+    # `font_extra` splices into the font dictionary — where a /ToUnicode reference goes (v1-S6.1).
+    #
+    # `struct_tree` decides whether the catalog names object 6 as /StructTreeRoot. It is an
+    # EXPLICIT flag, and it is explicit because the heuristic it replaced ("extra_objects and no
+    # other extra") mis-fired twice: an image XObject and then a /ToUnicode CMap each silently
+    # became a document's structure-tree root, and the second one failed with `expected type
+    # Dictionary but found type Stream` rather than anything that named the real cause. Object 6
+    # belongs to whichever extra a fixture declares; only a tagged fixture says it is a tree.
     #
     # Refused together with a descriptor rather than silently renumbering: a descriptor also
     # claims object 6, and a fixture where the same number means two things is a fixture nobody
@@ -187,9 +195,7 @@ def build_pdf(
         (
             "<< /Type /Catalog /Pages 2 0 R%s%s >>"
             % (
-                " /StructTreeRoot 6 0 R"
-                if (extra_objects and not catalog_extra and not resources_extra)
-                else "",
+                " /StructTreeRoot 6 0 R" if struct_tree else "",
                 catalog_extra,
             )
         ).encode(),
@@ -201,9 +207,10 @@ def build_pdf(
         ).encode(),
         None,  # content stream, filled below
         (
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
-            "/Encoding %s /FirstChar %d /LastChar %d /Widths [%s]%s >>"
+            "<< /Type /Font /Subtype /%s /BaseFont /Helvetica "
+            "/Encoding %s /FirstChar %d /LastChar %d /Widths [%s]%s%s >>"
             % (
+                font_subtype,
                 (
                     "<< /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [%s] >>"
                     % differences
@@ -214,6 +221,7 @@ def build_pdf(
                 LAST_CHAR,
                 widths,
                 " /FontDescriptor 6 0 R" if descriptor else "",
+                font_extra,
             )
         ).encode(),
     ]
@@ -505,6 +513,12 @@ FIXTURES = {
         "3 Tr 1 0 0 1 40 70 Tm (Hidden instruction) Tj "
         "0 Tr 1 0 0 1 40 40 Tm (Visible again) Tj ET"
     ),
+    # v1-S6.1's golden, and the shape the corpus never had. A TrueType font — SIMPLE, so its codes
+    # are one byte by PDF 32000-1 9.6 — carrying a /ToUnicode whose codespace declares TWO. Split
+    # correctly this reads "Hi there"; split by the /ToUnicode codespace the codes fuse into pairs,
+    # none of them is in the map, and the run is dropped entirely while the artifact blames the
+    # document's encoding. That is what happened to 8,417 runs of cfpb-home-loan-toolkit.
+    "simple-font-two-byte-tounicode": "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Hi there) Tj ET",
     # v1-S6's TWO-FRAME golden. /CropBox [50 50 250 150] is strictly inside /MediaBox
     # [0 0 300 200], and the text sits at y=180 — inside the media box, in the margin the crop
     # box removes. The font carries real ascent/descent (see DESCRIPTORS below), so its ink box is
@@ -622,6 +636,57 @@ STRUCTURE = {
 # this engine ever copied a widget's value or an annotation's comment into the text layer, the
 # string would turn up in a `text_run` and the assertion would catch it. A fixture whose field
 # value also appeared in its page content could not tell the two apart.
+# The /ToUnicode CMap for the v1-S6.1 fixture, as object 6.
+#
+# The codespace is <0000> <FFFF> — TWO bytes — while the font is a TrueType, whose codes are ONE
+# byte by PDF 32000-1 9.6. That combination is legal, common in real documents, and present in
+# ZERO fixtures before v1-S6.1. It is what a producer writes when it emits the same CMap shape for
+# every font it embeds, and it is exactly the shape that made this reader fuse single-byte codes
+# into pairs for six slices.
+#
+# The bfchar entries map the single-byte codes for "Hi there" to themselves. A reader splitting
+# correctly finds every one of them; a reader splitting in pairs looks up 0x4869 ("Hi" fused),
+# finds nothing, and drops the whole run.
+_TOUNICODE_CMAP = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\nbegincmap\n"
+    b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+    b"8 beginbfchar\n"
+    b"<0048> <0048>\n"  # H
+    b"<0069> <0069>\n"  # i
+    b"<0020> <0020>\n"  # space
+    b"<0074> <0074>\n"  # t
+    b"<0068> <0068>\n"  # h
+    b"<0065> <0065>\n"  # e
+    b"<0072> <0072>\n"  # r
+    b"<0061> <0061>\n"  # a
+    b"endbfchar\n"
+    b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend"
+)
+
+
+def _tounicode_object() -> bytes:
+    return b"<< /Length %d >>\nstream\n%s\nendstream" % (
+        len(_TOUNICODE_CMAP),
+        _TOUNICODE_CMAP,
+    )
+
+
+# name -> the /ToUnicode object. Object 6, like every other extra.
+TOUNICODE_OBJECTS = {
+    "simple-font-two-byte-tounicode": [_tounicode_object()],
+}
+
+# name -> the font's /Subtype. Everything else is the Type1 default.
+FONT_SUBTYPE = {
+    "simple-font-two-byte-tounicode": "TrueType",
+}
+
+# name -> extra keys spliced into the font dictionary.
+FONT_EXTRA = {
+    "simple-font-two-byte-tounicode": " /ToUnicode 6 0 R",
+}
+
 # name -> extra object bodies for the image fixtures. Object 6, like every other extra.
 IMAGE_OBJECTS = {
     "image-xobject-drawn": [_image_object()],
@@ -703,6 +768,7 @@ MEDIA = {
     # by 20 points from the naive reading.
     "off-page-and-offset-box": (0, 20, 300, 220),
     "crop-box-smaller-than-media": (0, 0, 300, 200),
+    "simple-font-two-byte-tounicode": (0, 0, 300, 144),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -737,8 +803,14 @@ def main() -> int:
             descriptor=DESCRIPTORS.get(name),
             differences=DIFFERENCES.get(name),
             extra_objects=(
-                STRUCTURE.get(name) or FORM_OBJECTS.get(name) or IMAGE_OBJECTS.get(name)
+                STRUCTURE.get(name)
+                or FORM_OBJECTS.get(name)
+                or IMAGE_OBJECTS.get(name)
+                or TOUNICODE_OBJECTS.get(name)
             ),
+            font_subtype=FONT_SUBTYPE.get(name, "Type1"),
+            font_extra=FONT_EXTRA.get(name, ""),
+            struct_tree=name in STRUCTURE,
             catalog_extra=CATALOG_EXTRA.get(name, ""),
             page_extra=PAGE_EXTRA.get(name, ""),
             resources_extra=RESOURCES_EXTRA.get(name, ""),

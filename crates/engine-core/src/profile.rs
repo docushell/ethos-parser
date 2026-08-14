@@ -96,6 +96,27 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 /// claim about whether text was legible — see `codes::LOW_CONTRAST_NOT_DETECTED`.
 pub const OBSERVATION_RULE_V1: &str = "page-observations-v1";
 
+/// The rule v1-S6.1 ships for turning a string operand into character codes.
+///
+/// **The font's own `/Subtype` decides the code width, and nothing else does.** A simple font is
+/// one byte per code (PDF 32000-1 §9.6); a composite font's width belongs to the CMap its
+/// `/Encoding` names (§9.7.5).
+///
+/// It is a versioned rule and not an implementation detail because it decides **what the text
+/// says**. Through v1-S6 the width came from whichever decoder a font happened to get, so a simple
+/// font shipping a two-byte `/ToUnicode` codespace had its codes fused in pairs — 8 417 runs
+/// dropped from one corpus document, and the artifact declared that document's fonts damaged.
+/// Artifacts from either side of this id disagree about a document's text, which is precisely what
+/// a rule id exists to make legible.
+///
+/// What is part of it:
+///
+/// - which `/Subtype` values are simple — everything except `Type0`, including an absent one
+/// - that a simple font's width is one byte regardless of any CMap it carries
+/// - that a composite font's width comes, **for now**, from its `/ToUnicode` codespace, declared
+///   as `codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE` because `/Encoding` CMaps are not parsed
+pub const TEXT_CODE_RULE_V1: &str = "declared-font-codes-v1";
+
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `engine-pdf` because the profile is `engine-core`'s and a rule id is
@@ -612,6 +633,12 @@ pub struct Profile {
     pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
+    /// Version id of the character-code rule in force. New at v1-S6.1.
+    ///
+    /// See [`TEXT_CODE_RULE_V1`]. Distinct from [`CMAP_DATA_VERSION`], which names the vendored
+    /// encoding *tables*: this names how a string is divided into codes before any table is
+    /// consulted, and the two can move independently.
+    pub text_code_rule: String,
     /// Version id of the image and text-finding rule in force. New at v1-S6.
     ///
     /// See [`OBSERVATION_RULE_V1`]. On the profile because it decides which `Do` calls become
@@ -644,6 +671,7 @@ impl Default for Profile {
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
+            text_code_rule: TEXT_CODE_RULE_V1.to_string(),
             observation_rule: OBSERVATION_RULE_V1.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
@@ -740,6 +768,7 @@ mod tests {
                 },
             page_budget: _,
             reading_order_rule: _,
+            text_code_rule: _,
             observation_rule: _,
             raster_dpi: _,
             table_detection:
@@ -934,7 +963,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.8.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.8.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -987,11 +1016,18 @@ mod tests {
              which discarded the box origin; on every document in either corpus that origin is \
              (0, 0) and the repair is the identity, so no coordinate in any existing artifact \
              moves — but a document with an offset box would have been wrong before and is right \
-             now, which is a difference the hash should carry."
+             now, which is a difference the hash should carry.\n\n\
+             Moved a tenth time at v1-S6.1 (0.8.1): the version and the new `text_code_rule`. \
+             This one is the largest change to what an artifact SAYS since M1 — not a new field \
+             or a new claim, but different TEXT. A simple font's codes were being fused in pairs, \
+             so 8 417 runs were missing from one corpus document's artifact and what survived was \
+             garbled. Two artifacts either side of this hash disagree about what a document says, \
+             which is exactly the disagreement a profile hash exists to make legible rather than \
+             silent."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:3de478c92c536b7ed10999be655515ce70bf37f2b5aec5031614145ad53d5ace"
+            "sha256:50d846c99379099c40a3fee91cccdee09bc909d5e30139e82413f6e9021dc967"
         );
     }
 

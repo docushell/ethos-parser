@@ -15,6 +15,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S4** | Forms and annotations as typed nodes | S1 | **done** |
 | **S5** | Multi-column reading order, versioned rule | S2 | **done** |
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | **done** |
+| **S6.1** | Code width from the font's declared kind — a text-loss repair | S6 | **done** |
 | **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
 
 ---
@@ -523,6 +524,88 @@ scheduled; it is not part of S6 or S7.
 - **Images inside form XObjects.** Not seen, because this profile does not descend into them;
   `form-xobject-text-not-descended` covers the text half and the image half is the same gap.
 - **Structure-order reading**, still. Unchanged from v1-S5 and still not scheduled.
+
+---
+
+## S6.1 — Code width comes from the font, not from its decoder
+
+**A repair slice, numbered off S6 rather than given a number of its own**, because it fixes a
+defect S6's audit surfaced rather than adding capability. It is a slice at all — instead of a
+commit — because it changes decoded text on real documents, which moves `profile_sha256` and makes
+every artifact produced before it correctly non-comparable with one produced after.
+
+- **Goal:** A simple font's string is split into single-byte codes, always. And the artifact stops
+  attributing the reader's loss to the document.
+
+- **The defect.** `Font::split_codes` took the code width from **whichever decoder the font got**:
+
+  ```rust
+  let width = match &self.decoder {
+      Decoder::ToUnicode(t) => t.code_bytes().max(1),   // the /ToUnicode codespace
+      Decoder::Simple(_)    => 1,
+  };
+  ```
+
+  `/ToUnicode` wins whenever a document ships one, so a **simple** font declaring a `<0000><FFFF>`
+  codespace had its single-byte codes read two at a time. PDF 32000-1 §9.6 is unambiguous: a simple
+  font's codes are always one byte, and `/ToUnicode` maps codes to Unicode — it has no say in how a
+  string is split. The doc comment one line above already said *"One byte per code for simple
+  fonts"*; the code did not do it, because `/Subtype` was parsed and then never reached the
+  decision.
+
+- **What it cost, measured rather than estimated.** Font instances whose codes were split wrongly:
+
+  | Document | Simple fonts mis-split | Type0 |
+  | --- | --- | --- |
+  | `nist-sp-800-53r5` | **2 426** | 41 |
+  | `nist-sp-800-63b` | **303** | 28 |
+  | `cfpb-home-loan-toolkit` | **98** | 73 |
+  | `irs-form-1040-2025` | 0 | 0 |
+  | all 9 conformance synthetics | **0** | 0 |
+
+  On `cfpb-home-loan-toolkit`, **8 417 text runs were omitted** from the artifact. What survived was
+  visibly damaged: `"You’rtartinoooortgag"` where the page reads *"You're starting to look for a
+  mortgage"*. Runs in the document's CID fonts were perfect on the same page, which is the signature
+  — the fault tracked the font's kind, not the document.
+
+- **Why six slices passed green over it.** Every fixture in the conformance corpus is a Type1 font
+  with **no** `/ToUnicode`, so all nine take the `Decoder::Simple` path and split correctly. The
+  shape that breaks appears in zero owned fixtures and in every real document. S6.1 authors the
+  fixture that was missing.
+
+- **The dishonesty, which is the worse half.** The lost runs were declared — as
+  `broken-font-encoding`, *"A font on this document has an incomplete or damaged encoding."* That is
+  a **false statement about a conformant document**: the fonts were fine and the reader was wrong.
+  A declaration that misattributes is worse than no declaration, because a reader acts on it — and
+  this one would have sent someone to fix a document that had nothing wrong with it.
+
+- **In:** `FontKind` read from `/Subtype` and carried on `Font`; code width decided by the font's
+  declared kind; a versioned rule id on the profile; `broken-font-encoding` reworded to describe
+  what happened without asserting a cause it cannot establish; the missing fixture.
+
+- **Out:** **Type0 done properly.** Composite fonts still take their width from the `/ToUnicode`
+  codespace, because nothing here parses `/Encoding` CMaps at all. That is *correct for Identity-H*,
+  which is overwhelmingly what real documents use, and **unverified for anything else** — so it is
+  declared as `composite-font-codes-from-tounicode` rather than left to be discovered. Doing it
+  properly means parsing CMaps including mixed-width codespaces, which is a slice of its own and
+  touches 142 font instances that are not currently broken. Also out: OCR, glyph outlines, the
+  predefined CJK CMaps that are already a declared limitation.
+
+- **Acceptance tests:**
+  - [x] A simple font with a two-byte `/ToUnicode` codespace decodes its text — the fixture the
+        corpus lacks, which fails on the previous build
+  - [x] `cfpb-home-loan-toolkit` drops **zero** runs to `broken-font-encoding`
+  - [x] Every conformance golden is byte-identical apart from the profile hash: they never took the
+        broken path, so a repair that moved them would be a different bug
+  - [x] `broken-font-encoding` no longer asserts the document is damaged
+  - [x] A Type0 document declares the composite-font interim
+  - [x] Oracle still 12 / 3; `two-columns` still column-major; the 1040 still 0 tables
+
+- **Why before S7.** S7's gate is table-cell accuracy measured on real documents. Measuring it
+  against a text layer missing 8 417 runs measures the wrong thing — and it would be wrong in the
+  flattering direction, since a garbled cell fails to match rather than fabricating a match.
+
+- **Depends on:** S6.
 
 ---
 

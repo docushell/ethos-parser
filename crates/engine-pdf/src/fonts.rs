@@ -71,11 +71,48 @@ pub enum Decoder {
     Simple(SimpleEncoding),
 }
 
+/// What kind of font a resource declares itself to be (v1-S6.1).
+///
+/// **This decides how a string is split into character codes, and nothing else does.** PDF
+/// 32000-1 §9.6 gives simple fonts single-byte codes — always, unconditionally, whatever else the
+/// font ships. §9.7.5 gives a composite font's code width to the CMap named by its `/Encoding`.
+///
+/// Through v1-S6 the width came from whichever *decoder* the font happened to get, so a simple
+/// font that shipped a `/ToUnicode` with a two-byte codespace had its codes read in pairs. That
+/// destroyed text on every real document in the corpus and on none of the fixtures — see
+/// `docs/09-V1-MILESTONES.md` S6.1. The kind is read from the document's own `/Subtype`, which was
+/// already parsed and simply never reached the decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FontKind {
+    /// `Type1`, `TrueType`, `Type3`, `MMType1` — one byte per code, always.
+    Simple,
+    /// `Type0` — a composite font, whose `/Encoding` CMap decides the width.
+    Composite,
+}
+
+impl FontKind {
+    /// Classify a `/Subtype` name.
+    ///
+    /// **Anything unrecognised is [`Self::Simple`]**, including a font dictionary that declares no
+    /// `/Subtype` at all. Single-byte is the conservative reading: it is what every simple font
+    /// uses, it is what this reader did before `/ToUnicode` support existed, and treating an
+    /// unlabelled font as composite would split its codes in pairs — which is the exact failure
+    /// this type exists to end. A font that really is composite says so; §9.7.1 requires it.
+    fn from_subtype(subtype: &str) -> Self {
+        match subtype {
+            "Type0" => Self::Composite,
+            _ => Self::Simple,
+        }
+    }
+}
+
 /// One font resource, resolved.
 #[derive(Debug, Clone)]
 pub struct Font {
     /// Resource name, e.g. `F1`.
     pub id: String,
+    /// What the document declares this font to be. Decides the code width (v1-S6.1).
+    pub kind: FontKind,
     /// How to turn codes into characters.
     pub decoder: Decoder,
     /// How to turn codes into advances.
@@ -111,11 +148,27 @@ pub enum FontInk {
 impl Font {
     /// Split a string operand into character codes.
     ///
-    /// One byte per code for simple fonts; the `ToUnicode` codespace decides otherwise.
+    /// **The width comes from what the font DECLARES ITSELF TO BE, not from how it happens to be
+    /// decoded** (v1-S6.1). A simple font is one byte per code, always — `/ToUnicode` maps codes
+    /// to Unicode and has no say in how a string is divided (PDF 32000-1 §9.6).
+    ///
+    /// Through v1-S6 this read the `/ToUnicode` codespace whenever one existed, so a simple font
+    /// shipping `<0000><FFFF>` had its codes fused in pairs: 2 827 font instances across the three
+    /// real corpus documents, 8 417 runs dropped from one of them, and zero fixtures affected
+    /// because every conformance font is a Type1 with no `/ToUnicode`.
+    ///
+    /// The composite branch is a **declared interim**. Nothing here parses `/Encoding` CMaps, so a
+    /// Type0 font's width still comes from its `/ToUnicode` codespace — right for Identity-H, which
+    /// is what real documents overwhelmingly use, and unverified otherwise.
+    /// `composite-font-codes-from-tounicode` says so on any artifact where it applies, rather than
+    /// leaving it to be discovered the way this defect was.
     pub fn split_codes(&self, bytes: &[u8]) -> Vec<u32> {
-        let width = match &self.decoder {
-            Decoder::ToUnicode(t) => t.code_bytes().max(1),
-            Decoder::Simple(_) => 1,
+        let width = match self.kind {
+            FontKind::Simple => 1,
+            FontKind::Composite => match &self.decoder {
+                Decoder::ToUnicode(t) => t.code_bytes().max(1),
+                Decoder::Simple(_) => 1,
+            },
         };
         if width == 1 {
             return bytes.iter().map(|b| u32::from(*b)).collect();
@@ -294,7 +347,7 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
 
     Ok(Font {
         id: id.to_string(),
-
+        kind: FontKind::from_subtype(&subtype),
         decoder,
         widths,
         ink,
@@ -465,6 +518,7 @@ mod tests {
     fn font_with(widths: WidthSource, ink: FontInk) -> Font {
         Font {
             id: "F1".into(),
+            kind: FontKind::Simple,
             decoder: Decoder::Simple(SimpleEncoding::new(BaseEncoding::WinAnsi, BTreeMap::new())),
             widths,
             ink,
@@ -575,22 +629,70 @@ mod tests {
         assert_eq!(f.split_codes(b"Hi"), vec![0x48, 0x69]);
     }
 
-    #[test]
-    fn two_byte_codespaces_split_in_pairs() {
-        let cmap = ToUnicode::parse(
+    fn two_byte_cmap() -> ToUnicode {
+        ToUnicode::parse(
             b"1 begincodespacerange <0000> <ffff> endcodespacerange
               1 beginbfchar <0041> <0061> endbfchar",
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// **This golden reversed at v1-S6.1, and this note is the record.**
+    ///
+    /// It used to be `two_byte_codespaces_split_in_pairs`, and it asserted that a font whose
+    /// decoder is a two-byte `ToUnicode` splits its string in pairs — for *any* font, because the
+    /// width came from the decoder. That was the defect: PDF 32000-1 §9.6 gives a simple font
+    /// single-byte codes unconditionally, and `/ToUnicode` maps codes to characters without any
+    /// say in how a string is divided.
+    ///
+    /// The test was not wrong about the code; it was wrong about the rule, and it held the wrong
+    /// rule in place for six slices while 2 827 font instances across the three real corpus
+    /// documents were read two bytes at a time.
+    #[test]
+    fn a_simple_font_splits_one_byte_per_code_whatever_its_tounicode_says() {
         let mut f = font_with(
             WidthSource::Absent { reason: "x".into() },
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
-        f.decoder = Decoder::ToUnicode(cmap);
+        f.decoder = Decoder::ToUnicode(two_byte_cmap());
+        assert_eq!(f.kind, FontKind::Simple);
+        assert_eq!(
+            f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
+            vec![0x00, 0x41, 0x00, 0x42],
+            "a two-byte codespace on a SIMPLE font changes nothing about how its string is split"
+        );
+    }
+
+    /// The composite half, which is still the `ToUnicode` codespace — and declared as such.
+    ///
+    /// Not because that is right in general: §9.7.5 gives the width to the CMap named by
+    /// `/Encoding`, and nothing here parses one. It agrees with `Identity-H` and is unverified
+    /// otherwise, which is what `composite-font-codes-from-tounicode` exists to say out loud.
+    #[test]
+    fn a_composite_font_takes_its_width_from_the_cmap() {
+        let mut f = font_with(
+            WidthSource::Absent { reason: "x".into() },
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+        );
+        f.kind = FontKind::Composite;
+        f.decoder = Decoder::ToUnicode(two_byte_cmap());
         assert_eq!(
             f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
             vec![0x0041, 0x0042]
         );
+    }
+
+    /// An unlabelled font is simple, which is the conservative reading.
+    #[test]
+    fn a_font_with_no_recognised_subtype_is_simple() {
+        for subtype in ["Type1", "TrueType", "Type3", "MMType1", "Unknown", ""] {
+            assert_eq!(
+                FontKind::from_subtype(subtype),
+                FontKind::Simple,
+                "`{subtype}` must split one byte per code"
+            );
+        }
+        assert_eq!(FontKind::from_subtype("Type0"), FontKind::Composite);
     }
 
     #[test]

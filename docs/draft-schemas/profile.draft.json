@@ -22,7 +22,8 @@
     "struct_tree_rule",
     "form_annotation_rule",
     "observation_rule",
-    "raster_dpi"
+    "raster_dpi",
+    "text_code_rule"
   ],
   "properties": {
     "parser_version": {
@@ -181,6 +182,14 @@
     },
     "raster_dpi": {
       "$ref": "#/$defs/raster_dpi"
+    },
+    "text_code_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES \u2014 this names how a string is divided before any table is consulted.",
+      "examples": [
+        "declared-font-codes-v1"
+      ]
     }
   },
   "$defs": {
@@ -327,7 +336,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.8.0",
+      "parser_version": "0.8.1",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
@@ -345,7 +354,8 @@
       "observation_rule": "page-observations-v1",
       "raster_dpi": {
         "mode": "not_emitted"
-      }
+      },
+      "text_code_rule": "declared-font-codes-v1"
     }
   ]
 }

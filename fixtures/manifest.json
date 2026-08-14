@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 27
+    "engine_owned": 28
   },
   "fixtures": [
     {
@@ -343,9 +343,9 @@
       "root": "engine",
       "group": "engine",
       "path": "annotation-contents/document.pdf",
-      "sha256": "sha256:83f689782158d6e0dd5aad2bc7045cb632b8426f4eac35a7d43905edaa8fb069",
+      "sha256": "sha256:df758af33e71f8728522fceaa28048f808bdcbb04fe9f088da97e5b246508fcd",
       "owner": "engine",
-      "notes": "v1-S4 ANNOTATION GOLDEN. A /Text annot whose /Contents must never appear among the runs, plus a second annot with /F bit 2 (hidden). Expect two annotation nodes: the hidden one is FLAGGED and KEPT, because honouring a rendering instruction by deleting content is an undeclared edit (checklist O21)."
+      "notes": "v1-S4 ANNOTATION GOLDEN. A /Text annot whose /Contents must never appear among the runs, plus a second annot with /F bit 2 (hidden). Expect two annotation nodes: the hidden one is FLAGGED and KEPT, because honouring a rendering instruction by deleting content is an undeclared edit (checklist O21). Re-pinned at v1-S6.1: its catalog carried a spurious `/StructTreeRoot 6 0 R` pointing at THIS FIXTURE'S ANNOTATION dictionary, spliced by a heuristic in the generator rather than by intent. The fixture is about annotations and declares no structure tree now, so it reports `untagged-structure-tree-absent` as it always should have."
     },
     {
       "id": "form-orphan-widget",
@@ -427,6 +427,15 @@
       "sha256": "sha256:bc1ec00a9714ee50a10f68ba06ca2f047dd75be600c5b60371c1597e3076189c",
       "owner": "engine",
       "notes": "v1-S6 two-frame golden. /CropBox [50 50 250 150] strictly inside /MediaBox [0 0 300 200], a font with REAL ink metrics, and text at y=180 in the margin the crop box removes. Expect an artifact: page dimensions come from the MEDIA box, which is the frame every coordinate is expressed in. Reporting the crop box's size instead makes `seal` refuse the artifact \u2014 a measured box outside its declared page \u2014 so a cropping document stops parsing entirely. The only fixture where a MEASURED box lies outside the crop box."
+    },
+    {
+      "id": "simple-font-two-byte-tounicode",
+      "root": "engine",
+      "group": "engine",
+      "path": "simple-font-two-byte-tounicode/document.pdf",
+      "sha256": "sha256:addbedfae29cd500428182dbeeb3223188d30a31a792b1933c478fa16f735c8e",
+      "owner": "engine",
+      "notes": "v1-S6.1 golden, and the shape ZERO fixtures had before it. A TrueType font \u2014 SIMPLE, so its codes are one byte by PDF 32000-1 9.6 \u2014 carrying a /ToUnicode whose codespace declares TWO. Expect the text `Hi there` and NO font limitation. Split by the /ToUnicode codespace instead of by the font's declared kind, the codes fuse into pairs, none is in the map, and the run is dropped while the artifact blames the document's encoding \u2014 which is what happened to 8,417 runs of cfpb-home-loan-toolkit for six slices. Every conformance font is a Type1 with no /ToUnicode, so none of them could catch it."
     }
   ]
 }

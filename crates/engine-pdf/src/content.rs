@@ -914,7 +914,7 @@ mod tests {
     /// correct behaviour and the wrong thing to be testing when the subject is an operator.
     fn one_font() -> BTreeMap<String, Font> {
         use crate::encoding::{BaseEncoding, SimpleEncoding};
-        use crate::fonts::{Decoder, WidthSource};
+        use crate::fonts::{Decoder, FontKind, WidthSource};
         use engine_core::GeometryAbsence;
 
         let mut m = BTreeMap::new();
@@ -922,6 +922,7 @@ mod tests {
             "F1".to_string(),
             Font {
                 id: "F1".into(),
+                kind: FontKind::Simple,
                 decoder: Decoder::Simple(SimpleEncoding::new(
                     BaseEncoding::WinAnsi,
                     BTreeMap::new(),

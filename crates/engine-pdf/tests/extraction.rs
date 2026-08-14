@@ -2674,3 +2674,115 @@ fn a_page_that_crops_still_parses_and_keeps_one_coordinate_frame() {
     engine_pdf::to_representation(&a, &Profile::default())
         .expect("a cropping document produces a representation");
 }
+
+// -------------------------------------------------------------------------------------------
+// 16. Code width comes from the font's declared kind (v1-S6.1)
+// -------------------------------------------------------------------------------------------
+
+/// **A simple font's codes are one byte, whatever its `/ToUnicode` codespace declares.**
+///
+/// The fixture is a TrueType — simple, so PDF 32000-1 §9.6 gives it single-byte codes — carrying a
+/// `/ToUnicode` whose codespace says two. Real producers emit that combination constantly; **zero
+/// fixtures had it before v1-S6.1**, which is why the defect survived six slices.
+///
+/// Split by the `/ToUnicode` codespace instead of by the font's declared kind, `"Hi there"` fuses
+/// into `0x4869`, `0x2074`, … , none of which is in the map, and the entire run is dropped while
+/// the artifact declares the *document's* encoding damaged.
+#[test]
+fn a_simple_fonts_codes_are_one_byte_whatever_its_tounicode_declares() {
+    let a = extract_ok(engine_fx("simple-font-two-byte-tounicode"));
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Hi there"],
+        "the run decodes; splitting by the CMap's codespace would drop it entirely"
+    );
+
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    assert!(
+        !codes.contains(&engine_pdf::limitations::BROKEN_FONT_ENCODING),
+        "nothing about this font is broken, and the artifact must not say otherwise: {codes:?}"
+    );
+    assert!(
+        !codes.contains(&engine_core::codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE),
+        "a TrueType is not a composite font"
+    );
+}
+
+/// **The repair, measured on the document that showed it.**
+///
+/// `cfpb-home-loan-toolkit` lost 8 417 runs to `broken-font-encoding` under a declaration that
+/// blamed its fonts. Its fonts were conformant. This asserts the loss is gone and, more
+/// importantly, that the false declaration is gone with it — a misattributing declaration is worse
+/// than none, because a reader acts on it.
+#[test]
+fn a_real_document_stops_losing_text_and_stops_being_blamed_for_it() {
+    let a = extract_ok(path_in("benchmark", "cfpb-home-loan-toolkit.pdf"));
+
+    let codes: Vec<&str> = a
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    assert!(
+        !codes.contains(&engine_pdf::limitations::BROKEN_FONT_ENCODING),
+        "zero runs are dropped now; 8417 were, under a false statement about this document"
+    );
+
+    // The composite half is still an interim, and says so on this document rather than being
+    // discovered the way the simple half was.
+    assert!(
+        codes.contains(&engine_core::codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE),
+        "this document has Type0 fonts, whose width still comes from the wrong authority: {codes:?}"
+    );
+
+    // Prose, not fragments. Before the repair this page read
+    // "Choosing the best mortgage for youTTY You’rtartinoooortgagwant to confirm…".
+    let page5: String = runs(&a)
+        .iter()
+        .filter(|r| r.locator.page == 5)
+        .map(|r| r.text.as_str())
+        .collect();
+    assert!(
+        page5.contains("You’re starting to look for a mortgage"),
+        "the page must read as English: {}",
+        &page5[..page5.len().min(200)]
+    );
+}
+
+/// **The conformance corpus is untouched by the repair**, and that is the proof it was targeted.
+///
+/// Every fixture there is a Type1 with no `/ToUnicode`, so all nine took the correct path already.
+/// A repair that moved their text would be fixing something else — or breaking it.
+#[test]
+fn the_conformance_corpus_decodes_exactly_as_it_did_before_the_repair() {
+    for (name, expected) in [
+        ("synthetic/simple-text/document.pdf", vec!["Hello Ethos"]),
+        (
+            "synthetic/two-lines/document.pdf",
+            vec!["First line", "Second line"],
+        ),
+        (
+            "synthetic/two-columns/document.pdf",
+            vec!["Left top", "Left bottom", "Right top", "Right bottom"],
+        ),
+        (
+            "synthetic/hyphenated-line-break/document.pdf",
+            vec!["hyphen-", "ated"],
+        ),
+        (
+            "synthetic/ligature-fi-embedded-font/document.pdf",
+            vec!["office file"],
+        ),
+    ] {
+        let a = extract_ok(conformance(name));
+        let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, expected, "{name} decodes as it always has");
+    }
+}

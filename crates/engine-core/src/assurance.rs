@@ -145,6 +145,12 @@ pub mod codes {
     pub const INLINE_IMAGES_NOT_EMITTED: &str = "inline-images-not-emitted";
     /// [`Capabilities::images`] is true: what an image node does and does not say.
     pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
+    /// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).
+    ///
+    /// The declared interim: `/Encoding` CMaps are not parsed, so a Type0 font's width comes from
+    /// the wrong authority. Right for `Identity-H`, unverified otherwise, and said out loud
+    /// because the simple-font half of the same decision was wrong for six slices in silence.
+    pub const COMPOSITE_FONT_CODES_FROM_TOUNICODE: &str = "composite-font-codes-from-tounicode";
     /// A `Do` named an XObject this profile could not resolve (v1-S6).
     pub const XOBJECT_NAME_UNRESOLVED: &str = "xobject-name-unresolved";
     /// [`Capabilities::images`] is false: no image is located or fingerprinted.

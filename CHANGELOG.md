@@ -7,6 +7,109 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S6.1, as 0.8.1
+
+**A repair.** A simple font's character codes were being read two bytes at a time, so text was lost
+on every real document in the corpus — and the artifact blamed the document for it. **Not tagged.**
+
+### What was wrong
+
+`Font::split_codes` took the code width from **whichever decoder the font got**:
+
+```rust
+let width = match &self.decoder {
+    Decoder::ToUnicode(t) => t.code_bytes().max(1),   // the /ToUnicode codespace
+    Decoder::Simple(_)    => 1,
+};
+```
+
+`/ToUnicode` wins whenever a document ships one, so a **simple** font declaring a `<0000><FFFF>`
+codespace had its single-byte codes fused in pairs. PDF 32000-1 §9.6 is unambiguous: a simple
+font's codes are always one byte, and `/ToUnicode` maps codes to Unicode — it has no say in how a
+string is split. The doc comment one line above already said *"One byte per code for simple
+fonts"*. The code did not do it, because `/Subtype` was parsed and then never reached the decision.
+
+### What it cost, measured
+
+Font instances split wrongly: **2 426** in `nist-sp-800-53r5`, **303** in `nist-sp-800-63b`, **98**
+in `cfpb-home-loan-toolkit`, **0** in `irs-form-1040-2025`, and **0 across all nine conformance
+synthetics** — every one of which is a Type1 with no `/ToUnicode` and therefore took the correct
+path. That distribution is the whole story: the shape that breaks appears in no owned fixture and
+in every real document.
+
+On `cfpb-home-loan-toolkit`, **8 417 of 28 783 text runs were missing** from the artifact. What
+survived was visibly damaged — `"You’rtartinoooortgag"` where the page reads *"You're starting to
+look for a mortgage"* — while runs in the same document's CID fonts were perfect on the same page.
+The fault tracked the font's kind, not the document.
+
+### The dishonest half, which is worse
+
+Those 8 417 runs **were** declared — as `broken-font-encoding`: *"A font on this document has an
+incomplete or damaged encoding."* That was a **false statement about a conformant file**. The fonts
+were fine; the reader was fusing codes that were never in the document, and then reporting the
+document as damaged.
+
+A declaration that misattributes is worse than no declaration, because a reader acts on it — someone
+would have gone to fix a document with nothing wrong with it. The code now reports only what can be
+established: a code arrived and this profile had no character for it. Whether the cause is a damaged
+font, an encoding this profile does not vendor, or a defect in this reader is **not decided there**.
+
+### Fixed
+
+`FontKind`, read from the document's own `/Subtype` and carried on `Font`. A simple font is one byte
+per code, always. Anything unrecognised — including a font declaring no `/Subtype` — is simple,
+which is the conservative reading and what this reader did before `/ToUnicode` support existed.
+
+`declared-font-codes-v1` is on the profile, because this decides **what the text says**: two
+artifacts either side of it disagree about a document's content, which is exactly the disagreement a
+rule id exists to make legible.
+
+### Declared rather than left to be found
+
+Composite (`/Type0`) fonts still take their width from the `/ToUnicode` codespace, because nothing
+here parses `/Encoding` CMaps. That agrees with `Identity-H` — what real documents overwhelmingly
+use — and is unverified for anything else, so it is now declared as
+`composite-font-codes-from-tounicode` wherever it applies. Doing Type0 properly means parsing CMaps
+including mixed-width codespaces; that is a slice of its own, touching 142 font instances that are
+not currently broken.
+
+### The fixture the corpus never had
+
+`simple-font-two-byte-tounicode`: a TrueType carrying a `/ToUnicode` whose codespace declares two
+bytes. It reads `"Hi there"`; under the old rule the codes fuse, none is in the map, and the run is
+dropped entirely. It fails on 0.8.0 and passes here.
+
+Authoring it required an explicit `struct_tree` flag in the fixture generator, replacing a heuristic
+that spliced `/StructTreeRoot 6 0 R` into any fixture with an extra object. That heuristic had
+mis-fired **twice already** — an image XObject at v1-S6, and now a `/ToUnicode` CMap — and it turned
+out to have been mis-firing all along: **`annotation-contents` has been carrying a `/StructTreeRoot`
+pointing at its own annotation dictionary**. That fixture is re-pinned, now declares no structure
+tree, and reports `untagged-structure-tree-absent` as it always should have.
+
+### Unchanged, and tested to be
+
+Every conformance golden decodes exactly as before — `simple-text`, `two-lines`, `two-columns`,
+`hyphenated-line-break`, `ligature-fi-embedded-font` all asserted explicitly. They never took the
+broken path, so a repair that moved them would have been fixing something else.
+
+### Known, and not fixed here
+
+`nist-sp-800-53r5` and `nist-sp-800-63b` still exit 2 on `check_box_within_page` — a measured ink
+box outside its page. **Verified pre-existing**: both fail identically at 0.8.0 and at every earlier
+version. Two of the three real benchmark documents therefore produce no artifact at all, which needs
+its own slice and blocks nothing here.
+
+### Identity
+
+`profile_sha256` moves from `sha256:3de478c9…d53d5ace` to
+**`sha256:50d846c99379099c40a3fee91cccdee09bc909d5e30139e82413f6e9021dc967`** — the version and the
+new `text_code_rule`.
+
+**592 tests pass**, up from 587. Oracle partition still 12 / 3; `two-columns` still column-major;
+the 1040 still 0 tables and its widgets still never runs. 46 fixtures, up from 45.
+
+---
+
 ## [Unreleased] — v1-S6, as 0.8.0
 
 The sixth slice of v1 (`docs/09-V1-MILESTONES.md`): **the rest of v1's observational surface** —

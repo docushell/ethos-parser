@@ -190,13 +190,24 @@ pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
     Limitation::document(
         BROKEN_FONT_ENCODING,
         format!(
-            "A font on this document has an incomplete or damaged encoding: {runs_dropped} text \
-             run(s) contained codes neither its `/ToUnicode` CMap nor its simple encoding could \
-             map. Those runs are OMITTED from this artifact rather than decoded approximately — \
-             no `U+FFFD`, no best-guess glyph, no dropped-silently. Text that IS decodable on the \
-             same page is present and unaffected, with exact origins. A consumer must therefore \
-             read this document's text as incomplete, and must not infer from a run's absence \
-             that the page is blank there. Detail: {detail}"
+            "{runs_dropped} text run(s) contained character codes THIS PROFILE could not map — \
+             neither the font's `/ToUnicode` CMap nor its simple encoding produced a character for \
+             them. Those runs are OMITTED from this artifact rather than decoded approximately: no \
+             `U+FFFD`, no best-guess glyph, and nothing dropped silently. Text that IS decodable on \
+             the same page is present and unaffected, with exact origins. A consumer must read this \
+             document's text as incomplete, and must not infer from a run's absence that the page \
+             is blank there.\n\n\
+             **This does not say the document is at fault, and until v1-S6.1 it did.** The earlier \
+             wording opened `A font on this document has an incomplete or damaged encoding`, which \
+             was a false statement about conformant files: the reader was splitting simple fonts' \
+             single-byte codes into pairs, so codes that were never in the document arrived here \
+             unmappable, and 8 417 runs were dropped from one 28-page corpus document under that \
+             sentence. A declaration that misattributes is worse than none, because a reader acts \
+             on it — someone would have gone to fix a document with nothing wrong with it. What \
+             this code reports now is what can actually be established: a code arrived, and this \
+             profile had no character for it. Whether the cause is a damaged font, an encoding this \
+             profile does not vendor, or a defect in this reader is NOT decided here. Detail: \
+             {detail}"
         ),
     )
 }
@@ -438,6 +449,32 @@ pub fn xobject_name_unresolved(count: u32) -> Limitation {
              **Not a refusal**: the operator is known, the document is malformed only in this \
              bounded way, and rejecting the whole file over it would turn documents that read \
              today into failures. Not a silent skip either — that is what this count is for."
+        ),
+    )
+}
+
+/// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).
+///
+/// **The declared interim v1-S6.1 chose over silence.** PDF 32000-1 §9.7.5 gives a Type0 font's
+/// code width to the CMap named by its `/Encoding`, and nothing in this profile parses those. The
+/// width is taken from the font's `/ToUnicode` codespace instead — which agrees with `Identity-H`,
+/// what real documents overwhelmingly use, and is unverified for anything else.
+///
+/// Declared rather than left to be found, because being found is exactly what went wrong the first
+/// time: the simple-font half of this same decision was wrong for six slices and no artifact said
+/// anything about how a code width was arrived at.
+pub fn composite_font_codes_from_tounicode(fonts: u32) -> Limitation {
+    Limitation::document(
+        engine_core::codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE,
+        format!(
+            "{fonts} composite (`/Type0`) font(s) on this document had their character-code WIDTH \
+             taken from the `/ToUnicode` CMap's codespace, because this profile does not parse the \
+             `/Encoding` CMap that PDF 32000-1 §9.7.5 makes authoritative for it. For `Identity-H` \
+             — which is what real documents overwhelmingly use — the two agree, and the codes are \
+             right. For a predefined CJK CMap or a mixed-width embedded one they may not, and this \
+             profile cannot tell which case it is in. Simple fonts are unaffected: their codes are \
+             one byte by the specification and are split that way regardless of what any CMap \
+             says. Nothing here is guessed at silently — that is what this declaration is for."
         ),
     )
 }

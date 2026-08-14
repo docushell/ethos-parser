@@ -357,7 +357,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 50] = [
+const EXPECTED_SURVIVORS: [&str; 51] = [
     "absent-font-metrics/junk-after-eof",
     // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
     // appended past `%%EOF` leave a readable document.
@@ -391,6 +391,7 @@ const EXPECTED_SURVIVORS: [&str; 50] = [
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
     "show-text-quote-operators/junk-after-eof",
+    "simple-font-two-byte-tounicode/junk-after-eof",
     "synthesized-space-tj/junk-after-eof",
     "synthetic/heading-export/flip-tail-byte",
     "synthetic/heading-export/junk-after-eof",
@@ -696,13 +697,13 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        45,
-        "the manifest should declare 45 fixtures across three roots (23 at M7, plus v0.1's \
+        46,
+        "the manifest should declare 46 fixtures across three roots (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
          five tagged ones, v1-S4's four form/annotation ones — form-field-value, \
          annotation-contents, form-orphan-widget and form-xfa-stub — v1-S5's two-column pair, \
          and v1-S6's four: image-xobject-drawn, image-declared-not-drawn, \
-         invisible-render-mode, off-page-and-offset-box and crop-box-smaller-than-media)"
+         invisible-render-mode, off-page-and-offset-box crop-box-smaller-than-media, and v1-S6.1's simple-font-two-byte-tounicode)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

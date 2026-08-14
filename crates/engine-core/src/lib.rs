@@ -91,7 +91,7 @@ pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, OBSERVATION_RULE_V1,
     READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1, TABLE_DETECTION_UNRULED_V1,
-    TABLE_DETECTION_V1,
+    TABLE_DETECTION_V1, TEXT_CODE_RULE_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,

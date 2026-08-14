@@ -217,6 +217,11 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     let mut unresolved_xobjects: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
+    // v1-S6.1. Composite fonts whose code width came from `/ToUnicode` rather than from the
+    // `/Encoding` CMap this profile does not parse. Counted by resource name per page, which
+    // over-counts a font shared across pages — the declaration says "font(s) on this document",
+    // and the number is a scale, not an inventory.
+    let mut composite_fonts: u32 = 0;
 
     let budget = profile.page_budget;
     let page_count = doc.page_count();
@@ -246,6 +251,13 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         // the runs end up in. Computed once per page rather than per run.
         let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc.inner(), page_dict)?;
+
+        composite_fonts = composite_fonts.saturating_add(
+            fonts
+                .values()
+                .filter(|f| f.kind == crate::fonts::FontKind::Composite)
+                .count() as u32,
+        );
 
         for font in fonts.values() {
             if let WidthSource::Absent { reason } = &font.widths {
@@ -628,6 +640,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     }
     if unresolved_xobjects > 0 {
         limitations.push(lim::xobject_name_unresolved(unresolved_xobjects));
+    }
+    if composite_fonts > 0 {
+        limitations.push(lim::composite_font_codes_from_tounicode(composite_fonts));
     }
 
     // **Encoding holes: declare, or refuse outright.**
