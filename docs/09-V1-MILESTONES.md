@@ -1085,7 +1085,10 @@ corpus, and reports what it sees. The number it reports is bad.
   - [x] The harness is committed and reruns to the same number
   - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 64‰**, see above
   - [x] Fabrication rate **0**, measured rather than asserted
-  - [x] Cross-check diagnostics emitted across the set, with disagreement counted (0, after `ruled-rects-v2`)
+  - [x] Cross-check diagnostics emitted across the set, with disagreement counted — **0**, first
+        reached by `ruled-rects-v2` at S7b and **held through S8**, which added a third rule and
+        took emitted cells from 36 to 180. A count that stays at zero while five times the cells
+        go out is the stronger reading of it
   - [x] No bake-off table anywhere in the repository
 
 - **What is not being done to close it.** Narrowing the labelled set by dropping the documents that
