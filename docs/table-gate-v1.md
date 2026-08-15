@@ -563,6 +563,11 @@ gold row above it, so the labelled cells all sit one slot off. It is declared ra
 `stroke-ruled-tables-not-detected` — and pinned by the engine fixture `stroke-ruled-worksheet`,
 whose five baselines bound four rows for the same reason.
 
+**The decision was taken, and it is to ship the 7 × 4.** S8's terms asked for a shape match to the
+tagged 8 × 4, and that is unreachable while the standing rule against invented coordinates holds:
+the top edge is not in the file. Anyone proposing the 8 × 4 later is proposing to write a
+coordinate no operator produced, and owes their own evidence for it.
+
 ### What it still gets wrong, stated rather than tuned away
 
 **136 false-positive cell slots against 12 before**, and the great majority are three bands:
@@ -571,12 +576,12 @@ almost nothing. Those bands are **not** the over-detection the new step 5 was bu
 interior column lines really are stroked across the band, so by every reading of the ink they are
 grids the author drew. The gold does not tag them.
 
-They were left. Every discriminator that would remove them — a minimum band width, a row-height
-regularity test, a page-region test — is a threshold fitted to these four documents, which
-`docs/08-V1-SCOPE.md` §3 forbids, and the honest reading is that this is denominator inflation
-running the other way: a producer who does not tag a table is not evidence that no table is there.
-The cost is recorded here and in the precision figure (1000‰ → 928‰) rather than tuned out of the
-number.
+**They were left, and that too was a decision rather than an omission.** Every discriminator that
+would remove them — a minimum band width, a row-height regularity test, a page-region test — is a
+threshold fitted to these four documents, which `docs/08-V1-SCOPE.md` §3 forbids, and the honest
+reading is that this is denominator inflation running the other way: a producer who does not tag a
+table is not evidence that no table is there. The cost is recorded here and in the precision figure
+(1000‰ → 928‰) rather than tuned out of the number.
 
 **Two truncated cells**, also recorded: page 13's `onthly principal and interest` and
 `Total Loan Costs (ection D …)`. The producer split those strings and the leading `M` and `S` are

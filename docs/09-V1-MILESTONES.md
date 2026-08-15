@@ -1011,11 +1011,22 @@ corpus, and reports what it sees. The number it reports is bad.
   hold that position — `unruled-tables-not-detected` (S1) → `stroke-ruled-…` (S2) → this (S8) —
   each removed rather than reworded.
 
+  **This was a decision, not an oversight.** S8's own terms asked for a shape match to the tagged
+  8 × 4, and that is unreachable while the standing rule against invented coordinates holds: the
+  top edge is not in the file. The two were put side by side and **the decision was taken, and it
+  is to ship the 7 × 4 and declare the offset.** A later slice that wants the 8 × 4 is proposing to
+  write a coordinate no operator produced, and owes its own evidence for that.
+
 - **What it still gets wrong.** 136 false-positive cell slots against 12, overwhelmingly page 24's
   9 × 4 and page 25's 4 × 2 and 8 × 6. Those bands' interior column lines *are* stroked, so they
-  are grids by every reading of the ink; the structure tree simply tags nothing there. Removing
-  them needs a threshold fitted to these four documents, which §3 forbids, so the cost is reported
-  (page precision 1000‰ → 928‰) rather than tuned away. Full account in `docs/table-gate-v1.md`.
+  are grids by every reading of the ink; the structure tree simply tags nothing there.
+
+  **Also a decision, and the same shape as the one above.** Removing them needs a threshold fitted
+  to these four documents, which §3 forbids, and the honest reading is denominator inflation
+  running the other way: a producer who does not tag a table is not evidence that no table is
+  there. **The decision was taken, and it is to keep those bands and report the cost** — page
+  precision 1000‰ → 928‰, carried in the number rather than tuned out of it. Full account in
+  `docs/table-gate-v1.md`.
 
 - **In:** `crates/engine-pdf/src/stroke_ruled.rs`; `PathSegment` capture in `content.rs`;
   `forms::widget_rects`; three-way arbitration in `tables::detect` (ruled → stroke-ruled →
@@ -1030,8 +1041,8 @@ corpus, and reports what it sees. The number it reports is bad.
   - [x] `irs-form-1040-2025` yields **0** geometric tables; all four S7b canaries green
   - [x] All three gold negatives still yield 0 tables
   - [x] `fabricated_cells` **0** and cross-check disagreements **0** on the four real documents
-  - [x] Page 13 is emitted, and the reason it is a 7 × 4 rather than the tagged 8 × 4 is declared
-        and fixture-pinned
+  - [x] Page 13 is emitted. It is a 7 × 4 rather than the tagged 8 × 4, on a decision taken with
+        the reason declared (`undrawn-table-edges-not-supplied`) and fixture-pinned
   - [x] Every refusal is declared — no `#[allow(dead_code)]`, clippy green at `-D warnings`
   - [x] The default profile does not declare `stroke-ruled-tables-not-detected` while emitting
         `detection_rule: stroke-ruled-v1`
