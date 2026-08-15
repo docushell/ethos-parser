@@ -433,8 +433,14 @@ is here*), then
 | `irs-form-1040-2025` | 0 TP → 0‰ | 12 TP / 30 FP → **292‰** |
 | **MACRO** | **61‰** | **125‰** |
 
-**The lead was real.** It finds 17 CFPB cells and 12 1040 cells no rule had ever found, page 13's
-worksheet comes out at exactly 8 × 4, and NIST and all four gold negatives stay at zero.
+**The lead was real.** It finds 17 CFPB cells and 12 1040 cells no rule had ever found, hits page 7
+exactly at 7 × 2, and leaves NIST and all three gold negatives at zero.
+
+**But it refuses page 13** — the worksheet the whole lead was named for. Step 5 wants every face's
+bottom edge drawn, and one of the eight baselines rules three cells instead of four, so the band is
+declined. The nine tables it does emit are on pages 6, 7, 22, 23, 24 and 25, and the false
+positives are concentrated on the Closing Disclosure pages 22, 24 and 25 rather than on scattered
+furniture.
 
 **It is not shipped, for three reasons in this order:**
 
@@ -453,6 +459,10 @@ worksheet comes out at exactly 8 × 4, and NIST and all four gold negatives stay
 Fabrication stayed 0 and the cross-check stayed clean throughout, so this is over-detection rather
 than invention — a real distinction, and not a defence: 156 cells of real text in regions nobody
 tags as tables is the failure the gold negatives exist to catch.
+
+The rule itself is **parked, not discarded**:
+[`docs/attic/stroke-ruled-v1/`](attic/stroke-ruled-v1/) holds it as a patch that applies to this
+commit, with its measurement and its reason.
 
 **What a future attempt should know.** The band preconditions above are sound and reproduce; the
 problem is entirely in which regions become bands. Tightening that further was not attempted here

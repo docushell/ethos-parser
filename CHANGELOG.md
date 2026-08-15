@@ -259,8 +259,11 @@ shared face cap.
 | irs-form-1040-2025       | 0 TP 0‰             | 12 TP / 30 FP **292‰**  |
 | MACRO                    | **61‰**             | **125‰**                |
 
-**The lead was real**: 17 cfpb cells and 12 1040 cells no rule had ever found, page 13's worksheet
-at exactly 8 x 4, NIST and all four gold negatives at zero.
+**The lead was real**: 17 cfpb cells and 12 1040 cells no rule had ever found, NIST and all three gold negatives at zero.
+**Correction to that first claim as written:** page 13's worksheet is *refused* by the rule's own
+coherence step — one of its eight baselines rules three cells instead of four — so the table the
+slice existed to find is not among the nine it emits. The exact hit is page 7, 7 x 2. 8 x 4 was the
+shape of the INK, measured before the emission path existed.
 
 **Not shipped**, for three reasons in this order:
 
@@ -283,6 +286,10 @@ tags as tables is exactly what the gold negatives exist to catch.
 The band preconditions are sound and reproduce; the problem is entirely in which regions become
 bands, and every remaining tightening was a threshold fitted to these four documents. The lead does
 not go away: 103 cfpb cells, 65% of that document's gold, are still behind ink the engine discards.
+
+The rule is **parked, not discarded**: `docs/attic/stroke-ruled-v1/` holds it as a patch that
+applies to this commit, with its measurement, its reason, and the two questions a future attempt
+should settle before writing any code — the 1040 one, and the undrawn first row.
 **No source file moved. S8 remains unstarted.**
 
 ### The second tables on pages 8 and 13, and the lead they uncovered

@@ -180,6 +180,7 @@ Then, as needed:
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
+| [`attic/`](attic/) | Work that was **built, measured and deliberately not shipped**, as a patch that still applies | Before rebuilding something this project already tried |
 
 ---
 
@@ -222,6 +223,7 @@ Repeated from `05-MILESTONES.md`. If you remember nothing else:
 | What | Where | Status |
 | --- | --- | --- |
 | Research archive | `reference/` | Evidence, not roadmap. See [`reference/README.md`](reference/README.md) |
+| Parked work | `attic/` | Built, measured, not shipped. `stroke-ruled-v1` is there with its numbers and its reason |
 | Ethos product repo | `~/Desktop/Stuff/repo/ethos/` | **Read-only.** Contracts, fixtures, CLI oracle |
 | DocuShell repo | `~/Desktop/Stuff/repo/docushell-repo/` | **Read-only.** Workbench rules, `DocumentRepresentation v0` spec |
 | Ethos-in-DocuShell parser plan | `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` | External. Architecture depth only; superseded where it conflicts with memo §16–§18 |

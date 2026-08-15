@@ -897,8 +897,10 @@ corpus, and reports what it sees. The number it reports is bad.
   | 1040 | 0 TP → 0‰ | 12 TP / 30 FP → **292‰** |
   | **MACRO** | **61‰** | **125‰** |
 
-  Real capability — 17 cfpb and 12 1040 cells nothing had found, page 13 at exactly 8 × 4, NIST and
-  every gold negative at zero. Not shipped because it **regresses cfpb** (156 of its false
+  Real capability — 17 cfpb and 12 1040 cells nothing had found, an exact 7 × 2 hit on page 7, NIST
+  and every gold negative at zero. **Page 13 is refused** by the rule's own coherence step (one
+  baseline rules three cells, not four), so the table the slice existed to find is not among the
+  nine it emits. Not shipped because it **regresses cfpb** (156 of its false
   positives are text in no gold cell at all), because **four 1040 canary tests fail** and the
   decision taken was to keep that document at zero tables, and because the macro gain comes
   entirely from the canary document rather than from the improvement. See `docs/table-gate-v1.md`.
