@@ -7,7 +7,137 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1-S7a, the labelled set and the harness
+## [Unreleased] — v1-S7b, the gate measured and the calibration falsified, as 0.9.0
+
+**The gate is now a cell number, and it is missed: macro cell-F1 is 43‰ against a 489‰ floor.**
+S7b set out to recalibrate the alignment rule and instead measured that the prescribed change does
+nothing. **No detector changed. No rule id moved. v1 is not done.** Not tagged.
+
+### The calibration, before and after
+
+There is no "after". The change S7b was scoped to make was tested and reverted, because the
+harness says it changes nothing:
+
+| Experiment | declared | detected | matched | recall | fabricated |
+| --- | --- | --- | --- | --- | --- |
+| HEAD (`COLUMN_GUTTER_MIN` = 1 200) | 57 | 10 | 9 | 157‰ | 0 |
+| Column floor disabled (= 151) | 57 | 10 | 9 | **157‰** | 0 |
+| Column **and** row floors disabled | 57 | 10 | 9 | **157‰** | 0 |
+
+151 centipoints is below any reachable value: `fold()` guarantees adjacent lines differ by more
+than `ALIGN_TOLERANCE` (150), so a floor of 151 disables the check outright. **Every number is
+identical.** Moving the constant would have bumped `unruled-align-v1` to `-v2` and moved
+`profile_sha256` to buy exactly no behaviour change, so the rule kept its `-v1` id — which is the
+honest label for a rule that did not change.
+
+### Why 10.6 pt looked like a cliff and was not
+
+S7a reported that on 490 of `nist-sp-800-53r5`'s 492 pages the refused gutter was 1 062 centipoints
+against a 1 200 floor, and read that as a structural gutter wrongly rejected. `gutter_fault` uses
+`.find()` — that is the **first** sub-floor gap in sorted order, not the smallest. Measured
+distribution of the **minimum** gap across the 600 refused pages:
+
+| min gap | pages |
+| --- | --- |
+| 151 cp (1.51 pt) | 542 |
+| 152–168 cp | 56 |
+| 185 cp | 1 |
+
+Every refused page has a sub-2pt adjacent-column gap, and carries 250–280 sub-floor gaps among
+200–280 column lines. No floor above 186 cp changes anything; no floor at or below 151 cp exists.
+
+### The actual defect, named and not fixed
+
+**The candidate handed to the alignment rule is the whole page.** `tables::detect` passes every
+leftover run to `unruled::detect` as one lattice, and `detect_ruled` builds one lattice from every
+rect on the page. With both gutters disabled, all 600 pages reach the face check with lattices like
+96 × 231 = 22 176 faces from 1 784 runs — refused by `MAX_FACES` and by coherence. Three
+independent preconditions all correctly say *this page is prose*. The gutter floor is not wrong; it
+is **unreachable**.
+
+### The other declared leftover, also falsified
+
+`stroke-ruled-tables-not-detected` was the suspected reason NIST's ruled tables are missed. Census
+of axis-aligned two-point stroked segments (all currently rejected; **zero diagonals** anywhere):
+
+| Document | segments | distinct | what they are |
+| --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit` | 1 380 | 1 375 | real table rulings |
+| `irs-form-1040-2025` | 521 | 520 | the form grid |
+| `nist-sp-800-63b` | 77 | **2** | 76 copies of one margin rule |
+| `nist-sp-800-53r5` | 498 | **9** | 490 copies of one margin rule |
+
+**Neither NIST document draws any table rulings at all.** Its 490 segments are one vertical sidebar
+rule at x=39.3 repeated once per page. A stroke-ruled rule would add zero tables there, and on
+`irs-form-1040-2025` it would re-open the surface that produced v1-S1's 662-cell fabrication. It
+stays a declared limitation rather than a half-enabled rule.
+
+### The gate, which is the part S7a left open
+
+S7a stored `{page, rows, columns, cells}` and could measure page agreement and nothing finer. The
+cells are now in the labelled set, with their text, and the gate is a cell score.
+
+**Cell text comes from the tree, never from the detector.** `TaggedCell` gains the `/MCID`s the
+tree cites beneath it and the page they are on; those join against runs by `(page, mcid)` — v1-S3's
+own key. No coordinate is read, so the gold stays independent of the geometry it scores. The
+labelled set grows from 57 shape records to **7 704 cells, 6 470 of which carry text**, and is
+frozen by the same re-derive-and-compare guard.
+
+```
+cell-slot accuracy (the gate metric), exact text after the whitespace rule:
+  document                           TP       FP       FN    cell-F1
+  cfpb-home-loan-toolkit.pdf         24       91      135      175‰
+  irs-form-1040-2025.pdf              0        0       40        0‰
+  nist-sp-800-63b.pdf                 0        0      568        0‰
+  nist-sp-800-53r5.pdf                0        0     6937        0‰
+  MACRO cell-F1 over the 4 documents that declare a table: 43‰
+  gate is > 489‰: MISS
+```
+
+Macro-averaged F1 over `CellSlot`s, integer per-mille, exact text after NFC + trim + whitespace
+collapse, joined by page then greedily by shape. The full method — corpus, formula, join, text
+rule, and why this number is **not** comparable to the published 0.489 — is
+`docs/table-gate-v1.md`, added in this commit alongside the first cell number.
+
+A fourth finding, about the measurement rather than the detector: several NIST tagged tables are
+**multi-page** (one is 278 rows, another 245), and a page-granular join cannot match those to a
+per-page detection even in principle. Recorded rather than fixed by dropping them — deleting the
+documents that score badly is the failure this harness exists to prevent.
+
+### Kept honest
+
+- **Fabrication is still 0** on all four documents, measured on 77 emitted cells.
+- **The gold negatives still have none.** `synthetic/two-columns`, `synthetic/simple-text` and
+  `unruled-near-miss` yield 0 geometric tables, asserted for the first time in this harness.
+  `two-columns` is the one that matters: four runs in a flawless 2 × 2 whose only distinguishing
+  evidence is that the author wrote it down the columns.
+- **`reading_order::COLUMN_GUTTER_MIN` was not touched.** It holds 1 200 for its own reasons and
+  moving it to help tables is forbidden.
+- No bake-off table. No README comparison row. The leftovers are still leftovers: page rasters,
+  low-contrast, structure-order, and stroke-ruled tables.
+
+### Identity
+
+`profile_sha256` moves from `sha256:2e07326e…089ae042` to
+**`sha256:29e4d9acc30e5843905098c70c1493d2b59b07ddbdad6216453caeb73f574ecf`** — **the version
+alone, and this time nothing else moved at all.** Not a field, not a capability, not a rule id, not
+a coordinate, not a character. Two artifacts either side of this hash say the same thing about the
+same document. The hash still moves because `parser_version` is in it.
+
+`unicode-normalization` is added as a **dev**-dependency for the metric's NFC clause;
+`cfpb-home-loan-toolkit` draws curly quotes, so NFC is load-bearing rather than decorative. The
+harness is `cfg(test)`, so nothing enters the shipped library's graph.
+
+**606 tests pass**, up from 601. Oracle still 12 / 3.
+
+### v1 status
+
+**S7b is done. S7 is not.** The gate is measured and missed at 43‰. `docs/09-V1-MILESTONES.md` S7
+stays open with the number written down, and the README claims nothing it has not measured.
+
+---
+
+## v1-S7a, the labelled set and the harness
 
 **A measuring slice. It changes no detector and improves no number.** It builds the instrument,
 points it at the corpus, and reports what it sees. What it sees is bad. **Not tagged.**

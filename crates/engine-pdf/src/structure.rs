@@ -131,6 +131,26 @@ pub struct TaggedCell {
     pub rowspan: u32,
     /// `/ColSpan`, defaulting to 1.
     pub colspan: u32,
+    /// The marked-content ids the tree binds **under this cell**, in tree order (v1-S7b).
+    ///
+    /// # Still no geometry, and that is the whole point
+    ///
+    /// These are `/MCID` integers the tree itself cites beneath this `/TD` or `/TH` — the
+    /// author's own statement of which marked content belongs to this cell. Resolving them to
+    /// text is a join against runs the page drew, on `(page, mcid)`, exactly the key v1-S3
+    /// already binds locators with. No coordinate is consulted at any step, so a cell's text
+    /// stays as independent of the geometric detector as its row and column are.
+    ///
+    /// Empty means the tree describes a cell it cites no marked content for. That is a real
+    /// answer — an empty cell, or one whose content the producer did not mark — and it is
+    /// distinct from a cell whose mcids resolve to no run.
+    pub mcids: Vec<i64>,
+    /// The page the tree names for this cell's content, when its bindings name one.
+    ///
+    /// Per cell rather than per table because a table can straddle a page break, and joining a
+    /// cell's mcid against the wrong page's marked content is how a two-page table's text gets
+    /// scrambled.
+    pub page: Option<ObjectId>,
 }
 
 impl StructureTree {
@@ -180,6 +200,7 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
         tree: &mut tree,
         on_path: BTreeSet::new(),
         tables: Vec::new(),
+        cells: Vec::new(),
     };
 
     let kids = root.get(b"K").ok();
@@ -219,6 +240,11 @@ struct Walker<'a> {
     on_path: BTreeSet<ObjectId>,
     /// Tables currently open, innermost last. A table nested in a cell is a different table.
     tables: Vec<TableCtx>,
+    /// Cells currently open, innermost last, as `(table index, cell index)` (v1-S7b).
+    ///
+    /// A stack rather than a single slot because a `/TD` may contain a nested `/Table`, and that
+    /// inner table's cells must claim their own marked content rather than the outer cell's.
+    cells: Vec<(usize, usize)>,
 }
 
 /// A `/Table` being walked.
@@ -382,8 +408,17 @@ impl Walker<'_> {
             if let Some(ctx) = self.tables.last_mut() {
                 ctx.rows_seen += 1;
             }
-        } else if standard == "TD" || standard == "TH" {
-            self.note_cell(d);
+        }
+        // Opened only when `note_cell` actually recorded one: a `/TD` outside any `/TR`, or one
+        // outside any table, records nothing, and pushing a slot for it would attach the next
+        // marked content to whatever cell happened to be last.
+        let opened_cell = if standard == "TD" || standard == "TH" {
+            self.note_cell(d)
+        } else {
+            None
+        };
+        if let Some(slot) = opened_cell {
+            self.cells.push(slot);
         }
 
         let result = (|| {
@@ -393,6 +428,9 @@ impl Walker<'_> {
             Ok(())
         })();
 
+        if opened_cell.is_some() {
+            self.cells.pop();
+        }
         if opened_table {
             if let Some(ctx) = self.tables.pop() {
                 self.finish_table(ctx.index);
@@ -407,15 +445,17 @@ impl Walker<'_> {
     /// The column is the first slot in this row that nothing already claims, so a cell spanning
     /// down from an earlier row pushes this one rightward — the same rule a reader applies to an
     /// HTML table, and the only one that makes the resulting occupancy exact.
-    fn note_cell(&mut self, d: &Dictionary) {
+    ///
+    /// Returns `(table index, cell index)` when a cell was recorded, so the caller can bind the
+    /// marked content that arrives beneath it. `None` when nothing was recorded, which must not
+    /// become a slot — see the call site.
+    fn note_cell(&mut self, d: &Dictionary) -> Option<(usize, usize)> {
         let (rowspan, colspan) = spans_of(d);
-        let Some(ctx) = self.tables.last_mut() else {
-            return;
-        };
+        let ctx = self.tables.last_mut()?;
         if ctx.rows_seen == 0 {
             // A cell outside any `/TR`. The document's tree is not shaped like a table here, and
             // placing it at row 0 would invent a row the file does not have.
-            return;
+            return None;
         }
         let row = ctx.rows_seen - 1;
         let mut column = 0u32;
@@ -433,10 +473,12 @@ impl Walker<'_> {
             column,
             rowspan,
             colspan,
+            mcids: Vec::new(),
+            page: None,
         };
-        if let Some(t) = self.tree.tables.get_mut(index) {
-            t.cells.push(cell);
-        }
+        let t = self.tree.tables.get_mut(index)?;
+        t.cells.push(cell);
+        Some((index, t.cells.len() - 1))
     }
 
     /// An element's kids, with the element's `/ID` available to whatever binds directly under it.
@@ -501,6 +543,24 @@ impl Walker<'_> {
             if let Some(t) = self.tree.tables.get_mut(ctx.index) {
                 if t.page.is_none() {
                     t.page = Some(page);
+                }
+            }
+        }
+
+        // v1-S7b. The innermost open `/TD` or `/TH` claims this marked content. Recorded here
+        // rather than by re-walking later, because "under this cell" is a fact about the tree's
+        // shape that only the walk knows — and it is the author's own statement of which content
+        // is in which cell, which is what makes cell text independent of the detector.
+        if let Some(&(ti, ci)) = self.cells.last() {
+            if let Some(c) = self
+                .tree
+                .tables
+                .get_mut(ti)
+                .and_then(|t| t.cells.get_mut(ci))
+            {
+                c.mcids.push(mcid);
+                if c.page.is_none() {
+                    c.page = Some(page);
                 }
             }
         }
@@ -757,6 +817,53 @@ mod tests {
                  independent second opinion about a table, and a derivation that reads boxes is \
                  not independent of one built from boxes"
             );
+        }
+    }
+
+    /// **A tagged cell claims the marked content the tree puts under it** (v1-S7b).
+    ///
+    /// This is what makes the table gate's gold text the author's rather than the detector's: the
+    /// join key is the tree's own `/MCID`, so which text belongs to which cell is read off the
+    /// tags and never off a box. Without it the labelled set can record a cell's shape and not
+    /// what it says, which is exactly where v1-S7a had to stop.
+    #[test]
+    fn a_tagged_cell_claims_the_marked_content_beneath_it() {
+        let bytes = crate::test_support::engine_fixture("tagged-table-agrees/document.pdf");
+        let doc = lopdf::Document::load_mem(&bytes).expect("loads");
+        let tree = super::read(&doc).expect("walks").expect("is tagged");
+        let table = tree.tables.first().expect("the fixture declares a table");
+
+        assert!(
+            table.cells.iter().any(|c| !c.mcids.is_empty()),
+            "no cell claimed any marked content, so a labelled cell could carry a shape and no \
+             text — which is the hole v1-S7b exists to close"
+        );
+        // Every claimed id is one the tree really binds on that cell's page. A cell that claimed
+        // an id nothing binds would resolve to empty text and read as a detector miss.
+        for cell in &table.cells {
+            for mcid in &cell.mcids {
+                let page = cell
+                    .page
+                    .expect("a cell that claims content names its page");
+                assert!(
+                    tree.locator_for(page, *mcid).is_some(),
+                    "cell ({}, {}) claims mcid {mcid} on a page the tree binds nothing for",
+                    cell.row,
+                    cell.column
+                );
+            }
+        }
+        // No id is claimed twice. The walk pushes a cell before its kids and pops after, so two
+        // cells sharing content would mean the stack leaked — and the same text would be scored
+        // as gold for two different slots.
+        let mut seen = std::collections::BTreeSet::new();
+        for cell in &table.cells {
+            for mcid in &cell.mcids {
+                assert!(
+                    seen.insert((cell.page, *mcid)),
+                    "mcid {mcid} is claimed by more than one cell; the open-cell stack leaked"
+                );
+            }
         }
     }
 

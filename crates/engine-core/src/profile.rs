@@ -963,7 +963,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.8.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.9.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1031,11 +1031,20 @@ mod tests {
              was never ink, and two documents that could not be read at all — 491 of \
              nist-sp-800-53r5's 492 pages — produce artifacts again. Two artifacts either side of \
              this hash disagree about which nodes have geometry, which is a difference the hash \
-             has to carry even though the profile's own shape is unchanged."
+             has to carry even though the profile's own shape is unchanged.\n\n\
+             Moved a twelfth time at v1-S7b (0.9.0): the version alone, and this time NOTHING \
+             else moved — not a field, not a capability, not a rule id, not a coordinate, not a \
+             character. S7b set out to recalibrate `unruled-align-v1` and measured instead that \
+             no value of its column-gutter floor changes any number on the corpus: with the floor \
+             disabled outright the four real documents score identically. So the rule kept its \
+             `-v1` id, which is the honest label for a rule that did not change. Two artifacts \
+             either side of this hash say the same thing about the same document. The hash still \
+             moves, because `parser_version` is in it and a version that claimed otherwise would \
+             be the one lie this field cannot afford."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:2e07326e31e5bf6eedc2ecfb2a7ec4249516ea9c07e770e803a0d852089ae042"
+            "sha256:29e4d9acc30e5843905098c70c1493d2b59b07ddbdad6216453caeb73f574ecf"
         );
     }
 

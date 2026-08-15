@@ -18,8 +18,8 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S6.1** | Code width from the font's declared kind — a text-loss repair | S6 | **done** |
 | **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
 | **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
-| **S7b** | Detector calibration, measured against S7a | S7a | not started |
-| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | not started |
+| **S7b** | Detector calibration, measured against S7a — and **falsified**: the prescribed change moves no number | S7a | **done** |
+| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | **measured and MISSED: 43‰** |
 
 ---
 
@@ -728,6 +728,13 @@ corpus, and reports what it sees. The number it reports is bad.
   reasoning. Acting on that is **S7b's**, deliberately, and only once this harness can prove the
   change is an improvement rather than a preference.
 
+  > **S7b ran that proof, and this paragraph is wrong.** 1 062 cp is the *first* sub-floor gap
+  > `gutter_fault`'s `.find()` returns, not the smallest; the smallest is 151 cp on 542 of the 600
+  > refused pages. Disabling the floor entirely leaves the corpus **scoring identically**. The
+  > paragraph is left standing rather than edited, because what it records is that a plausible
+  > reading of a refusal detail survived review and was killed by a measurement — which is the
+  > entire reason S7a was built before S7b. See the S7b section below.
+
 - **Where the labels come from, and why they are not mine.** Every one of the four documents carries
   a **tagged structure tree**, and its `/Table` elements are the document author's own declaration
   of where a table is and what shape it has. v1-S3 already reads them — `TaggedTable` carries page,
@@ -778,26 +785,63 @@ corpus, and reports what it sees. The number it reports is bad.
 - **Goal:** Make the detector find the tables the documents say are there, with every change proved
   by S7a's harness rather than by inspection.
 
-- **The evidenced item.** `unruled::COLUMN_GUTTER_MIN` refuses 490 of 492 pages of
-  `nist-sp-800-53r5` at 10.6 pt against a 12 pt floor. Any change to it is a
-  `unruled-align-v1` rule-version event and moves `profile_sha256`.
+- **Status: done. The detector did not change, because the harness said the change was a no-op.**
 
-- **The other declared leftover.** `stroke-ruled-tables-not-detected`: a grid drawn as four thin
-  stroked segments per cell rather than a filled rectangle is not detected, and that is the likely
-  reason the NIST documents' *ruled* tables are missed as well. `irs-form-1040-2025` carries **520
-  axis-aligned stroked segments** beside its 396 rectangles, and those 396 alone produced v1-S1's
-  662-cell fabrication — so a stroked-line rule needs its own coherence precondition and its own
-  measurement pass before it ships.
+- **The evidenced item, and its falsification.** S7a read `unruled::COLUMN_GUTTER_MIN` as refusing
+  490 of 492 pages of `nist-sp-800-53r5` at 10.6 pt against a 12 pt floor, and inferred a wrong
+  cliff. Measured:
 
-- **The standing hazard.** Loosening a tolerance to admit more tables is the shortest path to
-  fabricating them. S7a exists so that trade is visible: precision and fabrication rate are measured
-  on the same run as recall.
+  - `gutter_fault` uses `.find()`, so 1 062 cp is the **first** sub-floor gap in sorted order, not
+    the smallest. The **minimum** gap is 151 cp on 542 of the 600 refused pages, and 185 cp at
+    worst. Refused pages carry 250–280 sub-floor gaps among 200–280 column lines.
+  - Setting the floor to 151 disables the check outright (`fold` guarantees gaps > `ALIGN_TOLERANCE`
+    = 150). The corpus scores **identically**: 57 / 10 / 9 / 157‰ / 0 fabricated.
+  - Disabling the row floor as well: **still identical.**
+
+  So the constant was not moved. Bumping `unruled-align-v1` to `-v2` would have moved
+  `profile_sha256` to buy no behaviour change, and a rule-version event that versions nothing is
+  worse than none.
+
+- **What the cliff actually is.** The candidate handed to the alignment rule is **the whole page** —
+  `tables::detect` passes every leftover run as one lattice, and `detect_ruled` builds one lattice
+  from every rect. With both gutters off, all 600 pages reach the face check with lattices like
+  96 × 231 = 22 176 faces from 1 784 runs, refused by `MAX_FACES` and coherence. The floor is not
+  wrong; it is unreachable. Segmenting candidates first is the change that would matter, and it is
+  **not** in this slice: a probe found NIST's word-level run splitting gives each prose line 20–139
+  distinct x-origins, so consecutive-row column agreement does not isolate a table there either.
+
+- **The other declared leftover, also falsified.** `stroke-ruled-tables-not-detected` was the
+  suspected reason NIST's *ruled* tables are missed. Census of axis-aligned two-point stroked
+  segments, all currently rejected, zero diagonals anywhere in the corpus:
+
+  | Document | segments | distinct | what they are |
+  | --- | --- | --- | --- |
+  | `cfpb-home-loan-toolkit` | 1 380 | 1 375 | real table rulings |
+  | `irs-form-1040-2025` | 521 | 520 | the form grid |
+  | `nist-sp-800-63b` | 77 | **2** | 76 copies of one margin rule |
+  | `nist-sp-800-53r5` | 498 | **9** | 490 copies of one margin rule |
+
+  **Neither NIST document draws table rulings at all.** A stroked-line rule adds nothing there, and
+  on `irs-form-1040-2025` it re-opens v1-S1's 662-cell fabrication surface. It stays a limitation.
+
+- **The standing hazard, honoured.** Loosening a tolerance to admit more tables is the shortest path
+  to fabricating them, so the gold negatives are now asserted: `synthetic/two-columns`,
+  `synthetic/simple-text` and `unruled-near-miss` still yield **0** geometric tables.
+
+- **Acceptance tests:**
+  - [x] Before/after on the four-document corpus, from the same harness, in the CHANGELOG
+  - [x] Fabrication still **0** after calibration, `irs-form-1040-2025` included
+  - [x] `two-columns` is still not a table, and neither are the other gold negatives
+  - [x] `reading_order::COLUMN_GUTTER_MIN` untouched
+  - [x] No bake-off table anywhere in the repository
 
 - **Depends on:** S7a.
 
 ---
 
 ## S7 — The > 0.489 gate, assessed
+
+**Status: assessed, and MISSED. Macro cell-F1 is 43‰ against a 489‰ floor. v1 is not done.**
 
 - **Goal:** The v1 gate, measured.
 
@@ -807,14 +851,35 @@ corpus, and reports what it sees. The number it reports is bad.
 
 - **Out:** Publishing a competitor comparison. The number is stated with its method or not stated.
 
-- **Acceptance tests:**
-  - [ ] The harness is committed and reruns to the same number
-  - [ ] Table-cell accuracy **> 0.489** on the labelled set
-  - [ ] Fabrication rate **0**, measured rather than asserted
-  - [ ] Cross-check diagnostics emitted across the set, with disagreement counted
-  - [ ] No bake-off table anywhere in the repository
+- **The number, and where its method lives.** `docs/table-gate-v1.md` — corpus, formula, join rule,
+  whitespace rule, engine version, profile hash, and one paragraph on why a score computed here is
+  **not** comparable to the published 0.489 it is named after.
 
-- **Depends on:** S1–S6.
+  | Document | TP | FP | FN | cell-F1 |
+  | --- | --- | --- | --- | --- |
+  | `cfpb-home-loan-toolkit.pdf` | 24 | 91 | 135 | 175‰ |
+  | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | 0‰ |
+  | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | 0‰ |
+  | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | 0‰ |
+  | **MACRO** | | | | **43‰** |
+
+  Macro-averaged F1 over `CellSlot`s, integer per-mille, exact text after NFC + trim + whitespace
+  collapse. **Page-level recall (157‰) is a diagnostic and is not this number** — 157‰ of pages
+  agreeing is not 157‰ of cells right.
+
+- **Acceptance tests:**
+  - [x] The harness is committed and reruns to the same number
+  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 43‰**, see above
+  - [x] Fabrication rate **0**, measured rather than asserted
+  - [x] Cross-check diagnostics emitted across the set, with disagreement counted (2)
+  - [x] No bake-off table anywhere in the repository
+
+- **What is not being done to close it.** Narrowing the labelled set by dropping the documents that
+  score badly; relabelling `irs-form-1040-2025` as a gold negative; reading page-level recall as a
+  cell score; half-enabling a stroke-ruled rule on a corpus whose ruled tables it cannot see. Each
+  would raise the number and none would raise the accuracy.
+
+- **Depends on:** S1–S6, S7a, S7b.
 
 ---
 

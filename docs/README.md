@@ -40,6 +40,12 @@ check — `tagged-vs-geometric-v1` — comparing the grid a document's tags decl
 detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' — see
 `08-V1-SCOPE.md` §3 for why chasing it earlier would be tuning against nobody's number.
 
+**S7 has now measured it: macro cell-F1 is 43‰ against the 489‰ floor — a miss.** The method is
+[`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
+repository should be quoted from. S7b also measured that the calibration it was scoped to make —
+moving `unruled-align-v1`'s column-gutter floor — changes **no number at all**, so neither detector
+changed and both rule ids still read `-v1`.
+
 Four measurements shaped the table slices and are worth knowing before reading the detectors:
 
 1. No fixture in the Ethos conformance corpus contains a single path operator, so
@@ -169,6 +175,7 @@ Then, as needed:
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
 | [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 is measured once at S7 · the ruled/unruled split · capability flip plan | Before any v1 work |
 | [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S7**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
+| [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |

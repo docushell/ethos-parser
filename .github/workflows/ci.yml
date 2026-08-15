@@ -445,6 +445,66 @@ jobs:
         run: ${{ matrix.run }}
 
   # -----------------------------------------------------------------------------------------
+  # v1-S7 — the table gate (docs/table-gate-v1.md)
+  # -----------------------------------------------------------------------------------------
+  #
+  # **The gate is currently MISSED — macro cell-F1 43‰ against a 489‰ floor — and this job runs
+  # anyway.** It is deliberately not `#[ignore]`d and does not skip the score: a gate that stops
+  # being computed the moment it goes red is a gate nobody can tell is red.
+  #
+  # What it asserts today:
+  #
+  #   - fabrication is **0** across the four real documents (the one number with a required value)
+  #   - the measurement reruns to the same value
+  #   - the gold negatives still yield no geometric table
+  #   - the cell-F1 verdict is recorded, and CLEARING the floor fails the build so the milestone
+  #     documents cannot fall out of step with the number
+  #
+  # `--nocapture` so the CI log carries the table itself rather than only the fact that nothing
+  # failed. When the gate is cleared, `the_cell_gate_is_measured_and_its_verdict_is_recorded`
+  # inverts to a floor assertion and this comment goes with it.
+  v1s7-table-gate:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v1-table-gate
+            gate: "cell-F1 computed and reported; fabrication 0; stable; gold negatives clean"
+            run: "cargo test -p engine-pdf --lib --locked -- --nocapture accuracy::"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Ethos (fixture corpus)
+        uses: actions/checkout@v4
+        with:
+          repository: docushell/ethos
+          ref: ${{ env.ETHOS_ORACLE_REF }}
+          path: ethos-oracle
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            ethos-oracle
+          shared-key: v0-exit-criteria
+
+      - name: ${{ matrix.id }} — ${{ matrix.gate }}
+        env:
+          RUSTFLAGS: "-D warnings"
+          ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
+          ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
+        run: ${{ matrix.run }}
+
+  # -----------------------------------------------------------------------------------------
   # §5: `cargo-fuzz` target exists and runs clean on the corpus
   # -----------------------------------------------------------------------------------------
   #

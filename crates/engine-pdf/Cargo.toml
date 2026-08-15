@@ -26,3 +26,13 @@ skrifa = "0.39.0"
 [dev-dependencies]
 lopdf = { version = "0.44.0", default-features = false }
 serde_json.workspace = true
+# v1-S7b. NFC for the table-gate metric's whitespace rule (`accuracy::normalize`).
+#
+# A **dev**-dependency, not a dependency: `accuracy` is `cfg(test)` and no artifact path reaches
+# it, so this stays out of the shipped library's graph entirely. That is what makes it a cheap
+# addition rather than one `docs/04-ARCHITECTURE.md` §5 has to weigh.
+#
+# It is load-bearing rather than precautionary: `cfpb-home-loan-toolkit` draws curly quotes and
+# em dashes, so the compared strings are not ASCII and NFC cannot be waved away as the identity.
+# MIT OR Apache-2.0; its only dependency, `tinyvec`, is Zlib and already in the allowlist.
+unicode-normalization = "0.1"

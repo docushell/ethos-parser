@@ -12,13 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The table-accuracy harness (v1-S7a).
+//! The table-accuracy harness (v1-S7a) and the v1 cell gate (v1-S7b).
 //!
 //! **This module measures. It changes nothing.** No tolerance, no detector, no rule id is touched
 //! from here — the whole point of building the instrument before the calibration is that a later
 //! slice's change to `unruled-align-v1` can be shown to be an improvement rather than a preference.
 //! v1-S1 fabricated a 662-cell table on `irs-form-1024-2025` from a detector that looked right by
 //! inspection, and inspection is what this exists to replace.
+//!
+//! # It earned that keep immediately
+//!
+//! v1-S7b was scoped to move `unruled::COLUMN_GUTTER_MIN`, on S7a's reading that the rule was
+//! refusing 10.6 pt gutters against a 12 pt floor. Run through this harness, the change scores
+//! **identically** — and so does disabling the floor outright, and so does disabling the row floor
+//! with it. The constant was left alone and the slice reported the falsification instead. By
+//! inspection it would have shipped, with a `-v2` rule id and a moved profile hash, and nothing
+//! would have been better.
+//!
+//! # The gate
+//!
+//! S7a stored `{page, rows, columns, cells}`, so it could measure page-level agreement and nothing
+//! finer. S7b put the cells in, with the text the structure tree binds to each one, and the gate is
+//! macro-averaged cell-slot F1 over the four real documents. The published method — corpus,
+//! formula, join, whitespace rule, and why the number is **not** comparable to the 0.489 it is
+//! named after — is `docs/table-gate-v1.md`. It currently reads **43‰**, and that is a miss.
 //!
 //! # Where the labels come from, and why they are not this engine's
 //!
@@ -76,6 +93,41 @@ pub struct LabelledTable {
     pub columns: u32,
     /// `/TD` and `/TH` elements the tree carries for it.
     pub cells: u32,
+    /// The cells themselves, with their occupancy and their text (v1-S7b).
+    ///
+    /// v1-S7a stored only the count, which is why it could measure page-level agreement and
+    /// nothing finer. The gate is a cell score, so the cells have to be here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cell_list: Vec<LabelledCell>,
+}
+
+/// One `/TD` or `/TH`, with the text the tree binds to it (v1-S7b).
+///
+/// # The text is the author's, not the detector's
+///
+/// It is the concatenation of the runs whose `(page, mcid)` the tree cites **beneath this cell**,
+/// in the order the page drew them. The join key is the tree's own `/MCID` — never a coordinate,
+/// never a box intersection — so a labelled cell's text is derived by a path that shares no input
+/// with the geometric detector it is used to score. That independence is the reason this number
+/// means anything; a gold text bound by "whatever runs fall inside the detector's cell box" would
+/// score the detector against itself.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabelledCell {
+    /// Zero-based row.
+    pub row: u32,
+    /// Zero-based column.
+    pub column: u32,
+    /// `/RowSpan`, never 0.
+    pub rowspan: u32,
+    /// `/ColSpan`, never 0.
+    pub colspan: u32,
+    /// The cell's text, already through [`normalize`].
+    ///
+    /// Empty when the tree cites no marked content for the cell, or cites mcids no run claimed.
+    /// Kept rather than dropped: an empty gold cell still occupies its slots, and a detector that
+    /// invents text there is wrong in a way a dropped cell could not record.
+    pub text: String,
 }
 
 /// What one document scored.
@@ -101,6 +153,18 @@ pub struct Score {
     pub emitted_cells: u32,
     /// Tables whose locator cross-check did not come back `ok`.
     pub cross_check_disagreements: u32,
+    /// **Cell slots the detector got exactly right** (v1-S7b).
+    ///
+    /// A gold slot and a predicted slot at the same `(row, column)` of joined tables, whose text
+    /// agrees after [`normalize`]. This is the numerator of the gate.
+    pub cell_tp: u32,
+    /// Predicted slots with no agreeing gold slot: wrong text, or a slot the gold does not have.
+    pub cell_fp: u32,
+    /// Gold slots with no agreeing predicted slot: a missed cell, or one whose text came out wrong.
+    ///
+    /// Every slot of an unjoined gold table is an FN, which is what makes a document with no
+    /// detections score 0 rather than being quietly absent from the average.
+    pub cell_fn: u32,
 }
 
 impl Score {
@@ -111,6 +175,29 @@ impl Score {
         self.fabricated_cells += o.fabricated_cells;
         self.emitted_cells += o.emitted_cells;
         self.cross_check_disagreements += o.cross_check_disagreements;
+        self.cell_tp += o.cell_tp;
+        self.cell_fp += o.cell_fp;
+        self.cell_fn += o.cell_fn;
+    }
+
+    /// **The gate number for one document**, in per-mille, or `None` when it declares no table.
+    ///
+    /// `F1 = 2·TP / (2·TP + FP + FN)`, over `CellSlot`s. Integer per-mille for the same reason
+    /// recall is: two machines must agree on every digit.
+    ///
+    /// A document that declares tables and detects none scores `0`, not `None` — the absence of
+    /// output is the result, and letting it drop out of the average is the "quietly deleting NIST"
+    /// failure this harness is built to make impossible.
+    pub fn cell_f1_permille(self) -> Option<u32> {
+        if self.declared == 0 {
+            return None;
+        }
+        let denom = u64::from(self.cell_tp) * 2 + u64::from(self.cell_fp) + u64::from(self.cell_fn);
+        Some(if denom == 0 {
+            0
+        } else {
+            (u64::from(self.cell_tp) * 2 * 1000 / denom) as u32
+        })
     }
 
     /// Matched over declared, in **per-mille**, or `None` when nothing is declared.
@@ -130,6 +217,35 @@ impl Score {
     }
 }
 
+/// The whitespace rule, applied to **both** sides before any comparison.
+///
+/// Trim, then collapse every internal run of Unicode whitespace to a single `U+0020`. Stated here
+/// and in `docs/table-gate-v1.md` because a text-equality score is only reproducible if the
+/// normalization is part of the published method.
+///
+/// # Exact after this, and nothing looser
+///
+/// No case folding, no punctuation stripping, no edit distance, no judge. A cell that reads
+/// `1,024` where the page drew `1.024` is **wrong**, and a metric that scored it 0.9 would be
+/// grading this engine on how close it came rather than on whether it was right. The one
+/// concession is whitespace, because a run split across two `Tj`s with a space between them and
+/// one drawn as a single string are the same text by any reading, and the difference is an
+/// artifact of how the producer chunked the stream.
+///
+/// # NFC first, and it is load-bearing
+///
+/// `cfpb-home-loan-toolkit` draws curly quotes and em dashes, so the strings compared here are not
+/// ASCII and NFC cannot be waved away as the identity. Two producers can spell the same character
+/// composed or decomposed, and a gate that scored those as different cells would be measuring the
+/// producer's encoder rather than this engine's detector. `unicode-normalization` is a
+/// **dev**-dependency for exactly this: the harness is `cfg(test)`, so nothing enters the shipped
+/// library's graph.
+pub fn normalize(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let nfc: String = s.nfc().collect();
+    nfc.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Read one document's labels from its own structure tree.
 ///
 /// # Errors
@@ -141,15 +257,47 @@ pub fn label(doc: &Document, id: &str) -> Result<LabelledDocument, EngineError> 
     let page_of: BTreeMap<lopdf::ObjectId, u32> =
         doc.pages().iter().map(|&(n, oid)| (oid, n)).collect();
 
+    // The text the pages drew, keyed the way the tree cites it. Built by interpreting content
+    // streams — the same layer the detector's runs come from, and deliberately NOT the detector:
+    // no rectangle, no lattice and no table is consulted, and `tables::detect` is never called.
+    // The join is the tree's own `/MCID`, so which text lands in which cell is the author's
+    // statement rather than a box intersection.
+    let text_of = marked_text(doc)?;
+
     let mut tables: Vec<LabelledTable> = crate::structure::read(doc.inner())?
         .map(|tree| {
             tree.tables
                 .iter()
-                .map(|t| LabelledTable {
-                    page: t.page.and_then(|p| page_of.get(&p).copied()),
-                    rows: t.rows,
-                    columns: t.columns,
-                    cells: t.cells.len() as u32,
+                .map(|t| {
+                    let mut cell_list: Vec<LabelledCell> = t
+                        .cells
+                        .iter()
+                        .map(|c| LabelledCell {
+                            row: c.row,
+                            column: c.column,
+                            rowspan: c.rowspan,
+                            colspan: c.colspan,
+                            text: normalize(
+                                &c.mcids
+                                    .iter()
+                                    .filter_map(|m| {
+                                        c.page
+                                            .and_then(|p| text_of.get(&(p, *m)))
+                                            .map(String::as_str)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            ),
+                        })
+                        .collect();
+                    cell_list.sort();
+                    LabelledTable {
+                        page: t.page.and_then(|p| page_of.get(&p).copied()),
+                        rows: t.rows,
+                        columns: t.columns,
+                        cells: t.cells.len() as u32,
+                        cell_list,
+                    }
                 })
                 .collect::<Vec<_>>()
         })
@@ -162,6 +310,39 @@ pub fn label(doc: &Document, id: &str) -> Result<LabelledDocument, EngineError> 
         provenance: LABEL_PROVENANCE.to_string(),
         tables,
     })
+}
+
+/// Every `(page object, mcid)` the document's pages drew text under, and that text.
+///
+/// Runs the content interpreter per page and nothing else. Text is concatenated in the order the
+/// page drew it, which is the only order the document states.
+fn marked_text(doc: &Document) -> Result<BTreeMap<(lopdf::ObjectId, i64), String>, EngineError> {
+    let mut out: BTreeMap<(lopdf::ObjectId, i64), String> = BTreeMap::new();
+    for &(_, page_id) in doc.pages() {
+        let Ok(page_dict) = doc.inner().get_dictionary(page_id) else {
+            continue;
+        };
+        let Ok(decoded) = doc.inner().get_and_decode_page_content(page_id) else {
+            continue;
+        };
+        let fonts = crate::fonts::load_page_fonts(doc.inner(), page_dict)?;
+        let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
+        let mut interp = crate::content::Interpreter::new(&fonts).with_xobjects(xobjects);
+        interp.run(&decoded.operations)?;
+        for shown in &interp.shown {
+            // An artifact is page furniture the author excluded from the content, and a header
+            // rule's text is not a table cell's.
+            if shown.artifact || shown.text.is_empty() {
+                continue;
+            }
+            if let Some(mcid) = shown.mcid {
+                out.entry((page_id, mcid))
+                    .or_default()
+                    .push_str(&shown.text);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Score one document against its labels.
@@ -211,7 +392,138 @@ pub fn score(
             }
         }
     }
+
+    let (tp, fp, fn_) = cell_slots(&extract, labels);
+    s.cell_tp = tp;
+    s.cell_fp = fp;
+    s.cell_fn = fn_;
     Ok(s)
+}
+
+/// A table's cells expanded to `(slot, text)`, with merged cells owning every slot they cover.
+///
+/// Expansion is what makes the two sides comparable at all: the tagged half declares spans and the
+/// unruled half never does, so comparing cell *lists* would score a correct 2-column merge as two
+/// misses. `CellSlot` is `engine_core`'s own occupancy model, used rather than re-derived.
+fn expand<'a>(
+    cells: impl Iterator<Item = (u32, u32, u32, u32, &'a str)>,
+) -> BTreeMap<engine_core::CellSlot, String> {
+    let mut out = BTreeMap::new();
+    for (row, column, rowspan, colspan, text) in cells {
+        // `CellSlot` is `engine_core`'s occupancy type, but the slots are enumerated here rather
+        // than through `TableCellPosition::slots` — that needs a parent `NodeId`, and minting one
+        // for a comparison that never reaches the wire would put an identifier nobody allocated
+        // into the harness. The rule is the same one §5.4 settles: a merged cell owns every slot
+        // it covers.
+        for r in row..row.saturating_add(rowspan.max(1)) {
+            for c in column..column.saturating_add(colspan.max(1)) {
+                out.insert(engine_core::CellSlot::new(r, c), normalize(text));
+            }
+        }
+    }
+    out
+}
+
+/// True positives, false positives and false negatives over cell slots.
+///
+/// # The join, stated because a cell score is meaningless without it
+///
+/// A labelled table has **no geometry** — that is what makes it independent — so it cannot be
+/// matched to a detected table by box overlap. The join is therefore:
+///
+/// 1. **Page.** A detected table can only join a gold table the tree places on the same page.
+/// 2. **Shape, greedily.** Among the gold tables still unclaimed on that page, the one whose
+///    `rows × columns` is closest to the detected table's, ties broken by the lower gold index so
+///    the result does not depend on iteration order.
+///
+/// Everything unjoined is counted, never dropped: an unjoined gold table contributes all its slots
+/// as false negatives, and an unjoined detected table all of its as false positives. A join that
+/// silently discarded either side would be a score for the tables that happened to line up.
+fn cell_slots(
+    extract: &crate::extract::ExtractArtifact,
+    labels: &LabelledDocument,
+) -> (u32, u32, u32) {
+    let (mut tp, mut fp, mut fn_) = (0u32, 0u32, 0u32);
+
+    // Gold tables by page, with an index so "claimed" is recordable.
+    let mut gold_by_page: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    for (i, t) in labels.tables.iter().enumerate() {
+        if let Some(p) = t.page {
+            gold_by_page.entry(p).or_default().push(i);
+        }
+    }
+    let mut claimed: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+
+    for page in &extract.pages {
+        for table in &page.tables {
+            let pred = expand(table.cells.iter().map(|c| {
+                (
+                    c.position.row,
+                    c.position.column,
+                    c.position.rowspan,
+                    c.position.colspan,
+                    c.text.as_str(),
+                )
+            }));
+
+            // Step 2 of the join.
+            let pick = gold_by_page
+                .get(&page.index)
+                .into_iter()
+                .flatten()
+                .filter(|i| !claimed.contains(*i))
+                .min_by_key(|i| {
+                    let g = &labels.tables[**i];
+                    let d = (i64::from(g.rows) * i64::from(g.columns)
+                        - i64::from(table.rows) * i64::from(table.columns))
+                    .abs();
+                    (d, **i)
+                })
+                .copied();
+
+            let Some(gi) = pick else {
+                // No gold table on this page to join. Every predicted slot is a false positive.
+                fp += pred.len() as u32;
+                continue;
+            };
+            claimed.insert(gi);
+            let gold = expand(
+                labels.tables[gi]
+                    .cell_list
+                    .iter()
+                    .map(|c| (c.row, c.column, c.rowspan, c.colspan, c.text.as_str())),
+            );
+
+            for (slot, text) in &pred {
+                match gold.get(slot) {
+                    Some(g) if g == text => tp += 1,
+                    // Both a wrong-text slot and a slot the gold does not have. Charged to both
+                    // sides when the gold has one, because the detector both produced a wrong cell
+                    // and failed to produce the right one.
+                    Some(_) => fp += 1,
+                    None => fp += 1,
+                }
+            }
+            fn_ += gold
+                .keys()
+                .filter(|s| pred.get(*s).is_none_or(|p| gold[*s] != *p))
+                .count() as u32;
+        }
+    }
+
+    // Gold tables nothing joined: every slot missed. This is the term that keeps a document with
+    // zero detections in the average at 0 instead of out of it.
+    for (i, t) in labels.tables.iter().enumerate() {
+        if !claimed.contains(&i) {
+            fn_ += expand(
+                t.cell_list
+                    .iter()
+                    .map(|c| (c.row, c.column, c.rowspan, c.colspan, c.text.as_str())),
+            )
+            .len() as u32;
+        }
+    }
+    (tp, fp, fn_)
 }
 
 #[cfg(test)]
@@ -243,6 +555,31 @@ mod tests {
         }
         (rows, total)
     }
+
+    /// **The gate number: macro cell-F1 in per-mille**, averaged over the documents that declare
+    /// at least one table.
+    ///
+    /// Macro rather than micro, and that choice changes the answer here. `nist-sp-800-53r5`
+    /// carries 26 of the corpus's 57 tagged tables and thousands of its cells; a micro average
+    /// would let `cfpb-home-loan-toolkit`'s cells be drowned by it, or vice versa. Macro gives
+    /// each document one vote, so a rule that works on one producer's output and fails on three
+    /// cannot read as three-quarters right.
+    ///
+    /// A document declaring nothing is excluded from the average — there is no cell score to
+    /// average — but a document declaring tables and detecting none scores **0** and stays in.
+    fn macro_cell_f1_permille(rows: &[(String, Score)]) -> Option<u32> {
+        let scored: Vec<u32> = rows
+            .iter()
+            .filter_map(|(_, s)| s.cell_f1_permille())
+            .collect();
+        (!scored.is_empty()).then(|| {
+            (scored.iter().map(|v| u64::from(*v)).sum::<u64>() / scored.len() as u64) as u32
+        })
+    }
+
+    /// The floor v1 must clear, in per-mille. See `docs/table-gate-v1.md` for why a number
+    /// computed on this corpus is **not** comparable to the published 0.489 it is named after.
+    const GATE_PERMILLE: u32 = 489;
 
     /// The committed labelled set, as it sits on disk.
     fn committed() -> Vec<LabelledDocument> {
@@ -374,12 +711,151 @@ mod tests {
                 .map_or("-".to_string(), |v| format!("{v}‰"))
         );
         println!(
-            "  cells emitted {}, fabricated {}, cross-check disagreements {}\n",
+            "  cells emitted {}, fabricated {}, cross-check disagreements {}",
             total.emitted_cells, total.fabricated_cells, total.cross_check_disagreements
+        );
+
+        // The gate half. Printed under its own heading so nobody can read a page-level recall as
+        // the cell score: 157‰ of pages agreeing is not 157‰ of cells right, and `08-V1-SCOPE.md`
+        // §3 is explicit that the gate is a cell number.
+        println!("\ncell-slot accuracy (the gate metric), exact text after the whitespace rule:");
+        println!(
+            "  {:<28} {:>8} {:>8} {:>8} {:>10}",
+            "document", "TP", "FP", "FN", "cell-F1"
+        );
+        for (name, s) in &rows {
+            println!(
+                "  {:<28} {:>8} {:>8} {:>8} {:>9}",
+                name,
+                s.cell_tp,
+                s.cell_fp,
+                s.cell_fn,
+                s.cell_f1_permille()
+                    .map_or("-".to_string(), |v| format!("{v}‰"))
+            );
+        }
+        let macro_f1 = macro_cell_f1_permille(&rows);
+        println!(
+            "  MACRO cell-F1 over the {} documents that declare a table: {}",
+            rows.iter().filter(|(_, s)| s.declared > 0).count(),
+            macro_f1.map_or("-".to_string(), |v| format!("{v}‰"))
+        );
+        println!(
+            "  gate is > {GATE_PERMILLE}‰: {}\n",
+            match macro_f1 {
+                Some(v) if v > GATE_PERMILLE => "PASS",
+                Some(_) => "MISS",
+                None => "not assessable",
+            }
         );
 
         // The set is non-empty, or the assertions below pass vacuously.
         assert!(total.declared > 0, "the labelled set has content");
+    }
+
+    /// **The gate, asserted rather than only printed** — with the honest consequence when it is
+    /// missed.
+    ///
+    /// The number is computed and reported either way. What this test refuses to do is let the
+    /// gate be silently absent: it fails if the metric cannot be computed at all, and it records
+    /// the standing miss as an explicit expectation so that *clearing* the gate also breaks the
+    /// build and forces the milestone documents to be updated in the same commit.
+    ///
+    /// v1-S7b measures **0‰**. That is not the gate being unassessed — it is the gate being
+    /// assessed and missed, and the difference is the whole point of S7a having been built first.
+    #[test]
+    fn the_cell_gate_is_measured_and_its_verdict_is_recorded() {
+        let (rows, _) = measure();
+        let f1 = macro_cell_f1_permille(&rows)
+            .expect("the corpus declares tables, so the gate is computable");
+        assert!(
+            f1 <= GATE_PERMILLE,
+            "macro cell-F1 is {f1}‰, which CLEARS the {GATE_PERMILLE}‰ gate. That is the good \
+             outcome and it must not pass silently: update `docs/table-gate-v1.md`, tick S7 in \
+             `docs/09-V1-MILESTONES.md` and `docs/08-V1-SCOPE.md` §4, and invert this assertion \
+             to a floor."
+        );
+    }
+
+    /// **The gold negatives: pages with no geometric table must still produce none.**
+    ///
+    /// A cell score can always be raised by loosening the detector, and the corpus above cannot
+    /// see the cost of that — a document that declares no table contributes no false positive
+    /// anywhere in the macro average. These three do. `synthetic/two-columns` is the one that
+    /// matters most: it is four runs in a flawless 2 × 2 whose only distinguishing evidence is
+    /// that the author wrote it down the columns, so it is exactly the fixture a loosened
+    /// alignment rule turns into a table first.
+    ///
+    /// Owned negatives, deliberately kept out of the gate average: scoring this engine against
+    /// grids it built itself measures how well it reproduces its own test cases. They are a
+    /// safety rail on the calibration, not a number.
+    #[test]
+    fn the_gold_negatives_still_have_no_geometric_table() {
+        let profile = Profile::default();
+        // Two corpora: `two-columns` and `simple-text` are conformance fixtures, `near-miss` is
+        // engine-owned. Named per fixture rather than guessed, because `test_support` fails loudly
+        // on a missing corpus and a skip here would be a negative that quietly stopped running.
+        for (corpus, rel) in [
+            ("conformance", "synthetic/two-columns/document.pdf"),
+            ("conformance", "synthetic/simple-text/document.pdf"),
+            ("engine", "unruled-near-miss/document.pdf"),
+        ] {
+            let bytes = match corpus {
+                "engine" => crate::test_support::engine_fixture(rel),
+                _ => crate::test_support::conformance_fixture(rel),
+            };
+            let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+            let ex = crate::extract::extract(&doc, &profile).expect("extracts");
+            let found: usize = ex.pages.iter().map(|p| p.tables.len()).sum();
+            assert_eq!(
+                found, 0,
+                "{rel} now yields {found} geometric table(s). It is a gold negative: the page \
+                 draws no grid and implies none that this engine may claim. A calibration that \
+                 buys recall here has bought a fabrication."
+            );
+        }
+    }
+
+    /// **The published whitespace rule is the rule that ran**, on the exact shapes it claims.
+    ///
+    /// `docs/table-gate-v1.md` states the normalization as part of the method, so a reader can
+    /// recompute the number. This pins each clause of it: NFC composes, the ends are trimmed,
+    /// internal whitespace collapses to one space, and nothing else is touched — a case change or
+    /// a punctuation difference still makes two cells different, because the gate is exact text
+    /// and a fuzzy match would be grading the detector on how close it came.
+    #[test]
+    fn the_published_whitespace_rule_is_the_one_that_runs() {
+        // NFC: `e` + U+0301 composes to `é`, so two producers spelling one character differently
+        // do not score as two different cells.
+        assert_eq!(normalize("e\u{0301}"), "é");
+        assert_eq!(normalize("\u{00e9}"), "é");
+        // Trim, and collapse every internal whitespace run — including the tab and newline a
+        // producer's stream chunking can leave between two `Tj`s of one cell.
+        assert_eq!(normalize("  Total \t due\n\n now  "), "Total due now");
+        // And nothing looser than that.
+        assert_ne!(normalize("Total"), normalize("total"));
+        assert_ne!(normalize("1,024"), normalize("1.024"));
+    }
+
+    /// The corpus really does carry the non-ASCII text that makes NFC load-bearing.
+    ///
+    /// Without this, a later cleanup could drop the `unicode-normalization` dev-dependency,
+    /// observe every test still green, and quietly narrow the published method.
+    #[test]
+    fn the_corpus_carries_non_ascii_text_so_nfc_is_not_decorative() {
+        let profile = Profile::default();
+        let bytes = bench_fixture("cfpb-home-loan-toolkit.pdf");
+        let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+        assert!(
+            label(&doc, "cfpb-home-loan-toolkit.pdf")
+                .expect("labels")
+                .tables
+                .iter()
+                .any(|t| t.cell_list.iter().any(|c| !c.text.is_ascii())),
+            "no gold cell carries non-ASCII text any more. If that is a real corpus change the \
+             NFC clause may be dropped — but it must be dropped deliberately, not by a test that \
+             stopped covering it"
+        );
     }
 
     /// **Fabrication is 0, measured across the corpus rather than asserted on a fixture.**
@@ -437,11 +913,26 @@ mod tests {
             code.contains("crate::structure::read"),
             "the scan did not reach the label source, so its claim below proves nothing"
         );
+        // v1-S7b bound cell TEXT into the labels, which is the change that could most easily have
+        // made them the detector's. The text join runs in `marked_text`, which sits between
+        // `label` and `score` and so is inside the scanned region — asserted rather than assumed,
+        // because a later reorder that moved it out would silently narrow this guard to nothing.
+        assert!(
+            code.contains("fn marked_text(") && code.contains("interp.shown"),
+            "the scan no longer covers the cell-text binding. Move `marked_text` back between \
+             `label` and `score`, or widen the scan: an unscanned binding is an unguarded one"
+        );
         for banned in [
             "tables::detect",
             "unruled::detect",
             "page.tables",
             "extract(",
+            // The geometric shapes a text binding would reach for if it stopped using the tree's
+            // own `/MCID` and started asking which runs fall inside a box.
+            "interp.rects",
+            "DetectedTable",
+            "origin_x",
+            "QRect",
         ] {
             assert!(
                 !code.contains(banned),
