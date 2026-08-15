@@ -404,7 +404,12 @@ fn a_node_without_measurable_geometry_is_kept_counted_and_declared() {
         .iter()
         .find(|l| l.code == engine_grounding::GEOMETRY_ABSENT_OMITTED)
         .expect("the omission must be declared where a consumer can find it");
-    assert!(declared.detail.contains("1 of 1 node(s)"));
+    assert!(declared.detail.contains("1 of 1 text node(s)"));
+    // v1-S6.2 split the count by reason. This node's font supplies no metrics, so it is the
+    // reader's own limitation — as distinct from a run of spaces, which has nothing to measure and
+    // is not a limitation of anything.
+    assert!(declared.detail.contains("1 node(s) could NOT be measured"));
+    assert!(declared.detail.contains("0 node(s) had NOTHING to measure"));
 
     // And the artifact is still schema-valid with an empty elements array.
     schema_subset::validate(&as_value(&p.source)).expect("empty elements is legal");

@@ -2786,3 +2786,105 @@ fn the_conformance_corpus_decodes_exactly_as_it_did_before_the_repair() {
         assert_eq!(texts, expected, "{name} decodes as it always has");
     }
 }
+
+// -------------------------------------------------------------------------------------------
+// 17. A run that draws no ink has no ink box (v1-S6.2)
+// -------------------------------------------------------------------------------------------
+
+/// **A rectangle around nothing is not a measurement.**
+///
+/// The fixture's first run is 28 spaces whose advance carries it off the right edge of the page.
+/// Before v1-S6.2 the reader built a box for it out of the font's ascent/descent envelope and the
+/// run's advance — the box was never ink — and because that rectangle left the page, `seal` refused
+/// the **entire document**. That is what made 491 of `nist-sp-800-53r5`'s 492 pages unreadable.
+///
+/// Both halves are asserted here: the whitespace run reports why there is no box, and the visible
+/// run beside it still gets one. A repair that took boxes away from real text would be a different
+/// bug wearing this one's clothes.
+#[test]
+fn a_whitespace_run_reports_no_ink_rather_than_a_box_around_nothing() {
+    let a = extract_ok(engine_fx("whitespace-past-the-page-edge"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 2);
+
+    assert!(r[0].text.trim().is_empty(), "the first run is whitespace");
+    assert_eq!(
+        r[0].geometry,
+        engine_core::GeometryPresence::Absent(engine_core::GeometryAbsence::NoInkToMeasure),
+        "a run of spaces has nothing to measure — and that is NOT the same as a reader that \
+         could not measure, which is what `not_reported_by_reader` would claim"
+    );
+
+    assert_eq!(r[1].text, "Visible");
+    assert!(
+        r[1].geometry.measured().is_some(),
+        "text that draws ink still gets its box"
+    );
+
+    // The absence must not be counted as a limitation of this reader.
+    assert!(
+        !r[0].geometry.is_declarable_limitation(),
+        "nothing failed here, so nothing is declarable"
+    );
+    assert!(r[1].geometry.is_groundable());
+
+    // And the document seals, which is the assertion that failed before the repair.
+    engine_pdf::to_representation(&a, &Profile::default())
+        .expect("a page with trailing whitespace produces a representation");
+}
+
+/// **Both NIST benchmarks produce an artifact again.**
+///
+/// They had not since `check_box_within_page` was written: every one of the 3 452 boxes that
+/// tripped it was whitespace, and no run with visible text was ever out of place. Two of the three
+/// real benchmark documents were unreadable over content that draws nothing.
+#[test]
+fn the_documents_that_could_not_be_read_can_be_read() {
+    for name in ["nist-sp-800-63b.pdf", "nist-sp-800-53r5.pdf"] {
+        let a = extract_ok(path_in("benchmark", name));
+        let rep = engine_pdf::to_representation(&a, &Profile::default())
+            .unwrap_or_else(|e| panic!("{name} must seal: {e}"));
+        assert!(
+            rep.payload().nodes.len() > 1000,
+            "{name} produced a representation with real content"
+        );
+
+        // The count that used to read as 11 663 reader failures is split by reason. Only the
+        // nodes this reader genuinely could not measure are its limitation.
+        // On the REPRESENTATION's assurance, not the extract's: the geometry omission is counted
+        // during projection, because it is a fact about what the target schema can carry.
+        let detail = rep
+            .payload()
+            .assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == engine_core::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE)
+            .map(|l| l.detail.clone())
+            .unwrap_or_default();
+        assert!(
+            detail.contains("could NOT be measured") && detail.contains("had NOTHING to measure"),
+            "the two reasons must be reported apart, not summed: {detail}"
+        );
+    }
+}
+
+/// The conformance corpus's geometry is untouched, which is how a targeted repair proves itself.
+#[test]
+fn the_conformance_corpus_keeps_every_box_it_had() {
+    for name in [
+        "synthetic/simple-text/document.pdf",
+        "synthetic/two-lines/document.pdf",
+        "synthetic/two-columns/document.pdf",
+        "synthetic/ligature-fi-embedded-font/document.pdf",
+        "synthetic/table-regular-grid/document.pdf",
+    ] {
+        let a = extract_ok(conformance(name));
+        assert!(
+            runs(&a).iter().all(|r| !matches!(
+                r.geometry,
+                engine_core::GeometryPresence::Absent(engine_core::GeometryAbsence::NoInkToMeasure)
+            )),
+            "{name} has no whitespace-only run, so nothing in it may change"
+        );
+    }
+}

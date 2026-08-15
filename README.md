@@ -62,7 +62,7 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
   two-column document reads column-major and a single-column one is not touched at all (S5); and
   images as located, fingerprinted nodes, hidden and off-page text reported as findings that never
   remove the text they describe, and an annotated overlay that shows what has **no** box as well as
-  what does (S6). S6.1 then repaired a text-loss defect S6's audit surfaced: a simple font's codes were being read two bytes at a time, dropping 8,417 runs from one real document while the artifact blamed that document's fonts. **Next is S7**, the labelled-set gate, and it is not started. Page rasters are a
+  what does (S6). S6.1 then repaired a text-loss defect S6's audit surfaced: a simple font's codes were being read two bytes at a time, dropping 8,417 runs from one real document while the artifact blamed that document's fonts. S6.2 then stopped the engine putting rectangles around content that draws nothing — a fabrication that had made two of the three real benchmark documents unreadable outright. **Next is S7**, the labelled-set gate, and it is not started. Page rasters are a
   named leftover rather than part of S6: rendering needs a PDF renderer, and this build depends on
   no C++ stack and no AGPL code by decision.
 

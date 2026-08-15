@@ -256,8 +256,10 @@ impl Font {
         };
 
         if width_pt <= 0.0 {
-            // A zero-width run has no box to measure. Not an invented one either.
-            return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
+            // A zero-width run covers no area, so there is no box — and since v1-S6.2 it says
+            // which kind of nothing that is. It was `NotReportedByReader`, which claims the reader
+            // failed; the reader did not fail, the run has no extent.
+            return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
         }
 
         // Ascent/descent are glyph-space units per em; scale by the font size.

@@ -336,7 +336,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.8.1",
+      "parser_version": "0.8.2",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {

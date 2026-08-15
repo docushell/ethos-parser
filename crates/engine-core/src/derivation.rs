@@ -99,6 +99,26 @@ pub enum GeometryAbsence {
     NotReportedByReader,
     /// The node kind has no geometry by definition, so absence is correct rather than a gap.
     NotApplicableToKind,
+    /// The node draws no ink, so there is no ink box to measure (v1-S6.2).
+    ///
+    /// **The variant this type's own documentation promised and did not have.** The paragraph
+    /// below explains that `Option<QRect>` was refused because it would collapse *"we could not
+    /// measure"*, *"there is nothing to measure"* and *"we were not asked to measure"* into one
+    /// answer — and until v1-S6.2 the middle case had no spelling, so a run of spaces was given a
+    /// rectangle and called `Measured`.
+    ///
+    /// A whitespace-only run is the case in practice. Its box was never ink: `Font::ink_box`
+    /// stretches the *font's* ascent/descent envelope over the run's **advance**, so for a space
+    /// it produced a rectangle around nothing. On `nist-sp-800-53r5` that fabrication put 3 450
+    /// boxes past the edge of the page and the seal refused the document — 491 of its 492 pages
+    /// unreadable, over content that draws nothing.
+    ///
+    /// **It is not [`Self::NotReportedByReader`], and the difference is the whole point.** That one
+    /// means the reader could not measure and counts toward a declared capability limitation. This
+    /// one means the reader could measure perfectly well and there was nothing there. Counting it
+    /// would inflate the ink-measurement limitation by 150 425 nodes on the four real corpus
+    /// documents while saying nothing true about this reader.
+    NoInkToMeasure,
     /// This profile does not declare the capability that would produce the measurement.
     CapabilityNotEnabled,
 }

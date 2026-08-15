@@ -16,6 +16,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S5** | Multi-column reading order, versioned rule | S2 | **done** |
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | **done** |
 | **S6.1** | Code width from the font's declared kind — a text-loss repair | S6 | **done** |
+| **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
 | **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
 
 ---
@@ -604,6 +605,89 @@ every artifact produced before it correctly non-comparable with one produced aft
 - **Why before S7.** S7's gate is table-cell accuracy measured on real documents. Measuring it
   against a text layer missing 8 417 runs measures the wrong thing — and it would be wrong in the
   flattering direction, since a garbled cell fails to match rather than fabricating a match.
+
+- **Depends on:** S6.
+
+---
+
+## S6.2 — A run that draws no ink has no ink box
+
+**The second repair slice off S6**, and the second one found by asking what the first one's audit
+turned up rather than by a test failing.
+
+- **Goal:** Stop putting a rectangle on the wire around content that draws nothing — and let two
+  real documents produce an artifact again.
+
+- **The failure.** `nist-sp-800-53r5` and `nist-sp-800-63b` produced **no artifact at all**, exiting
+  2 on `DocumentRepresentation::seal`'s `check_box_within_page`. On 53r5 that was **491 of its 492
+  pages**. Two of the three real benchmark documents were unreadable, and had been since the check
+  was written.
+
+- **What the boxes actually were**, measured across every offender rather than sampled:
+
+  | Document | out-of-page boxes | whitespace-only | with visible text |
+  | --- | --- | --- | --- |
+  | `nist-sp-800-53r5` | 3 450 | **3 450** | **0** |
+  | `nist-sp-800-63b` | 2 | **2** | **0** |
+
+  Every one is a run of spaces at a **one-point** font size, placed past the right edge of the page
+  — a producer idiom for trailing whitespace. **No run with visible text is out of place anywhere.**
+  The coordinate transform was never wrong; the seal was refusing two documents over rectangles
+  drawn around nothing.
+
+- **The root cause.** `Font::ink_box` builds the box from the font's ascent/descent envelope
+  stretched over the run's **advance**:
+
+  ```rust
+  let top_pt    = baseline_y_pt - (ascent  / GLYPH_SPACE_UNITS) * font_size_pt;
+  let bottom_pt = baseline_y_pt - (descent / GLYPH_SPACE_UNITS) * font_size_pt;
+  // x spans origin .. origin + advance
+  ```
+
+  That is not per-glyph ink, and `FontInk`'s own doc comment always said so — *"Font-level rather
+  than per-glyph: a per-glyph ink box needs the glyph outline, which is M-later work."* For a run of
+  spaces it is a rectangle around nothing, labelled `Measured`.
+
+- **The contract had already named the gap and left it unfilled.** `GeometryPresence`'s doc explains
+  it is deliberately not an `Option` because `None` would collapse *"we could not measure"*,
+  ***"there is nothing to measure"***, and *"we were not asked to measure"* into one answer. There
+  was a variant for the first (`NotReportedByReader`) and the third (`CapabilityNotEnabled`), and
+  **none for the second**. S6.2 adds it.
+
+- **In:** `GeometryAbsence::NoInkToMeasure`; whitespace-only runs and zero-advance runs get it
+  instead of a fabricated box; it does **not** count toward the ink-measurement limitation, because
+  the reader *could* measure — there was nothing there, which is a different fact from a font that
+  supplies no metrics. Plus the fixture the corpus lacks.
+
+- **Out — and deliberately.** `check_box_within_page` **stays a hard refusal**. It is a working bug
+  detector and it earned its keep in this very session: it is what caught v1-S6's crop-box
+  regression, where page dimensions came from one box while coordinates came from another. Softening
+  it into a limitation would have let that ship silently. After this slice a *visible* run outside
+  its page means the transform really is wrong, and that is worth failing loudly over.
+
+- **Blast radius**, and the pattern by now familiar: **150 425** nodes across the four real documents
+  lose a meaningless box; **zero** conformance fixtures change, because not one of them contains a
+  whitespace run that claims a box. Grounding projections shrink by exactly those nodes, which is
+  the point — a citation anchored to a rectangle around three spaces was never evidence.
+
+- **Acceptance tests:**
+  - [x] Both NIST documents produce an artifact
+  - [x] A whitespace run reports `no_ink_to_measure`, not a box and not `not_reported_by_reader`
+  - [x] The absence does **not** inflate `geometry-absent-not-groundable`
+  - [x] Every conformance golden's geometry is unchanged
+  - [x] A run with visible text still gets its box, and still refuses the document if it lands
+        outside the page
+
+- **Leftover, named:** **what `Measured` actually means.** The box is a font-envelope approximation
+  for *every* run, not just whitespace — a capital `T` and a lowercase `o` get identical box heights.
+  Saying so properly needs glyph outlines, and it touches `01-CONTRACT.md`, the meaning of `bbox` in
+  `ethos.grounding.v1`, and S1's locator cross-check. That is a slice of its own and it is not
+  scheduled. What S6.2 fixes is the case that is not an approximation but a fiction: a box around
+  nothing.
+
+  **Unverified, and stated rather than implied:** that a space glyph never draws ink in these fonts
+  is reasoned from the semantics of whitespace and from the box being an advance rectangle rather
+  than an outline. Confirming it needs the glyph outlines this slice does not read.
 
 - **Depends on:** S6.
 

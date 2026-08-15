@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 28
+    "engine_owned": 29
   },
   "fixtures": [
     {
@@ -436,6 +436,15 @@
       "sha256": "sha256:addbedfae29cd500428182dbeeb3223188d30a31a792b1933c478fa16f735c8e",
       "owner": "engine",
       "notes": "v1-S6.1 golden, and the shape ZERO fixtures had before it. A TrueType font \u2014 SIMPLE, so its codes are one byte by PDF 32000-1 9.6 \u2014 carrying a /ToUnicode whose codespace declares TWO. Expect the text `Hi there` and NO font limitation. Split by the /ToUnicode codespace instead of by the font's declared kind, the codes fuse into pairs, none is in the map, and the run is dropped while the artifact blames the document's encoding \u2014 which is what happened to 8,417 runs of cfpb-home-loan-toolkit for six slices. Every conformance font is a Type1 with no /ToUnicode, so none of them could catch it."
+    },
+    {
+      "id": "whitespace-past-the-page-edge",
+      "root": "engine",
+      "group": "engine",
+      "path": "whitespace-past-the-page-edge/document.pdf",
+      "sha256": "sha256:b761a7f595e6a2d7f5da5a9822d86ab07c1e9456bc0d1813d755d6bcd0967565",
+      "owner": "engine",
+      "notes": "v1-S6.2 golden. 28 SPACES at 12pt whose advance carries them from x=200 to x=368 on a 300pt page, in a font declaring real ink metrics. Expect `no_ink_to_measure` on that run and a MEASURED box on the visible run beside it. Before v1-S6.2 the reader built a box from the font envelope and the advance \u2014 a rectangle around nothing \u2014 which left the page and made `seal` refuse the whole document with exit 2. That is what put 491 of nist-sp-800-53r5's 492 pages beyond reach. Zero corpus fixtures had a whitespace run claiming a box, which is why nothing caught it."
     }
   ]
 }

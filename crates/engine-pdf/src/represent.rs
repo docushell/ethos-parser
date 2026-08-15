@@ -235,11 +235,39 @@ pub fn to_representation(
     // schema has nowhere to put. Both are omitted from a grounding projection, and folding them
     // into one number would make it impossible to tell a document whose fonts carry no metrics
     // from one that simply has a form on it.
-    let ink_absent = geometry
+    // v1-S6.2. Split by REASON, because the two are different facts about this reader and the
+    // limitation used to state only their sum. `unmeasurable` means the font supplied no usable
+    // metrics — a real gap in what this engine could do. `no_ink` means the run draws nothing, so
+    // there was never a box to measure and no gap exists. Reporting 11 663 of the first when 242
+    // of them are the first and 11 421 are the second is the same conflation this slice repairs
+    // one layer down.
+    let unmeasurable = geometry
         .iter()
         .zip(&nodes)
-        .filter(|(g, n)| !g.presence.is_groundable() && n.kind == NodeKind::TextRun)
+        .filter(|(g, n)| {
+            n.kind == NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NotReportedByReader
+                    )
+                )
+        })
         .count() as u32;
+    let no_ink = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| {
+            n.kind == NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NoInkToMeasure
+                    )
+                )
+        })
+        .count() as u32;
+    let ink_absent = unmeasurable + no_ink;
     let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
 
     // Rebuild the assurance so the geometry declaration travels with everything else M4
@@ -247,7 +275,11 @@ pub fn to_representation(
     // so passing the extract's own list back in deduplicates rather than doubling.
     let mut limitations = extract.assurance.limitations.clone();
     if ink_absent > 0 {
-        limitations.push(geometry_absent_limitation(ink_absent, nodes.len() as u32));
+        limitations.push(geometry_absent_limitation(
+            unmeasurable,
+            no_ink,
+            nodes.len() as u32,
+        ));
     }
     if non_text > 0 {
         limitations.push(non_text_nodes_limitation(non_text, nodes.len() as u32));
@@ -325,17 +357,25 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
     )
 }
 
-fn geometry_absent_limitation(not_groundable: u32, total: u32) -> Limitation {
+fn geometry_absent_limitation(unmeasurable: u32, no_ink: u32, total: u32) -> Limitation {
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
         format!(
-            "{not_groundable} of {total} node(s) in this representation have no measurable ink \
-             box, so they are OMITTED from any `ethos.grounding.v1` projection of it — that \
-             schema requires a bbox on every element and span, and fabricating one is forbidden. \
-             The nodes are still here, with their text and their native locators intact: the gap \
-             is in what can be expressed downstream, not in what was read. A grounding artifact \
-             with fewer elements than this record has nodes is therefore expected, and this is \
-             the count that reconciles them."
+            "{} of {total} text node(s) in this representation carry no ink box, so they are \
+             OMITTED from any `ethos.grounding.v1` projection of it — that schema requires a bbox \
+             on every element and span, and fabricating one is forbidden. The nodes are still \
+             here, with their text and their native locators intact: the gap is in what can be \
+             expressed downstream, not in what was read. A grounding artifact with fewer elements \
+             than this record has nodes is therefore expected, and this is the count that \
+             reconciles them.\n\n\
+             **Two reasons, split because they say different things about this reader** (v1-S6.2). \
+             {unmeasurable} node(s) could NOT be measured: their font supplies no usable \
+             ascent/descent and no `/FontBBox`, which is a real gap in what this engine can do. \
+             {no_ink} node(s) had NOTHING to measure: the run draws no ink — a run of spaces — so \
+             no box exists to be missing. Only the first is a limitation of this reader. Before \
+             they were split, an artifact reported their sum under a sentence that read as though \
+             the reader had failed every time.",
+            unmeasurable + no_ink
         ),
     )
 }
@@ -460,7 +500,8 @@ mod tests {
             .find(|l| l.code == codes::GEOMETRY_ABSENT_NOT_GROUNDABLE)
             .expect("the count must be declared in the record");
         assert!(
-            l.detail.contains("1 of 1 node(s)"),
+            l.detail.contains("1 of 1 text node(s)")
+                && l.detail.contains("1 node(s) could NOT be measured"),
             "the declaration carries the count that reconciles the two artifacts: {}",
             l.detail
         );

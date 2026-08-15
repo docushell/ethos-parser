@@ -56,6 +56,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              run outside the crop box. No document in either corpus has a
                              non-zero box origin, which is why the coordinate defect v1-S6
                              repaired went unnoticed for six slices                 [v1-S6]
+  whitespace-past-the-page-edge
+                             a run of SPACES at a 1pt size whose advance carries it off the right
+                             edge, with a font declaring real ink metrics. Its box was a rectangle
+                             around nothing, and it put 491 of nist-sp-800-53r5's 492 pages beyond
+                             reach — the seal refused the document. Zero corpus fixtures had a
+                             whitespace run claiming a box                          [v1-S6.2]
   crop-box-smaller-than-media
                              a /CropBox strictly inside the /MediaBox, with a font carrying REAL
                              ink metrics and text in the cropped-away margin. The only fixture
@@ -513,6 +519,18 @@ FIXTURES = {
         "3 Tr 1 0 0 1 40 70 Tm (Hidden instruction) Tj "
         "0 Tr 1 0 0 1 40 40 Tm (Visible again) Tj ET"
     ),
+    # v1-S6.2's golden. A run of SPACES whose advance runs off the right edge of a 300pt page,
+    # in a font that declares real ascent/descent — so before v1-S6.2 the reader built an ink box
+    # for it out of the font envelope and the advance, a rectangle around nothing, and `seal`
+    # refused the whole document because that rectangle left the page.
+    #
+    # 28 spaces at 12pt with the uniform 500/1000 width is 168pt of advance from x=200, ending at
+    # x=368 on a 300pt page. The visible run after it is there so the fixture also proves the
+    # opposite half: text that DOES draw ink still gets its box.
+    "whitespace-past-the-page-edge": (
+        "BT /F1 12 Tf 1 0 0 1 200 100 Tm (                            ) Tj "
+        "1 0 0 1 40 60 Tm (Visible) Tj ET"
+    ),
     # v1-S6.1's golden, and the shape the corpus never had. A TrueType font — SIMPLE, so its codes
     # are one byte by PDF 32000-1 9.6 — carrying a /ToUnicode whose codespace declares TWO. Split
     # correctly this reads "Hi there"; split by the /ToUnicode codespace the codes fuse into pairs,
@@ -769,6 +787,7 @@ MEDIA = {
     "off-page-and-offset-box": (0, 20, 300, 220),
     "crop-box-smaller-than-media": (0, 0, 300, 200),
     "simple-font-two-byte-tounicode": (0, 0, 300, 144),
+    "whitespace-past-the-page-edge": (0, 0, 300, 144),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -789,6 +808,9 @@ DESCRIPTORS = {
     # Real metrics, so the ink box is MEASURED — without this the fixture proves nothing, because
     # a typed-absent box can never fall outside a page.
     "crop-box-smaller-than-media": "metrics",
+    # Real metrics, so an ink box would be built. Without them the run takes the typed-absence
+    # path for a different reason and the fixture proves nothing.
+    "whitespace-past-the-page-edge": "metrics",
 }
 
 

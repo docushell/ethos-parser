@@ -312,6 +312,22 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 .map_err(quantize_err)?;
 
             let geometry = match (font, shown.advance) {
+                // v1-S6.2. **A run that draws no ink has no ink box.** `ink_box` builds its
+                // rectangle from the font's ascent/descent envelope stretched over the run's
+                // advance — not from glyph outlines — so for a run of spaces it produced a
+                // rectangle around nothing and labelled it `Measured`. On `nist-sp-800-53r5` 3 450
+                // of those landed past the page edge and the seal refused the whole document: 491
+                // of 492 pages unreadable over content that draws nothing.
+                //
+                // The test is `trim().is_empty()`, which is Unicode whitespace — so a space, a tab,
+                // and a non-breaking space all qualify. Deliberately narrow: a zero-width space
+                // (U+200B) is *not* Unicode whitespace and still gets a box, because over-claiming
+                // absence would be the same mistake pointed the other way.
+                (Some(_), Some(_)) if shown.text.trim().is_empty() => {
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NoInkToMeasure,
+                    )
+                }
                 (Some(f), Some(w)) => f.ink_box(ox_pt, oy_pt, w, shown.font_size),
                 // No advance means no width, so there is no box to measure — and a box guessed
                 // from the font size is exactly what this project refuses.

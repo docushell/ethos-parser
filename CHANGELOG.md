@@ -7,6 +7,100 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S6.2, as 0.8.2
+
+**A repair.** The engine was putting rectangles on the wire around content that draws nothing — and
+because some of those rectangles left the page, **two of the three real benchmark documents could
+not be read at all**. **Not tagged.**
+
+### The failure
+
+`nist-sp-800-53r5` and `nist-sp-800-63b` produced no artifact, exiting 2 on
+`DocumentRepresentation::seal`'s `check_box_within_page`. On 53r5 that was **491 of its 492 pages**.
+
+### What the boxes were, measured across every offender
+
+| Document | out-of-page boxes | whitespace-only | with visible text |
+| --- | --- | --- | --- |
+| `nist-sp-800-53r5` | 3 450 | **3 450** | **0** |
+| `nist-sp-800-63b` | 2 | **2** | **0** |
+
+Every one is a run of spaces at a **one-point** font size, carried past the right edge by its
+advance — a producer idiom for trailing whitespace. **No run with visible text is out of place
+anywhere.** The coordinate transform was never wrong. The seal was refusing two documents over
+rectangles drawn around nothing.
+
+### Root cause
+
+`Font::ink_box` builds its rectangle from the font's ascent/descent envelope stretched over the
+run's **advance** — not from glyph outlines, as `FontInk`'s own doc comment always said. For a run
+of spaces that is a box around nothing, labelled `Measured`.
+
+### The variant the contract had already promised
+
+`GeometryPresence`'s documentation explains it is deliberately not an `Option` because `None` would
+collapse *"we could not measure"*, ***"there is nothing to measure"*** and *"we were not asked to
+measure"* into one answer. There was a spelling for the first and the third. There was **none for
+the second** — so a run of spaces got a rectangle and was called measured.
+
+`GeometryAbsence::NoInkToMeasure` fills it. Whitespace-only runs get it, and so do zero-advance
+runs, which are the same fact. It does **not** count toward the ink-measurement limitation: that one
+means the reader could not measure, and here the reader could measure perfectly well and there was
+nothing there.
+
+### The count was conflating the same two things one layer up
+
+`geometry-absent-not-groundable` reported their sum under a sentence that read as though the reader
+had failed every time — on 63b, *"11 663 nodes have no measurable ink box"* when **242** were
+failures and **11 421** were non-events. It now reports both, separately, and says which one is a
+limitation of this reader.
+
+### Not changed, deliberately
+
+`check_box_within_page` **stays a hard refusal.** It is a working bug detector and it earned its
+keep in this very session — it is what caught v1-S6's crop-box regression, where page dimensions
+came from one box while coordinates came from another. Softening it into a limitation would have let
+that ship silently. After this repair, a *visible* run outside its page means the transform really
+is wrong, and that is worth failing loudly over.
+
+### Blast radius
+
+**150 425** nodes across the four real documents lose a box that was never ink. **Zero conformance
+fixtures change** — not one contains a whitespace run that claims a box, which is why nothing caught
+this. Grounding projections shrink by exactly those nodes, which is the point: a citation anchored
+to a rectangle around three spaces was never evidence.
+
+### The fixture the corpus lacked
+
+`whitespace-past-the-page-edge`: 28 spaces at 12pt whose advance runs from x=200 to x=368 on a 300pt
+page, in a font declaring real ink metrics, beside a visible run that must keep its box. On 0.8.1 it
+exits 2 with *"node `s1` has a measured box [20000, 3538, 36800, 4648] outside its page [0, 0,
+30000, 14400]"* — the same failure as the NIST documents, in 1 462 bytes.
+
+### Leftover, named
+
+**What `Measured` actually means.** The box is a font-envelope approximation for *every* run, not
+just whitespace — a capital `T` and a lowercase `o` get identical heights. Saying so properly needs
+glyph outlines and touches `01-CONTRACT.md`, the meaning of `bbox` in `ethos.grounding.v1`, and S1's
+locator cross-check. Not scheduled. What this slice fixed is the case that is not an approximation
+but a fiction.
+
+**Unverified, and stated rather than implied:** that a space glyph never draws ink in these fonts is
+reasoned from the semantics of whitespace and from the box being an advance rectangle rather than an
+outline. Confirming it needs the glyph outlines this slice does not read.
+
+### Identity
+
+`profile_sha256` moves from `sha256:50d846c9…21dc967` to
+**`sha256:2e07326e31e5bf6eedc2ecfb2a7ec4249516ea9c07e770e803a0d852089ae042`** — the version alone.
+No field changed and no capability moved, but which nodes have geometry did, and the hash has to
+carry that.
+
+**595 tests pass**, up from 592. Oracle still 12 / 3; the conformance corpus's geometry is unchanged,
+asserted explicitly. 47 fixtures, up from 46.
+
+---
+
 ## [Unreleased] — v1-S6.1, as 0.8.1
 
 **A repair.** A simple font's character codes were being read two bytes at a time, so text was lost
