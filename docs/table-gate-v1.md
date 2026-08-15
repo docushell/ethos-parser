@@ -214,11 +214,113 @@ Fabricated-cell count stayed 0 throughout: every emitted cell's text really was 
 That is worth stating precisely because it is not a defence. The cells were real text in invented
 grids, which is exactly the failure `fabricated_cells` cannot see and the gold negatives can.
 
+## MCID grouping was built and measured too. Fifth dead end.
+
+The direction the previous section pointed at: merge runs into units by their marked-content id
+before any geometry, so a cell reading `Digital Identity Guidelines` is one unit rather than three
+word-level runs. `TextRun.mcid` is copied verbatim off `BDC` and exists in the content stream
+whether or not the document is tagged, so it is the producer's own chunking rather than the
+structure tree.
+
+**Merge alone: no change at all.** 43‰, 10 tables, 77 cells, 0 fabricated — every number identical
+to baseline, and all 217 library tests pass. It compresses well (median 2 302 runs → 278 units per
+page, 8.4×) and still cannot help, because the lattice is *still* 74 row lines × 157 column lines =
+11 470 faces against a 4 096 cap. The candidate is the whole page; merging changes what is in it,
+not how big it is.
+
+**Merge across baselines + bands: 14 fabricated cells.** The first non-zero fabrication count in
+this slice. Cause: `extract::reorder_page` remaps `DetectedCell::run_indices` after
+`gutter-columns-v1` permutes the page, and that remap only preserves a cell's text because a
+table's runs are contiguous in the new order. A unit spanning two baselines can be split by the
+reordering, and the remapped indices then concatenate to a different string than the detector
+built — a cell claiming text it does not contain.
+
+**Merge within one baseline + bands: fabrication back to 0, and the same failure as before.**
+104 tables, 1 086 emitted cells, 26 TP against 1 098 FP, macro **45‰**. It breaks
+`unruled-near-miss`, and it *loses a disclosure*: the band filter removes an incoherent candidate
+before the coherence check sees it, so a near-miss that v1 declared as `FacesWithoutText` now
+silently produces nothing at all. That is standing rule 3 — no silent drop — not merely a bad score.
+
+**Attribution, because it matters.** All three gold negatives carry **zero mcids**, so `units()` is
+a provable no-op on them. The near-miss failure is the *bands'*, not the merge's. It also means the
+gold negatives are structurally blind to mcid merging and cannot certify it; the only control in
+the corpus that exercises it is `irs-form-1040-2025`, whose 1 976 runs all carry mcids.
+
+## If an mcid rule is ever revisited, the gate needs republishing first
+
+An adversarial panel was run on whether this metric can score a detector that reads mcids. Both
+lenses agree on the facts and split on the verdict, and the disagreement is worth recording.
+
+**5 998 of the 7 704 gold cells — 778‰ — cite exactly one mcid.** For those, a detector that merges
+by mcid produces text that is *byte-identical* to the gold by construction: the same runs, in the
+same order, concatenated the same way. The text clause of the metric would stop measuring the
+detector on more than three-quarters of the corpus and start measuring the producer's chunking
+discipline.
+
+What survives is the entire grid half: gold slots come from `/TR` and `/TD` ordinals and
+`/RowSpan`/`/ColSpan`, predicted slots from folding unit origins at `ALIGN_TOLERANCE`. No
+coordinate reaches the tree walk and no tree field reaches the detector — `extract.rs` builds
+`RunOrigin` from `{x, y, text}` and deliberately omits the `PdfTaggedLocator` sitting on the same
+`TextRun`.
+
+The strongest defence of the metric is quantitative: hand the detector perfect cell text *and* a
+perfect grid and it ceilings at macro **446‰**, below the 489‰ floor. A gate the shared derivation
+cannot clear on its own is not a gate the shared derivation is scoring. The strongest attack is
+that the tautological subset alone ceilings well above the floor, so all headroom would be
+available without any text inference.
+
+Unresolved, and deliberately left that way: no mcid-reading rule shipped, so the question is not
+yet load-bearing. If one is ever proposed, this document must first publish the ceiling and a null
+control — an mcid-only "detector" with no geometry at all, scored through the same harness and
+asserted to stay near zero — before its number may be quoted.
+
+## A known defect in this metric, found by the same review
+
+The gold joins a cell's mcid texts with a **space**; the detector concatenates its runs with
+**nothing**. On **210 of 7 704 cells (27‰)** the two conventions give different gold text, so the
+join can insert a separator the page never drew and make a cell unmatchable for a reason that is
+the metric's rather than the detector's. Small, real, and stated rather than quietly carried. It is
+not corrected here because changing it moves the committed labelled set and the published number in
+the same commit that reports them, which is the one edit this document exists to make impossible.
+
+## The finding that reframes all five: the unruled rule scores nothing, and never did
+
+**Every one of the 10 tables the gate scores is `ruled-rects-v1`.** Checked by reading `rule` off
+each detected table:
+
+| Document | `ruled-rects-v1` | `unruled-align-v1` |
+| --- | --- | --- |
+| `cfpb-home-loan-toolkit.pdf` | 10 | **0** |
+| `irs-form-1040-2025.pdf` | 0 | **0** |
+| `nist-sp-800-63b.pdf` | 0 | **0** |
+| `nist-sp-800-53r5.pdf` | 0 | **0** |
+
+The alignment rule emits **zero tables on the entire gate corpus**, before and after every repair
+tried here. The whole 43‰ is the *ruled* detector, on the rulings CFPB actually paints.
+
+So all five attempts were tuning a rule that contributes nothing to the number they were being
+judged by. That is not a reason to dismiss them — the alignment rule is the only candidate for the
+three documents that draw no rulings, so it was the right thing to attack. But it means the gate
+never exercised the code being changed, and stating that plainly is worth more than a sixth
+attempt. The measurable, unexamined question is the other one: **`ruled-rects-v1` finds 10 of
+`cfpb-home-loan-toolkit`'s 17 tagged tables and gets 24 of its 159 cells exactly right.** That is a
+rule that fires, on a document that draws real grids, with a gap nobody has yet looked into.
+
 ## What would actually move it
 
-Not a tolerance. The measured obstacle is that these producers emit text word by word, so a cell is
-*n* runs and no per-page geometric rule reconstructs the author's cell boundaries from that without
-inventing them. A rule that merged runs into cells on evidence — the structure tree's own `/MCID`
-grouping is the obvious candidate, since it is already read — would be a different rule under a
-different id, taking the author's grouping rather than guessing at it. That is not a calibration,
-and it is not this slice.
+Nothing in the geometric-alignment family, on this evidence. Five repairs have been measured — the
+gutter constants, stroke-ruled detection, band segmentation, mcid merging, and mcid merging with
+bands — and the two that move the number do so by emitting an order of magnitude more cells,
+getting almost none right, and breaking a gold negative each time.
+
+Two facts bound what any of them could have achieved:
+
+- **The gold declares no spans at all.** All 7 704 cells are 1 × 1, so gold slots equal gold cells.
+- **Coherence forbids an empty cell**, so the unruled family can never emit any of the 1 234 empty
+  gold cells, and a full-lattice emission charges every miss to both FP and FN.
+
+Together those give a hard ceiling for the degenerate half of the metric: grant the detector a
+perfect grid and free text wherever a single marked-content unit supplies it, and F1 collapses to
+TP/G — 72/159, 11/40, 328/568, 3352/6937, **macro 447‰**. Below the 489‰ floor. That is the
+quantitative reason the gate is not gameable by an mcid rule, and it is also the reason no amount
+of text accuracy alone would have cleared it.

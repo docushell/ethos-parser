@@ -829,6 +829,41 @@ corpus, and reports what it sees. The number it reports is bad.
   The obstacle is not a tolerance. These producers emit text word by word, so a cell is *n* runs,
   and no per-page geometric rule recovers the author's cell boundaries without inventing them.
 
+- **MCID grouping was then built and measured, and it is the fourth and fifth dead end.** Merge
+  runs into units by their `BDC` marked-content id — the producer's own chunking, not the tree —
+  before any geometry:
+
+  | Variant | tables | emitted | fabricated | cell-F1 |
+  | --- | --- | --- | --- | --- |
+  | baseline | 10 | 77 | 0 | 43‰ |
+  | merge alone | 10 | 77 | 0 | **43‰**, every number identical, 217/217 tests green |
+  | merge across baselines + bands | 121 | 1 194 | **14** | 46‰ |
+  | merge within one baseline + bands | 104 | 1 086 | 0 | 45‰ |
+
+  Merging compresses 8.4× and still leaves a 74 × 157 = 11 470-face lattice against a 4 096 cap:
+  the candidate is the whole page, and merging changes what is in it rather than how big it is.
+  The 14 fabricated cells came from `extract::reorder_page` — its `run_indices` remap holds only
+  while a table's runs stay contiguous, and a unit spanning two baselines can be split by
+  `gutter-columns-v1`. Baseline-scoped merging fixed that and then failed as the bands did:
+  `unruled-near-miss` becomes a table, and a candidate v1 refused as `FacesWithoutText` now
+  produces **no declaration at all**, because the band filter removes it before coherence sees it.
+
+  All three gold negatives carry **zero mcids**, so the merge is a provable no-op on them — the
+  near-miss break is the bands', and the negatives cannot certify the merge. Separately, an
+  adversarial panel established that **778‰ of gold cells cite exactly one mcid**, so an
+  mcid-reading detector would reproduce their text by construction; the gate would need a
+  published ceiling and a null control before its number could be quoted. See
+  `docs/table-gate-v1.md`.
+
+- **What all five repairs missed, and it reframes them.** Every one of the 10 tables the gate
+  scores is `ruled-rects-v1`. **The alignment rule emits zero tables on the entire gate corpus**,
+  before and after every change tried here — the whole 43‰ is the ruled detector on the rulings
+  `cfpb-home-loan-toolkit` actually paints. Five slices of work went into a rule the gate never
+  exercised. It was the right rule to attack (it is the only candidate for the three documents that
+  draw no rulings), but the unexamined and measurable question is the other one: `ruled-rects-v1`
+  finds 10 of CFPB's 17 tagged tables and gets 24 of its 159 cells right, and nobody has looked at
+  why.
+
 - **The other declared leftover, also falsified.** `stroke-ruled-tables-not-detected` was the
   suspected reason NIST's *ruled* tables are missed. Census of axis-aligned two-point stroked
   segments, all currently rejected, zero diagonals anywhere in the corpus:

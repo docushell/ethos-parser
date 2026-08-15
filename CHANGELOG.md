@@ -113,6 +113,73 @@ inventing them. A rule that merged runs into cells on **evidence** — the struc
 grouping, already read — would be a different rule under a different id. Not a calibration, and not
 this slice.
 
+### MCID grouping built, measured and reverted
+
+The direction the segmentation post-mortem pointed at: merge runs into units by their
+marked-content id before any geometry, so a cell reading `Digital Identity Guidelines` is one unit
+rather than three word-level runs. `TextRun.mcid` comes verbatim off `BDC`, so it is the producer's
+chunking and not the structure tree. Three variants:
+
+| Variant | tables | emitted cells | fabricated | cell-F1 |
+| --- | --- | --- | --- | --- |
+| baseline | 10 | 77 | 0 | 43‰ |
+| merge alone | 10 | 77 | 0 | **43‰** — every number identical |
+| merge across baselines + bands | 121 | 1 194 | **14** | 46‰ |
+| merge within one baseline + bands | 104 | 1 086 | 0 | 45‰ |
+
+**Merge alone changes nothing**, and all 217 library tests pass. It compresses 8.4× (median 2 302
+runs to 278 units per page) and the lattice is still 74 × 157 = 11 470 faces against a 4 096 cap.
+The candidate is the whole page; merging changes what is in it, not how big it is.
+
+**The 14 fabricated cells are the first non-zero fabrication count in this slice**, and the cause is
+worth recording: `extract::reorder_page` remaps `DetectedCell::run_indices` after
+`gutter-columns-v1` permutes the page, and that remap preserves a cell's text only because a
+table's runs stay contiguous. A unit spanning two baselines can be split by the reordering, and the
+remapped indices then concatenate to a different string than the detector built. Restricting a unit
+to one baseline fixed it, which confirms the diagnosis.
+
+The baseline-scoped variant then failed exactly where segmentation failed before: `unruled-near-miss`
+becomes a table, and a near-miss that v1 declared as `FacesWithoutText` now **silently produces
+nothing**, because the band filter removes the incoherent candidate before the coherence check sees
+it. A lost disclosure is standing rule 3, not a bad score.
+
+**Attribution.** All three gold negatives carry **zero mcids**, so `units()` is a provable no-op on
+them: the near-miss break belongs to the bands, not the merge. It also means the gold negatives are
+structurally blind to mcid merging and cannot certify it — the only control that exercises it is
+`irs-form-1040-2025`, whose 1 976 runs all carry mcids.
+
+**And the gate would have needed republishing first.** An adversarial panel established that
+**5 998 of 7 704 gold cells (778‰) cite exactly one mcid**, so a detector merging by mcid would
+reproduce those cell texts byte-identically by construction. The grid half stays fully independent,
+and handing the detector perfect text *and* a perfect grid still ceilings at macro 446‰ — below the
+floor — which is a real argument that the shared signal cannot clear the gate on its own. It is
+recorded in `docs/table-gate-v1.md` rather than settled, because no mcid-reading rule shipped.
+
+The same review found a defect in the committed metric: gold joins a cell's mcid texts with a
+space, the detector concatenates runs with nothing, and on **210 of 7 704 cells (27‰)** that
+changes the gold text. It biases the gate **down**, so it is conservative. Documented, not
+corrected — fixing it would move the labelled set and the published number in the commit that
+reports them.
+
+### The finding that reframes all five repairs
+
+**Every one of the 10 tables the gate scores is `ruled-rects-v1`. The alignment rule emits zero
+tables on the entire gate corpus** — before and after every change tried here. The whole 43‰ is the
+*ruled* detector on the rulings CFPB actually paints.
+
+So five repairs were spent tuning a rule that contributes nothing to the number judging them. That
+was not unreasonable — the alignment rule is the only candidate for the three documents that draw
+no rulings — but it means the gate never exercised the code being changed, and saying so is worth
+more than a sixth attempt. The measurable, unexamined question is the other one: `ruled-rects-v1`
+finds **10 of `cfpb-home-loan-toolkit`'s 17** tagged tables and gets **24 of its 159** cells exactly
+right, on a document that draws real grids.
+
+Two facts also bound what any alignment repair could have achieved. The gold declares **no spans at
+all** — all 7 704 cells are 1 × 1 — and coherence forbids an empty cell, so the unruled family can
+never emit any of the 1 234 empty gold cells and a full-lattice emission charges every miss to both
+FP and FN. Grant a perfect grid and free text wherever one marked-content unit supplies it, and F1
+collapses to TP/G: 72/159, 11/40, 328/568, 3352/6937, **macro 447‰ — below the 489‰ floor.**
+
 ### The gate, which is the part S7a left open
 
 S7a stored `{page, rows, columns, cells}` and could measure page agreement and nothing finer. The
