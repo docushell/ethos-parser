@@ -1,6 +1,6 @@
 # The v1 table gate, and how it is computed
 
-**Status: measured, and MISSED.** Macro cell-F1 is **43‰** against a floor of **489‰**.
+**Status: measured, and MISSED.** Macro cell-F1 is **61‰** against a floor of **489‰**.
 
 This document states the method completely enough to recompute the number. It is written that way
 because `docs/06-STEAL-REFUSE.md` records what happens otherwise: two publishers scored the same
@@ -110,31 +110,61 @@ and the difference is an artifact of how the producer chunked the stream.
 ## The result
 
 Engine **0.9.0**, profile
-`sha256:29e4d9acc30e5843905098c70c1493d2b59b07ddbdad6216453caeb73f574ecf`, measured 2026-08-15.
+`sha256:5593cb1fa7d5e9bb252e9f57643eb0f2d8062902bd7096d0eaca1e26007d2d5c`, measured 2026-08-15,
+under `ruled-rects-v2`.
 
 | Document | TP | FP | FN | cell-F1 |
 | --- | --- | --- | --- | --- |
-| `cfpb-home-loan-toolkit.pdf` | 24 | 91 | 135 | **175‰** |
+| `cfpb-home-loan-toolkit.pdf` | 24 | 12 | 135 | **246‰** |
 | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | **0‰** |
 | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | **0‰** |
 | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** |
-| **MACRO over 4 documents** | | | | **43‰** |
+| **MACRO over 4 documents** | | | | **61‰** |
 
-**Gate: 43‰ > 489‰ is false. v1-S7 is not green.**
+**Gate: 61‰ > 489‰ is false. v1-S7 is not green.**
 
 Alongside it, on the same run:
 
 | | |
 | --- | --- |
-| Cells emitted | 77 |
+| Cells emitted | 36 |
 | **Fabricated cells** | **0** |
-| Cross-check disagreements | 2 |
+| Cross-check disagreements | **0** |
 | False tables on the gold negatives | 0 |
-| Page-level recall (diagnostic only) | 157‰ |
-| Page-level precision (diagnostic only) | 900‰ |
+| Page-level recall (diagnostic only) | 140‰ |
+| Page-level precision (diagnostic only) | **1000‰** |
 
 Page-level recall is a **diagnostic**. It is not the gate and it is not comparable to 0.489.
-157‰ of pages agreeing is not 157‰ of cells right.
+140‰ of pages agreeing is not 140‰ of cells right.
+
+### The one repair that worked, and how it was found
+
+Under `ruled-rects-v1` this read **43‰**, with 77 cells emitted at 900‰ precision and 2 cross-check
+disagreements. The difference is a single defect, found by asking why the *ruled* rule scored what
+it did instead of assuming the alignment rule was the problem.
+
+`Lattice::build` required every face to be covered by **some** painted rectangle. A page-background
+panel answers yes for every face at once. Two hundred lines away, `detect_ruled` discarded that
+same panel as *"the table's own border"* rather than emitting it as a cell. One rectangle cannot be
+both the only evidence a face exists and not a cell.
+
+`cfpb-home-loan-toolkit` pages 22 and 23 each paint a 351 × 454 pt panel behind scattered highlight
+bars. Page 22 emitted a **17 × 13 table holding 12 cells** on a page whose tree declares no table at
+all; page 23 emitted a 23 × 8 against a tagged 5 × 3. Between them they supplied **79 of the 91
+false-positive cell slots** charged against the ruled rule, and both cross-check disagreements.
+
+Excluding a lattice-spanning rectangle from being a coherence witness removes exactly those two and
+**nothing else**: every other detection on the corpus is unchanged and no true positive is lost.
+It is a rule-version event (`ruled-rects-v2`), pinned by the engine-owned fixture
+`background-panel-not-a-grid` — 1 175 bytes, the first engine fixture whose geometry is *filled*
+rather than stroked, which is part of why this went unnoticed for six slices.
+
+The refusal is now **declared**. Before this the ruled rule had no voice at all: every precondition
+failure returned an empty vector and said nothing, so a page whose rectangles implied a grid their
+own ink did not draw read exactly like a page that painted nothing — on **556 of the corpus's 602
+pages**, measured. It reports under `ruled-table-candidate-refused`, the companion to the alignment
+rule's existing declaration, grouped by precondition so that 481 refused pages cost one explanation
+rather than 481 copies of it.
 
 ### Gold negatives
 
@@ -285,33 +315,49 @@ the same commit that reports them, which is the one edit this document exists to
 
 ## The finding that reframes all five: the unruled rule scores nothing, and never did
 
-**Every one of the 10 tables the gate scores is `ruled-rects-v1`.** Checked by reading `rule` off
-each detected table:
+**Every table the gate scores is a ruled one.** Checked by reading `rule` off each detected table:
 
-| Document | `ruled-rects-v1` | `unruled-align-v1` |
+| Document | ruled | `unruled-align-v1` |
 | --- | --- | --- |
-| `cfpb-home-loan-toolkit.pdf` | 10 | **0** |
+| `cfpb-home-loan-toolkit.pdf` | 8 | **0** |
 | `irs-form-1040-2025.pdf` | 0 | **0** |
 | `nist-sp-800-63b.pdf` | 0 | **0** |
 | `nist-sp-800-53r5.pdf` | 0 | **0** |
 
 The alignment rule emits **zero tables on the entire gate corpus**, before and after every repair
-tried here. The whole 43‰ is the *ruled* detector, on the rulings CFPB actually paints.
+tried against it. The whole 61‰ is the ruled detector on the rulings CFPB actually paints.
 
-So all five attempts were tuning a rule that contributes nothing to the number they were being
-judged by. That is not a reason to dismiss them — the alignment rule is the only candidate for the
-three documents that draw no rulings, so it was the right thing to attack. But it means the gate
-never exercised the code being changed, and stating that plainly is worth more than a sixth
-attempt. The measurable, unexamined question is the other one: **`ruled-rects-v1` finds 10 of
-`cfpb-home-loan-toolkit`'s 17 tagged tables and gets 24 of its 159 cells exactly right.** That is a
-rule that fires, on a document that draws real grids, with a gap nobody has yet looked into.
+So the five alignment repairs were tuning a rule that contributes nothing to the number judging
+them. That was not unreasonable — the alignment rule is the only candidate for the three documents
+that draw no rulings — but the gate never exercised the code being changed. **Asking the other
+question instead is what produced the session's one improvement**: `ruled-rects-v1` was scoring 24
+of CFPB's 159 cells while emitting 77, and the excess turned out to be two junk tables from a single
+inconsistency, fixed above.
+
+What remains on the ruled side, still unexamined:
+
+| Page | tagged | detected | why |
+| --- | --- | --- | --- |
+| 9, 10, 21, 25 | 2×3, 4×2, 2×2, 2×2 | none | **the page paints no rectangles at all** — not this rule's job |
+| 6, 7 | 7×2, 7×2 | none | 1 and 2 rectangles respectively; nothing like a grid is drawn |
+| 16, 17 | 7×2, 5×2 | 1×2, 1×2 | the page paints **two column panels**; the seven rows are text inside them |
+| 13, 8 | 8×4, 2×3 | (second table on the page missed) | |
+| 11 | 5×4 | 5×4, 18/20 cells right | the one genuinely painted grid, and it works |
+
+Pages 16 and 17 are the interesting shape: a real table whose *columns* are painted and whose
+*rows* are implied by text alignment inside them. Neither rule handles it, and neither is wrong to
+refuse — a hybrid would be a third rule with its own id and its own coherence precondition.
 
 ## What would actually move it
 
-Nothing in the geometric-alignment family, on this evidence. Five repairs have been measured — the
-gutter constants, stroke-ruled detection, band segmentation, mcid merging, and mcid merging with
-bands — and the two that move the number do so by emitting an order of magnitude more cells,
-getting almost none right, and breaking a gold negative each time.
+Nothing in the geometric-alignment family, on this evidence. Five repairs to that rule have been
+measured — the gutter constants, stroke-ruled detection, band segmentation, mcid merging, and mcid
+merging with bands — and the two that move the number do so by emitting an order of magnitude more
+cells, getting almost none right, and breaking a gold negative each time.
+
+The sixth repair, to the **ruled** rule, is the one that worked: +18‰ macro, precision to 1000‰,
+no true positive lost. It did not come from a new idea about tables. It came from reading the
+detector's own two statements about one rectangle and noticing they contradicted each other.
 
 Two facts bound what any of them could have achieved:
 

@@ -7,11 +7,89 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1-S7b, the gate measured and the calibration falsified, as 0.9.0
+## [Unreleased] — v1-S7b, the gate measured at 61‰, as 0.9.0
 
-**The gate is now a cell number, and it is missed: macro cell-F1 is 43‰ against a 489‰ floor.**
-S7b set out to recalibrate the alignment rule and instead measured that the prescribed change does
-nothing. **No detector changed. No rule id moved. v1 is not done.** Not tagged.
+**The gate is now a cell number, and it is missed: macro cell-F1 is 61‰ against a 489‰ floor.**
+Six detector repairs were measured. **Five failed and one worked** — and the one that worked is in
+the *ruled* rule, which nobody was looking at. **v1 is not done.** Not tagged.
+
+### `ruled-rects-v2`: a rectangle cannot be both the border and the evidence
+
+`Lattice::build` required every face of the lattice to be covered by **some** painted rectangle.
+A page-background panel answers yes for every face at once. Two hundred lines away in the same
+file, `detect_ruled` discarded that same panel rather than emitting it as a cell, with the comment
+*"the table's own border"*. One rectangle cannot be both the only evidence a face exists and not a
+cell, and the coherence precondition was the half that was wrong.
+
+`cfpb-home-loan-toolkit` pages 22 and 23 each paint a 351 × 454 pt panel — twice — behind scattered
+highlight bars:
+
+| | page 22 | page 23 |
+| --- | --- | --- |
+| tagged | **nothing** | 5 × 3 |
+| emitted under `-v1` | **17 × 13 holding 12 cells** | 23 × 8 holding 29 |
+| false-positive cell slots | 36 | 43 |
+
+79 of the 91 false positives the gate charged against the ruled rule, and both of the corpus's
+cross-check disagreements, came from those two pages.
+
+| | `-v1` | `-v2` |
+| --- | --- | --- |
+| tables detected | 10 | 8 |
+| matched | 9 | 8 |
+| **precision** | 900‰ | **1000‰** |
+| cells emitted | 77 | 36 |
+| fabricated | 0 | 0 |
+| cross-check disagreements | 2 | **0** |
+| cfpb TP / FP | 24 / 91 | **24** / **12** |
+| cfpb cell-F1 | 175‰ | **246‰** |
+| **MACRO cell-F1** | 43‰ | **61‰** |
+
+**No true positive is lost and no other detection changes.** Exactly the two junk tables disappear.
+
+### The ruled rule can now say when it refuses, and it refuses a lot
+
+It never could. Every precondition failure in `Lattice::build` returned `None`, `detect_ruled`
+collapsed them into an empty vector, and a page whose rectangles implied a grid their own ink did
+not draw read exactly like a page that painted nothing.
+
+**And the path was not cold — measured, after an adversarial review challenged the first draft of
+this paragraph.** The ruled rule refuses **556 of the four documents' 602 pages**, 481 of
+`nist-sp-800-53r5`'s 492 among them, and had done so in silence since v1-S1. What went unnoticed
+was narrower: the panel case above produced a *table* instead of a refusal, and finding that is
+what made the surrounding silence visible.
+
+`ruled-table-candidate-refused` is the companion to the alignment rule's existing declaration, with
+the same discipline: it names the precondition that failed and never grades how close the
+rectangles came. Two variants are earned today — a face no rectangle drew, and a lattice past the
+cell ceiling.
+
+**Grouped by precondition, so the reasoning is stated once.** At 481 refused pages, repeating a
+five-line explanation per page would put roughly a quarter of a megabyte of identical prose inside
+a hashed artifact. Every page is still named with its own numbers; only the prose is de-duplicated,
+so nothing is truncated. The alignment rule's existing declaration has the same shape and does
+repeat itself — a pre-existing defect in that pattern, left alone here rather than fixed under
+cover of this change.
+
+### The fixture
+
+`background-panel-not-a-grid`, engine-owned and CC0, 1 175 bytes: a 200 × 160 pt panel painted
+**twice** with three 40 × 10 bars on it. Under `-v1` it yields a 7 × 7 table with 3 cells, 46
+`Unowned` slots and a `DoesNotTile` fault; under `-v2`, no table and a declared refusal. Verified
+to fail without the fix at both the unit and the artifact level.
+
+Two details are deliberate. The panel is painted twice because the real page does, and because it
+forecloses a wrong re-fix — "skip the largest rectangle" would pass a single-panel fixture. And it
+is the **first engine fixture whose geometry is filled (`f`) rather than stroked (`S`)**: every
+other ruled fixture strokes, so the fill path into the lattice had no fixture behind it, which is
+part of why this survived six slices.
+
+---
+
+### The five alignment repairs, which all failed
+
+S7b set out to recalibrate the *alignment* rule and measured that every prescribed change does
+nothing or worse. Recorded in full below, because the reason they failed is the finding.
 
 ### The calibration, before and after
 
@@ -161,18 +239,18 @@ changes the gold text. It biases the gate **down**, so it is conservative. Docum
 corrected — fixing it would move the labelled set and the published number in the commit that
 reports them.
 
-### The finding that reframes all five repairs
+### The finding that reframed all five, and produced the sixth
 
-**Every one of the 10 tables the gate scores is `ruled-rects-v1`. The alignment rule emits zero
-tables on the entire gate corpus** — before and after every change tried here. The whole 43‰ is the
-*ruled* detector on the rulings CFPB actually paints.
+**Every table the gate scores is a ruled one. The alignment rule emits zero tables on the entire
+gate corpus** — before and after every change tried against it. The whole number is the *ruled*
+detector on the rulings CFPB actually paints.
 
 So five repairs were spent tuning a rule that contributes nothing to the number judging them. That
 was not unreasonable — the alignment rule is the only candidate for the three documents that draw
-no rulings — but it means the gate never exercised the code being changed, and saying so is worth
-more than a sixth attempt. The measurable, unexamined question is the other one: `ruled-rects-v1`
-finds **10 of `cfpb-home-loan-toolkit`'s 17** tagged tables and gets **24 of its 159** cells exactly
-right, on a document that draws real grids.
+no rulings — but the gate never exercised the code being changed. **Asking the other question is
+what produced the one repair that worked**: the ruled rule was getting 24 of CFPB's 159 cells right
+while emitting 77, and the excess was two junk tables from a single self-contradiction. See the top
+of this entry.
 
 Two facts also bound what any alignment repair could have achieved. The gold declares **no spans at
 all** — all 7 704 cells are 1 × 1 — and coherence forbids an empty cell, so the unruled family can
@@ -227,10 +305,14 @@ documents that score badly is the failure this harness exists to prevent.
 ### Identity
 
 `profile_sha256` moves from `sha256:2e07326e…089ae042` to
-**`sha256:29e4d9acc30e5843905098c70c1493d2b59b07ddbdad6216453caeb73f574ecf`** — **the version
-alone, and this time nothing else moved at all.** Not a field, not a capability, not a rule id, not
-a coordinate, not a character. Two artifacts either side of this hash say the same thing about the
-same document. The hash still moves because `parser_version` is in it.
+**`sha256:5593cb1fa7d5e9bb252e9f57643eb0f2d8062902bd7096d0eaca1e26007d2d5c`**, carrying both the
+version and `table_detection.ruled` moving to `ruled-rects-v2`. Two artifacts either side disagree
+about whether `cfpb-home-loan-toolkit` pages 22 and 23 hold a table, which is exactly the
+disagreement a rule id exists to make legible.
+
+`TABLE_DETECTION_V1` is **kept**, exactly as spelled, because artifacts produced before this name
+it — the same reason `READING_ORDER_RULE_V0` survived v1-S5 — and `TABLE_DETECTION_V2` joins it on
+the public surface.
 
 `unicode-normalization` is added as a **dev**-dependency for the metric's NFC clause;
 `cfpb-home-loan-toolkit` draws curly quotes, so NFC is load-bearing rather than decorative. The

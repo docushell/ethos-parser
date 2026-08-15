@@ -22,6 +22,9 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   unruled-near-miss          columns that align on two rows and miss on the third, so the
                              alignment rule must refuse rather than round them
                              together                                              [v1-S2]
+  background-panel-not-a-grid  a filled background panel with three scattered bars on it: the
+                             panel covers every face the bars' edges imply, so `ruled-rects-v1`
+                             called it a 7x7 table with 3 cells                   [v1-S7b]
   both-table-rules           one painted grid AND one aligned-text grid on the same page,
                              so the artifact carries two tables under two rule ids [v1-S2]
   ruled-wins-shared-region   a painted grid whose text ALSO forms a clean alignment grid;
@@ -376,6 +379,48 @@ FIXTURES = {
         "BT /F1 12 Tf "
         "1 0 0 1 50 94 Tm (A) Tj 1 0 0 1 150 94 Tm (B) Tj "
         "1 0 0 1 50 54 Tm (C) Tj "
+        "ET"
+    ),
+    # v1-S7b's PANEL. A background rectangle with scattered bars on it, which `ruled-rects-v1`
+    # turned into a table and `ruled-rects-v2` refuses.
+    #
+    #   y180 +-----------------------------------------+  the panel, 200 x 160, painted TWICE
+    #        |   [bar A]                               |
+    #        |                                         |
+    #        |   Panel text          and right         |  one baseline, so the alignment rule
+    #        |              [bar B]                    |  sees a single row and stays silent
+    #        |                              [bar C]    |
+    #    y20 +-----------------------------------------+
+    #
+    # The bars' eight x-edges and eight y-edges cluster into a 7 x 7 lattice of 49 faces, of
+    # which the bars paint three. Under `-v1` that was a table: the panel covers every face, so
+    # the coherence precondition passed, and then `detect_ruled` dropped the panel again as "the
+    # table's own border". One rectangle cannot be both the only evidence a face exists and not a
+    # cell. Measured on the real thing — `cfpb-home-loan-toolkit` pages 22 and 23 paint a
+    # 351 x 454 pt panel behind highlight bars — that confusion produced a 17 x 13 table holding
+    # 12 cells on a page whose structure tree declares no table at all.
+    #
+    # **Painted twice on purpose.** The real page does it, and more usefully it forecloses a
+    # wrong re-fix: "skip the largest rectangle" or "skip rects[0]" would both pass a
+    # single-panel fixture and fail here.
+    #
+    # **Filled (`f`), not stroked (`S`), and it is the first engine fixture that is.** Every
+    # other ruled fixture strokes its geometry, so the fill arm feeding the lattice had no
+    # fixture behind it — which is part of why this went unnoticed for six slices.
+    #
+    # The two runs share one baseline deliberately: with a single row line the alignment rule
+    # produces neither a table nor a refusal, so this fixture tests the ruled rule alone. Text is
+    # present so a test can also assert that refusing the grid costs the page none of its words.
+    "background-panel-not-a-grid": (
+        "0.9 g "
+        "20 20 200 160 re f "
+        "20 20 200 160 re f "
+        "0 g "
+        "40 150 40 10 re f "
+        "100 90 40 10 re f "
+        "160 40 40 10 re f "
+        "BT /F1 12 Tf "
+        "1 0 0 1 40 120 Tm (Panel text) Tj 1 0 0 1 140 120 Tm (and right) Tj "
         "ET"
     ),
     # v1-S2's NEAR MISS. Three rows, two columns, and no path operators — the shape the
@@ -770,6 +815,7 @@ MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
+    "background-panel-not-a-grid": (0, 0, 240, 200),
     "tagged-structure-roles": (0, 0, 300, 160),
     "tagged-table-agrees": (0, 0, 300, 160),
     "tagged-table-disagrees": (0, 0, 300, 160),

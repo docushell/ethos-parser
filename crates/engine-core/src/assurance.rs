@@ -105,6 +105,24 @@ pub mod codes {
     /// **Not a confidence score.** It reports that a refusal occurred and which precondition
     /// failed. It never grades how close the candidate came.
     pub const UNRULED_TABLE_CANDIDATE_REFUSED: &str = "unruled-table-candidate-refused";
+    /// The **ruled** rule built a candidate lattice from painted rectangles and refused it
+    /// (v1-S7b).
+    ///
+    /// The companion to [`UNRULED_TABLE_CANDIDATE_REFUSED`], and it exists for the same reason:
+    /// without it, a page where a grid was implied and judged incoherent is indistinguishable from
+    /// a page that drew no rectangles at all. Both say `tables: []`.
+    ///
+    /// **It arrived late, and not because the path was cold.** Measured on the four real
+    /// documents, the ruled rule refuses **556 of 602 pages** and did so in total silence before
+    /// this code existed — 481 of `nist-sp-800-53r5`'s 492 among them. What went unnoticed was
+    /// narrower: under `ruled-rects-v1` a page-background rectangle satisfied coverage for every
+    /// face at once, so the specific case of scattered decoration on a panel produced a *table*
+    /// instead of a refusal. `ruled-rects-v2` closed that, and finding it is what made the
+    /// surrounding silence visible.
+    ///
+    /// **Not a confidence score**, exactly as for the unruled one: it names the precondition that
+    /// failed and never grades how close the rectangles came.
+    pub const RULED_TABLE_CANDIDATE_REFUSED: &str = "ruled-table-candidate-refused";
     /// [`Capabilities::measured_ink_boxes`] is false: geometry is typed-absent throughout.
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
     /// [`Capabilities::multi_column_reading_order`] is false: order is single-column.
@@ -387,9 +405,11 @@ impl Capabilities {
             out.push(Limitation::profile(
                 codes::STROKE_RULED_TABLES_NOT_DETECTED,
                 "Ruled detection requires every lattice face to be covered by a rectangle the \
-                 document PAINTED. A grid an author drew as thin stroked ruling lines — four \
-                 segments around each cell, no filled cell box — does not satisfy that and is \
-                 not emitted as a ruled table. It may still be found by the alignment rule if \
+                 document PAINTED, and since `ruled-rects-v2` that rectangle may not be one \
+                 spanning the whole lattice — a background panel is the table's border, not \
+                 evidence its cells were drawn. A grid an author drew as thin stroked ruling \
+                 lines — four segments around each cell, no filled cell box — does not satisfy \
+                 that and is not emitted as a ruled table. It may still be found by the alignment rule if \
                  its text implies a grid, in which case the table names `unruled-align-v1` as \
                  its `detection_rule` and the ruling lines the author drew went unread. Curves \
                  are never flattened into ruling lines either, so a grid drawn with Béziers is \

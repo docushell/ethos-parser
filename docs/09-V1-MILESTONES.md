@@ -19,7 +19,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
 | **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
 | **S7b** | Detector calibration, measured against S7a — and **falsified**: the prescribed change moves no number | S7a | **done** |
-| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | **measured and MISSED: 43‰** |
+| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | **measured and MISSED: 61‰** |
 
 ---
 
@@ -855,14 +855,32 @@ corpus, and reports what it sees. The number it reports is bad.
   published ceiling and a null control before its number could be quoted. See
   `docs/table-gate-v1.md`.
 
-- **What all five repairs missed, and it reframes them.** Every one of the 10 tables the gate
-  scores is `ruled-rects-v1`. **The alignment rule emits zero tables on the entire gate corpus**,
-  before and after every change tried here — the whole 43‰ is the ruled detector on the rulings
-  `cfpb-home-loan-toolkit` actually paints. Five slices of work went into a rule the gate never
-  exercised. It was the right rule to attack (it is the only candidate for the three documents that
-  draw no rulings), but the unexamined and measurable question is the other one: `ruled-rects-v1`
-  finds 10 of CFPB's 17 tagged tables and gets 24 of its 159 cells right, and nobody has looked at
-  why.
+- **What all five repairs missed, and the sixth that worked.** Every table the gate scores is a
+  ruled one — **the alignment rule emits zero on the entire corpus**, before and after every change
+  tried against it. Five slices went into a rule the gate never exercised.
+
+  Asking the other question found a real defect. `Lattice::build` required every face to be covered
+  by *some* painted rectangle; a background panel answers yes for all of them at once, while
+  `detect_ruled` separately discarded that panel as "the table's own border". One rectangle cannot
+  be both the only evidence a face exists and not a cell. `cfpb-home-loan-toolkit` pages 22 and 23
+  paint a 351 × 454 pt panel behind highlight bars and emitted a 17 × 13 table holding 12 cells —
+  on a page whose tree declares no table — and a 23 × 8 against a tagged 5 × 3, together supplying
+  79 of 91 false positives and both cross-check disagreements.
+
+  `ruled-rects-v2` excludes a lattice-spanning rectangle from being a coherence witness:
+
+  | | `-v1` | `-v2` |
+  | --- | --- | --- |
+  | detected / matched | 10 / 9 | 8 / 8 |
+  | precision | 900‰ | **1000‰** |
+  | cross-check disagreements | 2 | **0** |
+  | cfpb TP / FP | 24 / 91 | 24 / **12** |
+  | **MACRO cell-F1** | 43‰ | **61‰** |
+
+  No true positive lost, no other detection changed. Pinned by the engine-owned fixture
+  `background-panel-not-a-grid`, and the ruled rule gained `ruled-table-candidate-refused` — it had
+  no way to declare a refusal at all before, which went unnoticed because the precondition almost
+  never fired.
 
 - **The other declared leftover, also falsified.** `stroke-ruled-tables-not-detected` was the
   suspected reason NIST's *ruled* tables are missed. Census of axis-aligned two-point stroked

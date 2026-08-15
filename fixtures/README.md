@@ -47,7 +47,7 @@ Two entries are worth knowing before you debug against them:
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **26** are
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **30** are
 `engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
 corpus genuinely cannot cover. The manifest's `counts.engine_owned` is the number a test checks;
 this table names the ones whose reason for existing is not obvious from the fixture itself.
@@ -63,6 +63,7 @@ this table names the ones whose reason for existing is not obvious from the fixt
 | `ruled-table-grid` | v1-S1 | A 3×3 grid **drawn** with `re`, one merged cell and one empty cell — the ruled golden |
 | `ruled-table-overlap` | v1-S1 | Two rectangles claiming one lattice face, so the cross-check must report mismatch and repair nothing |
 | `unruled-near-miss` | v1-S2 | Columns that align on two rows and miss on the third by five points: **no table**, plus a named refusal |
+| `background-panel-not-a-grid` | v1-S7b | A filled background panel with three scattered bars: the panel covers every face their edges imply, so `ruled-rects-v1` called it a 7×7 table with 3 cells. The first engine fixture whose geometry is **filled** rather than stroked |
 | `both-table-rules` | v1-S2 | One painted grid and one aligned-text grid on a page, so the artifact carries two tables under two rule ids |
 | `ruled-wins-shared-region` | v1-S2 | A painted grid whose text is *also* a clean alignment grid — one table comes out, and it is the ruled one |
 | `tagged-structure-roles` · `tagged-rolemap` · `tagged-table-agrees` · `tagged-table-disagrees` · `tagged-cycle` | v1-S3 | The four structural-locator states, `/RoleMap` remapping, a tagged grid that agrees and one that does not, and a `/K` cycle that must be survived rather than spun on |

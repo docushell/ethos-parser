@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `engine_core::TABLE_DETECTION_V1` in the profile, so changing any part of it moves
+//! Pinned as `engine_core::TABLE_DETECTION_V2` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -34,8 +34,11 @@
 //! 2. **Faces are candidate cells.** `n` x-lines and `m` y-lines make `(n-1) × (m-1)` faces.
 //!    **Fewer than two faces is not a grid** — a lone rectangle is an underline or a border, and
 //!    calling it a 1×1 table would find one on most pages in existence.
-//! 3. **Every face must be covered by a rectangle.** This is the coherence precondition, and it
-//!    is what separates a grid from a page that merely contains rectangles. Without it, the
+//! 3. **Every face must be covered by a rectangle that is not the border.** This is the coherence
+//!    precondition, and it is what separates a grid from a page that merely contains rectangles.
+//!    The exclusion in rule 4 applies here too, and v1-S7b is the slice that noticed it had to: a
+//!    rectangle spanning the whole lattice is not emitted as a cell, so it cannot be the evidence
+//!    that the cells exist either. Without it, the
 //!    scattered field boxes on a tax form produce one enormous lattice whose faces are mostly
 //!    empty — measured, not hypothesised: `irs-form-1040-2025` yielded a 662-cell "table" with a
 //!    cell spanning 75 rows by 45 columns. That is a fabricated table, and fabrication is the one
@@ -64,7 +67,7 @@ use engine_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `engine_core::TABLE_DETECTION_V1` and is NOT restated here. Two spellings
+// The rule id lives in `engine_core::TABLE_DETECTION_V2` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -73,7 +76,7 @@ use engine_core::{
 /// 150 centipoints — one and a half points. Wide enough to fold the two edges of a 1pt stroked
 /// ruling line into a single lattice line, which is the common way a grid is drawn; narrow enough
 /// that two genuinely distinct columns are never merged, since no table places columns 1.5pt
-/// apart. It is part of `TABLE_DETECTION_V1`, so changing it is a rule-version event and moves
+/// apart. It is part of `TABLE_DETECTION_V2`, so changing it is a rule-version event and moves
 /// the profile hash — the same discipline `crate::thresholds` is under.
 pub const LATTICE_TOLERANCE: i64 = 150;
 
@@ -162,7 +165,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<engine_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `engine_core::TABLE_DETECTION_V1` or
+    /// Exactly one of `engine_core::TABLE_DETECTION_V2` or
     /// `engine_core::TABLE_DETECTION_UNRULED_V1`. Set from those constants at the two places a
     /// table is built, never spelled out here — a rule id written twice is a rule id that can
     /// drift, which is the whole reason it is a pinned constant.
@@ -197,7 +200,7 @@ pub struct RunOrigin<'a> {
 ///   a real disagreement; splitting the difference would produce a grid neither rule found, with
 ///   no rule id that honestly describes it.
 ///
-/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v1`
+/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v2`
 /// knows the author drew it, and nothing was lost that a second, weaker derivation of the same
 /// cells would have added.
 ///
@@ -213,7 +216,7 @@ pub fn detect(
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
 ) -> Result<Detected, EngineError> {
-    let mut tables = detect_ruled(page, rects, runs, alloc)?;
+    let (mut tables, ruled_refusal) = detect_ruled(page, rects, runs, alloc)?;
 
     // Only runs no ruled table already claims. A run inside an accepted ruled table is spoken
     // for; letting it also vote on an alignment lattice would let one piece of text produce two
@@ -238,7 +241,90 @@ pub fn detect(
         }
     }
 
-    Ok(Detected { tables, refusal })
+    Ok(Detected {
+        tables,
+        refusal,
+        ruled_refusal,
+    })
+}
+
+/// Why the ruled rule refused a candidate lattice (v1-S7b).
+///
+/// **A disclosure, never a score**, and the direct companion to [`crate::unruled::Refusal`]. Each
+/// variant names a precondition that failed; none grades how close the rectangles came, because a
+/// "nearly a table" number is a confidence field wearing a different hat
+/// (`docs/01-CONTRACT.md` §9).
+///
+/// # Why this arrived six slices after the rule
+///
+/// **Not because the path was cold.** The ruled rule refuses 556 of the four real documents' 602
+/// pages, and did so in silence from v1-S1 until this type existed. What went unnoticed was
+/// narrower: under `ruled-rects-v1` a rectangle enclosing the whole lattice satisfied coverage for
+/// every face at once, so a page painting decoration on a background panel produced a *table*
+/// rather than a refusal — `cfpb-home-loan-toolkit` page 22 emitted a 17 × 13 grid holding 12
+/// cells. Fixing that is what made the surrounding silence visible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuledRefusal {
+    /// A face of the lattice was covered by no rectangle the document painted.
+    ///
+    /// The scattered-boxes case, and since `-v2` the panel case: the rectangles imply a grid whose
+    /// cells they do not draw.
+    FaceWithoutRectangle {
+        /// Faces the lattice implied.
+        faces: usize,
+        /// Rectangles the page painted in the region.
+        rects: usize,
+    },
+    /// The lattice exceeded [`Lattice::MAX_FACES`].
+    LatticeTooLarge {
+        /// Faces implied.
+        faces: usize,
+    },
+}
+
+impl RuledRefusal {
+    /// Which precondition failed, as a stable short name.
+    ///
+    /// The limitation groups by this and prints [`Self::explanation`] **once** per kind rather
+    /// than once per page. On `nist-sp-800-53r5` the ruled rule refuses 481 of 492 pages, and
+    /// repeating a five-line explanation 481 times would put a quarter of a megabyte of identical
+    /// prose inside a hashed artifact. Every page is still named, with its own numbers — this is
+    /// a change of layout, not a truncation.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::FaceWithoutRectangle { .. } => "a cell the ink does not draw",
+            Self::LatticeTooLarge { .. } => "past the cell ceiling",
+        }
+    }
+
+    /// The reasoning behind a kind of refusal, stated once.
+    pub fn explanation(&self) -> String {
+        match self {
+            Self::FaceWithoutRectangle { .. } => String::from(
+                "The rectangles implied a grid whose cells they do not all draw. A ruled grid must \
+                 be explained by the ink face by face, or it is a lattice this engine inferred \
+                 rather than one the document drew. A rectangle merely ENCLOSING the grid does not \
+                 count: it is the table's own border, it is not emitted as a cell, and it is not \
+                 evidence that the cells exist either",
+            ),
+            Self::LatticeTooLarge { .. } => format!(
+                "The rectangles implied more than the {}-cell ceiling for a reconstructed grid. \
+                 Refused rather than truncated: a truncated table is a table with cells missing \
+                 and no way to say which",
+                Lattice::MAX_FACES
+            ),
+        }
+    }
+
+    /// This page's own numbers, without the reasoning.
+    pub fn detail(&self) -> String {
+        match self {
+            Self::FaceWithoutRectangle { faces, rects } => {
+                format!("{rects} rectangles implied {faces} cells")
+            }
+            Self::LatticeTooLarge { faces } => format!("{faces} cells implied"),
+        }
+    }
 }
 
 /// What one page's detection produced.
@@ -252,6 +338,12 @@ pub struct Detected {
     /// refuse. This is a *disclosure*, not a score: it names the precondition that failed and
     /// never grades how close the candidate came (`docs/01-CONTRACT.md` §9).
     pub refusal: Option<crate::unruled::Refusal>,
+    /// Why the **ruled** rule refused a candidate here, if it built one and refused it (v1-S7b).
+    ///
+    /// Separate from `refusal` rather than folded into it: the two rules read different evidence,
+    /// and one page can perfectly well have its rectangles refused and its alignment refused for
+    /// unrelated reasons. Collapsing them would make a reader guess which rule spoke.
+    pub ruled_refusal: Option<RuledRefusal>,
 }
 
 /// Detect ruled tables on one page.
@@ -264,9 +356,10 @@ pub fn detect_ruled(
     rects: &[QuantRect],
     runs: &[RunOrigin<'_>],
     alloc: &mut IdAllocator,
-) -> Result<Vec<DetectedTable>, EngineError> {
-    let Some(lattice) = Lattice::build(rects) else {
-        return Ok(Vec::new());
+) -> Result<(Vec<DetectedTable>, Option<RuledRefusal>), EngineError> {
+    let lattice = match Lattice::build(rects) {
+        Ok(l) => l,
+        Err(refusal) => return Ok((Vec::new(), refusal)),
     };
 
     let table_rect = lattice.bounds();
@@ -334,17 +427,20 @@ pub fn detect_ruled(
     // geometry the contract cannot express.
     table_rect.as_qrect_checked()?;
 
-    Ok(vec![DetectedTable {
-        id,
-        page,
-        rect: table_rect,
-        rows: lattice.rows(),
-        columns: lattice.columns(),
-        cells: detected,
-        check,
-        tagged_check: None,
-        rule: engine_core::TABLE_DETECTION_V1.to_string(),
-    }])
+    Ok((
+        vec![DetectedTable {
+            id,
+            page,
+            rect: table_rect,
+            rows: lattice.rows(),
+            columns: lattice.columns(),
+            cells: detected,
+            check,
+            tagged_check: None,
+            rule: engine_core::TABLE_DETECTION_V2.to_string(),
+        }],
+        None,
+    ))
 }
 
 // -------------------------------------------------------------------------------------------
@@ -447,9 +543,15 @@ impl Lattice {
     /// table is emitted.
     const MAX_FACES: usize = 4096;
 
-    fn build(rects: &[QuantRect]) -> Option<Self> {
+    /// The lattice, or why there is not one (v1-S7b).
+    ///
+    /// `Err(None)` means no candidate ever existed — no rectangles, or too few lines to bound two
+    /// faces. That is an ordinary page, not a near miss, and declaring it would put a limitation on
+    /// every document in existence. `Err(Some(_))` is a real refusal with a reason, and it reaches
+    /// the artifact as `ruled-table-candidate-refused`.
+    fn build(rects: &[QuantRect]) -> Result<Self, Option<RuledRefusal>> {
         if rects.is_empty() {
-            return None;
+            return Err(None);
         }
         let xs = cluster(rects.iter().flat_map(|r| [r.x0, r.x1]));
         let ys = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]));
@@ -459,11 +561,15 @@ impl Lattice {
         // fabricated 1x1 table around the page" as a thing this must not do. A grid needs at
         // least two faces.
         if xs.len() < 2 || ys.len() < 2 {
-            return None;
+            return Err(None);
         }
         let faces = (xs.len() - 1) * (ys.len() - 1);
-        if !(2..=Self::MAX_FACES).contains(&faces) {
-            return None;
+        if faces < 2 {
+            // One face is a box, not a grid. No candidate existed.
+            return Err(None);
+        }
+        if faces > Self::MAX_FACES {
+            return Err(Some(RuledRefusal::LatticeTooLarge { faces }));
         }
 
         let lattice = Self { xs, ys };
@@ -476,16 +582,37 @@ impl Lattice {
         // Overlaps are deliberately NOT excluded here — a rectangle claiming a face another
         // rectangle already owns is a real disagreement, and it belongs in the cross-check where
         // it is reported rather than in a precondition where it would be silently dropped.
+        //
+        // **A rectangle spanning the whole lattice is not evidence** (v1-S7b). `detect_ruled`
+        // already refuses to emit such a rectangle as a cell — *"the table's own border"* — and
+        // the two claims cannot both stand: a rectangle that is not a cell because it merely
+        // encloses the grid is equally not proof that the grid's faces were drawn. Counting it
+        // was how `cfpb-home-loan-toolkit` page 22 became a 17 x 13 table with 12 cells on a page
+        // whose tree declares no table at all: the page paints a 351 x 454 pt background panel,
+        // the panel covers every face, and twelve scattered highlight bars supplied the edges.
+        // Measured across that document, this single confusion produced 79 of the 91 false-positive
+        // cell slots the gate charged against the ruled rule.
+        let encloses_everything = |r: &QuantRect| {
+            lattice
+                .span_of(*r)
+                .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
+        };
         for row in 0..lattice.rows() {
             for column in 0..lattice.columns() {
                 let face = lattice.face(row, column);
-                if !rects.iter().any(|r| r.covers_within_tolerance(face)) {
-                    return None;
+                if !rects
+                    .iter()
+                    .any(|r| !encloses_everything(r) && r.covers_within_tolerance(face))
+                {
+                    return Err(Some(RuledRefusal::FaceWithoutRectangle {
+                        faces,
+                        rects: rects.len(),
+                    }));
                 }
             }
         }
 
-        Some(lattice)
+        Ok(lattice)
     }
 
     fn rows(&self) -> u32 {
@@ -620,7 +747,7 @@ mod tests {
 
     #[test]
     fn no_rectangles_means_no_table_rather_than_an_empty_one() {
-        let t = detect_ruled(1, &[], &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &[], &[], &mut alloc()).unwrap().0;
         assert!(t.is_empty(), "a page with no rules has no ruled table");
     }
 
@@ -628,13 +755,15 @@ mod tests {
     fn a_single_rectangle_is_not_a_grid() {
         // One box is an underline, a highlight, a border — not a table. Calling it a 1×1 table
         // would find one on most pages in existence.
-        let t = detect_ruled(1, &[r(0, 0, 100, 100)], &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &[r(0, 0, 100, 100)], &[], &mut alloc())
+            .unwrap()
+            .0;
         assert!(t.is_empty(), "got {t:?}");
     }
 
     #[test]
     fn a_plain_grid_is_detected_and_cross_checks_ok() {
-        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap().0;
         assert_eq!(t.len(), 1);
         let table = &t[0];
         assert_eq!((table.rows, table.columns), (2, 2));
@@ -651,7 +780,7 @@ mod tests {
             r(0, 100, 100, 200),
             r(100, 100, 200, 200),
         ];
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         let table = &t[0];
         assert_eq!(table.cells.len(), 3, "the merge is one cell, not two");
 
@@ -671,7 +800,7 @@ mod tests {
         // `irs-form-1040-2025`: without it, its scattered field boxes produced a 662-cell grid
         // with a cell spanning 75 rows by 45 columns, and Ethos rejected the artifact outright.
         let rects = vec![r(0, 0, 100, 100), r(100, 0, 200, 100), r(0, 100, 100, 200)];
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         assert!(t.is_empty(), "got {t:?}");
     }
 
@@ -685,18 +814,65 @@ mod tests {
             r(400, 300, 420, 310),
             r(50, 500, 70, 510),
         ];
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         assert!(
             t.is_empty(),
             "a page with boxes on it is not a table: {t:?}"
         );
     }
 
+    /// **A background panel is not evidence that a grid was drawn** (v1-S7b).
+    ///
+    /// The defect this pins, measured on `cfpb-home-loan-toolkit` page 22: the page paints a
+    /// 351 × 454 pt panel behind twelve small text-highlight bars. The bars' edges cluster into a
+    /// 17 × 13 lattice, the panel covers every one of its 221 faces, and coherence passed — so the
+    /// page emitted a table declaring 17 rows and 13 columns while holding 12 cells, on a page
+    /// whose structure tree declares no table at all.
+    ///
+    /// The panel was simultaneously *not a cell* (`detect_ruled` skips it as "the table's own
+    /// border") and *proof that every cell exists*. Those cannot both be true, and this is the
+    /// half that was wrong.
+    #[test]
+    fn a_background_panel_does_not_make_scattered_bars_a_grid() {
+        let mut rects = vec![
+            r(0, 0, 400, 500), // the panel
+        ];
+        // Bars at unrelated positions, exactly as a highlighted list looks. Their edges imply a
+        // lattice; nothing about them tiles it.
+        for (i, y) in [40, 130, 260, 380].iter().enumerate() {
+            let x0 = 20 + (i as i64) * 17;
+            rects.push(r(x0, *y, x0 + 150, y + 12));
+        }
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
+        assert!(
+            t.is_empty(),
+            "a panel with bars on it is not a grid. The panel covers every face, but a rectangle \
+             that merely encloses the lattice is not evidence that the lattice was drawn — it is \
+             the same rectangle `an_outer_border_is_not_mistaken_for_a_cell` refuses to emit. Got \
+             {t:?}"
+        );
+    }
+
+    /// The companion to the test above: excluding the border as a **witness** must not stop a
+    /// genuine bordered grid being found, because its own cells still witness their own faces.
+    #[test]
+    fn a_bordered_grid_is_still_a_grid_after_the_border_stops_being_evidence() {
+        let mut rects = grid_2x2();
+        rects.push(r(0, 0, 200, 200));
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
+        assert_eq!(
+            t.len(),
+            1,
+            "the four cell rectangles cover all four faces on their own"
+        );
+        assert_eq!(t[0].cells.len(), 4);
+    }
+
     #[test]
     fn an_outer_border_is_not_mistaken_for_a_cell() {
         let mut rects = grid_2x2();
         rects.push(r(0, 0, 200, 200)); // the table's own border
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         let table = &t[0];
         assert_eq!(table.cells.len(), 4, "the border is not a fifth cell");
         assert_eq!(table.check.outcome, CheckStatus::Ok, "{:?}", table.check);
@@ -712,7 +888,7 @@ mod tests {
             r(0, 100, 100, 200),
             r(100, 100, 200, 200),
         ];
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         let table = &t[0];
 
         match &table.check.outcome {
@@ -750,7 +926,7 @@ mod tests {
             },
             // Nothing in the bottom row: those cells must come out EMPTY.
         ];
-        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap().0;
         let table = &t[0];
 
         let cell = |row, col| {
@@ -786,7 +962,7 @@ mod tests {
                 text: "b",
             },
         ];
-        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &runs, &mut alloc()).unwrap().0;
         for c in &t[0].cells {
             let expected: String = c.run_indices.iter().map(|i| runs[*i].text).collect();
             assert_eq!(
@@ -806,7 +982,7 @@ mod tests {
         // column. Outward rather than inward so the face stays covered: an inward nudge would be
         // testing the coverage precondition instead of the clustering.
         rects[3].x0 -= 1;
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
         assert_eq!(
             (t[0].rows, t[0].columns),
             (2, 2),
@@ -824,7 +1000,7 @@ mod tests {
 
     #[test]
     fn the_check_record_carries_its_own_version() {
-        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap();
+        let t = detect_ruled(1, &grid_2x2(), &[], &mut alloc()).unwrap().0;
         assert_eq!(t[0].check.check_id, LOCATOR_CHECK_V1);
         assert!(!t[0].check.check_version.is_empty());
     }

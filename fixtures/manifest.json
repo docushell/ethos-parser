@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 29
+    "engine_owned": 30
   },
   "fixtures": [
     {
@@ -265,6 +265,15 @@
       "sha256": "sha256:f5a694ed21ac7947fd239ec962d13202c57a34a3422f264123d6af07893b1bcd",
       "owner": "engine",
       "notes": "v1-S2 NEAR MISS. Three rows, two columns, no path operators \u2014 and on the last row the right column sits at x=205 instead of 200. Five points is past the 150 centipoints the alignment rule folds together and under the 1200 it requires between two real columns, so the origins imply three column lines, two of them half a gutter apart. Expect `tables: []` plus a named refusal: rounding 205 back to 200 would move a coordinate a reader had no way to know was moved."
+    },
+    {
+      "id": "background-panel-not-a-grid",
+      "root": "engine",
+      "group": "engine",
+      "path": "background-panel-not-a-grid/document.pdf",
+      "sha256": "sha256:c4c2c9191f19c3b16b80c1c0db974481fec8495edfefc23a3e8e0d44667e0aa2",
+      "owner": "engine",
+      "notes": "v1-S7b PANEL. A filled 200x160 background rectangle \u2014 painted TWICE, as the real page does \u2014 with three 40x10 bars scattered on it. The bars' edges cluster into a 7x7 lattice of 49 faces of which they paint three, and the panel covers every one of them, so `ruled-rects-v1` accepted the coherence precondition and emitted a 7x7 table with 3 cells while separately discarding the panel as \"the table's own border\". One rectangle cannot be both the only evidence a face exists and not a cell. Expect `tables: []` under `ruled-rects-v2`, with the page's two runs still present. Measured on the real thing: `cfpb-home-loan-toolkit` pages 22 and 23 paint a 351x454 pt panel behind highlight bars and produced a 17x13 table holding 12 cells on a page whose tree declares no table at all. Filled rather than stroked, and the first engine fixture that is \u2014 every other ruled fixture uses `S`, so the fill path into the lattice had no fixture behind it."
     },
     {
       "id": "both-table-rules",

@@ -74,12 +74,13 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | **done** |
 | **S7a** | The labelled set and the harness, measuring only | **done** |
 | **S7b** | Detector calibration, measured — and falsified | **done** |
-| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 43‰** |
+| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 61‰** |
 
 **S7 is open, with the number written down.** The gate metric exists, is documented in
-`docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **43‰** against
-a 489‰ floor. S7b measured that the calibration it was scoped to make — moving
-`unruled::COLUMN_GUTTER_MIN` — changes no number at all, so no detector and no rule id moved.
+`docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **61‰** against
+a 489‰ floor. S7b measured six detector repairs: the five aimed at the *alignment* rule all failed,
+and the sixth — `ruled-rects-v2`, which stops a background panel from witnessing its own lattice —
+took precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing a true positive.
 **v1 is not done and is not claimed to be.**
 
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later

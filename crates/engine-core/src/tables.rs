@@ -302,14 +302,14 @@ pub struct TableRecord {
     /// Always `Computed`: the ruling lines and the text are Extracted, and the grid, the indices,
     /// the spans and the concatenation are an inference over them (`docs/01-CONTRACT.md` §6).
     pub derivation: crate::derivation::DerivationClass,
-    /// **Which rule found this table** — `ruled-rects-v1` or `unruled-align-v1` (v1-S2).
+    /// **Which rule found this table** — `ruled-rects-v2` or `unruled-align-v1` (v1-S2, S7b).
     ///
     /// Per table, not per document, because one document can carry both kinds and the difference
     /// matters to a consumer:
     ///
     /// | Value | What the document did | What the engine did |
     /// | --- | --- | --- |
-    /// | `ruled-rects-v1` | painted the grid | read it |
+    /// | `ruled-rects-v2` | painted the grid | read it |
     /// | `unruled-align-v1` | placed text in columns | inferred it |
     ///
     /// `derivation` is `Computed` either way — both are inferences over Extracted evidence — so

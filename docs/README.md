@@ -32,7 +32,7 @@ document, and undetectable downstream.
 
 | Rule | Evidence | Claim |
 | --- | --- | --- |
-| `ruled-rects-v1` (S1) | rectangles the author painted | the document drew this grid |
+| `ruled-rects-v2` (S1, S7b) | rectangles the author painted | the document drew this grid |
 | `unruled-align-v1` (S2) | where the author placed text | a detector inferred this grid |
 
 Both are cross-checked two independent ways, and fabrication is 0 under both. S3 adds a **second**
@@ -40,11 +40,12 @@ check — `tagged-vs-geometric-v1` — comparing the grid a document's tags decl
 detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' — see
 `08-V1-SCOPE.md` §3 for why chasing it earlier would be tuning against nobody's number.
 
-**S7 has now measured it: macro cell-F1 is 43‰ against the 489‰ floor — a miss.** The method is
+**S7 has now measured it: macro cell-F1 is 61‰ against the 489‰ floor — a miss.** The method is
 [`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
-repository should be quoted from. S7b also measured that the calibration it was scoped to make —
-moving `unruled-align-v1`'s column-gutter floor — changes **no number at all**, so neither detector
-changed and both rule ids still read `-v1`.
+repository should be quoted from. S7b measured six detector repairs: the five aimed at the
+*alignment* rule all failed, and the sixth — `ruled-rects-v2` — took precision from 900‰ to 1000‰
+and the gate from 43‰ to 61‰ without losing a true positive, by refusing to let a page-background
+panel witness the lattice its own decoration implies.
 
 Four measurements shaped the table slices and are worth knowing before reading the detectors:
 

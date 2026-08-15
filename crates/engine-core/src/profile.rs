@@ -127,7 +127,33 @@ pub const TEXT_CODE_RULE_V1: &str = "declared-font-codes-v1";
 /// derivation under a different id ([`TABLE_DETECTION_UNRULED_V1`]), and rolling it into this one
 /// would make two very different inferences share an identity — which is exactly what a versioned
 /// rule id exists to prevent.
+///
+/// **Superseded by [`TABLE_DETECTION_V2`] at v1-S7b.** Kept, exactly as spelled, because artifacts
+/// produced before that change name it and a reader must still be able to look it up — the same
+/// reason [`READING_ORDER_RULE_V0`] survived v1-S5.
 pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
+
+/// The **ruled** table-detection rule v1-S7b ships: a coherence witness may not be the border.
+///
+/// # What changed, and why it is a new id rather than a fix
+///
+/// [`TABLE_DETECTION_V1`] asked whether every face of the lattice was covered by **some** painted
+/// rectangle. A page-background panel answers yes for every face at once, so the precondition did
+/// no work on a page that paints decoration on top of a panel — while the detector, two hundred
+/// lines away, already refused to emit that same panel as a cell, calling it the table's own
+/// border. A rectangle cannot both be *"not a cell, it merely encloses the grid"* and *"proof the
+/// grid's cells were drawn"*. `-v2` excludes a rectangle spanning the whole lattice from being a
+/// witness, matching the exclusion that already applied to cells.
+///
+/// Measured on `cfpb-home-loan-toolkit`, which paints a 351 × 454 pt panel behind scattered
+/// highlight bars on two pages: those pages emitted a 17 × 13 table holding 12 cells and a 23 × 8
+/// holding 29, one of them on a page whose structure tree declares no table at all. Under `-v2`
+/// both are refused, **every other detection on the corpus is unchanged and no true positive is
+/// lost**, and detection precision goes from 900‰ to 1000‰.
+///
+/// Two artifacts either side of this id disagree about whether a page has a table, which is
+/// exactly the disagreement a rule id exists to make legible.
+pub const TABLE_DETECTION_V2: &str = "ruled-rects-v2";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
@@ -136,7 +162,7 @@ pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
 ///
 /// | Rule | Evidence | What it means when it fires |
 /// | --- | --- | --- |
-/// | `ruled-rects-v1` | rectangles the author **painted** | the document drew this grid |
+/// | `ruled-rects-v2` | rectangles the author **painted** | the document drew this grid |
 /// | `unruled-align-v1` | where the author **placed text** | a detector inferred this grid |
 ///
 /// Sharing one id between them would make an artifact unable to say which of those two happened,
@@ -170,7 +196,7 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// concept (`docs/04-ARCHITECTURE.md` §1, and a test enforces it), so the field and the id name
 /// *form fields and annotations* — document ideas any format can have — while the format-specific
 /// walk lives in `engine-pdf`. The same split `table_detection` already uses: a generic field
-/// holding `"ruled-rects-v1"`.
+/// holding `"ruled-rects-v2"`.
 pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 
 /// Identity of the character-decoding data this profile carries.
@@ -238,7 +264,7 @@ impl Default for BackendIdentity {
 pub struct TableDetection {
     /// Version id of the rule that reconstructs grids from painted rectangles.
     ///
-    /// See [`TABLE_DETECTION_V1`].
+    /// See [`TABLE_DETECTION_V2`].
     pub ruled: String,
     /// Version id of the rule that infers grids from text alignment.
     ///
@@ -252,7 +278,7 @@ impl Default for TableDetection {
     /// Both rules v1-S2 ships, enabled.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V1.to_string(),
+            ruled: TABLE_DETECTION_V2.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
         }
     }
@@ -963,7 +989,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.9.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.9.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1044,7 +1070,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:29e4d9acc30e5843905098c70c1493d2b59b07ddbdad6216453caeb73f574ecf"
+            "sha256:5593cb1fa7d5e9bb252e9f57643eb0f2d8062902bd7096d0eaca1e26007d2d5c"
         );
     }
 
@@ -1056,10 +1082,10 @@ mod tests {
     #[test]
     fn the_profile_names_both_table_rules_and_either_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V1);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V2);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_ne!(
-            TABLE_DETECTION_V1, TABLE_DETECTION_UNRULED_V1,
+            TABLE_DETECTION_V2, TABLE_DETECTION_UNRULED_V1,
             "two inferences sharing one identity is what a versioned rule id exists to prevent"
         );
 
@@ -1067,13 +1093,13 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
 
         let mut ruled_moved = base.clone();
-        ruled_moved.table_detection.ruled = "ruled-rects-v2".into();
+        ruled_moved.table_detection.ruled = "ruled-rects-v3".into();
         assert_ne!(hash(&base), hash(&ruled_moved), "the ruled id is identity");
 
         let mut unruled_moved = base.clone();
@@ -1097,13 +1123,13 @@ mod tests {
     /// arrived with — claiming a comparability it does not have.
     #[test]
     fn an_unknown_table_rule_key_is_refused() {
-        let bad = r#"{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1","tagged":"x-v1"}"#;
+        let bad = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","tagged":"x-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(bad).is_err(),
             "a third rule id must fail closed, not vanish and change the hash"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v1","unruled":"unruled-align-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

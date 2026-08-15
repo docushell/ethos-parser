@@ -237,6 +237,41 @@ pub fn unruled_candidate_refused(refusals: &[(u32, crate::unruled::Refusal)]) ->
     Limitation::document(engine_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED, detail)
 }
 
+/// Pages where the **ruled** rule built a candidate lattice and refused it (v1-S7b).
+///
+/// The companion to [`unruled_candidate_refused`], and it exists for the same reason: without it,
+/// a page where rectangles implied a grid that their own ink did not draw is indistinguishable
+/// from a page that painted nothing. Both say `tables: []`.
+pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) -> Limitation {
+    let mut detail = String::from(
+        "On some pages the rectangles the document painted implied a grid and the ruled rule \
+         REFUSED it, so no table was emitted there. This is the difference between `nothing \
+         grid-shaped was drawn here` and `a grid was implied and judged incoherent`, and only the \
+         second one is reported below. Nothing was repaired or partially emitted: a candidate \
+         either satisfies every precondition of `ruled-rects-v2` or it produces no table.",
+    );
+    // **Grouped by precondition, so the reasoning is stated once.** The ruled rule refuses 481 of
+    // `nist-sp-800-53r5`'s 492 pages; repeating a five-line explanation per page would put a
+    // quarter of a megabyte of identical prose inside a hashed artifact. Every page is still
+    // named with its own numbers, so nothing is truncated — only the prose is de-duplicated.
+    let mut kinds: std::collections::BTreeMap<&'static str, (String, Vec<String>)> =
+        std::collections::BTreeMap::new();
+    for (page, r) in refusals {
+        let e = kinds
+            .entry(r.kind())
+            .or_insert_with(|| (r.explanation(), Vec::new()));
+        e.1.push(format!("page {page} ({})", r.detail()));
+    }
+    for (kind, (explanation, pages)) in kinds {
+        detail.push_str(&format!(
+            "\n\n  {kind}: {explanation}\n  Refused on {} page(s): {}",
+            pages.len(),
+            pages.join(", ")
+        ));
+    }
+    Limitation::document(engine_core::codes::RULED_TABLE_CANDIDATE_REFUSED, detail)
+}
+
 /// The document-scoped limitation for a file that carries no tagged-structure tree.
 ///
 /// **The honest answer for an untagged document**, and the reason

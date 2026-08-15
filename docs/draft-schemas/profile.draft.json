@@ -164,7 +164,7 @@
       "properties": {
         "ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v1`."
+          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v2`. A rectangle spanning the whole lattice is the table\u2019s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn."
         },
         "unruled": {
           "type": "string",
@@ -346,7 +346,7 @@
         "mode": "not_pinned"
       },
       "table_detection": {
-        "ruled": "ruled-rects-v1",
+        "ruled": "ruled-rects-v2",
         "unruled": "unruled-align-v1"
       },
       "struct_tree_rule": "struct-tree-v1",

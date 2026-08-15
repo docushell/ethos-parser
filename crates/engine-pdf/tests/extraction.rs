@@ -1361,7 +1361,7 @@ fn a_page_with_both_kinds_of_grid_records_both_rules() {
 
     let ruled = tables
         .iter()
-        .find(|t| t.rule == engine_core::TABLE_DETECTION_V1)
+        .find(|t| t.rule == engine_core::TABLE_DETECTION_V2)
         .expect("the painted grid must be found by the ruled rule");
     let unruled = tables
         .iter()
@@ -1422,7 +1422,7 @@ fn where_both_rules_could_fire_the_ruled_one_wins() {
     );
     assert_eq!(
         tables[0].rule,
-        engine_core::TABLE_DETECTION_V1,
+        engine_core::TABLE_DETECTION_V2,
         "the author drew this grid, so the author's derivation is the one kept"
     );
     assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
@@ -1466,6 +1466,71 @@ fn columns_that_almost_align_produce_no_table_and_say_why() {
 
     // Typed vocabulary, never a score (`docs/01-CONTRACT.md` §9). "Nearly a table" is a
     // confidence field wearing a different hat.
+    let lower = refused.detail.to_ascii_lowercase();
+    for scored in ["confidence", "probability", "score of", "likelihood"] {
+        assert!(
+            !lower.contains(scored),
+            "`{scored}` in a refusal detail: {}",
+            refused.detail
+        );
+    }
+}
+
+/// **A background panel is not evidence that a grid was drawn** (v1-S7b, `ruled-rects-v2`).
+///
+/// The whole-document proof of the defect `tables::a_background_panel_does_not_make_scattered_bars_a_grid`
+/// pins in the unit tests. Under `ruled-rects-v1` this page emitted a 7 × 7 table holding 3 cells:
+/// the three bars' edges cluster into a 49-face lattice, the panel covers every face so the
+/// coherence precondition passed, and `detect_ruled` then discarded the panel again as "the table's
+/// own border". A rectangle cannot be both the only evidence a face exists and not a cell.
+///
+/// Measured on the real thing before the fix: `cfpb-home-loan-toolkit` pages 22 and 23 paint a
+/// 351 × 454 pt panel behind highlight bars and produced a 17 × 13 table holding 12 cells — on a
+/// page whose structure tree declares no table at all — and a 23 × 8 against a tagged 5 × 3.
+#[test]
+fn a_background_panel_with_bars_on_it_is_not_a_table() {
+    let a = extract_ok(engine_fx("background-panel-not-a-grid"));
+
+    for page in &a.pages {
+        assert!(
+            page.tables.is_empty(),
+            "a panel with bars on it is not a grid: {:?}",
+            page.tables
+        );
+    }
+
+    // **Refusing the grid must not cost the page its words.** A detector that got quieter by
+    // dropping content would trade one defect for a worse one.
+    let text: String = a
+        .runs()
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        text.contains("Panel text") && text.contains("and right"),
+        "the page's runs must survive the refusal: {text:?}"
+    );
+
+    // **And the refusal is DECLARED.** Standing rule 3: a page where a grid was implied and
+    // judged incoherent must not read the same as a page that painted nothing. Before v1-S7b the
+    // ruled rule had no voice at all — every one of its refusals returned an empty vector and
+    // said nothing — which went unnoticed because the coherence precondition it reports almost
+    // never fired.
+    let refused = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::RULED_TABLE_CANDIDATE_REFUSED)
+        .expect("a refused ruled candidate must be declared, not silently absent");
+
+    assert_eq!(refused.scope, engine_core::LimitationScope::Document);
+    assert!(
+        refused.detail.contains("page 1"),
+        "the declaration must say WHERE: {}",
+        refused.detail
+    );
+
+    // Typed vocabulary, never a score (`docs/01-CONTRACT.md` §9), exactly as for the unruled one.
     let lower = refused.detail.to_ascii_lowercase();
     for scored in ["confidence", "probability", "score of", "likelihood"] {
         assert!(
@@ -1839,7 +1904,7 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
     let t = tables[0];
 
     assert_eq!((t.rows, t.columns), (2, 2));
-    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V1);
+    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V2);
 
     let check = t
         .tagged_check
@@ -2268,7 +2333,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     let ruled = extract_ok(engine_fx("ruled-table-grid"));
     let rt: Vec<_> = ruled.pages.iter().flat_map(|p| p.tables.iter()).collect();
     assert_eq!(rt.len(), 1);
-    assert_eq!(rt[0].rule, engine_core::TABLE_DETECTION_V1);
+    assert_eq!(rt[0].rule, engine_core::TABLE_DETECTION_V2);
 
     // S3's four locator states, still four.
     let tagged = extract_ok(engine_fx("tagged-structure-roles"));

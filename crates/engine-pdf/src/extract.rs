@@ -200,6 +200,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // precondition that failed. Collected rather than declared per page so the artifact carries
     // one limitation naming every such page instead of one per page.
     let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
+    // v1-S7b. The same, for the ruled rule. It had no voice until `ruled-rects-v2` made its
+    // coherence precondition a live path — under `-v1` a background panel satisfied coverage for
+    // every face at once, so the check almost never fired.
+    let mut ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)> = Vec::new();
 
     // v1-S3. Read the document's own structure tree ONCE, off the same handle every other stage
     // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
@@ -454,6 +458,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         if let Some(r) = detected.refusal {
             unruled_refusals.push((page_number, r));
         }
+        if let Some(r) = detected.ruled_refusal {
+            ruled_refusals.push((page_number, r));
+        }
         drop(origins);
 
         // v1-S5. **Reading order, and the only order there is.**
@@ -605,6 +612,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // v1-S2. Only when a candidate was actually built and refused — a page whose text implied
     // nothing grid-shaped produced no candidate and gets no declaration, because declaring a
     // refusal that did not happen is as misleading as omitting one that did.
+    if !ruled_refusals.is_empty() {
+        limitations.push(lim::ruled_candidate_refused(&ruled_refusals));
+    }
     if !unruled_refusals.is_empty() {
         limitations.push(lim::unruled_candidate_refused(&unruled_refusals));
     }
