@@ -188,6 +188,8 @@ Three findings from S7b, each measured rather than inspected. The full evidence 
 3. **The NIST documents draw no table rulings at all.** Their axis-aligned stroked segments are
    490 and 76 copies of a single margin rule. A stroke-ruled detector would add nothing there, and
    on `irs-form-1040-2025` it would re-open the 662-cell fabrication surface of v1-S1.
+   **This is true of NIST and 1040 and was never assessed for `cfpb-home-loan-toolkit`, where it
+   is the largest remaining lead by a wide margin — see below.**
 
 A fourth, about the measurement rather than the detector: several NIST tagged tables are
 **multi-page** — one is 278 rows, another 245 — and the page-granular join cannot match a
@@ -343,6 +345,69 @@ What remains on the ruled side, still unexamined:
 | 16, 17 | 7×2, 5×2 | 1×2, 1×2 | the page paints **part** of the table — see below |
 | 13, 8 | 8×4, 2×3 | (second table on the page missed) | |
 | 11 | 5×4 | 5×4, 18/20 cells right | the one genuinely painted grid, and it works |
+
+### The second tables on pages 8 and 13, and the lead they uncovered
+
+Two different things again, and only one of them is a table.
+
+**Page 8's second tagged table is layout.** A 2 × 3 reading `YOUR CHOICE Check one:` / `¨ I will go
+with the credit I have.` / `OR` / `¨ I will wait a few months…`, two of its six cells empty, drawn
+with five scattered text underlines and no grid. It is a checkbox block the producer tagged as a
+table — precisely the denominator inflation this document warns about above, and nothing anyone
+would want extracted as tabular data.
+
+**Page 13's second tagged table is real, and the document draws it.** An 8 × 4 loan-comparison
+worksheet — `LOAN OFFER 1/2/3` across the top, `Lender name`, `Loan amount`, `Interest rate` down
+the side, blank cells for the reader to fill in. The page strokes it as **32 horizontal rules in a
+perfect grid**:
+
+```
+8 baselines   y = 511.4, 457.4, 403.4, 349.4, 295.4, 241.4, 187.4, 124.4
+4 segments each   x = 54→210, 210→326, 326→442, 442→558
+```
+
+One baseline carries three segments instead of four, matching the gold's blank first cell on that
+row. That is the tagged 8 × 4 exactly, drawn in ink, and discarded because a two-point stroked
+segment is not a rectangle — `stroke-ruled-tables-not-detected`, which until now was an abstract
+limitation with no named instance.
+
+### Stroke-ruled is the largest remaining lead on this corpus
+
+Checking every CFPB page that has a tagged table nothing found:
+
+| Page | missed | cells | segments with real extent |
+| --- | --- | --- | --- |
+| 6 | 7×2 | 14 | 23 |
+| 7 | 7×2 | 14 | 34 |
+| 8 | 2×3 | 6 | 7 (underlines, not a grid) |
+| 9 | 2×3 | 6 | 7 |
+| 10 | 4×2 | 8 | 14 |
+| 13 | 8×4 | **32** | 53 |
+| 21 | 2×2 | 4 | 4 |
+| 23 | 5×3 | 15 | 687 |
+| 25 | 2×2 | 4 | 134 |
+| | | **103** | |
+
+**Not one missed table is on a page that draws nothing.** All 103 cells — **65% of this document's
+gold** — sit on pages that stroke segments the detector throws away.
+
+What it would be worth, if a stroke-ruled rule found them and got them right:
+
+| | cfpb cell-F1 | macro |
+| --- | --- | --- |
+| today | 246‰ | 61‰ |
+| page 13 alone | 493‰ | 123‰ |
+| all 103 cells | 852‰ | 213‰ |
+
+Still short of the 489‰ macro floor, because NIST and 1040 stay at zero and each carry a quarter of
+the average. But it is the only measured lead left that moves the number at all, and it is a real
+detection rule rather than a tolerance: `flush_subpath` requires 4–5 points with two distinct x and
+two distinct y, so a two-point segment produces no rectangle and never reaches the lattice.
+
+It is **not** attempted here. `docs/09-V1-MILESTONES.md` S7b requires it to ship as a complete
+measured pass with its own coherence precondition — every face bounded by drawn rules, the grid
+tiling, no 1 × 1 paragraph tables — and its own before/after on `irs-form-1040-2025`, which strokes
+520 segments and is the fabrication canary. Half-enabling it is the trade §3.3 forbids.
 
 ### Pages 16 and 17: nothing to fix, and the cross-check already says so
 

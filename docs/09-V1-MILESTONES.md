@@ -882,6 +882,17 @@ corpus, and reports what it sees. The number it reports is bad.
   no way to declare a refusal at all before, which went unnoticed because the precondition almost
   never fired.
 
+- **The second tables on pages 8 and 13, and the lead they uncovered.** Page 8's is layout — a
+  2 × 3 checkbox block with scattered underlines. **Page 13's is a real 8 × 4 worksheet the page
+  strokes as 32 horizontal rules in a perfect grid** (8 baselines × 4 segments at x = 54, 210, 326,
+  442, 558), discarded because a two-point segment is not a rectangle.
+
+  So `stroke-ruled-tables-not-detected` was falsified for NIST and 1040 only, never assessed for
+  cfpb — where **all nine missed tagged tables sit on pages that stroke segments, 103 cells, 65% of
+  that document's gold**. Finding them would give cfpb 852‰ and macro 213‰ (page 13 alone: 493‰ and
+  123‰). Still under the floor, and still the only lead left that moves the number. Not attempted:
+  it needs a complete pass with its own coherence precondition and its own before/after on 1040.
+
 - **Pages 16 and 17 investigated: no defect.** The last ruled lead. Page 17 paints two full-height
   column panels (165 × 214, 339 × 214 pt) with unpainted text rows inside; page 16 paints a single
   61 pt two-cell band behind one row of seven. The rule reconstructs what was painted and

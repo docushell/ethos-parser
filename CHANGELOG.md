@@ -239,6 +239,34 @@ changes the gold text. It biases the gate **down**, so it is conservative. Docum
 corrected — fixing it would move the labelled set and the published number in the commit that
 reports them.
 
+### The second tables on pages 8 and 13, and the lead they uncovered
+
+Page 8's is layout: a 2 × 3 `YOUR CHOICE Check one:` checkbox block, two of six cells empty, drawn
+with scattered underlines and no grid. Tagged as a table, and not one anyone would extract.
+
+**Page 13's is real, and the document draws it.** An 8 × 4 loan-comparison worksheet, stroked as
+32 horizontal rules in a perfect grid — 8 baselines, 4 segments each at identical column
+boundaries (x = 54, 210, 326, 442, 558), with one baseline carrying three segments to match the
+gold's blank cell. Exactly the tagged shape, in ink, discarded because a two-point stroked segment
+is not a rectangle.
+
+**That makes `stroke-ruled-tables-not-detected` the largest remaining lead on this corpus, and an
+earlier entry's framing of it as "falsified" was too broad.** Falsified for NIST (490 copies of one
+margin rule) and for `irs-form-1040-2025` (the fabrication canary) — never assessed for
+`cfpb-home-loan-toolkit`. Checked now: **every one of the nine missed tagged tables sits on a page
+that strokes segments**, 103 cells in total, **65% of that document's gold**.
+
+| | cfpb cell-F1 | macro |
+| --- | --- | --- |
+| today | 246‰ | 61‰ |
+| if page 13 alone were found | 493‰ | 123‰ |
+| if all 103 were found | 852‰ | 213‰ |
+
+Still short of the 489‰ macro floor — NIST and 1040 stay at zero and carry half the average between
+them — but it is the only measured lead left that moves the number. **Not attempted here**: S7b
+requires it as a complete measured pass with its own coherence precondition and its own before/after
+on 1040, which strokes 520 segments. Half-enabling it is the trade §3.3 forbids.
+
 ### Pages 16 and 17 investigated: no defect, and a property of the metric
 
 The last remaining ruled lead. **Neither page is a detector defect**, and they are not the same
