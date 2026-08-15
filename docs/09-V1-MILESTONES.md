@@ -882,6 +882,27 @@ corpus, and reports what it sees. The number it reports is bad.
   no way to declare a refusal at all before, which went unnoticed because the precondition almost
   never fired.
 
+- **`stroke-ruled-v1` built, measured in full, and not shipped.** The lead below, taken as a
+  complete slice: segments captured as their own evidence, rule-rows by baseline, a row must tile
+  end to end, a band is consecutive rows agreeing on the columns, rows are the regions BETWEEN
+  rules so no edge is invented, coherence per face, 2 × 2 minimum.
+
+  | | `ruled-rects-v2` | `+ stroke-ruled-v1` |
+  | --- | --- | --- |
+  | detected / matched | 8 / 8 | 21 / 15 |
+  | precision | 1000‰ | 714‰ |
+  | cells emitted | 36 | 272 |
+  | fabricated | 0 | 0 |
+  | cfpb | 24 TP / 12 FP → 246‰ | 41 TP / 189 FP → **210‰** |
+  | 1040 | 0 TP → 0‰ | 12 TP / 30 FP → **292‰** |
+  | **MACRO** | **61‰** | **125‰** |
+
+  Real capability — 17 cfpb and 12 1040 cells nothing had found, page 13 at exactly 8 × 4, NIST and
+  every gold negative at zero. Not shipped because it **regresses cfpb** (156 of its false
+  positives are text in no gold cell at all), because **four 1040 canary tests fail** and the
+  decision taken was to keep that document at zero tables, and because the macro gain comes
+  entirely from the canary document rather than from the improvement. See `docs/table-gate-v1.md`.
+
 - **The second tables on pages 8 and 13, and the lead they uncovered.** Page 8's is layout — a
   2 × 3 checkbox block with scattered underlines. **Page 13's is a real 8 × 4 worksheet the page
   strokes as 32 horizontal rules in a perfect grid** (8 baselines × 4 segments at x = 54, 210, 326,

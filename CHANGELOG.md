@@ -239,6 +239,52 @@ changes the gold text. It biases the gate **down**, so it is conservative. Docum
 corrected — fixing it would move the labelled set and the published number in the commit that
 reports them.
 
+### `stroke-ruled-v1` built, measured in full, and not shipped
+
+The lead above, taken as a complete slice. Two-point axis-aligned segments captured as their own
+evidence — a `PathSegment` beside `PathRect`, because a box says *this cell is here* and a line says
+*this edge is here* — then rule-rows by baseline, a row must tile end to end, a band is consecutive
+rows whose endpoints are all column lines of the first, rows are the regions BETWEEN rules so no
+edge is invented, coherence requires every face's own bottom edge drawn, 2 x 2 minimum and the
+shared face cap.
+
+|                          | ruled-rects-v2      | + stroke-ruled-v1       |
+| ---                      | ---                 | ---                     |
+| detected / matched       | 8 / 8               | 21 / 15                 |
+| precision                | 1000‰               | 714‰                    |
+| cells emitted            | 36                  | 272                     |
+| fabricated               | 0                   | 0                       |
+| cross-check disagreements| 0                   | 0                       |
+| cfpb-home-loan-toolkit   | 24 TP / 12 FP 246‰  | 41 TP / 189 FP **210‰** |
+| irs-form-1040-2025       | 0 TP 0‰             | 12 TP / 30 FP **292‰**  |
+| MACRO                    | **61‰**             | **125‰**                |
+
+**The lead was real**: 17 cfpb cells and 12 1040 cells no rule had ever found, page 13's worksheet
+at exactly 8 x 4, NIST and all four gold negatives at zero.
+
+**Not shipped**, for three reasons in this order:
+
+1. It **regresses the document it was built for**, 246‰ to 210‰ — 17 more right cells bought with
+   177 more wrong ones. Of the false positives, 156 are text appearing in NO gold cell at all: not
+   an index artifact but genuine over-detection, from page furniture and the Closing Disclosure
+   pages.
+2. **Four canary tests fail.** irs-form-1040-2025 yields 4 tables where every slice since v1-S1 has
+   held it at 0. That guard exists because of the 662-cell fabrication and its message says
+   flipping it "is a deliberate decision needing its own evidence". **The decision was taken and it
+   is to keep 1040 at zero tables.**
+3. **The macro gain comes entirely from the canary document.** 1040 going 0‰ to 292‰ is what
+   doubles the average while cfpb, where the rule genuinely helps, gets worse. A metric that
+   rewards flipping the guard should not be what decides to flip it.
+
+Fabrication stayed 0 and the cross-check clean throughout, so this is over-detection rather than
+invention — a real distinction and not a defence, since 156 cells of real text in regions nobody
+tags as tables is exactly what the gold negatives exist to catch.
+
+The band preconditions are sound and reproduce; the problem is entirely in which regions become
+bands, and every remaining tightening was a threshold fitted to these four documents. The lead does
+not go away: 103 cfpb cells, 65% of that document's gold, are still behind ink the engine discards.
+**No source file moved. S8 remains unstarted.**
+
 ### The second tables on pages 8 and 13, and the lead they uncovered
 
 Page 8's is layout: a 2 × 3 `YOUR CHOICE Check one:` checkbox block, two of six cells empty, drawn

@@ -404,10 +404,61 @@ the average. But it is the only measured lead left that moves the number at all,
 detection rule rather than a tolerance: `flush_subpath` requires 4–5 points with two distinct x and
 two distinct y, so a two-point segment produces no rectangle and never reaches the lattice.
 
-It is **not** attempted here. `docs/09-V1-MILESTONES.md` S7b requires it to ship as a complete
-measured pass with its own coherence precondition — every face bounded by drawn rules, the grid
-tiling, no 1 × 1 paragraph tables — and its own before/after on `irs-form-1040-2025`, which strokes
-520 segments and is the fabrication canary. Half-enabling it is the trade §3.3 forbids.
+### It was then built, measured in full, and not shipped
+
+`stroke-ruled-v1`, as a complete slice: two-point axis-aligned segments captured as their own
+evidence (a `PathSegment` beside `PathRect` — a box says *this cell is here*, a line says *this edge
+is here*), then
+
+1. **rule-rows** — horizontal segments sharing a baseline within `LATTICE_TOLERANCE`;
+2. **a row must tile** — at least two segments running end to end, so scattered underlining implies
+   nothing;
+3. **a band** — consecutive rows whose every endpoint is already a column line of the first. A row
+   may rule fewer cells than the band has columns (a blank cell does) but may not introduce a
+   boundary. Requiring exact equality instead split page 13's worksheet into a 4 × 4 and a 3 × 4 at
+   its one blank-first-cell row;
+4. **rows are the regions between rules** — *n* baselines bound *n − 1* rows. A form ruled under
+   each cell does not draw its first row's top edge and this rule will not supply one;
+5. **coherence** — every face's own bottom edge must be drawn;
+6. **2 × 2 minimum** and the shared face cap, matching both other rules.
+
+| | `ruled-rects-v2` | + `stroke-ruled-v1` |
+| --- | --- | --- |
+| detected / matched | 8 / 8 | 21 / 15 |
+| precision | 1000‰ | 714‰ |
+| cells emitted | 36 | 272 |
+| **fabricated** | 0 | **0** |
+| cross-check disagreements | 0 | 0 |
+| `cfpb-home-loan-toolkit` | 24 TP / 12 FP → **246‰** | 41 TP / 189 FP → **210‰** |
+| `irs-form-1040-2025` | 0 TP → 0‰ | 12 TP / 30 FP → **292‰** |
+| **MACRO** | **61‰** | **125‰** |
+
+**The lead was real.** It finds 17 CFPB cells and 12 1040 cells no rule had ever found, page 13's
+worksheet comes out at exactly 8 × 4, and NIST and all four gold negatives stay at zero.
+
+**It is not shipped, for three reasons in this order:**
+
+1. **It regresses the document it was built for**, 246‰ → 210‰: 17 more right cells bought with 177
+   more wrong ones. Classified, 156 of the false positives are text appearing in **no gold cell at
+   all** — not an index artifact but genuine over-detection, from page furniture and the Closing
+   Disclosure pages.
+2. **Four canary tests fail.** `irs-form-1040-2025` yields 4 tables where every slice since v1-S1
+   has held it at 0. That guard exists because of the 662-cell fabrication, and its own message
+   says flipping it *"is a deliberate decision needing its own evidence"*. **The decision was taken
+   and it is to keep 1040 at zero tables.**
+3. **The macro gain comes entirely from the canary document.** 1040 going 0‰ → 292‰ is what doubles
+   the average, while the document where the rule genuinely helps gets worse. A metric that rewards
+   flipping the guard is not the thing that should decide whether to flip it.
+
+Fabrication stayed 0 and the cross-check stayed clean throughout, so this is over-detection rather
+than invention — a real distinction, and not a defence: 156 cells of real text in regions nobody
+tags as tables is the failure the gold negatives exist to catch.
+
+**What a future attempt should know.** The band preconditions above are sound and reproduce; the
+problem is entirely in which regions become bands. Tightening that further was not attempted here
+because every remaining idea was a threshold fitted to these four documents, which is what
+`docs/08-V1-SCOPE.md` §3 forbids. The lead itself does not go away: 103 CFPB cells, 65% of that
+document's gold, are still behind ink this engine discards.
 
 ### Pages 16 and 17: nothing to fix, and the cross-check already says so
 
