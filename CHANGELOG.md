@@ -239,6 +239,26 @@ changes the gold text. It biases the gate **down**, so it is conservative. Docum
 corrected — fixing it would move the labelled set and the published number in the commit that
 reports them.
 
+### Pages 16 and 17 investigated: no defect, and a property of the metric
+
+The last remaining ruled lead. **Neither page is a detector defect**, and they are not the same
+shape — an earlier note in `docs/table-gate-v1.md` had both wrong. Page 17 paints two full-height
+column panels (165 × 214 and 339 × 214 pt) with its five text rows unpainted inside them; page 16
+paints a single **61 pt** two-cell band behind one row of a seven-row table.
+
+The ruled rule reconstructs exactly what was painted, a 1 × 2 grid, and the artifact already
+reports the disagreement in full — `RowCountDiffers { tagged: 7, detected: 1 }` plus every one of
+the 12 slots the tags have and the geometry does not. That is `tagged-vs-geometric-v1` doing what
+v1-S1 built it for.
+
+**The gate cannot see any of that.** It charges the two pages 4 false positives and 24 false
+negatives, and three of the four "false positives" are text the detector extracted exactly right —
+p16 rows matching gold row 5, p17 matching gold row 2. A partial detection numbers its own rows
+from zero, so a correct row 5 is compared against gold row 0 and charged twice. Crediting a match
+at any row offset would take cfpb from 246‰ to roughly 287‰; it is **not** done, because a join
+loosened until the detector scores better is the failure `08-V1-SCOPE.md` §3 exists to prevent.
+Recorded as a property of the metric, not a fault of the engine.
+
 ### The finding that reframed all five, and produced the sixth
 
 **Every table the gate scores is a ruled one. The alignment rule emits zero tables on the entire

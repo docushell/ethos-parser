@@ -882,6 +882,15 @@ corpus, and reports what it sees. The number it reports is bad.
   no way to declare a refusal at all before, which went unnoticed because the precondition almost
   never fired.
 
+- **Pages 16 and 17 investigated: no defect.** The last ruled lead. Page 17 paints two full-height
+  column panels (165 × 214, 339 × 214 pt) with unpainted text rows inside; page 16 paints a single
+  61 pt two-cell band behind one row of seven. The rule reconstructs what was painted and
+  `tagged-vs-geometric-v1` reports the disagreement slot by slot —
+  `RowCountDiffers { tagged: 7, detected: 1 }` plus 12 `SlotOnlyInTagged`. The gate charges 4 FP
+  and 24 FN and cannot see the cross-check; three of those four FP are text extracted exactly
+  right, at a row index a partial detection has no way to know. Crediting row-offset matches would
+  give cfpb ~287‰ and is refused as gate-chasing. See `docs/table-gate-v1.md`.
+
 - **The other declared leftover, also falsified.** `stroke-ruled-tables-not-detected` was the
   suspected reason NIST's *ruled* tables are missed. Census of axis-aligned two-point stroked
   segments, all currently rejected, zero diagonals anywhere in the corpus:

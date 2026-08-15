@@ -340,13 +340,49 @@ What remains on the ruled side, still unexamined:
 | --- | --- | --- | --- |
 | 9, 10, 21, 25 | 2×3, 4×2, 2×2, 2×2 | none | **the page paints no rectangles at all** — not this rule's job |
 | 6, 7 | 7×2, 7×2 | none | 1 and 2 rectangles respectively; nothing like a grid is drawn |
-| 16, 17 | 7×2, 5×2 | 1×2, 1×2 | the page paints **two column panels**; the seven rows are text inside them |
+| 16, 17 | 7×2, 5×2 | 1×2, 1×2 | the page paints **part** of the table — see below |
 | 13, 8 | 8×4, 2×3 | (second table on the page missed) | |
 | 11 | 5×4 | 5×4, 18/20 cells right | the one genuinely painted grid, and it works |
 
-Pages 16 and 17 are the interesting shape: a real table whose *columns* are painted and whose
-*rows* are implied by text alignment inside them. Neither rule handles it, and neither is wrong to
-refuse — a hybrid would be a third rule with its own id and its own coherence precondition.
+### Pages 16 and 17: nothing to fix, and the cross-check already says so
+
+Both were investigated and **neither is a detector defect.** They are also not the same shape,
+which an earlier revision of this document got wrong:
+
+- **Page 17** paints two full-height column panels — 165 × 214 pt and 339 × 214 pt, side by side.
+  The five rows of text sit inside them, unpainted.
+- **Page 16** paints a single **61 pt** two-cell band, behind one row of a seven-row table. Not
+  columns at all.
+
+In both cases the ruled rule reconstructs exactly what was painted — a 1 × 2 grid — and the
+artifact reports the disagreement with the tags in full:
+
+```
+p16  Mismatch { RowCountDiffers { tagged: 7, detected: 1 }, SlotOnlyInTagged ×12 }
+p17  Mismatch { RowCountDiffers { tagged: 5, detected: 1 }, SlotOnlyInTagged ×8  }
+```
+
+That is `tagged-vs-geometric-v1` doing the job v1-S1 built it for: two derivations that share no
+input disagree, and the artifact names every slot the tags have and the geometry does not. Nothing
+is invented, nothing is repaired, and a consumer can see precisely what was and was not found.
+
+**And the metric cannot see any of it.** The gate charges these pages 4 false positives and 24
+false negatives. Measured, three of those four "false positives" are text the detector extracted
+**exactly right**:
+
+| | detected text | matches gold at | scored |
+| --- | --- | --- | --- |
+| p16 r0 c0 | ✓ | row **5**, col 0 | FP + FN |
+| p16 r0 c1 | ✓ | row **5**, col 1 | FP + FN |
+| p17 r0 c0 | ✓ | row **2**, col 0 | FP + FN |
+| p17 r0 c1 | — | no gold cell | FP |
+
+A partial detection numbers its own rows from zero, so a correctly extracted row 5 is compared
+against gold row 0 and charged twice. Crediting a match at any row offset would take
+`cfpb-home-loan-toolkit` from 246‰ to roughly 287‰ — and it is **not** done, because a join
+loosened until the detector scores better is the failure `docs/08-V1-SCOPE.md` §3 exists to
+prevent. It is recorded here instead, as a property of the metric rather than a fault of the
+engine.
 
 ## What would actually move it
 
