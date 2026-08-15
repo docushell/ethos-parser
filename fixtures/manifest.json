@@ -273,7 +273,7 @@
       "path": "background-panel-not-a-grid/document.pdf",
       "sha256": "sha256:c4c2c9191f19c3b16b80c1c0db974481fec8495edfefc23a3e8e0d44667e0aa2",
       "owner": "engine",
-      "notes": "v1-S7b PANEL. A filled 200x160 background rectangle \u2014 painted TWICE, as the real page does \u2014 with three 40x10 bars scattered on it. The bars' edges cluster into a 7x7 lattice of 49 faces of which they paint three, and the panel covers every one of them, so `ruled-rects-v1` accepted the coherence precondition and emitted a 7x7 table with 3 cells while separately discarding the panel as \"the table's own border\". One rectangle cannot be both the only evidence a face exists and not a cell. Expect `tables: []` under `ruled-rects-v2`, with the page's two runs still present. Measured on the real thing: `cfpb-home-loan-toolkit` pages 22 and 23 paint a 351x454 pt panel behind highlight bars and produced a 17x13 table holding 12 cells on a page whose tree declares no table at all. Filled rather than stroked, and the first engine fixture that is \u2014 every other ruled fixture uses `S`, so the fill path into the lattice had no fixture behind it."
+      "notes": "v1-S7b PANEL. A filled 200x160 background rectangle \u2014 painted TWICE, as the real page does \u2014 with three 40x10 bars scattered on it. The bars' edges cluster into a 7x7 lattice of 49 faces of which they paint three, and the panel covers every one of them, so `ruled-rects-v2` accepted the coherence precondition and emitted a 7x7 table with 3 cells while separately discarding the panel as \"the table's own border\". One rectangle cannot be both the only evidence a face exists and not a cell. Expect `tables: []` under `ruled-rects-v2`, with the page's two runs still present. Measured on the real thing: `cfpb-home-loan-toolkit` pages 22 and 23 paint a 351x454 pt panel behind highlight bars and produced a 17x13 table holding 12 cells on a page whose tree declares no table at all. Filled rather than stroked, and the first engine fixture that is \u2014 every other ruled fixture uses `S`, so the fill path into the lattice had no fixture behind it."
     },
     {
       "id": "both-table-rules",
@@ -282,7 +282,7 @@
       "path": "both-table-rules/document.pdf",
       "sha256": "sha256:ad6c3f6dfde83f41520765f868c28ada5b0472c0050e3f0173521afa0b45c258",
       "owner": "engine",
-      "notes": "v1-S2 WHICH-RULE-FIRED. One page carrying a 2x2 grid the document PAINTS with `re` and a separate 2x2 grid implied by text alignment alone. Expect two tables, one `ruled-rects-v1` and one `unruled-align-v1`. The profile says which rules ran; only a per-table field can say which one found a given table."
+      "notes": "v1-S2 WHICH-RULE-FIRED. One page carrying a 2x2 grid the document PAINTS with `re` and a separate 2x2 grid implied by text alignment alone. Expect two tables, one `ruled-rects-v2` and one `unruled-align-v1`. The profile says which rules ran; only a per-table field can say which one found a given table."
     },
     {
       "id": "ruled-wins-shared-region",
@@ -291,7 +291,7 @@
       "path": "ruled-wins-shared-region/document.pdf",
       "sha256": "sha256:0ba1883ac36d0e980d79f5c258c7770f7fe8027df812d2f62ebbc2d33058dde4",
       "owner": "engine",
-      "notes": "v1-S2 ARBITRATION. A painted 2x2 grid whose four runs are also a flawless 2x2 alignment, so both rules can describe the region and exactly one may. Expect ONE table, `ruled-rects-v1`: a ruling line is evidence the author left, an alignment cluster is a decision this engine made, and the two grids are never averaged into a third nobody found."
+      "notes": "v1-S2 ARBITRATION. A painted 2x2 grid whose four runs are also a flawless 2x2 alignment, so both rules can describe the region and exactly one may. Expect ONE table, `ruled-rects-v2`: a ruling line is evidence the author left, an alignment cluster is a decision this engine made, and the two grids are never averaged into a third nobody found."
     },
     {
       "id": "tagged-structure-roles",

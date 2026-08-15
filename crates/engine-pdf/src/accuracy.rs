@@ -35,7 +35,7 @@
 //! finer. S7b put the cells in, with the text the structure tree binds to each one, and the gate is
 //! macro-averaged cell-slot F1 over the four real documents. The published method — corpus,
 //! formula, join, whitespace rule, and why the number is **not** comparable to the 0.489 it is
-//! named after — is `docs/table-gate-v1.md`. It currently reads **43‰**, and that is a miss.
+//! named after — is `docs/table-gate-v1.md`. It currently reads **61‰**, and that is a miss.
 //!
 //! # Where the labels come from, and why they are not this engine's
 //!
@@ -716,7 +716,7 @@ mod tests {
         );
 
         // The gate half. Printed under its own heading so nobody can read a page-level recall as
-        // the cell score: 157‰ of pages agreeing is not 157‰ of cells right, and `08-V1-SCOPE.md`
+        // the cell score: 140‰ of pages agreeing is not 140‰ of cells right, and `08-V1-SCOPE.md`
         // §3 is explicit that the gate is a cell number.
         println!("\ncell-slot accuracy (the gate metric), exact text after the whitespace rule:");
         println!(

@@ -10,7 +10,7 @@ frozen at **0.1.0** and later entries are versions.
 ## [Unreleased] — v1-S7b, the gate measured at 61‰, as 0.9.0
 
 **The gate is now a cell number, and it is missed: macro cell-F1 is 61‰ against a 489‰ floor.**
-Six detector repairs were measured. **Five failed and one worked** — and the one that worked is in
+Seven investigations ran. **Six were measured and rejected; one shipped** — and the one that worked is in
 the *ruled* rule, which nobody was looking at. **v1 is not done.** Not tagged.
 
 ### `ruled-rects-v2`: a rectangle cannot be both the border and the evidence
@@ -86,10 +86,17 @@ part of why this survived six slices.
 
 ---
 
-### The five alignment repairs, which all failed
+### The six investigations that did not ship
 
 S7b set out to recalibrate the *alignment* rule and measured that every prescribed change does
-nothing or worse. Recorded in full below, because the reason they failed is the finding.
+nothing or worse. Recorded in full below, because the reason they failed is the finding. In the
+order they were run: the gutter-constant calibration, band segmentation, mcid merging, mcid merging
+with bands, the pages 16/17 and 8/13 investigations, and finally `stroke-ruled-v1` — built as a
+complete pass and parked.
+
+**They are written in the order they were investigated, not the order a reader would want.** The
+`stroke-ruled-v1` verdict sits above the section that discovered the lead it acts on, because that
+is when each was written. Left as-is rather than reordered: the sequence is the record.
 
 ### The calibration, before and after
 
@@ -98,7 +105,7 @@ harness says it changes nothing:
 
 | Experiment | declared | detected | matched | recall | fabricated |
 | --- | --- | --- | --- | --- | --- |
-| HEAD (`COLUMN_GUTTER_MIN` = 1 200) | 57 | 10 | 9 | 157‰ | 0 |
+| as S7a left it (`COLUMN_GUTTER_MIN` = 1 200) | 57 | 10 | 9 | 157‰ | 0 |
 | Column floor disabled (= 151) | 57 | 10 | 9 | **157‰** | 0 |
 | Column **and** row floors disabled | 57 | 10 | 9 | **157‰** | 0 |
 
@@ -133,7 +140,7 @@ rect on the page. With both gutters disabled, all 600 pages reach the face check
 independent preconditions all correctly say *this page is prose*. The gutter floor is not wrong; it
 is **unreachable**.
 
-### The other declared leftover, also falsified
+### The other declared leftover, falsified for NIST and 1040
 
 `stroke-ruled-tables-not-detected` was the suspected reason NIST's ruled tables are missed. Census
 of axis-aligned two-point stroked segments (all currently rejected; **zero diagonals** anywhere):
@@ -312,13 +319,13 @@ that strokes segments**, 103 cells in total, **65% of that document's gold**.
 | | cfpb cell-F1 | macro |
 | --- | --- | --- |
 | today | 246‰ | 61‰ |
-| if page 13 alone were found | 493‰ | 123‰ |
+| if page 13 alone were found | 493‰ | 123‰ | *(the built rule refuses page 13 — see above)*
 | if all 103 were found | 852‰ | 213‰ |
 
 Still short of the 489‰ macro floor — NIST and 1040 stay at zero and carry half the average between
-them — but it is the only measured lead left that moves the number. **Not attempted here**: S7b
-requires it as a complete measured pass with its own coherence precondition and its own before/after
-on 1040, which strokes 520 segments. Half-enabling it is the trade §3.3 forbids.
+them — but it is the only measured lead left that moves the number. **It was then attempted** — see
+the `stroke-ruled-v1` section above, which is the entry for the complete measured pass this
+paragraph was asking for. The projections in the table are the ones that pass did not reach.
 
 ### Pages 16 and 17 investigated: no defect, and a property of the metric
 
@@ -357,7 +364,7 @@ Two facts also bound what any alignment repair could have achieved. The gold dec
 all** — all 7 704 cells are 1 × 1 — and coherence forbids an empty cell, so the unruled family can
 never emit any of the 1 234 empty gold cells and a full-lattice emission charges every miss to both
 FP and FN. Grant a perfect grid and free text wherever one marked-content unit supplies it, and F1
-collapses to TP/G: 72/159, 11/40, 328/568, 3352/6937, **macro 447‰ — below the 489‰ floor.**
+collapses to TP/G: 72/159, 11/40, 328/568, 3352/6937, **macro 446‰ — below the 489‰ floor.**
 
 ### The gate, which is the part S7a left open
 
@@ -373,11 +380,11 @@ frozen by the same re-derive-and-compare guard.
 ```
 cell-slot accuracy (the gate metric), exact text after the whitespace rule:
   document                           TP       FP       FN    cell-F1
-  cfpb-home-loan-toolkit.pdf         24       91      135      175‰
+  cfpb-home-loan-toolkit.pdf         24       12      135      246‰
   irs-form-1040-2025.pdf              0        0       40        0‰
   nist-sp-800-63b.pdf                 0        0      568        0‰
   nist-sp-800-53r5.pdf                0        0     6937        0‰
-  MACRO cell-F1 over the 4 documents that declare a table: 43‰
+  MACRO cell-F1 over the 4 documents that declare a table: 61‰
   gate is > 489‰: MISS
 ```
 
@@ -393,7 +400,7 @@ documents that score badly is the failure this harness exists to prevent.
 
 ### Kept honest
 
-- **Fabrication is still 0** on all four documents, measured on 77 emitted cells.
+- **Fabrication is still 0** on all four documents, measured on 36 emitted cells.
 - **The gold negatives still have none.** `synthetic/two-columns`, `synthetic/simple-text` and
   `unruled-near-miss` yield 0 geometric tables, asserted for the first time in this harness.
   `two-columns` is the one that matters: four runs in a flawless 2 × 2 whose only distinguishing
@@ -419,11 +426,11 @@ the public surface.
 `cfpb-home-loan-toolkit` draws curly quotes, so NFC is load-bearing rather than decorative. The
 harness is `cfg(test)`, so nothing enters the shipped library's graph.
 
-**606 tests pass**, up from 601. Oracle still 12 / 3.
+**609 tests pass**, up from 601. Oracle still 12 / 3.
 
 ### v1 status
 
-**S7b is done. S7 is not.** The gate is measured and missed at 43‰. `docs/09-V1-MILESTONES.md` S7
+**S7b is done. S7 is not.** The gate is measured and missed at 61‰. `docs/09-V1-MILESTONES.md` S7
 stays open with the number written down, and the README claims nothing it has not measured.
 
 ---

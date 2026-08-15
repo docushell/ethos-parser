@@ -73,14 +73,15 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S5** | Multi-column reading order, with a stable versioned rule | **done** |
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | **done** |
 | **S7a** | The labelled set and the harness, measuring only | **done** |
-| **S7b** | Detector calibration, measured — and falsified | **done** |
+| **S7b** | Detector calibration, measured. Six repairs rejected, one shipped (`ruled-rects-v2`) | **done** |
 | **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 61‰** |
 
 **S7 is open, with the number written down.** The gate metric exists, is documented in
 `docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **61‰** against
-a 489‰ floor. S7b measured six detector repairs: the five aimed at the *alignment* rule all failed,
-and the sixth — `ruled-rects-v2`, which stops a background panel from witnessing its own lattice —
-took precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing a true positive.
+a 489‰ floor. S7b ran seven investigations: the six aimed at the *alignment* rule were all measured
+and rejected, and one — `ruled-rects-v2`, which stops a background panel from witnessing its own
+lattice — shipped, taking precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing
+a true positive.
 **v1 is not done and is not claimed to be.**
 
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later

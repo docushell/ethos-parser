@@ -163,8 +163,8 @@ The refusal is now **declared**. Before this the ruled rule had no voice at all:
 failure returned an empty vector and said nothing, so a page whose rectangles implied a grid their
 own ink did not draw read exactly like a page that painted nothing — on **556 of the corpus's 602
 pages**, measured. It reports under `ruled-table-candidate-refused`, the companion to the alignment
-rule's existing declaration, grouped by precondition so that 481 refused pages cost one explanation
-rather than 481 copies of it.
+rule's existing declaration, grouped by precondition so that `nist-sp-800-53r5`'s 481 refused pages
+cost one explanation rather than 481 copies of it.
 
 ### Gold negatives
 
@@ -186,10 +186,10 @@ Three findings from S7b, each measured rather than inspected. The full evidence 
    1 784 runs, correctly refused. The floor is not wrong; it is unreachable.
 
 3. **The NIST documents draw no table rulings at all.** Their axis-aligned stroked segments are
-   490 and 76 copies of a single margin rule. A stroke-ruled detector would add nothing there, and
-   on `irs-form-1040-2025` it would re-open the 662-cell fabrication surface of v1-S1.
-   **This is true of NIST and 1040 and was never assessed for `cfpb-home-loan-toolkit`, where it
-   is the largest remaining lead by a wide margin — see below.**
+   490 and 76 copies of a single margin rule. A stroke-ruled detector adds nothing there, and on
+   `irs-form-1040-2025` it re-opens the 662-cell fabrication surface of v1-S1 — both since
+   confirmed by building it. **True of NIST and 1040, and it was never assessed for
+   `cfpb-home-loan-toolkit`, where it became the largest remaining lead — see below.**
 
 A fourth, about the measurement rather than the detector: several NIST tagged tables are
 **multi-page** — one is 278 rows, another 245 — and the page-granular join cannot match a
@@ -512,14 +512,15 @@ engine.
 
 ## What would actually move it
 
-Nothing in the geometric-alignment family, on this evidence. Five repairs to that rule have been
-measured — the gutter constants, stroke-ruled detection, band segmentation, mcid merging, and mcid
-merging with bands — and the two that move the number do so by emitting an order of magnitude more
-cells, getting almost none right, and breaking a gold negative each time.
+Nothing in the geometric-alignment family, on this evidence. Six repairs aimed at it have been
+measured — the gutter constants, band segmentation, mcid merging, mcid merging with bands, and
+stroke-ruled detection in two variants — and the ones that move the number do so by emitting an
+order of magnitude more cells, getting almost none right, and breaking a gold negative or the 1040
+canary each time.
 
-The sixth repair, to the **ruled** rule, is the one that worked: +18‰ macro, precision to 1000‰,
-no true positive lost. It did not come from a new idea about tables. It came from reading the
-detector's own two statements about one rectangle and noticing they contradicted each other.
+The one repair that worked went to the **ruled** rule: `ruled-rects-v2`, +18‰ macro, precision to
+1000‰, no true positive lost. It did not come from a new idea about tables. It came from reading
+the detector's own two statements about one rectangle and noticing they contradicted each other.
 
 Two facts bound what any of them could have achieved:
 
@@ -529,6 +530,6 @@ Two facts bound what any of them could have achieved:
 
 Together those give a hard ceiling for the degenerate half of the metric: grant the detector a
 perfect grid and free text wherever a single marked-content unit supplies it, and F1 collapses to
-TP/G — 72/159, 11/40, 328/568, 3352/6937, **macro 447‰**. Below the 489‰ floor. That is the
+TP/G — 72/159, 11/40, 328/568, 3352/6937, **macro 446‰**. Below the 489‰ floor. That is the
 quantitative reason the gate is not gameable by an mcid rule, and it is also the reason no amount
 of text accuracy alone would have cleared it.

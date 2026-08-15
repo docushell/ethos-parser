@@ -1,7 +1,9 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1-S4 shipped, as 0.6.0.** v1 is the DocuShell replacement gate and is seven slices
-long (`08-V1-SCOPE.md`); four are done.
+**Status:** **v1-S7b shipped, as 0.9.0.** v1 is the DocuShell replacement gate and is seven slices
+long (`08-V1-SCOPE.md`); S1–S6 are done and S7 is **open**. Its gate — table-cell accuracy above
+0.489 — is now measured for the first time and **missed**: macro cell-slot F1 is **61‰** against a
+489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done.**
 
 **S4 makes a form field's value and an annotation's comment nodes of their own kind.** Neither is
 drawn by any content stream, so neither is a text run — and a reader that copied them into the
@@ -42,10 +44,10 @@ detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' 
 
 **S7 has now measured it: macro cell-F1 is 61‰ against the 489‰ floor — a miss.** The method is
 [`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
-repository should be quoted from. S7b measured six detector repairs: the five aimed at the
-*alignment* rule all failed, and the sixth — `ruled-rects-v2` — took precision from 900‰ to 1000‰
-and the gate from 43‰ to 61‰ without losing a true positive, by refusing to let a page-background
-panel witness the lattice its own decoration implies.
+repository should be quoted from. S7b ran seven investigations: the six aimed at the
+*alignment* rule were all measured and rejected, and one — `ruled-rects-v2` — shipped, taking
+precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing a true positive, by
+refusing to let a page-background panel witness the lattice its own decoration implies.
 
 Four measurements shaped the table slices and are worth knowing before reading the detectors:
 
@@ -114,8 +116,10 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**Next: v1-S5** — multi-column reading order, with a stable versioned rule
-(`09-V1-MILESTONES.md`). Not started.
+**Next: closing v1-S7.** The gate is measured and missed at 61‰, and seven investigations in S7b
+established that no repair to the *alignment* rule moves it — see
+[`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the one that was
+built and parked. S8 is unstarted.
 
 ---
 
@@ -125,12 +129,12 @@ M7 added no capability. It closed v0 instead:
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
-5. **M0–M7 are done and v0 is frozen; v0.1 and v1-S1 through v1-S4 shipped on top.** Do not re-author the
+5. **M0–M7 are done and v0 is frozen; v0.1 and v1-S1 through v1-S7b shipped on top.** Do not re-author the
    workspace, the contract types, the classifier, the extractor, the assurance envelope, the
    representation, the projection, or the checker — and do not widen the public API without
    editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
    read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
-   first: v1 is **seven slices**, the next is S5, and the > 0.489 gate belongs to S7 alone
+   first: v1 is **seven slices**, S1–S7b are done, the remaining work is closing S7, and the > 0.489 gate belongs to S7 alone
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it

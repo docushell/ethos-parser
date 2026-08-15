@@ -18,7 +18,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S6.1** | Code width from the font's declared kind — a text-loss repair | S6 | **done** |
 | **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
 | **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
-| **S7b** | Detector calibration, measured against S7a — and **falsified**: the prescribed change moves no number | S7a | **done** |
+| **S7b** | Detector calibration against S7a. Seven investigations: six measured and rejected, one shipped (`ruled-rects-v2`) | S7a | **done** |
 | **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | **measured and MISSED: 61‰** |
 
 ---
@@ -104,9 +104,11 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
      an overlap is a real disagreement and belongs in the cross-check, where it is reported, not in
      a precondition, where it would be silently dropped.
 
-- **The rule, as shipped** (`ruled-rects-v1`): lattice from clustered rectangle edges within
-  1.5pt; at least two faces; every face covered; cells are the rectangles mapped onto the lattice,
-  with a rectangle covering every face treated as the outer border; text assigned by run **origin**,
+- **The rule, as S1 shipped it** (`ruled-rects-v1`, superseded by `-v2` at S7b): lattice from
+  clustered rectangle edges within 1.5pt; at least two faces; every face covered; cells are the
+  rectangles mapped onto the lattice, with a rectangle covering every face treated as the outer
+  border — a rectangle that was *also* accepted as coverage evidence, which is the inconsistency
+  `-v2` closed; text assigned by run **origin**,
   never by ink-box intersection. A grid drawn as thin ruling lines rather than cell rectangles does
   not satisfy the coverage precondition and is not detected — that is honest scope, declared by
   `unruled-tables-not-detected`, and it widens at S2.
@@ -746,7 +748,7 @@ corpus, and reports what it sees. The number it reports is bad.
 
 - **The caveat, stated rather than implied.** A tagged `/Table` is a **claim by the document's
   producer**, not verified truth. Producers use table tags for layout as well as for tabular data,
-  so some of the 48 are almost certainly not tables anyone would want extracted. That inflates the
+  so some of the 57 are almost certainly not tables anyone would want extracted. That inflates the
   denominator and makes recall read worse than it is. The labelled set therefore records the
   provenance of every label as `pdf-struct-tree` rather than presenting it as fact, and a later
   slice may narrow it by sampling. **What it must never become is labels derived from what the
@@ -785,7 +787,8 @@ corpus, and reports what it sees. The number it reports is bad.
 - **Goal:** Make the detector find the tables the documents say are there, with every change proved
   by S7a's harness rather than by inspection.
 
-- **Status: done. The detector did not change, because the harness said the change was a no-op.**
+- **Status: done.** The prescribed alignment calibration was a no-op and was not taken. A different
+  defect, in the **ruled** rule, was found and shipped as `ruled-rects-v2`.
 
 - **The evidenced item, and its falsification.** S7a read `unruled::COLUMN_GUTTER_MIN` as refusing
   490 of 492 pages of `nist-sp-800-53r5` at 10.6 pt against a 12 pt floor, and inferred a wrong
@@ -913,8 +916,8 @@ corpus, and reports what it sees. The number it reports is bad.
   So `stroke-ruled-tables-not-detected` was falsified for NIST and 1040 only, never assessed for
   cfpb — where **all nine missed tagged tables sit on pages that stroke segments, 103 cells, 65% of
   that document's gold**. Finding them would give cfpb 852‰ and macro 213‰ (page 13 alone: 493‰ and
-  123‰). Still under the floor, and still the only lead left that moves the number. Not attempted:
-  it needs a complete pass with its own coherence precondition and its own before/after on 1040.
+  123‰). Still under the floor, and still the only lead left that moves the number. **It was then
+  attempted as a complete pass** — see the bullet above — and not shipped.
 
 - **Pages 16 and 17 investigated: no defect.** The last ruled lead. Page 17 paints two full-height
   column panels (165 × 214, 339 × 214 pt) with unpainted text rows inside; page 16 paints a single
@@ -956,7 +959,7 @@ corpus, and reports what it sees. The number it reports is bad.
 
 ## S7 — The > 0.489 gate, assessed
 
-**Status: assessed, and MISSED. Macro cell-F1 is 43‰ against a 489‰ floor. v1 is not done.**
+**Status: assessed, and MISSED. Macro cell-F1 is 61‰ against a 489‰ floor. v1 is not done.**
 
 - **Goal:** The v1 gate, measured.
 
@@ -972,21 +975,21 @@ corpus, and reports what it sees. The number it reports is bad.
 
   | Document | TP | FP | FN | cell-F1 |
   | --- | --- | --- | --- | --- |
-  | `cfpb-home-loan-toolkit.pdf` | 24 | 91 | 135 | 175‰ |
+  | `cfpb-home-loan-toolkit.pdf` | 24 | 12 | 135 | 246‰ |
   | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | 0‰ |
   | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | 0‰ |
   | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | 0‰ |
-  | **MACRO** | | | | **43‰** |
+  | **MACRO** | | | | **61‰** |
 
   Macro-averaged F1 over `CellSlot`s, integer per-mille, exact text after NFC + trim + whitespace
-  collapse. **Page-level recall (157‰) is a diagnostic and is not this number** — 157‰ of pages
-  agreeing is not 157‰ of cells right.
+  collapse. **Page-level recall (140‰) is a diagnostic and is not this number** — 140‰ of pages
+  agreeing is not 140‰ of cells right.
 
 - **Acceptance tests:**
   - [x] The harness is committed and reruns to the same number
-  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 43‰**, see above
+  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 61‰**, see above
   - [x] Fabrication rate **0**, measured rather than asserted
-  - [x] Cross-check diagnostics emitted across the set, with disagreement counted (2)
+  - [x] Cross-check diagnostics emitted across the set, with disagreement counted (0, after `ruled-rects-v2`)
   - [x] No bake-off table anywhere in the repository
 
 - **What is not being done to close it.** Narrowing the labelled set by dropping the documents that
