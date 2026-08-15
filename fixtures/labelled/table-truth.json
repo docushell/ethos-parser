@@ -1,0 +1,368 @@
+[
+  {
+    "id": "cfpb-home-loan-toolkit.pdf",
+    "provenance": "pdf-struct-tree",
+    "tables": [
+      {
+        "page": 5,
+        "rows": 2,
+        "columns": 1,
+        "cells": 2
+      },
+      {
+        "page": 6,
+        "rows": 7,
+        "columns": 2,
+        "cells": 14
+      },
+      {
+        "page": 7,
+        "rows": 7,
+        "columns": 2,
+        "cells": 14
+      },
+      {
+        "page": 8,
+        "rows": 2,
+        "columns": 2,
+        "cells": 4
+      },
+      {
+        "page": 8,
+        "rows": 2,
+        "columns": 3,
+        "cells": 6
+      },
+      {
+        "page": 9,
+        "rows": 2,
+        "columns": 3,
+        "cells": 6
+      },
+      {
+        "page": 10,
+        "rows": 4,
+        "columns": 2,
+        "cells": 8
+      },
+      {
+        "page": 11,
+        "rows": 5,
+        "columns": 4,
+        "cells": 20
+      },
+      {
+        "page": 13,
+        "rows": 2,
+        "columns": 1,
+        "cells": 2
+      },
+      {
+        "page": 13,
+        "rows": 8,
+        "columns": 4,
+        "cells": 32
+      },
+      {
+        "page": 15,
+        "rows": 2,
+        "columns": 1,
+        "cells": 2
+      },
+      {
+        "page": 16,
+        "rows": 7,
+        "columns": 2,
+        "cells": 14
+      },
+      {
+        "page": 17,
+        "rows": 5,
+        "columns": 2,
+        "cells": 10
+      },
+      {
+        "page": 20,
+        "rows": 2,
+        "columns": 1,
+        "cells": 2
+      },
+      {
+        "page": 21,
+        "rows": 2,
+        "columns": 2,
+        "cells": 4
+      },
+      {
+        "page": 23,
+        "rows": 5,
+        "columns": 3,
+        "cells": 15
+      },
+      {
+        "page": 25,
+        "rows": 2,
+        "columns": 2,
+        "cells": 4
+      }
+    ]
+  },
+  {
+    "id": "irs-form-1040-2025.pdf",
+    "provenance": "pdf-struct-tree",
+    "tables": [
+      {
+        "page": 1,
+        "rows": 8,
+        "columns": 5,
+        "cells": 40
+      }
+    ]
+  },
+  {
+    "id": "nist-sp-800-63b.pdf",
+    "provenance": "pdf-struct-tree",
+    "tables": [
+      {
+        "page": 1,
+        "rows": 19,
+        "columns": 2,
+        "cells": 33
+      },
+      {
+        "page": 3,
+        "rows": 5,
+        "columns": 2,
+        "cells": 10
+      },
+      {
+        "page": 11,
+        "rows": 19,
+        "columns": 4,
+        "cells": 76
+      },
+      {
+        "page": 14,
+        "rows": 13,
+        "columns": 2,
+        "cells": 26
+      },
+      {
+        "page": 18,
+        "rows": 1,
+        "columns": 1,
+        "cells": 1
+      },
+      {
+        "page": 22,
+        "rows": 13,
+        "columns": 4,
+        "cells": 52
+      },
+      {
+        "page": 30,
+        "rows": 1,
+        "columns": 1,
+        "cells": 1
+      },
+      {
+        "page": 38,
+        "rows": 1,
+        "columns": 1,
+        "cells": 1
+      },
+      {
+        "page": 50,
+        "rows": 1,
+        "columns": 1,
+        "cells": 1
+      },
+      {
+        "page": 50,
+        "rows": 4,
+        "columns": 2,
+        "cells": 8
+      },
+      {
+        "page": 52,
+        "rows": 39,
+        "columns": 3,
+        "cells": 75
+      },
+      {
+        "page": 56,
+        "rows": 20,
+        "columns": 3,
+        "cells": 52
+      },
+      {
+        "page": 69,
+        "rows": 25,
+        "columns": 10,
+        "cells": 232
+      }
+    ]
+  },
+  {
+    "id": "nist-sp-800-53r5.pdf",
+    "provenance": "pdf-struct-tree",
+    "tables": [
+      {
+        "page": 19,
+        "rows": 245,
+        "columns": 4,
+        "cells": 977
+      },
+      {
+        "page": 35,
+        "rows": 12,
+        "columns": 4,
+        "cells": 45
+      },
+      {
+        "page": 401,
+        "rows": 194,
+        "columns": 2,
+        "cells": 384
+      },
+      {
+        "page": 420,
+        "rows": 1,
+        "columns": 1,
+        "cells": 1
+      },
+      {
+        "page": 421,
+        "rows": 278,
+        "columns": 2,
+        "cells": 556
+      },
+      {
+        "page": 451,
+        "rows": 116,
+        "columns": 2,
+        "cells": 232
+      },
+      {
+        "page": 456,
+        "rows": 156,
+        "columns": 4,
+        "cells": 589
+      },
+      {
+        "page": 460,
+        "rows": 20,
+        "columns": 4,
+        "cells": 71
+      },
+      {
+        "page": 461,
+        "rows": 74,
+        "columns": 4,
+        "cells": 272
+      },
+      {
+        "page": 463,
+        "rows": 35,
+        "columns": 4,
+        "cells": 126
+      },
+      {
+        "page": 464,
+        "rows": 71,
+        "columns": 4,
+        "cells": 263
+      },
+      {
+        "page": 466,
+        "rows": 61,
+        "columns": 4,
+        "cells": 226
+      },
+      {
+        "page": 468,
+        "rows": 75,
+        "columns": 4,
+        "cells": 274
+      },
+      {
+        "page": 470,
+        "rows": 47,
+        "columns": 4,
+        "cells": 175
+      },
+      {
+        "page": 472,
+        "rows": 33,
+        "columns": 4,
+        "cells": 123
+      },
+      {
+        "page": 473,
+        "rows": 33,
+        "columns": 4,
+        "cells": 115
+      },
+      {
+        "page": 474,
+        "rows": 64,
+        "columns": 4,
+        "cells": 237
+      },
+      {
+        "page": 476,
+        "rows": 20,
+        "columns": 4,
+        "cells": 67
+      },
+      {
+        "page": 477,
+        "rows": 40,
+        "columns": 4,
+        "cells": 153
+      },
+      {
+        "page": 478,
+        "rows": 21,
+        "columns": 4,
+        "cells": 76
+      },
+      {
+        "page": 479,
+        "rows": 24,
+        "columns": 4,
+        "cells": 89
+      },
+      {
+        "page": 480,
+        "rows": 29,
+        "columns": 4,
+        "cells": 105
+      },
+      {
+        "page": 481,
+        "rows": 154,
+        "columns": 4,
+        "cells": 558
+      },
+      {
+        "page": 485,
+        "rows": 171,
+        "columns": 4,
+        "cells": 642
+      },
+      {
+        "page": 489,
+        "rows": 125,
+        "columns": 4,
+        "cells": 468
+      },
+      {
+        "page": 492,
+        "rows": 30,
+        "columns": 4,
+        "cells": 113
+      }
+    ]
+  }
+]

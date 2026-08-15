@@ -7,6 +7,94 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1-S7a, the labelled set and the harness
+
+**A measuring slice. It changes no detector and improves no number.** It builds the instrument,
+points it at the corpus, and reports what it sees. What it sees is bad. **Not tagged.**
+
+### The measurement
+
+```
+document                     declared detected  matched     recall  precision
+cfpb-home-loan-toolkit.pdf         17       10        9       529‰      900‰
+irs-form-1040-2025.pdf              1        0        0         0‰         -
+nist-sp-800-63b.pdf                13        0        0         0‰         -
+nist-sp-800-53r5.pdf               26        0        0         0‰         -
+TOTAL                              57       10        9       157‰      900‰
+cells emitted 77, fabricated 0, cross-check disagreements 2
+```
+
+Table-cell accuracy is not "below 0.489". On three of the four real documents **no cell is produced
+at all**, so a cell score has no denominator. Recall against the documents' own declarations is
+**157‰**.
+
+### Where the labels come from, and why they are not this engine's
+
+From each document's **own tagged structure tree**. A `/Table` element is the producer's declaration
+that a table is there and what shape it has; v1-S3 already reads them, and a guard test keeps every
+geometric type out of that module. So the ground truth is the author's, the thing measured is the
+geometric detector, and the two derivations are independent **by construction** rather than by
+anyone remembering to keep them apart. That is what S3 built, and this is the slice that needed it.
+
+No hand-labelling, no judgement of mine, and no network.
+
+**A tagged `/Table` is a claim by the producer, not verified truth.** Producers tag tables for
+layout as well as for data, so some of the 57 are almost certainly not tables anyone would want
+extracted — which inflates the denominator and makes recall read worse than it is. Every label
+records its provenance as `pdf-struct-tree` rather than presenting itself as fact. Narrowing the set
+by sampling is a later slice's work, not something to do quietly.
+
+**What the labels must never become is labels derived from what the detector found.** Recall measured
+against your own output is 1.0 by construction. A guard scans the labelling function for that shape
+— scoped to `label` alone, after an earlier draft fired on `page.tables` inside `score`, which is
+the detector's output legitimately being measured.
+
+### Committed and frozen
+
+`fixtures/labelled/table-truth.json`: 57 tables, 7 704 cells, across the four real documents.
+Derived once and frozen; `the_committed_labels_still_match_the_documents` re-derives and compares,
+so a change in what the tree-walk thinks these documents declare is a reviewed edit rather than a
+number that moved underneath the measurement. Regeneration is an `#[ignore]`d test, run
+deliberately.
+
+### Fabrication is 0, measured rather than asserted
+
+The v1 exit criterion that is not a threshold. Every emitted cell's text is a concatenation of runs
+the page actually drew — **77 of 77** across the real corpus. Until now that claim was checked only
+on the four hand-built grids the fixtures provide.
+
+### Why the gate is not assessed here
+
+0.489 is a table-cell score from a third-party published corpus this repository does not have. A
+number computed on a different corpus with a different evaluator is not comparable to it, and
+`06-STEAL-REFUSE.md` records exactly what happens when people pretend otherwise: two publishers
+scored the same tool at 0.000 and 0.693 on tables, differing only by invocation flags. The gate is
+assessed at S7, with its method stated, or it is not stated. No bake-off table appears anywhere in
+this repository.
+
+### What S7b will act on, and why it waits
+
+**Every** table-candidate refusal across all four documents is `unruled::COLUMN_GUTTER_MIN`, and on
+490 of `nist-sp-800-53r5`'s 492 pages the refused gutter is **1 062 centipoints — 10.6 pt — against
+a 12 pt floor**. That floor was sized to reject word spacing (*"at 12pt type a space is 3–4pt"*);
+10.6 pt is a structural gutter by the rule's own reasoning.
+
+It is not changed here on purpose. Loosening a tolerance to admit more tables is the shortest path
+to fabricating them — v1-S1 produced a 662-cell table on `irs-form-1040-2025` from a detector that
+looked right by inspection. With this harness the trade is visible: precision and fabrication are
+measured on the same run as recall.
+
+### Version unchanged, deliberately
+
+**No `parser_version` bump and no profile move.** The profile is every knob that can change output,
+and this slice changes none: no artifact byte differs. Bumping would produce two profile hashes
+whose artifacts are byte-identical, which weakens what the hash means. A measuring instrument is not
+a knob.
+
+**601 tests pass**, up from 595.
+
+---
+
 ## [Unreleased] — v1-S6.2, as 0.8.2
 
 **A repair.** The engine was putting rectangles on the wire around content that draws nothing — and

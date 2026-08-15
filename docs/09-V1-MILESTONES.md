@@ -17,7 +17,9 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S6** | Images, DPI screenshots, hidden / off-page findings | S3 | **done** |
 | **S6.1** | Code width from the font's declared kind — a text-loss repair | S6 | **done** |
 | **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
-| **S7** | Labelled-set harness; the > 0.489 gate | S1–S6 | not started |
+| **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
+| **S7b** | Detector calibration, measured against S7a | S7a | not started |
+| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | not started |
 
 ---
 
@@ -693,7 +695,109 @@ turned up rather than by a test failing.
 
 ---
 
-## S7 — The labelled set, and the gate
+## S7a — The labelled set, and the harness
+
+**S7 split in two, and this is the measuring half.** The original slice asked for a labelled set, a
+harness, and a verdict against 0.489 in one step. Measuring first and changing the detector second
+is the order this repository already argues for everywhere else — and it matters more than usual
+here, because the alternative is tuning a tolerance until a number looks better, which is exactly
+how v1-S1's 662-cell fabrication on `irs-form-1040-2025` got written.
+
+**S7a changes no detector and improves no number.** It builds the instrument, points it at the
+corpus, and reports what it sees. The number it reports is bad.
+
+- **Goal:** A committed labelled set, a harness that reruns to the same number, and an honest
+  measurement of where table detection actually stands.
+
+- **What the measurement found, before any of it was built.** Across the four real documents:
+
+  | Document | pages | tables found | tagged tables MISSED |
+  | --- | --- | --- | --- |
+  | `nist-sp-800-53r5` | 492 | **0** | 26 |
+  | `nist-sp-800-63b` | 80 | **0** | 13 |
+  | `irs-form-1040-2025` | 2 | **0** | 1 |
+  | `cfpb-home-loan-toolkit` | 28 | 10 | 8 |
+
+  Table-cell accuracy today is not below 0.489. It is **not measurable as a cell score on three of
+  the four documents at all**, because no cell is produced.
+
+  And the cause is one constant. **Every** table-candidate refusal across all four documents is
+  `unruled::COLUMN_GUTTER_MIN`, and on 490 of `nist-sp-800-53r5`'s 492 pages the refused gutter is
+  **1 062 centipoints — 10.6 pt — against a 12 pt floor**. That floor was sized to reject word
+  spacing (*"at 12pt type a space is 3–4pt"*); 10.6 pt is a structural gutter by the rule's own
+  reasoning. Acting on that is **S7b's**, deliberately, and only once this harness can prove the
+  change is an improvement rather than a preference.
+
+- **Where the labels come from, and why they are not mine.** Every one of the four documents carries
+  a **tagged structure tree**, and its `/Table` elements are the document author's own declaration
+  of where a table is and what shape it has. v1-S3 already reads them — `TaggedTable` carries page,
+  rows, columns and per-cell spans, and a guard test keeps geometry out of that module entirely.
+
+  So the ground truth is the author's, the thing measured is the geometric detector, and the two
+  derivations are independent **by construction** rather than by anyone's care. That independence is
+  what S3 built and it is why this harness needs no hand-labelling and no judgement of mine.
+
+- **The caveat, stated rather than implied.** A tagged `/Table` is a **claim by the document's
+  producer**, not verified truth. Producers use table tags for layout as well as for tabular data,
+  so some of the 48 are almost certainly not tables anyone would want extracted. That inflates the
+  denominator and makes recall read worse than it is. The labelled set therefore records the
+  provenance of every label as `pdf-struct-tree` rather than presenting it as fact, and a later
+  slice may narrow it by sampling. **What it must never become is labels derived from what the
+  detector found** — that measures nothing, because recall against your own output is 1.0 by
+  construction.
+
+- **In:** a committed labelled set with declared provenance; a harness computing recall, precision,
+  cell accuracy where both grids exist, fabrication rate, and the cross-check disagreement summary;
+  determinism asserted by rerunning; the numbers printed so a CI log records them.
+
+- **Out:** any detector change, any tolerance change, any verdict against 0.489. Publishing a
+  comparison of any kind — `06-STEAL-REFUSE.md` is explicit that 0.489 is a floor to beat and never
+  a claim to publish, and no bake-off table appears in this repository.
+
+- **Acceptance tests:**
+  - [x] The labelled set is committed, and every label names where it came from
+  - [x] The harness reruns to the same number
+  - [x] Fabrication rate is **0**, measured rather than asserted — every emitted cell's text is a
+        concatenation of runs the page actually drew
+  - [x] Cross-check disagreements are counted across the set
+  - [x] No bake-off table anywhere in the repository
+
+- **Why the gate is not assessed here.** 0.489 is a table-cell score from a third-party published
+  corpus this repository does not have. A number computed on a different corpus with a different
+  evaluator is not comparable to it, and `06-STEAL-REFUSE.md` records exactly what happens when
+  people pretend otherwise: two publishers scored the same tool at 0.000 and 0.693 on tables,
+  differing only by invocation flags. The gate is assessed at S7, with its method stated, or it is
+  not stated.
+
+- **Depends on:** S1–S6.
+
+---
+
+## S7b — Detector calibration, measured
+
+- **Goal:** Make the detector find the tables the documents say are there, with every change proved
+  by S7a's harness rather than by inspection.
+
+- **The evidenced item.** `unruled::COLUMN_GUTTER_MIN` refuses 490 of 492 pages of
+  `nist-sp-800-53r5` at 10.6 pt against a 12 pt floor. Any change to it is a
+  `unruled-align-v1` rule-version event and moves `profile_sha256`.
+
+- **The other declared leftover.** `stroke-ruled-tables-not-detected`: a grid drawn as four thin
+  stroked segments per cell rather than a filled rectangle is not detected, and that is the likely
+  reason the NIST documents' *ruled* tables are missed as well. `irs-form-1040-2025` carries **520
+  axis-aligned stroked segments** beside its 396 rectangles, and those 396 alone produced v1-S1's
+  662-cell fabrication — so a stroked-line rule needs its own coherence precondition and its own
+  measurement pass before it ships.
+
+- **The standing hazard.** Loosening a tolerance to admit more tables is the shortest path to
+  fabricating them. S7a exists so that trade is visible: precision and fabrication rate are measured
+  on the same run as recall.
+
+- **Depends on:** S7a.
+
+---
+
+## S7 — The > 0.489 gate, assessed
 
 - **Goal:** The v1 gate, measured.
 

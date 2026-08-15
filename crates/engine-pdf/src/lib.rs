@@ -50,6 +50,11 @@
 
 pub mod limitations;
 
+// v1-S7a's measuring harness. **`cfg(test)`, because it is an instrument and not a stage** — no
+// artifact path calls it, and clippy was right to call every item in it dead code when it was
+// compiled into the library. The same narrowing M7 applied to the parser's insides.
+#[cfg(test)]
+pub(crate) mod accuracy;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;
