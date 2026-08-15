@@ -426,6 +426,22 @@ pub struct Capabilities {
     /// [`Profile::raster_dpi`] carries the not-emitted state explicitly so that a future renderer
     /// arriving is a profile-hash event rather than a silent change of meaning.
     pub page_screenshots: bool,
+    /// A Markdown projection is emitted, always with its Anchor Map (v1.1-S1).
+    ///
+    /// **True since v1.1-S1**, and what it claims is narrow on purpose — *this profile can project
+    /// the representation into Markdown that stays citable*. It does not claim the Markdown is
+    /// pretty, complete, or a good chunking unit.
+    ///
+    /// The capability is about the **pair**. `docs/01-CONTRACT.md` §12 refused a Markdown
+    /// projection outright for seven v1 slices, on Workbench rule 8: a projection between what is
+    /// ranked and what is cited is where a locator dies silently, and checklist O8 records that
+    /// rule 8 *prefers no projection at all*. What flips this flag is not "we wrote a serializer"
+    /// but "the map is a field of the same artifact and the type will not construct without it".
+    ///
+    /// A profile may still set this `false`; the partnering limitation is declared, and
+    /// [`Profile::markdown_rule`] must then be absent from the emitted surface in the same way
+    /// every other off capability behaves.
+    pub markdown: bool,
 }
 
 impl Capabilities {
@@ -447,6 +463,7 @@ impl Capabilities {
         annotations: true,
         images: true,
         page_screenshots: false,
+        markdown: true,
     };
 }
 
@@ -677,6 +694,17 @@ pub struct Profile {
     /// carrying a role path: the recognised structure types, the `/RoleMap` handling, the depth
     /// bound and the exactness of the `(page, mcid)` join are all part of it.
     pub struct_tree_rule: String,
+    /// Version id of the Markdown projection rule in force (v1.1-S1).
+    ///
+    /// See [`crate::markdown::MARKDOWN_RULE_LINEAR_V1`]. On the profile because it decides what
+    /// comes out: a run that projected headings from font sizes and a run that refused to would
+    /// disagree about the same document, and an artifact whose hash could not tell them apart
+    /// would claim a comparability it lacks.
+    ///
+    /// **A profile JSON predating v1.1-S1 — one with no `markdown_rule` — is refused, not
+    /// defaulted.** The same posture `table_detection.stroke_ruled` took at v1-S8: a field
+    /// defaulted in is a claim the run never made.
+    pub markdown_rule: String,
     /// Version id of the forms-and-annotations rule in force. New at v1-S4.
     ///
     /// See [`FORM_ANNOTATION_RULE_V1`].
@@ -719,6 +747,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V1.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_LINEAR_V1.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -815,6 +844,7 @@ mod tests {
                     annotations: _,
                     images: _,
                     page_screenshots: _,
+                    markdown: _,
                 },
             page_budget: _,
             reading_order_rule: _,
@@ -828,6 +858,7 @@ mod tests {
                     stroke_ruled: _,
                 },
             struct_tree_rule: _,
+            markdown_rule: _,
             form_annotation_rule: _,
             cmap_data_version: _,
             xref_repair: _,
@@ -1023,7 +1054,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.10.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","markdown_rule":"markdown-linear-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.11.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1105,11 +1136,17 @@ mod tests {
              `table_detection` grows `stroke_ruled`, because a third rule runs. An artifact \
              either side of this hash says something different about the same document — \
              `cfpb-home-loan-toolkit` page 13's loan worksheet is a 7 x 4 table on one side and \
-             absent on the other — which is exactly what a profile identity is for."
+             absent on the other — which is exactly what a profile identity is for.\n\n\
+             Moved a FOURTEENTH time at v1.1-S1 (0.11.0), and this time TWO fields arrived: \
+             `markdown_rule` and `capabilities.markdown`. v1.1 adds an OUTPUT rather than \
+             changing a detector — `ethos.markdown.v1`, a Markdown projection carried with the \
+             Anchor Map that inverts it back to nodes. A profile predating it is REFUSED rather \
+             than defaulted, for the reason `table_detection.stroke_ruled` is: a field defaulted \
+             in is a claim the run never made."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:08c4207d18bee0e64daea093d94f0c64c5b897add33288969488be5e75143c65"
+            "sha256:881474f72ab0ede8f04078e87828fe4e5e4fb92c646a7def5d8981415057875d"
         );
     }
 

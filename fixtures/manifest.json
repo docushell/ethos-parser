@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 33
+    "engine_owned": 34
   },
   "fixtures": [
     {
@@ -481,6 +481,15 @@
       "sha256": "sha256:2c4ec0be97056281f50cba2a4e15c846074492c71a97f2e5951f674a9797c533",
       "owner": "engine",
       "notes": "v1-S8 negative, and the irs-form-1040-2025 principle without the tax form. A stroked 2x2 whose four faces are ALSO four widget /Rects at the same coordinates, so the boxes are the fields' own frames rather than a table's cells. Expect 0 tables. Contrast `stroke-ruled-worksheet`, which carries no widgets, and the real page 13, which carries 25 of them INSET inside its printed cells and is still a table \u2014 a face that merely contains a smaller field box is a real cell with a widget in it."
+    },
+    {
+      "id": "markdown-two-blocks",
+      "root": "engine",
+      "group": "engine",
+      "path": "markdown-two-blocks/document.pdf",
+      "sha256": "sha256:6f34b6d8bb37cfdb19ad0e48ba0b2af6da25e368b938068b5505d8bcfbee1efa",
+      "owner": "engine",
+      "notes": "v1.1-S1's Anchor Map golden. TWO text runs in a font declaring real ink metrics, so BOTH reach `ethos.grounding.v1` as elements a verifier can find. That combination is why it had to be authored: the projection joins the runs with a blank line, and `block\\n\\nSecond` is then real text in the Markdown that the page never drew \u2014 the exact string the map exists to mark unquotable. Proving it needs the verifier to ground one quote and refuse the other, and every pre-existing fixture with measurable ink has only ONE run (no join to span) while the two-run fixtures declare no metrics (empty `elements`, so the golden would pass vacuously)."
     }
   ]
 }

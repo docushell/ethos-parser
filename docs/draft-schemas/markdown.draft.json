@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ethos.dev/schemas/draft/ethos.markdown.v1.json",
+  "title": "ethos.markdown.v1",
+  "description": "A Markdown projection of a DocumentRepresentation, carried TOGETHER WITH the Anchor Map that inverts it back to representation nodes, and a coverage census of every source character that did not reach it (v1.1-S1). docs/01-CONTRACT.md §12 declines to define a Markdown projection on Workbench rule 8 — a projection sitting between what a retriever ranks and what a citation binds is where a locator dies silently — and the parity checklist's O8 records that the rule PREFERS no projection at all to one without the map. This artifact exists because the map makes that objection payable, not because it lapsed. The consumer's rule is one line: a quote that touches a `syntax` byte is not invertible.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_type",
+    "schema_version",
+    "parser_version",
+    "profile_sha256",
+    "source_sha256",
+    "representation_sha256",
+    "markdown_rule",
+    "markdown",
+    "anchor_map",
+    "coverage"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "ethos.markdown.v1"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "parser_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The engine build that produced this artifact."
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Hash of the pinned configuration profile. Two artifacts are comparable if and only if this matches — and since v1.1-S1 the profile carries `markdown_rule`, so a run under a different projection rule is correctly non-comparable."
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the original source bytes, carried through from the representation."
+    },
+    "representation_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the representation this projects. The binding that makes the map checkable: without it, a map could name node ids from a different parse of a different file and read exactly the same."
+    },
+    "markdown_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the projection rule. `markdown-linear-v1` emits linear text with headings taken only from the document's own structure tree — never from a font size (checklist L29 is REFUSE).",
+      "examples": [
+        "markdown-linear-v1"
+      ]
+    },
+    "markdown": {
+      "type": "string",
+      "description": "The Markdown. NEVER emitted without `anchor_map`: they are fields of one artifact rather than two files, because a companion file is a thing a pipeline strips and a field is not."
+    },
+    "anchor_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segments"
+      ],
+      "description": "The map from `markdown` bytes back to evidence. Its segments TOTAL-TILE the string: sorted, contiguous, no overlap, no gap, covering 0..len(markdown) exactly. A map with a hole is worse than no map, because the hole is exactly where an unquotable byte hides — so an incomplete map is a hard error on both construction and parse, never a warning.",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "start",
+              "end"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "source",
+                  "syntax"
+                ],
+                "description": "TWO values, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable."
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "First UTF-8 BYTE offset into `markdown`, inclusive. Bytes rather than characters, and the description says so: every language's slice takes one or the other, and saying which is the difference between a map and a hint."
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Last UTF-8 byte offset, exclusive."
+              },
+              "node_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift."
+              }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_chars_in_representation",
+        "source_chars_emitted",
+        "source_chars_dropped",
+        "dropped"
+      ],
+      "description": "A census, not a summary. `source_chars_emitted + source_chars_dropped == source_chars_in_representation`, asserted in CI on real fixtures. Counted in CHARACTERS of node text, because the thing being conserved is the text the representation offered.",
+      "properties": {
+        "source_chars_in_representation": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of the character count of every node's text in the representation — the RAW text, not its normalization, so that whitespace the projection collapsed is visible as a bucket rather than hidden by moving the denominator."
+        },
+        "source_chars_emitted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Characters that landed in a `source` segment."
+        },
+        "source_chars_dropped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Characters that did not, summed over `dropped`."
+        },
+        "dropped": {
+          "type": "array",
+          "description": "Where the dropped characters went, by named class, sorted by code. Checklist A14: if something is removed, the artifact says so AND says how much. 'Some content was omitted' is not a disclosure; `annotation-text-not-projected-v1: 37` is.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "chars",
+              "nodes"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "examples": [
+                  "form-field-values-not-projected-v1",
+                  "annotation-text-not-projected-v1",
+                  "image-nodes-carry-no-text-v1",
+                  "whitespace-collapsed-v1"
+                ]
+              },
+              "chars": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "nodes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "artifact_type": "ethos.markdown.v1",
+      "schema_version": "1.0.0",
+      "parser_version": "0.11.0",
+      "profile_sha256": "sha256:881474f72ab0ede8f04078e87828fe4e5e4fb92c646a7def5d8981415057875d",
+      "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
+      "representation_sha256": "sha256:5a8a27f197562847b1f8236eba295d07fc1e502f211f4c2b7997abb206b36f9a",
+      "markdown_rule": "markdown-linear-v1",
+      "markdown": "Hello Ethos\n",
+      "anchor_map": {
+        "segments": [
+          {
+            "kind": "source",
+            "start": 0,
+            "end": 11,
+            "node_ids": [
+              "s1"
+            ]
+          },
+          {
+            "kind": "syntax",
+            "start": 11,
+            "end": 12
+          }
+        ]
+      },
+      "coverage": {
+        "source_chars_in_representation": 11,
+        "source_chars_emitted": 11,
+        "source_chars_dropped": 0,
+        "dropped": []
+      }
+    }
+  ]
+}

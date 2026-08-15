@@ -1057,6 +1057,11 @@ corpus, and reports what it sees. The number it reports is bad.
 **Status: assessed, and MISSED. Macro cell-F1 is 64‰ against a 489‰ floor. v1 is not done.**
 (61‰ when first assessed at S7b; S8 shipped a third detection rule and re-measured.)
 
+**v1.1 has since started** — Safe Markdown, scoped in [`10-V11-SCOPE.md`](10-V11-SCOPE.md) and
+[`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) — because the owner asked for the next roadmap row.
+It adds an output and changes no detector, so **this number is unchanged by it** and this slice
+stays open.
+
 - **Goal:** The v1 gate, measured.
 
 - **In:** A committed labelled set and a harness; table-cell accuracy computed and reported with its

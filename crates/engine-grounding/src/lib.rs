@@ -456,6 +456,15 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         images: _,
         // Nothing to project: no raster is produced at all under this profile.
         page_screenshots: _,
+        // v1.1-S1. Nothing here either, and for the plainest reason of the set: a Markdown
+        // projection is a SIBLING of this one, not an input to it. Both read the same
+        // representation and neither reads the other — `ethos.grounding.v1` carries boxes for a
+        // verifier, `ethos.markdown.v1` carries text and an anchor map for a retriever.
+        //
+        // Keeping them apart is the point rather than an omission. A grounding artifact that
+        // embedded Markdown would put a projection inside the record a citation binds to, which
+        // is precisely the layering Workbench rule 8 warns about.
+        markdown: _,
     } = caps;
 
     if char_offsets {

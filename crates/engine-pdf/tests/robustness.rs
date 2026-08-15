@@ -357,7 +357,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 56] = [
+const EXPECTED_SURVIVORS: [&str; 57] = [
     "absent-font-metrics/junk-after-eof",
     // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
     // appended past `%%EOF` leave a readable document.
@@ -382,6 +382,8 @@ const EXPECTED_SURVIVORS: [&str; 56] = [
     "invisible-render-mode/junk-after-eof",
     "irs-form-1040-2025/flip-tail-byte",
     "irs-form-1040-2025/junk-after-eof",
+    // v1.1-S1's Anchor Map golden. Same class as every other engine fixture.
+    "markdown-two-blocks/junk-after-eof",
     "measured-ink-box/junk-after-eof",
     "nist-sp-800-53r5/flip-tail-byte",
     "nist-sp-800-53r5/junk-after-eof",
@@ -706,15 +708,16 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        51,
-        "the manifest should declare 51 fixtures across three roots (23 at M7, plus v0.1's \
+        52,
+        "the manifest should declare 52 fixtures across three roots (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
          five tagged ones, v1-S4's four form/annotation ones — form-field-value, \
          annotation-contents, form-orphan-widget and form-xfa-stub — v1-S5's two-column pair, \
          and v1-S6's four: image-xobject-drawn, image-declared-not-drawn, \
          invisible-render-mode, off-page-and-offset-box crop-box-smaller-than-media, v1-S6.1's simple-font-two-byte-tounicode, v1-S6.2's whitespace-past-the-page-edge, \
          v1-S7b's background-panel-not-a-grid, and v1-S8's three stroke-ruled ones — \
-         stroke-ruled-worksheet, stroke-ruled-columns-not-drawn and stroke-ruled-field-boxes)"
+         stroke-ruled-worksheet, stroke-ruled-columns-not-drawn and stroke-ruled-field-boxes, \
+         and v1.1-S1's markdown-two-blocks)"
     );
 
     let expected: BTreeSet<String> = EXPECTED_INAPPLICABLE

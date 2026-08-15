@@ -7,6 +7,152 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v1.1-S0/S1, Safe Markdown, as 0.11.0
+
+**Markdown ships, and only ever with the map that inverts it.** `ethos.markdown.v1` carries a
+Markdown string, the **Anchor Map** that binds every source byte of it back to representation
+nodes, and a coverage census of every character that did not make it. **v1 is still not done** —
+the S7 gate is measured and missed at 64‰ — and v1.1 began because the owner asked for the next
+roadmap row, not because the gate cleared. Not tagged.
+
+### Why this took until v1.1, and what changed
+
+`docs/01-CONTRACT.md` §12 has said since v0 that this contract *does not define a Markdown
+projection*, on Workbench rule 8: **retrieval operates on the evidence record itself, and any
+projection between what is ranked and what is cited is where a locator dies silently.** A pipeline
+chunks Markdown, embeds it, ranks it, hands the winner to a model; the model quotes it; the
+citation then has to bind back to a run or a cell, and the Markdown threw that away. Nobody
+notices, because the quote is real text and the answer looks right. The parity checklist records
+the fallback plainly — **O8: rule 8 prefers no projection at all.**
+
+v1.1 does not lift the objection. It pays it. The map is not a companion file somebody can forget:
+it is a **field of the same artifact**, and `MarkdownArtifact` will not construct without one that
+tiles.
+
+### The four laws, and where each is enforced
+
+1. **Never one without the other.** `markdown` and `anchor_map` are fields of one hashed artifact.
+   There is no `--md-only`, and `no_cli_path_emits_markdown_without_its_map` reads the subcommand's
+   declared flags — not its prose — to keep it that way.
+2. **The map total-tiles the bytes.** `AnchorMap::new` refuses a gap, an overlap, an out-of-order
+   pair, an empty segment, an offset past the end, or an offset that splits a UTF-8 character. The
+   same check re-runs on parse, so a hand-edited file cannot smuggle a hole past the type. **A map
+   with a hole is worse than no map**, because the hole is exactly where an unquotable byte hides.
+3. **Two segment kinds, and only two.** `source` names the node ids its bytes came from; `syntax`
+   is markup the exporter invented and names nothing. No third value — a "probably source" would
+   be the confidence field §9 forbids.
+4. **Coverage is a census.** `emitted + dropped == in_representation`, in characters, with every
+   dropped character in a **named** bucket carrying a count. Checklist A14.
+
+### The golden, which is the whole point
+
+`a_markdown_quote_verifies_end_to_end` runs the real binaries — `extract`, `ground`, `markdown`,
+`verify` — and asserts both directions against the **pinned Ethos CLI**:
+
+| quote | taken from | verifier says |
+| --- | --- | --- |
+| `First block` | a `source` segment | **grounded** |
+| `block\n\nSecond` | spans a `syntax` segment | **mismatch**, reason `text_mismatch` |
+
+The second row is the one that means something. `block\n\nSecond` is **real text in the Markdown
+that the page never drew** — from the `.md` alone nothing distinguishes it from a sentence the
+document contains. The test pins the *reason* as well as the verdict: `element_not_found` would
+mean the citation pointed at nothing and the assertion would pass without the map having
+demonstrated anything.
+
+Nothing is re-derived from the report (`docs/07-VERIFY-BOUNDARY.md`); the test reads
+`all_evidence_grounded`, which the verifier wrote.
+
+### What projects, and what is a named bucket
+
+Only `text_run` nodes. The rest are dropped **by kind**, because each is a different fact:
+
+| kind | bucket | why |
+| --- | --- | --- |
+| `form_field` | `form-field-values-not-projected-v1` | a field's `/V` lives in the AcroForm tree and no content stream draws it. v1-S4 exists to keep it distinguishable from page text; inlining it would undo exactly that, silently |
+| `annotation` | `annotation-text-not-projected-v1` | a reviewer's note is markup *over* the document |
+| `image` | `image-nodes-carry-no-text-v1` | a placement, not a picture — almost always `0`, present so the census is exhaustive by construction |
+| — | `whitespace-collapsed-v1` | see below |
+
+**Page artifacts are projected, not dropped.** A running head is a `text_run` carrying
+`pdf_artifact`; O21/O22 is explicit that a reader deleting running heads has silently edited the
+document. The flag stays in the representation and a consumer that wants them gone drops them
+itself, knowing it did.
+
+**Collapsed whitespace is a bucket, not a rounding.** A `source` segment's bytes are the
+*normalization* of `node.text` — NFC, trim, collapse internal whitespace to one `U+0020`, the same
+three clauses `table-gate-v1.md` publishes. Measuring `in_representation` over that same
+normalization would have balanced the census by moving the denominator: a run drawn as
+`Hello   world` would report 11 characters in a representation holding 13, and the two missing ones
+would be invisible. So the denominator is the **raw** text and the difference gets its own named
+class.
+
+**Tables are a declared erasure, not a bucket.** A cell's text is a concatenation of runs that are
+already nodes, so projecting the runs loses no character and a `tables-not-projected` count would
+read `0` and disclose nothing. What is lost is the *grid*, and that gets a limitation —
+`markdown-table-structure-not-projected` — rather than a number that looks like a disclosure while
+the thing actually erased has none. v1.1-S2 is where a GFM table earns the right to flatten spans.
+
+### Headings come from the tree, never from a font
+
+`# ` through `###### ` when the node's `pdf_tagged` role path ends in `H` or `H1`…`H6`, after the
+document's own `/RoleMap`. **No font size is consulted** — checklist L29 is REFUSE.
+
+Measured: **no fixture in either corpus carries a heading role**, so on everything committed today
+this branch never fires and every document projects as paragraphs. It is proved by a unit test over
+a hand-built representation rather than by a PDF nobody has, which is the honest way to test a path
+the corpus cannot reach.
+
+### Added — `engine markdown`
+
+`engine markdown <representation.json>`, the same input `engine ground` takes. One input kind,
+documented, rather than a subcommand that silently means two things. The fingerprint is checked
+before anything is projected: a representation that does not hash to its declared digest is refused
+with exit 2, because projecting it would launder the disagreement into a fresh-looking artifact
+whose map named node ids nobody can now confirm. Exit 0 / 2 only. Double-run byte-identical.
+
+### Changed — the profile grows two fields, and the hash moves
+
+`markdown_rule: "markdown-linear-v1"` and `capabilities.markdown: true`. A profile JSON predating
+v1.1-S1 is **refused rather than defaulted** — the posture `table_detection.stroke_ruled` took at
+v1-S8: a field defaulted in is a claim the run never made. `parser_version` 0.10.0 → 0.11.0.
+Profile hash `sha256:08c4207d…` → `sha256:881474f7…`.
+
+`capabilities.markdown: false` obliges `markdown-not-projected`, which is written as a **position
+rather than a gap**: O8 records that rule 8 prefers no projection at all, so a build that emits none
+has taken an option the checklist keeps open.
+
+### Added — one engine-owned CC0 fixture, and why it had to exist
+
+`markdown-two-blocks`: two runs in a font declaring real ink metrics, so **both** reach
+`ethos.grounding.v1` as elements a verifier can find. Every pre-existing fixture with measurable
+ink has exactly one run — no join to span — and the two-run fixtures declare no metrics, so their
+`elements` array is empty and the golden would have passed vacuously against a verifier that found
+nothing either way. Mutation suite 51 → 52 fixtures; one new `EXPECTED_SURVIVORS` entry,
+`junk-after-eof`, the same benign class as every other engine fixture.
+
+### Added — `docs/10-V11-SCOPE.md` and `docs/11-V11-MILESTONES.md`
+
+v1.1-S0. The same shape v1 has in 08/09: what the version is, what it is not, the four laws, the
+slice map. **S2 (tables and lists) and S3 (HTML, export-only cosmetics) are named and not
+started.** Rule 8 is stated where a later slice will read it, with O8's fallback quoted rather than
+paraphrased away.
+
+**652 tests pass**, up from 619. Oracle still 12 / 3.
+
+### What is unchanged, and checked
+
+The table gate still reads **64‰**; `irs-form-1040-2025` still yields **0** tables; fabrication
+still **0**; oracle still **12 / 3**. No detector was retuned — `ruled-rects-v2`,
+`stroke-ruled-v1` and `unruled-align-v1` keep their ids and their numbers. `engine-pdf` did not
+learn Markdown and `engine-grounding` did not grow a Markdown schema; the projection lives in
+`engine-core`, which is where a projection of the representation belongs. No fifth crate.
+
+Still open and still listed: page rasters, low-contrast detection, structure-order, undrawn table
+edges, and **S7's miss at 64‰**.
+
+---
+
 ## [Unreleased] — v1-S8, stroke-ruled tables, as 0.10.0
 
 **A third table-detection rule ships.** `stroke-ruled-v1` reads the grid a document draws as

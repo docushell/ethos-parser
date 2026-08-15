@@ -100,6 +100,28 @@ pub mod codes {
     /// Profile-scoped, because it is true of every document this build reads.
     pub const UNDRAWN_TABLE_EDGES_NOT_SUPPLIED: &str = "undrawn-table-edges-not-supplied";
 
+    /// [`Capabilities::markdown`] is false: no Markdown projection is emitted.
+    ///
+    /// **The honest state for a profile that declines to project**, and `docs/01-CONTRACT.md` §12
+    /// is explicit that declining is respectable: Workbench rule 8 *prefers no projection at all*
+    /// to one that severs a citation from its evidence. A build that emits no Markdown has not
+    /// failed at anything; it has taken the option checklist O8 keeps open.
+    pub const MARKDOWN_NOT_PROJECTED: &str = "markdown-not-projected";
+
+    /// A Markdown projection is emitted and it does **not** carry the table grid (v1.1-S1).
+    ///
+    /// The partner to a TRUE capability, and a **structural** erasure rather than a character one.
+    /// A table cell's text is a concatenation of runs that are already nodes, so projecting the
+    /// runs loses no character and `coverage` is unaffected — a `tables-not-projected` count would
+    /// read `0` and mean nothing.
+    ///
+    /// What is actually lost is which run sat in which cell. Naming that as a character bucket
+    /// would have been the more comfortable lie: a number that looks like a disclosure while the
+    /// thing erased has no number at all. Checklist A14 wants the erasure named, so it is named
+    /// here and counted nowhere. v1.1-S2 is where a GFM table earns the right to flatten spans.
+    pub const MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED: &str =
+        "markdown-table-structure-not-projected";
+
     /// The alignment rule built a candidate lattice on some page and **refused** it.
     ///
     /// Document-scoped and conditional — only present when it actually happened. This is the
@@ -390,6 +412,7 @@ impl Capabilities {
             annotations,
             images,
             page_screenshots,
+            markdown,
         } = *self;
 
         let mut out = Vec::new();
@@ -412,6 +435,19 @@ impl Capabilities {
                  sub-element addressing this profile cannot do. It becomes informative at v1, \
                  when grouping makes elements coarser than spans. A consumer needing \
                  `char_start`/`char_end` must not infer them from concatenation order.",
+            ));
+        }
+        if markdown {
+            // **A limitation partnering a TRUE capability**, like the table one below: it declares
+            // the scope of what the projection does rather than the absence of one.
+            out.push(Limitation::profile(
+                codes::MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED,
+                "The Markdown projection carries the document's TEXT and an Anchor Map that                  inverts every source byte of it back to representation nodes. It does NOT carry                  the table grid: `markdown-linear-v1` emits linear text, so a cell's runs appear                  in reading order with no row, column or span around them. No character is lost by                  that — a cell's text is a concatenation of runs that are already nodes, and the                  projection's `coverage` census accounts for every one of them — which is exactly                  why this is declared here instead of as a dropped-character count that would read                  `0` and disclose nothing. A consumer needing the grid must read `tables` on the                  representation, where it is unchanged and unflattened.",
+            ));
+        } else {
+            out.push(Limitation::profile(
+                codes::MARKDOWN_NOT_PROJECTED,
+                "This profile emits no Markdown projection. That is a position rather than a gap:                  `docs/01-CONTRACT.md` §12 declines a Markdown projection on Workbench rule 8 — a                  projection sitting between what a retriever ranks and what a citation binds is                  where a locator dies silently — and the parity checklist's O8 records that the                  rule PREFERS no projection at all to one without an Anchor Map. A consumer                  wanting Markdown from this build must project it itself, and owns the                  consequence: a quote taken from that Markdown cannot be inverted to evidence by                  anything this engine emitted.",
             ));
         }
         if tables {
@@ -1197,6 +1233,7 @@ mod tests {
     #[test]
     fn every_false_capability_declares_a_limitation() {
         let none = Capabilities {
+            markdown: false,
             spans: false,
             char_offsets: false,
             tables: false,
@@ -1220,6 +1257,7 @@ mod tests {
             codes::ANNOTATIONS_NOT_EXTRACTED,
             codes::IMAGES_NOT_EMITTED,
             codes::PAGE_RASTER_NOT_EMITTED,
+            codes::MARKDOWN_NOT_PROJECTED,
         ] {
             assert!(
                 declared.iter().any(|l| l.code == code),
@@ -1228,11 +1266,12 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            11,
+            12,
             "one limitation per false capability, plus `low-contrast-not-detected`, which is \
              declared UNCONDITIONALLY because no profile this build can produce reads colour — \
              it is not partnered to a capability in either direction, and pretending otherwise \
-             would mean inventing a `contrast` flag nothing sets"
+             would mean inventing a `contrast` flag nothing sets. Twelve since v1.1-S1, which \
+             added `markdown`"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1241,6 +1280,7 @@ mod tests {
         // no table" are different statements and only the first one is true. At v1-S2 that scope
         // narrowed from "ruled only" to "no stroked-line grids".
         let all = Capabilities {
+            markdown: true,
             spans: true,
             char_offsets: true,
             tables: true,
@@ -1261,15 +1301,21 @@ mod tests {
         assert_eq!(
             remaining,
             vec![
+                codes::MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED,
                 codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
                 codes::LOW_CONTRAST_NOT_DETECTED,
                 codes::READING_ORDER_GEOMETRIC_ONLY,
             ],
             "an all-true profile keeps the limitations that partner TRUE capabilities — what the \
-             table rules still miss, what an image node does NOT say, and what the reading-order \
-             rule cannot see — plus `low-contrast-not-detected`, which is unconditional because \
-             no profile this build can produce reads colour at all"
+             Markdown projection does NOT carry, what the table rules still miss, what an image \
+             node does NOT say, and what the reading-order rule cannot see — plus \
+             `low-contrast-not-detected`, which is unconditional because no profile this build \
+             can produce reads colour at all"
+        );
+        assert!(
+            !remaining.contains(&codes::MARKDOWN_NOT_PROJECTED),
+            "a profile that projects Markdown must not also declare that it does not"
         );
         assert!(
             !remaining.contains(&"unruled-tables-not-detected"),

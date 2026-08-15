@@ -82,6 +82,23 @@ enum Command {
     /// from is where the declaration lives.
     Ground(GroundArgs),
 
+    /// Project a `DocumentRepresentation v0` into `ethos.markdown.v1` (v1.1-S1).
+    ///
+    /// **Markdown and its Anchor Map, always together.** They are fields of one artifact, not two
+    /// files, so there is no `--md-only` and no way for a caller to end up with a Markdown string
+    /// whose bytes cannot be inverted back to evidence. `docs/01-CONTRACT.md` §12 refused a
+    /// Markdown projection for the whole of v1 on Workbench rule 8 — a projection between what a
+    /// retriever ranks and what a citation binds is where a locator dies silently — and checklist
+    /// O8 records that the rule prefers no projection at all to one without the map. This
+    /// subcommand exists because the map makes the objection payable, not because it lapsed.
+    ///
+    /// stdout is canonical JSON. A consumer that wants a `.md` file writes
+    /// `.markdown` out itself, and owns the fact that doing so discards the map.
+    ///
+    /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
+    /// its declared digest.
+    Markdown(MarkdownArgs),
+
     /// Draw what was detected onto a copy of the document (v1-S6).
     ///
     /// Emits a PDF — **the one subcommand whose stdout is not canonical JSON** — carrying an
@@ -190,6 +207,16 @@ struct VerifyArgs {
 }
 
 #[derive(clap::Args)]
+struct MarkdownArgs {
+    /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
+    ///
+    /// **A representation, not a PDF.** The same input `engine ground` takes, deliberately: one
+    /// subcommand that silently means two different things is how a caller ends up unsure which
+    /// profile produced the artifact it is holding.
+    path: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct GroundArgs {
     /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
     path: PathBuf,
@@ -216,6 +243,10 @@ fn main() -> ExitCode {
         Command::Extract(args) => {
             let path = args.path.clone();
             timed(Stage::Extract, diag, &path, || run_extract(args))
+        }
+        Command::Markdown(args) => {
+            let path = args.path.clone();
+            timed(Stage::Ground, diag, &path, || run_markdown(args))
         }
         Command::Ground(args) => {
             let path = args.path.clone();
@@ -341,6 +372,73 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
             }
             Err(e) => fail(&e),
         },
+        Err(e) => fail(&e),
+    }
+}
+
+/// Read a representation from disk and project it into Markdown plus its Anchor Map.
+///
+/// Thin, like every other subcommand: read bytes, call the library, print canonical bytes, map the
+/// outcome to an exit code. The projection lives in `engine_core::markdown` — it is a projection of
+/// the representation and has nothing to do with PDF, so `engine-pdf` never learns Markdown
+/// (`docs/04-ARCHITECTURE.md` §1).
+fn run_markdown(args: MarkdownArgs) -> ExitCode {
+    let bytes = match std::fs::read(&args.path) {
+        Ok(b) => b,
+        Err(e) => {
+            return fail(&EngineError::Io {
+                detail: format!("{}: {e}", args.path.display()),
+            })
+        }
+    };
+
+    let repr: engine_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "representation".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    // Checked before anything is projected, exactly as `ground` does. A representation whose
+    // payload does not hash to its declared digest is not a record this engine will speak for, and
+    // projecting it anyway would launder the disagreement into a fresh-looking artifact whose
+    // anchor map named node ids nobody can now confirm.
+    if let Err(e) = repr.verify_fingerprint() {
+        return fail(&e);
+    }
+
+    let profile = Profile::default();
+    let profile_sha256 = match profile.profile_sha256() {
+        Ok(h) => h,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "profile".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    let artifact = match engine_core::to_markdown(
+        &repr,
+        &profile.parser_version,
+        &profile_sha256,
+        &profile.markdown_rule,
+    ) {
+        Ok(a) => a,
+        Err(e) => return fail(&e),
+    };
+
+    match artifact.to_canonical_bytes() {
+        Ok(out) => {
+            let mut stdout = std::io::stdout().lock();
+            let _ = stdout.write_all(&out);
+            let _ = stdout.write_all(b"\n");
+            let _ = stdout.flush();
+            ExitCode::from(PROJECTED as u8)
+        }
         Err(e) => fail(&e),
     }
 }

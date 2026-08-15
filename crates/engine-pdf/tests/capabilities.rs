@@ -133,6 +133,7 @@ fn proof_table() -> Vec<Proof> {
         annotations,
         images,
         page_screenshots,
+        markdown,
     } = c;
 
     vec![
@@ -206,6 +207,14 @@ fn proof_table() -> Vec<Proof> {
             ),
         },
         Proof {
+            field: "markdown",
+            claimed: markdown,
+            // The proof is the golden, not the serializer: a Markdown exporter is easy and a
+            // Markdown exporter whose output can be inverted back to evidence is the claim.
+            proof_test: Some("a_markdown_quote_verifies_end_to_end"),
+            why_not: None,
+        },
+        Proof {
             field: "structural_locators",
             claimed: structural_locators,
             // v1-S3. The claim is "this profile looks", and the proof has to cover both halves
@@ -234,14 +243,33 @@ fn proof_table() -> Vec<Proof> {
     ]
 }
 
-/// Every source line of this crate's integration tests, for locating a named proof.
+/// Every source line of the workspace's integration tests, for locating a named proof.
+///
+/// **Both `engine-pdf/tests` and `engine-cli/tests`**, and the second one was added at v1.1-S1
+/// rather than by preference. Every capability up to then was about reading a PDF, so its proof
+/// necessarily lived beside the parser and scanning one directory was enough. `capabilities.markdown`
+/// is not: the projection lives in `engine-core` — `engine-pdf` deliberately does not learn
+/// Markdown (`docs/04-ARCHITECTURE.md` §1) — and its proof is an end-to-end run of `extract`,
+/// `ground`, `markdown` and `verify` against the pinned Ethos CLI, which can only be driven from
+/// the CLI crate's tests.
+///
+/// Widening the scan is the honest fix. The alternative was a thinner proof placed here to satisfy
+/// the search, which would have made the guard pass while the capability's real evidence sat
+/// somewhere the guard could not see.
 fn test_sources() -> String {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace root")
+        .to_path_buf();
     let mut all = String::new();
-    for entry in std::fs::read_dir(&dir).expect("tests/ is readable") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            all.push_str(&std::fs::read_to_string(&path).expect("readable"));
+    for crate_name in ["engine-pdf", "engine-cli"] {
+        let dir = workspace.join("crates").join(crate_name).join("tests");
+        for entry in std::fs::read_dir(&dir).expect("tests/ is readable") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().is_some_and(|e| e == "rs") {
+                all.push_str(&std::fs::read_to_string(&path).expect("readable"));
+            }
         }
     }
     assert!(

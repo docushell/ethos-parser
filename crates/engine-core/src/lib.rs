@@ -67,6 +67,7 @@ pub mod error;
 pub mod geom;
 pub mod identity;
 pub mod ids;
+pub mod markdown;
 pub mod profile;
 pub mod representation;
 pub mod tables;
@@ -87,6 +88,10 @@ pub use identity::{
     Sha256Hex,
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
+pub use markdown::{
+    to_markdown, AnchorMap, Coverage, DroppedBucket, MarkdownArtifact, Segment, SegmentKind,
+    MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_LINEAR_V1, MARKDOWN_SCHEMA_VERSION,
+};
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, FORM_ANNOTATION_RULE_V1, OBSERVATION_RULE_V1,

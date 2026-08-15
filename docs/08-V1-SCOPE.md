@@ -87,6 +87,12 @@ document draws as ruling lines: `cfpb-home-loan-toolkit` 246‰ → 259‰ and t
 `irs-form-1040-2025` held at 0 tables and fabrication still 0.
 **v1 is not done and is not claimed to be.**
 
+**v1.1 has started anyway, and that is not a contradiction.** `02-ROADMAP.md`'s next row is Safe
+Markdown, the owner asked for it, and it is scoped in [`10-V11-SCOPE.md`](10-V11-SCOPE.md) and
+[`11-V11-MILESTONES.md`](11-V11-MILESTONES.md). Nothing in v1.1 closes S7: it adds an *output*
+(`ethos.markdown.v1`, always paired with its Anchor Map) and touches no detector. The gate still
+reads 64‰, and no v1.1 slice may be cited as evidence that it does not.
+
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later
 work `M8` would imply v0's acceptance list continued into it, and it did not.
 

@@ -18,6 +18,7 @@
     "cmap_data_version",
     "xref_repair",
     "verifier",
+    "markdown_rule",
     "table_detection",
     "struct_tree_rule",
     "form_annotation_rule",
@@ -177,6 +178,14 @@
         }
       }
     },
+    "markdown_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the Markdown projection rule in force (v1.1-S1). Decides what `ethos.markdown.v1` contains: which nodes project, whether a heading comes from the structure tree, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted \u2014 a field defaulted in is a claim the run never made.",
+      "examples": [
+        "markdown-linear-v1"
+      ]
+    },
     "observation_rule": {
       "type": "string",
       "minLength": 1,
@@ -252,6 +261,10 @@
         "images": {
           "type": "boolean",
           "$comment": "true since v1-S6 \u2014 proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared. Carries no description, caption or alt text \u2014 that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
+        },
+        "markdown": {
+          "type": "boolean",
+          "description": "A Markdown projection is emitted, always with its Anchor Map (v1.1-S1). What it claims is narrow: THIS PROFILE CAN PROJECT the representation into Markdown that stays citable. It does not claim the Markdown is pretty or complete. False obliges `markdown-not-projected`, which is a position rather than a gap \u2014 checklist O8 records that rule 8 prefers no projection at all."
         },
         "page_screenshots": {
           "type": "boolean",
@@ -330,7 +343,8 @@
         "annotations": true,
         "tables": true,
         "images": true,
-        "page_screenshots": false
+        "page_screenshots": false,
+        "markdown": true
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
@@ -341,7 +355,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.10.0",
+      "parser_version": "0.11.0",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
@@ -355,6 +369,7 @@
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1"
       },
+      "markdown_rule": "markdown-linear-v1",
       "struct_tree_rule": "struct-tree-v1",
       "form_annotation_rule": "form-annotations-v1",
       "observation_rule": "page-observations-v1",

@@ -1,9 +1,16 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1-S8 shipped, as 0.10.0.** v1 is the DocuShell replacement gate
-(`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and S7 is **open**. Its gate — table-cell
+**Status:** **v1.1-S1 shipped, as 0.11.0.** v1 is the DocuShell replacement gate
+(`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
-489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done.**
+489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
+began because the owner asked for the next roadmap row rather than because the gate cleared.
+
+**v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
+a Markdown string and the **Anchor Map** that inverts every source byte of it back to
+representation nodes, plus a coverage census of what did not make it. `docs/01-CONTRACT.md` §12
+refused a Markdown projection for the whole of v1 on Workbench rule 8; the map is what makes that
+objection payable. S2 (tables and lists) and S3 (HTML, cosmetics) are **not started**.
 
 **S4 makes a form field's value and an annotation's comment nodes of their own kind.** Neither is
 drawn by any content stream, so neither is a text run — and a reader that copied them into the
@@ -186,7 +193,9 @@ Then, as needed:
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
 | [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 is measured once at S7 · the ruled/unruled split · capability flip plan | Before any v1 work |
-| [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S7**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
+| [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S8**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
+| [`10-V11-SCOPE.md`](10-V11-SCOPE.md) | What v1.1 is and is not · Workbench rule 8 and why Markdown waited · the four laws of the Anchor Map | Before any v1.1 work |
+| [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) | **v1.1-S0–S3**, with S2 and S3 not started | Every v1.1 PR. This is the v1.1 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |

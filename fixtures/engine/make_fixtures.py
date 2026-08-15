@@ -29,6 +29,10 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              so the artifact carries two tables under two rule ids [v1-S2]
   ruled-wins-shared-region   a painted grid whose text ALSO forms a clean alignment grid;
                              exactly one table comes out, and it is the ruled one  [v1-S2]
+  markdown-two-blocks        TWO runs in a font with real ink metrics, so both reach the
+                             grounding artifact. The Markdown joins them with a blank line, and
+                             a quote spanning that join is text the page never drew — the
+                             Anchor Map golden                                    [v1.1-S1]
   stroke-ruled-worksheet     a grid drawn as two-point STROKED rules, shaped like
                              cfpb-home-loan-toolkit page 13: one baseline rules three cells
                              instead of four (a blank cell), the three interior column rules
@@ -317,6 +321,19 @@ FIXTURES = {
     # Carries a /FontDescriptor, so ink is MEASURED rather than typed-absent. Every other
     # fixture takes the absence path; without this one the measured branch is untested.
     "measured-ink-box": "BT /F1 24 Tf 72 72 Td (Measured) Tj ET",
+    # v1.1-S1's MARKDOWN GOLDEN. Two runs, both in a font declaring real ink metrics, so both
+    # reach `ethos.grounding.v1` as elements a verifier can actually find.
+    #
+    # That combination is why this fixture had to exist. The projection turns two runs into
+    # `First block\n\nSecond block`, and the blank line between them is a `syntax` segment — bytes
+    # this exporter invented. `block\n\nSecond` is then real text in the Markdown that the page
+    # never drew, which is exactly the string the Anchor Map exists to mark unquotable. Proving
+    # that needs the verifier to ground the first half and refuse the second, and every existing
+    # fixture with measurable ink has only ONE run, so there is no join to span.
+    "markdown-two-blocks": (
+        "BT /F1 24 Tf 72 120 Td (First block) Tj ET "
+        "BT /F1 24 Tf 72 60 Td (Second block) Tj ET"
+    ),
     # A TJ gap of -500 thousandths: far wider than kerning, so a space was intended and never
     # written as a glyph.
     "synthesized-space-tj": (
@@ -915,6 +932,8 @@ PAGE_EXTRA = {
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
+    # Tall enough for two 24pt lines with real ink boxes inside the page.
+    "markdown-two-blocks": (0, 0, 300, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
@@ -957,6 +976,9 @@ DIFFERENCES = {
 # name -> descriptor kind. Absent from this map means no descriptor at all.
 DESCRIPTORS = {
     "measured-ink-box": "metrics",
+    # Real metrics on BOTH runs, so both ground. Without them the elements array is empty and the
+    # golden would pass vacuously against a verifier that found nothing either way.
+    "markdown-two-blocks": "metrics",
     "absent-font-metrics": "no-metrics",
     # Real metrics, so the ink box is MEASURED — without this the fixture proves nothing, because
     # a typed-absent box can never fall outside a page.
