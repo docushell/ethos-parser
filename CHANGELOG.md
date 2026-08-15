@@ -72,6 +72,47 @@ rule at x=39.3 repeated once per page. A stroke-ruled rule would add zero tables
 `irs-form-1040-2025` it would re-open the surface that produced v1-S1's 662-cell fabrication. It
 stays a declared limitation rather than a half-enabled rule.
 
+### Segmentation was built, measured and reverted
+
+The obvious repair for the whole-page candidate is to cut the page into bands first.
+`unruled-align-v2` was implemented — row lines, then cells cut wherever ≥ 12 pt of whitespace
+separates the end of one run from the start of the next, then bands of consecutive rows agreeing on
+their cell starts — and measured in two variants.
+
+**A, columns still folded from raw origins:** 11 detected against 10, cell-F1 unchanged at 43‰, and
+a new false table on `irs-form-1040-2025`. 358 of 363 bands died on the gutter floor, because a cell
+reading `Digital Identity Guidelines` is three word-level runs three points apart.
+
+**B, the band's cell starts become its column lines:**
+
+| Document | detected | TP | FP | cell-F1 |
+| --- | --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit` | 13 | 28 | 103 | 193‰ |
+| `irs-form-1040-2025` | **6** | **0** | **37** | 0‰ |
+| `nist-sp-800-63b` | 8 | 2 | 52 | 6‰ |
+| `nist-sp-800-53r5` | 114 | 42 | 1 076 | 10‰ |
+| **MACRO** | **141** | **72** | **1 268** | **52‰** |
+
+141 tables against 10, 1 302 emitted cells against 77, **+9‰** of gate score, right about 5% of the
+time. Reverted — and not for missing 489‰:
+
+- **`unruled-near-miss` becomes a table.** A gold negative turning positive is a fabrication.
+- **`irs-form-1040-2025` goes 0 → 6 tables**, 0 correct cells, 37 wrong. That is v1-S1's 662-cell
+  failure at a smaller scale, on the document that exists to catch it.
+- **Three `unruled` unit tests fail**, including `a_face_without_text_refuses_the_whole_lattice` and
+  `the_gutter_floor_is_exact_to_the_quantum`. Making cell starts the column lines routes the gutter
+  floor around itself, so the variant removes a fabrication guard rather than merely scoring badly.
+
+`fabricated_cells` stayed **0** throughout, which is worth stating precisely because it is not a
+defence: the cells were real text in invented grids. That is the failure the fabrication count
+cannot see and the gold negatives can, which is why this slice added them.
+
+The measured obstacle is not a tolerance. These producers emit text word by word, so a cell is *n*
+runs, and no per-page geometric rule recovers the author's cell boundaries from that without
+inventing them. A rule that merged runs into cells on **evidence** — the structure tree's `/MCID`
+grouping, already read — would be a different rule under a different id. Not a calibration, and not
+this slice.
+
 ### The gate, which is the part S7a left open
 
 S7a stored `{page, rows, columns, cells}` and could measure page agreement and nothing finer. The

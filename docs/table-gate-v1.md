@@ -165,11 +165,60 @@ multi-page gold table to a per-page detection even in principle. Recorded here r
 excluding them, because dropping the documents that score badly is the failure this whole harness
 exists to prevent.
 
-## What would move it
+## Segmentation was built and measured. It is a fourth dead end.
 
-Segmenting candidate regions before the lattice, so the existing gutter, coherence and row-major
-preconditions judge a table band rather than a page of prose. That is a real detector change with
-real fabrication risk, and S7b did not ship it: a probe found that NIST's word-level run splitting
-gives each prose line 20–139 distinct x-origins, so consecutive-row column agreement does not
-isolate a table there either. Half-enabling it to move this number is the trade
-`docs/08-V1-SCOPE.md` §3.3 forbids — fabrication 0 wins when it conflicts with accuracy.
+The obvious repair for finding 3 is to cut the page into candidate bands before building a lattice,
+so the existing preconditions judge a table region rather than a page of prose. S7b implemented it
+(`unruled-align-v2`: row lines → cells cut by ≥ 12 pt of whitespace between where one run ends and
+the next begins → bands of consecutive rows agreeing on their cell starts) and measured two
+variants.
+
+**Variant A — bands, columns still folded from raw run origins.**
+
+| | detected | cell-F1 | note |
+| --- | --- | --- | --- |
+| baseline | 10 | 43‰ | |
+| variant A | 11 | **43‰** | `irs-form-1040-2025` gains a false table |
+
+358 of the 363 bands died on the column-gutter floor, because a cell reading
+`Digital Identity Guidelines` is three word-level runs at three x-positions and the fold opens
+three column lines a few points apart. No gate movement; one false positive on the canary.
+
+**Variant B — the band's own cell starts become its column lines.**
+
+| Document | detected | TP | FP | cell-F1 |
+| --- | --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit.pdf` | 13 | 28 | 103 | 193‰ |
+| `irs-form-1040-2025.pdf` | **6** | **0** | **37** | 0‰ |
+| `nist-sp-800-63b.pdf` | 8 | 2 | 52 | 6‰ |
+| `nist-sp-800-53r5.pdf` | 114 | 42 | 1 076 | 10‰ |
+| **MACRO** | **141** | **72** | **1 268** | **52‰** |
+
+The rule now fires — 141 tables against 10, and 1 302 emitted cells against 77. It buys **+9‰**.
+It is right about 5% of the cells it emits.
+
+**It was reverted, and not because 52‰ still misses 489‰.** It was reverted because of what it
+cost:
+
+- **`unruled-near-miss` becomes a table.** That fixture exists to be almost-a-table-and-not-one,
+  and a gold negative turning positive is a fabrication by this project's own definition.
+- **`irs-form-1040-2025` goes from 0 tables to 6**, with 0 correct cells and 37 wrong ones. That
+  document is the canary for v1-S1's 662-cell fabrication, and 6 invented grids on a tax form is
+  the same failure at a smaller scale.
+- **Three `unruled` unit tests fail**, including `a_face_without_text_refuses_the_whole_lattice`
+  and `the_gutter_floor_is_exact_to_the_quantum`. Making cell starts the column lines routes the
+  gutter floor around itself — so the variant does not merely score badly, it **removes a
+  fabrication guard**, which `docs/08-V1-SCOPE.md` §3.3 and this slice's own terms forbid outright.
+
+Fabricated-cell count stayed 0 throughout: every emitted cell's text really was drawn on the page.
+That is worth stating precisely because it is not a defence. The cells were real text in invented
+grids, which is exactly the failure `fabricated_cells` cannot see and the gold negatives can.
+
+## What would actually move it
+
+Not a tolerance. The measured obstacle is that these producers emit text word by word, so a cell is
+*n* runs and no per-page geometric rule reconstructs the author's cell boundaries from that without
+inventing them. A rule that merged runs into cells on evidence — the structure tree's own `/MCID`
+grouping is the obvious candidate, since it is already read — would be a different rule under a
+different id, taking the author's grouping rather than guessing at it. That is not a calibration,
+and it is not this slice.

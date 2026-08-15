@@ -806,9 +806,28 @@ corpus, and reports what it sees. The number it reports is bad.
   `tables::detect` passes every leftover run as one lattice, and `detect_ruled` builds one lattice
   from every rect. With both gutters off, all 600 pages reach the face check with lattices like
   96 × 231 = 22 176 faces from 1 784 runs, refused by `MAX_FACES` and coherence. The floor is not
-  wrong; it is unreachable. Segmenting candidates first is the change that would matter, and it is
-  **not** in this slice: a probe found NIST's word-level run splitting gives each prose line 20–139
-  distinct x-origins, so consecutive-row column agreement does not isolate a table there either.
+  wrong; it is unreachable.
+
+- **Segmentation was then built and measured, and it is the third dead end.** `unruled-align-v2` —
+  row lines, cells cut by ≥ 12 pt of whitespace between one run's end and the next run's start,
+  bands of consecutive rows agreeing on their cell starts — in two variants:
+
+  | Variant | detected | cell-F1 | what broke |
+  | --- | --- | --- | --- |
+  | baseline | 10 | 43‰ | — |
+  | A: columns still folded from origins | 11 | 43‰ | a false table on 1040; 358 of 363 bands died on the gutter floor |
+  | B: cell starts become the columns | **141** | **52‰** | see below |
+
+  Variant B emits 1 302 cells against 77 and gets 72 right. It was reverted because
+  `unruled-near-miss` becomes a table, `irs-form-1040-2025` goes from 0 to 6 tables with 0 correct
+  cells and 37 wrong, and three `unruled` unit tests fail — including the coherence and
+  gutter-quantum ones, because making cell starts the column lines routes the gutter floor around
+  itself. It removes a fabrication guard, which is forbidden outright, rather than merely scoring
+  badly. `fabricated_cells` stayed 0: real text in invented grids, which is the failure that count
+  cannot see and the gold negatives can.
+
+  The obstacle is not a tolerance. These producers emit text word by word, so a cell is *n* runs,
+  and no per-page geometric rule recovers the author's cell boundaries without inventing them.
 
 - **The other declared leftover, also falsified.** `stroke-ruled-tables-not-detected` was the
   suspected reason NIST's *ruled* tables are missed. Census of axis-aligned two-point stroked
