@@ -240,6 +240,7 @@ const CORE: &[&str] = &[
     "Stage",
     "StructuralLocator",
     "SynthesizedAt",
+    "TABLE_DETECTION_STROKE_V1",
     "TABLE_DETECTION_UNRULED_V1",
     "TABLE_DETECTION_V1",
     "TABLE_DETECTION_V2",

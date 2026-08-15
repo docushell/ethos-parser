@@ -342,6 +342,46 @@ pub fn has_xfa(doc: &lopdf::Document) -> bool {
         .is_some_and(|form| form.get(b"XFA").is_ok())
 }
 
+/// Just the rectangles this page's **form-field widgets** declare, in user space (v1-S8).
+///
+/// # Why this exists beside [`read_page_objects`], which already reads them
+///
+/// The stroke-ruled table rule needs widget geometry to refuse a band whose cells are a form's
+/// own field boxes (`crate::stroke_ruled`, step 6). It must not reach it through
+/// [`read_page_objects`], for two reasons:
+///
+/// 1. **That walk is gated on a capability.** `extract` calls it only when `form_fields` or
+///    `annotations` is on, and a table rule whose answer changed with an unrelated capability
+///    would make one profile's tables silently different from another's for a reason no field on
+///    the wire explains.
+/// 2. **It reads text.** A field's `/V` and an annotation's `/Contents` are content, and the
+///    detector has no business seeing either — v1-S4's one rule is that an annotation's text is
+///    not the page's text. This reads `/Rect` and `/Subtype` and nothing else.
+///
+/// A widget whose `/Rect` is absent or unusable contributes nothing, exactly as elsewhere: no
+/// box is invented to stand in for one nobody wrote.
+pub fn widget_rects(doc: &lopdf::Document, page: &Dictionary) -> Vec<QRect> {
+    let mut out = Vec::new();
+    let Some(Object::Array(items)) = resolve(doc, page.get(b"Annots").ok()) else {
+        return out;
+    };
+    for item in items {
+        let Object::Reference(id) = item else {
+            continue;
+        };
+        let Ok(dict) = doc.get_dictionary(*id) else {
+            continue;
+        };
+        if name_at(doc, dict, b"Subtype").as_deref() != Some("Widget") {
+            continue;
+        }
+        if let AnnotationRect::Declared(r) = rect_of(doc, dict) {
+            out.push(r);
+        }
+    }
+    out
+}
+
 /// `/Rect`, quantized, or a typed reason there is none.
 ///
 /// Note what this does **not** do when `/Rect` is missing or unusable: invent a page-sized box.

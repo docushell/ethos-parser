@@ -19,7 +19,8 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S6.2** | A run that draws no ink has no ink box — a fabricated-geometry repair | S6 | **done** |
 | **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
 | **S7b** | Detector calibration against S7a. Seven investigations: six measured and rejected, one shipped (`ruled-rects-v2`) | S7a | **done** |
-| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b | **measured and MISSED: 61‰** |
+| **S8** | The parked stroke-ruled rule, defect-fixed and shipped as a third rule | S7b | **done** |
+| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b, S8 | **measured and MISSED: 64‰** |
 
 ---
 
@@ -184,10 +185,16 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
   face bounded by four edges — and its own measurement pass against that form. That is a slice of
   work, not a widening of this one.
 
+  > **That slice was S8, and this paragraph called it correctly.** The rule that shipped is built
+  > on exactly the closed-face coherence named here — every interior column line stroked across
+  > the band — and the 1040 is held at 0 tables by a second precondition about widget rectangles.
+  > `stroke-ruled-tables-not-detected` is retired; `undrawn-table-edges-not-supplied` replaces it.
+
 - **The blanket limitation is gone, not reworded.** `unruled-tables-not-detected` said alignment is
   never inspected. That stopped being true, and a limitation that outlives the gap it describes is
   worse than none, because a reader acts on it. What replaced it is narrower on both sides: the
-  profile-scoped `stroke-ruled-tables-not-detected`, and a **conditional** document-scoped
+  profile-scoped `stroke-ruled-tables-not-detected` (itself retired the same way at S8, replaced by
+  `undrawn-table-edges-not-supplied`), and a **conditional** document-scoped
   `unruled-table-candidate-refused` that appears only where a candidate was actually built and
   refused. A page below 2 × 2 never had a candidate and declares nothing — otherwise the near-miss
   disclosure would ride on every document in existence and carry no information.
@@ -885,8 +892,9 @@ corpus, and reports what it sees. The number it reports is bad.
   no way to declare a refusal at all before, which went unnoticed because the precondition almost
   never fired.
 
-- **`stroke-ruled-v1` built, measured in full, and not shipped.** The lead below, taken as a
-  complete slice: segments captured as their own evidence, rule-rows by baseline, a row must tile
+- **`stroke-ruled-v1` built, measured in full, and not shipped *at this slice*.** (**S8 shipped
+  it** — one precondition changed, and both failures recorded below went away. See S8.) The lead
+  below, taken as a complete slice: segments captured as their own evidence, rule-rows by baseline, a row must tile
   end to end, a band is consecutive rows agreeing on the columns, rows are the regions BETWEEN
   rules so no edge is invented, coherence per face, 2 × 2 minimum.
 
@@ -942,6 +950,13 @@ corpus, and reports what it sees. The number it reports is bad.
   **Neither NIST document draws table rulings at all.** A stroked-line rule adds nothing there, and
   on `irs-form-1040-2025` it re-opens v1-S1's 662-cell fabrication surface. It stays a limitation.
 
+  > **S8 update: the first half held and the second did not.** Both NIST numbers are exactly as
+  > measured here and both documents still score 0‰ under `stroke-ruled-v1`. But the 1040's
+  > fabrication surface turned out to be closable on a principle — a face whose four edges are a
+  > form field's four edges is that field's box — and `cfpb-home-loan-toolkit`, which this census
+  > shows drawing 1 375 distinct real table rulings, was never assessed here at all. That column
+  > was the lead. The limitation is now retired; see S8.
+
 - **The standing hazard, honoured.** Loosening a tolerance to admit more tables is the shortest path
   to fabricating them, so the gold negatives are now asserted: `synthetic/two-columns`,
   `synthetic/simple-text` and `unruled-near-miss` still yield **0** geometric tables.
@@ -957,9 +972,79 @@ corpus, and reports what it sees. The number it reports is bad.
 
 ---
 
+## S8 — Stroke-ruled tables: the parked rule, defect-fixed and shipped
+
+- **Goal:** Take `stroke-ruled-v1` out of the attic, fix the two defects that stopped it shipping
+  at S7b, and land it **only** if it does not regress the document it was built for.
+
+- **Status: done, and it shipped.** `cfpb-home-loan-toolkit` cell-F1 **246‰ → 259‰**, macro
+  **61‰ → 64‰**, `irs-form-1040-2025` held at **0 geometric tables**, fabrication **0**,
+  cross-check disagreements **0**, all three gold negatives still silent. Shipped as **0.10.0**;
+  profile `sha256:08c4207d…5143c65`.
+
+- **The one change that made it shippable.** Both of the parked rule's failures were the same
+  defect — **`extract` discarded the page's vertical segments before the rule ever saw them**, so
+  "where are the columns" was decided entirely by where horizontal rules happen to end. Step 5
+  therefore moves off the faces and onto the lines: *every column line interior to the band must be
+  stroked as vertical ink across the band's full height*, outer edges exempt. That is the
+  precondition `stroke-ruled-tables-not-detected` itself named at S2, and it fixes both symptoms at
+  once:
+
+  | | parked `-v1` | shipped |
+  | --- | --- | --- |
+  | `cfpb` p13, the 8 × 4 worksheet the lead was named for | refused | **7 × 4 emitted** |
+  | `cfpb` p22 / p23 / p24-second, Closing Disclosure furniture | 5 bands emitted | **refused** |
+  | `cfpb` cell-F1 | 210‰ | **259‰** |
+
+- **And the 1040 stays silent on a principle, not a special case.** Under the new step 5 alone it
+  yields five tables: its entry boxes are a stroked grid with their column rules drawn. The second
+  precondition is **whose rectangle it is** — a face whose four edges are a form field's four edges
+  is that field's box. Measured, a 1040 face is `93.3 … 251.6 × 309 … 321` against a widget at
+  `145.0 … 251.2 × 309 … 321`, edge for edge; page 13 — *also* a fillable worksheet with 25 widgets
+  — insets its fields well inside larger printed cells. One such face refuses the band. No new
+  constant; `LATTICE_TOLERANCE` throughout.
+
+- **It comes back one row short, and says so.** Eight baselines bound seven rows: the worksheet's
+  header row has no top edge drawn and step 4 does not supply one. Rather than absorb that, the
+  profile limitation `stroke-ruled-tables-not-detected` is **retired and replaced** by
+  `undrawn-table-edges-not-supplied`, which states the offset a consumer will meet. Third code to
+  hold that position — `unruled-tables-not-detected` (S1) → `stroke-ruled-…` (S2) → this (S8) —
+  each removed rather than reworded.
+
+- **What it still gets wrong.** 136 false-positive cell slots against 12, overwhelmingly page 24's
+  9 × 4 and page 25's 4 × 2 and 8 × 6. Those bands' interior column lines *are* stroked, so they
+  are grids by every reading of the ink; the structure tree simply tags nothing there. Removing
+  them needs a threshold fitted to these four documents, which §3 forbids, so the cost is reported
+  (page precision 1000‰ → 928‰) rather than tuned away. Full account in `docs/table-gate-v1.md`.
+
+- **In:** `crates/engine-pdf/src/stroke_ruled.rs`; `PathSegment` capture in `content.rs`;
+  `forms::widget_rects`; three-way arbitration in `tables::detect` (ruled → stroke-ruled →
+  alignment, author evidence before inference); `codes::STROKE_RULED_TABLE_CANDIDATE_REFUSED` with
+  its builder and accumulator; `TableDetection.stroke_ruled` with schema, digest and PUBLIC-API;
+  three engine-owned CC0 fixtures.
+
+- **Out:** Any retuning of `unruled-align-v1`. Changing the gate's join. Declaring v1 done. A tag.
+
+- **Acceptance tests:**
+  - [x] `cfpb-home-loan-toolkit` cell-F1 does not fall below 246‰ — **259‰**
+  - [x] `irs-form-1040-2025` yields **0** geometric tables; all four S7b canaries green
+  - [x] All three gold negatives still yield 0 tables
+  - [x] `fabricated_cells` **0** and cross-check disagreements **0** on the four real documents
+  - [x] Page 13 is emitted, and the reason it is a 7 × 4 rather than the tagged 8 × 4 is declared
+        and fixture-pinned
+  - [x] Every refusal is declared — no `#[allow(dead_code)]`, clippy green at `-D warnings`
+  - [x] The default profile does not declare `stroke-ruled-tables-not-detected` while emitting
+        `detection_rule: stroke-ruled-v1`
+  - [x] No bake-off table anywhere in the repository
+
+- **Depends on:** S7b.
+
+---
+
 ## S7 — The > 0.489 gate, assessed
 
-**Status: assessed, and MISSED. Macro cell-F1 is 61‰ against a 489‰ floor. v1 is not done.**
+**Status: assessed, and MISSED. Macro cell-F1 is 64‰ against a 489‰ floor. v1 is not done.**
+(61‰ when first assessed at S7b; S8 shipped a third detection rule and re-measured.)
 
 - **Goal:** The v1 gate, measured.
 
@@ -975,29 +1060,37 @@ corpus, and reports what it sees. The number it reports is bad.
 
   | Document | TP | FP | FN | cell-F1 |
   | --- | --- | --- | --- | --- |
-  | `cfpb-home-loan-toolkit.pdf` | 24 | 12 | 135 | 246‰ |
+  | `cfpb-home-loan-toolkit.pdf` | 44 | 136 | 115 | 259‰ |
   | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | 0‰ |
   | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | 0‰ |
   | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | 0‰ |
-  | **MACRO** | | | | **61‰** |
+  | **MACRO** | | | | **64‰** |
 
   Macro-averaged F1 over `CellSlot`s, integer per-mille, exact text after NFC + trim + whitespace
-  collapse. **Page-level recall (140‰) is a diagnostic and is not this number** — 140‰ of pages
-  agreeing is not 140‰ of cells right.
+  collapse. **Page-level recall (228‰) is a diagnostic and is not this number** — 228‰ of pages
+  agreeing is not 228‰ of cells right.
 
 - **Acceptance tests:**
   - [x] The harness is committed and reruns to the same number
-  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 61‰**, see above
+  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 64‰**, see above
   - [x] Fabrication rate **0**, measured rather than asserted
   - [x] Cross-check diagnostics emitted across the set, with disagreement counted (0, after `ruled-rects-v2`)
   - [x] No bake-off table anywhere in the repository
 
 - **What is not being done to close it.** Narrowing the labelled set by dropping the documents that
   score badly; relabelling `irs-form-1040-2025` as a gold negative; reading page-level recall as a
-  cell score; half-enabling a stroke-ruled rule on a corpus whose ruled tables it cannot see. Each
-  would raise the number and none would raise the accuracy.
+  cell score; accepting the four grids a stroke-ruled rule finds on that form. Each would raise the
+  number and none would raise the accuracy. **S8 declined the last of those explicitly**: the
+  parked rule reached macro 125‰ by turning the canary into four tables, and the shipped one holds
+  it at zero and reports 64‰.
 
-- **Depends on:** S1–S6, S7a, S7b.
+- **What is left, and it is not the geometric-alignment family.** Page rasters, low-contrast
+  detection and structure-order remain untouched and unmeasured. On the two NIST documents the
+  gate still reads 0‰: they draw no table rulings at all — 490 and 76 copies of one margin rule —
+  and several of their tagged tables are multi-page, which the page-granular join cannot match even
+  in principle.
+
+- **Depends on:** S1–S6, S7a, S7b, S8.
 
 ---
 

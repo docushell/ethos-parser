@@ -898,13 +898,13 @@ fn a_changed_capability_set_changes_the_artifacts_profile_hash() {
         "a false capability owes its own limitation: {unclaimed:?}"
     );
     assert!(
-        !unclaimed.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED),
+        !unclaimed.contains(&engine_core::codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED),
         "a profile that never looked must not declare the scope of its looking: {unclaimed:?}"
     );
 
     let claimed = codes(&base.assurance.limitations);
     assert!(
-        claimed.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED)
+        claimed.contains(&engine_core::codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED)
             && !claimed.contains(&engine_core::codes::TABLES_NOT_EXTRACTED),
         "and the default profile declares the scope rather than the absence: {claimed:?}"
     );

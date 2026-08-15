@@ -47,7 +47,7 @@ Two entries are worth knowing before you debug against them:
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **30** are
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **33** are
 `engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
 corpus genuinely cannot cover. The manifest's `counts.engine_owned` is the number a test checks;
 this table names the ones whose reason for existing is not obvious from the fixture itself.
@@ -66,6 +66,9 @@ this table names the ones whose reason for existing is not obvious from the fixt
 | `background-panel-not-a-grid` | v1-S7b | A filled background panel with three scattered bars: the panel covers every face their edges imply, so `ruled-rects-v1` called it a 7×7 table with 3 cells. The first engine fixture whose geometry is **filled** rather than stroked |
 | `both-table-rules` | v1-S2 | One painted grid and one aligned-text grid on a page, so the artifact carries two tables under two rule ids |
 | `ruled-wins-shared-region` | v1-S2 | A painted grid whose text is *also* a clean alignment grid — one table comes out, and it is the ruled one |
+| `stroke-ruled-worksheet` | v1-S8 | A grid drawn as two-point **stroked** `m`/`l` pairs, shaped like `cfpb-home-loan-toolkit` page 13: one baseline rules three cells instead of four (a blank cell), and the three interior column rules are stroked while neither outer one is. Five baselines bound **four** rows, so it also pins the undrawn top edge |
+| `stroke-ruled-columns-not-drawn` | v1-S8 | Byte for byte the same horizontal ink with **no** vertical rules. The band and its column lines build identically and must be refused: rules that merely end at a common x are not a boundary the author drew |
+| `stroke-ruled-field-boxes` | v1-S8 | A stroked 2×2 whose four faces are also four widget `/Rect`s, so the boxes are the form's own — the `irs-form-1040-2025` principle without the tax form |
 | `tagged-structure-roles` · `tagged-rolemap` · `tagged-table-agrees` · `tagged-table-disagrees` · `tagged-cycle` | v1-S3 | The four structural-locator states, `/RoleMap` remapping, a tagged grid that agrees and one that does not, and a `/K` cycle that must be survived rather than spun on |
 | `form-field-value` · `annotation-contents` · `form-orphan-widget` · `form-xfa-stub` | v1-S4 | A field value no `Tj` draws, a hidden annotation that must still be a node, a broken `/Parent` chain declared rather than repaired, and an `/XFA` packet declared and never parsed |
 | `two-column-14-lines` · `two-column-15-lines` | v1-S5 | The ±1-line anti-cliff pair — see below |

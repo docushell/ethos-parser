@@ -481,7 +481,7 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
     );
     // The leftover that IS still true: a grid stroked as bare ruling lines is not read as ruled.
     assert!(
-        codes.contains(&engine_core::codes::STROKE_RULED_TABLES_NOT_DETECTED),
+        codes.contains(&engine_core::codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED),
         "the narrowed leftover must still be declared: {codes:?}"
     );
 
@@ -1539,6 +1539,159 @@ fn a_background_panel_with_bars_on_it_is_not_a_table() {
             refused.detail
         );
     }
+}
+
+/// **The table v1-S8 exists to find: a grid drawn as bare stroked ruling lines.**
+///
+/// The whole-document proof of what `stroke_ruled::a_blank_cell_does_not_refuse_the_worksheet_it_sits_in`
+/// pins in the unit tests, and the first fixture anywhere whose grid is drawn as two-point `m`/`l`
+/// pairs. Every build from v1-S1 to v1-S7b emitted **nothing** here and declared
+/// `stroke-ruled-tables-not-detected` while doing it.
+///
+/// Shaped after `cfpb-home-loan-toolkit` page 13, in the two respects that decided the slice: one
+/// baseline rules three cells rather than four — the blank cell `stroke-ruled-v1` refused the whole
+/// band over — and the three interior column rules are stroked while the two outer ones are not.
+#[test]
+fn a_grid_drawn_as_stroked_ruling_lines_is_a_table() {
+    let a = extract_ok(engine_fx("stroke-ruled-worksheet"));
+
+    let tables: Vec<_> = a.pages.iter().flat_map(|p| p.tables.iter()).collect();
+    assert_eq!(tables.len(), 1, "one band, one table: {tables:?}");
+    let t = tables[0];
+    assert_eq!(t.rule, engine_core::TABLE_DETECTION_STROKE_V1);
+
+    // **Five baselines bound FOUR rows.** The page shows five, and the top one's upper edge was
+    // never drawn — step 4 does not supply it. This is `undrawn-table-edges-not-supplied` on a
+    // document small enough to read by hand, and it is the same offset the real page 13 has.
+    assert_eq!((t.rows, t.columns), (4, 4));
+    assert_eq!(t.cells.len(), 16);
+
+    // The heading row sits ABOVE the topmost rule, so it is outside the table entirely rather
+    // than pulled into it — nothing is claimed that the ink did not bound.
+    let text: String = t.cells.iter().map(|c| c.text.as_str()).collect();
+    assert!(
+        !text.contains("Item"),
+        "the unbounded heading row is not a row: {text:?}"
+    );
+    assert!(
+        text.contains("Lender") && text.contains("Rate") && text.contains("Term"),
+        "the bounded rows are: {text:?}"
+    );
+
+    // Fabrication 0, the S1 invariant, on the newest rule.
+    for page in &a.pages {
+        for table in &page.tables {
+            for cell in &table.cells {
+                let from_runs: String = cell
+                    .run_indices
+                    .iter()
+                    .filter_map(|i| page.runs.get(*i))
+                    .map(|r| r.text.as_str())
+                    .collect();
+                assert_eq!(from_runs, cell.text, "a cell's text is its runs, always");
+            }
+        }
+    }
+
+    // The profile no longer claims it cannot do this.
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == "stroke-ruled-tables-not-detected"),
+        "a build that emits stroke-ruled tables must not declare it cannot"
+    );
+}
+
+/// **The same horizontal ink with no vertical rules is not a grid.**
+///
+/// Byte for byte the rules of `stroke-ruled-worksheet` and none of its uprights, so the band and
+/// its column lines are built identically and the only difference is whether the author drew the
+/// boundaries. `stroke-ruled-v1` emitted six tables on `cfpb-home-loan-toolkit`'s Closing
+/// Disclosure pages on exactly this evidence.
+#[test]
+fn rules_that_end_at_a_common_x_are_not_a_column_the_author_drew() {
+    let a = extract_ok(engine_fx("stroke-ruled-columns-not-drawn"));
+    assert!(
+        a.pages.iter().all(|p| p.tables.is_empty()),
+        "no vertical ink, no columns: {:?}",
+        a.pages
+            .iter()
+            .flat_map(|p| p.tables.iter())
+            .collect::<Vec<_>>()
+    );
+
+    // Refusing must not cost the page its words.
+    let text: String = a
+        .runs()
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(text.contains("Lender") && text.contains("Rate"), "{text:?}");
+
+    // **And the refusal is DECLARED** — standing rule 3. The parked `stroke-ruled-v1` had no
+    // wiring for this at all and declined bands in silence; that was a precondition of shipping.
+    let refused = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::STROKE_RULED_TABLE_CANDIDATE_REFUSED)
+        .expect("a refused stroke-ruled candidate must be declared, not silently absent");
+    assert_eq!(refused.scope, engine_core::LimitationScope::Document);
+    assert!(
+        refused.detail.contains("page 1"),
+        "the declaration must say WHERE: {}",
+        refused.detail
+    );
+    let lower = refused.detail.to_ascii_lowercase();
+    for scored in ["confidence", "probability", "score of", "likelihood"] {
+        assert!(!lower.contains(scored), "`{scored}` in: {}", refused.detail);
+    }
+}
+
+/// **A form's field boxes are not a table**, and this is why `irs-form-1040-2025` stays at zero.
+///
+/// A stroked 2 × 2 whose four faces are also four widget `/Rect`s. Under step 5 alone this is a
+/// perfectly good grid — its column rule is drawn — and it is refused on whose rectangle it is.
+/// The contrast that makes the rule a rule rather than a veto on forms is
+/// `stroke-ruled-worksheet`, which has no widgets, and the real `cfpb-home-loan-toolkit` page 13,
+/// which carries 25 of them inset inside its printed cells and is still a table.
+#[test]
+fn a_grid_of_form_field_boxes_is_not_a_table() {
+    let a = extract_ok(engine_fx("stroke-ruled-field-boxes"));
+    assert!(
+        a.pages.iter().all(|p| p.tables.is_empty()),
+        "the boxes are the fields' own: {:?}",
+        a.pages
+            .iter()
+            .flat_map(|p| p.tables.iter())
+            .collect::<Vec<_>>()
+    );
+
+    // The widgets themselves are still nodes — this refuses a TABLE, it does not drop content.
+    let fields: usize = a
+        .pages
+        .iter()
+        .map(|p| {
+            p.objects
+                .iter()
+                .filter(|o| matches!(o.attributes, engine_core::NodeAttributes::FormField(_)))
+                .count()
+        })
+        .sum();
+    assert_eq!(fields, 4, "four widgets, four nodes");
+
+    let refused = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::STROKE_RULED_TABLE_CANDIDATE_REFUSED)
+        .expect("the refusal is the informative part of finding nothing here");
+    assert!(
+        refused.detail.contains("form field"),
+        "the declaration must name WHY: {}",
+        refused.detail
+    );
 }
 
 /// A page that implies nothing grid-shaped declares **no** refusal.

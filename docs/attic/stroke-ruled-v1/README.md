@@ -1,7 +1,41 @@
-# `stroke-ruled-v1` — built, measured, not shipped
+# `stroke-ruled-v1` — built at S7b, parked, then SUPERSEDED by v1-S8
 
-Parked at **v1-S7b**, against `683031b`. This directory holds a complete, working detection rule
-that the repository deliberately does not run.
+> **Status: superseded. The rule is now in the tree and running.** v1-S8 revived this patch, found
+> that both of the failures recorded below have a single cause, fixed it, and shipped the result as
+> `crates/engine-pdf/src/stroke_ruled.rs` at engine **0.10.0**.
+>
+> **The cause was not in the band preconditions this file defends — it was one line in `extract`,
+> which discarded every non-horizontal segment before the rule ever saw one.** So "where are the
+> columns" was decided entirely by where horizontal rules happen to *end*: too strict for page 13
+> (whose blank first cell leaves one baseline ruling three cells of four) and too loose for the
+> Closing Disclosure pages (where two unrelated rules ending at the same x imply a boundary nobody
+> drew). Reading the page's vertical ink fixes both at once.
+>
+> | | this patch | shipped at S8 |
+> | --- | --- | --- |
+> | `cfpb` page 13, the 8 × 4 worksheet | **refused** | **7 × 4 emitted** |
+> | `cfpb` pages 22, 23, 24-second | emitted, gold tags none | **refused** |
+> | `cfpb` cell-F1 | 210‰ (**worse than 246‰**) | **259‰** |
+> | `irs-form-1040-2025` | **4 tables** | **0 tables** |
+> | macro | 125‰, from the canary | 64‰, from `cfpb` alone |
+>
+> The 1040 is held at zero by a second precondition: a face whose four edges are a **form field's**
+> four edges is that field's box. Measured, a 1040 face and its widget `/Rect` are the same box edge
+> for edge, while page 13 — also a fillable worksheet, carrying 25 widgets — insets its fields well
+> inside larger printed cells.
+>
+> The clippy gap this file names as "the slice's one real incompleteness" is closed:
+> `stroke-ruled-table-candidate-refused` is wired through `limitations.rs` with an accumulator, and
+> `stroke-ruled-tables-not-detected` is retired rather than left to lie.
+>
+> **The patch is kept for the record, not for reuse.** It no longer applies to HEAD, and the
+> measurement below is only checkable against `683031b`. Current account:
+> `docs/table-gate-v1.md` and `docs/09-V1-MILESTONES.md` S8.
+
+---
+
+Parked at **v1-S7b**, against `683031b`. This directory held a complete, working detection rule
+that the repository deliberately did not run.
 
 It is here because throwing it away would mean the next person pays the build cost again to learn
 the same thing, and because the measurement below is only checkable if the code that produced it

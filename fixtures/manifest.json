@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 30
+    "engine_owned": 33
   },
   "fixtures": [
     {
@@ -454,6 +454,33 @@
       "sha256": "sha256:b761a7f595e6a2d7f5da5a9822d86ab07c1e9456bc0d1813d755d6bcd0967565",
       "owner": "engine",
       "notes": "v1-S6.2 golden. 28 SPACES at 12pt whose advance carries them from x=200 to x=368 on a 300pt page, in a font declaring real ink metrics. Expect `no_ink_to_measure` on that run and a MEASURED box on the visible run beside it. Before v1-S6.2 the reader built a box from the font envelope and the advance \u2014 a rectangle around nothing \u2014 which left the page and made `seal` refuse the whole document with exit 2. That is what put 491 of nist-sp-800-53r5's 492 pages beyond reach. Zero corpus fixtures had a whitespace run claiming a box, which is why nothing caught it."
+    },
+    {
+      "id": "stroke-ruled-worksheet",
+      "root": "engine",
+      "group": "engine",
+      "path": "stroke-ruled-worksheet/document.pdf",
+      "sha256": "sha256:7d371133d554b7a3e1a8bf8a6a4f294ac5f47e9bf48ad48041b879778ef9b160",
+      "owner": "engine",
+      "notes": "v1-S8 golden, and the shape of cfpb-home-loan-toolkit page 13. A grid drawn as two-point `m`/`l` pairs stroked with `S` \u2014 ink that produced no rectangle and reached no lattice before this slice. Its third baseline rules THREE cells instead of four, which is the blank first cell a worksheet leaves for its reader and the case `stroke-ruled-v1` refused the whole band over. Its three INTERIOR column rules are stroked and its two outer ones are not, which is what page 13 does. Five baselines bound FOUR rows, so it also pins `undrawn-table-edges-not-supplied`: the page shows five rows and the engine emits four rather than invent a top edge."
+    },
+    {
+      "id": "stroke-ruled-columns-not-drawn",
+      "root": "engine",
+      "group": "engine",
+      "path": "stroke-ruled-columns-not-drawn/document.pdf",
+      "sha256": "sha256:3243a0e544fdbea9e03732b31fd3b61241d08c998bbc83a84859e1ea51fe1403",
+      "owner": "engine",
+      "notes": "v1-S8 negative. Byte for byte the horizontal ink of `stroke-ruled-worksheet` and none of its vertical ink. The rule-rows still tile and still end at the same x positions, so the band and its column lines are built identically \u2014 and refused, because nothing on the page says the author divided there. This is the shape of cfpb-home-loan-toolkit's Closing Disclosure pages, which `stroke-ruled-v1` turned into six tables on pages the structure tree tags nothing on. Expect 0 tables and a declared `stroke-ruled-table-candidate-refused`."
+    },
+    {
+      "id": "stroke-ruled-field-boxes",
+      "root": "engine",
+      "group": "engine",
+      "path": "stroke-ruled-field-boxes/document.pdf",
+      "sha256": "sha256:2c4ec0be97056281f50cba2a4e15c846074492c71a97f2e5951f674a9797c533",
+      "owner": "engine",
+      "notes": "v1-S8 negative, and the irs-form-1040-2025 principle without the tax form. A stroked 2x2 whose four faces are ALSO four widget /Rects at the same coordinates, so the boxes are the fields' own frames rather than a table's cells. Expect 0 tables. Contrast `stroke-ruled-worksheet`, which carries no widgets, and the real page 13, which carries 25 of them INSET inside its printed cells and is still a table \u2014 a face that merely contains a smaller field box is a real cell with a widget in it."
     }
   ]
 }

@@ -29,6 +29,18 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              so the artifact carries two tables under two rule ids [v1-S2]
   ruled-wins-shared-region   a painted grid whose text ALSO forms a clean alignment grid;
                              exactly one table comes out, and it is the ruled one  [v1-S2]
+  stroke-ruled-worksheet     a grid drawn as two-point STROKED rules, shaped like
+                             cfpb-home-loan-toolkit page 13: one baseline rules three cells
+                             instead of four (a blank cell), the three interior column rules
+                             are stroked and the outer two are not. Five baselines bound FOUR
+                             rows, so it also pins the undrawn top edge          [v1-S8]
+  stroke-ruled-columns-not-drawn
+                             the SAME horizontal ink with NO vertical rules. The band and its
+                             column lines build identically and must be refused: rules ending
+                             at a common x are not a boundary the author drew    [v1-S8]
+  stroke-ruled-field-boxes   a stroked 2x2 whose four faces are also four widget /Rects, so the
+                             boxes are the form's own and not a table's — the 1040 principle
+                             without the tax form                                [v1-S8]
 
   form-field-value           a text field whose /V is a string NO Tj on the page draws, so a
                              reader that copied widget values into the text layer would be
@@ -543,6 +555,85 @@ FIXTURES = {
     "form-xfa-stub": (
         "BT /F1 12 Tf 1 0 0 1 40 120 Tm (Dynamic form.) Tj ET"
     ),
+    # v1-S8's STROKE-RULED golden, and the shape of `cfpb-home-loan-toolkit` page 13.
+    #
+    # Five baselines and four column spans, drawn as two-point `m`/`l` pairs stroked with `S` —
+    # the ink `content::flush_subpath` produced nothing at all from before this slice, because it
+    # wants four or five points before it will call a subpath a rectangle.
+    #
+    # The THIRD baseline from the top rules three cells instead of four. That is the blank first
+    # cell a worksheet leaves for its reader, and it is what `stroke-ruled-v1` refused the whole
+    # band over. The three INTERIOR column rules are stroked and the two outer ones are not, which
+    # is also what page 13 does — an outer edge is where the ink stops.
+    #
+    # Five baselines bound FOUR rows, and the fixture's top row of text sits above the first
+    # baseline precisely so the missing top edge is visible: the page shows five rows and the
+    # engine emits four, which is `undrawn-table-edges-not-supplied` in one picture.
+    "stroke-ruled-worksheet": (
+        "0.5 w "
+        # Each baseline is FOUR abutting segments, as page 13 draws its own: a rule-row has to
+        # tile end to end before it is a row of cells, so one long rule is one long rule.
+        "20 160 m 80 160 l S 80 160 m 140 160 l S "
+        "140 160 m 200 160 l S 200 160 m 260 160 l S "
+        "20 130 m 80 130 l S 80 130 m 140 130 l S "
+        "140 130 m 200 130 l S 200 130 m 260 130 l S "
+        # THREE segments: this row's first cell is blank and its rule is simply not drawn.
+        "80 100 m 140 100 l S 140 100 m 200 100 l S 200 100 m 260 100 l S "
+        "20 70 m 80 70 l S 80 70 m 140 70 l S "
+        "140 70 m 200 70 l S 200 70 m 260 70 l S "
+        "20 40 m 80 40 l S 80 40 m 140 40 l S "
+        "140 40 m 200 40 l S 200 40 m 260 40 l S "
+        # The three INTERIOR column rules. The outer two at x=20 and x=260 are NOT drawn.
+        "80 160 m 80 40 l S "
+        "140 160 m 140 40 l S "
+        "200 160 m 200 40 l S "
+        "BT /F1 9 Tf "
+        "1 0 0 1 24 168 Tm (Item) Tj 1 0 0 1 84 168 Tm (One) Tj "
+        "1 0 0 1 144 168 Tm (Two) Tj 1 0 0 1 204 168 Tm (Three) Tj "
+        "1 0 0 1 24 138 Tm (Lender) Tj "
+        "1 0 0 1 24 78 Tm (Rate) Tj "
+        "1 0 0 1 24 48 Tm (Term) Tj "
+        "ET"
+    ),
+    # v1-S8's OVER-DETECTION negative: the same worksheet with its column rules NOT drawn.
+    #
+    # Byte for byte the horizontal ink of `stroke-ruled-worksheet` and none of the vertical. The
+    # rules still end at a common x, so the band and its column lines are built exactly as before
+    # — and refused, because nothing on the page says the author divided there. This is the shape
+    # of `cfpb-home-loan-toolkit`'s Closing Disclosure pages, which `stroke-ruled-v1` turned into
+    # six tables on pages nobody tagged.
+    "stroke-ruled-columns-not-drawn": (
+        "0.5 w "
+        "20 160 m 80 160 l S 80 160 m 140 160 l S "
+        "140 160 m 200 160 l S 200 160 m 260 160 l S "
+        "20 130 m 80 130 l S 80 130 m 140 130 l S "
+        "140 130 m 200 130 l S 200 130 m 260 130 l S "
+        "80 100 m 140 100 l S 140 100 m 200 100 l S 200 100 m 260 100 l S "
+        "20 70 m 80 70 l S 80 70 m 140 70 l S "
+        "140 70 m 200 70 l S 200 70 m 260 70 l S "
+        "20 40 m 80 40 l S 80 40 m 140 40 l S "
+        "140 40 m 200 40 l S 200 40 m 260 40 l S "
+        "BT /F1 9 Tf "
+        "1 0 0 1 24 138 Tm (Lender) Tj "
+        "1 0 0 1 24 78 Tm (Rate) Tj "
+        "ET"
+    ),
+    # v1-S8's FORM negative, and the `irs-form-1040-2025` principle without the tax form.
+    #
+    # A 2x2 grid whose four faces are drawn as ruling lines AND declared as four widget /Rects at
+    # the same coordinates. The boxes are the fields' own frames, so this is a form rather than a
+    # table, and every slice since v1-S1 has held that document at zero tables.
+    #
+    # Contrast `stroke-ruled-worksheet`, which carries no widgets at all, and the real page 13,
+    # which carries 25 of them INSET inside its printed cells and is still a table.
+    "stroke-ruled-field-boxes": (
+        "0.5 w "
+        "20 120 m 140 120 l S 140 120 m 260 120 l S "
+        "20 90 m 140 90 l S 140 90 m 260 90 l S "
+        "20 60 m 140 60 l S 140 60 m 260 60 l S "
+        "140 120 m 140 60 l S "
+        "BT /F1 9 Tf 1 0 0 1 24 128 Tm (Amounts) Tj ET"
+    ),
     # v1-S3's non-terminating tree. The text is ordinary; the structure is not.
     # v1-S6's IMAGE golden. The image is 2x2 samples and is painted into a 120x60 point
     # rectangle at (40, 60) by the `cm` — so the placement rect and the pixel count are
@@ -768,6 +859,15 @@ FORM_OBJECTS = {
     # Two annotations that are not widgets. The second is HIDDEN (`/F 2`): it must still be a
     # node, flagged — deleting it because the document asked a viewer not to draw it would be an
     # edit this engine made silently (checklist O21).
+    # v1-S8. Four widgets whose /Rects ARE the four faces of the stroked 2x2 above, so the grid
+    # is the form's field boxes rather than a table's cells. In user space, as /Rect always is.
+    "stroke-ruled-field-boxes": [
+        "<< /Fields [7 0 R 8 0 R 9 0 R 10 0 R] >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (a1) /Rect [20 90 140 120] /P 3 0 R >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (a2) /Rect [140 90 260 120] /P 3 0 R >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (b1) /Rect [20 60 140 90] /P 3 0 R >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (b2) /Rect [140 60 260 90] /P 3 0 R >>",
+    ],
     "annotation-contents": [
         "<< /Type /Annot /Subtype /Text /T (Reviewer) /NM (note-1) "
         "/Contents (Check this figure against the appendix) /Rect [40 90 60 110] >>",
@@ -794,6 +894,7 @@ FORM_OBJECTS = {
 # name -> raw fragment spliced into the catalog dictionary.
 CATALOG_EXTRA = {
     "form-field-value": " /AcroForm 6 0 R",
+    "stroke-ruled-field-boxes": " /AcroForm 6 0 R",
     "form-orphan-widget": " /AcroForm 6 0 R",
     "form-xfa-stub": " /AcroForm 6 0 R",
 }
@@ -801,6 +902,7 @@ CATALOG_EXTRA = {
 # name -> raw fragment spliced into the page dictionary.
 PAGE_EXTRA = {
     "form-field-value": " /Annots [7 0 R]",
+    "stroke-ruled-field-boxes": " /Annots [7 0 R 8 0 R 9 0 R 10 0 R]",
     "annotation-contents": " /Annots [6 0 R 7 0 R]",
     "form-orphan-widget": " /Annots [7 0 R]",
     "form-xfa-stub": " /Annots [7 0 R]",
@@ -816,6 +918,11 @@ MEDIA = {
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
+    # v1-S8. Wide enough for four 60pt columns plus margins, tall enough for five baselines
+    # and a row of headings above the topmost one.
+    "stroke-ruled-worksheet": (0, 0, 280, 200),
+    "stroke-ruled-columns-not-drawn": (0, 0, 280, 200),
+    "stroke-ruled-field-boxes": (0, 0, 280, 160),
     "tagged-structure-roles": (0, 0, 300, 160),
     "tagged-table-agrees": (0, 0, 300, 160),
     "tagged-table-disagrees": (0, 0, 300, 160),

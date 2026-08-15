@@ -1,8 +1,8 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1-S7b shipped, as 0.9.0.** v1 is the DocuShell replacement gate and is seven slices
-long (`08-V1-SCOPE.md`); S1–S6 are done and S7 is **open**. Its gate — table-cell accuracy above
-0.489 — is now measured for the first time and **missed**: macro cell-slot F1 is **61‰** against a
+**Status:** **v1-S8 shipped, as 0.10.0.** v1 is the DocuShell replacement gate
+(`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and S7 is **open**. Its gate — table-cell
+accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done.**
 
 **S4 makes a form field's value and an annotation's comment nodes of their own kind.** Neither is
@@ -42,12 +42,19 @@ check — `tagged-vs-geometric-v1` — comparing the grid a document's tags decl
 detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' — see
 `08-V1-SCOPE.md` §3 for why chasing it earlier would be tuning against nobody's number.
 
-**S7 has now measured it: macro cell-F1 is 61‰ against the 489‰ floor — a miss.** The method is
+**S7 has now measured it: macro cell-F1 is 64‰ against the 489‰ floor — a miss.** The method is
 [`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
 repository should be quoted from. S7b ran seven investigations: the six aimed at the
 *alignment* rule were all measured and rejected, and one — `ruled-rects-v2` — shipped, taking
 precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing a true positive, by
 refusing to let a page-background panel witness the lattice its own decoration implies.
+
+**S8 shipped the third detection rule**, `stroke-ruled-v1`, for the grid a document draws as
+ruling lines rather than filled boxes — the largest measured lead left on this corpus, 103 CFPB
+cells. It was built and parked at S7b for regressing the very document it was built for; S8 found
+that both its failures were one defect (the page's vertical ink was discarded before the rule saw
+it) and shipped the repair: `cfpb-home-loan-toolkit` 246‰ → 259‰, the gate 61‰ → 64‰,
+`irs-form-1040-2025` still at 0 tables, fabrication still 0.
 
 Four measurements shaped the table slices and are worth knowing before reading the detectors:
 

@@ -1,6 +1,7 @@
 # The v1 table gate, and how it is computed
 
-**Status: measured, and MISSED.** Macro cell-F1 is **61‰** against a floor of **489‰**.
+**Status: measured, and MISSED.** Macro cell-F1 is **64‰** against a floor of **489‰**.
+(**61‰** at v1-S7b, under `ruled-rects-v2` alone; v1-S8 added `stroke-ruled-v1` — see below.)
 
 This document states the method completely enough to recompute the number. It is written that way
 because `docs/06-STEAL-REFUSE.md` records what happens otherwise: two publishers scored the same
@@ -109,33 +110,52 @@ and the difference is an artifact of how the producer chunked the stream.
 
 ## The result
 
-Engine **0.9.0**, profile
-`sha256:5593cb1fa7d5e9bb252e9f57643eb0f2d8062902bd7096d0eaca1e26007d2d5c`, measured 2026-08-15,
-under `ruled-rects-v2`.
+Engine **0.10.0**, profile
+`sha256:08c4207d18bee0e64daea093d94f0c64c5b897add33288969488be5e75143c65`, measured 2026-08-15,
+under `ruled-rects-v2` + `stroke-ruled-v1` + `unruled-align-v1`.
 
 | Document | TP | FP | FN | cell-F1 |
 | --- | --- | --- | --- | --- |
-| `cfpb-home-loan-toolkit.pdf` | 24 | 12 | 135 | **246‰** |
+| `cfpb-home-loan-toolkit.pdf` | 44 | 136 | 115 | **259‰** |
 | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | **0‰** |
 | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | **0‰** |
 | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** |
-| **MACRO over 4 documents** | | | | **61‰** |
+| **MACRO over 4 documents** | | | | **64‰** |
 
-**Gate: 61‰ > 489‰ is false. v1-S7 is not green.**
+**Gate: 64‰ > 489‰ is false. v1-S7 is still not green.**
 
 Alongside it, on the same run:
 
 | | |
 | --- | --- |
-| Cells emitted | 36 |
+| Cells emitted | 180 |
 | **Fabricated cells** | **0** |
 | Cross-check disagreements | **0** |
 | False tables on the gold negatives | 0 |
-| Page-level recall (diagnostic only) | 140‰ |
-| Page-level precision (diagnostic only) | **1000‰** |
+| Page-level recall (diagnostic only) | 228‰ |
+| Page-level precision (diagnostic only) | 928‰ |
 
 Page-level recall is a **diagnostic**. It is not the gate and it is not comparable to 0.489.
-140‰ of pages agreeing is not 140‰ of cells right.
+228‰ of pages agreeing is not 228‰ of cells right.
+
+### The run before this one, for comparison
+
+Engine 0.9.0, profile `sha256:5593cb1f…07d2d5c`, under `ruled-rects-v2` alone:
+
+| | 0.9.0 (S7b) | 0.10.0 (S8) |
+| --- | --- | --- |
+| tables detected / matched | 8 / 8 | 14 / 13 |
+| page-level precision | 1000‰ | 928‰ |
+| cells emitted | 36 | 180 |
+| **fabricated** | **0** | **0** |
+| cross-check disagreements | **0** | **0** |
+| `cfpb-home-loan-toolkit` | 24 TP / 12 FP → **246‰** | 44 TP / 136 FP → **259‰** |
+| `irs-form-1040-2025` | 0 tables → 0‰ | **0 tables** → 0‰ |
+| **MACRO** | **61‰** | **64‰** |
+
+**The macro rise is CFPB's alone.** 1040 contributes 0‰ on both sides, which is the whole point:
+the parked `stroke-ruled-v1` doubled the macro to 125‰ by turning the canary document into four
+tables, and that is the number this slice refused to take.
 
 ### The one repair that worked, and how it was found
 
@@ -327,7 +347,9 @@ the same commit that reports them, which is the one edit this document exists to
 | `nist-sp-800-53r5.pdf` | 0 | **0** |
 
 The alignment rule emits **zero tables on the entire gate corpus**, before and after every repair
-tried against it. The whole 61‰ is the ruled detector on the rulings CFPB actually paints.
+tried against it. The whole 61‰ was the ruled detector on the rectangles CFPB actually paints —
+and at S8 the whole 64‰ is that plus the stroke-ruled rule on the lines it actually strokes. The
+alignment rule still emits nothing here.
 
 So the five alignment repairs were tuning a rule that contributes nothing to the number judging
 them. That was not unreasonable — the alignment rule is the only candidate for the three documents
@@ -395,16 +417,20 @@ What it would be worth, if a stroke-ruled rule found them and got them right:
 
 | | cfpb cell-F1 | macro |
 | --- | --- | --- |
-| today | 246‰ | 61‰ |
-| page 13 alone | 493‰ | 123‰ |
-| all 103 cells | 852‰ | 213‰ |
+| at S7b | 246‰ | 61‰ |
+| page 13 alone, cells perfect | 493‰ | 123‰ |
+| all 103 cells, perfect | 852‰ | 213‰ |
+| **what S8 actually got** | **259‰** | **64‰** |
 
 Still short of the 489‰ macro floor, because NIST and 1040 stay at zero and each carry a quarter of
-the average. But it is the only measured lead left that moves the number at all, and it is a real
+the average. **The forecast row assumed perfect capture and this slice did not get it**: page 13
+comes back a 7 × 4 against the tagged 8 × 4 because its header row's top edge is not drawn, which
+the cell-slot join charges twice, and the three bands that survive on pages 24 and 25 cost 92 more
+false positives. Both are accounted for below. But it is the only measured lead left that moves the number at all, and it is a real
 detection rule rather than a tolerance: `flush_subpath` requires 4–5 points with two distinct x and
 two distinct y, so a two-point segment produces no rectangle and never reaches the lattice.
 
-### It was then built, measured in full, and not shipped
+### It was then built, measured in full, and not shipped at S7b
 
 `stroke-ruled-v1`, as a complete slice: two-point axis-aligned segments captured as their own
 evidence (a `PathSegment` beside `PathRect` — a box says *this cell is here*, a line says *this edge
@@ -442,7 +468,8 @@ declined. The nine tables it does emit are on pages 6, 7, 22, 23, 24 and 25, and
 positives are concentrated on the Closing Disclosure pages 22, 24 and 25 rather than on scattered
 furniture.
 
-**It is not shipped, for three reasons in this order:**
+**It was not shipped at S7b, for three reasons in this order** — and the next section is how all
+three were answered:
 
 1. **It regresses the document it was built for**, 246‰ → 210‰: 17 more right cells bought with 177
    more wrong ones. Classified, 156 of the false positives are text appearing in **no gold cell at
@@ -460,17 +487,111 @@ Fabrication stayed 0 and the cross-check stayed clean throughout, so this is ove
 than invention — a real distinction, and not a defence: 156 cells of real text in regions nobody
 tags as tables is the failure the gold negatives exist to catch.
 
-The rule itself is **parked, not discarded**:
-[`docs/attic/stroke-ruled-v1/`](attic/stroke-ruled-v1/) holds it as a patch that applies to this
-commit, with its measurement and its reason.
+The rule was **parked, not discarded**:
+[`docs/attic/stroke-ruled-v1/`](attic/stroke-ruled-v1/) held it as a patch, with its measurement
+and its reason. **v1-S8 revived it, fixed both defects and shipped it** — the next section.
 
-**What a future attempt should know.** The band preconditions above are sound and reproduce; the
-problem is entirely in which regions become bands. Tightening that further was not attempted here
-because every remaining idea was a threshold fitted to these four documents, which is what
-`docs/08-V1-SCOPE.md` §3 forbids. The lead itself does not go away: 103 CFPB cells, 65% of that
-document's gold, are still behind ink this engine discards.
+## v1-S8: the same rule, one precondition changed, and it ships
 
-### Pages 16 and 17: nothing to fix, and the cross-check already says so
+**The parked rule's two failures were one defect: it never read the page's vertical ink.**
+`extract` filtered non-horizontal segments away before the rule saw them, so "where are the
+columns" was answered entirely by *where horizontal rules happen to end*. That reading is at once
+too strict and too loose, and it produced both symptoms above.
+
+`stroke-ruled-v1` as shipped replaces step 5 — "every face's own bottom edge is drawn" — with:
+
+> **Every column line INTERIOR to the band must be stroked as vertical ink running the band's full
+> height**, collinear segments joined end to end first. The band's outer edges are exempt: an
+> interior line separates two cells, so an author who did not draw one did not divide there, while
+> an outer edge is only where the ink stops.
+
+That is the precondition the retired `stroke-ruled-tables-not-detected` limitation itself named
+back at v1-S2 — *"every face bounded by four edges rather than covered by one rectangle"* — with
+one concession stated out loud, because page 13 strokes its three interior column rules at
+x = 210, 326 and 442 and neither outer one. Step 4 already makes the same trade on the other axis.
+
+**And a second precondition, for the 1040.** Under the new step 5 alone the tax form yields *five*
+tables, because its entry boxes really are a stroked grid with their column rules drawn. What
+settles it is not the geometry but **whose rectangle it is**:
+
+| | a face | a widget `/Rect` there |
+| --- | --- | --- |
+| `irs-form-1040-2025` p1 | 93.3 … 251.6 × 309 … 321 | **145.0 … 251.2 × 309 … 321** |
+| `cfpb-home-loan-toolkit` p13 | 210 … 326 × 334.6 … 388.6 | 231.1 … 321.8 × 349.9 … 376.3 |
+
+On the 1040 the face **is** the field's box, edge for edge. On page 13 — *also* a fillable
+worksheet, carrying 25 widgets — the field sits inset inside a larger printed cell, less than half
+its height. So: a face whose four edges are a form field's four edges is that field's box, within
+the same `LATTICE_TOLERANCE` every other edge comparison uses, and one of them refuses the band.
+One is enough because a page cannot half-be a form, and it fails closed.
+
+**No new constant, and neither step names a document, a page or a count.**
+
+### What changed, page by page, on `cfpb-home-loan-toolkit`
+
+| Page | `stroke-ruled-v1` parked | shipped | gold there |
+| --- | --- | --- | --- |
+| 6 | 5 × 2 | 5 × 2 | 7 × 2 |
+| 7 | 7 × 2 | 7 × 2 | 7 × 2 |
+| 11 | — | — | 5 × 4 |
+| **13** | **refused** | **7 × 4** | **8 × 4** |
+| 16 | — | — | 7 × 2 |
+| 22 | 5 × 4 and 7 × 4 | **refused**, columns not stroked | none |
+| 23 | 3 × 3 (and a 65 × 6 refused) | **refused**, columns not stroked | 5 × 3 |
+| 24 | 9 × 4 and 7 × 3 | 9 × 4; the 7 × 3 **refused** | none |
+| 25 | 4 × 2 and 8 × 6 | 4 × 2 and 8 × 6 | 2 × 2 |
+
+Pages 11 and 16 read `—` on both sides because a stroke-ruled band **is** built on each and
+dropped before emission: `ruled-rects-v2` already owns those regions, and a second grid over a
+region a rule with stronger evidence has claimed is the thing detection must not emit. That
+arbitration is unchanged from the parked rule.
+
+**Page 13 is found.** It reads `Lender name` / `Loan amount` / `Interest rate` /
+`Fixed · Adjustable` / `Monthly principal and interest` / `Monthly mortgage insurance` /
+`Total Loan Costs`, with `$` and `%` down the three offer columns — the tagged worksheet, in the
+ink the page drew.
+
+### It comes back a 7 × 4 against a tagged 8 × 4, and that is the honest answer
+
+Eight baselines bound **seven** rows. The worksheet's header row — `LOAN OFFER 1 / 2 / 3` — has no
+top edge drawn anywhere on the page, and step 4 does not supply one. Emitting an 8 × 4 would mean
+writing a coordinate no operator in the file produced.
+
+The cost is real and it is charged twice by this metric: every detected row is compared against the
+gold row above it, so the labelled cells all sit one slot off. It is declared rather than absorbed
+— `undrawn-table-edges-not-supplied`, the profile limitation that replaces
+`stroke-ruled-tables-not-detected` — and pinned by the engine fixture `stroke-ruled-worksheet`,
+whose five baselines bound four rows for the same reason.
+
+### What it still gets wrong, stated rather than tuned away
+
+**136 false-positive cell slots against 12 before**, and the great majority are three bands:
+page 24's 9 × 4 and page 25's 4 × 2 and 8 × 6 — Closing Disclosure pages whose structure tree tags
+almost nothing. Those bands are **not** the over-detection the new step 5 was built to kill: their
+interior column lines really are stroked across the band, so by every reading of the ink they are
+grids the author drew. The gold does not tag them.
+
+They were left. Every discriminator that would remove them — a minimum band width, a row-height
+regularity test, a page-region test — is a threshold fitted to these four documents, which
+`docs/08-V1-SCOPE.md` §3 forbids, and the honest reading is that this is denominator inflation
+running the other way: a producer who does not tag a table is not evidence that no table is there.
+The cost is recorded here and in the precision figure (1000‰ → 928‰) rather than tuned out of the
+number.
+
+**Two truncated cells**, also recorded: page 13's `onthly principal and interest` and
+`Total Loan Costs (ection D …)`. The producer split those strings and the leading `M` and `S` are
+drawn at an x *left of* the band's outer column line, so their runs fall outside the table. Cell
+assignment is by run **origin** for all three rules, and widening the band to catch them would be
+inventing the outer edge step 4 refuses to invent. Not fabrication — `fabricated_cells` is 0 and
+the cross-check is `ok` on that table — but a measured loss, and it is why page 13's 18 matching
+slots are not more.
+
+**What a future attempt should know.** The band preconditions are sound and reproduce. What is
+left on this document is not the detector: it is the header rows nobody drew a box around, and the
+untagged Closing Disclosure grids. Neither is reachable without either inventing a coordinate or
+fitting a threshold.
+
+## Pages 16 and 17: nothing to fix, and the cross-check already says so
 
 Both were investigated and **neither is a detector defect.** They are also not the same shape,
 which an earlier revision of this document got wrong:
@@ -513,14 +634,22 @@ engine.
 ## What would actually move it
 
 Nothing in the geometric-alignment family, on this evidence. Six repairs aimed at it have been
-measured — the gutter constants, band segmentation, mcid merging, mcid merging with bands, and
-stroke-ruled detection in two variants — and the ones that move the number do so by emitting an
-order of magnitude more cells, getting almost none right, and breaking a gold negative or the 1040
-canary each time.
+measured — the gutter constants, band segmentation, mcid merging, mcid merging with bands — and
+the ones that move the number do so by emitting an order of magnitude more cells, getting almost
+none right, and breaking a gold negative or the 1040 canary each time.
 
-The one repair that worked went to the **ruled** rule: `ruled-rects-v2`, +18‰ macro, precision to
-1000‰, no true positive lost. It did not come from a new idea about tables. It came from reading
-the detector's own two statements about one rectangle and noticing they contradicted each other.
+**Both repairs that worked went to rules that read the author's own ink**, and neither came from a
+new idea about tables:
+
+- `ruled-rects-v2` (S7b), +18‰ macro, precision to 1000‰, no true positive lost — from reading the
+  detector's own two statements about one rectangle and noticing they contradicted each other.
+- `stroke-ruled-v1` (S8), +3‰ macro and +13‰ on the one document that draws grids — from noticing
+  that the parked rule's *two* opposite failures were one line in `extract` throwing away the
+  page's vertical segments, so a precondition about columns was being answered without ever
+  looking at whether a column was drawn.
+
+The pattern in both: the defect was a place where the engine had two beliefs about one piece of
+ink and had never put them side by side.
 
 Two facts bound what any of them could have achieved:
 

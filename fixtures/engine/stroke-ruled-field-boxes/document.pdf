@@ -1,0 +1,52 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm 6 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 280 160] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /Annots [7 0 R 8 0 R 9 0 R 10 0 R] >>
+endobj
+4 0 obj
+<< /Length 193 >>
+stream
+0.5 w 20 120 m 140 120 l S 140 120 m 260 120 l S 20 90 m 140 90 l S 140 90 m 260 90 l S 20 60 m 140 60 l S 140 60 m 260 60 l S 140 120 m 140 60 l S BT /F1 9 Tf 1 0 0 1 24 128 Tm (Amounts) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+6 0 obj
+<< /Fields [7 0 R 8 0 R 9 0 R 10 0 R] >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (a1) /Rect [20 90 140 120] /P 3 0 R >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (a2) /Rect [140 90 260 120] /P 3 0 R >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (b1) /Rect [20 60 140 90] /P 3 0 R >>
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (b2) /Rect [140 60 260 90] /P 3 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000009 00000 n 
+0000000074 00000 n 
+0000000131 00000 n 
+0000000292 00000 n 
+0000000536 00000 n 
+0000001051 00000 n 
+0000001107 00000 n 
+0000001205 00000 n 
+0000001304 00000 n 
+0000001401 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R >>
+startxref
+1500
+%%EOF

@@ -69,30 +69,36 @@ pub mod codes {
     pub const CHAR_OFFSETS_NOT_EMITTED: &str = "char-offsets-not-emitted";
     /// [`Capabilities::tables`] is false: no table is detected or emitted.
     pub const TABLES_NOT_EXTRACTED: &str = "tables-not-extracted";
-    /// A grid drawn as **stroked ruling lines** rather than cell rectangles is not detected.
+    /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
-    /// The leftover after v1-S2, and the successor to the blanket `unruled-tables-not-detected`
-    /// this replaced. That code partnered `tables: true` and said "alignment is never inspected",
-    /// which stopped being true the moment `unruled-align-v1` shipped — a limitation that
-    /// survives the gap it describes is worse than none, because a reader trusts it.
+    /// The leftover after v1-S8, and the third code to hold this position. Each replaced its
+    /// predecessor outright rather than rewording it, because a limitation that survives the gap
+    /// it describes is worse than none — a reader acts on it:
     ///
-    /// What is genuinely still missed is narrower and named here: the ruled rule requires every
-    /// lattice face to be **covered by a painted rectangle**, so a grid whose author drew four
-    /// thin line segments per cell instead of a filled box does not satisfy it. That is author
-    /// evidence the engine does not yet read, and it belongs to a ruled rule rather than to
-    /// alignment (`docs/09-V1-MILESTONES.md` S2, decision 8b).
+    /// | slice | code | what it said | why it went |
+    /// | --- | --- | --- | --- |
+    /// | v1-S1 | `unruled-tables-not-detected` | alignment is never inspected | `unruled-align-v1` shipped at S2 |
+    /// | v1-S2 | `stroke-ruled-tables-not-detected` | a grid drawn as bare ruling lines is missed | `stroke-ruled-v1` shipped at S8 |
+    /// | v1-S8 | this | an edge nobody drew is not invented to complete a grid | — |
     ///
-    /// **Why it was left rather than closed at v1-S2**, measured rather than assumed:
-    /// `irs-form-1040-2025` carries **520 axis-aligned stroked segments** alongside its 396
-    /// rectangles. Those 396 rectangles alone are what produced v1-S1's 662-cell fabrication, and
-    /// admitting 520 more edges to the same lattice is the same experiment with more input. A
-    /// stroked-line rule therefore needs its own coherence precondition — every face bounded by
-    /// four edges rather than covered by one rectangle — and its own measurement pass against
-    /// that form before it can ship. That is a slice of work, not a widening, so it is declared
-    /// here instead of guessed at.
+    /// **What it says, and it is the consequence a consumer is most likely to meet.** All three
+    /// rules report only what the page actually put down. `stroke-ruled-v1` takes rows to be the
+    /// regions *between* ruling lines, so *n* baselines bound *n − 1* rows — and a form ruled
+    /// underneath each cell never draws the top edge of its first row. Such a table is emitted
+    /// **one row short**, with its remaining rows numbered from zero, rather than completed with a
+    /// coordinate no operator in the file produced. Measured on `cfpb-home-loan-toolkit` page 13,
+    /// whose tagged 8 × 4 loan worksheet is drawn as 32 horizontal rules and comes back as a 7 × 4.
+    ///
+    /// Two narrower misses sit under the same heading, for the same reason:
+    ///
+    /// - **Rows come from horizontal rules.** Vertical ink is read only to corroborate that a
+    ///   column boundary was drawn, so a grid ruled down its columns and not across its rows
+    ///   implies no rows here and is not emitted.
+    /// - **Curves are never flattened into ruling lines**, so a grid drawn with Béziers is missed
+    ///   rather than approximated.
     ///
     /// Profile-scoped, because it is true of every document this build reads.
-    pub const STROKE_RULED_TABLES_NOT_DETECTED: &str = "stroke-ruled-tables-not-detected";
+    pub const UNDRAWN_TABLE_EDGES_NOT_SUPPLIED: &str = "undrawn-table-edges-not-supplied";
 
     /// The alignment rule built a candidate lattice on some page and **refused** it.
     ///
@@ -123,6 +129,22 @@ pub mod codes {
     /// **Not a confidence score**, exactly as for the unruled one: it names the precondition that
     /// failed and never grades how close the rectangles came.
     pub const RULED_TABLE_CANDIDATE_REFUSED: &str = "ruled-table-candidate-refused";
+    /// The **stroke-ruled** rule built a candidate band from ruling lines and refused it (v1-S8).
+    ///
+    /// The third of the set, and the one with the busiest path: a band is built wherever two
+    /// consecutive rows of rules end at the same x positions, which happens on any document that
+    /// draws lines, and most of those are refused. Without this, a page whose ruling lines implied
+    /// a grid the author never actually divided would be indistinguishable from a page that drew
+    /// no lines at all.
+    ///
+    /// **The parked `stroke-ruled-v1` never had it**, and its own revival notes called that the
+    /// slice's one real incompleteness: refusals returned an empty vector and said nothing, so the
+    /// rule declined bands in silence. Wiring it was a precondition of shipping the rule at all —
+    /// standing rule 3, no silent drop.
+    ///
+    /// **Not a confidence score**, exactly as for the other two: it names the precondition that
+    /// failed and never grades how close the ruling lines came.
+    pub const STROKE_RULED_TABLE_CANDIDATE_REFUSED: &str = "stroke-ruled-table-candidate-refused";
     /// [`Capabilities::measured_ink_boxes`] is false: geometry is typed-absent throughout.
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
     /// [`Capabilities::multi_column_reading_order`] is false: order is single-column.
@@ -397,23 +419,26 @@ impl Capabilities {
             // `false` capability does not do; this one declares the scope of what a `true` one
             // does.
             //
-            // v1-S1 declared `unruled-tables-not-detected` here. v1-S2 shipped the alignment
-            // rule, so that sentence became false and the code is **gone rather than reworded** —
-            // a stale limitation is worse than a missing one, because a reader acts on it. What
-            // is left is genuinely narrower: the ruled rule wants painted rectangles, and a grid
-            // stroked as bare line segments still slips past it.
+            // v1-S1 declared `unruled-tables-not-detected` here. v1-S2 shipped the alignment rule
+            // and replaced it with `stroke-ruled-tables-not-detected`. **v1-S8 ships
+            // `stroke-ruled-v1`, so that one is gone in its turn** — each time the code is
+            // removed rather than reworded, because a stale limitation is worse than a missing
+            // one: a reader acts on it. What is left after three rules is narrower again, and it
+            // is about edges rather than about rules — nothing here invents one.
             out.push(Limitation::profile(
-                codes::STROKE_RULED_TABLES_NOT_DETECTED,
-                "Ruled detection requires every lattice face to be covered by a rectangle the \
-                 document PAINTED, and since `ruled-rects-v2` that rectangle may not be one \
-                 spanning the whole lattice — a background panel is the table's border, not \
-                 evidence its cells were drawn. A grid an author drew as thin stroked ruling \
-                 lines — four segments around each cell, no filled cell box — does not satisfy \
-                 that and is not emitted as a ruled table. It may still be found by the alignment rule if \
-                 its text implies a grid, in which case the table names `unruled-align-v1` as \
-                 its `detection_rule` and the ruling lines the author drew went unread. Curves \
-                 are never flattened into ruling lines either, so a grid drawn with Béziers is \
-                 missed rather than approximated.",
+                codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
+                "All three table rules report the grid the document DREW, and none of them \
+                 supplies an edge nobody drew. `stroke-ruled-v1` reads rows as the regions \
+                 BETWEEN ruling lines, so n baselines bound n-1 rows — and a form ruled \
+                 underneath each of its cells never draws the top edge of its first row. Such a \
+                 table is emitted ONE ROW SHORT, its remaining rows numbered from zero, rather \
+                 than completed with a coordinate no operator in the file produced: a consumer \
+                 comparing this grid against the page must expect the offset rather than read it \
+                 as a missing cell. Two narrower misses follow from the same discipline. Rows come \
+                 from HORIZONTAL rules — vertical ink is read only to corroborate that a column \
+                 boundary was drawn — so a grid ruled down its columns and not across its rows \
+                 implies no rows here and is not emitted. And curves are never flattened into \
+                 ruling lines, so a grid drawn with Béziers is missed rather than approximated.",
             ));
         } else {
             out.push(Limitation::profile(
@@ -1236,7 +1261,7 @@ mod tests {
         assert_eq!(
             remaining,
             vec![
-                codes::STROKE_RULED_TABLES_NOT_DETECTED,
+                codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
                 codes::LOW_CONTRAST_NOT_DETECTED,
                 codes::READING_ORDER_GEOMETRIC_ONLY,

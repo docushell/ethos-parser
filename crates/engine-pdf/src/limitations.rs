@@ -272,6 +272,44 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
     Limitation::document(engine_core::codes::RULED_TABLE_CANDIDATE_REFUSED, detail)
 }
 
+/// Pages where the **stroke-ruled** rule built a candidate band and refused it (v1-S8).
+///
+/// The third companion to [`unruled_candidate_refused`] and [`ruled_candidate_refused`], grouped
+/// by precondition for the same reason the ruled one is: this rule builds a candidate on any page
+/// that draws two rows of lines ending at common x positions, so a per-page copy of a five-line
+/// explanation would put more prose about refusals into the artifact than there is text on the
+/// pages. Every page is still named with its own numbers; only the reasoning is de-duplicated.
+pub fn stroke_ruled_candidate_refused(
+    refusals: &[(u32, crate::stroke_ruled::Refusal)],
+) -> Limitation {
+    let mut detail = String::from(
+        "On some pages the ruling lines the document stroked implied a grid and the stroke-ruled \
+         rule REFUSED it, so no table was emitted there. This is the difference between `nothing \
+         grid-shaped was ruled here` and `a grid was implied and judged incoherent`, and only the \
+         second one is reported below. Nothing was repaired or partially emitted: a candidate \
+         either satisfies every precondition of `stroke-ruled-v1` or it produces no table.",
+    );
+    let mut kinds: std::collections::BTreeMap<&'static str, (String, Vec<String>)> =
+        std::collections::BTreeMap::new();
+    for (page, r) in refusals {
+        let e = kinds
+            .entry(r.kind())
+            .or_insert_with(|| (r.explanation(), Vec::new()));
+        e.1.push(format!("page {page} ({})", r.detail()));
+    }
+    for (kind, (explanation, pages)) in kinds {
+        detail.push_str(&format!(
+            "\n\n  {kind}: {explanation}\n  Refused on {} page(s): {}",
+            pages.len(),
+            pages.join(", ")
+        ));
+    }
+    Limitation::document(
+        engine_core::codes::STROKE_RULED_TABLE_CANDIDATE_REFUSED,
+        detail,
+    )
+}
+
 /// The document-scoped limitation for a file that carries no tagged-structure tree.
 ///
 /// **The honest answer for an untagged document**, and the reason

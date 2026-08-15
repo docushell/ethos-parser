@@ -124,6 +124,40 @@ pub struct PathRect {
     pub y1: f64,
 }
 
+/// One **axis-aligned two-point stroked segment** the page painted, in user space (v1-S8).
+///
+/// # Not a rectangle, and kept apart from one on purpose
+///
+/// A `re` or a four-point closed path encloses an area: it is the author saying *this box is
+/// here*. A two-point `m`/`l` stroked with `S` is a **line**: the author saying *this edge is
+/// here*. `ruled-rects-v1` was built on the first and produces nothing from the second, which is
+/// the `stroke-ruled-tables-not-detected` limitation the engine has declared since v1-S1.
+///
+/// Measured, that limitation costs `cfpb-home-loan-toolkit` 103 of its 159 gold cells: its page 13
+/// draws an 8 × 4 loan worksheet as 32 horizontal rules and nothing else. Collapsing a segment
+/// into a zero-height `PathRect` would have let the ruled lattice consume it, and a zero-area
+/// "cell" is a cell nobody drew — so the two kinds of evidence stay in two fields and a separate
+/// rule reads this one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathSegment {
+    /// Smaller x, in user space.
+    pub x0: f64,
+    /// Smaller y.
+    pub y0: f64,
+    /// Larger x.
+    pub x1: f64,
+    /// Larger y.
+    pub y1: f64,
+}
+
+impl PathSegment {
+    /// Whether this segment runs left-to-right. A segment is one or the other, never both: a
+    /// zero-length one is not captured at all.
+    pub fn is_horizontal(self) -> bool {
+        approx_eq(self.y0, self.y1)
+    }
+}
+
 impl PathRect {
     fn from_corners(a: (f64, f64), b: (f64, f64)) -> Self {
         Self {
@@ -183,10 +217,17 @@ pub struct Interpreter<'a> {
     /// Only **painted** subpaths land here. A path built and then discarded with `n`, or used
     /// solely as a clip, drew no ink and is not a ruling line.
     pub rects: Vec<PathRect>,
+    /// Axis-aligned two-point stroked segments this page painted, in user space (v1-S8).
+    ///
+    /// Only **painted** ones, exactly as for [`Interpreter::rects`]: a path ended with `n` or used
+    /// as a clip drew no ink and is not a ruling line.
+    pub segments: Vec<PathSegment>,
     /// The subpath being built.
     subpath: Subpath,
     /// Rectangles from the current path, pending a painting operator.
     pending: Vec<PathRect>,
+    /// Segments from the current path, pending a painting operator (v1-S8).
+    pending_segments: Vec<PathSegment>,
     /// How many runs were dropped because a font could not map one of their codes.
     ///
     /// Separate from [`Interpreter::undecodable`]'s length: one run can carry several
@@ -228,8 +269,10 @@ impl<'a> Interpreter<'a> {
             shown: Vec::new(),
             undecodable: Vec::new(),
             rects: Vec::new(),
+            segments: Vec::new(),
             subpath: Subpath::default(),
             pending: Vec::new(),
+            pending_segments: Vec::new(),
             dropped_runs: 0,
             props_by_name: 0,
             images: Vec::new(),
@@ -294,6 +337,7 @@ impl<'a> Interpreter<'a> {
                 self.shown.clear();
                 self.undecodable.clear();
                 self.rects.clear();
+                self.segments.clear();
                 self.pending.clear();
                 self.subpath = Subpath::default();
                 self.dropped_runs = 0;
@@ -341,6 +385,23 @@ impl<'a> Interpreter<'a> {
             return;
         }
         let pts = &sub.points;
+        // v1-S8. A two-point axis-aligned run is a ruling LINE, not a box. Captured separately —
+        // see `PathSegment`. A zero-length one is a `m`/`l` pair that moved nowhere and drew no
+        // edge, so it is not evidence of anything and is dropped.
+        if pts.len() == 2 {
+            let (a, b) = (pts[0], pts[1]);
+            let horizontal = approx_eq(a.1, b.1) && !approx_eq(a.0, b.0);
+            let vertical = approx_eq(a.0, b.0) && !approx_eq(a.1, b.1);
+            if horizontal || vertical {
+                self.pending_segments.push(PathSegment {
+                    x0: a.0.min(b.0),
+                    y0: a.1.min(b.1),
+                    x1: a.0.max(b.0),
+                    y1: a.1.max(b.1),
+                });
+            }
+            return;
+        }
         if pts.len() < 4 || pts.len() > 5 {
             return;
         }
@@ -524,18 +585,21 @@ impl<'a> Interpreter<'a> {
             | CloseFillStrokeEvenOdd => {
                 self.flush_subpath();
                 self.rects.append(&mut self.pending);
+                self.segments.append(&mut self.pending_segments);
             }
             // `n` ends a path **without painting it**. Nothing was drawn, so nothing is a ruling
             // line — this is also the operator that ends a clip-only path.
             EndPath => {
                 self.subpath = Subpath::default();
                 self.pending.clear();
+                self.pending_segments.clear();
             }
             // A clip path bounds what is visible; it draws nothing. Treating one as a table edge
             // would find a grid in every document that clips to its margins.
             Clip | ClipEvenOdd => {
                 self.subpath = Subpath::default();
                 self.pending.clear();
+                self.pending_segments.clear();
             }
             // v1-S6. `Do` names an XObject in the page's resources. An `/Image` is a placement
             // this profile records; a `/Form` is content this profile still does not descend

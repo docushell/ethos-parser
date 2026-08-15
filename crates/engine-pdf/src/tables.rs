@@ -80,6 +80,17 @@ use engine_core::{
 /// the profile hash — the same discipline `crate::thresholds` is under.
 pub const LATTICE_TOLERANCE: i64 = 150;
 
+/// The most faces any reconstructed grid may have, shared by every detection rule.
+///
+/// `n` rectangles give up to `2n` lines per axis and so up to `4n²` faces. On a page that merely
+/// contains rectangles that product explodes, and every one of those faces would be a cell. The
+/// cap is a refusal, not a truncation: past it, this is not a table and none is emitted.
+///
+/// One constant rather than three (v1-S8): the ruled, unruled and stroke-ruled rules answer
+/// different questions about different evidence, but "how big may a grid get before it is not a
+/// grid" is the same question for all of them, and three copies is three chances to drift.
+pub const MAX_FACES: usize = 4096;
+
 /// A rectangle in **page space**, quantized — the coordinate system the artifact declares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QuantRect {
@@ -108,7 +119,7 @@ impl QuantRect {
     }
 
     /// Whether two rectangles overlap in their **interiors**. Shared edges do not count.
-    fn overlaps(self, other: Self) -> bool {
+    pub(crate) fn overlaps(self, other: Self) -> bool {
         self.x0 < other.x1 && other.x0 < self.x1 && self.y0 < other.y1 && other.y0 < self.y1
     }
 
@@ -186,26 +197,35 @@ pub struct RunOrigin<'a> {
     pub text: &'a str,
 }
 
-/// Detect every table on one page, ruled first and then unruled (v1-S2).
+/// Detect every table on one page: ruled, then stroke-ruled, then unruled (v1-S2, widened v1-S8).
 ///
-/// # Arbitration, and why ruled wins
+/// # Arbitration, and the order the three rules run in
 ///
-/// The two rules answer different questions and can both answer for the same region. When they
-/// do, the ruled table is kept and the unruled one is dropped:
+/// The rules answer different questions and can all answer for the same region. When they do,
+/// exactly one table is kept, and which one is settled by **what kind of statement the evidence
+/// is** rather than by which grid is larger or scores better:
 ///
-/// - A ruling line is **evidence the author left**. An alignment cluster is **a decision this
-///   engine made**. Where both exist, the author's is the better answer, and preferring ours
-///   would be preferring our inference to their statement.
-/// - The two grids are never averaged or merged. Two derivations of one region that disagree are
-///   a real disagreement; splitting the difference would produce a grid neither rule found, with
-///   no rule id that honestly describes it.
+/// 1. **`ruled-rects-v2`** — the author *filled a box* for each cell.
+/// 2. **`stroke-ruled-v1`** — the author *drew the lines* of the grid.
+/// 3. **`unruled-align-v1`** — the author drew nothing and this engine inferred a grid from where
+///    the text sits.
 ///
-/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v2`
-/// knows the author drew it, and nothing was lost that a second, weaker derivation of the same
-/// cells would have added.
+/// The first two are both ink the author put down, so neither claim is weaker than the other;
+/// what settles a region they share is simply that the ruled rule got there first, and a filled
+/// cell box is the more complete statement of the two (it bounds a cell on four sides by itself).
+/// The third is an inference about the document rather than evidence in it, and it loses to
+/// either — preferring ours would be preferring our reading to the author's statement.
 ///
-/// Unruled detection runs only on runs whose origins fall **outside** every accepted ruled table,
-/// so a ruled table's own text can never also seed an alignment lattice.
+/// The grids are never averaged or merged. Two derivations of one region that disagree are a real
+/// disagreement; splitting the difference would produce a grid no rule found, with no rule id that
+/// honestly describes it.
+///
+/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v2` knows
+/// the author painted it, `stroke-ruled-v1` that they ruled it, and nothing was lost that a
+/// second, weaker derivation of the same cells would have added.
+///
+/// Unruled detection runs only on runs whose origins fall **outside** every accepted ruled and
+/// stroke-ruled table, so a table's own text can never also seed an alignment lattice.
 ///
 /// # Errors
 ///
@@ -213,14 +233,25 @@ pub struct RunOrigin<'a> {
 pub fn detect(
     page: u32,
     rects: &[QuantRect],
+    rules: &[crate::stroke_ruled::Rule],
+    uprights: &[crate::stroke_ruled::Upright],
     runs: &[RunOrigin<'_>],
+    fields: &[QuantRect],
     alloc: &mut IdAllocator,
 ) -> Result<Detected, EngineError> {
     let (mut tables, ruled_refusal) = detect_ruled(page, rects, runs, alloc)?;
 
-    // Only runs no ruled table already claims. A run inside an accepted ruled table is spoken
-    // for; letting it also vote on an alignment lattice would let one piece of text produce two
-    // tables that both claim it.
+    // v1-S8. The rule on the ruling LINES the page stroked, on regions the ruled rule did not
+    // already claim.
+    let claimed: Vec<QuantRect> = tables.iter().map(|t| t.rect).collect();
+    let stroked =
+        crate::stroke_ruled::detect(page, rules, uprights, runs, fields, &claimed, alloc)?;
+    let stroke_refusal = stroked.refusal;
+    tables.extend(stroked.tables);
+
+    // Only runs no ruled or stroke-ruled table already claims. A run inside an accepted table is
+    // spoken for; letting it also vote on an alignment lattice would let one piece of text produce
+    // two tables that both claim it.
     let leftover: Vec<usize> = (0..runs.len())
         .filter(|i| {
             let r = &runs[*i];
@@ -245,6 +276,7 @@ pub fn detect(
         tables,
         refusal,
         ruled_refusal,
+        stroke_refusal,
     })
 }
 
@@ -344,6 +376,12 @@ pub struct Detected {
     /// and one page can perfectly well have its rectangles refused and its alignment refused for
     /// unrelated reasons. Collapsing them would make a reader guess which rule spoke.
     pub ruled_refusal: Option<RuledRefusal>,
+    /// Why the **stroke-ruled** rule refused a candidate band here, if it built one (v1-S8).
+    ///
+    /// A third field for the third rule, for the same reason the second one is separate: one page
+    /// can have its rectangles refused, its ruling lines refused and its alignment refused, each
+    /// on its own evidence, and a reader must never have to guess which rule spoke.
+    pub stroke_refusal: Option<crate::stroke_ruled::Refusal>,
 }
 
 /// Detect ruled tables on one page.
@@ -535,13 +573,8 @@ struct Lattice {
 }
 
 impl Lattice {
-    /// The most faces a ruled grid may have under this rule.
-    ///
-    /// `n` rectangles give up to `2n` lines per axis and so up to `4n²` faces. On a page that
-    /// merely contains rectangles that product explodes, and every one of those faces would be a
-    /// cell. The cap is a refusal, not a truncation: past it, this is not a ruled table and no
-    /// table is emitted.
-    const MAX_FACES: usize = 4096;
+    /// The most faces a ruled grid may have. See [`MAX_FACES`].
+    const MAX_FACES: usize = MAX_FACES;
 
     /// The lattice, or why there is not one (v1-S7b).
     ///

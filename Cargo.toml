@@ -31,17 +31,23 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# and S7a/S7b as 0.9.0.
+# S7a/S7b as 0.9.0, and S8 as 0.10.0.
 #
-# **0.9.0 IS a detector change, on the ruled side only.** S7b set out to move
+# **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
 # alignment rule is untouched at `unruled-align-v1`. A different defect in the ruled rule was found
 # and shipped: `table_detection.ruled` moves from `ruled-rects-v1` to `ruled-rects-v2`. The profile
 # hash therefore carries both that and `parser_version`. See CHANGELOG and docs/table-gate-v1.md.
 #
-# v1 itself is not done — the S7 cell gate is measured and MISSED (61‰ against a 489‰ floor) —
-# so this is not 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green.
-version = "0.9.0"
+# **0.10.0 adds a THIRD detection rule**, `stroke-ruled-v1` — grids the author drew as ruling
+# lines. `table_detection` grows a third field, so the profile hash moves for a reason a reader
+# can name, and the profile stops declaring `stroke-ruled-tables-not-detected` because it is no
+# longer true. 0.10.0 rather than 0.9.1: a rule that emits tables no earlier build could emit is
+# not a patch.
+#
+# v1 itself is not done — the S7 cell gate is measured and MISSED — so this is not 1.0.0 and will
+# not be until docs/09-V1-MILESTONES.md S7 is green.
+version = "0.10.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -62,9 +68,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.9.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.9.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.9.0" }
+engine-core = { path = "crates/engine-core", version = "0.10.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.10.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.10.0" }
 
 [profile.release]
 strip = "symbols"

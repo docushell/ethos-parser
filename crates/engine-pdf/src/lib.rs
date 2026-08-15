@@ -72,6 +72,7 @@ pub(crate) mod overlay;
 pub(crate) mod reading_order;
 pub(crate) mod reasons;
 pub(crate) mod represent;
+pub(crate) mod stroke_ruled;
 pub(crate) mod structure;
 pub(crate) mod tables;
 pub(crate) mod text_state;

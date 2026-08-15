@@ -74,14 +74,17 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S6** | Images, DPI screenshots, hidden / off-page findings, annotated PDF | **done** |
 | **S7a** | The labelled set and the harness, measuring only | **done** |
 | **S7b** | Detector calibration, measured. Six repairs rejected, one shipped (`ruled-rects-v2`) | **done** |
-| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 61‰** |
+| **S8** | The parked stroke-ruled rule, defect-fixed and shipped as a third rule | **done** |
+| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 64‰** |
 
 **S7 is open, with the number written down.** The gate metric exists, is documented in
-`docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **61‰** against
+`docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **64‰** against
 a 489‰ floor. S7b ran seven investigations: the six aimed at the *alignment* rule were all measured
 and rejected, and one — `ruled-rects-v2`, which stops a background panel from witnessing its own
 lattice — shipped, taking precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing
-a true positive.
+a true positive. **S8 then shipped a third detection rule**, `stroke-ruled-v1`, for the grid a
+document draws as ruling lines: `cfpb-home-loan-toolkit` 246‰ → 259‰ and the gate 61‰ → 64‰, with
+`irs-form-1040-2025` held at 0 tables and fabrication still 0.
 **v1 is not done and is not claimed to be.**
 
 **Slices are `v1-S*`, not M-numbers.** The milestone chain ended at M7 with v0. Numbering later
@@ -152,9 +155,12 @@ different one. It does not mean every table is found.
 
 S1 declared the gap as `unruled-tables-not-detected`. S2 shipped the alignment rule, so that
 sentence became false and **the code was deleted rather than reworded** — a limitation that
-outlives the gap it describes is worse than none, because a reader acts on it. What "looked" now
-covers is both rules, and the remaining leftover is narrower:
-`stroke-ruled-tables-not-detected`, for a grid drawn as bare stroked ruling lines.
+outlives the gap it describes is worse than none, because a reader acts on it. S2's replacement,
+`stroke-ruled-tables-not-detected`, met the same end at **S8**, which shipped the stroke-ruled
+rule. What "looked" now covers is all three rules, and the leftover is narrower again:
+`undrawn-table-edges-not-supplied` — an edge the document never drew is not supplied to complete a
+grid, so a table ruled underneath each of its cells comes back one row short rather than finished
+with a coordinate nobody wrote.
 
 S5 made the same move for reading order. v0 declared `multi-column-reading-order` — *a
 multi-column document is read in the WRONG ORDER* — on every artifact. `gutter-columns-v1` made

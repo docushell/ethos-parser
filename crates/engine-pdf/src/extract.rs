@@ -204,6 +204,11 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // coherence precondition a live path — under `-v1` a background panel satisfied coverage for
     // every face at once, so the check almost never fired.
     let mut ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)> = Vec::new();
+    // v1-S8. The same again, for the stroke-ruled rule. It is a live path on ordinary documents —
+    // any page whose rules happen to end at common x positions builds a band and most of them are
+    // refused — so without this a page where the ink implied a grid the author never divided reads
+    // exactly like a page that drew no lines at all.
+    let mut stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)> = Vec::new();
 
     // v1-S3. Read the document's own structure tree ONCE, off the same handle every other stage
     // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
@@ -419,8 +424,61 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 text: r.text.as_str(),
             })
             .collect();
-        // v1-S2: ruled first, then the alignment rule on whatever text no ruled table claims.
-        let detected = crate::tables::detect(page_number, &table_rects, &origins, &mut alloc)?;
+        // v1-S8. The ruling LINES the page stroked, split by orientation before the rule sees
+        // them. Both go through the same transform and quantum as a glyph origin, for the reason
+        // the rectangles do: geometry in a different coordinate system from the text inside it
+        // would be uncheckable by construction.
+        //
+        // Horizontal segments define the rows; vertical ones are read only as corroboration that
+        // a column boundary was drawn. `stroke-ruled-v1` discarded the verticals here and that is
+        // precisely what made it both refuse `cfpb-home-loan-toolkit` page 13 and accept six bands
+        // on its Closing Disclosure pages — see `crate::stroke_ruled`.
+        let mut stroke_rules = Vec::new();
+        let mut uprights = Vec::new();
+        for seg in &interp.segments {
+            let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
+            let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
+            let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
+            if seg.is_horizontal() {
+                stroke_rules.push(crate::stroke_ruled::Rule {
+                    y: r.y0,
+                    x0: r.x0,
+                    x1: r.x1,
+                });
+            } else {
+                uprights.push(crate::stroke_ruled::Upright {
+                    x: r.x0,
+                    y0: r.y0,
+                    y1: r.y1,
+                });
+            }
+        }
+
+        // v1-S8. The rectangles this page's form-field widgets declare, flipped into page space.
+        // Read straight off `/Annots` rather than through the forms walk, because that walk is
+        // gated on a capability and reads text — see `crate::forms::widget_rects`.
+        let field_rects: Vec<crate::tables::QuantRect> =
+            crate::forms::widget_rects(doc.inner(), page_dict)
+                .into_iter()
+                .map(|r| {
+                    let q = f64::from(QUANTUM_PER_POINT);
+                    let (ax, ay) = geom.to_top_left(r.x0() as f64 / q, r.y0() as f64 / q);
+                    let (bx, by) = geom.to_top_left(r.x1() as f64 / q, r.y1() as f64 / q);
+                    crate::tables::quantize_rect(ax, ay, bx, by)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+        // v1-S2, widened at v1-S8: ruled first, then the ruling lines, then the alignment rule on
+        // whatever text neither has claimed.
+        let detected = crate::tables::detect(
+            page_number,
+            &table_rects,
+            &stroke_rules,
+            &uprights,
+            &origins,
+            &field_rects,
+            &mut alloc,
+        )?;
         let mut tables = detected.tables;
 
         // v1-S3: the document's own tags, compared against what the detectors found. The two
@@ -460,6 +518,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         }
         if let Some(r) = detected.ruled_refusal {
             ruled_refusals.push((page_number, r));
+        }
+        if let Some(r) = detected.stroke_refusal {
+            stroke_refusals.push((page_number, r));
         }
         drop(origins);
 
@@ -614,6 +675,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // refusal that did not happen is as misleading as omitting one that did.
     if !ruled_refusals.is_empty() {
         limitations.push(lim::ruled_candidate_refused(&ruled_refusals));
+    }
+    if !stroke_refusals.is_empty() {
+        limitations.push(lim::stroke_ruled_candidate_refused(&stroke_refusals));
     }
     if !unruled_refusals.is_empty() {
         limitations.push(lim::unruled_candidate_refused(&unruled_refusals));

@@ -158,9 +158,10 @@
       "additionalProperties": false,
       "required": [
         "ruled",
-        "unruled"
+        "unruled",
+        "stroke_ruled"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2: with two rules running, a single id could not say whether a run looked for unruled tables and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, and three fields since v1-S8: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -168,7 +169,11 @@
         },
         "unruled": {
           "type": "string",
-          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author \u2014 which is why the two ids are separate."
+          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author \u2014 which is why the ids are separate."
+        },
+        "stroke_ruled": {
+          "type": "string",
+          "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v1`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made \u2014 so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed."
         }
       }
     },
@@ -336,7 +341,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.9.0",
+      "parser_version": "0.10.0",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
@@ -347,7 +352,8 @@
       },
       "table_detection": {
         "ruled": "ruled-rects-v2",
-        "unruled": "unruled-align-v1"
+        "unruled": "unruled-align-v1",
+        "stroke_ruled": "stroke-ruled-v1"
       },
       "struct_tree_rule": "struct-tree-v1",
       "form_annotation_rule": "form-annotations-v1",

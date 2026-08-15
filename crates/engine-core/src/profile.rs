@@ -174,6 +174,20 @@ pub const TABLE_DETECTION_V2: &str = "ruled-rects-v2";
 /// redefining this one, so artifacts from two detectors stay correctly non-comparable.
 pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 
+/// The **stroke-ruled** table-detection rule v1-S8 ships: grids drawn as ruling lines.
+///
+/// A third id rather than a widening of [`TABLE_DETECTION_V2`], for the reason the ruled and
+/// unruled ids are separate: the evidence differs. A filled rectangle is the author saying *this
+/// box is here*; a two-point stroked segment is the author saying *this edge is here*. Both are
+/// ink the author put down — which is why this rule's claim is as strong as the ruled one's and
+/// stronger than the alignment rule's — but they are different statements, and a table on the wire
+/// says which one it was built from.
+///
+/// Measured in v1-S7b: every one of the nine tagged tables `cfpb-home-loan-toolkit` missed sits on
+/// a page that strokes segments, 103 cells and 65% of that document's gold, because a two-point
+/// segment produced no rectangle and never reached a lattice.
+pub const TABLE_DETECTION_STROKE_V1: &str = "stroke-ruled-v1";
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -272,14 +286,23 @@ pub struct TableDetection {
     /// naming it and carrying `tables: []` means the alignment rule looked and refused, not that
     /// nobody looked.
     pub unruled: String,
+    /// Version id of the rule that reconstructs grids from stroked **ruling lines** (v1-S8).
+    ///
+    /// See [`TABLE_DETECTION_STROKE_V1`]. A third field rather than a widening of either other
+    /// one, for the same reason there were two: the evidence differs, and an artifact says which
+    /// kind of evidence its table was built from. Its arrival is what lets the profile stop
+    /// declaring `stroke-ruled-tables-not-detected`, which every build declared from v1-S1 to
+    /// v1-S7b.
+    pub stroke_ruled: String,
 }
 
 impl Default for TableDetection {
-    /// Both rules v1-S2 ships, enabled.
+    /// All three rules, enabled — the two v1-S2 shipped and the one v1-S8 added.
     fn default() -> Self {
         Self {
             ruled: TABLE_DETECTION_V2.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
+            stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
         }
     }
 }
@@ -322,11 +345,12 @@ pub struct Capabilities {
     /// distinction: an absent `tables` key means the producer did not look, an empty array means
     /// it looked and found none, and a non-empty one is tables.
     ///
-    /// What "looked" covers widened at v1-S2. S1 looked only for grids the document painted, and
-    /// declared the alignment case as a limitation; S2 runs both rules, so that limitation is
-    /// retired and `tables: []` now means *neither* rule found one. The leftover is narrower and
-    /// still declared: a grid drawn as bare stroked ruling lines
-    /// (`codes::STROKE_RULED_TABLES_NOT_DETECTED`).
+    /// What "looked" covers has widened twice. S1 looked only for grids the document painted and
+    /// declared the alignment case as a limitation; S2 added the alignment rule and retired it;
+    /// **S8 added the stroke-ruled rule and retired the one S2 left behind**. `tables: []` now
+    /// means all *three* rules looked and none found one. The leftover is narrower again and
+    /// still declared: an edge the document never drew is not supplied to complete a grid
+    /// (`codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED`).
     pub tables: bool,
     /// Ink boxes come from measured font metrics rather than being absent.
     pub measured_ink_boxes: bool,
@@ -801,6 +825,7 @@ mod tests {
                 TableDetection {
                     ruled: _,
                     unruled: _,
+                    stroke_ruled: _,
                 },
             struct_tree_rule: _,
             form_annotation_rule: _,
@@ -828,6 +853,15 @@ mod tests {
                 // whose hash could not tell those apart would claim a comparability it lacks.
                 "table_detection.unruled",
                 Box::new(|p: &mut Profile| p.table_detection.unruled = "other-align-v9".into()),
+            ),
+            (
+                // v1-S8. A third separate knob, for the third kind of evidence. A run that read
+                // the page's ruling lines emitted tables a run that did not could not have, and
+                // `cfpb-home-loan-toolkit` page 13 is the measured instance of exactly that.
+                "table_detection.stroke_ruled",
+                Box::new(|p: &mut Profile| {
+                    p.table_detection.stroke_ruled = "other-stroke-v9".into()
+                }),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -989,7 +1023,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.9.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.10.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1066,34 +1100,47 @@ mod tests {
              `-v1` id, which is the honest label for a rule that did not change. Two artifacts \
              either side of this hash say the same thing about the same document. The hash still \
              moves, because `parser_version` is in it and a version that claimed otherwise would \
-             be the one lie this field cannot afford."
+             be the one lie this field cannot afford.\n\n\
+             Moved a THIRTEENTH time at v1-S8 (0.10.0), and this time a field arrived: \
+             `table_detection` grows `stroke_ruled`, because a third rule runs. An artifact \
+             either side of this hash says something different about the same document — \
+             `cfpb-home-loan-toolkit` page 13's loan worksheet is a 7 x 4 table on one side and \
+             absent on the other — which is exactly what a profile identity is for."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:5593cb1fa7d5e9bb252e9f57643eb0f2d8062902bd7096d0eaca1e26007d2d5c"
+            "sha256:08c4207d18bee0e64daea093d94f0c64c5b897add33288969488be5e75143c65"
         );
     }
 
-    /// Both rules are named on the profile, and either one moving moves the identity (v1-S2).
+    /// All three rules are named on the profile, and any one moving moves the identity.
     ///
-    /// The reason `table_detection` stopped being a string. With one id, an artifact could not
-    /// distinguish "looked for unruled tables and found none" from "never looked", and a reader
-    /// comparing two such artifacts cell for cell would be comparing different detectors.
+    /// The reason `table_detection` stopped being a string at v1-S2, extended to the third rule at
+    /// v1-S8. With one id, an artifact could not distinguish "looked for this kind of table and
+    /// found none" from "never looked", and a reader comparing two such artifacts cell for cell
+    /// would be comparing different detectors.
     #[test]
-    fn the_profile_names_both_table_rules_and_either_one_moves_the_hash() {
+    fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
         assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V2);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
-        assert_ne!(
-            TABLE_DETECTION_V2, TABLE_DETECTION_UNRULED_V1,
-            "two inferences sharing one identity is what a versioned rule id exists to prevent"
-        );
+        assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
+        for (a, b) in [
+            (TABLE_DETECTION_V2, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V2, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
+        ] {
+            assert_ne!(
+                a, b,
+                "two inferences sharing one identity is what a versioned rule id exists to prevent"
+            );
+        }
 
-        // Both appear on the wire, under their own keys.
+        // All three appear on the wire, under their own keys.
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -1123,13 +1170,21 @@ mod tests {
     /// arrived with — claiming a comparability it does not have.
     #[test]
     fn an_unknown_table_rule_key_is_refused() {
-        let bad = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","tagged":"x-v1"}"#;
+        let bad = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"x-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(bad).is_err(),
-            "a third rule id must fail closed, not vanish and change the hash"
+            "a fourth rule id must fail closed, not vanish and change the hash"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#;
+        // And a profile MISSING the field v1-S8 added is refused too, rather than defaulted into
+        // one that claims a rule it never ran.
+        let stale = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#;
+        assert!(
+            serde_json::from_str::<TableDetection>(stale).is_err(),
+            "a pre-S8 profile must not silently acquire the stroke-ruled rule"
+        );
+
+        let good = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()
