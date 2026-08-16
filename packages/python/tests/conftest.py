@@ -20,6 +20,8 @@ went green because it could not find the thing it tests would be the worst outco
 """
 
 import os
+import pathlib
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -34,24 +36,72 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_PDF = REPO_ROOT / "fixtures" / "engine" / "markdown-two-blocks" / "document.pdf"
 
 
+def _workspace_version():
+    """The version `Cargo.toml` declares — the one a located binary has to agree with."""
+    cargo = (REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"$', cargo, re.MULTILINE)
+    assert match, "no workspace version in Cargo.toml"
+    return match.group(1)
+
+
+def _binary_version(path):
+    """`engine --version`, or ``None`` if it will not run."""
+    try:
+        completed = subprocess.run(
+            [str(path), "--version"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.split()[-1].strip()
+
+
 def _locate_binary():
+    """Find a binary that is **this workspace's**, and refuse one that is not.
+
+    The version check is not decoration. A stale `target/release/engine` is preferred by mtime
+    over nothing at all and answers every question plausibly, so a suite that took the first file
+    it found would compare the SDK against a parser from six minor versions ago and go green — it
+    would still prove the SDK does not alter what the CLI prints, but about the wrong CLI. That is
+    a false green, and it is the one this locator exists to make impossible. Measured, not feared:
+    it is what a `0.11.0` release build did here at v1.2-S4.
+    """
+    want = _workspace_version()
+
     pinned = os.environ.get("ETHOS_ENGINE")
     if pinned:
+        # An explicit pin is authoritative in both directions: it is never silently overridden,
+        # and a pin that is the wrong build is an error rather than a reason to look elsewhere.
+        got = _binary_version(pinned)
+        if got != want:
+            raise RuntimeError(
+                "ETHOS_ENGINE={!r} reports {} but this workspace is {}. Rebuild it, or point "
+                "ETHOS_ENGINE at a build of this tree.".format(pinned, got or "nothing", want)
+            )
         return pinned
-    for candidate in (
+
+    tried = []
+    candidates = [
         REPO_ROOT / "target" / "release" / "engine",
         REPO_ROOT / "target" / "debug" / "engine",
-    ):
-        if candidate.is_file():
+    ]
+    found_on_path = shutil.which("engine")
+    if found_on_path:
+        candidates.append(pathlib.Path(found_on_path))
+
+    for candidate in candidates:
+        got = _binary_version(candidate)
+        if got == want:
             return str(candidate)
-    found = shutil.which("engine")
-    if found:
-        return found
+        tried.append("  {} ({})".format(candidate, got or "absent"))
+
     raise RuntimeError(
-        "no `engine` binary to test against. Build one:\n\n"
+        "no `engine` binary at {}. Tried, in order:\n{}\n\n"
         "    cargo build --locked\n\n"
-        "or point ETHOS_ENGINE at an existing build. This is a failure and not a skip: a green "
-        "run that never reached the engine would prove nothing."
+        "or point ETHOS_ENGINE at a build of this tree. This is a failure and not a skip: a "
+        "green run against a parser from another version would prove something about the wrong "
+        "engine.".format(want, "\n".join(tried) or "  (nothing)")
     )
 
 

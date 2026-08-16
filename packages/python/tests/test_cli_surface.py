@@ -40,7 +40,12 @@ from ethos_engine import EngineFailed, EngineNotFound, NotARepresentation
 from ethos_engine._c14n import c14n_bytes
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+#: Every source in the package, for the rules that bind regardless of entry point.
 SOURCE_FILES = sorted((PACKAGE_ROOT / "src" / "ethos_engine").glob("*.py"))
+
+#: What ``import ethos_engine`` reaches. The ``langchain`` submodule is deliberately not here:
+#: it is behind an optional extra, and reaching it is a separate act.
+DEFAULT_IMPORT_SOURCES = [p for p in SOURCE_FILES if p.name != "langchain.py"]
 
 
 # --- byte identity --------------------------------------------------------------------------
@@ -155,10 +160,15 @@ def test_pyproject_declares_no_runtime_dependency():
     )
 
 
-def test_every_module_this_package_imports_is_stdlib():
-    """Read off the import statements, so the declaration above cannot be true only on paper."""
+def test_every_module_the_default_import_reaches_is_stdlib():
+    """Read off the import statements, so the declaration above cannot be true only on paper.
+
+    Scoped to the default import surface: ``ethos_engine.langchain`` reaches its optional extra,
+    and :func:`test_the_langchain_module_reaches_its_extra_and_nothing_else` is what bounds it.
+    """
     stdlib = sys.stdlib_module_names
-    for path in SOURCE_FILES:
+    assert DEFAULT_IMPORT_SOURCES, "an empty scan would pass vacuously"
+    for path in DEFAULT_IMPORT_SOURCES:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -174,6 +184,36 @@ def test_every_module_this_package_imports_is_stdlib():
                         path.name, root
                     )
                 )
+
+
+def test_the_langchain_module_reaches_its_extra_and_nothing_else():
+    """``langchain_core`` is the one non-stdlib import allowed anywhere in this package.
+
+    And it is guarded: importing the module without the extra is a named ``ImportError`` carrying
+    the install command, not Python's bare "No module named".
+    """
+    path = PACKAGE_ROOT / "src" / "ethos_engine" / "langchain.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and not node.level:
+            roots.add((node.module or "").split(".")[0])
+
+    allowed = set(sys.stdlib_module_names) | {"ethos_engine", "langchain_core"}
+    assert roots <= allowed, "langchain.py reaches {}".format(sorted(roots - allowed))
+
+    # `langgraph` is absent from `roots` above, which is the rule. The word itself appears in the
+    # module docstring explaining why there is no LangGraph adapter — and banning a word a
+    # document needs in order to argue against it is the mistake `ci/forbidden-tokens.sh` strips
+    # comments to avoid.
+    assert "langgraph" not in roots
+
+    source = path.read_text(encoding="utf-8")
+    assert "pip install 'ethos-engine[langchain]'" in source, (
+        "the failure must carry the install command"
+    )
 
 
 # --- identity ---------------------------------------------------------------------------------

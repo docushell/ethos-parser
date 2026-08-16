@@ -38,7 +38,11 @@ import * as sdk from "../src/index.js";
 import { EngineFailed, EngineNotFound, NotARepresentation, extract, ground } from "../src/index.js";
 import { c14nBytes } from "../src/c14n.js";
 
-const SOURCE_FILES = ["src/index.js", "src/c14n.js"];
+/** What `import "ethos-engine"` reaches. The langchain subpath is deliberately not here. */
+const DEFAULT_ENTRY_SOURCES = ["src/index.js", "src/c14n.js"];
+
+/** Every source in the package, for the rules that bind regardless of entry point. */
+const ALL_SOURCES = [...DEFAULT_ENTRY_SOURCES, "src/langchain.js"];
 
 async function withTempDir(body) {
   const directory = await mkdtemp(join(tmpdir(), "ethos-node-test-"));
@@ -152,8 +156,8 @@ test("no source file carries the vocabulary the repository bans", () => {
     "verify_claim",
     "claim_verified",
   ];
-  assert.ok(SOURCE_FILES.length > 0, "an empty scan would pass vacuously");
-  for (const relative of SOURCE_FILES) {
+  assert.ok(ALL_SOURCES.length > 0, "an empty scan would pass vacuously");
+  for (const relative of ALL_SOURCES) {
     const text = readFileSync(join(PACKAGE_ROOT, relative), "utf8").toLowerCase();
     for (const token of banned) {
       assert.equal(text.includes(token), false, `\`${token}\` appears in ${relative}`);
@@ -165,13 +169,18 @@ test("no source file carries the vocabulary the repository bans", () => {
 
 test("package.json declares no runtime dependency", () => {
   const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
-  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+  for (const field of ["dependencies", "optionalDependencies"]) {
     assert.deepEqual(
       manifest[field] ?? {},
       {},
       `${field} must be empty; a package that pulled something to hand back bytes the CLI already printed adds a place for those bytes to change`,
     );
   }
+  // v1.2-S4 added exactly one peer, and it is OPTIONAL: `@langchain/core`, reached only through
+  // the `./langchain` subpath. A peer that were not optional would make every consumer install it
+  // to use `extract`, which is the empty-install promise broken by another name.
+  assert.deepEqual(Object.keys(manifest.peerDependencies ?? {}), ["@langchain/core"]);
+  assert.equal(manifest.peerDependenciesMeta["@langchain/core"].optional, true);
   // No native addon, and no build step that could produce one.
   for (const field of ["gypfile", "binary", "devDependencies", "scripts"]) {
     const value = JSON.stringify(manifest[field] ?? "");
@@ -181,9 +190,11 @@ test("package.json declares no runtime dependency", () => {
   }
 });
 
-test("every module this package imports is a node: builtin", () => {
+test("every module the default entry point imports is a node: builtin", () => {
   // Read off the import statements, so the declaration above cannot be true only on paper.
-  for (const relative of SOURCE_FILES) {
+  // Scoped to the DEFAULT entry: `src/langchain.js` reaches its optional peer, and the test below
+  // is the one that bounds what it may reach.
+  for (const relative of DEFAULT_ENTRY_SOURCES) {
     const source = readFileSync(join(PACKAGE_ROOT, relative), "utf8");
     const specifiers = [...source.matchAll(/^import[^"']*["']([^"']+)["']/gm)].map((m) => m[1]);
     assert.ok(specifiers.length > 0, `read no imports off ${relative}`);
@@ -206,6 +217,25 @@ test("the package resolves by name, with no install step and no lockfile", async
   assert.equal(resolved.extract, sdk.extract);
   assert.equal(resolved.nodeGet, sdk.nodeGet);
   assert.equal(manifest.private, true, "not published, and mechanically so rather than by promise");
+});
+
+test("the langchain subpath reaches its peer and nothing else", () => {
+  // `@langchain/core/tools` is the one non-builtin, non-relative specifier allowed anywhere in
+  // this package — and it is imported DYNAMICALLY inside a try/catch, so a missing peer is a
+  // named failure at load rather than Node's generic module-not-found.
+  const source = readFileSync(join(PACKAGE_ROOT, "src", "langchain.js"), "utf8");
+
+  const statics = [...source.matchAll(/^import[^"']*["']([^"']+)["']/gm)].map((m) => m[1]);
+  for (const specifier of statics) {
+    assert.ok(
+      specifier.startsWith("node:") || specifier.startsWith("./"),
+      `a static import of \`${specifier}\` would make the peer mandatory at load`,
+    );
+  }
+
+  const dynamics = [...source.matchAll(/await import\(\s*["']([^"']+)["']/g)].map((m) => m[1]);
+  assert.deepEqual(dynamics, ["@langchain/core/tools"]);
+  assert.match(source, /npm install @langchain\/core/, "the failure must carry the install command");
 });
 
 // --- identity -------------------------------------------------------------------------------------

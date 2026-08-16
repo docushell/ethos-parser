@@ -21,7 +21,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,23 +49,69 @@ function isFile(path) {
   }
 }
 
+/** The version `Cargo.toml` declares — the one a located binary has to agree with. */
+function workspaceVersion() {
+  const cargo = readFileSync(join(REPO_ROOT, "Cargo.toml"), "utf8");
+  const match = cargo.match(/^version = "([^"]+)"$/m);
+  if (!match) throw new Error("no workspace version in Cargo.toml");
+  return match[1];
+}
+
+/** `engine --version`, or `null` if it will not run. */
+function binaryVersion(path) {
+  const result = spawnSync(path, ["--version"], { encoding: "utf8" });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.trim().split(/\s+/).pop();
+}
+
+/**
+ * Find a binary that is **this workspace's**, and refuse one that is not.
+ *
+ * The version check is not decoration. A stale `target/release/engine` is preferred over nothing
+ * at all and answers every question plausibly, so a suite that took the first file it found would
+ * compare the SDK against a parser from six minor versions ago and go green — it would still
+ * prove the SDK does not alter what the CLI prints, but about the wrong CLI. That is a false
+ * green, and it is the one this locator exists to make impossible. Measured, not feared: it is
+ * what a `0.11.0` release build did here at v1.2-S4.
+ */
 function locateBinary() {
+  const want = workspaceVersion();
+
   const pinned = process.env.ETHOS_ENGINE;
-  if (pinned) return pinned;
-  for (const candidate of [
+  if (pinned) {
+    // An explicit pin is authoritative in both directions: it is never silently overridden, and a
+    // pin that is the wrong build is an error rather than a reason to look elsewhere.
+    const got = binaryVersion(pinned);
+    if (got !== want) {
+      throw new Error(
+        `ETHOS_ENGINE=${JSON.stringify(pinned)} reports ${got ?? "nothing"} but this workspace ` +
+          `is ${want}. Rebuild it, or point ETHOS_ENGINE at a build of this tree.`,
+      );
+    }
+    return pinned;
+  }
+
+  const candidates = [
     join(REPO_ROOT, "target", "release", "engine"),
     join(REPO_ROOT, "target", "debug", "engine"),
-  ]) {
-    if (isFile(candidate)) return candidate;
-  }
+  ];
   for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    if (isFile(join(dir, "engine"))) return join(dir, "engine");
+    const onPath = join(dir, "engine");
+    if (isFile(onPath)) candidates.push(onPath);
   }
+
+  const tried = [];
+  for (const candidate of candidates) {
+    const got = binaryVersion(candidate);
+    if (got === want) return candidate;
+    tried.push(`  ${candidate} (${got ?? "absent"})`);
+  }
+
   throw new Error(
-    "no `engine` binary to test against. Build one:\n\n" +
+    `no \`engine\` binary at ${want}. Tried, in order:\n${tried.join("\n") || "  (nothing)"}\n\n` +
       "    cargo build --locked\n\n" +
-      "or point ETHOS_ENGINE at an existing build. This is a failure and not a skip: a green " +
-      "run that never reached the engine would prove nothing.",
+      "or point ETHOS_ENGINE at a build of this tree. This is a failure and not a skip: a green " +
+      "run against a parser from another version would prove something about the wrong engine.",
   );
 }
 

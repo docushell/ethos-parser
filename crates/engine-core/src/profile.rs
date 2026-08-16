@@ -1078,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.17.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.18.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1222,11 +1222,19 @@ mod tests {
              vectors again — and where JavaScript cannot follow, it says so rather than \
              approximating: that language has one number type, so `1.0` and `1` are the same \
              value and no port can tell them apart. What both ports reject identically is a value \
-             that is genuinely not an integer, which is the property this serializer needs."
+             that is genuinely not an integer, which is the property this serializer needs.\n\n\
+             Moved a TWENTY-SECOND time at v1.2-S4 (0.18.0), and again NOTHING but the version \
+             moved — the fifth time. S4 is LangChain tools over the two SDKs, and it adds no Rust \
+             at all: three callable tools per language, each calling the SDK rather than spawning \
+             this binary a third way. Its whole content is a split this profile already describes \
+             elsewhere — locators in the artifact, counts in the prose — so a framework binding \
+             is an adopter and there is no `capabilities.langchain`, for the reason there is no \
+             `capabilities.node`. The tools are behind an optional extra and an optional peer, so \
+             neither SDK's empty runtime install moved either."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:83cd55301d2423d54033e449b2bcdbd07b5a5c926c441dc456cb93edc7788774"
+            "sha256:2bf3e74e6a3b972669cbc03afda66c4949b870d9695a7739dfc255a859485fee"
         );
     }
 

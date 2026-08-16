@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2-S3 shipped, as 0.17.0.** v1.1 is complete. v1 is the DocuShell replacement gate
+**Status:** **v1.2-S4 shipped, as 0.18.0.** v1.1 is complete. v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -20,7 +20,7 @@ locator, returns it as an opaque handle, and re-validates it on the way back in*
 and MCP is the worst host on the list rather than the best. A forged node id is an error, an edited
 representation fails its fingerprint, and no tool argument names a coordinate.
 [`12-V12-SCOPE.md`](12-V12-SCOPE.md) states the law; [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md)
-names S4–S5 (LangChain, liteparse) as not started.
+names S5 (liteparse) as not started.
 
 **S2 is the Python SDK, and it wraps the CLI rather than the library.** `packages/python/` is three
 functions over `subprocess` with **no runtime dependency** — so byte-identity with the CLI is a
@@ -35,6 +35,14 @@ force it. No napi, no TypeScript, no runtime dependency, `private: true`. c14n i
 sorting keys by code point because JavaScript's default sort compares UTF-16 units and disagrees
 with Rust above the BMP — and the one thing that language cannot do, tell `1.0` from `1`, is
 written down as a named divergence rather than approximated.
+
+**S4 makes both SDKs callable from LangChain, and the split is the whole slice.** Three tools per
+language over `response_format="content_and_artifact"`: the artifact carries the SDK object, and
+`content` carries MCP's counts and nothing a pipeline would bind to — compared **byte-for-byte**
+against what `engine mcp` emits, so the two adapters cannot drift into two sentences about one
+document. The argument schemas are MCP's own, verbatim. LangChain is an optional extra and an
+optional peer on a subpath, so the default import still pulls nothing. No LangGraph adapter (the
+memo refused one), no trust state, no `verify` tool, no `capabilities.langchain`.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots

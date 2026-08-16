@@ -16,9 +16,9 @@ measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor,
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
 
 **v1.1 is Safe Markdown and it is complete** (S0–S4). **v1.2 is adoption, and it has started: the
-workspace is at 0.17.0** with S0–S3 done — the scope document, the first adapter (MCP over stdio),
-and the Python and Node SDKs. Each began because the owner asked for the next roadmap row, not
-because the gate cleared.
+workspace is at 0.18.0** with S0–S4 done — the scope document, the first adapter (MCP over stdio),
+the Python and Node SDKs, and LangChain tools over both. Each began because the owner asked for the
+next roadmap row, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
@@ -91,6 +91,20 @@ third CLI verb would exist for symmetry), so c14n v1 is ported into each and pin
 an edited artifact fails at its fingerprint before any lookup happens. `markdown`, `html` and
 `verify` are deliberately absent from both. **Neither is published** — not on PyPI, not on npm, and
 this version does not put them there.
+
+**The LangChain tools are the same three functions, with the locators kept out of the prose.**
+Both SDKs expose `extract`, `ground` and `node_get` on a subpath —
+[`ethos_engine.langchain`](packages/python/) and [`ethos-engine/langchain`](packages/node/) — as
+tools declaring `response_format="content_and_artifact"`. **The artifact carries the record; the
+`content` string carries counts.** A box in `content` is a locator a model can edit and then cite,
+which is the whole hazard, so the summaries are MCP's own — compared byte-for-byte against what
+`engine mcp` emits, and the argument schemas are read off `tools/list` rather than retyped. `node_get`'s
+summary names the node's kind and never its id.
+
+LangChain is an **optional extra** and an **optional peer**, so `import ethos_engine` and
+`import "ethos-engine"` still pull nothing; importing the subpath without it is a named failure
+carrying the install command. There is no LangGraph adapter — a bindable tool is already what
+LangGraph binds — no trust state on any result, and no `verify` tool.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds
@@ -178,7 +192,15 @@ pip install -e 'packages/python[dev]' && pytest packages/python
 node --test packages/node
 ```
 
-Node has nothing to install: no dependencies means no lockfile and no `npm install`.
+Node has nothing to install for the core suite: no runtime dependency means no lockfile and no
+`npm install`. The LangChain tests need the optional peer and skip with the install command
+without it — `npm install --no-save @langchain/core` from `packages/node` runs them. Python's dev
+extra already includes `langchain-core`, so its LangChain tests always run.
+
+Both suites refuse a binary that is not this workspace's: they read `engine --version` and compare
+it to `Cargo.toml`. A stale `target/release/engine` would otherwise be preferred over nothing and
+answer every question plausibly, and a byte-identity check that compares the SDK against the CLI
+using the same stale binary is self-consistent — green, and about the wrong engine.
 
 Both packages read `ETHOS_ENGINE` first and **authoritatively** — a path named there and not present
 is an error, not a reason to go looking for some other build — then `engine` on `PATH`. Both suites

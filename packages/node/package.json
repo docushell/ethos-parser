@@ -1,6 +1,6 @@
 {
   "name": "ethos-engine",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "A thin Node surface over the ethos-engine CLI. Locators are minted by the engine, never composed by a caller.",
   "license": "Apache-2.0",
   "author": "ethos-engine maintainers",
@@ -11,7 +11,8 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./langchain": "./src/langchain.js"
   },
   "files": [
     "src",
@@ -19,6 +20,14 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3 <2"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    }
   },
   "scripts": {
     "test": "node --test"

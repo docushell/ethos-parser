@@ -58,6 +58,41 @@ claims, and a function that exists because it was cheap is a surface to keep hon
 client here either: MCP is a process, this is a library, and they are two callers of one binary
 rather than layers.
 
+## LangChain tools (v1.2-S4)
+
+The same three functions as callable tools, behind an **optional extra** so the default install
+still pulls nothing:
+
+```bash
+pip install 'ethos-engine[langchain]'
+```
+
+```python
+from ethos_engine.langchain import tools
+
+llm_with_tools = llm.bind_tools(tools())      # or a LangGraph ToolNode
+```
+
+**Locators travel in the tool `artifact`, never in `content`.** Each tool declares
+`response_format="content_and_artifact"`, so a `ToolMessage` carries the record in `.artifact` and
+a summary in `.content` — counts, and nothing a pipeline would bind to:
+
+| tool | `content` | `artifact` |
+| --- | --- | --- |
+| `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
+| `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
+| `node_get` | ``1 node, kind `{kind}`.`` | the node record |
+
+A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
+version is arranged against. The summaries are MCP's own and the test compares them **byte for
+byte** against what `engine mcp` emits; the argument schemas are the ones `tools/list` advertises,
+verbatim, so all three adapters have one wire shape. `node_get`'s summary names the kind and never
+the id.
+
+A forged id, an edited payload or an unreadable document **raises** — MCP's `isError: true` in this
+framework's currency. No tool sets trust state, there is no `verify` tool, and there is no
+LangGraph adapter: a `StructuredTool` is already what LangGraph binds.
+
 ## Installing and running
 
 The `engine` binary is a prerequisite; nothing here downloads or vendors one.

@@ -36,8 +36,26 @@ dynamic = ["version"]
 Repository = "https://github.com/docushell/ethos-engine"
 
 [project.optional-dependencies]
-# Dev only. `pip install ethos-engine` installs nothing but this package.
-dev = ["pytest>=7"]
+# **The runtime install stays empty.** `langchain` is an extra so that `import ethos_engine` pulls
+# nothing; only `ethos_engine.langchain` needs it, and importing that module without it is a named
+# failure rather than a silent skip (v1.2-S4).
+#
+# `langchain-core` and not the `langchain` hub: the tools need `StructuredTool` and nothing else,
+# and pinning a meta-package to get one class is how a wheel acquires a dependency tree nobody
+# reviewed.
+#
+# The range is bounded on both sides for one reason — `response_format="content_and_artifact"`.
+# That parameter IS this slice: without it the artifact is stringified into `content`, which is a
+# locator a model can edit and then cite. The floor is the oldest line this package is willing to
+# claim carries it, and the `<2` ceiling is where the contract could change; a major bump should
+# break loudly here rather than silently downgrade the split.
+# `tests/test_langchain.py` asserts the parameter is honoured on whatever version is installed, so
+# the pin is a declaration and the test is the proof.
+langchain = ["langchain-core>=0.3,<2"]
+
+# Dev only. `pip install ethos-engine` installs nothing but this package. The langchain extra is
+# included so the S4 tests always run rather than conditionally.
+dev = ["pytest>=7", "ethos-engine[langchain]"]
 
 # One source of truth for the version, inside the package, so the distribution metadata cannot
 # drift from what `ethos_engine.__version__` reports. A test pins both to the workspace

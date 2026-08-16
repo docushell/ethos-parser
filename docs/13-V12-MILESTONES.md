@@ -13,7 +13,7 @@ the owner asked for the next roadmap row, and nothing in it closes v1.
 | **S1** | MCP over stdio: `extract`, `ground`, `node_get` | S0 | **done** |
 | **S2** | Python SDK — thin, over the same library or CLI | S1 | **done** |
 | **S3** | Node SDK | S2 | **done** |
-| **S4** | LangChain tool, locators in `artifact` never `content` | S2, S3 | **not started** |
+| **S4** | LangChain tool, locators in `artifact` never `content` | S2, S3 | **done** |
 | **S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | S1 | **not started** |
 
 ---
@@ -384,12 +384,141 @@ opinion about whether a claim is supported. No MCP client: MCP is a process, thi
 
 ---
 
-## S4 — LangChain tool — **not started**
+## S4 — LangChain tools
+
+- **Status: done.** `ethos_engine.langchain` and `ethos-engine/langchain` at **0.18.0**. Three
+  tools per language, no new crate, no Rust changed but the version, and **neither SDK's empty
+  runtime install moved**.
 
 - **Goal:** a callable tool for LangChain (Python and JS), running unchanged inside LangGraph.
+
 - **The standing constraint:** §16.7's LangChain row — **locators travel in the tool `artifact`,
-  never in `content`**, and the tool must not set trust state.
-- **Not started.** Starts when the owner asks.
+  never in `content`** — and the tool must not set trust state.
+
+### The split is the whole slice
+
+`12-V12-SCOPE.md` §3's second corollary says where locators live, and MCP already implemented it.
+LangChain implements the same sentence in its own types, so the table is a translation and not a
+design:
+
+| MCP | LangChain |
+| --- | --- |
+| `structuredContent` | the tool's **`artifact`** — the SDK object, unaltered |
+| `content` text | the tool's **`content`** — counts, and nothing a pipeline would bind to |
+
+`response_format="content_and_artifact"` (`responseFormat` in JS) is what makes both sides real.
+Without it the artifact is stringified into `content`, and a box in `content` is a locator a model
+can edit and then cite — which is the failure this whole version is arranged to prevent. Both
+optional pins are bounded on **both** sides for that one reason: a major bump is where the
+contract could change, and it should break loudly rather than silently downgrade the split.
+
+| tool | `content` | `artifact` |
+| --- | --- | --- |
+| `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
+| `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
+| `node_get` | ``1 node, kind `{kind}`.`` | the node record |
+
+**MCP is the oracle for those strings, not this slice's opinion.** The suites compare `content`
+byte-for-byte against what `engine mcp` emits on the same document, on one fixture where nothing
+is omitted and one where everything is. That is what stops a second adapter inventing a richer
+sentence than the first — and it is also the proof that `ground`'s omitted count, computed out
+here as **nodes minus elements**, equals the engine's own `omission.nodes_omitted`. Counting
+geometry rows instead would re-encode `GeometryPresence::is_groundable` in two more languages, and
+a count derived from a different question than the one being asked is a count that goes wrong the
+first time a second absence variant appears.
+
+`node_get`'s summary names the **kind** and never the id: a kind is a category, an id is a handle,
+and a handle in the one channel a model can rewrite is the hazard itself. The kind is spelled the
+way the **artifact** spells it (`text_run`), not the way `engine mcp` prints Rust's `Debug`
+(`TextRun`) — reshaping it would be the adapter inventing a name for a thing it did not read.
+
+### One wire shape, checked against the wire
+
+The three argument schemas are **plain JSON Schema, verbatim from what `engine mcp` advertises**,
+and a test in each language asserts them against `tools/list` rather than against a reviewer's
+memory. That is where the geometry ban lives too: no `page`, no `bbox`, no `x`/`y`, no row/column
+pair, in any of them.
+
+`node_id` keeps MCP's spelling in **both** languages even though the Node SDK's function parameter
+is `nodeId`. The tool argument is the wire, and one wire has one name.
+
+JSON Schema rather than pydantic models or zod: it is what both frameworks accept, it lets the
+three adapters be compared object to object, and it keeps the Node package needing nothing but
+`@langchain/core`.
+
+### The install stays empty
+
+| package | how LangChain arrives | subpath |
+| --- | --- | --- |
+| `packages/python` | optional extra `[langchain]`; `dependencies` stays `[]` | `ethos_engine.langchain` |
+| `packages/node` | optional peer `@langchain/core`; `dependencies` stays absent | `ethos-engine/langchain` |
+
+`import ethos_engine` and `import "ethos-engine"` still reach nothing but the stdlib, and a test in
+each language asserts it by reading the import graph of the **default entry point only**. Importing
+the subpath without the dependency is a **named** failure carrying the install command — in JS via
+a dynamic `import` inside a try/catch at module load, so it fails exactly where Python's
+`ImportError` fails, rather than as Node's generic module-not-found.
+
+### No LangGraph adapter, and no trust state
+
+§16.7 refused a separate LangGraph integration and this slice honours that: a `StructuredTool` is
+already what `bind_tools` and a `ToolNode` take, so a graph, a node or a checkpointer here would be
+a second surface that proves nothing. **No `langgraph` package is depended on**, in either
+language, and a test asserts it.
+
+No tool result, summary or annotation says `grounded`, `verified`, an evidence tier, a score or a
+degree of belief; `07-VERIFY-BOUNDARY.md` is unchanged, and there is no `verify` tool. A failure —
+a forged id, an edited payload, an unreadable document — **raises**, which is MCP's `isError: true`
+in this framework's currency. Nothing catches what the SDK raises, because an empty result would
+tell a model its guess was merely unlucky.
+
+### A false green the slice found and closed
+
+Both SDK suites preferred `target/release/engine` over `target/debug/engine` and took the first
+file that existed. On a tree with a stale release build that was a **`0.11.0`** binary, and every
+S2 and S3 assertion passed against it: the byte-identity checks compare the SDK against the CLI
+using the same binary, so they are self-consistent whichever one it is. They proved what they
+claim, about the wrong engine.
+
+Both locators now read `engine --version` and refuse a binary that is not this workspace's — an
+explicit `ETHOS_ENGINE` pin errors rather than being silently overridden, and the search skips a
+build from another version and names what it found. Measured, not feared: it is what tripped this
+slice's first `engine mcp` call.
+
+- **In:** `packages/python/src/ethos_engine/langchain.py` + the `[langchain]` extra;
+  `packages/node/src/langchain.js` + the `./langchain` export and optional peer; the test-harness
+  version guard in both suites; `0.18.0` and the moved profile hash; both SDK version pins;
+  `12`/`13`; CHANGELOG; README; `docs/README.md`.
+
+- **Out:** `langgraph` / `@langchain/langgraph` in either language. A default-install dependency.
+  A `verify`, `markdown` or `html` tool. An MCP client. A custom agent, chain, retriever or
+  `Document` loader. LlamaIndex, Haystack, RAGFlow, Dify, n8n, Windmill, Langflow.
+  `capabilities.langchain`. A liteparse mapper. Publication. A tag.
+
+- **Acceptance tests:**
+  - [x] Python `dependencies` still `[]`; Node `dependencies` still absent; `@langchain/core` is
+        an **optional** peer and `langchain-core` an extra
+  - [x] `import ethos_engine` / `import "ethos-engine"` reaches no framework, asserted off the
+        default entry point's import graph
+  - [x] Three tools per language: `extract`, `ground`, `node_get`
+  - [x] `artifact` is the SDK object; `content` is MCP's counts, **byte-for-byte against
+        `engine mcp`** on an omitting and a non-omitting document
+  - [x] No summary carries `bbox`, `[`, `x0`, `origin`, `sha256:`, the **real** minted id or the
+        **real** fingerprint — read off the artifact rather than hardcoded
+  - [x] Forged `node_id` raises; an edited representation raises at the fingerprint; an unreadable
+        document raises
+  - [x] The argument schemas **equal** the ones `engine mcp` advertises; none names a coordinate
+  - [x] No trust-state word on a result, summary, description or schema; `status` is `success`
+  - [x] No LangGraph dependency in either language
+  - [x] Workspace **0.18.0**, both SDKs and `package.json` **0.18.0**, profile hash
+        `sha256:2bf3e74e6a3b972669cbc03afda66c4949b870d9695a7739dfc255a859485fee`
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables; the
+        markdown and html goldens still green
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+  - [x] `pytest` green in `packages/python`; `node --test` green in `packages/node` with the peer
+        present, and skipping the S4 file with the install command when it is absent
+
+- **Depends on:** S2, S3.
 
 ---
 

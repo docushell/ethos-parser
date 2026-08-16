@@ -73,6 +73,11 @@ Locators live in the **artifact**, never in the prose a model reads and edits. I
 LangChain row says so directly). A summary a human or a model reads may carry counts. It may not
 carry a box.
 
+Both halves have shipped: v1.2-S1 in `structuredContent`, v1.2-S4 in
+`response_format="content_and_artifact"`. The second is checked against the first — the LangChain
+tools' `content` is compared **byte-for-byte** with what `engine mcp` emits — so the two adapters
+cannot drift into two different sentences about the same document.
+
 ## 4. What v1.2 is
 
 | | |
@@ -109,31 +114,33 @@ carry a box.
 | **v1.2-S1** | MCP over stdio: `extract`, `ground`, `node_get`, with the handle law enforced | **done** |
 | **v1.2-S2** | Python SDK — thin, over the same library or CLI | **done** |
 | **v1.2-S3** | Node SDK | **done** |
-| **v1.2-S4** | LangChain tool, locators in `artifact` and never in `content` | **not started** |
+| **v1.2-S4** | LangChain tool, locators in `artifact` and never in `content` | **done** |
 | **v1.2-S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | **not started** |
 
-S4 starts when the owner asks. Not before.
+S5 starts when the owner asks. Not before.
 
 ## 7. Identity
 
 An adapter does not change what a document says, so **no adapter adds a profile field**:
 
-- **No `capabilities.mcp`, no `capabilities.python`, no `capabilities.node`.** A capability
-  describes what this profile can read out of a *document*; a transport does not, and neither does
-  a language binding. Adding one would put a flag on every artifact that no consumer can act on,
-  and `01-CONTRACT.md`'s capability discipline exists to stop exactly that. If a caller ever must
-  see an adapter on the wire, that is a decision with a proof test behind it, not a default.
+- **No `capabilities.mcp`, no `capabilities.python`, no `capabilities.node`, no
+  `capabilities.langchain`.** A capability describes what this profile can read out of a
+  *document*; a transport does not, and neither does a language binding or a framework binding.
+  Adding one would put a flag on every artifact that no consumer can act on, and
+  `01-CONTRACT.md`'s capability discipline exists to stop exactly that. If a caller ever must see
+  an adapter on the wire, that is a decision with a proof test behind it, not a default.
 - **No new rule id.** `markdown_rule`, `html_rule` and the three table rules are untouched.
-- Workspace `0.14.1` → **`0.15.0`** (S1) → **`0.16.0`** (S2) → **`0.17.0`** (S3), and the profile
-  hash moves **with the version alone** every time — the same shape v1-S7b (0.9.0) had, where
-  nothing but `parser_version` moved and the hash moved anyway, because a version that claimed
-  otherwise is the one lie that field cannot afford.
+- Workspace `0.14.1` → **`0.15.0`** (S1) → **`0.16.0`** (S2) → **`0.17.0`** (S3) → **`0.18.0`**
+  (S4), and the profile hash moves **with the version alone** every time — the same shape v1-S7b
+  (0.9.0) had, where nothing but `parser_version` moved and the hash moved anyway, because a
+  version that claimed otherwise is the one lie that field cannot afford.
 
 | version | slice | what moved |
 | --- | --- | --- |
 | `0.15.0` | S1, MCP over stdio | `parser_version` |
 | `0.16.0` | S2, Python SDK | `parser_version` |
 | `0.17.0` | S3, Node SDK | `parser_version` |
+| `0.18.0` | S4, LangChain tools | `parser_version` |
 
 ## 8. Standing rules, carried forward
 

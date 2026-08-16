@@ -72,16 +72,65 @@ claims, and a function that exists because it was cheap is a surface to keep hon
 `docs/07-VERIFY-BOUNDARY.md` is the boundary a host's convenience must not bend. There is no MCP
 client here either: MCP is a process, this is a library.
 
+## LangChain tools (v1.2-S4)
+
+The same three functions as callable tools, behind an **optional peer** so the default import still
+pulls nothing:
+
+```bash
+npm install @langchain/core
+```
+
+```js
+import { tools } from "ethos-engine/langchain";
+
+const withTools = model.bindTools(tools());   // or a LangGraph ToolNode
+```
+
+**Locators travel in the tool `artifact`, never in `content`.** Each tool declares
+`responseFormat: "content_and_artifact"`, so a `ToolMessage` carries the record in `.artifact` and
+a summary in `.content` — counts, and nothing a pipeline would bind to:
+
+| tool | `content` | `artifact` |
+| --- | --- | --- |
+| `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
+| `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
+| `node_get` | ``1 node, kind `{kind}`.`` | the node record |
+
+A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
+version is arranged against. The summaries are MCP's own and the test compares them **byte for
+byte** against what `engine mcp` emits; the argument schemas are the ones `tools/list` advertises,
+verbatim — including `node_id` rather than `nodeId`, because the tool argument is the wire and one
+wire has one name.
+
+A forged id, an edited payload or an unreadable document **throws** — MCP's `isError: true` in this
+framework's currency. No tool sets trust state, there is no `verify` tool, and there is no
+LangGraph adapter: a bindable tool is already what LangGraph binds.
+
+Importing `ethos-engine/langchain` without the peer is a named failure carrying the install
+command; the tests skip with that same command when it is absent.
+
 ## Running it
 
-The `engine` binary is a prerequisite; nothing here downloads or vendors one. There is nothing to
-install — no dependencies means no lockfile and no `npm install`.
+The `engine` binary is a prerequisite; nothing here downloads or vendors one. The core suite has
+nothing to install — no runtime dependency means no lockfile and no `npm install`.
 
 ```bash
 cargo build --release --locked && ETHOS_ENGINE=target/release/engine node --test packages/node
+```
+
+The LangChain tests need the optional peer and skip with the install command without it:
+
+```bash
+npm install --no-save @langchain/core
 ```
 
 `ETHOS_ENGINE` is checked **first and authoritatively** — a path named there and not present is an
 error, not a reason to go looking for some other build — then `engine` on `PATH`. That is the
 precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is the same: resolving to
 a binary nobody chose means returning artifacts from a parser nobody chose.
+
+The suite additionally checks `engine --version` against `Cargo.toml` and refuses a binary from
+another version. A stale `target/release/engine` would otherwise be preferred over nothing and
+answer every question plausibly — and a byte-identity check that compares the SDK against the CLI
+using the same stale binary is self-consistent, so it would go green about the wrong engine.

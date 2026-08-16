@@ -4,3 +4,9 @@
 
 # Python bytecode from importing make_fixtures.py in a probe.
 __pycache__/
+
+# Node dev installs. `packages/node` has no runtime dependency and is not published, so there is
+# nothing to lock; `@langchain/core` is an OPTIONAL PEER installed on demand to run the v1.2-S4
+# tests, which skip with the install command when it is absent.
+node_modules/
+package-lock.json

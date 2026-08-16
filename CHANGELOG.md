@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.2-S0–S3, adoption: MCP over stdio, then a Python SDK, then a Node one, as 0.17.0
+## [Unreleased] — v1.2-S0–S4, adoption: MCP, two SDKs, and LangChain tools, as 0.18.0
 
 **v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
@@ -194,14 +194,85 @@ is no `capabilities.python` and no `capabilities.mcp`. The only edit to the Pyth
 `__version__`, which the workspace bump requires: leaving it at 0.16.0 would be the lie its own
 test exists to catch.
 
+### S4 — LangChain tools, and the split is the whole slice
+
+`ethos_engine.langchain` and `ethos-engine/langchain` — **`extract`, `ground`, `node_get` in both
+languages**, each calling the SDK that already exists. Nothing spawns `engine` a third way and
+nothing here speaks MCP; if a tool returned bytes an SDK would not, the tool would be wrong.
+
+**`12-V12-SCOPE.md` §3's second corollary, implemented a second time.** Locators live in the
+artifact, never in the prose a model reads and edits. MCP says that with `structuredContent` versus
+`content`; LangChain says it with a tool's `artifact` versus its `content`, and
+`response_format="content_and_artifact"` is what makes both sides real. Without it the artifact is
+stringified into `content`, and a box in `content` is a locator a model can edit and then cite —
+the failure this whole version is arranged to prevent. Both optional pins are bounded on **both**
+sides for that one reason.
+
+| tool | `content` | `artifact` |
+| --- | --- | --- |
+| `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
+| `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
+| `node_get` | ``1 node, kind `{kind}`.`` | the node record |
+
+**MCP is the oracle for those strings, not this slice's opinion.** Both suites compare `content`
+byte-for-byte against what `engine mcp` emits, on one fixture where nothing is omitted and one
+where everything is. That stops a second adapter inventing a richer sentence than the first, and it
+is the proof that `ground`'s omitted count — computed out here as **nodes minus elements** — equals
+the engine's own `omission.nodes_omitted`. Counting geometry rows instead would re-encode
+`GeometryPresence::is_groundable` in two more languages, and a count derived from a different
+question than the one being asked goes wrong the first time a second absence variant appears.
+
+`node_get`'s summary names the **kind** and never the id, spelled the way the artifact spells it
+(`text_run`) rather than the way `engine mcp` prints Rust's `Debug` (`TextRun`): reshaping it would
+be the adapter inventing a name for a thing it did not read.
+
+**One wire shape.** The three argument schemas are plain JSON Schema, verbatim from what
+`engine mcp` advertises, and a test in each language asserts them against `tools/list`. `node_id`
+keeps MCP's spelling in both languages even though the Node SDK's parameter is `nodeId` — the tool
+argument is the wire, and one wire has one name. JSON Schema rather than pydantic models or zod, so
+the adapters compare object to object and the Node package still needs nothing but
+`@langchain/core`.
+
+**The install stays empty.** `langchain-core` is an optional Python extra and `@langchain/core` an
+optional Node peer, both reached on a subpath, so `import ethos_engine` and `import "ethos-engine"`
+still pull nothing — asserted off the **default entry point's** import graph. Importing the subpath
+without the dependency is a named failure carrying the install command; in JS that is a dynamic
+import inside a try/catch at module load, so it fails where Python's `ImportError` fails rather
+than as Node's generic module-not-found.
+
+**No LangGraph adapter**, in either language: §16.7 refused one, because a bindable tool is already
+what `bind_tools` and a `ToolNode` take. **No trust state** anywhere — no `grounded`, no
+`verified`, no evidence tier, no score, and no `verify` tool. A forged id, an edited payload or an
+unreadable document **raises**, which is MCP's `isError: true` in this framework's currency.
+
+### A false green this slice found and closed
+
+Both SDK suites preferred `target/release/engine` and took the first file that existed. On a tree
+with a stale release build that was a **`0.11.0`** binary, and every S2 and S3 assertion passed
+against it — the byte-identity checks compare the SDK against the CLI using the same binary, so
+they are self-consistent whichever one it is. They proved what they claim, about the wrong engine.
+
+Both locators now read `engine --version` and refuse a binary that is not this workspace's: an
+explicit `ETHOS_ENGINE` pin errors rather than being silently overridden, and the search skips a
+build from another version and names what it found.
+
+### Identity, after S4
+
+Workspace **0.18.0**, profile hash
+`sha256:2bf3e74e6a3b972669cbc03afda66c4949b870d9695a7739dfc255a859485fee`. **Again nothing but the
+version moved** — the fifth time, after v1-S7b (0.9.0) and S1, S2 and S3 above. A framework binding
+is an adopter rather than a parse capability, so there is no `capabilities.langchain` for the reason
+there is no `capabilities.node`.
+
 ### Unchanged
 
 Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
 representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. Four crates, no new
 Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no napi, no
-neon, no node-gyp, no native extension, no runtime dependency in either SDK. Not on PyPI, not on
-npm. No LangChain, no liteparse, no tag. v1.2-S4 has not started.
+neon, no node-gyp, no native extension, and **no default-install dependency in either SDK**. No
+LangGraph, no LlamaIndex, no Haystack. Not on PyPI, not on npm. No liteparse, no tag. v1.2-S5 has
+not started.
 
 ---
 
