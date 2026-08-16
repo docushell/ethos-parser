@@ -75,6 +75,30 @@ pub fn to_representation(
                     position: c.position.clone(),
                     bbox: rect_to_qrect(c.rect)?,
                     text: c.text.clone(),
+                    // v1.1-S2. `run_indices` addresses this page's run list and every one of
+                    // those runs becomes a node under the id it already has, so this is the
+                    // detector's own assignment carried across the boundary rather than a second
+                    // reading of it. Before S2 the conversion dropped it, and a cell arrived
+                    // holding a string with no way back to evidence that was not either a
+                    // re-derivation of the geometry rule or a text match.
+                    node_ids: c
+                        .run_indices
+                        .iter()
+                        .map(|i| {
+                            page.runs.get(*i).map(|r| r.id.clone()).ok_or_else(|| {
+                                EngineError::Malformed {
+                                    what: "table cell".into(),
+                                    detail: format!(
+                                        "cell names run {i} of page {}, which holds {} run(s); \
+                                         an index that addresses nothing is a broken link, not a \
+                                         cell with less text",
+                                        page.index,
+                                        page.runs.len()
+                                    ),
+                                }
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
                 });
             }
             tables.push(engine_core::TableRecord {

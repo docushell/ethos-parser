@@ -108,19 +108,23 @@ pub mod codes {
     /// failed at anything; it has taken the option checklist O8 keeps open.
     pub const MARKDOWN_NOT_PROJECTED: &str = "markdown-not-projected";
 
-    /// A Markdown projection is emitted and it does **not** carry the table grid (v1.1-S1).
+    /// A Markdown projection is emitted, it **does** carry the table grid, and GFM cannot hold a
+    /// merged cell (v1.1-S2).
     ///
-    /// The partner to a TRUE capability, and a **structural** erasure rather than a character one.
-    /// A table cell's text is a concatenation of runs that are already nodes, so projecting the
-    /// runs loses no character and `coverage` is unaffected — a `tables-not-projected` count would
-    /// read `0` and mean nothing.
+    /// # What replaced what, and why the old code is gone rather than reworded
     ///
-    /// What is actually lost is which run sat in which cell. Naming that as a character bucket
-    /// would have been the more comfortable lie: a number that looks like a disclosure while the
-    /// thing erased has no number at all. Checklist A14 wants the erasure named, so it is named
-    /// here and counted nowhere. v1.1-S2 is where a GFM table earns the right to flatten spans.
-    pub const MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED: &str =
-        "markdown-table-structure-not-projected";
+    /// v1.1-S1 declared `markdown-table-structure-not-projected` here: `markdown-linear-v1` emitted
+    /// a cell's runs in reading order with no grid around them at all. **`markdown-blocks-v1`
+    /// emits a GFM table**, so that sentence is now false, and a false limitation is worse than a
+    /// missing one because a reader acts on it. Same move v1-S2 and v1-S8 made when they shipped
+    /// the rules that retired their own disclosures: delete the code.
+    ///
+    /// What is left is narrower and it is true of every GFM table there will ever be. GFM has no
+    /// `rowspan` and no `colspan`, and its delimiter row makes row 0 a header whatever the
+    /// document said. Both are **structural** erasures rather than character ones — the text is
+    /// all still there — so this profile-scoped sentence names them and the artifact's own
+    /// `coverage.structural_erasures` counts them per document.
+    pub const MARKDOWN_TABLE_SPANS_FLATTENED: &str = "markdown-table-spans-flattened";
 
     /// The alignment rule built a candidate lattice on some page and **refused** it.
     ///
@@ -441,8 +445,19 @@ impl Capabilities {
             // **A limitation partnering a TRUE capability**, like the table one below: it declares
             // the scope of what the projection does rather than the absence of one.
             out.push(Limitation::profile(
-                codes::MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED,
-                "The Markdown projection carries the document's TEXT and an Anchor Map that                  inverts every source byte of it back to representation nodes. It does NOT carry                  the table grid: `markdown-linear-v1` emits linear text, so a cell's runs appear                  in reading order with no row, column or span around them. No character is lost by                  that — a cell's text is a concatenation of runs that are already nodes, and the                  projection's `coverage` census accounts for every one of them — which is exactly                  why this is declared here instead of as a dropped-character count that would read                  `0` and disclose nothing. A consumer needing the grid must read `tables` on the                  representation, where it is unchanged and unflattened.",
+                codes::MARKDOWN_TABLE_SPANS_FLATTENED,
+                "The Markdown projection carries the document's TEXT, its table GRID, and an \
+                 Anchor Map that inverts every source byte of both back to representation nodes. \
+                 What it cannot carry is a MERGE: GFM has no rowspan and no colspan, so a cell \
+                 covering several slots is expanded — its text stays in the origin slot and the \
+                 slots it covered come out empty. GFM also has no headerless table, so the \
+                 delimiter row after row 0 asserts a header this engine never read: neither \
+                 detector reads `/TH`. Both are structural erasures rather than lost characters — \
+                 every character still reaches the Markdown and the `coverage` census accounts \
+                 for it — so each is counted per document in `coverage.structural_erasures` \
+                 rather than as a dropped-character bucket that would read `0` and disclose \
+                 nothing. A consumer needing the unflattened grid must read `tables` on the \
+                 representation, where the spans are intact.",
             ));
         } else {
             out.push(Limitation::profile(
@@ -1301,7 +1316,7 @@ mod tests {
         assert_eq!(
             remaining,
             vec![
-                codes::MARKDOWN_TABLE_STRUCTURE_NOT_PROJECTED,
+                codes::MARKDOWN_TABLE_SPANS_FLATTENED,
                 codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
                 codes::LOW_CONTRAST_NOT_DETECTED,
@@ -1312,6 +1327,14 @@ mod tests {
              node does NOT say, and what the reading-order rule cannot see — plus \
              `low-contrast-not-detected`, which is unconditional because no profile this build \
              can produce reads colour at all"
+        );
+        assert!(
+            !remaining.contains(&"markdown-table-structure-not-projected"),
+            "v1.1-S2 projects tables as GFM, so the blanket `the grid is not carried` limitation \
+             must be GONE rather than reworded — the same move v1-S2 and v1-S8 made when they \
+             shipped the rules that retired their own disclosures. A reader ACTS on a stale \
+             limitation: this one would send them to `tables` on the representation for a grid \
+             the Markdown now has."
         );
         assert!(
             !remaining.contains(&codes::MARKDOWN_NOT_PROJECTED),

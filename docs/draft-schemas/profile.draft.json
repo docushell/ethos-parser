@@ -181,9 +181,9 @@
     "markdown_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the Markdown projection rule in force (v1.1-S1). Decides what `ethos.markdown.v1` contains: which nodes project, whether a heading comes from the structure tree, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted \u2014 a field defaulted in is a claim the run never made.",
+      "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted \u2014 a field defaulted in is a claim the run never made.",
       "examples": [
-        "markdown-linear-v1"
+        "markdown-blocks-v1"
       ]
     },
     "observation_rule": {
@@ -355,7 +355,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.11.0",
+      "parser_version": "0.12.0",
       "quantum_per_point": 100,
       "reading_order_rule": "gutter-columns-v1",
       "xref_repair": {
@@ -369,7 +369,7 @@
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1"
       },
-      "markdown_rule": "markdown-linear-v1",
+      "markdown_rule": "markdown-blocks-v1",
       "struct_tree_rule": "struct-tree-v1",
       "form_annotation_rule": "form-annotations-v1",
       "observation_rule": "page-observations-v1",

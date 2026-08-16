@@ -11,7 +11,7 @@ roadmap row, and nothing in it closes v1.
 | --- | --- | --- | --- |
 | **S0** | v1.1 scope + this document | — | **done** |
 | **S1** | Linear Markdown + Anchor Map + coverage + the verify golden | S0 | **done** |
-| **S2** | Tables and lists as Markdown, erasure declared (A14), still with the map | S1 | **not started** |
+| **S2** | Tables and lists as Markdown, erasure declared (A14), still with the map | S1 | **done** |
 | **S3** | HTML and/or export-only cosmetics, under the same map law | S1 | **not started** |
 
 ---
@@ -192,7 +192,7 @@ roadmap row, and nothing in it closes v1.
 
 ---
 
-## S2 — Tables and lists as Markdown — **not started**
+## S2 — Tables and lists as Markdown
 
 - **Goal:** a GFM table that says what it cost.
 
@@ -200,7 +200,125 @@ roadmap row, and nothing in it closes v1.
   documents do, and GFM has no rowspan. Flattening one is an erasure, and **A14 requires the
   artifact to name it and quantify it** — not a footnote in a README.
 
-- **Not started.** Starts when the owner asks.
+- **Status: done.** `markdown-blocks-v1` at **0.12.0**. `markdown-linear-v1` is superseded and
+  `markdown-table-structure-not-projected` is **deleted**, not reworded.
+
+- **Decision 1: a cell's runs are emitted once.** A table is projected as GFM at the position of
+  the first run one of its cells claims, and those runs are then **not** also emitted as
+  paragraphs. The characters move from linear source to cell source; they are not duplicated and
+  they are not dropped, so the census still balances and a document with no tables comes out
+  byte-for-byte as it did at S1 — asserted on `simple-text` and `markdown-two-blocks` as literals,
+  map geometry included.
+
+- **Decision 2: the record had to carry the link, because a `source` segment must name a node.**
+  `TableCellRecord` arrived at S1 holding a cell's text and **no** way back to the runs it is a
+  concatenation of. The detector has always known — `DetectedCell::run_indices` — and the
+  conversion threw it away. A consumer holding only the string can get back two ways and both are
+  wrong: re-run the geometry, which is a second copy of the detector's rule that can drift from
+  the first (checklist A12), or match the text, which is a guess the moment two cells hold the
+  same word.
+
+  So `TableCellRecord` gains `node_ids` and the representation goes to **0.5.0**. This is not
+  detection — it is a fact the detector computed, carried across a boundary that used to drop it —
+  and `DocumentRepresentation::seal` now refuses a record whose cell names a run it does not
+  declare. Without it a GFM cell **cannot be emitted as `source` at all**, because `AnchorMap`
+  refuses a source segment that names no node. The law forced the field.
+
+- **Decision 3: the erasures are a second census, with integers.** GFM has no `rowspan`, no
+  `colspan`, and no headerless table. Those are **structural** erasures: the text is all still
+  there, so a dropped-character bucket for them would read `0`, which is A14's own example of a
+  disclosure that discloses nothing. `coverage.structural_erasures` carries them as
+  `{code, count}`, sorted, non-zero only:
+
+  | code | counts |
+  | --- | --- |
+  | `gfm-span-slots-unrepresentable-v1` | slots a merge covered that GFM cannot say it covered — `rowspan × colspan - 1`, summed over the table's cells |
+  | `gfm-row-zero-separator-v1` | **once per table**, because the delimiter row makes row 0 a header on every renderer and neither detector reads `/TH` |
+  | `gfm-cell-run-claimed-twice-v1` | a run two cells both claimed, kept by the first so one node's characters are not counted twice |
+  | `gfm-cell-not-placed-v1` | a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs |
+  | `gfm-table-not-projected-v1` | a table with zero rows or columns |
+  | `gfm-list-item-run-joins-v1` | a body run appended to an already-open item |
+
+  **Once per table, not once per cell in row 0** — pinned by a test. The erasure is one claim,
+  *this table has a header*, made once about one table. Counting its cells would make a wide table
+  look like a worse lie than a narrow one when both told exactly one.
+
+- **Decision 4: trailing empties stay.** A serializer that truncates an empty last row or column
+  makes a prettier table and a different document, and A14 names that erasure specifically.
+  `markdown-table-cells` draws a row nobody wrote in, and it comes out as `|  |  |  |`.
+
+- **Decision 5: the escape is syntax, the character it escapes is source.** GFM ends a cell at
+  `|`, so a cell holding `A|B` is written `A\|B`. Emitting `A\|B` as one source segment would
+  claim the document drew a backslash it never drew, and a consumer slicing that segment would get
+  two characters where the page has one. So the backslash is `syntax` and the pipe stays `source`:
+  a quote containing the pipe still inverts, one reaching back over the escape does not. `\` is
+  escaped for the same reason — otherwise a cell whose text is literally `\|` would split at a
+  character the document merely printed.
+
+- **Decision 6: lists come from the tree or not at all.** A run whose role path ends in `Lbl`,
+  `LBody` or `LI` **with an `/L` above it** becomes a list item; depth is the number of `/L` in the
+  path. No bullet glyph, no hanging indent, no font name — the refusal L29 makes about font-size
+  headings, one structure level up. An `Lbl` under `/TOCI` is not a list item, and that is pinned.
+
+  The marker is always `- `, never `1. `: the representation carries no `/ListNumbering`, and
+  choosing an ordered marker without one would be this exporter deciding the document meant a
+  numbered list. Where the document *did* draw its own number it drew it as an `/Lbl`, which is
+  source text — so the item reads `- 1. First item`. A doubled marker is ugly; deleting the
+  document's own characters to make it pretty is the erasure A14 is about.
+
+  **The one guess, counted.** PDF 32000 pairs one `/Lbl` with one `/LBody`, so a body run directly
+  after its label is the same item by the standard. A *second* body run is different: two sibling
+  `/LI`s have identical role paths, so nothing distinguishes "the rest of this item" from "the next
+  item". The projection joins, and `gfm-list-item-run-joins-v1` says how often.
+
+- **Two fixtures had to be authored**, for the reason `markdown-two-blocks` had to be at S1:
+
+  - `markdown-table-cells` — a stroked 3×3 whose font declares **real ink metrics**, so its cell
+    runs reach `ethos.grounding.v1` and a cell quote can be verified end to end. `ruled-table-grid`
+    already has a merge and an empty cell, but declares no metrics, so the verifier would find
+    nothing and refuse both halves of the golden — which proves nothing about cells. Carries the
+    merge, the pipe, and the empty last row.
+  - `tagged-list-items` — an `/L` / `/LI` / `/Lbl` / `/LBody` tree with a nested `/L` and one item
+    whose body is two marked runs. **Neither corpus tags a list anywhere**, so this is the only
+    document that reaches the branch at all. It carries no `/FontDescriptor` because `build_pdf`
+    refuses a fixture that wants both a descriptor and a structure tree — they both claim object 6.
+
+- **The cell-quote golden.** Same four binaries as S1's, one structure level up. A quote copied out
+  of the **merged cell's origin** grounds; `North | merged span` — real text in the Markdown that
+  the page never drew, because the document painted a ruling line and not a `|` — comes back
+  **`text_mismatch`**. The reason is pinned, not just the verdict: `element_not_found` would mean
+  the citation pointed at nothing and the test would pass without the Anchor Map having
+  demonstrated anything.
+
+- **In:** GFM tables and tagged lists in `engine-core/src/markdown.rs`; `node_ids` on
+  `TableCellRecord` and the seal-time check that they resolve; `structural_erasures` on the
+  artifact; `markdown-blocks-v1`; `markdown-table-spans-flattened` replacing
+  `markdown-table-structure-not-projected`; two fixtures; schema, PUBLIC-API, CHANGELOG.
+
+- **Out:** HTML. Hyphenation joining, dot-leaders, drop-caps — those are S3. Font-inferred lists or
+  headings. Any change to `extract`, the three detection rules, or the table gate. A synthesized
+  "Column 1" header the document did not write. Truncating an empty cell to look tidier. A fifth
+  crate. A tag.
+
+- **Acceptance tests:**
+  - [x] Four laws on the S1 fixtures **and** every table fixture: the map tiles, two kinds only,
+        one artifact, `emitted + dropped == in_representation`
+  - [x] `simple-text` and `markdown-two-blocks` unchanged — body **and** map geometry, as literals
+  - [x] S1's verify golden still grounds the source quote and still refuses the spanning one with
+        `text_mismatch`
+  - [x] A cell's characters appear **once**, not as a paragraph and again in the grid
+  - [x] `gfm-span-slots-unrepresentable-v1` non-zero on the merged fixture, and the origin cell's
+        text still grounds
+  - [x] No trailing empty row or column dropped
+  - [x] Untagged `simple-text` grows no `- ` markers; an `/Lbl` outside an `/L` is not a list item
+  - [x] The default profile declares `markdown-table-spans-flattened` and **not**
+        `markdown-table-structure-not-projected`
+  - [x] Cell-quote golden: cell text grounds, table chrome does not, reason pinned
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication 0
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+
+- **Depends on:** S1.
 
 ---
 

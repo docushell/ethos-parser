@@ -33,6 +33,13 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              grounding artifact. The Markdown joins them with a blank line, and
                              a quote spanning that join is text the page never drew — the
                              Anchor Map golden                                    [v1.1-S1]
+  markdown-table-cells       a stroked 3x3 whose font declares real ink metrics, so its CELL
+                             text reaches the grounding artifact. One merged cell, one pipe
+                             inside a cell string, and a wholly empty last row — the GFM
+                             golden                                               [v1.1-S2]
+  tagged-list-items          an /L / /LI / /Lbl / /LBody tree with a nested /L and one item
+                             whose body is two marked runs. The only list any corpus here
+                             contains                                             [v1.1-S2]
   stroke-ruled-worksheet     a grid drawn as two-point STROKED rules, shaped like
                              cfpb-home-loan-toolkit page 13: one baseline rules three cells
                              instead of four (a blank cell), the three interior column rules
@@ -333,6 +340,77 @@ FIXTURES = {
     "markdown-two-blocks": (
         "BT /F1 24 Tf 72 120 Td (First block) Tj ET "
         "BT /F1 24 Tf 72 60 Td (Second block) Tj ET"
+    ),
+    # v1.1-S2's GFM GOLDEN, and the reason it is a second fixture rather than a reused one.
+    # `ruled-table-grid` already has a merge and an empty cell, but its font declares NO ink
+    # metrics, so every run's geometry is typed-absent and none of them reaches
+    # `ethos.grounding.v1`. A cell-quote golden against that fixture would watch the verifier find
+    # nothing and refuse both halves, which proves nothing about cells.
+    #
+    # A 3x3 lattice, stroked as `re` cell rectangles, under a font that declares real metrics:
+    #
+    #     x:  40      140     240     340
+    #     y160 +-------+-------+-------+
+    #          | Region| A|B   | Total |   row 0
+    #     y120 +-------+---------------+
+    #          | North |  merged span  |   row 1, cols 1-2 MERGED
+    #      y80 +-------+-------+-------+
+    #          |       |       |       |   row 2, wholly EMPTY
+    #      y40 +-------+-------+-------+
+    #
+    # Three properties are deliberate, and each is an S2 acceptance test.
+    #
+    # The **merge** is the erasure GFM cannot represent: the text goes in the origin slot and the
+    # covered slot comes out empty, counted as `gfm-span-slots-unrepresentable-v1`.
+    #
+    # The **pipe** inside `A|B` is the character GFM reads as a cell boundary. The projection
+    # escapes it — and the backslash is `syntax` while the pipe stays `source`, so a quote
+    # containing the pipe still inverts to the run that drew it.
+    #
+    # The **empty last row** is the competitor erasure checklist A14 names: a serializer that
+    # truncates trailing empties makes a prettier table and a different document. It stays.
+    "markdown-table-cells": (
+        "1 w "
+        # row 0
+        "40 120 100 40 re S 140 120 100 40 re S 240 120 100 40 re S "
+        # row 1: col 0, then one rectangle spanning columns 1 and 2
+        "40 80 100 40 re S 140 80 200 40 re S "
+        # row 2, drawn and never written in
+        "40 40 100 40 re S 140 40 100 40 re S 240 40 100 40 re S "
+        "BT /F1 12 Tf "
+        "1 0 0 1 50 134 Tm (Region) Tj 1 0 0 1 150 134 Tm (A|B) Tj "
+        "1 0 0 1 250 134 Tm (Total) Tj "
+        "1 0 0 1 50 94 Tm (North) Tj 1 0 0 1 150 94 Tm (merged span) Tj "
+        "ET"
+    ),
+    # v1.1-S2's LIST fixture, and it had to be authored because **neither corpus tags a list**.
+    # A projection that grew list markers from bullet glyphs or hanging indents would be reading
+    # layout, which is the same refusal L29 makes about font-size headings one level up — so the
+    # only way to prove the branch is a document whose structure tree actually says `/L`.
+    #
+    # Every run sits on its own baseline rather than sharing one with its label. A real list draws
+    # `1.` and `First item` on one line; putting them on two changes nothing this fixture tests —
+    # the projection reads the TREE, never a coordinate — and it keeps the reading-order rule out
+    # of a test that is not about reading order.
+    #
+    # Four things are proved here and nowhere else:
+    #   /Lbl 0 + /LBody 1              an item whose own marker text the document drew
+    #   a nested /L under /LBody       depth, from nested `/L` rather than from indentation
+    #   /LBody with /K [7 8]           TWO runs in one item, which is the join S2 counts
+    #   an unmarked closing run        a non-list run ends the list rather than joining it
+    "tagged-list-items": (
+        "BT /F1 12 Tf "
+        "/Lbl <</MCID 0>> BDC 1 0 0 1 40 180 Tm (1.) Tj EMC "
+        "/LBody <</MCID 1>> BDC 1 0 0 1 60 164 Tm (First item) Tj EMC "
+        "/Lbl <</MCID 2>> BDC 1 0 0 1 40 148 Tm (2.) Tj EMC "
+        "/LBody <</MCID 3>> BDC 1 0 0 1 60 132 Tm (Second item) Tj EMC "
+        "/Lbl <</MCID 4>> BDC 1 0 0 1 60 116 Tm (a.) Tj EMC "
+        "/LBody <</MCID 5>> BDC 1 0 0 1 80 100 Tm (Nested item) Tj EMC "
+        "/Lbl <</MCID 6>> BDC 1 0 0 1 40 84 Tm (3.) Tj EMC "
+        "/LBody <</MCID 7>> BDC 1 0 0 1 60 68 Tm (Third item) Tj EMC "
+        "/LBody <</MCID 8>> BDC 1 0 0 1 60 52 Tm (continued) Tj EMC "
+        "1 0 0 1 40 30 Tm (Closing paragraph) Tj "
+        "ET"
     ),
     # A TJ gap of -500 thousandths: far wider than kerning, so a space was intended and never
     # written as a glyph.
@@ -791,6 +869,32 @@ STRUCTURE = {
         "<< /Type /StructElem /S /TD /P 15 0 R /Pg 3 0 R /K 4 >>",
         "<< /Type /StructElem /S /TD /P 15 0 R /Pg 3 0 R /K 5 >>",
     ],
+    # v1.1-S2's tagged list. `/L` holds three `/LI`; each `/LI` holds its own `/Lbl` and `/LBody`,
+    # which is how PDF 32000-1 s14.8.4.3 spells a list and the only shape this projection reads.
+    #
+    # Object 14's `/K` is MIXED — `[3 15 0 R]` — a marked-content id AND a child element, which is
+    # how a real nested list is written: the second item's body is both its own text and the
+    # sub-list under it. Object 21's `/K` is `[7 8]`, two marked-content ids in ONE `/LBody`,
+    # which is the case where two sibling `/LI`s and one wrapped item are indistinguishable by
+    # role path alone — the join `gfm-list-item-run-joins-v1` counts.
+    "tagged-list-items": [
+        "<< /Type /StructTreeRoot /K 7 0 R >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R] >>",
+        "<< /Type /StructElem /S /L /P 7 0 R /K [9 0 R 12 0 R 19 0 R] >>",
+        "<< /Type /StructElem /S /LI /P 8 0 R /K [10 0 R 11 0 R] >>",
+        "<< /Type /StructElem /S /Lbl /P 9 0 R /Pg 3 0 R /K 0 >>",
+        "<< /Type /StructElem /S /LBody /P 9 0 R /Pg 3 0 R /K 1 >>",
+        "<< /Type /StructElem /S /LI /P 8 0 R /K [13 0 R 14 0 R] >>",
+        "<< /Type /StructElem /S /Lbl /P 12 0 R /Pg 3 0 R /K 2 >>",
+        "<< /Type /StructElem /S /LBody /P 12 0 R /Pg 3 0 R /K [3 15 0 R] >>",
+        "<< /Type /StructElem /S /L /P 14 0 R /K [16 0 R] >>",
+        "<< /Type /StructElem /S /LI /P 15 0 R /K [17 0 R 18 0 R] >>",
+        "<< /Type /StructElem /S /Lbl /P 16 0 R /Pg 3 0 R /K 4 >>",
+        "<< /Type /StructElem /S /LBody /P 16 0 R /Pg 3 0 R /K 5 >>",
+        "<< /Type /StructElem /S /LI /P 8 0 R /K [20 0 R 21 0 R] >>",
+        "<< /Type /StructElem /S /Lbl /P 19 0 R /Pg 3 0 R /K 6 >>",
+        "<< /Type /StructElem /S /LBody /P 19 0 R /Pg 3 0 R /K [7 8] >>",
+    ],
     # `/K` pointing back at an ancestor. Walking it does not terminate, and stopping partway would
     # report a structure the document does not have — so it is refused by name.
     "tagged-cycle": [
@@ -932,6 +1036,10 @@ PAGE_EXTRA = {
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
     "ruled-table-grid": (0, 0, 400, 200),
+    # v1.1-S2. Same lattice geometry as ruled-table-grid, and the same page to hold it.
+    "markdown-table-cells": (0, 0, 400, 200),
+    # v1.1-S2. Ten baselines at 16pt spacing, from y=180 down to y=30.
+    "tagged-list-items": (0, 0, 300, 200),
     # Tall enough for two 24pt lines with real ink boxes inside the page.
     "markdown-two-blocks": (0, 0, 300, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
@@ -979,6 +1087,11 @@ DESCRIPTORS = {
     # Real metrics on BOTH runs, so both ground. Without them the elements array is empty and the
     # golden would pass vacuously against a verifier that found nothing either way.
     "markdown-two-blocks": "metrics",
+    # v1.1-S2. Real metrics so the CELL runs are groundable elements; without them the cell-quote
+    # golden would watch the verifier find nothing and refuse both halves, proving nothing about
+    # cells. This is also why the list fixture has no descriptor: a /FontDescriptor and a
+    # structure tree both claim object 6, and build_pdf refuses a fixture that wants both.
+    "markdown-table-cells": "metrics",
     "absent-font-metrics": "no-metrics",
     # Real metrics, so the ink box is MEASURED — without this the fixture proves nothing, because
     # a typed-absent box can never fall outside a page.

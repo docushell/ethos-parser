@@ -127,7 +127,7 @@ S2 and S3 start when the owner asks. Not before.
 A projection that changes what comes out is a profile change, on the same discipline as every rule
 id before it:
 
-- `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1.
+- `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1, `markdown-blocks-v1` at S2.
 - `capabilities.markdown` — `true` only with a proof test; `false` obliges a declared limitation.
 - A profile JSON predating S1 — one with no `markdown_rule` — is **refused**, not defaulted. The
   same posture `table_detection.stroke_ruled` took at v1-S8: a field defaulted in is a claim the run

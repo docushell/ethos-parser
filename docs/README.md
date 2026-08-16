@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.1-S1 shipped, as 0.11.0.** v1 is the DocuShell replacement gate
+**Status:** **v1.1-S2 shipped, as 0.12.0.** v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -10,7 +10,16 @@ began because the owner asked for the next roadmap row rather than because the g
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
 representation nodes, plus a coverage census of what did not make it. `docs/01-CONTRACT.md` §12
 refused a Markdown projection for the whole of v1 on Workbench rule 8; the map is what makes that
-objection payable. S2 (tables and lists) and S3 (HTML, cosmetics) are **not started**.
+objection payable.
+
+**S2 projects BLOCKS.** `markdown-blocks-v1` emits a GFM table for every table on the
+representation and a list item for every run the structure tree places in an `/L` — and, because
+GFM has no `rowspan` and no headerless table, it counts what the flattening cost in
+`coverage.structural_erasures` rather than footnoting it. `markdown-table-structure-not-projected`
+is **deleted**, not reworded; `markdown-table-spans-flattened` is the narrower sentence that is
+still true. `TableCellRecord` gains `node_ids`, without which a GFM cell could not be emitted as a
+`source` segment at all, so the representation moves to 0.5.0. S3 (HTML, cosmetics) is **not
+started**.
 
 **S4 makes a form field's value and an annotation's comment nodes of their own kind.** Neither is
 drawn by any content stream, so neither is a text run — and a reader that copied them into the

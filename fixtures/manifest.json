@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 34
+    "engine_owned": 36
   },
   "fixtures": [
     {
@@ -490,6 +490,24 @@
       "sha256": "sha256:6f34b6d8bb37cfdb19ad0e48ba0b2af6da25e368b938068b5505d8bcfbee1efa",
       "owner": "engine",
       "notes": "v1.1-S1's Anchor Map golden. TWO text runs in a font declaring real ink metrics, so BOTH reach `ethos.grounding.v1` as elements a verifier can find. That combination is why it had to be authored: the projection joins the runs with a blank line, and `block\\n\\nSecond` is then real text in the Markdown that the page never drew \u2014 the exact string the map exists to mark unquotable. Proving it needs the verifier to ground one quote and refuse the other, and every pre-existing fixture with measurable ink has only ONE run (no join to span) while the two-run fixtures declare no metrics (empty `elements`, so the golden would pass vacuously)."
+    },
+    {
+      "id": "markdown-table-cells",
+      "root": "engine",
+      "group": "engine",
+      "path": "markdown-table-cells/document.pdf",
+      "sha256": "sha256:3658aba86b120b3a4c201c966f51da0072f33a0abdcf628d355556c31639c2b4",
+      "owner": "engine",
+      "notes": "A stroked 3x3 under a font declaring real ink metrics, so its CELL runs reach `ethos.grounding.v1` and a cell quote can be verified end to end. One merged cell (cols 1-2 of row 1), one pipe inside a cell string, and a wholly empty last row. The v1.1-S2 GFM golden: the merge is counted as `gfm-span-slots-unrepresentable-v1`, the pipe's escape is `syntax` while the pipe itself stays `source`, and the empty row is not truncated."
+    },
+    {
+      "id": "tagged-list-items",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-list-items/document.pdf",
+      "sha256": "sha256:27fb8f92f77fa11f56aad179ed811c41765c44592bc945d99ed2e68f2676f10a",
+      "owner": "engine",
+      "notes": "An /L / /LI / /Lbl / /LBody structure tree with a nested /L under an /LBody and one item whose body is two marked runs. Neither corpus tags a list anywhere, so this is the only document that reaches the v1.1-S2 list branch; a projection that grew list markers from bullet glyphs instead would be reading layout, which is the refusal L29 makes about font-size headings one level up."
     }
   ]
 }

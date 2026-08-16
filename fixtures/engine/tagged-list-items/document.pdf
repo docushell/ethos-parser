@@ -1,0 +1,96 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 6 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 562 >>
+stream
+BT /F1 12 Tf /Lbl <</MCID 0>> BDC 1 0 0 1 40 180 Tm (1.) Tj EMC /LBody <</MCID 1>> BDC 1 0 0 1 60 164 Tm (First item) Tj EMC /Lbl <</MCID 2>> BDC 1 0 0 1 40 148 Tm (2.) Tj EMC /LBody <</MCID 3>> BDC 1 0 0 1 60 132 Tm (Second item) Tj EMC /Lbl <</MCID 4>> BDC 1 0 0 1 60 116 Tm (a.) Tj EMC /LBody <</MCID 5>> BDC 1 0 0 1 80 100 Tm (Nested item) Tj EMC /Lbl <</MCID 6>> BDC 1 0 0 1 40 84 Tm (3.) Tj EMC /LBody <</MCID 7>> BDC 1 0 0 1 60 68 Tm (Third item) Tj EMC /LBody <</MCID 8>> BDC 1 0 0 1 60 52 Tm (continued) Tj EMC 1 0 0 1 40 30 Tm (Closing paragraph) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] >>
+endobj
+6 0 obj
+<< /Type /StructTreeRoot /K 7 0 R >>
+endobj
+7 0 obj
+<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R] >>
+endobj
+8 0 obj
+<< /Type /StructElem /S /L /P 7 0 R /K [9 0 R 12 0 R 19 0 R] >>
+endobj
+9 0 obj
+<< /Type /StructElem /S /LI /P 8 0 R /K [10 0 R 11 0 R] >>
+endobj
+10 0 obj
+<< /Type /StructElem /S /Lbl /P 9 0 R /Pg 3 0 R /K 0 >>
+endobj
+11 0 obj
+<< /Type /StructElem /S /LBody /P 9 0 R /Pg 3 0 R /K 1 >>
+endobj
+12 0 obj
+<< /Type /StructElem /S /LI /P 8 0 R /K [13 0 R 14 0 R] >>
+endobj
+13 0 obj
+<< /Type /StructElem /S /Lbl /P 12 0 R /Pg 3 0 R /K 2 >>
+endobj
+14 0 obj
+<< /Type /StructElem /S /LBody /P 12 0 R /Pg 3 0 R /K [3 15 0 R] >>
+endobj
+15 0 obj
+<< /Type /StructElem /S /L /P 14 0 R /K [16 0 R] >>
+endobj
+16 0 obj
+<< /Type /StructElem /S /LI /P 15 0 R /K [17 0 R 18 0 R] >>
+endobj
+17 0 obj
+<< /Type /StructElem /S /Lbl /P 16 0 R /Pg 3 0 R /K 4 >>
+endobj
+18 0 obj
+<< /Type /StructElem /S /LBody /P 16 0 R /Pg 3 0 R /K 5 >>
+endobj
+19 0 obj
+<< /Type /StructElem /S /LI /P 8 0 R /K [20 0 R 21 0 R] >>
+endobj
+20 0 obj
+<< /Type /StructElem /S /Lbl /P 19 0 R /Pg 3 0 R /K 6 >>
+endobj
+21 0 obj
+<< /Type /StructElem /S /LBody /P 19 0 R /Pg 3 0 R /K [7 8] >>
+endobj
+xref
+0 22
+0000000000 65535 f 
+0000000009 00000 n 
+0000000080 00000 n 
+0000000137 00000 n 
+0000000263 00000 n 
+0000000876 00000 n 
+0000001391 00000 n 
+0000001443 00000 n 
+0000001515 00000 n 
+0000001594 00000 n 
+0000001668 00000 n 
+0000001740 00000 n 
+0000001814 00000 n 
+0000001889 00000 n 
+0000001962 00000 n 
+0000002046 00000 n 
+0000002114 00000 n 
+0000002190 00000 n 
+0000002263 00000 n 
+0000002338 00000 n 
+0000002413 00000 n 
+0000002486 00000 n 
+trailer
+<< /Size 22 /Root 1 0 R >>
+startxref
+2565
+%%EOF

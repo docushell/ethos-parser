@@ -64,7 +64,12 @@ use crate::ids::NodeId;
 pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.engine.representation.v0";
 
 /// Shape version of the representation artifact. **DRAFT**.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.4.0";
+///
+/// `0.5.0` at v1.1-S2: [`crate::TableCellRecord`] gained `node_ids`. A record written under
+/// `0.4.0` carries a cell's text with no link back to the runs it is a concatenation of, and this
+/// build refuses it rather than defaulting the field to empty — an empty `node_ids` means "this
+/// cell encloses no run", which is a different statement from "this file predates the link".
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.5.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -1095,7 +1100,39 @@ impl DocumentRepresentation {
         }
 
         self.check_geometry_matches_its_declaration()?;
+        self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
 
+        Ok(())
+    }
+
+    /// Every node a table cell names is a declared node of this record (v1.1-S2).
+    ///
+    /// **The link is only worth carrying if it resolves.** A cell naming an id no node carries is
+    /// a citation to nothing, and it fails in the least visible way available: the Markdown
+    /// projection would emit that cell's bytes as a `source` segment addressing a node the
+    /// consumer cannot look up, which is precisely the silently-dead locator
+    /// `docs/10-V11-SCOPE.md` §2 exists to prevent.
+    ///
+    /// Checked here rather than in the projection because it is a property of the **record**, and
+    /// a record that cannot satisfy it should never be sealed.
+    fn check_cell_runs_are_declared_nodes(
+        &self,
+        seen_nodes: &std::collections::BTreeSet<&str>,
+    ) -> Result<(), EngineError> {
+        for table in &self.representation.tables {
+            for cell in &table.cells {
+                for id in &cell.node_ids {
+                    if !seen_nodes.contains(id.as_str()) {
+                        return Err(Self::malformed(format!(
+                            "cell `{}` of table `{}` names run `{id}`, which is not a declared \
+                             node. A cell whose text cannot be traced to evidence is worse than a \
+                             cell with no text.",
+                            cell.id, table.id
+                        )));
+                    }
+                }
+            }
+        }
         Ok(())
     }
 

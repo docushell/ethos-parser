@@ -279,6 +279,27 @@ pub struct TableCellRecord {
     /// **Never a novel string.** A cell enclosing no run carries an empty one, because that is
     /// what the document put there — `docs/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
     pub text: String,
+    /// The nodes [`Self::text`] is the concatenation of, in reading order (v1.1-S2).
+    ///
+    /// # Why the link is carried rather than recoverable
+    ///
+    /// The detector already knows it: `DetectedCell::run_indices` addresses the page's run list,
+    /// and every one of those runs becomes a node under its own id. Until v1.1-S2 the conversion
+    /// threw that away and a cell arrived carrying only a **string**.
+    ///
+    /// A consumer holding a string can get back to the nodes two ways, and both are wrong. It can
+    /// re-run the geometry — "runs whose origins fall inside this box" — which is a second copy of
+    /// the detector's rule that can drift from the first, and `docs/06-STEAL-REFUSE.md` A12 is
+    /// about exactly that. Or it can match the text, which is a guess the moment two cells hold
+    /// the same word.
+    ///
+    /// The Markdown projection makes this concrete rather than theoretical: a `source` segment
+    /// must name the nodes its bytes came from ([`crate::markdown::AnchorMap`] law 3), so a GFM
+    /// cell **cannot be emitted as source at all** without this field. Carrying a fact the
+    /// detector computed is not detection.
+    ///
+    /// Empty exactly when [`Self::text`] is empty: a cell enclosing no run names no node.
+    pub node_ids: Vec<NodeId>,
 }
 
 /// One table, as it appears on the artifact.
