@@ -35,7 +35,15 @@
 //! finer. S7b put the cells in, with the text the structure tree binds to each one, and the gate is
 //! macro-averaged cell-slot F1 over the four real documents. The published method — corpus,
 //! formula, join, whitespace rule, and why the number is **not** comparable to the 0.489 it is
-//! named after — is `docs/table-gate-v1.md`. It currently reads **61‰**, and that is a miss.
+//! named after — is `docs/table-gate-v1.md`. It currently reads **64‰**, and that is a miss.
+//!
+//! **61‰ was S7b's number**, under `ruled-rects-v2` alone. v1-S8 shipped `stroke-ruled-v1` and
+//! moved it to 64‰ — the rise is `cfpb-home-loan-toolkit` alone, 246‰ to 259‰, while
+//! `irs-form-1040-2025` contributes 0‰ on both sides. This sentence lagged that slice by two
+//! versions, which is the failure mode a number written in prose has and a measured one does not:
+//! `the_cell_gate_is_measured_and_its_verdict_is_recorded` asserts the VERDICT against
+//! `GATE_PERMILLE` and prints the figure, so the gate cannot silently clear — but nothing makes a
+//! doc comment keep up. Read the number off that test's output, not off this line.
 //!
 //! # Where the labels come from, and why they are not this engine's
 //!
