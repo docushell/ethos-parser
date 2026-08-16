@@ -192,7 +192,7 @@
       "minLength": 1,
       "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "html-blocks-v1"
+        "html-blocks-v2"
       ]
     },
     "observation_rule": {
@@ -368,13 +368,13 @@
         "unit": "centipoint"
       },
       "form_annotation_rule": "form-annotations-v1",
-      "html_rule": "html-blocks-v1",
+      "html_rule": "html-blocks-v2",
       "markdown_rule": "markdown-blocks-v2",
       "observation_rule": "page-observations-v1",
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.14.0",
+      "parser_version": "0.14.1",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"

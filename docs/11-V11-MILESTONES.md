@@ -479,7 +479,7 @@ what makes the question askable at all.
 
 ## S4 — HTML, under the same four laws
 
-- **Status: done.** `ethos.html.v1` at **0.14.0**, under `html-blocks-v1`. `markdown_rule` did
+- **Status: done.** `ethos.html.v1` at **0.14.1**, under `html-blocks-v2`. `markdown_rule` did
   **not** move: the Markdown a document produces is byte-for-byte what 0.13.0 emitted.
 
 - **Goal:** an HTML projection carrying the same map discipline the Markdown one does.
@@ -565,7 +565,7 @@ likely to lift. Embedding a fragment is one concatenation; unwrapping a document
 
 - **In:** `engine-core/src/html.rs`; `html_rule` and `capabilities.html` on the profile;
   `engine html`; `SlotRole` on the shared table plan so a merge can be carried; the shared
-  `census`; `html.draft.json` and its guard; `0.14.0` and the moved profile hash; PUBLIC-API,
+  `census`; `html.draft.json` and its guard; `0.14.1` and the moved profile hash; PUBLIC-API,
   CHANGELOG, README.
 
 - **Out:** CSS, JS, `class`/`style` from font names (L29), `<img>` or `data:` URLs, a

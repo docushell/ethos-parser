@@ -146,7 +146,7 @@ id before it:
 - `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1, `markdown-blocks-v1` at
   S2, `markdown-blocks-v2` at S3, and **unchanged at S4**: the second projection did not touch the
   first, so artifacts either side of the S4 hash carry byte-identical Markdown.
-- `profile.html_rule` — a **separate** versioned string, `html-blocks-v1` at S4. Separate because
+- `profile.html_rule` — a **separate** versioned string, `html-blocks-v2` at S4. Separate because
   the two projections say different things about the same table, and one id covering both would
   make every artifact non-comparable each time either moved.
 - `capabilities.html` — `true` only with a proof test, on the same rule as `markdown`.
@@ -154,7 +154,8 @@ id before it:
 - A profile JSON predating S1 — one with no `markdown_rule` — is **refused**, not defaulted. The
   same posture `table_detection.stroke_ruled` took at v1-S8: a field defaulted in is a claim the run
   never made.
-- Workspace `0.10.0` → `0.11.0` at S1, `0.12.0` at S2, `0.13.0` at S3, **`0.14.0`** at S4, and the
+- Workspace `0.10.0` → `0.11.0` at S1, `0.12.0` at S2, `0.13.0` at S3, `0.14.0` at S4 and
+  **`0.14.1`** with its repair, and the
   profile hash moves with each. S3 changes no field and no shape: the rule id changes *value*, because
   `hyphenated-line-break` projects `hyphen-\n\nated` under one and `hyphenated` under the other.
 

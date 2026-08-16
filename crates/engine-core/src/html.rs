@@ -108,7 +108,18 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// **separate from `markdown_rule`** and moves independently — a change to how a `<td>` is spelled
 /// is not a change to how a GFM row is, and an artifact whose profile could not tell the two apart
 /// would claim a comparability it lacks.
-pub const HTML_RULE_BLOCKS_V1: &str = "html-blocks-v1";
+///
+/// # Why this is `-v2` when `-v1` was never released
+///
+/// `html-blocks-v1` existed for one commit and got two tables wrong: a span colliding with another
+/// cell's origin widened the row past the grid, and a list whose tree skipped a depth came out
+/// unbalanced. The repair changed what a document projects to.
+///
+/// Nothing was ever published under `-v1` — it was never tagged or pushed — so no consumer holds
+/// such an artifact. The id moves anyway, because the alternative is two builds in this
+/// repository's own history producing different bytes under one id, and *that* is the state a rule
+/// id exists to make impossible. A version that is cheap to move is exactly the one worth moving.
+pub const HTML_RULE_BLOCKS_V2: &str = "html-blocks-v2";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -277,7 +288,7 @@ impl ListState {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v1`
+/// # The rule, in full — `html-blocks-v2`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).

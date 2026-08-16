@@ -15,7 +15,7 @@ as 0.10.0 with S1–S7b and S8 done and S7 open.** Its gate — table-cell accur
 measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor, by the method in
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
 
-**v1.1 is Safe Markdown, and it is complete: the workspace is at 0.14.0** with S0–S4 done. It
+**v1.1 is Safe Markdown, and it is complete: the workspace is at 0.14.1** with S0–S4 done. It
 began because the owner asked for the next roadmap row, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list

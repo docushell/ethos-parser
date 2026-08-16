@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.1-S4 shipped, as 0.14.0 — v1.1 is complete.** v1 is the DocuShell replacement gate
+**Status:** **v1.1-S4 shipped, as 0.14.1 — v1.1 is complete.** v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1

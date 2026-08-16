@@ -717,7 +717,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V1`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V2`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -769,7 +769,7 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V2.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V1.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V2.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -1078,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v1","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.14.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.14.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1187,11 +1187,18 @@ mod tests {
              `markdown` expands it and counts the slots in `gfm-span-slots-unrepresentable-v1`, \
              while `html` emits one `<td colspan>` and carries it. `markdown_rule` did NOT move, \
              so a reader holding artifacts either side of this hash gets byte-identical Markdown \
-             and a new artifact type beside it."
+             and a new artifact type beside it.\n\n\
+             Moved an EIGHTEENTH time at v1.1-S4's repair (0.14.1): `html_rule` moved from \
+             `html-blocks-v1` to `html-blocks-v2`. `-v1` existed for one commit and got two \
+             tables wrong — a span colliding with another origin widened a row past the declared \
+             grid, and a list whose tree skipped a depth came out unbalanced. Nothing was ever \
+             published under it, so no consumer holds such an artifact; the id and the version \
+             move anyway, because two builds in this repository's own history producing \
+             different bytes under one id is the state a rule id exists to make impossible."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ae78b7bad73c3ecd040655ce83cb5f99336d84d58ca8bccbd62af358084d1d1f"
+            "sha256:a3e398e44613f67bf92df9becf3daac411b29f204c98efc95aa9adfbebef27e4"
         );
     }
 

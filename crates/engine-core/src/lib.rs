@@ -85,7 +85,7 @@ pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_
 pub use error::EngineError;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
 pub use html::{
-    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V1, HTML_SCHEMA_VERSION,
+    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V2, HTML_SCHEMA_VERSION,
 };
 pub use identity::{
     ArtifactBinding, ArtifactIdentity, CoordinateOrigin, CoordinateSystem, CoordinateUnit,

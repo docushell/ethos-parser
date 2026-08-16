@@ -865,16 +865,16 @@ fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
         .filter_map(serde_json::Value::as_str)
         .collect();
     assert!(
-        examples.contains(&engine_core::HTML_RULE_BLOCKS_V1),
+        examples.contains(&engine_core::HTML_RULE_BLOCKS_V2),
         "html.draft.json's `html_rule` examples are {examples:?}, none of which is the rule this \
          build emits ({}).",
-        engine_core::HTML_RULE_BLOCKS_V1
+        engine_core::HTML_RULE_BLOCKS_V2
     );
 
     if let Some(example) = schema["examples"].as_array().and_then(|a| a.first()) {
         assert_eq!(
             example["html_rule"].as_str(),
-            Some(engine_core::HTML_RULE_BLOCKS_V1),
+            Some(engine_core::HTML_RULE_BLOCKS_V2),
             "the worked example names a different rule than the schema's own property does"
         );
         assert_eq!(
@@ -891,7 +891,7 @@ fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
     // artifact non-comparable each time either projection moved, which is the opposite of what a
     // rule id is for.
     assert_ne!(
-        engine_core::HTML_RULE_BLOCKS_V1,
+        engine_core::HTML_RULE_BLOCKS_V2,
         engine_core::MARKDOWN_RULE_BLOCKS_V2
     );
 }

@@ -7,11 +7,11 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.1-S4, HTML under the same four laws, as 0.14.0
+## [Unreleased] — v1.1-S4, HTML under the same four laws, as 0.14.1
 
 **A second projection, and it is not the first one with angle brackets.** `ethos.html.v1` carries
 an HTML string, the same **Anchor Map** that inverts every source byte of it back to representation
-nodes, and the same character census — under its own rule id, `html-blocks-v1`. `markdown_rule`
+nodes, and the same character census — under its own rule id, `html-blocks-v2`. `markdown_rule`
 does **not** move: the Markdown a document produces is byte-for-byte what 0.13.0 emitted. **v1 is
 still not done** — the S7 gate is measured and missed at 64‰ — and nothing here closes it. Not
 tagged. **v1.1 is complete.**
@@ -98,10 +98,18 @@ likely to lift. Embedding a fragment is one concatenation; unwrapping a document
 
 ### Identity
 
-`html-blocks-v1`, `capabilities.html`, workspace **0.14.0**, profile hash
-`sha256:ae78b7bad73c3ecd040655ce83cb5f99336d84d58ca8bccbd62af358084d1d1f`. Two fields arrived, so
+`html-blocks-v2`, `capabilities.html`, workspace **0.14.1**, profile hash
+`sha256:a3e398e44613f67bf92df9becf3daac411b29f204c98efc95aa9adfbebef27e4`. Two fields arrived, so
 the hash moves for a reason a reader can name. A profile JSON with no `html_rule` is **refused**,
 not defaulted — the posture `markdown_rule` and `table_detection.stroke_ruled` each took.
+
+**The rule id is `-v2` although `-v1` was never released.** `html-blocks-v1` existed for one commit
+and got two tables wrong: a span colliding with another cell's origin widened a row past the
+declared grid, and a list whose tree skipped a depth came out unbalanced. Nothing was published
+under it — never tagged, never pushed — so no consumer holds such an artifact. The id and the
+version move anyway, because two builds in this repository's own history producing different bytes
+under one id is precisely the state a rule id exists to make impossible. A patch bump, on the
+precedent of the S6 repair slices (0.8.1, 0.8.2).
 
 `capabilities.html` is `true` and names `an_html_quote_verifies_end_to_end` as its proof, which the
 capability scan can see. `html.draft.json` ships **with** its guard,
