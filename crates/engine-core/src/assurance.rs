@@ -108,6 +108,18 @@ pub mod codes {
     /// failed at anything; it has taken the option checklist O8 keeps open.
     pub const MARKDOWN_NOT_PROJECTED: &str = "markdown-not-projected";
 
+    /// [`crate::Capabilities::html`] is false: no HTML projection is emitted.
+    ///
+    /// The same honest state [`MARKDOWN_NOT_PROJECTED`] names, for the second projection. A build
+    /// that emits no HTML has not failed at anything.
+    ///
+    /// **There is deliberately no partner for the `true` case.** `markdown` has one —
+    /// [`MARKDOWN_TABLE_SPANS_FLATTENED`] — because GFM cannot hold a merge and the artifact owes
+    /// the reader that sentence. HTML holds the merge in `<td rowspan>` and invents no header
+    /// row, so the erasure is not committed and a matching code would disclose nothing. That is
+    /// the whole reason the second projection earns a slice.
+    pub const HTML_NOT_PROJECTED: &str = "html-not-projected";
+
     /// A Markdown projection is emitted, it **does** carry the table grid, and GFM cannot hold a
     /// merged cell (v1.1-S2).
     ///
@@ -417,6 +429,7 @@ impl Capabilities {
             images,
             page_screenshots,
             markdown,
+            html,
         } = *self;
 
         let mut out = Vec::new();
@@ -463,6 +476,16 @@ impl Capabilities {
             out.push(Limitation::profile(
                 codes::MARKDOWN_NOT_PROJECTED,
                 "This profile emits no Markdown projection. That is a position rather than a gap:                  `docs/01-CONTRACT.md` §12 declines a Markdown projection on Workbench rule 8 — a                  projection sitting between what a retriever ranks and what a citation binds is                  where a locator dies silently — and the parity checklist's O8 records that the                  rule PREFERS no projection at all to one without an Anchor Map. A consumer                  wanting Markdown from this build must project it itself, and owns the                  consequence: a quote taken from that Markdown cannot be inverted to evidence by                  anything this engine emitted.",
+            ));
+        }
+        if !html {
+            out.push(Limitation::profile(
+                codes::HTML_NOT_PROJECTED,
+                "This profile emits no HTML projection. Same position as the Markdown one and \
+                 for the same reason (`docs/01-CONTRACT.md` §12, checklist O8): a projection \
+                 without an Anchor Map severs a citation from its evidence, and no projection at \
+                 all is preferable to one that does. A consumer wanting HTML from this build \
+                 must produce it itself, and owns the consequence.",
             ));
         }
         if tables {
@@ -1249,6 +1272,7 @@ mod tests {
     fn every_false_capability_declares_a_limitation() {
         let none = Capabilities {
             markdown: false,
+            html: false,
             spans: false,
             char_offsets: false,
             tables: false,
@@ -1281,12 +1305,12 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            12,
+            13,
             "one limitation per false capability, plus `low-contrast-not-detected`, which is \
              declared UNCONDITIONALLY because no profile this build can produce reads colour — \
              it is not partnered to a capability in either direction, and pretending otherwise \
-             would mean inventing a `contrast` flag nothing sets. Twelve since v1.1-S1, which \
-             added `markdown`"
+             would mean inventing a `contrast` flag nothing sets. Thirteen since v1.1-S4, which \
+             added `html`"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1296,6 +1320,7 @@ mod tests {
         // narrowed from "ruled only" to "no stroked-line grids".
         let all = Capabilities {
             markdown: true,
+            html: true,
             spans: true,
             char_offsets: true,
             tables: true,

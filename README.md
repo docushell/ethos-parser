@@ -15,19 +15,20 @@ as 0.10.0 with S1–S7b and S8 done and S7 open.** Its gate — table-cell accur
 measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor, by the method in
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
 
-**v1.1 is Safe Markdown, and the workspace is at 0.13.0** with S0–S3 done and S4 (HTML) not
-started. It began because the owner asked for the next roadmap row, not because the gate cleared.
+**v1.1 is Safe Markdown, and it is complete: the workspace is at 0.14.0** with S0–S4 done. It
+began because the owner asked for the next roadmap row, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
 
-Seven subcommands, one library, one document load:
+Eight subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
 engine extract         document.pdf                      # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
+engine html            representation.json               # ethos.html.v1             · 0 / 2
 engine grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
 engine verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
 engine overlay         document.pdf                      # an annotated PDF          · 0 / 2
@@ -42,6 +43,13 @@ census accounts for every source character that did not make it, by named bucket
 `docs/01-CONTRACT.md` §12 refused a Markdown projection for the whole of v1 on Workbench rule 8 —
 a projection between what a retriever ranks and what a citation binds is where a locator dies
 silently — and the map is what makes that objection payable rather than lapsed.
+
+**`html` is the second projection, and not a rendering of the first.** It is projected from the
+representation, because a Markdown-to-HTML pass would be a second projection whose map nobody
+built. What earns it a subcommand rather than a stylesheet is tables: GFM has no `rowspan`, so
+`markdown` must expand a merged cell and count the slots that costs, while this emits one
+`<td colspan="2">` and carries the merge the document drew. Same four laws, same census — the two
+artifacts of one document are asserted to agree character for character.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds

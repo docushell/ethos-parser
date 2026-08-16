@@ -99,6 +99,25 @@ enum Command {
     /// its declared digest.
     Markdown(MarkdownArgs),
 
+    /// Project a `DocumentRepresentation v0` into `ethos.html.v1` (v1.1-S4).
+    ///
+    /// **HTML and its Anchor Map, always together**, on exactly the discipline `markdown` runs
+    /// under: one artifact, two segment kinds, a map that tiles every byte, and a census that
+    /// accounts for every source character. There is no `--html-only`.
+    ///
+    /// **Not a rendering of the Markdown.** It is projected from the representation, because a
+    /// Markdown-to-HTML pass would be a second projection whose map nobody built. The difference
+    /// that earns it a subcommand is tables: GFM cannot say `rowspan`, so `markdown` expands a
+    /// merged cell and counts what that cost, while this emits one `<td colspan="2">` and carries
+    /// the merge the document drew.
+    ///
+    /// stdout is canonical JSON. A consumer that wants an `.html` file writes `.html` out itself,
+    /// and owns the fact that doing so discards the map.
+    ///
+    /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
+    /// its declared digest.
+    Html(HtmlArgs),
+
     /// Draw what was detected onto a copy of the document (v1-S6).
     ///
     /// Emits a PDF — **the one subcommand whose stdout is not canonical JSON** — carrying an
@@ -207,6 +226,16 @@ struct VerifyArgs {
 }
 
 #[derive(clap::Args)]
+struct HtmlArgs {
+    /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
+    ///
+    /// **A representation, not a PDF**, and not a Markdown artifact either — see the subcommand's
+    /// own documentation for why this projects from the record rather than from the other
+    /// projection.
+    path: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct MarkdownArgs {
     /// A `DocumentRepresentation v0` JSON file, as `engine extract` emits.
     ///
@@ -247,6 +276,10 @@ fn main() -> ExitCode {
         Command::Markdown(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_markdown(args))
+        }
+        Command::Html(args) => {
+            let path = args.path.clone();
+            timed(Stage::Ground, diag, &path, || run_html(args))
         }
         Command::Ground(args) => {
             let path = args.path.clone();
@@ -426,6 +459,69 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
         &profile.parser_version,
         &profile_sha256,
         &profile.markdown_rule,
+    ) {
+        Ok(a) => a,
+        Err(e) => return fail(&e),
+    };
+
+    match artifact.to_canonical_bytes() {
+        Ok(out) => {
+            let mut stdout = std::io::stdout().lock();
+            let _ = stdout.write_all(&out);
+            let _ = stdout.write_all(b"\n");
+            let _ = stdout.flush();
+            ExitCode::from(PROJECTED as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+/// Read a representation from disk and project it into HTML plus its Anchor Map.
+///
+/// The same seven steps `run_markdown` takes, against `engine_core::to_html`. Thin by the same
+/// rule: `docs/04-ARCHITECTURE.md` §1 puts no logic in the CLI, and the projection is a fact about
+/// the representation rather than about PDF, so `engine-pdf` never learns HTML either.
+fn run_html(args: HtmlArgs) -> ExitCode {
+    let bytes = match std::fs::read(&args.path) {
+        Ok(b) => b,
+        Err(e) => {
+            return fail(&EngineError::Io {
+                detail: format!("{}: {e}", args.path.display()),
+            })
+        }
+    };
+
+    let repr: engine_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "representation".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    // Checked before anything is projected, exactly as `markdown` and `ground` do.
+    if let Err(e) = repr.verify_fingerprint() {
+        return fail(&e);
+    }
+
+    let profile = Profile::default();
+    let profile_sha256 = match profile.profile_sha256() {
+        Ok(h) => h,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "profile".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    let artifact = match engine_core::to_html(
+        &repr,
+        &profile.parser_version,
+        &profile_sha256,
+        &profile.html_rule,
     ) {
         Ok(a) => a,
         Err(e) => return fail(&e),

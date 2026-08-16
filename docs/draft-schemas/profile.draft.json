@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ethos-engine:draft-schema:profile:0",
-  "$comment": "DRAFT \u2014 not a shipped contract. Authority: docs/01-CONTRACT.md \u00a72 and docs/04-ARCHITECTURE.md \u00a73. The canonical form of this object, under c14n v1, is what profile_sha256 hashes; the example below is the real v0 profile and its real digest, emitted by crates/engine-core and pinned in its tests.",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 and docs/04-ARCHITECTURE.md §3. The canonical form of this object, under c14n v1, is what profile_sha256 hashes; the example below is the real v0 profile and its real digest, emitted by crates/engine-core and pinned in its tests.",
   "title": "Engine profile (DRAFT)",
   "description": "Every knob that can change output. Anything that can change a byte of output belongs here or is a bug. Host-varying data (paths, timings, thread counts, machine identity) is deliberately absent: including it would make every machine produce a different fingerprint for identical work.",
   "type": "object",
@@ -19,6 +19,7 @@
     "xref_repair",
     "verifier",
     "markdown_rule",
+    "html_rule",
     "table_detection",
     "struct_tree_rule",
     "form_annotation_rule",
@@ -166,24 +167,32 @@
       "properties": {
         "ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v2`. A rectangle spanning the whole lattice is the table\u2019s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn."
+          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v2`. A rectangle spanning the whole lattice is the table’s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn."
         },
         "unruled": {
           "type": "string",
-          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author \u2014 which is why the ids are separate."
+          "description": "Version id of the rule that infers grids from text alignment. `unruled-align-v1`. A table it produced was inferred by this engine, not drawn by the author — which is why the ids are separate."
         },
         "stroke_ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v1`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made \u2014 so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed."
+          "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v1`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made — so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed."
         }
       }
     },
     "markdown_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted \u2014 a field defaulted in is a claim the run never made.",
+      "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
         "markdown-blocks-v2"
+      ]
+    },
+    "html_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
+      "examples": [
+        "html-blocks-v1"
       ]
     },
     "observation_rule": {
@@ -200,7 +209,7 @@
     "text_code_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES \u2014 this names how a string is divided before any table is consulted.",
+      "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted.",
       "examples": [
         "declared-font-codes-v1"
       ]
@@ -212,27 +221,28 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "spans",
+        "annotations",
         "char_offsets",
-        "tables",
+        "form_fields",
+        "html",
+        "images",
         "measured_ink_boxes",
         "multi_column_reading_order",
+        "page_screenshots",
+        "spans",
         "structural_locators",
-        "form_fields",
-        "annotations",
-        "images",
-        "page_screenshots"
+        "tables"
       ],
       "description": "L1's achievement condition names capability declarations explicitly, so an artifact without them has not reached 'extracted' regardless of how good its text is. The first three mirror ethos.grounding.v1's required capabilities object exactly.",
       "$comment": "Two rules bind this object in both directions, and both are enforced by tests rather than by review. No `true` without a named proof test: crates/engine-pdf/tests/capabilities.rs maps each true field to a test function and fails the build when the named test does not exist. No `false` without a declared limitation: Capabilities::declared_limitations() derives one per false field, exhaustively, so a consumer never infers a gap from silence.",
       "properties": {
         "spans": {
           "type": "boolean",
-          "$comment": "true in v0 \u2014 proof: spans_are_emitted_with_native_locators"
+          "$comment": "true in v0 — proof: spans_are_emitted_with_native_locators"
         },
         "char_offsets": {
           "type": "boolean",
-          "$comment": "FALSE in v0, and it was true in the M1 sketch. v0 emits runs with native locators and no element/span hierarchy, so there is nothing for an offset to index into. It flips at M5 with DocumentRepresentation v0 \u2014 and with a test. Narrowing a declaration when the evidence does not support it is the mechanism working, not a regression."
+          "$comment": "FALSE in v0, and it was true in the M1 sketch. v0 emits runs with native locators and no element/span hierarchy, so there is nothing for an offset to index into. It flips at M5 with DocumentRepresentation v0 — and with a test. Narrowing a declaration when the evidence does not support it is the mechanism working, not a regression."
         },
         "tables": {
           "type": "boolean",
@@ -240,41 +250,45 @@
         },
         "measured_ink_boxes": {
           "type": "boolean",
-          "$comment": "true in v0 \u2014 proof: measured_ink_boxes_are_measured_and_absence_stays_typed, which asserts both halves (a measured box exists, and unusable metrics still yield typed absence rather than a fallback)"
+          "$comment": "true in v0 — proof: measured_ink_boxes_are_measured_and_absence_stays_typed, which asserts both halves (a measured box exists, and unusable metrics still yield typed absence rather than a fallback)"
         },
         "multi_column_reading_order": {
           "type": "boolean",
-          "$comment": "true since v1-S5 \u2014 proof: multi_column_order_is_read_and_single_column_is_left_alone. Where the rule finds no gutter it reorders nothing, and reading-order-geometric-only declares what it still cannot see. A profile setting this false declares multi-column-reading-order instead and must also name single-column-v1"
+          "$comment": "true since v1-S5 — proof: multi_column_order_is_read_and_single_column_is_left_alone. Where the rule finds no gutter it reorders nothing, and reading-order-geometric-only declares what it still cannot see. A profile setting this false declares multi-column-reading-order instead and must also name single-column-v1"
         },
         "form_fields": {
           "type": "boolean",
-          "$comment": "true since v1-S4 \u2014 proof: a_form_fields_value_is_a_node_and_never_a_text_run"
+          "$comment": "true since v1-S4 — proof: a_form_fields_value_is_a_node_and_never_a_text_run"
         },
         "annotations": {
           "type": "boolean",
-          "$comment": "true since v1-S4 \u2014 proof: an_annotations_contents_is_a_node_and_never_a_text_run"
+          "$comment": "true since v1-S4 — proof: an_annotations_contents_is_a_node_and_never_a_text_run"
         },
         "structural_locators": {
           "type": "boolean",
-          "$comment": "FALSE in v0. An mcid IS captured where a page's content stream supplies one via BDC, and never invented where it does not \u2014 but the tagged-structure tree is not read, so there is no role path and an absent mcid is not evidence the document is untagged. Claiming the capability on the strength of the partial half would promise an address consumers could not rely on."
+          "$comment": "FALSE in v0. An mcid IS captured where a page's content stream supplies one via BDC, and never invented where it does not — but the tagged-structure tree is not read, so there is no role path and an absent mcid is not evidence the document is untagged. Claiming the capability on the strength of the partial half would promise an address consumers could not rely on."
         },
         "images": {
           "type": "boolean",
-          "$comment": "true since v1-S6 \u2014 proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared. Carries no description, caption or alt text \u2014 that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
+          "$comment": "true since v1-S6 — proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared. Carries no description, caption or alt text — that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
         },
         "markdown": {
           "type": "boolean",
-          "description": "A Markdown projection is emitted, always with its Anchor Map (v1.1-S1). What it claims is narrow: THIS PROFILE CAN PROJECT the representation into Markdown that stays citable. It does not claim the Markdown is pretty or complete. False obliges `markdown-not-projected`, which is a position rather than a gap \u2014 checklist O8 records that rule 8 prefers no projection at all."
+          "description": "A Markdown projection is emitted, always with its Anchor Map (v1.1-S1). What it claims is narrow: THIS PROFILE CAN PROJECT the representation into Markdown that stays citable. It does not claim the Markdown is pretty or complete. False obliges `markdown-not-projected`, which is a position rather than a gap — checklist O8 records that rule 8 prefers no projection at all."
         },
         "page_screenshots": {
           "type": "boolean",
           "$comment": "false at v1-S6, by decision rather than omission. Rendering needs a PDF renderer; PDFium is admitted only caller-provided under an explicit ADR, no AGPL renderer clears the licence allowlist, and shelling out to a converter would put an unpinned binary between the document and the artifact. Partnered by `page-raster-not-emitted`, with `raster_dpi` recording the not-emitted state so a renderer arriving later moves profile_sha256."
+        },
+        "html": {
+          "type": "boolean",
+          "description": "An HTML projection is emitted, always with its Anchor Map (v1.1-S4). Separate from `markdown` because the two artifacts say different things about the same document, and a consumer choosing between them is choosing which erasures it can afford."
         }
       }
     },
     "page_budget": {
       "title": "How many pages a run may process before it stops",
-      "$comment": "A DECLARED STATE, not an absent field: {\"mode\":\"unlimited\"} says the budget was considered and found unbounded, where an omitted optional would leave a reader unable to tell 'unbounded' from 'this build has no such knob' \u2014 and would deserialize to a default that silently re-hashes as though it had been there. A page count is the knob because it is the bound that actually governs peak cost in a page-at-a-time reader. Setting it changes profile_sha256, so a budgeted run is correctly non-comparable with an unbudgeted one.",
+      "$comment": "A DECLARED STATE, not an absent field: {\"mode\":\"unlimited\"} says the budget was considered and found unbounded, where an omitted optional would leave a reader unable to tell 'unbounded' from 'this build has no such knob' — and would deserialize to a default that silently re-hashes as though it had been there. A page count is the knob because it is the bound that actually governs peak cost in a page-at-a-time reader. Setting it changes profile_sha256, so a budgeted run is correctly non-comparable with an unbudgeted one.",
       "oneOf": [
         {
           "type": "object",
@@ -312,7 +326,7 @@
     },
     "raster_dpi": {
       "type": "object",
-      "description": "The resolution page rasters are emitted at, or a declared reason there are none (v1-S6). A DECLARED STATE rather than an absent field, exactly as page_budget is: {\"mode\":\"not_emitted\"} says this profile considered rasters and emits none, where an omitted key would leave a reader unable to tell that from a build with no such knob at all \u2014 and would let a future renderer arrive without moving profile_sha256.",
+      "description": "The resolution page rasters are emitted at, or a declared reason there are none (v1-S6). A DECLARED STATE rather than an absent field, exactly as page_budget is: {\"mode\":\"not_emitted\"} says this profile considered rasters and emits none, where an omitted key would leave a reader unable to tell that from a build with no such knob at all — and would let a future renderer arrive without moving profile_sha256.",
       "additionalProperties": false,
       "required": [
         "mode"
@@ -334,17 +348,18 @@
         "version": "0.44.0"
       },
       "capabilities": {
+        "annotations": true,
         "char_offsets": false,
+        "form_fields": true,
+        "html": true,
+        "images": true,
+        "markdown": true,
         "measured_ink_boxes": true,
         "multi_column_reading_order": true,
+        "page_screenshots": false,
         "spans": true,
         "structural_locators": true,
-        "form_fields": true,
-        "annotations": true,
-        "tables": true,
-        "images": true,
-        "page_screenshots": false,
-        "markdown": true
+        "tables": true
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
@@ -352,31 +367,32 @@
         "origin": "top-left",
         "unit": "centipoint"
       },
+      "form_annotation_rule": "form-annotations-v1",
+      "html_rule": "html-blocks-v1",
+      "markdown_rule": "markdown-blocks-v2",
+      "observation_rule": "page-observations-v1",
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.13.0",
+      "parser_version": "0.14.0",
       "quantum_per_point": 100,
+      "raster_dpi": {
+        "mode": "not_emitted"
+      },
       "reading_order_rule": "gutter-columns-v1",
-      "xref_repair": {
-        "mode": "pad-19-to-20-v1"
-      },
-      "verifier": {
-        "mode": "not_pinned"
-      },
+      "struct_tree_rule": "struct-tree-v1",
       "table_detection": {
         "ruled": "ruled-rects-v2",
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1"
       },
-      "markdown_rule": "markdown-blocks-v2",
-      "struct_tree_rule": "struct-tree-v1",
-      "form_annotation_rule": "form-annotations-v1",
-      "observation_rule": "page-observations-v1",
-      "raster_dpi": {
-        "mode": "not_emitted"
+      "text_code_rule": "declared-font-codes-v1",
+      "verifier": {
+        "mode": "not_pinned"
       },
-      "text_code_rule": "declared-font-codes-v1"
+      "xref_repair": {
+        "mode": "pad-19-to-20-v1"
+      }
     }
   ]
 }

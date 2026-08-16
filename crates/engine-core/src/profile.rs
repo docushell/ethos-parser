@@ -442,6 +442,15 @@ pub struct Capabilities {
     /// [`Profile::markdown_rule`] must then be absent from the emitted surface in the same way
     /// every other off capability behaves.
     pub markdown: bool,
+    /// An HTML projection is emitted, always with its Anchor Map (v1.1-S4).
+    ///
+    /// **True since v1.1-S4**, and it claims the same narrow thing [`Self::markdown`] does — *this
+    /// profile can project the representation into HTML that stays citable*. Separate from
+    /// `markdown` because the two artifacts say different things about the same document: GFM has
+    /// to flatten a merged cell and count what that cost, `<td rowspan>` carries it. A consumer
+    /// choosing between them is choosing which erasures it can afford, and one flag could not
+    /// tell it that either was available.
+    pub html: bool,
 }
 
 impl Capabilities {
@@ -464,6 +473,7 @@ impl Capabilities {
         images: true,
         page_screenshots: false,
         markdown: true,
+        html: true,
     };
 }
 
@@ -705,6 +715,17 @@ pub struct Profile {
     /// defaulted.** The same posture `table_detection.stroke_ruled` took at v1-S8: a field
     /// defaulted in is a claim the run never made.
     pub markdown_rule: String,
+    /// Version id of the HTML projection rule in force (v1.1-S4).
+    ///
+    /// See [`crate::html::HTML_RULE_BLOCKS_V1`]. A **separate** id from
+    /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
+    /// not a change to how a GFM row is, and one id covering both would make two artifacts
+    /// non-comparable every time either projection moved.
+    ///
+    /// **A profile JSON predating v1.1-S4 — one with no `html_rule` — is refused, not
+    /// defaulted**, the same posture `markdown_rule` and `table_detection.stroke_ruled` took: a
+    /// field defaulted in is a claim the run never made.
+    pub html_rule: String,
     /// Version id of the forms-and-annotations rule in force. New at v1-S4.
     ///
     /// See [`FORM_ANNOTATION_RULE_V1`].
@@ -748,6 +769,7 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V2.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V1.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -845,6 +867,7 @@ mod tests {
                     images: _,
                     page_screenshots: _,
                     markdown: _,
+                    html: _,
                 },
             page_budget: _,
             reading_order_rule: _,
@@ -859,6 +882,7 @@ mod tests {
                 },
             struct_tree_rule: _,
             markdown_rule: _,
+            html_rule: _,
             form_annotation_rule: _,
             cmap_data_version: _,
             xref_repair: _,
@@ -1054,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.13.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v1","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.14.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1155,11 +1179,19 @@ mod tests {
              projects as `hyphen-\\n\\nated` on one side of this hash and `hyphenated` on the \
              other. Nothing in the REPRESENTATION moved — `extract` still emits two `Extracted` \
              runs with the hyphen verbatim, which is why this is a projection rule id and not a \
-             new derivation class."
+             new derivation class.\n\n\
+             Moved a SEVENTEENTH time at v1.1-S4 (0.14.0), and TWO fields arrived: `html_rule` \
+             and `capabilities.html`. v1.1-S4 adds a second OUTPUT rather than changing either \
+             detector or the Markdown rule — `ethos.html.v1`, under the same four laws. The two \
+             projections say different things about the same table: GFM cannot hold a merge, so \
+             `markdown` expands it and counts the slots in `gfm-span-slots-unrepresentable-v1`, \
+             while `html` emits one `<td colspan>` and carries it. `markdown_rule` did NOT move, \
+             so a reader holding artifacts either side of this hash gets byte-identical Markdown \
+             and a new artifact type beside it."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:4712002b4ada5138c0d49a6a8336a612f2daf470f5591f8720e994ec96f77c8c"
+            "sha256:ae78b7bad73c3ecd040655ce83cb5f99336d84d58ca8bccbd62af358084d1d1f"
         );
     }
 

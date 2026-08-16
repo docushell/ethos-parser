@@ -65,6 +65,7 @@ pub mod derivation;
 pub mod diagnostics;
 pub mod error;
 pub mod geom;
+pub mod html;
 pub mod identity;
 pub mod ids;
 pub mod markdown;
@@ -83,6 +84,9 @@ pub use derivation::{DerivationClass, GeometryAbsence, GeometryPresence};
 pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_VERSION};
 pub use error::EngineError;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
+pub use html::{
+    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V1, HTML_SCHEMA_VERSION,
+};
 pub use identity::{
     ArtifactBinding, ArtifactIdentity, CoordinateOrigin, CoordinateSystem, CoordinateUnit,
     Sha256Hex,

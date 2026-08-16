@@ -22,6 +22,7 @@ authority. Where these and the contract disagree, the contract is right.
 | [`coverage.draft.json`](coverage.draft.json) | The M4 assurance envelope: per-page state, the coverage reconciliation, the terminal state | §7 |
 | [`document-representation.draft.json`](document-representation.draft.json) | **The M5 canonical record**: identity, source, processing run, pages, ordered typed nodes, the fingerprint, and the geometry sidecar | §2, §4, §5, §7 |
 | [`markdown.draft.json`](markdown.draft.json) | **The v1.1 projection**: the Markdown string, the Anchor Map that inverts it, the character census, and the structural erasures GFM causes | §12, `10-V11-SCOPE.md` §4 |
+| [`html.draft.json`](html.draft.json) | **The v1.1-S4 second projection**: the HTML string, the same Anchor Map, the same census — and the merges GFM had to flatten, carried as `rowspan`/`colspan` | §12, `10-V11-SCOPE.md` §4 |
 
 ## `not_detected` and `not_decoded` are gone
 
@@ -71,7 +72,7 @@ They are **not** validated against the code by a test. Adding a JSON Schema vali
 prove a DRAFT matches would be more machinery than a draft warrants; the pinned profile vector in
 `profile.rs` is what actually catches drift in the one place drift matters.
 
-**Three exceptions, and each was added because the claim above had already stopped being true.**
+**Four exceptions. The first three were added because the claim above had already stopped being true; the fourth was added in the slice that added its schema, which is the rule those three taught.**
 None needs a validator; each is `serde_json` equality on the one field a reader would act on.
 
 | test in `contract_invariants.rs` | what it pins | why it exists |
@@ -79,6 +80,7 @@ None needs a validator; each is `serde_json` equality on the one field a reader 
 | `the_profile_schema_example_is_the_real_profile` (M4) | the whole example object | it still carried `"unbound-until-m3"` placeholders two milestones after the backend landed |
 | `the_representation_schema_pins_the_version_the_code_emits` (v1-S3) | `schema_version`, `artifact_type` | the schema said `0.1.0` while the code had said `0.2.0` since v1-S1 — the profile had a guard and this did not, which is why only the profile stayed honest |
 | `the_markdown_schema_pins_the_version_and_rule_the_code_emits` (v1.1-S3) | `schema_version`, `artifact_type`, and the `markdown_rule` example | `markdown.draft.json` arrived at v1.1-S1 with no guard, and `markdown_rule` moved at S2 and again at S3 — the one field on that artifact whose whole job is to say which projection produced it |
+| `the_html_schema_pins_the_version_and_rule_the_code_emits` (v1.1-S4) | `schema_version`, `artifact_type`, and the `html_rule` example — plus that the two projections do not share a rule id | added WITH the schema rather than after it drifted, which is the whole point of writing the pattern down |
 
 The pattern is the point: a schema without a guard drifts, and the drift is invisible to exactly
 the reader the file is for. A new draft schema gets one in the slice that adds it.

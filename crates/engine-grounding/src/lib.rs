@@ -466,6 +466,11 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         // embedded Markdown would put a projection inside the record a citation binds to, which
         // is precisely the layering Workbench rule 8 warns about.
         markdown: _,
+        // v1.1-S4. Nothing, for the same reason as `markdown` directly above: HTML is a THIRD
+        // sibling projection of the same representation, not an input to this one. That there
+        // are now two of them is exactly why none of them belongs inside the record a citation
+        // binds to.
+        html: _,
     } = caps;
 
     if char_offsets {

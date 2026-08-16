@@ -826,3 +826,72 @@ fn the_markdown_schema_pins_the_version_and_rule_the_code_emits() {
         );
     }
 }
+
+/// The html draft schema pins the shape version and the rule id the code actually emits.
+///
+/// The fourth of these guards, added **in the slice that adds the schema** rather than two slices
+/// later — which is the rule v1.1-S3 wrote down after finding the representation schema had
+/// drifted for exactly that reason. `docs/draft-schemas/README.md` states it: a schema without a
+/// guard drifts, and the drift is invisible to the reader the file is for.
+#[test]
+fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/html.draft.json");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    assert_eq!(
+        schema["properties"]["schema_version"]["const"].as_str(),
+        Some(engine_core::HTML_SCHEMA_VERSION),
+        "html.draft.json pins a schema_version the code no longer emits. Update the schema in the \
+         same commit that bumps the constant — docs/draft-schemas/README.md tells readers this \
+         file describes what the engine actually produces."
+    );
+    assert_eq!(
+        schema["properties"]["artifact_type"]["const"].as_str(),
+        Some(engine_core::HTML_ARTIFACT_TYPE),
+        "and the artifact type with it"
+    );
+
+    let examples: Vec<&str> = schema["properties"]["html_rule"]["examples"]
+        .as_array()
+        .expect("html_rule carries examples")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(
+        examples.contains(&engine_core::HTML_RULE_BLOCKS_V1),
+        "html.draft.json's `html_rule` examples are {examples:?}, none of which is the rule this \
+         build emits ({}).",
+        engine_core::HTML_RULE_BLOCKS_V1
+    );
+
+    if let Some(example) = schema["examples"].as_array().and_then(|a| a.first()) {
+        assert_eq!(
+            example["html_rule"].as_str(),
+            Some(engine_core::HTML_RULE_BLOCKS_V1),
+            "the worked example names a different rule than the schema's own property does"
+        );
+        assert_eq!(
+            example["artifact_type"].as_str(),
+            Some(engine_core::HTML_ARTIFACT_TYPE)
+        );
+        assert_eq!(
+            example["schema_version"].as_str(),
+            Some(engine_core::HTML_SCHEMA_VERSION)
+        );
+    }
+
+    // **The two projections must not share a rule id.** One id covering both would make every
+    // artifact non-comparable each time either projection moved, which is the opposite of what a
+    // rule id is for.
+    assert_ne!(
+        engine_core::HTML_RULE_BLOCKS_V1,
+        engine_core::MARKDOWN_RULE_BLOCKS_V2
+    );
+}

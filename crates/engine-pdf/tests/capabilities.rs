@@ -134,6 +134,7 @@ fn proof_table() -> Vec<Proof> {
         images,
         page_screenshots,
         markdown,
+        html,
     } = c;
 
     vec![
@@ -212,6 +213,16 @@ fn proof_table() -> Vec<Proof> {
             // The proof is the golden, not the serializer: a Markdown exporter is easy and a
             // Markdown exporter whose output can be inverted back to evidence is the claim.
             proof_test: Some("a_markdown_quote_verifies_end_to_end"),
+            why_not: None,
+        },
+        Proof {
+            field: "html",
+            claimed: html,
+            // v1.1-S4, and the proof is the same shape as `markdown`'s for the same reason: an
+            // HTML serializer is easy, and an HTML serializer whose bytes invert back to evidence
+            // is the claim. The golden this names also pins the half that only HTML can show —
+            // a merged cell carried as `<td colspan>` rather than flattened.
+            proof_test: Some("an_html_quote_verifies_end_to_end"),
             why_not: None,
         },
         Proof {

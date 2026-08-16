@@ -13,7 +13,7 @@ roadmap row, and nothing in it closes v1.
 | **S1** | Linear Markdown + Anchor Map + coverage + the verify golden | S0 | **done** |
 | **S2** | Tables and lists as Markdown, erasure declared (A14), still with the map | S1 | **done** |
 | **S3** | Hyphenation join in the export only, counted (P15) | S1 | **done** |
-| **S4** | HTML, under the same four laws (checklist O9) | S1 | **not started** |
+| **S4** | HTML, under the same four laws (checklist O9) | S1-S3 | **done** |
 
 ---
 
@@ -477,13 +477,105 @@ what makes the question askable at all.
 
 ---
 
-## S4 — HTML, under the same four laws — **not started**
+## S4 — HTML, under the same four laws
+
+- **Status: done.** `ethos.html.v1` at **0.14.0**, under `html-blocks-v1`. `markdown_rule` did
+  **not** move: the Markdown a document produces is byte-for-byte what 0.13.0 emitted.
 
 - **Goal:** an HTML projection carrying the same map discipline the Markdown one does.
 
 - **The standing constraint:** checklist **O9**. HTML gets the four laws or it does not ship.
 
-- **Not started.** Starts when the owner asks.
+### Why this is a slice and not a stylesheet
+
+`ethos.html.v1` would not be worth a second artifact if it were the first with angle brackets. It
+is worth one for exactly one reason: **GFM cannot say `rowspan`, and HTML can.**
+
+S2 had to expand every merged cell into the slots it covered and count what that cost —
+`gfm-span-slots-unrepresentable-v1` — because a table reading `| North | merged span |  |` has
+quietly become a table with an extra empty cell. Here the origin cell is one `<td colspan="2">`
+and the covered slot emits nothing:
+
+| on `markdown-table-cells` | `ethos.markdown.v1` | `ethos.html.v1` |
+| --- | --- | --- |
+| the merged cell | expanded, text in the origin, covered slot empty | `<td colspan="2">merged span</td>` |
+| `gfm-span-slots-unrepresentable-v1` | **1** | **0** |
+| `gfm-row-zero-separator-v1` | **1** — the delimiter row asserts a header | **0** — every cell is a `<td>` |
+
+**No `<th>` appears anywhere in the projection.** Neither detector reads `/TH` and the
+representation carries no header declaration, so a header row would be this exporter deciding what
+the document meant. GFM had no such choice, which is why S2 owed a code for it and S4 does not.
+
+### The one erasure HTML still declares
+
+`gfm-list-item-run-joins-v1`, and it is on **both** artifacts. Two sibling `/LI`s have identical
+role paths, so nothing in the representation distinguishes "the rest of this item" from "the next
+item" — every projection has to guess, and HTML guesses the same way Markdown does, because two
+artifacts of one document that disagreed about how many items it has would both be wrong to cite.
+
+Its `gfm-` prefix is **historical rather than descriptive**: the erasure belongs to the tagged
+tree, and it carries the name of the slice that first met it. Renaming it would change what
+`ethos.markdown.v1` says under a `markdown_rule` this slice deliberately does not move, and a rule
+id that stayed put while its output changed is the one dishonesty a version id exists to prevent.
+
+### What is reused rather than rewritten
+
+Everything that decides *what* to emit: `normalize`, `heading_level`, `list_role`, `dropped_code`,
+`hyphen_tail` and `plan_tables`. `html.rs` decides only how the result is spelled, and the census
+is closed by one shared `census` function so the two artifacts **cannot** disagree about what a
+document contains — asserted on every fixture in the sweep, not just described.
+
+The one structural difference is lists: a Markdown item is a line and needs no state, an HTML one
+is a `<li>` inside a `<ul>` that must be opened, nested inside its parent's open `<li>`, and
+closed. That is why this is a second walk rather than a vocabulary handed to the first.
+
+### Entities, and why the whole one is `source`
+
+`&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`. S2 splits the GFM pipe escape — the
+backslash is `syntax`, the pipe stays `source` — because the exporter really did add a byte beside
+a real one. An entity is different: it **replaces** the character, and `&lt;` contains no `<` to
+label. So the entity is emitted whole as `source`, and the census is told it stands for **one**
+character rather than four.
+
+That last part is load-bearing. Law 4 counts characters of node text, not emitted bytes; letting an
+entity inflate the count would push `emitted` past what the representation holds and underflow the
+whitespace residue. Inverting a `source` segment on this artifact therefore means HTML-unescaping
+it — a total, lossless transform, said out loud here, in the schema and in the module.
+
+### A fragment, deliberately
+
+No `<html>`, `<head>`, `<body>` or doctype, and no indentation. Those are bytes no document drew;
+the map would tile them honestly as `syntax`, but they would sit inside quotes a consumer is
+likely to lift. Embedding a fragment is one concatenation; unwrapping a document is a parse.
+
+- **In:** `engine-core/src/html.rs`; `html_rule` and `capabilities.html` on the profile;
+  `engine html`; `SlotRole` on the shared table plan so a merge can be carried; the shared
+  `census`; `html.draft.json` and its guard; `0.14.0` and the moved profile hash; PUBLIC-API,
+  CHANGELOG, README.
+
+- **Out:** CSS, JS, `class`/`style` from font names (L29), `<img>` or `data:` URLs, a
+  Markdown-to-HTML bridge, an HTML parser dependency, indentation that is not `syntax`, a fifth
+  crate, a tag.
+
+- **Acceptance tests:**
+  - [x] Four laws on every fixture: the map tiles, two kinds only, one artifact,
+        `emitted + dropped == in_representation`
+  - [x] No CLI path emits HTML without its map, and a tampered representation is refused
+  - [x] `simple-text` is `<p>Hello Ethos</p>` with the map geometry pinned as literals
+  - [x] The merged cell is **one** `<td colspan="2">`, its text appears once, the covered slot
+        emits nothing, and no `<th>` is invented
+  - [x] `&`, `<`, `>` escaped; the entity is `source`; the census counts characters, not bytes
+  - [x] The hyphen join is the same predicate — joined here, `non-`/`escr` still refused, and the
+        joined word citable on neither artifact
+  - [x] **Both projections agree, character for character**, on every fixture in the sweep
+  - [x] The verify golden: source quote **grounds**, tag-carrying quote comes back
+        **`text_mismatch`** with the reason pinned
+  - [x] All S1–S3 Markdown goldens still pass, and the Markdown bytes are unchanged
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication 0
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+
+- **Depends on:** S1, S2 (the table plan), S3 (the hyphen predicate).
 
 ---
 

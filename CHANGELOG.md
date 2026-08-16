@@ -7,7 +7,108 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.1-S3, the hyphenation join, as 0.13.0
+## [Unreleased] — v1.1-S4, HTML under the same four laws, as 0.14.0
+
+**A second projection, and it is not the first one with angle brackets.** `ethos.html.v1` carries
+an HTML string, the same **Anchor Map** that inverts every source byte of it back to representation
+nodes, and the same character census — under its own rule id, `html-blocks-v1`. `markdown_rule`
+does **not** move: the Markdown a document produces is byte-for-byte what 0.13.0 emitted. **v1 is
+still not done** — the S7 gate is measured and missed at 64‰ — and nothing here closes it. Not
+tagged. **v1.1 is complete.**
+
+### Why this earns a slice rather than a stylesheet
+
+**GFM cannot say `rowspan`, and HTML can.** That is the whole case, and without it a second
+artifact would be a second thing to keep in sync for no gain.
+
+v1.1-S2 had to expand every merged cell into the slots it covered and count what that cost, because
+a table reading `| North | merged span |  |` has quietly become a table with an extra empty cell.
+On `markdown-table-cells` the two artifacts now say different things, and the difference is
+asserted rather than described:
+
+| | `ethos.markdown.v1` | `ethos.html.v1` |
+| --- | --- | --- |
+| the merged cell | expanded — text in the origin, covered slot empty | `<td colspan="2">merged span</td>`, covered slot emits **nothing** |
+| `gfm-span-slots-unrepresentable-v1` | **1** | **0** |
+| `gfm-row-zero-separator-v1` | **1** — the delimiter row asserts a header the document never declared | **0** — every cell is a `<td>` |
+
+**No `<th>` appears anywhere in the projection.** Neither detector reads `/TH` and the
+representation carries no header declaration, so a header row would be this exporter deciding what
+the document meant. GFM left S2 no choice, which is why it owed a code for it and this does not.
+
+### The one erasure HTML still declares, and the name it has to keep
+
+`gfm-list-item-run-joins-v1`, on **both** artifacts. Two sibling `/LI`s have identical role paths,
+so nothing in the representation distinguishes "the rest of this item" from "the next item". Every
+projection has to guess; HTML guesses the way Markdown does, because two artifacts of one document
+that disagreed about how many list items it has would both be wrong to cite.
+
+Its `gfm-` prefix is **historical rather than descriptive** — the erasure belongs to the tagged
+tree, and it carries the name of the slice that first met it. Renaming it would change what
+`ethos.markdown.v1` says under a `markdown_rule` this slice deliberately does not move, and a rule
+id that stayed put while its output changed is the one dishonesty a version id exists to prevent.
+
+### Reused rather than rewritten, and the one thing that could not be
+
+Everything that decides *what* to emit is called, not copied: `normalize`, `heading_level`,
+`list_role`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen predicate
+would be a second rule free to drift, and only one of them would have the corpus test that caught
+`nonescr`.
+
+The census is closed by **one shared function**, so the two artifacts *cannot* disagree about what
+a document contains — and `the_two_projections_agree_about_every_character` asserts exactly that,
+field by field and bucket by bucket, on every fixture in the sweep.
+
+What could not be shared is lists. A Markdown item is a line and needs no state; an HTML one is a
+`<li>` inside a `<ul>` that must be opened, nested inside its parent's still-open `<li>`, and
+closed. That is why `html.rs` has a walk of its own rather than a vocabulary handed to the other.
+
+`TablePlan` grew `roles` for this slice — `Origin { rowspan, colspan }` / `Covered` / `Empty`.
+GFM never needed it, because expanding every merge makes a covered slot and an empty one identical.
+It is computed in the walk `plan_tables` already did, and `placed` is deliberately left alone so
+S2's `gfm-cell-not-placed-v1` counts do not move.
+
+### Entities, and why the whole one is `source`
+
+`&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`. S2 splits the GFM pipe escape — backslash
+`syntax`, pipe `source` — because the exporter added a byte *beside* a real one. An entity is
+different: it **replaces** the character, and `&lt;` contains no `<` to label. So the entity is
+emitted whole as `source`, and the census is told it stands for **one** character rather than four.
+
+That last part is load-bearing. Law 4 counts characters of node text, not emitted bytes; letting an
+entity inflate the count would push `emitted` past what the representation holds and underflow the
+whitespace residue. Inverting a `source` segment on this artifact therefore means HTML-unescaping
+it — a total, lossless transform, said out loud in the module, the schema and the milestone.
+
+### A fragment, deliberately
+
+No `<html>`, `<head>`, `<body>` or doctype, and **no indentation**. Those are bytes no document
+drew; the map would tile them honestly as `syntax`, but they would sit inside quotes a consumer is
+likely to lift. Embedding a fragment is one concatenation; unwrapping a document is a parse.
+
+### Identity
+
+`html-blocks-v1`, `capabilities.html`, workspace **0.14.0**, profile hash
+`sha256:ae78b7bad73c3ecd040655ce83cb5f99336d84d58ca8bccbd62af358084d1d1f`. Two fields arrived, so
+the hash moves for a reason a reader can name. A profile JSON with no `html_rule` is **refused**,
+not defaulted — the posture `markdown_rule` and `table_detection.stroke_ruled` each took.
+
+`capabilities.html` is `true` and names `an_html_quote_verifies_end_to_end` as its proof, which the
+capability scan can see. `html.draft.json` ships **with** its guard,
+`the_html_schema_pins_the_version_and_rule_the_code_emits` — the rule v1.1-S3 wrote down after
+finding a schema that had drifted for want of one.
+
+### Unchanged
+
+`markdown_rule` and every byte of Markdown it produces. The representation (0.5.0), `extract`, the
+three detection rules, the table gate (**still missed at 64‰**), the oracle (12/3),
+`irs-form-1040-2025` at 0 tables, fabrication 0. Four crates, no new dependency, no HTML parser, no
+fixture added. `engine-pdf` still has zero mentions of HTML or Markdown. No CSS, no JS, no MCP, no
+tag. v1.2 has not started.
+
+---
+
+## v1.1-S3, the hyphenation join, as 0.13.0
 
 **A word the page broke across a line reads as one word — in the export, and nowhere else.**
 `markdown_rule` moves from `markdown-blocks-v1` to **`markdown-blocks-v2`**, and

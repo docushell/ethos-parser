@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ethos-engine:draft-schema:html:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §12 (which DECLINES to define a projection at all, on Workbench rule 8) and docs/10-V11-SCOPE.md §4 (the four laws this artifact is built to satisfy instead). Written from crates/engine-core/src/html.rs. A PROJECTION, not the record: the representation is the evidence, this is derived from it and is deliberately lossy, and `coverage` is where it says how. SECOND projection, deliberately not a rendering of the first — see `html_rule`.",
+  "title": "ethos.html.v1",
+  "description": "An HTML projection of a DocumentRepresentation, carried TOGETHER WITH the Anchor Map that inverts it back to representation nodes, a coverage census of every source character that did not reach it, and a second census of the structure the projection could not carry (v1.1-S4). It obeys the same four laws as `ethos.markdown.v1` and exists for one reason that artifact cannot serve: GFM has no `rowspan`, so the Markdown projection must expand a merged cell and count the slots that costs, while `<td rowspan>` carries the merge the document actually drew. The consumer's rule is one line: a quote that touches a `syntax` byte is not invertible.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_type",
+    "schema_version",
+    "parser_version",
+    "profile_sha256",
+    "source_sha256",
+    "representation_sha256",
+    "html_rule",
+    "html",
+    "anchor_map",
+    "coverage"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "ethos.html.v1"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "parser_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The engine build that produced this artifact."
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Hash of the pinned configuration profile. Two artifacts are comparable if and only if this matches — and since v1.1-S1 the profile carries `markdown_rule`, so a run under a different projection rule is correctly non-comparable."
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the original source bytes, carried through from the representation."
+    },
+    "representation_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the representation this projects. The binding that makes the map checkable: without it, a map could name node ids from a different parse of a different file and read exactly the same."
+    },
+    "html_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the projection rule. `html-blocks-v1` (v1.1-S4) emits `<p>`, `<h1>`-`<h6>` from the structure tree only, `<ul>`/`<li>` from a tagged `/L`, and `<table>` with the document's merges carried as `rowspan`/`colspan`. Every cell is a `<td>`: neither detector reads `/TH`, so a header row would be invented. SEPARATE from `markdown_rule` and it moves independently — a change to how a `<td>` is spelled is not a change to how a GFM row is. Source bytes are ENTITY-ENCODED: `&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`, the whole entity sits inside the `source` segment because `&lt;` contains no `<` to label, and inverting a source segment therefore means HTML-unescaping it — a total, lossless transform. The census counts the CHARACTERS the document drew, not the bytes the entity took.",
+      "examples": [
+        "html-blocks-v1"
+      ]
+    },
+    "html": {
+      "type": "string",
+      "description": "The HTML, as a FRAGMENT: no `<html>`, `<head>`, `<body>` or doctype, because those are bytes no document drew and the consumer's framing is theirs to choose. NEVER emitted without `anchor_map`: they are fields of one artifact rather than two files, because a companion file is a thing a pipeline strips and a field is not."
+    },
+    "anchor_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segments"
+      ],
+      "description": "The map from `markdown` bytes back to evidence. Its segments TOTAL-TILE the string: sorted, contiguous, no overlap, no gap, covering 0..len(markdown) exactly. A map with a hole is worse than no map, because the hole is exactly where an unquotable byte hides — so an incomplete map is a hard error on both construction and parse, never a warning.",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "start",
+              "end"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "source",
+                  "syntax"
+                ],
+                "description": "TWO values, deliberately. `source` inverts to canonical node text; `syntax` is markup the exporter invented. There is no third — a 'probably source' would be the confidence field docs/01-CONTRACT.md §9 forbids, and would put the consumer back to guessing whether a quote is citable."
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "First UTF-8 BYTE offset into `markdown`, inclusive. Bytes rather than characters, and the description says so: every language's slice takes one or the other, and saying which is the difference between a map and a hint."
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Last UTF-8 byte offset, exclusive."
+              },
+              "node_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "The representation nodes these bytes came from, in emission order. Present on `source` and ABSENT on `syntax`, because syntax came from no node. Never a newly minted id: a projection that invented identifiers would be a second record of one document, and two records drift."
+              }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_chars_in_representation",
+        "source_chars_emitted",
+        "source_chars_dropped",
+        "dropped",
+        "structural_erasures"
+      ],
+      "description": "A census, not a summary. `source_chars_emitted + source_chars_dropped == source_chars_in_representation`, asserted in CI on real fixtures. Counted in CHARACTERS of node text, because the thing being conserved is the text the representation offered.",
+      "properties": {
+        "source_chars_in_representation": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of the character count of every node's text in the representation — the RAW text, not its normalization, so that whitespace the projection collapsed is visible as a bucket rather than hidden by moving the denominator."
+        },
+        "source_chars_emitted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Characters that landed in a `source` segment."
+        },
+        "source_chars_dropped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Characters that did not, summed over `dropped`."
+        },
+        "dropped": {
+          "type": "array",
+          "description": "Where the dropped characters went, by named class, sorted by code. Checklist A14: if something is removed, the artifact says so AND says how much. 'Some content was omitted' is not a disclosure; `annotation-text-not-projected-v1: 37` is.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "chars",
+              "nodes"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "examples": [
+                  "form-field-values-not-projected-v1",
+                  "annotation-text-not-projected-v1",
+                  "image-nodes-carry-no-text-v1",
+                  "whitespace-collapsed-v1",
+                  "hyphenation-rejoin-dropped-v1"
+                ]
+              },
+              "chars": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "nodes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "structural_erasures": {
+          "type": "array",
+          "description": "Structure the projection flattened, by named class, sorted by code. On this artifact it is almost always EMPTY, and that is the point of having two projections: the `gfm-*` codes name things GFM cannot say, and HTML says them. The one exception is `gfm-list-item-run-joins-v1` — two sibling `/LI`s have identical role paths, so nothing in the representation distinguishes 'the rest of this item' from 'the next item' and BOTH projections must guess. Its `gfm-` prefix is historical: the erasure belongs to the tagged tree, and it carries the name of the slice that first met it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "count"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "description": "`gfm-span-slots-unrepresentable-v1` — slots a merged cell covered that GFM cannot say it covered, `rowspan × colspan - 1` summed over the table's cells. `gfm-row-zero-separator-v1` — once per GFM table, because the delimiter row makes row 0 a header on every renderer and neither detector reads `/TH`. `gfm-cell-run-claimed-twice-v1` — a run two cells both claimed, emitted under the first so that one node's characters are not counted twice. `gfm-cell-not-placed-v1` — a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs. `gfm-table-not-projected-v1` — a table with zero rows or columns. `gfm-list-item-run-joins-v1` — a body run appended to an already-open list item, which is the one boundary a role path cannot settle.",
+                "examples": [
+                  "gfm-span-slots-unrepresentable-v1",
+                  "gfm-row-zero-separator-v1",
+                  "gfm-cell-run-claimed-twice-v1",
+                  "gfm-cell-not-placed-v1",
+                  "gfm-table-not-projected-v1",
+                  "gfm-list-item-run-joins-v1"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "How many. Never a severity and never a ratio (docs/01-CONTRACT.md §9). Only non-zero classes appear: a list of codes all reading `0` is the disclosure-shaped noise a reader learns to skip, and every code is documented here whether or not a document trips it."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "artifact_type": "ethos.html.v1",
+      "schema_version": "1.0.0",
+      "parser_version": "0.14.0",
+      "profile_sha256": "sha256:ae78b7bad73c3ecd040655ce83cb5f99336d84d58ca8bccbd62af358084d1d1f",
+      "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
+      "representation_sha256": "sha256:d7c338e10281356dc619444f1599ec93bbdf84fe2a9a4b3bcbd35205b8aa3b5c",
+      "html_rule": "html-blocks-v1",
+      "html": "<p>Hello Ethos</p>\n",
+      "anchor_map": {
+        "segments": [
+          {
+            "kind": "syntax",
+            "start": 0,
+            "end": 3
+          },
+          {
+            "kind": "source",
+            "start": 3,
+            "end": 14,
+            "node_ids": [
+              "s1"
+            ]
+          },
+          {
+            "kind": "syntax",
+            "start": 14,
+            "end": 19
+          }
+        ]
+      },
+      "coverage": {
+        "source_chars_in_representation": 11,
+        "source_chars_emitted": 11,
+        "source_chars_dropped": 0,
+        "dropped": [],
+        "structural_erasures": []
+      }
+    }
+  ]
+}

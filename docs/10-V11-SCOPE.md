@@ -14,7 +14,9 @@ closes v1, and no slice here may be cited as evidence that it did.
 
 **A Markdown quote is either invertible to canonical evidence, or explicitly unquotable.**
 
-Everything below is machinery for that sentence.
+Everything below is machinery for that sentence. **S4 makes it true of a second projection**
+without weakening it: replace "Markdown" with "HTML" and every law, every test and every erasure
+count still has to hold, or `ethos.html.v1` does not ship (checklist O9).
 
 ## 2. Why this version exists at all — Workbench rule 8
 
@@ -43,11 +45,16 @@ are:
 
 | | |
 | --- | --- |
-| **One artifact** | `ethos.markdown.v1` — canonical JSON, c14n, integer fields only |
-| **Carrying both halves** | the `markdown` string **and** the `anchor_map` that inverts it |
-| **Plus a census** | `coverage`, which accounts for every source character the representation offered |
-| **Produced by** | a projection of `DocumentRepresentation v0`, under a versioned `markdown_rule` |
-| **Proved by** | a quote lifted out of the Markdown that grounds through the *existing* Ethos verifier |
+| **Two artifacts** | `ethos.markdown.v1` (S1) and `ethos.html.v1` (S4) — canonical JSON, c14n, integer fields only |
+| **Each carrying both halves** | the string **and** the `anchor_map` that inverts it |
+| **Plus a census** | `coverage`, which accounts for every source character the representation offered — and the two artifacts of one document must agree on it exactly |
+| **Produced by** | a projection of `DocumentRepresentation v0`, each under its own versioned rule id |
+| **Proved by** | a quote lifted out of the projection that grounds through the *existing* Ethos verifier, and one that carries invented bytes and does not |
+
+**The second artifact is not a rendering of the first.** It is projected from the representation,
+because a Markdown-to-HTML pass would be a second projection whose map nobody built. What earns it
+a slice rather than a stylesheet is tables: GFM has no `rowspan`, so S2 had to expand every merged
+cell and count the slots that cost, while `<td rowspan>` carries the merge the document drew.
 
 ## 4. The four laws
 
@@ -123,13 +130,13 @@ says how much*.
 | **v1.1-S1** | Linear Markdown + Anchor Map + coverage + the verify golden | **done** |
 | **v1.1-S2** | Tables and lists as Markdown, with the erasure declared (A14), still with the map | **done** |
 | **v1.1-S3** | Hyphenation join in the export only, counted (P15) | **done** |
-| **v1.1-S4** | HTML, under the same four laws (checklist O9) | **not started** |
+| **v1.1-S4** | HTML, under the same four laws (checklist O9) | **done** |
 
 **S3 shipped the cosmetic and not HTML, and the row was split rather than half-ticked.** They are
 two products: HTML is a second artifact owing the same four laws, and a hyphenation join is a few
 lines in `to_markdown`. Doing both under one label would have made "S3 is done" unreadable.
 
-S4 starts when the owner asks. Not before.
+v1.1 is complete. v1.2 starts when the owner asks. Not before.
 
 ## 7. Identity
 
@@ -137,13 +144,18 @@ A projection that changes what comes out is a profile change, on the same discip
 id before it:
 
 - `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1, `markdown-blocks-v1` at
-  S2, `markdown-blocks-v2` at S3.
+  S2, `markdown-blocks-v2` at S3, and **unchanged at S4**: the second projection did not touch the
+  first, so artifacts either side of the S4 hash carry byte-identical Markdown.
+- `profile.html_rule` — a **separate** versioned string, `html-blocks-v1` at S4. Separate because
+  the two projections say different things about the same table, and one id covering both would
+  make every artifact non-comparable each time either moved.
+- `capabilities.html` — `true` only with a proof test, on the same rule as `markdown`.
 - `capabilities.markdown` — `true` only with a proof test; `false` obliges a declared limitation.
 - A profile JSON predating S1 — one with no `markdown_rule` — is **refused**, not defaulted. The
   same posture `table_detection.stroke_ruled` took at v1-S8: a field defaulted in is a claim the run
   never made.
-- Workspace `0.10.0` → `0.11.0` at S1, `0.12.0` at S2, **`0.13.0`** at S3, and the profile hash
-  moves with each. S3 changes no field and no shape: the rule id changes *value*, because
+- Workspace `0.10.0` → `0.11.0` at S1, `0.12.0` at S2, `0.13.0` at S3, **`0.14.0`** at S4, and the
+  profile hash moves with each. S3 changes no field and no shape: the rule id changes *value*, because
   `hyphenated-line-break` projects `hyphen-\n\nated` under one and `hyphenated` under the other.
 
 ## 8. Standing rules, carried forward

@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.1-S3 shipped, as 0.13.0.** v1 is the DocuShell replacement gate
+**Status:** **v1.1-S4 shipped, as 0.14.0 — v1.1 is complete.** v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -11,6 +11,17 @@ a Markdown string and the **Anchor Map** that inverts every source byte of it ba
 representation nodes, plus a coverage census of what did not make it. `docs/01-CONTRACT.md` §12
 refused a Markdown projection for the whole of v1 on Workbench rule 8; the map is what makes that
 objection payable.
+
+**S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
+angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots
+that costs, while HTML emits one `<td colspan="2">` and carries the merge — on the same fixture the
+two artifacts carry different erasure censuses, and a test asserts the difference. Every cell is a
+`<td>`, because neither detector reads `/TH` and a header row would be invented. It is projected
+from the representation rather than from the Markdown, everything that decides *what* to emit is
+shared rather than copied, and one `census` function closes both so the two artifacts **cannot**
+disagree about what a document contains. `markdown_rule` did not move. S4 also fixed the
+`<` problem entities create: `&lt;` contains no `<` to label, so the whole entity is `source` and
+the census counts the character rather than the four bytes.
 
 **S3 joins a hyphenated line break, in the export and nowhere else.** `markdown-blocks-v2` closes
 up a word the page drew in two pieces: `hyphen-` + `ated` reads `hyphenated`. The representation is
@@ -24,8 +35,8 @@ The golden makes that trade executable, on an authored fixture whose halves both
 ink: the page draws `The rate may be recalcu-` / `lated at closing`, the export reads
 `The rate may be recalculated at closing`, and the pinned Ethos CLI **grounds each half** and
 returns **`text_mismatch`** for `recalculated` — cited against an element that exists, so the
-reason is pinned rather than an `element_not_found` that would prove nothing. HTML is now
-**S4, not started**; dot-leaders and drop-caps are not implemented and have no fixture.
+reason is pinned rather than an `element_not_found` that would prove nothing. Dot-leaders and
+drop-caps are not implemented and have no fixture.
 
 **S2 projects BLOCKS.** `markdown-blocks-v1` emitted a GFM table for every table on the
 representation and a list item for every run the structure tree places in an `/L` — and, because

@@ -585,7 +585,7 @@ pub fn normalize(s: &str) -> String {
 ///
 /// **No font size is consulted.** Checklist L29 is REFUSE, and a heading inferred from 14pt bold
 /// is a claim about layout that no code in this repository makes.
-fn heading_level(node: &crate::Node) -> Option<u8> {
+pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() else {
         return None;
     };
@@ -615,7 +615,7 @@ fn heading_level(node: &crate::Node) -> Option<u8> {
 ///
 /// **No bullet glyph, no hanging indent, no font name.** An untagged document grows no list here;
 /// its bullet characters are runs like any other and project as the text they are.
-fn list_role(node: &crate::Node) -> Option<ListRole> {
+pub(crate) fn list_role(node: &crate::Node) -> Option<ListRole> {
     let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() else {
         return None;
     };
@@ -636,11 +636,11 @@ fn list_role(node: &crate::Node) -> Option<ListRole> {
 
 /// A run's position in a tagged list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ListRole {
+pub(crate) struct ListRole {
     /// Nesting depth, zero-based: one `/L` deep is `0`.
-    depth: usize,
+    pub(crate) depth: usize,
     /// Whether this run is the item's `/Lbl` — the marker the document itself drew.
-    label: bool,
+    pub(crate) label: bool,
 }
 
 /// The next run, when this one ends in a line-break hyphen and that run finishes the word.
@@ -685,7 +685,7 @@ struct ListRole {
 /// `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is the test that keeps it that
 /// way. **A quote of the joined word therefore does not ground** — no element contains it — which
 /// is the right answer for a word the page drew in two pieces, not a defect in the verifier.
-fn hyphen_tail<'a>(
+pub(crate) fn hyphen_tail<'a>(
     head: &crate::Node,
     head_text: &str,
     next: Option<&'a crate::Node>,
@@ -777,14 +777,14 @@ fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
 ///
 /// `chars` is the number of hyphens dropped; `nodes` is the number of runs that lost one, which is
 /// the same number — a run is the head of at most one join.
-const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-v1";
+pub(crate) const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-v1";
 
 /// The bucket a non-projected node belongs to.
 ///
 /// One per node kind rather than one catch-all, because each is a different fact about the
 /// document and collapsing them would put "we dropped 40 characters" where "a reviewer's note and
 /// a form value are different things" belongs.
-fn dropped_code(kind: NodeKind) -> Option<&'static str> {
+pub(crate) fn dropped_code(kind: NodeKind) -> Option<&'static str> {
     match kind {
         NodeKind::TextRun => None,
         // v1-S4: a field's `/V` lives in the AcroForm tree and no content stream draws it. That
@@ -810,15 +810,15 @@ fn dropped_code(kind: NodeKind) -> Option<&'static str> {
 /// Every byte of the Markdown goes through [`Emit::syntax`] or [`Emit::source`], which is what
 /// makes law 2 hold **by construction** rather than by a final audit: there is no `push_str` in
 /// the projection that does not also record what it pushed.
-struct Emit {
-    markdown: String,
-    segments: Vec<Segment>,
+pub(crate) struct Emit {
+    pub(crate) markdown: String,
+    pub(crate) segments: Vec<Segment>,
     /// Characters that landed in a `source` segment, which is `coverage.source_chars_emitted`.
-    emitted_chars: usize,
+    pub(crate) emitted_chars: usize,
 }
 
 impl Emit {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             markdown: String::new(),
             segments: Vec::new(),
@@ -832,7 +832,7 @@ impl Emit {
     /// say exactly the same thing about every byte, and a GFM row would otherwise produce four
     /// segments per empty cell. It can never merge across a `source` segment, because the match
     /// requires the previous segment to end where this one starts *and* to be syntax.
-    fn syntax(&mut self, s: &str) {
+    pub(crate) fn syntax(&mut self, s: &str) {
         if s.is_empty() {
             return;
         }
@@ -855,7 +855,24 @@ impl Emit {
     /// **Never coalesced**, even with an adjacent source segment naming the same node: a segment
     /// is the unit a consumer inverts, and merging two would claim a contiguity in the document
     /// that only exists in this string.
-    fn source(&mut self, s: &str, node: &str) {
+    pub(crate) fn source(&mut self, s: &str, node: &str) {
+        self.source_encoded(s, s.chars().count(), node);
+    }
+
+    /// Bytes that stand for `chars` characters of one node's text.
+    ///
+    /// # Why the count is a parameter (v1.1-S4)
+    ///
+    /// For Markdown the two are always the same: a `source` segment's bytes *are* the normalized
+    /// text. HTML has to encode three characters as entities — `<` becomes `&lt;` — and those
+    /// four bytes still stand for exactly **one** character the document drew.
+    ///
+    /// Law 4 counts **characters of node text**, not emitted bytes, so letting an entity inflate
+    /// the count would break the census in the direction that hides things: `emitted` would exceed
+    /// what the representation holds and the whitespace residue would underflow. Passing the
+    /// unescaped count keeps `emitted + dropped == in_representation` exactly true, and keeps it
+    /// true for the same reason on both artifacts.
+    pub(crate) fn source_encoded(&mut self, s: &str, chars: usize, node: &str) {
         if s.is_empty() {
             return;
         }
@@ -867,7 +884,7 @@ impl Emit {
             end: self.markdown.len(),
             node_ids: vec![node.to_string()],
         });
-        self.emitted_chars += s.chars().count();
+        self.emitted_chars += chars;
     }
 
     /// The two halves of a word the document broke across a line, written as one word (v1.1-S3).
@@ -881,7 +898,24 @@ impl Emit {
     /// boundary somewhere and claim a precision the join threw away.
     ///
     /// A consumer inverting these bytes gets both runs, which is what the page has.
-    fn joined_source(&mut self, s: &str, first: &str, second: &str) {
+    pub(crate) fn joined_source(&mut self, s: &str, first: &str, second: &str) {
+        self.joined_source_encoded(s, s.chars().count(), first, second);
+    }
+
+    /// [`Self::joined_source`], with the character count given rather than measured.
+    ///
+    /// The HTML projection needs it for the reason [`Self::source_encoded`] exists: its bytes are
+    /// entity-encoded, so they may stand for fewer characters than they occupy.
+    pub(crate) fn joined_source_encoded(
+        &mut self,
+        s: &str,
+        chars: usize,
+        first: &str,
+        second: &str,
+    ) {
+        if s.is_empty() {
+            return;
+        }
         let start = self.markdown.len();
         self.markdown.push_str(s);
         self.segments.push(Segment {
@@ -890,7 +924,7 @@ impl Emit {
             end: self.markdown.len(),
             node_ids: vec![first.to_string(), second.to_string()],
         });
-        self.emitted_chars += s.chars().count();
+        self.emitted_chars += chars;
     }
 
     /// A node's text inside a GFM cell, with the two characters GFM reads as structure escaped.
@@ -1135,15 +1169,53 @@ pub fn to_markdown(
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let markdown = e.markdown;
 
-    // **The whitespace the rule collapsed is a bucket, not a rounding.** `emitted` counts
-    // NORMALIZED characters and normalization can only shrink a string, so measuring
-    // `in_representation` over the same normalization would balance the census by moving the goal
-    // posts — a run drawn as `Hello   world` would report 11 characters in a representation that
-    // holds 13, and the two missing ones would be invisible.
-    //
-    // So the denominator is the RAW text of every node, and the difference gets its own named
-    // class. Those characters really did not reach the Markdown; saying how many is what
-    // checklist A14 asks for, and it costs one bucket that is usually zero.
+    let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
+
+    let artifact = MarkdownArtifact {
+        identity: ArtifactIdentity {
+            artifact_type: MARKDOWN_ARTIFACT_TYPE.to_string(),
+            schema_version: MARKDOWN_SCHEMA_VERSION.to_string(),
+            parser_version: parser_version.to_string(),
+            profile_sha256: profile_sha256.clone(),
+        },
+        source_sha256: payload.source.sha256.clone(),
+        representation_sha256: repr.fingerprint().clone(),
+        markdown_rule: markdown_rule.to_string(),
+        markdown,
+        anchor_map,
+        coverage,
+    };
+    artifact.validate()?;
+    Ok(artifact)
+}
+
+/// Close the character census, for **either** projection (v1.1-S4).
+///
+/// # Why this is one function and not two
+///
+/// `ethos.html.v1` accounts for exactly the same characters as `ethos.markdown.v1` — the same
+/// nodes are dropped for the same reasons, the same whitespace is collapsed by the same rule, and
+/// the same hyphen is removed by the same predicate. Two copies of this arithmetic would be two
+/// places for law 4 to stop holding, and only one of them would have a failing test.
+///
+/// The whitespace bucket is computed here rather than accumulated by the caller because it is a
+/// *residue*: `emitted` counts NORMALIZED characters and normalization can only shrink a string,
+/// so measuring `in_representation` over the same normalization would balance the census by moving
+/// the goal posts — a run drawn as `Hello   world` would report 11 characters in a representation
+/// that holds 13, and the two missing ones would be invisible. The denominator is the RAW text of
+/// every node, and the difference gets its own named class.
+///
+/// `erasures` is empty for HTML. That is not an oversight: the `gfm-*` codes name things *GFM*
+/// cannot say, and HTML says most of them — `<td rowspan>` carries the merge GFM had to flatten.
+/// Copying the codes onto an artifact that does not commit the erasure would be a disclosure that
+/// discloses nothing, which is the failure mode A14 is about.
+pub(crate) fn census(
+    payload: &crate::representation::RepresentationPayload,
+    in_representation: usize,
+    emitted_chars: usize,
+    mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)>,
+    erasures: std::collections::BTreeMap<&'static str, usize>,
+) -> Coverage {
     let collapsed: usize = in_representation
         - emitted_chars
         - buckets.values().map(|(chars, _)| *chars).sum::<usize>();
@@ -1169,7 +1241,7 @@ pub fn to_markdown(
         .collect();
     let dropped_chars = dropped.iter().map(|b| b.chars).sum();
 
-    let coverage = Coverage {
+    Coverage {
         source_chars_in_representation: in_representation,
         source_chars_emitted: emitted_chars,
         source_chars_dropped: dropped_chars,
@@ -1185,24 +1257,7 @@ pub fn to_markdown(
                 count,
             })
             .collect(),
-    };
-
-    let artifact = MarkdownArtifact {
-        identity: ArtifactIdentity {
-            artifact_type: MARKDOWN_ARTIFACT_TYPE.to_string(),
-            schema_version: MARKDOWN_SCHEMA_VERSION.to_string(),
-            parser_version: parser_version.to_string(),
-            profile_sha256: profile_sha256.clone(),
-        },
-        source_sha256: payload.source.sha256.clone(),
-        representation_sha256: repr.fingerprint().clone(),
-        markdown_rule: markdown_rule.to_string(),
-        markdown,
-        anchor_map,
-        coverage,
-    };
-    artifact.validate()?;
-    Ok(artifact)
+    }
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1210,15 +1265,35 @@ pub fn to_markdown(
 // -------------------------------------------------------------------------------------------
 
 /// How one table will be laid out as GFM, decided before a byte is written.
-struct TablePlan<'a> {
-    /// Whether this table becomes a GFM grid at all.
-    projected: bool,
+pub(crate) struct TablePlan<'a> {
+    /// Whether this table becomes a grid at all.
+    pub(crate) projected: bool,
     /// The declared grid, row-major, `rows × columns` entries. Each is the ordered list of runs
     /// whose text belongs in that slot — empty for a slot a merge covers, for a hole, and for an
     /// origin cell that enclosed no run.
-    slots: Vec<Vec<&'a crate::Node>>,
-    rows: usize,
-    columns: usize,
+    pub(crate) slots: Vec<Vec<&'a crate::Node>>,
+    /// What each slot **is**, row-major and the same length as [`Self::slots`] (v1.1-S4).
+    ///
+    /// GFM never needed this: it expands every merge, so a covered slot and an empty one both come
+    /// out as an empty cell and telling them apart changes nothing. **HTML does need it**, because
+    /// `<td rowspan>` carries the merge — the origin cell has to know its own span, and the slots
+    /// it covers must produce no `<td>` at all rather than an empty one.
+    pub(crate) roles: Vec<SlotRole>,
+    pub(crate) rows: usize,
+    pub(crate) columns: usize,
+}
+
+/// What one slot of a planned grid is (v1.1-S4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SlotRole {
+    /// No cell originates or lands here: a hole in the grid the document drew.
+    Empty,
+    /// A cell starts here, covering `rowspan × colspan` slots. `1 × 1` is the ordinary case.
+    Origin { rowspan: usize, colspan: usize },
+    /// A merge from an earlier origin reaches this slot. **HTML emits nothing for it** — that is
+    /// what `rowspan`/`colspan` on the origin already said, and a second `<td>` would put the
+    /// merged cell's own width back into the row.
+    Covered,
 }
 
 /// Decide the layout of every table, and count what GFM cannot say about them.
@@ -1226,7 +1301,7 @@ struct TablePlan<'a> {
 /// Runs are claimed here rather than during emission so that **claiming and emitting cannot
 /// disagree**: the linear pass skips exactly the runs some slot will print, because it is reading
 /// the same list this built.
-fn plan_tables<'a>(
+pub(crate) fn plan_tables<'a>(
     payload: &'a crate::representation::RepresentationPayload,
     erasures: &mut std::collections::BTreeMap<&'static str, usize>,
 ) -> Vec<TablePlan<'a>> {
@@ -1246,6 +1321,7 @@ fn plan_tables<'a>(
             plans.push(TablePlan {
                 projected: false,
                 slots: Vec::new(),
+                roles: Vec::new(),
                 rows,
                 columns,
             });
@@ -1254,6 +1330,7 @@ fn plan_tables<'a>(
 
         let mut slots: Vec<Vec<&crate::Node>> = vec![Vec::new(); rows * columns];
         let mut placed = vec![false; rows * columns];
+        let mut roles = vec![SlotRole::Empty; rows * columns];
 
         for cell in &table.cells {
             let (r, c) = (cell.position.row as usize, cell.position.column as usize);
@@ -1270,10 +1347,30 @@ fn plan_tables<'a>(
 
             // **The merge, counted.** `rowspan × colspan - 1` slots held this cell and GFM cannot
             // say so; the text goes in the origin slot and the rest come out empty.
+            let (rowspan, colspan) = (
+                (cell.position.rowspan as usize).max(1),
+                (cell.position.colspan as usize).max(1),
+            );
             let covered =
                 (cell.position.rowspan as usize).saturating_mul(cell.position.colspan as usize);
             if covered > 1 {
                 *erasures.entry(GFM_SPAN_SLOTS_UNREPRESENTABLE).or_insert(0) += covered - 1;
+            }
+
+            // The span, recorded for the projection that can express it. **`placed` is left
+            // alone deliberately**: marking covered slots there would change which later cells
+            // count as `gfm-cell-not-placed-v1`, and S2's numbers are not this slice's to move.
+            roles[index] = SlotRole::Origin { rowspan, colspan };
+            for dr in 0..rowspan {
+                for dc in 0..colspan {
+                    if dr == 0 && dc == 0 {
+                        continue;
+                    }
+                    let (rr, cc) = (r + dr, c + dc);
+                    if rr < rows && cc < columns && roles[rr * columns + cc] == SlotRole::Empty {
+                        roles[rr * columns + cc] = SlotRole::Covered;
+                    }
+                }
             }
 
             for id in &cell.node_ids {
@@ -1298,6 +1395,7 @@ fn plan_tables<'a>(
         plans.push(TablePlan {
             projected: true,
             slots,
+            roles,
             rows,
             columns,
         });
@@ -1359,7 +1457,7 @@ pub fn fingerprint(artifact: &MarkdownArtifact) -> Result<Sha256Hex, EngineError
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::assurance::{Assurance, Limitation};
     use crate::derivation::GeometryPresence;
@@ -1629,7 +1727,7 @@ mod tests {
         }
     }
 
-    fn repr_of(specs: &[(&str, Option<&str>)]) -> DocumentRepresentation {
+    pub(crate) fn repr_of(specs: &[(&str, Option<&str>)]) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -1653,7 +1751,7 @@ mod tests {
         DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap()
     }
 
-    fn simple_repr() -> DocumentRepresentation {
+    pub(crate) fn simple_repr() -> DocumentRepresentation {
         repr_of(&[("Hello Ethos", None)])
     }
 
@@ -1664,7 +1762,7 @@ mod tests {
     /// baseline ([`on_different_lines`]), so it needs a representation whose lines actually
     /// differ, and a test that used `repr_of` would be asserting against a page whose runs the
     /// document drew side by side.
-    fn repr_of_lines(specs: &[&str]) -> DocumentRepresentation {
+    pub(crate) fn repr_of_lines(specs: &[&str]) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -1740,7 +1838,7 @@ mod tests {
     }
 
     /// A representation whose nodes carry explicit role paths. `None` is an untagged run.
-    fn repr_of_paths(specs: &[(&str, Option<&[&str]>)]) -> DocumentRepresentation {
+    pub(crate) fn repr_of_paths(specs: &[(&str, Option<&[&str]>)]) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -1768,16 +1866,16 @@ mod tests {
     }
 
     /// One cell of a hand-built table: position, spans, and which of the document's runs it holds.
-    struct Cell {
-        row: u32,
-        column: u32,
-        rowspan: u32,
-        colspan: u32,
+    pub(crate) struct Cell {
+        pub(crate) row: u32,
+        pub(crate) column: u32,
+        pub(crate) rowspan: u32,
+        pub(crate) colspan: u32,
         /// Indices into the `texts` given to [`repr_with_table`].
-        runs: Vec<usize>,
+        pub(crate) runs: Vec<usize>,
     }
 
-    fn cell(row: u32, column: u32, runs: &[usize]) -> Cell {
+    pub(crate) fn cell(row: u32, column: u32, runs: &[usize]) -> Cell {
         Cell {
             row,
             column,
@@ -1787,7 +1885,13 @@ mod tests {
         }
     }
 
-    fn spanning(row: u32, column: u32, rowspan: u32, colspan: u32, runs: &[usize]) -> Cell {
+    pub(crate) fn spanning(
+        row: u32,
+        column: u32,
+        rowspan: u32,
+        colspan: u32,
+        runs: &[usize],
+    ) -> Cell {
         Cell {
             row,
             column,
@@ -1801,7 +1905,7 @@ mod tests {
     ///
     /// The table's cells name **real node ids**, which is what v1.1-S2 added to the record and
     /// what the projection needs before it can emit a cell as `source` at all.
-    fn repr_with_table(
+    pub(crate) fn repr_with_table(
         texts: &[&str],
         rows: u32,
         columns: u32,
