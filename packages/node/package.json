@@ -1,0 +1,27 @@
+{
+  "name": "ethos-engine",
+  "version": "0.17.0",
+  "description": "A thin Node surface over the ethos-engine CLI. Locators are minted by the engine, never composed by a caller.",
+  "license": "Apache-2.0",
+  "author": "ethos-engine maintainers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/docushell/ethos-engine.git",
+    "directory": "packages/node"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "private": true
+}

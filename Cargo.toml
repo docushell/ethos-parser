@@ -31,7 +31,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, and v1.2-S2 as 0.16.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, and v1.2-S3 as 0.17.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -100,10 +100,26 @@ exclude = ["fuzz"]
 # moves on `parser_version` alone, because a version claiming otherwise is the one lie that field
 # cannot afford.
 #
+# **0.17.0 is v1.2-S3, the Node SDK, and it adds no Rust either.** `packages/node/` is the same
+# three functions `packages/python/` shipped, on the same terms: spawn the `engine` binary, parse
+# stdout, hand back the bytes the CLI printed. JavaScript + `node:test`, no TypeScript, no
+# bundler, no runtime dependency — and NO NATIVE ADDON, refused for the reason S2 refused PyO3: a
+# second path to the library is a second thing that can disagree with the first, and napi would
+# add a prebuild matrix across platforms and ABI versions to buy it.
+#
+# It is not a second design. If Node disagreed with Python about a signature, an error name or
+# what `ground` accepts, Node would be the one that is wrong; a test pins both SDKs to this
+# version string for the same reason.
+#
+# Nothing but the version moves, the FOURTH time, after v1-S7b (0.9.0), v1.2-S1 (0.15.0) and
+# v1.2-S2 (0.16.0). A language binding is an adopter, not a parse capability, so there is no
+# `capabilities.node` for the reason there is no `capabilities.python` and no `capabilities.mcp`
+# (docs/12-V12-SCOPE.md §7).
+#
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -124,9 +140,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.16.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.16.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.16.0" }
+engine-core = { path = "crates/engine-core", version = "0.17.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.17.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.17.0" }
 
 [profile.release]
 strip = "symbols"

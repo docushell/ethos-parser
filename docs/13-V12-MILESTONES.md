@@ -12,7 +12,7 @@ the owner asked for the next roadmap row, and nothing in it closes v1.
 | **S0** | v1.2 scope + this document | — | **done** |
 | **S1** | MCP over stdio: `extract`, `ground`, `node_get` | S0 | **done** |
 | **S2** | Python SDK — thin, over the same library or CLI | S1 | **done** |
-| **S3** | Node SDK | S1 | **not started** |
+| **S3** | Node SDK | S2 | **done** |
 | **S4** | LangChain tool, locators in `artifact` never `content` | S2, S3 | **not started** |
 | **S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | S1 | **not started** |
 
@@ -252,10 +252,135 @@ of that name would look like this package had an opinion about whether a claim i
 
 ---
 
-## S3 — Node SDK — **not started**
+## S3 — Node SDK
+
+- **Status: done.** `packages/node/` at **0.17.0**. Three functions, **no runtime dependency**,
+  no new crate, no Rust changed but the version.
 
 - **Goal:** the same surface for Node, on the same terms.
-- **Not started.** Starts when the owner asks.
+
+- **The standing constraint:** §3's handle law. A locator is returned, never accepted as prose.
+
+### This is not a second design
+
+**S2 is the contract.** If Node disagreed with Python about a signature, an error name, or what
+`ground` accepts, Node would be the one that is wrong — so the differences are exactly the two the
+languages force, and nothing else:
+
+| Python | Node | why |
+| --- | --- | --- |
+| `node_get` | `nodeGet` | naming convention; the same function |
+| `raise NodeNotFound(...)` | `throw new NodeNotFound(...)` | classes, and the same six names |
+
+`extract`, `ground`, `REPRESENTATION_ARTIFACT_TYPE`, the error taxonomy, the banned-argument list,
+the binary-resolution order and the fixture the tests run against are all shared. A test pins both
+SDKs and `package.json` to the workspace version, because two adapters at different versions over
+one binary is exactly the disagreement a version string exists to make legible.
+
+### The shape, decided once at S2 and reused
+
+**It spawns the CLI.** `extract` and `ground` run the subcommands a shell would run and hand back
+the bytes those subcommands printed, parsed with `JSON.parse`. There is no second serialization
+anywhere in the package, so byte-identity is a **tautology** rather than a promise —
+`test/cli-surface.test.js` re-canonicalizes what `extract` returned and compares it against the
+CLI's stdout byte for byte.
+
+**No native addon.** napi and neon were refused for the reason S2 refused PyO3: a second path to
+the library is a second thing that can disagree with the first, and this one would add a prebuild
+matrix across platforms and ABI versions to buy it. **No TypeScript, no bundler, no test
+framework** — Node 18 has `node:test` and `node:assert/strict`, and a `.d.ts` that needed a
+generator would be a build step this package does not have. Runtime dependencies are **empty**,
+asserted from `package.json` and again by reading every `import` specifier in the sources.
+
+### The surface
+
+| function | shells out to | returns |
+| --- | --- | --- |
+| `extract(pdfPath)` | `engine extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `nodeGet(representation, nodeId)` | **nothing** | the node record from **that** artifact |
+
+`ground` takes the artifact `extract` returned — the object itself, or a path to bytes this engine
+wrote — which is what Python's `ground` and the MCP tool take. **It does not take a quote and it
+does not take a page**, because `engine ground` takes neither. When handed an object it writes
+**c14n bytes** to a temp file, not `JSON.stringify` output: a second serialization is the one thing
+this package exists not to have. It does **not** repeat the fingerprint check in JavaScript — the
+engine runs it, and the SDK surfaces the engine's own refusal with its stderr intact.
+
+`nodeGet` has **no `engine node-get` subcommand** and this slice did not add one. Its checks are
+ported in the order `mcp.rs` and Python run them: the value is a representation; the payload is
+re-canonicalized and re-hashed and must equal `representation_c14n_sha256`, **before any lookup**;
+`nodeId` is looked up among that artifact's own nodes, and a miss throws.
+
+### c14n, ported a second time — and where JavaScript cannot follow
+
+`src/c14n.js` runs `engine-core/src/c14n.rs`'s **own parity vectors**, as `_c14n.py` does. Two
+hazards are specific to this language and both are handled rather than hoped:
+
+- **Key order.** `Array.prototype.sort` compares UTF-16 code units, which disagrees with Rust's
+  `String: Ord` above the BMP — a key starting U+1F4A1 sorts *before* one starting U+FFFD under
+  code-unit order and *after* under code-point order. The port sorts by code point explicitly, and
+  a test asserts the default sort would have got that pair wrong.
+- **Lone surrogates.** `Buffer.from` encodes one as U+FFFD, which is a silent repair of evidence.
+  The port throws instead, matching what Rust's type system makes impossible.
+
+**One divergence is real and is written down rather than papered over.** JavaScript has a single
+number type, so `JSON.parse("1.0")` yields the same value as `JSON.parse("1")` and nothing can
+separate them; Rust and Python reject float-*shaped* text and this port cannot. What all three
+reject identically is a value that is genuinely not a whole number — `1.5` throws at every depth,
+which is the property c14n needs. The unreachable half is unreachable in practice: the engine never
+prints `1.0`, because Rust c14n forbids it and the CLI's stdout *is* c14n bytes. A test pins the
+divergence so it stays a named property rather than a surprise.
+
+### The handle law in Node
+
+- `nodeGet(rep, mintedId)` returns that node — **the same object the artifact carries**, not a copy.
+- `nodeGet(rep, "s-forged")` throws `NodeNotFound`, naming what was refused. **Never `null`, never
+  `undefined`, never `{}`.**
+- `nodeGet(editedRep, mintedId)` throws `FingerprintMismatch`, naming both digests.
+- **No exported function parameter is named** `page`, `bbox`, `box`, `rect`, `x`, `y`, `w`, `h`,
+  `width`, `height`, `row`, `column`, `col`, `span`, `offset`, `coords` or `region` — the same list
+  `mcp.rs` and Python use. `Function.prototype.length` says nothing about names, so the test reads
+  the real header out of `Function.prototype.toString` and asserts the names it recovered, so a
+  parse that returned nothing could not make the ban vacuous.
+
+### What is deliberately absent
+
+`markdown()` and `html()` — neither proves anything this slice claims. `verify()` — it relays the
+pinned Ethos CLI, and a JavaScript function of that name would look like this package had an
+opinion about whether a claim is supported. No MCP client: MCP is a process, this is a library.
+
+- **In:** `packages/node/` (`package.json`, `src/`, `test/`, README); the `0.17.0` bump and the
+  moved profile hash; the Python SDK's `__version__` pin, which the bump requires; `12`/`13`;
+  CHANGELOG; README; `docs/README.md`.
+
+- **Out:** napi, neon, node-gyp, prebuild, any native addon. TypeScript, a bundler, Jest, Vitest,
+  a generated `.d.ts`. Any runtime dependency. An `engine node-get` CLI verb.
+  `markdown`/`html`/`verify` JS functions. An MCP client. `capabilities.node`. Publication to npm.
+  A LangChain tool, a liteparse mapper. A tag.
+
+- **Acceptance tests:**
+  - [x] `packages/node/` exists and the package resolves through its own `exports` map
+  - [x] Runtime dependencies are **empty** — asserted from `package.json` (`dependencies`,
+        `optionalDependencies`, `peerDependencies`) and by reading every `import` specifier
+  - [x] `extract(pdf)` re-canonicalizes to `engine extract`'s stdout **byte for byte**
+  - [x] `ground` matches `engine ground` from the object and from a path
+  - [x] `nodeGet` with a minted id returns that node; a forged id **throws**; an edited payload
+        **throws** at the fingerprint
+  - [x] No exported parameter names a coordinate, read off `Function.prototype.toString`
+  - [x] No `markdown` / `html` / `verify` / `mcp` JS API
+  - [x] The c14n port matches `engine-core`'s own parity vectors, rejects non-integers at every
+        depth, sorts by code point rather than code unit, and refuses a lone surrogate
+  - [x] `ETHOS_ENGINE` is authoritative; a missing binary is a **named failure**, never a skip
+  - [x] No napi/neon, no fifth crate, no Tokio; `cargo deny check` still passes
+  - [x] Workspace **0.17.0**, Python `__version__` **0.17.0**, `package.json` **0.17.0**, profile
+        hash `sha256:83cd55301d2423d54033e449b2bcdbd07b5a5c926c441dc456cb93edc7788774`
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables; the
+        markdown and html goldens still green
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+  - [x] `node --test` green in `packages/node`; `pytest` still green in `packages/python`
+
+- **Depends on:** S2.
 
 ---
 

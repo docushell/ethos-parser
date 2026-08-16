@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.2-S0/S1/S2, adoption: MCP over stdio, then a Python SDK, as 0.16.0
+## [Unreleased] — v1.2-S0–S3, adoption: MCP over stdio, then a Python SDK, then a Node one, as 0.17.0
 
 **v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
@@ -141,14 +141,67 @@ than a parse capability, so there is no `capabilities.python` for the reason the
 `capabilities.mcp`: a flag on every artifact that no consumer can act on. No Rust changed but the
 version string.
 
+### S3 — the Node SDK, which is the Python one in a second language
+
+`packages/node/` — **`extract`, `ground`, `nodeGet`, and nothing else.** Same shape as S2 and for
+the same reasons: spawn the `engine` binary, parse stdout, hand back the bytes the CLI printed.
+JavaScript and `node:test`, no TypeScript, no bundler, no test framework, no runtime dependency.
+
+**It is not a second design.** S2 is the contract, and if Node disagreed with Python about a
+signature, an error name, or what `ground` accepts, Node would be the one that is wrong. The
+differences are exactly the two the languages force — `nodeGet` rather than `node_get`, and classes
+that throw rather than raise — and nothing else. Both SDKs and `package.json` are pinned to the
+workspace version by a test, because two adapters at different versions over one binary is exactly
+the disagreement a version string exists to make legible.
+
+**No native addon.** napi and neon were refused for the reason S2 refused PyO3: a second path to
+the library is a second thing that can disagree with the first, and this one would add a prebuild
+matrix across platforms and ABI versions to buy it.
+
+`ground` takes the artifact `extract` returned — object or path — and when handed an object it
+writes **c14n bytes** to a temp file rather than `JSON.stringify` output, because a second
+serialization is the one thing this package exists not to have. It does not repeat the fingerprint
+check in JavaScript: the engine runs it, and the SDK surfaces the engine's own stderr.
+
+**c14n ported a second time**, running `engine-core/src/c14n.rs`'s own parity vectors, with two
+JavaScript-specific hazards handled rather than hoped: `Array.prototype.sort` compares UTF-16 code
+units and disagrees with Rust's `String: Ord` above the BMP, so keys are sorted by **code point**
+explicitly (a test asserts the default sort would have got that pair wrong); and `Buffer.from`
+encodes a lone surrogate as U+FFFD, which is a silent repair of evidence, so the port throws.
+
+**One divergence is real and is written down rather than papered over.** JavaScript has a single
+number type, so `JSON.parse("1.0")` yields the same value as `JSON.parse("1")` and nothing can
+separate them — Rust and Python reject float-*shaped* text and this port cannot. What all three
+reject identically is a value that is genuinely not a whole number: `1.5` throws at every depth,
+which is the property c14n needs. The unreachable half is unreachable in practice, because the
+engine never prints `1.0`. A test pins the divergence so it stays a named property.
+
+**The handle law, in Node:** a minted id returns the node object the artifact carries; `s-forged`
+throws `NodeNotFound`; an edited payload throws `FingerprintMismatch` before any lookup. No
+exported parameter is named `page`, `bbox`, `x`, `y`, `width`, `height`, `row` or `column` — read
+out of `Function.prototype.toString`, because `Function.prototype.length` says nothing about names.
+
+`markdown()`, `html()` and `verify()` are absent, on S2's reasoning exactly. **Not published:**
+`private: true`, which is mechanical rather than a promise.
+
+### Identity, after S3
+
+Workspace **0.17.0**, profile hash
+`sha256:83cd55301d2423d54033e449b2bcdbd07b5a5c926c441dc456cb93edc7788774`. **Again nothing but the
+version moved** — the fourth time, after v1-S7b (0.9.0) and S1 and S2 above. A language binding is
+an adopter rather than a parse capability, so there is no `capabilities.node` for the reason there
+is no `capabilities.python` and no `capabilities.mcp`. The only edit to the Python SDK is its
+`__version__`, which the workspace bump requires: leaving it at 0.16.0 would be the lie its own
+test exists to catch.
+
 ### Unchanged
 
 Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
 representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. Four crates, no new
-Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no native
-extension, no runtime Python dependency. No npm, no LangChain, no liteparse, no tag. v1.2-S3 has
-not started.
+Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no napi, no
+neon, no node-gyp, no native extension, no runtime dependency in either SDK. Not on PyPI, not on
+npm. No LangChain, no liteparse, no tag. v1.2-S4 has not started.
 
 ---
 
