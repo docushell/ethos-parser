@@ -1,12 +1,15 @@
 # ethos-engine workspace.
 #
-# Four crates, decided (docs/04-ARCHITECTURE.md §1). A fifth crate before a second format is
-# speculative structure; revisit only when office or OCR needs a real home.
+# Five crates as of v2-S2 (docs/04-ARCHITECTURE.md §1). The fifth was refused until a second
+# format existed — "a fifth crate before a second format is speculative structure" — and DOCX is
+# that format, so `engine-office` stops being speculative and starts being the only place OOXML
+# may live.
 #
 # Boundary rules, enforced in review:
-#   engine-core       — no PDF concept
+#   engine-core       — no PDF concept, and no OOXML concept
 #   engine-pdf        — no grounding concept
-#   engine-grounding  — no PDF concept
+#   engine-office     — no PDF concept, no grounding concept
+#   engine-grounding  — no format concept — it projects the representation, never a document
 #   engine-cli        — no logic
 
 [workspace]
@@ -14,6 +17,7 @@ resolver = "2"
 members = [
     "crates/engine-core",
     "crates/engine-pdf",
+    "crates/engine-office",
     "crates/engine-grounding",
     "crates/engine-cli",
 ]
@@ -31,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, and v2-S1 as 0.20.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, and v2-S2 as 0.21.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -167,10 +171,31 @@ exclude = ["fuzz"]
 # No reader, no crate, no schema field. The version moves because tests landed and because a slice
 # that measures still moves it — the S7b and v1.2-S5 precedent.
 #
+# **0.21.0 is v2-S2: the first office reader, and the IR change S1 measured.** DOCX enters the
+# representation — `word/document.xml`'s `<w:p>`/`<w:r>`/`<w:t>`, addressed by part + paragraph +
+# run — and NOTHING ON THAT PATH IS A PAGE. `pages` is `[]`, geometry is `NotApplicableToKind`, and
+# `check_structure` now splits on the LOCATOR FAMILY: a paginated address still needs its declared
+# page (unchanged, message included), a page-less one needs a part id, and a page-less node with a
+# measured box is refused outright because there is no page to check it against.
+#
+# The PDF profile hash moves on `parser_version` ALONE — its canonical bytes are otherwise
+# identical, `XrefRepair`'s new `not-run-for-this-format` state notwithstanding, because the PDF
+# profile does not carry it. What is new is a SECOND profile: `Profile::docx_v0`, with its own
+# hash, so a DOCX artifact and a PDF artifact are provably non-comparable (14-V2-SCOPE.md §8).
+#
+# The fifth crate stops being speculative: `engine-office`, exactly as 04-ARCHITECTURE.md said it
+# would be revisited "when office needs a real home". One new crate in the lock — `quick-xml` —
+# because ZIP is read here over `flate2`, which the graph already had, rather than by taking a zip
+# crate that drags twelve transitives including a compressor.
+#
+# `ethos.grounding.v1` is UNTOUCHED and `engine ground` on a DOCX is a named refusal, per v2-S1's
+# decision (b). `mcp.rs` is untouched too, and `node_get` resolves a DOCX run anyway — which is
+# what "one IR, one serializer" buys.
+#
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.20.0"
+version = "0.21.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -191,9 +216,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.20.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.20.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.20.0" }
+engine-core = { path = "crates/engine-core", version = "0.21.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.21.0" }
+engine-office = { path = "crates/engine-office", version = "0.21.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.21.0" }
 
 [profile.release]
 strip = "symbols"

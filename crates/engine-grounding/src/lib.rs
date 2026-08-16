@@ -61,6 +61,14 @@ use engine_core::{c14n_bytes, Capabilities, DocumentRepresentation, EngineError,
 /// Artifact type. A const in the schema, so a const here.
 pub const GROUNDING_ARTIFACT_TYPE: &str = "ethos.grounding.v1";
 
+/// The one media type `ethos.grounding.v1` can name as its source.
+///
+/// The schema's own `{"const": "application/pdf"}`, mirrored here so [`project`] can refuse a
+/// source this artifact has no shape for. **A media type is a string, not a format concept** —
+/// nothing in this crate parses one, and the M5 line in `docs/04-ARCHITECTURE.md` is explicit
+/// that a format name as data is permitted where machinery is not.
+pub const SOURCE_MEDIA_TYPE: &str = "application/pdf";
+
 /// Schema version. Also a const in the schema.
 pub const GROUNDING_SCHEMA_VERSION: &str = "1.0.0";
 
@@ -364,6 +372,28 @@ pub struct Projection {
 /// [`EngineError::Malformed`] if a node's parent page is not declared, or if the representation
 /// claims a capability this projection cannot honestly express.
 pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError> {
+    // **`ethos.grounding.v1` is a PDF artifact, and v2-S1 decided it stays one.** Its schema says
+    // `source.media_type` is `{"const": "application/pdf"}`, every element requires a `page` and a
+    // `bbox`, and every page requires integer geometry — none of which a page-less source has.
+    //
+    // Refused **here, by name**, rather than left to fail further down on a parent lookup that
+    // would report "not a declared page" about a document that has no pages. And refused on the
+    // media type rather than on the locator, because this crate never reads a locator: the check
+    // is this projection enforcing its own output contract, not learning what a second format is.
+    if repr.payload().source.media_type != SOURCE_MEDIA_TYPE {
+        return Err(EngineError::Unsupported {
+            what: "grounding source".into(),
+            detail: format!(
+                "`{}` is `{}`, and `{GROUNDING_ARTIFACT_TYPE}` describes `{SOURCE_MEDIA_TYPE}` \
+                 only. A page-less source has no page and no box to put in this shape, and \
+                 inventing them is what `docs/14-V2-SCOPE.md` §3 refuses. The representation \
+                 itself is the record for such a document — see `docs/15-V2-MILESTONES.md` S1.",
+                repr.payload().identity.artifact_type,
+                repr.payload().source.media_type
+            ),
+        });
+    }
+
     let payload = repr.payload();
     let caps = payload.assurance.capabilities;
 

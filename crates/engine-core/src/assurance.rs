@@ -69,6 +69,15 @@ pub mod codes {
     pub const CHAR_OFFSETS_NOT_EMITTED: &str = "char-offsets-not-emitted";
     /// [`crate::Capabilities::tables`] is false: no table is detected or emitted.
     pub const TABLES_NOT_EXTRACTED: &str = "tables-not-extracted";
+
+    /// Parts of an office package that carry text and were not read (v2-S2).
+    ///
+    /// **Anydoc's A14, declared erasure, applied to a package rather than a page.** A `.docx`
+    /// commonly carries headers, footers, footnotes, endnotes and comments as their own parts,
+    /// and v2-S2 reads `word/document.xml` alone. A reader that silently returned the body would
+    /// let a caller conclude a phrase is absent from a document that contains it — so the parts
+    /// are counted and named, and the count is the honest measure of what this artifact is not.
+    pub const OFFICE_PARTS_NOT_READ: &str = "office-parts-not-read";
     /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
     /// The leftover after v1-S8, and the third code to hold this position. Each replaced its

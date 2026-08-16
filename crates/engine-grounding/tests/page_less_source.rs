@@ -30,18 +30,23 @@
 //! Adding an optional `page` to the engine's copy would be the lying artifact S5 refused for loose
 //! boxes, wearing a different field.
 //!
-//! # And the measurement that resizes S2
+//! # The measurement that resized S2, and what v2-S2 did with it
 //!
 //! S0 assumed the page assumption lived in `ethos.grounding.v1`, so that deciding (b) would leave
-//! v2's gate reachable *"at the representation level"*. **That is false, and this file measures
-//! it.** `DocumentRepresentation::seal` refuses a node whose parent is not a declared page —
-//! `check_structure`, which runs on **both** construction paths, so it is not reachable around.
-//! A page-less document cannot become a representation at all, let alone a grounding artifact.
+//! v2's gate reachable *"at the representation level"*. **That was false, and this file measured
+//! it:** `DocumentRepresentation::seal` refused *every* node whose parent was not a declared page,
+//! so a page-less document could not become a representation at all.
 //!
-//! So v2's gate sentence — *"a DOCX quote and an XLSX cell both ground"* — is **not reachable by
-//! deciding (b) alone**, and the work it implies is upstream of grounding: the representation's
-//! own page-parent invariant. That is S2's problem and this slice does not touch it, but S2 now
-//! knows it is a v2 design decision about the IR rather than a schema question.
+//! **v2-S2 fixed the invariant rather than the schema**, which is why the measurement below is now
+//! two tests instead of one. The rule became locator-aware: a node with a *paginated* address is
+//! still parented by a declared page — unchanged, message included — while a node with a
+//! page-less address is parented by a **part**, and `pages` must then be empty. Both halves are
+//! asserted here, because the point was never "seal refuses" but "seal refuses the right thing".
+//!
+//! The grounding decision is untouched by that. A DOCX still does not project, and
+//! [`a_page_less_representation_is_refused_by_project`] is where that now fails: on the media
+//! type, by name, rather than on a page lookup that would have reported "not a declared page"
+//! about a document that has none.
 //!
 //! # `04-ARCHITECTURE.md` §6's precondition, verified
 //!
@@ -51,24 +56,22 @@
 //! learned what a page *is*: it reads no locator (`engine_grounding_has_no_pdf_concept` fails if
 //! it so much as mentions `NativeLocator`), it derives no geometry, and it addresses pages by id.
 //! `project()`'s own check that `node.parent` names a declared page is a **re-assertion of an
-//! invariant `seal` already guarantees**, not independent knowledge — which is exactly what
-//! [`a_page_less_document_cannot_become_a_representation`] shows, by proving `project()` can never
-//! be handed such a representation in the first place.
+//! invariant `seal` already guarantees** for a paginated document, not independent knowledge.
 //!
-//! The assumption that every node has a page parent lives in `engine-core`. That is permitted by
-//! the M5 line in `04-ARCHITECTURE.md` — it is a contract invariant, not format machinery, and
-//! nothing there can parse anything — but it is the sentence v2 has to revisit, and §6 pointed at
-//! the wrong crate.
+//! v2-S2 revisited that invariant, so a page-less representation now exists and `project()` can be
+//! handed one — which is why the refusal below is explicit and on the **media type**. This crate
+//! still never reads a locator; it enforces its own output contract, which is a different thing.
 
 use std::path::PathBuf;
 
 use engine_core::assurance::{codes, Limitation, PageStateEntry};
 use engine_core::{
     c14n::sha256_hex_bytes, ArtifactIdentity, Assurance, Capabilities, CoordinateSystem,
-    DerivationClass, DocumentRepresentation, GeometryAbsence, GeometryPresence, IdAllocator,
-    IdKind, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, PageRecord, PdfLocator,
-    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
-    TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    DerivationClass, DocumentRepresentation, DocxLocator, GeometryAbsence, GeometryPresence,
+    IdAllocator, IdKind, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind,
+    OfficeRunAttributes, PageRecord, PdfLocator, ProcessingRun, ProcessorIdentity, Profile,
+    RepresentationPayload, Sha256Hex, SourceIdentity, TextRunAttributes,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 use serde_json::Value;
 
@@ -132,18 +135,14 @@ fn the_grounding_artifact_can_only_name_a_pdf() {
 // The measurement that resizes S2
 // -------------------------------------------------------------------------------------------
 
-/// **A page-less document cannot become a representation**, so it never reaches grounding.
+/// **A node with a PAGINATED address still needs its page**, exactly as it did before v2-S2.
 ///
-/// This is the finding S1 exists to produce. `14-V2-SCOPE.md` §3 says the empty `pages` vector is
-/// the spelling of *"this document has no pages"* — that part is true of the **type**. It is not
-/// true of the **invariant**: `check_structure` requires every node's parent to be a declared
-/// page, so the empty vector is only legal for a document with no nodes either.
-///
-/// The failure is **named**, which is what makes it usable: S2 will read this exact message the
-/// first time it tries to seal a DOCX, rather than discovering the constraint by surprise
-/// somewhere inside `engine ground`.
+/// S1's measurement, kept and narrowed. The rule it found was real and stays; what changed is that
+/// it is now the rule for *one family of addresses* rather than for every node. A PDF glyph run
+/// whose page is not declared is still refused, with the same message — v2 added a second family
+/// and did not loosen the first, which is the whole difference between an extension and a hole.
 #[test]
-fn a_page_less_document_cannot_become_a_representation() {
+fn a_paginated_node_still_cannot_name_a_page_that_is_not_declared() {
     let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
     // A parent id that is *allocated* but never declared as a page — which is the shape a
     // page-less format has: a node with a structural parent and no page to point at.
@@ -195,6 +194,60 @@ fn the_same_document_with_a_page_seals_and_projects() {
     // honesty, unchanged by this slice.
     assert_eq!(projection.source.elements.len(), 0);
     assert_eq!(projection.omission.nodes_omitted, 1);
+}
+
+/// **A page-less representation does not project, and says so by name** (v2-S1's decision (b)).
+///
+/// v2-S2 made such a representation constructible, so this is no longer unreachable — it is the
+/// live behaviour a caller meets when they run `engine ground` on a DOCX artifact. The refusal is
+/// on `source.media_type`, which this crate owns through the schema, rather than on a page lookup
+/// that would have reported "not a declared page" about a document that has none.
+#[test]
+fn a_page_less_representation_is_refused_by_project() {
+    let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+    let part = alloc.next(IdKind::Part).unwrap();
+    let node = Node {
+        id: alloc.next(IdKind::Span).unwrap(),
+        kind: NodeKind::TextRun,
+        parent: part,
+        ordinal: 1,
+        text: "a quote".into(),
+        native_locator: NativeLocator::Docx(DocxLocator {
+            part: "word/document.xml".into(),
+            paragraph: 1,
+            run: 1,
+        }),
+        structural_locator: None,
+        derivation: DerivationClass::Extracted,
+        attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
+            space_preserved: false,
+        }),
+    };
+    let geometry = NodeGeometry {
+        node: node.id.clone(),
+        presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+    };
+
+    let mut payload = payload(vec![node], Vec::new());
+    payload.source.media_type = engine_office_media_type();
+    let sealed = DocumentRepresentation::seal(payload, vec![geometry])
+        .expect("v2-S2 made this constructible");
+
+    let error = engine_grounding::project(&sealed).expect_err("and it still does not project");
+    let message = error.to_string();
+    assert!(message.contains("application/pdf"), "{message}");
+    assert!(
+        message.contains("14-V2-SCOPE.md"),
+        "the refusal points at the law it is enforcing: {message}"
+    );
+}
+
+/// The media type a word-processing document declares.
+///
+/// Spelled out rather than imported: `engine-grounding` does not depend on `engine-office`, and
+/// this crate having a *dependency* on a format reader is exactly what the boundary table forbids.
+fn engine_office_media_type() -> String {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document".into()
 }
 
 // -------------------------------------------------------------------------------------------

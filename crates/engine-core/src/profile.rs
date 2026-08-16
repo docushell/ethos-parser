@@ -477,6 +477,28 @@ impl Capabilities {
     };
 }
 
+/// The value a rule field carries when that rule does not run for this profile's format (v2-S2).
+///
+/// **A declared state, not an empty string and not a PDF rule id borrowed for the shape.** The
+/// same discipline `PageBudget::Unlimited` and `RasterDpi::NotEmitted` are under: a reader of a
+/// DOCX profile can see that no table detector ran, rather than seeing `ruled-rects-v2` and
+/// wondering whether it did.
+pub const NOT_RUN: &str = "not-run-for-this-format";
+
+/// v2-S2's DOCX reading order: the document order of `word/document.xml`.
+///
+/// **Not a rule that decides anything.** OOXML states its own order; this engine reads runs in the
+/// order the part lists them and does no column detection, no sorting and no grouping. The id
+/// exists so an artifact says which order it was read in, the way every other rule id does.
+pub const DOCX_READING_ORDER_RULE_V1: &str = "docx-document-order-v1";
+
+/// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
+///
+/// The DOCX counterpart to `declared-font-codes-v1`, and a much smaller claim: OOXML text is
+/// already Unicode, so there is no glyph-code-to-scalar step to get wrong and no ligature caveat
+/// to declare.
+pub const DOCX_TEXT_CODE_RULE_V1: &str = "docx-wt-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -586,6 +608,13 @@ pub enum XrefRepair {
     /// versioned id exists to prevent, and a test asserts the two strings are equal.
     #[serde(rename = "pad-19-to-20-v1")]
     Pad19To20V1,
+    /// The format has no cross-reference table, so no repair policy applies (v2-S2).
+    ///
+    /// **A declared state rather than borrowing `Refuse`.** `Refuse` says this run would reject a
+    /// malformation it might meet; a DOCX cannot meet one, and saying it would is a claim about
+    /// machinery that never ran.
+    #[serde(rename = "not-run-for-this-format")]
+    NotRun,
 }
 
 impl XrefRepair {
@@ -782,6 +811,76 @@ impl Default for Profile {
 }
 
 impl Profile {
+    /// The profile a page-less OOXML word-processing document is read under (v2-S2).
+    ///
+    /// **A separate profile so the two artifacts are provably non-comparable.** `14-V2-SCOPE.md`
+    /// §8: a format is a new *value*, not a new mechanism, and the value that has to differ is
+    /// `profile_sha256`. A DOCX read under the PDF profile would claim measured ink boxes,
+    /// multi-column reading order and a table detector that never ran on it.
+    ///
+    /// Every capability below is `false` because **v2-S2 reads one thing**: the runs of
+    /// `word/document.xml`. `spans` stays true because a run is a span, and that is the one claim
+    /// this reader can make. Tables, images, annotations and form fields are real OOXML features
+    /// this slice does not read, and the profile says so rather than letting a consumer infer
+    /// capability from the PDF default. `markdown` and `html` are false because `14-V2-SCOPE.md`
+    /// §4 does not teach those projections a second format in this slice.
+    ///
+    /// **`measured_ink_boxes: false` is the load-bearing one.** A DOCX has no geometry and this
+    /// engine invents none, so every node's geometry is typed absence — and `check_structure`
+    /// refuses a measured box on a page-less node outright.
+    ///
+    /// # One thing this profile declares that it cannot mean, named rather than papered over
+    ///
+    /// `coordinate_system` is a required field and there is no page-less spelling of it, so this
+    /// profile carries the same `centipoint`/`top-left` pair a PDF does. **Nothing under this
+    /// profile ever emits a coordinate** — `measured_ink_boxes` is false, every geometry row is
+    /// absent, and `DocxLocator` has no geometry field — so the declaration is inert rather than
+    /// wrong. Giving it an honest page-less spelling means a mode enum on a field every existing
+    /// artifact carries, which moves every PDF hash for a value no DOCX consumer reads.
+    /// `docs/15-V2-MILESTONES.md` S3 carries it, when XLSX gives the question a second format's
+    /// worth of evidence.
+    pub fn docx_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            // A DOCX is not classified by sampling pages it does not have, and no table detector,
+            // struct-tree reader, CMap or xref repair runs on it. These are PDF rules, and the
+            // honest value for a rule a format never reaches is the declared "did not run".
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1078,7 +1177,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.20.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.21.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1246,11 +1345,20 @@ mod tests {
              where v2-S0 thought it was — `DocumentRepresentation::seal` refuses a node whose \
              parent is not a declared page, so a page-less document cannot become a \
              representation at all, and that invariant lives in THIS crate rather than in \
-             grounding. No detector moved, no rule id moved, no capability moved."
+             grounding. No detector moved, no rule id moved, no capability moved.\n\n\
+             Moved a TWENTY-FIFTH time at v2-S2 (0.21.0) on `parser_version` ALONE, and the \
+             interesting part is what did NOT move: every other byte of this profile is \
+             identical, because v2's first format got a profile of its OWN rather than a \
+             capability on this one. `Profile::docx_v0` has its own hash so a DOCX artifact and a \
+             PDF artifact are provably non-comparable — the same discipline that will keep an \
+             OCR'd page from comparing equal to a born-digital one. `XrefRepair` gained a \
+             `not-run-for-this-format` state for that profile to use, and this one still says \
+             `pad-19-to-20-v1`, so the new variant is invisible here. That is the point: a second \
+             format is a new VALUE, not a change to what this profile claims."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:30820a15ee750530f5232e622ee40cbfad3e8cb158d41011104cc25f5fd06c15"
+            "sha256:1a7844f5a291cdd1430ecead0523980283a6c3e7bbf3f6f431ce5a056c5d92f1"
         );
     }
 

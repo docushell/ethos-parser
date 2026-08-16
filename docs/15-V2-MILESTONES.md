@@ -3,8 +3,8 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 has decided its contract and written no reader.** S0 is these two documents and **S1 is done**;
-**S2–S4 are not started** and no office parser exists in this tree.
+**v2 reads its first format.** S0–S2 are **done**; **S3–S4 are not started**. `engine-office` is the
+fifth crate and DOCX is the format that stopped it being speculative.
 
 **v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
 (`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -15,7 +15,7 @@ closes v1.
 | --- | --- | --- | --- |
 | **S0** | v2 scope + this document | — | **done** |
 | **S1** | The grounding contract for a page-less source | S0 | **done — (b), and one finding** |
-| **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **not started** |
+| **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **done** |
 | **S3** | XLSX → representation: sheets and cells | S2 | **not started** |
 | **S4** | The remaining office formats — PPTX, ODF, RTF, EPUB, CSV | S3 | **not started** |
 
@@ -150,7 +150,10 @@ v2 has to revisit anyway.
 
 ---
 
-## S2 — DOCX → representation — **not started**
+## S2 — DOCX → representation
+
+- **Status: done.** `0.21.0`. `engine-office` exists, `engine extract` reads a `.docx`, and
+  `pages` is `[]` on the artifact it produces.
 
 - **Goal:** a DOCX projects into the representation this engine already emits, and a quote from it
   resolves to a node.
@@ -167,17 +170,115 @@ v2 has to revisit anyway.
   something to discover halfway through a reader. Whatever it becomes, `Node.parent`'s doc comment
   (*"The page this node was drawn on"*) stops being true and has to move with it.
 
-- **Expected shape**, to be confirmed rather than assumed: a `DocxLocator` naming the part, the
-  paragraph and the run — the addresses OOXML itself contains. **If a field on it would have to be
-  computed by laying the document out, it does not belong on it.**
+### The invariant, changed the way S1 said it would have to be
 
-- **Also here:** the adapter profile (so a DOCX artifact is provably non-comparable with a PDF one),
-  fixtures authored in this tree, mutation coverage on the pattern **A11**, and the format-detection
-  question — content-based, per **A4**, never by extension.
+`check_structure` now splits on the **locator family**, which is the one thing a node cannot fake:
+it reaches the page-less rules only by carrying an address with no page in it.
 
-- **Out:** XLSX. PPTX. Embedded assets beyond what the gate needs. A fifth crate, unless this slice
-  is what proves `engine-pdf` cannot stay PDF-only — in which case it is `engine-office` and the
-  boundary table in `04-ARCHITECTURE.md` binds it.
+| | paginated address | page-less address |
+| --- | --- | --- |
+| parent | a declared `PageRecord` — **unchanged, message included** | a `Part` id (`d1`), new at this slice |
+| `pages` | as before | must be **empty**, or the seal refuses "invented pagination" |
+| geometry | a measured box is checked against its page | a measured box is **refused**: there is no page to check it against |
+| integrity | the parent is looked up in a declared list | part id ↔ part name is a **bijection**, so nothing needs a second list |
+
+The last row is the part worth arguing about. A PDF gets its integrity from a declared-page lookup;
+a DOCX has no such list, and inventing one would be a payload field for a format that describes
+itself already. Instead every page-less node names its part in its own locator, and the seal checks
+that one part id means one part name **in both directions**. That buys the same property without a
+list to keep in sync.
+
+The measured-box row is what makes "no geometry" a fact about the artifact rather than a habit of
+the reader: `engine-office` could not emit a rectangle even if a later edit tried to.
+
+### The locator, and the attributes
+
+`DocxLocator { part, paragraph, run }` — a package part name and two 1-based document-order
+positions. **No page, no bbox, no `x`/`y`**, and `deny_unknown_fields` so one cannot be added
+quietly. If a field would have to be computed by laying the document out, it does not belong here.
+
+`NodeAttributes::OfficeRun` is a **new variant rather than `TextRun` with the PDF fields blanked**:
+a `<w:r>` has no char codes, no font resource name and no font size this reader read, and
+`font_size: 0` would be three claims the document never made. Its one field is `space_preserved`,
+the DOCX counterpart to LiteParse's `trailing_space_generated` — whether `xml:space="preserve"` was
+set decides whether a run's spaces are the document's or the parser's.
+
+`NodeKind::TextRun` is **reused**, not duplicated. A `<w:r>` and a show-text run are the same thing
+addressed differently, and the locator is what says which.
+
+### The crate, and the one new dependency
+
+`engine-office`, exactly where `04-ARCHITECTURE.md` said an office reader would live. `engine-core`
+learns no OOXML; `engine-grounding` still mentions no locator.
+
+**One new crate in the lock: `quick-xml`.** ZIP is read in `engine-office/src/zip.rs` over `flate2`,
+which the graph already carried via `lopdf` — the `zip` crate drags twelve transitives including
+`zopfli`, a *compressor*, to save ~120 lines of central-directory reading. XML is the opposite call
+and is **not** hand-rolled: entities, namespaces, CDATA and encodings are exactly where a
+hand-rolled reader silently gets *text* wrong, and text is the evidence. That asymmetry is the
+whole dependency argument, and v1.2-S1's refusal of an MCP framework is the precedent for both
+halves.
+
+**Measured, not feared:** the first version of the reader dropped `&amp;` silently, because
+`quick-xml` 0.41 delivers an entity as its own event. The fixture carries an ampersand because of
+it, and the reader now resolves the five XML predefined entities and **refuses every other name**
+rather than letting one become an empty string in the evidence.
+
+### What is read, and what is declared unread
+
+`<w:p>` / `<w:r>` / `<w:t>` in `word/document.xml`, in the part's own order. Styles, numbering,
+fields, drawings, comments, track-changes and embedded workbooks are **not** read.
+
+Headers, footers, footnotes, endnotes and comments are counted and declared —
+`office-parts-not-read`, with the count — because a reader that silently returned the body would
+let a caller conclude a phrase is absent from a document that contains it. That is Anydoc's **A14**
+applied to a package, and `fixtures/office/unread-parts` is the fixture that proves it lands.
+
+### Detection, and every failure closed
+
+**A4: the bytes decide.** A ZIP local-header signature plus `word/document.xml` in the central
+directory — so `report.bin` reads and a `.docx` full of something else does not. A truncated
+archive, a Zip64 record, an unimplemented compression method, a size that disagrees with the
+directory, XML that will not parse, and a part that ends with elements still open are each a
+**named** refusal.
+
+- **In:** `crates/engine-office/` (reader, ZIP, tests); the locator-aware invariant, `IdKind::Part`,
+  `DocxLocator`, `OfficeRunAttributes`, `Profile::docx_v0` and `XrefRepair::NotRun` in
+  `engine-core`; `project()`'s named refusal in `engine-grounding`; content dispatch in
+  `engine extract`; `fixtures/office/` and its generator; `0.21.0`, the moved profile hash and both
+  SDK pins; `14`/`15`; `04-ARCHITECTURE.md`; CHANGELOG; README.
+
+- **Out:** XLSX, PPTX, ODF, RTF, EPUB, CSV. Styles, numbering, fields, drawings, comments,
+  track-changes, embedded assets. Any change to `ethos.grounding.v1`. Any `project()` change for the
+  PDF path. Markdown or HTML for a DOCX. New MCP tools, new SDK functions, a LangChain path. A
+  cargo-fuzz campaign — `A11`'s mutation lane for this format waits for a second one.
+
+- **Acceptance tests:**
+  - [x] A page-less document **seals** with `pages: []`; a paginated node in that same document
+        **still refuses**, with the message S1 pinned
+  - [x] A page-less document that declares a page is refused as **"invented pagination"**; a
+        page-less node with a measured box is refused for having **no page to contain it**; a
+        page-less node parented by a page id is refused
+  - [x] Part id ↔ part name is a bijection, checked both ways
+  - [x] `DocxLocator` carries no geometry; `deny_unknown_fields` on it and on `OfficeRunAttributes`
+  - [x] `engine-office` exists and `engine-core` parses no ZIP and no OOXML
+  - [x] The fixture extracts; a known phrase is on a node with a `DocxLocator`; `node_get` over
+        **unmodified MCP** resolves it and a forged id fails closed
+  - [x] Detection is content-based both ways: a renamed `.docx` reads, a `.docx` that is not one is
+        a named failure with empty stdout
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the law
+  - [x] `pages` is `[]`, every geometry row is `NotApplicableToKind`, and the profile hash differs
+        from the PDF default
+  - [x] Unread text parts are counted and declared; the clean fixture declares none
+  - [x] Two runs over one document produce identical bytes
+  - [x] `Cargo.lock` still has no LibreOffice, soffice, headless Chrome, wkhtmltopdf, WeasyPrint,
+        chromiumoxide or printpdf; `cargo deny check` passes
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables; the
+        markdown and html goldens still green
+  - [x] Workspace **0.21.0**, both SDKs **0.21.0**, profile hash
+        `sha256:1a7844f5a291cdd1430ecead0523980283a6c3e7bbf3f6f431ce5a056c5d92f1`
+
+- **Depends on:** S1.
 
 ---
 
@@ -189,6 +290,14 @@ v2 has to revisit anyway.
   a cell's address is `(sheet, row, column)` **as the file states it**, and a rendered column width
   or a print range is not part of it. A spreadsheet's "page" is a print artefact and is exactly the
   thing §3 forbids.
+
+- **What S2 handed this slice:** `Profile::docx_v0` carries `coordinate_system:
+  {centipoint, top-left}` because the field is required and there is no page-less spelling of it.
+  Nothing under that profile ever emits a coordinate — `measured_ink_boxes` is false and every
+  geometry row is absent — so the declaration is inert rather than wrong, but it is a field saying
+  something it cannot mean. Giving it an honest spelling is a mode enum on a field every existing
+  artifact carries, which moves every PDF hash; **S3 is where that is worth deciding**, because
+  XLSX gives the question a second format's worth of evidence rather than one.
 
 - **Out:** formulas as anything but text, charts, pivot caches, and every format S4 parks.
 

@@ -210,6 +210,13 @@ const CORE: &[&str] = &[
     "PaintedRect",
     "PdfArtifactLocator",
     "PdfImageLocator",
+    // v2-S2. The second format's address, its facts, and the rule ids a profile carries when a
+    // rule does not run for that format.
+    "DocxLocator",
+    "OfficeRunAttributes",
+    "NOT_RUN",
+    "DOCX_READING_ORDER_RULE_V1",
+    "DOCX_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -360,6 +367,9 @@ const GROUNDING: &[&str] = &[
     "Element",
     "GEOMETRY_ABSENT_OMITTED",
     "GROUNDING_ARTIFACT_TYPE",
+    // v2-S2. The one media type this artifact can name as its source, so `project` can refuse a
+    // page-less one by name rather than on a page lookup that would report the wrong reason.
+    "SOURCE_MEDIA_TYPE",
     "GROUNDING_SCHEMA_VERSION",
     "GroundedBox",
     "GroundingCapabilities",

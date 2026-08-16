@@ -324,11 +324,12 @@ dependencies = [
 
 [[package]]
 name = "engine-cli"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "clap",
  "engine-core",
  "engine-grounding",
+ "engine-office",
  "engine-pdf",
  "serde_json",
  "sha2 0.10.9",
@@ -336,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "engine-core"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "proptest",
  "serde",
@@ -346,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "engine-grounding"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -354,8 +355,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine-office"
+version = "0.21.0"
+dependencies = [
+ "engine-core",
+ "flate2",
+ "quick-xml",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "engine-pdf"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "engine-core",
  "lopdf",
@@ -641,6 +653,15 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "quote"

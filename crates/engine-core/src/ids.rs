@@ -90,6 +90,14 @@ pub enum IdKind {
     Annotation,
     /// A painted image (v1-S6).
     Image,
+    /// A **part** of a page-less document — the container a node's ordinals count within (v2-S2).
+    ///
+    /// The page-less answer to what `Page` is for a PDF, and deliberately not a `Page`: a DOCX
+    /// has no page, and minting one so ordinals had somewhere to live is exactly the invented
+    /// pagination `docs/14-V2-SCOPE.md` §3 refuses. A part is something the file itself contains
+    /// — `word/document.xml` — and every page-less node names it in its own locator, so the
+    /// artifact says which part a part id means without a second declaration list.
+    Part,
 }
 
 impl IdKind {
@@ -103,6 +111,7 @@ impl IdKind {
             Self::FormField => "f",
             Self::Annotation => "a",
             Self::Image => "i",
+            Self::Part => "d",
         }
     }
 }
@@ -124,6 +133,7 @@ pub struct IdAllocator {
     next_form_field: u64,
     next_annotation: u64,
     next_image: u64,
+    next_part: u64,
 }
 
 impl IdAllocator {
@@ -138,6 +148,7 @@ impl IdAllocator {
             next_form_field: 1,
             next_annotation: 1,
             next_image: 1,
+            next_part: 1,
         }
     }
 
@@ -161,6 +172,7 @@ impl IdAllocator {
             IdKind::FormField => &mut self.next_form_field,
             IdKind::Annotation => &mut self.next_annotation,
             IdKind::Image => &mut self.next_image,
+            IdKind::Part => &mut self.next_part,
         };
         if *counter > crate::MAX_SAFE_INT as u64 {
             return Err(EngineError::ResourceLimit {
@@ -183,6 +195,7 @@ impl IdAllocator {
             IdKind::FormField => self.next_form_field,
             IdKind::Annotation => self.next_annotation,
             IdKind::Image => self.next_image,
+            IdKind::Part => self.next_part,
         }) - 1
     }
 }

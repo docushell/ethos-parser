@@ -406,6 +406,26 @@ fn run_overlay(args: OverlayArgs) -> ExitCode {
 }
 
 fn run_extract(args: ExtractArgs) -> ExitCode {
+    // **Dispatch by content, never by extension** (v2-S2, Anydoc's A4). A `.docx` renamed
+    // `report.bin` still reads and a `.docx` full of something else does not, because an
+    // extension is a claim anybody can make and a magic number is one only the file can.
+    //
+    // One subcommand and one artifact type, per `docs/14-V2-SCOPE.md` §4: there is no
+    // `ethos.engine.docx.v0`, and every downstream path — c14n, fingerprint, `node_get` — is
+    // unchanged. What differs is the profile the reader runs under, which is what makes the two
+    // artifacts provably non-comparable.
+    let head = match std::fs::read(&args.path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return fail(&EngineError::Io {
+                detail: format!("{}: {e}", args.path.display()),
+            })
+        }
+    };
+    if engine_office::is_docx(&head) {
+        return emit_representation(engine_office::read(&head));
+    }
+
     let profile = Profile::default();
 
     // Opened once, exactly as `classify` opens it. The same handle serves both stages
@@ -419,6 +439,16 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         .and_then(|doc| engine_pdf::extract(&doc, &profile))
         .and_then(|extract| engine_pdf::to_representation(&extract, &profile));
 
+    emit_representation(result)
+}
+
+/// Print a sealed representation as canonical JSON, or map the failure to an exit code.
+///
+/// Shared by both readers so the two cannot drift in how they emit: **one serializer**, which is
+/// `docs/14-V2-SCOPE.md` §4's whole point.
+fn emit_representation(
+    result: Result<engine_core::DocumentRepresentation, EngineError>,
+) -> ExitCode {
     match result {
         Ok(artifact) => match artifact.to_canonical_bytes() {
             Ok(bytes) => {

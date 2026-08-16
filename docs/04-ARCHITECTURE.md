@@ -41,17 +41,24 @@ validator, `cli` owns argument parsing and exit codes.
 needs a real home — `engine-office`, `engine-ocr` — and not before. "This module is getting large" is
 not a reason to add a crate.
 
+**v2-S2 is that revisit, and `engine-office` exists.** DOCX is the second format, so the crate stops
+being speculative and starts being the only place OOXML may live. `engine-ocr` is still hypothetical
+and still refused on the same rule.
+
 **Crate boundaries as rules, not preferences:**
 
 | Crate | May depend on | Must never contain |
 | --- | --- | --- |
-| `engine-core` | nothing in this workspace | Any PDF concept. No `lopdf`, no operator, no page-tree type |
-| `engine-pdf` | `engine-core` | Any grounding or verification concept |
-| `engine-grounding` | `engine-core` | Any PDF concept — it projects the *representation*, never the document |
-| `engine-cli` | all three | Any logic. It parses arguments, calls the library, maps errors to exit codes |
+| `engine-core` | nothing in this workspace | Any PDF concept. No `lopdf`, no operator, no page-tree type. **And no OOXML concept**: no zip, no XML reader, no part name it parses (v2-S2) |
+| `engine-pdf` | `engine-core` | Any grounding or verification concept. **Any office concept** — a DOCX reader in here is what the fifth crate exists to prevent |
+| `engine-office` | `engine-core` | Any PDF concept, any grounding concept. It reads one package format and emits the shared representation (v2-S2) |
+| `engine-grounding` | `engine-core` | Any **format** concept — it projects the *representation*, never a document |
+| `engine-cli` | all four | Any logic. It parses arguments, calls the library, maps errors to exit codes |
 
-The third row is what keeps the second format cheap. If `engine-grounding` reaches for a page tree,
-DOCX support becomes a rewrite instead of a variant.
+The `engine-grounding` row is what keeps the second format cheap, and v2-S2 is where that got
+tested rather than asserted: **`mcp.rs`, both SDKs, the LangChain tools and `engine-grounding` were
+all unchanged** by the arrival of DOCX. What did change is `engine-core`'s page-parent invariant,
+which is the cost §6 did not predict — see the note there.
 
 **"Any PDF concept" means machinery, not vocabulary — clarified at M5**, because the rule as
 written forbids something the contract requires. `01-CONTRACT.md` §5.1 defines `NativeLocator` as
@@ -211,7 +218,13 @@ mechanism**, only new values.
 | **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection behaviour | None — provided `engine-grounding` never learned about pages |
 | **Second backend** | A trait seam modelled on Ethos's `EthosPdfBackend` 3-method shape, with backend identity in the profile | Design the seam in v0; implement one side |
 
-**The second-format row's precondition, verified at v2-S1 — and it points at the wrong crate.**
+**The second-format row, paid at v2-S2.** The row said a new format costs a `NativeLocator`
+variant, an adapter profile, fixtures and inspection behaviour, and "None" downstream. That was
+right about downstream — `engine-grounding`, `mcp.rs` and both SDKs are untouched — and it missed
+one line item: **`engine-core`'s invariant that every node's parent is a declared page**, which S2
+had to split by locator family. The row is otherwise exactly what a second format cost.
+
+**The precondition, verified at v2-S1 — and it points at the wrong crate.**
 `engine-grounding` never learned what a page *is*: it reads no locator, derives no geometry, and
 addresses pages by id, which `engine_grounding_has_no_pdf_concept` enforces. But the assumption that
 **every node has a page parent** lives in `engine-core`: `DocumentRepresentation::check_structure`

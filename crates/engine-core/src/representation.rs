@@ -156,6 +156,59 @@ pub enum NativeLocator {
     /// and "declared by the author" versus "derived from the page's own matrix" is exactly that
     /// kind of difference.
     PdfImage(PdfImageLocator),
+    /// A run's address inside an OOXML word-processing document: part, paragraph, run (v2-S2).
+    ///
+    /// **Every field is something the file contains.** `word/document.xml` is a part name from
+    /// the package; the paragraph and run ordinals are the positions of the `<w:p>` and `<w:r>`
+    /// elements in that part's own document order. Nothing here is laid out, and nothing here
+    /// could be: `docs/14-V2-SCOPE.md` §3 forbids a locator that addresses a *rendering*, and a
+    /// DOCX has no page until a renderer decides where one falls.
+    ///
+    /// There is no page, no box, no `x`/`y`, and no room to add one — the struct denies unknown
+    /// fields, and `01-CONTRACT.md` §5.1's rule is that a new *kind* of address is a new variant
+    /// rather than a lie in an old one.
+    Docx(DocxLocator),
+}
+
+impl NativeLocator {
+    /// Whether this address is inside a document the format itself paginates.
+    ///
+    /// **The one question `check_structure` asks before deciding what a node's parent may be.**
+    /// A paginated node is parented by a declared [`PageRecord`]; a page-less one is parented by
+    /// a part. Splitting on the locator rather than on a flag means a PDF node cannot reach the
+    /// page-less rules by setting a boolean — the only way in is to carry an address that has no
+    /// page in it, which is a thing the reader either read or did not.
+    pub fn is_paginated(&self) -> bool {
+        match self {
+            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => true,
+            Self::Docx(_) => false,
+        }
+    }
+
+    /// The part this address lives in, for a page-less format. `None` when paginated.
+    pub fn part(&self) -> Option<&str> {
+        match self {
+            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => None,
+            Self::Docx(d) => Some(d.part.as_str()),
+        }
+    }
+}
+
+/// A run's address inside an OOXML word-processing part (v2-S2).
+///
+/// Ordinals are **1-based**, in the part's own document order, matching every other 1-based
+/// ordinal in this contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocxLocator {
+    /// The package part this run was read from, e.g. `word/document.xml`.
+    ///
+    /// The package's own name for it, verbatim — not a path on disk and not a guess.
+    pub part: String,
+    /// 1-based position of the `<w:p>` this run belongs to, in the part's document order.
+    pub paragraph: u32,
+    /// 1-based position of the `<w:r>` within that paragraph.
+    pub run: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -401,11 +454,12 @@ pub struct PdfArtifactLocator {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum NodeKind {
-    /// One run of text shown by a single show-text operator.
+    /// One run of text, as the source format delimits runs.
     ///
-    /// **Not a line and not a paragraph.** v0 performs no grouping, so a run is exactly what the
-    /// content stream drew in one operation. Calling it a block would be a claim about layout
-    /// that no code here makes.
+    /// **Not a line and not a paragraph.** For a PDF that is exactly what one show-text operator
+    /// drew; for an OOXML document it is one `<w:r>`. Neither is grouped, because grouping would
+    /// be a claim about layout that no code here makes — and for a page-less format there is no
+    /// layout to make it from (v2-S2).
     TextRun,
     /// An interactive form field's value, read from its dictionary (v1-S4).
     ///
@@ -480,6 +534,14 @@ pub enum NodeAttributes {
     Annotation(AnnotationAttributes),
     /// A painted image's facts (v1-S6).
     Image(ImageAttributes),
+    /// An office run's facts (v2-S2).
+    ///
+    /// **A variant rather than [`Self::TextRun`] with the PDF fields blanked.** A `<w:r>` has no
+    /// character codes, no font resource name and no font size this reader read — filling
+    /// `font_size: 0` and `font_id: ""` would put three claims on the wire that the document
+    /// never made, which is the fabrication `01-CONTRACT.md` §5.2 forbids. The union discipline
+    /// §5.1 sets for locators is the same one here: a new *kind* of fact is a new variant.
+    OfficeRun(OfficeRunAttributes),
 }
 
 impl NodeAttributes {
@@ -490,6 +552,11 @@ impl NodeAttributes {
             Self::FormField(_) => NodeKind::FormField,
             Self::Annotation(_) => NodeKind::Annotation,
             Self::Image(_) => NodeKind::Image,
+            // Deliberately the same kind as a PDF run. A `<w:r>` and a show-text run are the
+            // same *thing* — one run of text — differing in how they are addressed, and the
+            // locator is what says which. A second kind would make every consumer handle two
+            // names for one concept at no gain.
+            Self::OfficeRun(_) => NodeKind::TextRun,
         }
     }
 }
@@ -779,6 +846,24 @@ pub struct TextRunAttributes {
     pub findings: Vec<TextFinding>,
 }
 
+/// An office run's facts: what OOXML states about a `<w:r>` and nothing else (v2-S2).
+///
+/// Deliberately one field. Everything else a run could carry — a style id, bold, a language — is
+/// in `word/styles.xml` or a `<w:rPr>` this slice does not read, and a field that is always
+/// `false` because nobody populated it is worse than no field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeRunAttributes {
+    /// Whether the `<w:t>` carried `xml:space="preserve"`.
+    ///
+    /// **The DOCX counterpart to `trailing_space_generated`**, which `06-STEAL-REFUSE.md` calls
+    /// the best honesty field in the four surveyed projects. Without `xml:space="preserve"` an
+    /// XML consumer may collapse leading and trailing whitespace, so whether it was set decides
+    /// whether this run's spaces are the document's or the parser's. Recorded rather than
+    /// resolved: this reader takes the text verbatim either way and says which case it was.
+    pub space_preserved: bool,
+}
+
 /// A character the reader authored rather than read, flagged where it was created.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -825,7 +910,14 @@ pub struct Node {
     pub id: NodeId,
     /// What this node is.
     pub kind: NodeKind,
-    /// The page this node was drawn on, by page-record id.
+    /// The container this node belongs to: a **page** where the format has pages, and a **part**
+    /// where it does not (v2-S2).
+    ///
+    /// It was *"the page this node was drawn on"* until v2 added a format that has none. Which of
+    /// the two it is is decided by [`Self::native_locator`] and checked in `check_structure`, so
+    /// the two cannot disagree: a PDF node's parent is a declared [`PageRecord`], and a page-less
+    /// node's parent is a [`crate::IdKind::Part`] id that every node in that part shares.
+    /// `docs/14-V2-SCOPE.md` §3 is why this is not simply "a page, and DOCX gets a fake one".
     pub parent: NodeId,
     /// Position among the nodes sharing this parent, **1-based**, in reading order.
     pub ordinal: u32,
@@ -1016,6 +1108,72 @@ impl DocumentRepresentation {
         Ok(d)
     }
 
+    /// Whether an id was minted as a [`crate::IdKind::Part`].
+    ///
+    /// Read off the prefix, which is what the id *is* on the wire. Prefixes are one character and
+    /// distinct, so this cannot confuse a part with a page.
+    fn is_part_id(id: &NodeId) -> bool {
+        id.as_str().starts_with(crate::IdKind::Part.prefix())
+    }
+
+    /// The shape a page-less document has to have, checked once before the node walk (v2-S2).
+    ///
+    /// Three rules, and each one closes a way of faking a page:
+    ///
+    /// 1. **`pages` is empty.** `docs/14-V2-SCOPE.md` §3: a non-empty `pages` on a document whose
+    ///    nodes have no page is the defect the law exists to catch — an A4 record minted so the
+    ///    old invariant would pass.
+    /// 2. **No mixing.** A document is paginated or it is not. One of each would be a record
+    ///    claiming a DOCX run and a PDF glyph share a coordinate space.
+    /// 3. **Part id and part name agree, both ways.** Nothing declares parts in a separate list,
+    ///    and nothing needs to: every page-less node names its part in its own locator, so the
+    ///    artifact is self-describing as long as one part id means one part name and vice versa.
+    ///    That is the integrity the declared-page lookup buys for a PDF, bought here without
+    ///    inventing a list to look things up in.
+    fn check_page_less_shape(p: &RepresentationPayload) -> Result<(), EngineError> {
+        if !p.pages.is_empty() {
+            return Err(Self::malformed(format!(
+                "this document's nodes have page-less addresses, but it declares {} page \
+                 record(s). A page-less format has no pages: `pages` is empty, and a record put \
+                 there so a node could name it would be invented pagination.",
+                p.pages.len()
+            )));
+        }
+
+        let mut part_of_id: std::collections::BTreeMap<&str, &str> = Default::default();
+        let mut id_of_part: std::collections::BTreeMap<&str, &str> = Default::default();
+
+        for node in &p.nodes {
+            let Some(part) = node.native_locator.part() else {
+                return Err(Self::malformed(format!(
+                    "node `{}` has a paginated address in a document whose other nodes have \
+                     none. A representation describes one document, and one document is either \
+                     paginated or it is not.",
+                    node.id
+                )));
+            };
+            let id = node.parent.as_str();
+
+            if let Some(previous) = part_of_id.insert(id, part) {
+                if previous != part {
+                    return Err(Self::malformed(format!(
+                        "part `{id}` names `{previous}` on one node and `{part}` on another; a \
+                         part id means exactly one part"
+                    )));
+                }
+            }
+            if let Some(previous) = id_of_part.insert(part, id) {
+                if previous != id {
+                    return Err(Self::malformed(format!(
+                        "part `{part}` is `{previous}` on one node and `{id}` on another; one \
+                         part has exactly one id"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn malformed(detail: String) -> EngineError {
         EngineError::Malformed {
             what: "document representation".into(),
@@ -1064,8 +1222,15 @@ impl DocumentRepresentation {
             }
         }
 
+        // **v2-S2: which family of document this is, decided by the nodes' own addresses.**
+        // Not a flag and not a media type — a node reaches the page-less rules only by carrying
+        // an address with no page in it, which is a thing the reader either read or did not.
+        if p.nodes.iter().any(|n| !n.native_locator.is_paginated()) {
+            Self::check_page_less_shape(p)?;
+        }
+
         let mut seen_nodes = std::collections::BTreeSet::new();
-        let mut ordinal_by_page: std::collections::BTreeMap<&str, u32> = Default::default();
+        let mut ordinal_by_parent: std::collections::BTreeMap<&str, u32> = Default::default();
 
         for (i, node) in p.nodes.iter().enumerate() {
             if !seen_nodes.insert(node.id.as_str()) {
@@ -1078,24 +1243,60 @@ impl DocumentRepresentation {
                     self.geometry[i].node, node.id
                 )));
             }
-            let Some(page) = pages_by_id.get(node.parent.as_str()) else {
-                return Err(Self::malformed(format!(
-                    "node `{}` names parent page `{}`, which is not a declared page",
-                    node.id, node.parent
-                )));
+
+            // A paginated node is parented by a declared page; a page-less one by a part. The
+            // PDF branch is **unchanged**, message included: `docs/14-V2-SCOPE.md` §3 adds a
+            // second family rather than loosening the first.
+            let page = if node.native_locator.is_paginated() {
+                let Some(page) = pages_by_id.get(node.parent.as_str()) else {
+                    return Err(Self::malformed(format!(
+                        "node `{}` names parent page `{}`, which is not a declared page",
+                        node.id, node.parent
+                    )));
+                };
+                Some(*page)
+            } else {
+                if !Self::is_part_id(&node.parent) {
+                    return Err(Self::malformed(format!(
+                        "node `{}` has a page-less address but its parent `{}` is not a part id \
+                         (`{}`-prefixed). A page-less node is parented by the part it was read \
+                         from, never by a page this engine invented for it.",
+                        node.id,
+                        node.parent,
+                        crate::IdKind::Part.prefix()
+                    )));
+                }
+                None
             };
-            let next = ordinal_by_page.entry(node.parent.as_str()).or_insert(0);
+
+            let next = ordinal_by_parent.entry(node.parent.as_str()).or_insert(0);
             *next += 1;
             if node.ordinal != *next {
                 return Err(Self::malformed(format!(
                     "node `{}` has ordinal {} where {} was expected; ordinals are 1-based and \
-                     contiguous within a page, in reading order",
+                     contiguous within their container — a page where the format has pages, a \
+                     part where it does not — in reading order",
                     node.id, node.ordinal, *next
                 )));
             }
 
-            if let GeometryPresence::Measured(r) = self.geometry[i].presence {
-                Self::check_box_within_page(&node.id, r, page)?;
+            match (self.geometry[i].presence, page) {
+                (GeometryPresence::Measured(r), Some(page)) => {
+                    Self::check_box_within_page(&node.id, r, page)?;
+                }
+                // **The no-invented-geometry law, mechanised.** A box is validated against the
+                // page that contains it, so a node with no page has nothing to validate against
+                // — and a rectangle nobody can check is exactly the fabrication
+                // `docs/14-V2-SCOPE.md` §3 refuses. Absence is the only honest presence here.
+                (GeometryPresence::Measured(_), None) => {
+                    return Err(Self::malformed(format!(
+                        "node `{}` has a page-less address and a measured box. There is no page \
+                         to contain it, so the rectangle cannot be checked and must not be \
+                         emitted: a page-less node's geometry is typed absence.",
+                        node.id
+                    )));
+                }
+                _ => {}
             }
         }
 
@@ -1429,6 +1630,185 @@ mod tests {
             GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
         );
         seal(vec![n], vec![p], vec![g]).unwrap()
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // v2-S2: the page-less family
+    // ---------------------------------------------------------------------------------------
+
+    /// A page-less node, parented by a part, in a document that declares no pages.
+    fn docx_node(alloc: &mut IdAllocator, part: &NodeId, ordinal: u32, paragraph: u32) -> Node {
+        Node {
+            id: alloc.next(IdKind::Span).unwrap(),
+            kind: NodeKind::TextRun,
+            parent: part.clone(),
+            ordinal,
+            text: "hello".into(),
+            native_locator: NativeLocator::Docx(DocxLocator {
+                part: "word/document.xml".into(),
+                paragraph,
+                run: 1,
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeRun(OfficeRunAttributes {
+                space_preserved: false,
+            }),
+        }
+    }
+
+    /// **The invariant v2-S2 exists to change.** A page-less document seals with no pages at all.
+    ///
+    /// Before this slice `check_structure` required every node's parent to be a declared page, so
+    /// this representation was unconstructible and a DOCX could not enter the IR. The empty
+    /// `pages` vector is now what `14-V2-SCOPE.md` §3 always said it was — the spelling of *"this
+    /// document has no pages"* — rather than a shape only a document with no nodes could have.
+    #[test]
+    fn a_page_less_document_seals_with_no_pages_at_all() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let n1 = docx_node(&mut alloc, &part, 1, 1);
+        let n2 = docx_node(&mut alloc, &part, 2, 2);
+        let geometry = vec![
+            geom(
+                &n1,
+                GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            ),
+            geom(
+                &n2,
+                GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            ),
+        ];
+        let sealed = seal(vec![n1, n2], Vec::new(), geometry).expect("a page-less document seals");
+        assert!(sealed.payload().pages.is_empty());
+        assert_eq!(sealed.payload().nodes.len(), 2);
+    }
+
+    /// **A PDF node in that same document still refuses.** The second family did not open a hole.
+    #[test]
+    fn a_paginated_node_in_a_page_less_document_still_refuses() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let n = node(&mut alloc, &part, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        );
+        let err = seal(vec![n], Vec::new(), vec![g]).unwrap_err();
+        assert!(
+            err.to_string().contains("is not a declared page"),
+            "a paginated address still needs its page: {err}"
+        );
+    }
+
+    /// **The fake A4 record, refused by name.** This is the defect §3 exists to catch.
+    ///
+    /// The shortest route to making a DOCX pass the old invariant was to mint one page record and
+    /// point every node at it. That produces a document claiming a page nothing measured, so it is
+    /// refused whether or not the geometry would have fitted inside it.
+    #[test]
+    fn a_page_less_document_that_declares_a_page_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        let a4 = page(&mut alloc, 1);
+        let part = alloc.next(IdKind::Part).unwrap();
+        let n = docx_node(&mut alloc, &part, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        );
+        let err = seal(vec![n], vec![a4], vec![g]).unwrap_err();
+        assert!(
+            err.to_string().contains("invented pagination"),
+            "the refusal must name what it refuses: {err}"
+        );
+    }
+
+    /// **A page-less node may not carry a measured box.**
+    ///
+    /// A box is validated against the page containing it, so a node with no page has nothing to
+    /// validate against — and a rectangle nobody can check is the fabrication §3 refuses. This is
+    /// the rule that makes "no geometry" a property of the artifact rather than a convention the
+    /// office reader happens to follow.
+    #[test]
+    fn a_page_less_node_may_not_carry_a_measured_box() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let n = docx_node(&mut alloc, &part, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+        );
+        let err = seal(vec![n], Vec::new(), vec![g]).unwrap_err();
+        assert!(
+            err.to_string().contains("no page to contain it"),
+            "the refusal must say why a box cannot be checked here: {err}"
+        );
+    }
+
+    /// **A page-less node parented by something that is not a part is refused.**
+    #[test]
+    fn a_page_less_node_needs_a_part_for_a_parent() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        // A page id, in a document with no pages: the shape a reader would produce if it kept
+        // minting page ids out of habit.
+        let not_a_part = alloc.next(IdKind::Page).unwrap();
+        let n = docx_node(&mut alloc, &not_a_part, 1, 1);
+        let g = geom(
+            &n,
+            GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        );
+        let err = seal(vec![n], Vec::new(), vec![g]).unwrap_err();
+        assert!(err.to_string().contains("is not a part id"), "{err}");
+    }
+
+    /// **One part id means one part name, both ways.**
+    ///
+    /// Nothing declares parts in a separate list, so this bijection is what buys the integrity a
+    /// declared-page lookup buys for a PDF — without inventing a list to look things up in.
+    #[test]
+    fn a_part_id_and_a_part_name_agree_in_both_directions() {
+        let mut alloc = IdAllocator::new(Profile::docx_v0().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let n1 = docx_node(&mut alloc, &part, 1, 1);
+        let mut n2 = docx_node(&mut alloc, &part, 2, 2);
+        // Same part id, a different part name.
+        n2.native_locator = NativeLocator::Docx(DocxLocator {
+            part: "word/header1.xml".into(),
+            paragraph: 1,
+            run: 1,
+        });
+        let geometry = vec![
+            geom(
+                &n1,
+                GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            ),
+            geom(
+                &n2,
+                GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            ),
+        ];
+        let err = seal(vec![n1, n2], Vec::new(), geometry).unwrap_err();
+        assert!(err.to_string().contains("means exactly one part"), "{err}");
+    }
+
+    /// A DOCX profile and the PDF default are **provably non-comparable** (`14-V2-SCOPE.md` §8).
+    #[test]
+    fn the_docx_profile_is_not_the_pdf_profile() {
+        assert_ne!(
+            Profile::docx_v0().profile_sha256().unwrap(),
+            Profile::default().profile_sha256().unwrap(),
+            "two formats sharing a profile hash would make their artifacts falsely comparable"
+        );
+        let docx = Profile::docx_v0();
+        assert!(
+            !docx.capabilities.measured_ink_boxes,
+            "a DOCX has no ink box"
+        );
+        assert!(!docx.capabilities.tables, "v2-S2 reads no tables");
+        assert!(
+            docx.capabilities.spans,
+            "a run is a span, and that is the claim this reader makes"
+        );
     }
 
     #[test]

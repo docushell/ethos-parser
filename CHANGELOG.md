@@ -7,7 +7,107 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 scoped and its contract decided, as 0.20.0
+## [Unreleased] — v2 reads its first format, as 0.21.0
+
+### v2-S2 — DOCX into the representation, and the page-parent invariant S1 found
+
+**The first office reader, and the IR change that had to come first.** `engine extract` reads a
+`.docx` into the same `ethos.engine.representation.v0` a PDF produces — and **nothing on that path
+is a page**.
+
+#### The invariant, split rather than loosened
+
+v2-S1 measured that `DocumentRepresentation::seal` refused *every* node whose parent was not a
+declared page, so a page-less document could not enter the IR at all. S2 fixed that by splitting
+`check_structure` on the **locator family**, which is the one thing a node cannot fake — it reaches
+the page-less rules only by carrying an address with no page in it.
+
+| | paginated address | page-less address |
+| --- | --- | --- |
+| parent | a declared `PageRecord` — **unchanged, message included** | a `Part` id (`d1`) |
+| `pages` | as before | must be **empty**, or the seal refuses "invented pagination" |
+| geometry | a measured box is checked against its page | a measured box is **refused**: no page to check it against |
+| integrity | the parent is looked up in a declared list | part id ↔ part name is a **bijection** |
+
+The last row is the interesting one. A PDF gets its integrity from a declared-page lookup; a DOCX
+has no such list, and adding a payload field for one would be machinery for a format that describes
+itself already. Every page-less node names its part in its own locator instead, and the seal checks
+that one part id means one part name **in both directions**.
+
+The measured-box row is what makes "no geometry" a property of the artifact rather than a habit of
+the reader: `engine-office` could not emit a rectangle if a later edit tried.
+
+#### The locator, and why the attributes are a new variant
+
+`DocxLocator { part, paragraph, run }` — a package part name and two 1-based document-order
+positions, all of them things the file states about itself. **No page, no bbox, no `x`/`y`**, and
+`deny_unknown_fields` so one cannot be added quietly.
+
+`NodeAttributes::OfficeRun` is new rather than `TextRun` with the PDF fields blanked: a `<w:r>` has
+no char codes, no font resource name and no font size this reader read, and `font_size: 0` would be
+three claims the document never made. Its one field is `space_preserved` — whether
+`xml:space="preserve"` was set, which decides whether a run's spaces are the document's or the
+parser's. `NodeKind::TextRun` is **reused**: a `<w:r>` and a show-text run are the same thing
+addressed differently, and the locator is what says which.
+
+`Profile::docx_v0` is a **separate profile with its own hash**, so a DOCX artifact and a PDF
+artifact are provably non-comparable. Every capability it declares false is one v2-S2 genuinely does
+not read, and `measured_ink_boxes: false` is the load-bearing one.
+
+#### The fifth crate, and exactly one new dependency
+
+`engine-office`, where `04-ARCHITECTURE.md` always said an office reader would live —
+*"revisit only when office or OCR needs a real home"*. DOCX is that revisit.
+
+**`quick-xml` is the only new crate in the lock.** ZIP is read in `engine-office/src/zip.rs` over
+`flate2`, which the graph already carried via `lopdf`: the `zip` crate drags twelve transitives
+including `zopfli`, a *compressor*, to save ~120 lines of central-directory reading. XML is the
+opposite call and is **not** hand-rolled, because entities, namespaces, CDATA and encodings are
+exactly where a hand-rolled reader silently gets *text* wrong — and text is the evidence. Both
+halves are v1.2-S1's reasoning about an MCP framework, applied twice with opposite answers.
+
+**Measured, not feared:** the first version of the reader dropped `&amp;` silently, because
+`quick-xml` 0.41 delivers an entity as its own event and the reader only handled `Text`. The fixture
+carries an ampersand because of it, and the reader now resolves the five XML predefined entities and
+**refuses every other name** rather than letting one become an empty string in the evidence.
+
+#### What is read, what is declared unread, and how failures close
+
+`<w:p>` / `<w:r>` / `<w:t>` in `word/document.xml`, in the part's own order. Headers, footers,
+footnotes, endnotes and comments are **counted and declared** as `office-parts-not-read` — Anydoc's
+**A14** applied to a package, because a reader that silently returned the body would let a caller
+conclude a phrase is absent from a document that contains it.
+
+Detection is **content-based** (**A4**): a ZIP signature plus `word/document.xml` in the central
+directory, so `report.bin` reads and a `.docx` full of something else does not. A truncated archive,
+a Zip64 record, an unimplemented compression method, a size that disagrees with the directory, XML
+that will not parse, and a part ending with elements still open are each a **named** refusal.
+
+#### What did not change, which is the one-IR claim being paid
+
+**`ethos.grounding.v1` is untouched** and `engine ground` on a DOCX artifact is a named refusal
+naming `application/pdf` and pointing at the law — v2-S1's decision (b), now live rather than
+hypothetical. `project()`'s PDF path is unchanged; relaxing its page requirement "for office" would
+have changed PDF behaviour for a format that did not exist here yet.
+
+**`mcp.rs` is untouched, and `node_get` resolves a DOCX run anyway.** So do both SDKs and the
+LangChain tools, because there is one artifact type and one serializer. That is `14-V2-SCOPE.md`
+§4's whole claim, and it cost nothing to keep.
+
+### Identity, after v2-S2
+
+Workspace **0.21.0**, profile hash
+`sha256:1a7844f5a291cdd1430ecead0523980283a6c3e7bbf3f6f431ce5a056c5d92f1` — moved on
+`parser_version` **alone**. Every other byte of the PDF profile is identical, because the second
+format got a profile of its own rather than a capability on this one. `XrefRepair` gained a
+`not-run-for-this-format` state for that profile to use; the PDF profile still says
+`pad-19-to-20-v1`, so the new variant is invisible here. **A second format is a new value, not a
+change to what the first profile claims.**
+
+**v1 is still not done** — the S7 table-cell gate is measured and missed at 64‰ — and nothing in
+this entry closes it.
+
+### v2-S0/S1 — office formats scoped, and the grounding contract decided
 
 ### v2-S1 — `ethos.grounding.v1` stays PDF-only, and the page assumption is not where S0 thought
 

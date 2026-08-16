@@ -3,9 +3,9 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 is scoped; S1 is decided; no reader exists.** No parser for any office format is in this tree.
-S0 is these two documents and S1 is the grounding decision in §5 — both are contract work, and the
-first format arrives at S2.
+**v2 reads its first format.** S0–S2 are done: this document, the grounding decision in §5, and
+`engine-office` — the fifth crate, and DOCX is what stopped it being speculative. S3 (XLSX) and S4
+(the rest) are not started.
 
 **v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -77,20 +77,24 @@ machinery for it:
   not one. A DOCX run is that variant. It is not `NotReportedByReader`, which means the reader tried
   and could not.
 - **Pages.** `RepresentationPayload.pages` is a `Vec<PageRecord>`, so **an empty `pages` array is
-  the spelling of "this document has no pages"** — and a non-empty one on a DOCX is the defect this
-  law exists to catch. **That is true of the type and, today, not of the invariant:** v2-S1 measured
-  that `seal` refuses a node whose parent is not a declared page, so the empty vector is currently
-  only legal for a document with no nodes either. §5 records what that costs and whose problem it
-  is.
-- **The locator.** A new union variant, per §5.1. A `DocxLocator` that contains a page number is the
-  same violation as a `bbox`, wearing a field name.
+  the spelling of "this document has no pages"** — and a non-empty one on a page-less document is
+  refused by name as *invented pagination*. v2-S1 measured that the invariant did not yet allow
+  that spelling; **v2-S2 made it allow it**, by splitting `check_structure` on the locator family
+  rather than by loosening the page rule. A paginated address still needs its declared page.
+- **The locator.** A new union variant, per §5.1 — `DocxLocator { part, paragraph, run }` as of
+  v2-S2. A locator that contained a page number would be the same violation as a `bbox`, wearing a
+  field name, and `deny_unknown_fields` is what stops one arriving quietly.
+- **Geometry, again, and this one is stronger than a convention.** `check_structure` **refuses a
+  measured box on a page-less node**: a box is validated against the page containing it, so a node
+  with no page has nothing to validate against, and a rectangle nobody can check is the fabrication
+  this law exists to refuse. The office reader could not emit one even if a later edit tried.
 - **The dependency graph.** `deny.toml` is the standing proof for the third obligation: a renderer
   is a dependency, and one that arrives shows up there before it shows up in a review.
 
 S1 turned the third obligation into a test (`page_less_source.rs` reads the lock file for a
-renderer) and S2+ turn the rest into tests as the code that could break them arrives. The sentences
-exist **before** the first parser — the pattern `12-V12-SCOPE.md` §3 set for the handle law, for the
-same reason.
+renderer) and **S2 turned the rest into tests in `engine-core`**, where the invariant lives. The
+sentences existed **before** the first parser — the pattern `12-V12-SCOPE.md` §3 set for the handle
+law, for the same reason, and S2 is what they were written for.
 
 ## 4. One IR, one serializer
 
@@ -129,8 +133,15 @@ but it is the sentence v2 has to revisit, and it is the finding §5 records. Pin
 > needs a real home — **`engine-office`**, `engine-ocr` — and not before.
 
 So: the name is `engine-office`, its rules are the existing table's (`engine-core` must never learn
-what a DOCX is, exactly as it never learned what a PDF is), and **S0 does not create it.** A second
-format is what makes it stop being speculative; a scope document is not.
+what a DOCX is, exactly as it never learned what a PDF is), and S0 did not create it — **v2-S2 did**,
+because a second format is what makes it stop being speculative and a scope document is not.
+
+**One new crate arrived in the lock with it: `quick-xml`.** ZIP is read inside `engine-office` over
+`flate2`, which the graph already carried, because the `zip` crate drags twelve transitives —
+including a *compressor* — to save a hundred lines of central-directory reading. XML is the opposite
+call and is not hand-rolled: entities, namespaces, CDATA and encodings are where a hand-rolled
+reader silently gets **text** wrong, and text is the evidence. Both halves are v1.2-S1's reasoning
+about an MCP framework, applied twice with opposite answers.
 
 ## 5. The contract question, decided at S1
 
