@@ -404,9 +404,44 @@ census a disclosure belongs in: a hyphen *is* a character of node text and it re
 Markdown. The GFM erasures are counted separately precisely because their characters are all still
 there.
 
-- **In:** `hyphen_tail` and `Emit::joined_source` in `engine-core/src/markdown.rs`;
-  `hyphenation-rejoin-dropped-v1`; `markdown-blocks-v2`; `0.13.0` and the moved profile hash;
-  schema, PUBLIC-API, CHANGELOG.
+### The golden, and the third fixture it needed
+
+S1's golden refused a quote spanning a blank line; S2's refused one carrying table chrome. Both are
+*punctuation* a careful reader might squint at. S3 produces something harder — a joined word that
+is ordinary English in the middle of an ordinary sentence, with nothing to squint at:
+
+```text
+     page:  The rate may be recalcu-
+            lated at closing
+ markdown:  The rate may be recalculated at closing
+```
+
+A model handed that Markdown would cite it without hesitation, and the page never drew it. So
+`the_joined_word_does_not_ground_and_both_halves_do` runs the four real binaries — `extract`,
+`ground`, `markdown`, `verify` — with the pinned Ethos CLI deciding:
+
+| quote | verdict |
+| --- | --- |
+| `The rate may be recalcu-` — the first half, hyphen and all | **grounded** |
+| `lated at closing` — the second half | **grounded** |
+| `recalculated` — the word only the export contains | **`text_mismatch`** |
+
+The reason is pinned, not just the verdict. `element_not_found` would mean the citation pointed at
+nothing and the test would pass without the cosmetic having been examined; the joined word is cited
+against an element that **does** exist, so the verifier finds it and judges the text. And
+`recalculated` is never asserted grounded — that is not a gap, it is what §5 buys.
+
+**`markdown-hyphen-break` had to be authored, for the reason `markdown-two-blocks` and
+`markdown-table-cells` each had to be.** `synthetic/hyphenated-line-break` already carries the
+shape, but its font declares no ink metrics, so both runs take the typed-absent path,
+`ethos.grounding.v1` comes out with an empty `elements` array, and a golden against it would watch
+the verifier find nothing and refuse every quote. Two runs 30 points apart in the metrics font is
+what makes the question askable at all.
+
+- **In:** `hyphen_tail`, `on_different_lines`, `is_page_artifact` and `Emit::joined_source` in
+  `engine-core/src/markdown.rs`; `hyphenation-rejoin-dropped-v1`; `markdown-blocks-v2`; `0.13.0`
+  and the moved profile hash; the `markdown-hyphen-break` fixture and its verify golden; schema,
+  PUBLIC-API, CHANGELOG.
 
 - **Out:** HTML (S4). Dot-leaders, drop-caps, sub/superscript. A `Computed` hyphen node in the
   representation. Any change to `extract`, the three detection rules, or the table gate. A new
@@ -426,6 +461,9 @@ there.
   - [x] A page artifact is not joined onto body text, in either direction, and every `source`
         segment still names exactly one run across that boundary — while a running head broken
         across its **own** two lines still joins
+  - [x] **The hyphen verify golden**, on an authored fixture whose halves both carry measured ink:
+        each half **grounds** through the pinned Ethos CLI, and `recalculated` comes back
+        **`text_mismatch`** against an element that exists — reason pinned, never asserted grounded
   - [x] `simple-text`, `markdown-two-blocks` and the GFM cell golden unchanged — body and map
         geometry, as literals — and neither declares the bucket
   - [x] S1's verify golden still grounds the source quote and still refuses the spanning one with

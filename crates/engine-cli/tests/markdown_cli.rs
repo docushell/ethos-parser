@@ -192,6 +192,7 @@ fn the_map_tiles_the_markdown_on_every_fixture() {
         conformance("synthetic/table-regular-grid/document.pdf"),
         engine_fixture("ruled-table-grid"),
         engine_fixture("markdown-table-cells"),
+        engine_fixture("markdown-hyphen-break"),
         engine_fixture("tagged-list-items"),
         engine_fixture("ruled-table-overlap"),
     ]
@@ -240,6 +241,7 @@ fn the_coverage_census_balances_on_every_fixture() {
         // removed, so the sweep has to see it balance rather than only the goldens.
         conformance("synthetic/hyphenated-line-break/document.pdf"),
         engine_fixture("markdown-table-cells"),
+        engine_fixture("markdown-hyphen-break"),
         engine_fixture("tagged-list-items"),
     ]
     .iter()
@@ -1103,5 +1105,217 @@ fn a_quote_from_a_gfm_cell_verifies_end_to_end() {
         !grounded_of(&spanning_report),
         "a quote carrying table chrome is text this exporter invented. The document painted a \
          ruling line; it did not draw a `|`. Quote: {spanning:?}"
+    );
+}
+
+/// **The same sentence again, and this time the invented bytes are a word.**
+///
+/// S1's golden refused a quote spanning a blank line; S2's refused one carrying table chrome. Both
+/// are *punctuation* a reader might squint at. v1.1-S3 produces something harder: a joined word
+/// that is ordinary English, in the middle of an ordinary sentence, with nothing about it to
+/// squint at.
+///
+/// The fixture's page draws two lines:
+///
+/// ```text
+///     The rate may be recalcu-
+///     lated at closing
+/// ```
+///
+/// and the projection closes that up to `The rate may be recalculated at closing`. **A model handed
+/// that Markdown would cite it without hesitation, and the page never drew it.** `extract` still
+/// holds `recalcu-` and `lated` as two `Extracted` runs — that is the standing policy
+/// `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` pins — so the joined word is on
+/// no element of `ethos.grounding.v1`.
+///
+/// This test makes the whole trade executable, with the pinned Ethos CLI deciding:
+///
+/// | quote | expected |
+/// | --- | --- |
+/// | `The rate may be recalcu-` — the first half, as the page drew it | **grounded** |
+/// | `lated at closing` — the second half | **grounded** |
+/// | `recalculated` — the word only the export contains | **`text_mismatch`** |
+///
+/// The third is the one that means something, and it must fail for the RIGHT reason:
+/// `element_not_found` would mean the citation pointed at nothing, and the test would pass without
+/// the cosmetic having been examined at all.
+///
+/// **`recalculated` is never asserted grounded, and that is not a gap.** It is what
+/// `docs/10-V11-SCOPE.md` §5 buys: the export may repair, the evidence record may not, and the
+/// map names the two strings that *are* citable.
+#[test]
+fn the_joined_word_does_not_ground_and_both_halves_do() {
+    let verifier = ethos_binary();
+    assert!(
+        verifier.is_file(),
+        "the pinned Ethos CLI is a test-time dependency of this golden: {}",
+        verifier.display()
+    );
+
+    let dir = scratch("hyphen-golden");
+    // **Authored for this, like `markdown-two-blocks` and `markdown-table-cells` were.** The
+    // Ethos corpus already carries the shape — `synthetic/hyphenated-line-break` is `hyphen-` then
+    // `ated` — but its font declares no ink metrics, so both runs take the typed-absent path and
+    // `elements` comes out empty. A golden there would watch the verifier find nothing and refuse
+    // every quote, which proves nothing about the join.
+    let repr = extract_to(&dir, &engine_fixture("markdown-hyphen-break"));
+
+    let grounded_out = engine(&["ground", repr.to_str().unwrap()]);
+    assert_eq!(grounded_out.status.code(), Some(0), "ground must succeed");
+    let grounding = dir.join("grounding.json");
+    std::fs::write(&grounding, &grounded_out.stdout).expect("write grounding");
+    let fingerprint = format!(
+        "sha256:{}",
+        engine_core::sha256_hex_bytes(&std::fs::read(&grounding).unwrap())
+    );
+
+    let a = markdown_of(&repr);
+    let md = a["markdown"].as_str().expect("markdown").to_string();
+    assert_eq!(
+        md, "The rate may be recalculated at closing\n",
+        "the export closes the word up"
+    );
+
+    // The joined bytes are ONE source segment naming BOTH runs — the map's own account of what
+    // happened, read here rather than assumed.
+    let segs = a["anchor_map"]["segments"].as_array().expect("segments");
+    let joined = segs
+        .iter()
+        .find(|s| s["kind"] == "source")
+        .expect("a source segment");
+    let ids: Vec<String> = joined["node_ids"]
+        .as_array()
+        .expect("node_ids")
+        .iter()
+        .map(|v| v.as_str().expect("an id").to_string())
+        .collect();
+    assert_eq!(
+        ids.len(),
+        2,
+        "these bytes came from two runs and the map says so: {ids:?}"
+    );
+
+    // The two halves, read off the GROUNDING artifact rather than hardcoded: an id that does not
+    // exist comes back `element_not_found`, and every half of this test would then pass for a
+    // reason that has nothing to do with the join.
+    let grounding_doc: Value =
+        serde_json::from_slice(&std::fs::read(&grounding).unwrap()).expect("grounding JSON");
+    let elements: Vec<(String, String)> = grounding_doc["elements"]
+        .as_array()
+        .expect("elements")
+        .iter()
+        .filter_map(|e| {
+            Some((
+                e["id"].as_str()?.to_string(),
+                e["text"].as_str()?.to_string(),
+            ))
+        })
+        .collect();
+    assert_eq!(
+        elements.len(),
+        2,
+        "both halves must reach the grounding artifact, or this golden is vacuous: {elements:?}"
+    );
+    let (first_id, first_half) = elements[0].clone();
+    let (second_id, second_half) = elements[1].clone();
+    assert_eq!(first_half, "The rate may be recalcu-");
+    assert_eq!(second_half, "lated at closing");
+
+    // And the joined word is on NEITHER of them. That is the fact the third claim below asks the
+    // verifier to confirm independently.
+    assert!(
+        !elements.iter().any(|(_, t)| t.contains("recalculated")),
+        "no element carries the joined word — the page drew it in two pieces: {elements:?}"
+    );
+
+    let write_claims = |name: &str, text: &str, element: &str| -> PathBuf {
+        let p = dir.join(name);
+        let body = serde_json::json!({
+            "document_fingerprint": fingerprint,
+            "claims": [{
+                "kind": "quote",
+                "text": text,
+                "citation": { "page": "p1", "element_id": element }
+            }]
+        });
+        std::fs::write(&p, serde_json::to_vec_pretty(&body).unwrap()).expect("write claims");
+        p
+    };
+
+    let verify = |claims: &Path| -> Value {
+        let out = engine(&[
+            "verify",
+            grounding.to_str().unwrap(),
+            "--citations",
+            claims.to_str().unwrap(),
+        ]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "the relay itself succeeds whatever the verdict: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).expect("the verifier's report is JSON")
+    };
+
+    // **The verifier's own field, read and not re-derived** (`docs/07-VERIFY-BOUNDARY.md`).
+    let grounded_of = |report: &Value| -> bool {
+        let v = report
+            .get("all_evidence_grounded")
+            .and_then(Value::as_bool)
+            .unwrap_or_else(|| panic!("the report must carry `all_evidence_grounded`: {report}"));
+        let statuses: Vec<&str> = report["checks"]
+            .as_array()
+            .expect("checks")
+            .iter()
+            .filter_map(|c| c["status"].as_str())
+            .collect();
+        assert!(
+            !statuses.is_empty(),
+            "the report must judge the claim: {report}"
+        );
+        assert_eq!(
+            v,
+            statuses.iter().all(|s| *s == "grounded"),
+            "the summary and the per-claim statuses must agree: {report}"
+        );
+        v
+    };
+
+    // **The export joined; the evidence record did not** — so both halves are still citable,
+    // exactly as they were before this slice existed.
+    assert!(
+        grounded_of(&verify(&write_claims(
+            "first-half.json",
+            &first_half,
+            &first_id
+        ))),
+        "the first half is text the document drew, hyphen and all, so it must still ground"
+    );
+    assert!(
+        grounded_of(&verify(&write_claims(
+            "second-half.json",
+            &second_half,
+            &second_id
+        ))),
+        "and so must the second"
+    );
+
+    // **The word only the export contains.** Cited against an element that DOES exist, so the
+    // verifier finds it and judges the text.
+    let joined_report = verify(&write_claims("joined-word.json", "recalculated", &first_id));
+    let reason = joined_report["checks"][0]["reason"].as_str().unwrap_or("");
+    assert_eq!(
+        reason, "text_mismatch",
+        "the joined word must be refused because the TEXT is not on the page, not because the \
+         citation missed — `element_not_found` would make this test pass without the cosmetic \
+         having been examined at all: {joined_report}"
+    );
+    assert!(
+        !grounded_of(&joined_report),
+        "`recalculated` reads like ordinary English in an ordinary sentence, and the page never \
+         drew it: it drew `recalcu-` and `lated` on two lines. This is the cost of the S3 \
+         cosmetic, and the correct answer — not a defect in the verifier. What the artifact owes \
+         a consumer is that the map names the two strings that ARE citable, and it does."
     );
 }

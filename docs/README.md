@@ -18,8 +18,14 @@ up a word the page drew in two pieces: `hyphen-` + `ated` reads `hyphenated`. Th
 break-hyphen from a real compound one needs a dictionary — so the joined word is readable and
 **not citable**, and the artifact says which two strings are: the joined bytes are one `source`
 segment naming **both** runs, and the removed hyphen is counted in
-`hyphenation-rejoin-dropped-v1`. Checklist P15: the export repairs, `element.text` does not. HTML
-is now **S4, not started**; dot-leaders and drop-caps are not implemented and have no fixture.
+`hyphenation-rejoin-dropped-v1`. Checklist P15: the export repairs, `element.text` does not.
+
+The golden makes that trade executable, on an authored fixture whose halves both carry measured
+ink: the page draws `The rate may be recalcu-` / `lated at closing`, the export reads
+`The rate may be recalculated at closing`, and the pinned Ethos CLI **grounds each half** and
+returns **`text_mismatch`** for `recalculated` — cited against an element that exists, so the
+reason is pinned rather than an `element_not_found` that would prove nothing. HTML is now
+**S4, not started**; dot-leaders and drop-caps are not implemented and have no fixture.
 
 **S2 projects BLOCKS.** `markdown-blocks-v1` emitted a GFM table for every table on the
 representation and a list item for every run the structure tree places in an `/L` — and, because

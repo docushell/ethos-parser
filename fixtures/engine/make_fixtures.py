@@ -33,6 +33,9 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              grounding artifact. The Markdown joins them with a blank line, and
                              a quote spanning that join is text the page never drew — the
                              Anchor Map golden                                    [v1.1-S1]
+  markdown-hyphen-break      TWO runs 30 points apart in a font with real ink metrics, the
+                             first ending `recalcu-`. The export closes the word up and the
+                             joined sentence is on no page — the hyphen golden     [v1.1-S3]
   markdown-table-cells       a stroked 3x3 whose font declares real ink metrics, so its CELL
                              text reaches the grounding artifact. One merged cell, one pipe
                              inside a cell string, and a wholly empty last row — the GFM
@@ -340,6 +343,33 @@ FIXTURES = {
     "markdown-two-blocks": (
         "BT /F1 24 Tf 72 120 Td (First block) Tj ET "
         "BT /F1 24 Tf 72 60 Td (Second block) Tj ET"
+    ),
+    # v1.1-S3's HYPHEN GOLDEN, and a third fixture for the same reason the second one existed.
+    #
+    # `synthetic/hyphenated-line-break` in the Ethos corpus already carries the shape — two runs,
+    # `hyphen-` then `ated` — but its font declares NO ink metrics, so both runs take the
+    # typed-absent path, `ethos.grounding.v1` comes out with an empty `elements` array, and a
+    # golden against it would watch the verifier find nothing and refuse every quote. That proves
+    # nothing about the join.
+    #
+    # Two lines at 12pt, 30 points apart, in the metrics font:
+    #
+    #     y120  The rate may be recalcu-
+    #      y90  lated at closing
+    #
+    # The projection closes that up to `The rate may be recalculated at closing`, and THAT is the
+    # sentence the golden is about. It reads perfectly. A model handed the Markdown would cite it
+    # without hesitation. It is on no page: the document drew `recalcu-` and `lated`, and no
+    # element of the grounding artifact contains the joined word. Both halves ground; the joined
+    # sentence comes back `text_mismatch` against an element that DOES exist, which is the whole
+    # cost of the cosmetic made executable.
+    #
+    # 24 characters at 12pt and a uniform 500/1000 width is 144 points, so from x=40 the longer
+    # line ends at 184 on a 300-wide page — inside it, deliberately, because a run that fell off
+    # the page would take the off-page path and the fixture would be proving that instead.
+    "markdown-hyphen-break": (
+        "BT /F1 12 Tf 40 120 Td (The rate may be recalcu-) Tj ET "
+        "BT /F1 12 Tf 40 90 Td (lated at closing) Tj ET"
     ),
     # v1.1-S2's GFM GOLDEN, and the reason it is a second fixture rather than a reused one.
     # `ruled-table-grid` already has a merge and an empty cell, but its font declares NO ink
@@ -1042,6 +1072,8 @@ MEDIA = {
     "tagged-list-items": (0, 0, 300, 200),
     # Tall enough for two 24pt lines with real ink boxes inside the page.
     "markdown-two-blocks": (0, 0, 300, 200),
+    # v1.1-S3. Two 12pt lines 30 points apart, and wide enough that the longer one ends at 184.
+    "markdown-hyphen-break": (0, 0, 300, 200),
     "ruled-table-overlap": (0, 0, 300, 160),
     "unruled-near-miss": (0, 0, 300, 200),
     "background-panel-not-a-grid": (0, 0, 240, 200),
@@ -1092,6 +1124,10 @@ DESCRIPTORS = {
     # cells. This is also why the list fixture has no descriptor: a /FontDescriptor and a
     # structure tree both claim object 6, and build_pdf refuses a fixture that wants both.
     "markdown-table-cells": "metrics",
+    # v1.1-S3. Real metrics so BOTH halves of the broken word reach `ethos.grounding.v1`. Without
+    # them the elements array is empty, the verifier finds nothing, and the golden would refuse
+    # the joined sentence for a reason that has nothing to do with the join.
+    "markdown-hyphen-break": "metrics",
     "absent-font-metrics": "no-metrics",
     # Real metrics, so the ink box is MEASURED — without this the fixture proves nothing, because
     # a typed-absent box can never fall outside a page.

@@ -20,7 +20,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 3,
-    "engine_owned": 36
+    "engine_owned": 37
   },
   "fixtures": [
     {
@@ -490,6 +490,15 @@
       "sha256": "sha256:6f34b6d8bb37cfdb19ad0e48ba0b2af6da25e368b938068b5505d8bcfbee1efa",
       "owner": "engine",
       "notes": "v1.1-S1's Anchor Map golden. TWO text runs in a font declaring real ink metrics, so BOTH reach `ethos.grounding.v1` as elements a verifier can find. That combination is why it had to be authored: the projection joins the runs with a blank line, and `block\\n\\nSecond` is then real text in the Markdown that the page never drew \u2014 the exact string the map exists to mark unquotable. Proving it needs the verifier to ground one quote and refuse the other, and every pre-existing fixture with measurable ink has only ONE run (no join to span) while the two-run fixtures declare no metrics (empty `elements`, so the golden would pass vacuously)."
+    },
+    {
+      "id": "markdown-hyphen-break",
+      "root": "engine",
+      "group": "engine",
+      "path": "markdown-hyphen-break/document.pdf",
+      "sha256": "sha256:781901afa8cd87d4927fb17c5e95d4309babc489140cc41d97bc3fe94d2c112a",
+      "owner": "engine",
+      "notes": "Two runs 30 points apart under a font declaring real ink metrics, the first ending `recalcu-` and the second starting `lated`, so BOTH halves reach `ethos.grounding.v1`. The v1.1-S3 hyphen golden: the export closes the word up to `The rate may be recalculated at closing`, which is ordinary English the page never drew. Each half grounds; the joined word comes back `text_mismatch` against an element that exists. `synthetic/hyphenated-line-break` has the same shape and no ink metrics, so a golden against it would be vacuous."
     },
     {
       "id": "markdown-table-cells",

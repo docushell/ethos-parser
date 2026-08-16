@@ -112,6 +112,51 @@ two-line running head hyphenates like any paragraph, and that case still joins. 
 is a join across the boundary — pinned in both directions, with an assertion that no `source`
 segment spans it.
 
+### The golden, and the third fixture it needed
+
+S1's golden refused a quote spanning a blank line; S2's refused one carrying table chrome. Both are
+*punctuation* a careful reader might squint at. S3 produces something harder — a joined word that
+is ordinary English in the middle of an ordinary sentence, with nothing about it to squint at:
+
+```text
+     page:  The rate may be recalcu-
+            lated at closing
+ markdown:  The rate may be recalculated at closing
+```
+
+A model handed that Markdown would cite it without hesitation, and the page never drew it. So
+`the_joined_word_does_not_ground_and_both_halves_do` runs the four real binaries — `extract`,
+`ground`, `markdown`, `verify` — with the pinned Ethos CLI deciding:
+
+| quote | verdict |
+| --- | --- |
+| `The rate may be recalcu-` — the first half, hyphen and all | **grounded** |
+| `lated at closing` — the second half | **grounded** |
+| `recalculated` — the word only the export contains | **`text_mismatch`** |
+
+**The reason is pinned, not just the verdict.** `element_not_found` would mean the citation pointed
+at nothing and the test would pass without the cosmetic having been examined at all; the joined
+word is cited against an element that *does* exist, so the verifier finds it and judges the text.
+`recalculated` is never asserted grounded — not a gap, but exactly what `docs/10-V11-SCOPE.md` §5
+buys.
+
+### Fixtures
+
+- **`markdown-hyphen-break`** — two runs 30 points apart under a font declaring real ink metrics,
+  the first ending `recalcu-`, so **both halves reach `ethos.grounding.v1`** as elements a verifier
+  can actually find.
+
+  It had to be authored for the reason `markdown-two-blocks` and `markdown-table-cells` each had
+  to be. `synthetic/hyphenated-line-break` already carries the shape — `hyphen-` then `ated` — but
+  its font declares no ink metrics, so both runs take the typed-absent path, the `elements` array
+  comes out empty, and a golden against it would watch the verifier find nothing and refuse every
+  quote. That proves nothing about the join.
+
+  In `fixtures/manifest.json`, so the mutation suite covers it without anyone remembering to add
+  it. Its one surviving mutant is `junk-after-eof`, the same class as every other engine fixture,
+  triaged rather than pinned on sight: re-extracted, it gives back the same two runs with the same
+  **measured** ink boxes, which is precisely what its golden depends on.
+
 ### Identity
 
 `markdown-blocks-v2`, workspace **0.13.0**, profile hash
@@ -124,9 +169,9 @@ rather than 0.12.1 for the same reason 0.12.0 was not a patch.
 
 The representation (0.5.0) and every artifact shape. The three detection rules, the table gate
 (**still missed at 64‰**), `extract`, the oracle (12/3), `irs-form-1040-2025` at 0 tables,
-fabrication 0. Four crates, no new CLI, no new artifact type, no new fixture. `engine-pdf` still
-has no Markdown in it. No HTML, no dot-leaders, no drop-caps, no MCP, no tag. v1.1-S4 has not
-started.
+fabrication 0. Regenerating `fixtures/engine/` leaves every pre-existing document byte-identical.
+Four crates, no new CLI, no new artifact type. `engine-pdf` still has no Markdown in it. No HTML,
+no dot-leaders, no drop-caps, no MCP, no tag. v1.1-S4 has not started.
 
 ---
 
