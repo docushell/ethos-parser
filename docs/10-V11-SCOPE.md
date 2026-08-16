@@ -105,9 +105,13 @@ says how much*.
   Nothing is re-derived from the report.
 - **Not a quality contest.** No bake-off, no "better Markdown than X", no ranking. `03-V0-SCOPE.md`
   §6's posture is unchanged.
-- **Not a place to put cosmetics.** Hyphenation joining, dot-leader removal and drop-cap merging
-  never touch the representation. If they ever appear they are export-only, and each is either
-  `syntax` or an invertible emit — never a silent rewrite of node text. They are S3 at the earliest.
+- **Not a place to put cosmetics — except in the export, counted.** S3 ships exactly one:
+  a word the page broke across a line comes out closed up. It does **not** touch the
+  representation, which still holds `hyphen-` and `ated` as two `Extracted` runs; the joined bytes
+  are one `source` segment naming both; and the removed hyphen is a named character bucket with a
+  count. The cost is stated rather than hidden: **the joined word does not ground**, because no
+  element contains it. Dot-leader removal and drop-cap merging are not implemented and have no
+  fixture — YAGNI, not a plan.
 - **Not permission to reopen v1.** No detector is retuned in this version. `ruled-rects-v2`,
   `stroke-ruled-v1` and `unruled-align-v1` keep their ids and their numbers.
 
@@ -117,22 +121,30 @@ says how much*.
 | --- | --- | --- |
 | **v1.1-S0** | This document and `11-V11-MILESTONES.md` | **done** |
 | **v1.1-S1** | Linear Markdown + Anchor Map + coverage + the verify golden | **done** |
-| **v1.1-S2** | Tables and lists as Markdown, with the erasure declared (A14), still with the map | **not started** |
-| **v1.1-S3** | HTML and/or export-only cosmetics, under the same map law | **not started** |
+| **v1.1-S2** | Tables and lists as Markdown, with the erasure declared (A14), still with the map | **done** |
+| **v1.1-S3** | Hyphenation join in the export only, counted (P15) | **done** |
+| **v1.1-S4** | HTML, under the same four laws (checklist O9) | **not started** |
 
-S2 and S3 start when the owner asks. Not before.
+**S3 shipped the cosmetic and not HTML, and the row was split rather than half-ticked.** They are
+two products: HTML is a second artifact owing the same four laws, and a hyphenation join is a few
+lines in `to_markdown`. Doing both under one label would have made "S3 is done" unreadable.
+
+S4 starts when the owner asks. Not before.
 
 ## 7. Identity
 
 A projection that changes what comes out is a profile change, on the same discipline as every rule
 id before it:
 
-- `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1, `markdown-blocks-v1` at S2.
+- `profile.markdown_rule` — a versioned string, `markdown-linear-v1` at S1, `markdown-blocks-v1` at
+  S2, `markdown-blocks-v2` at S3.
 - `capabilities.markdown` — `true` only with a proof test; `false` obliges a declared limitation.
 - A profile JSON predating S1 — one with no `markdown_rule` — is **refused**, not defaulted. The
   same posture `table_detection.stroke_ruled` took at v1-S8: a field defaulted in is a claim the run
   never made.
-- Workspace `0.10.0` → **`0.11.0`**, and the profile hash moves with it.
+- Workspace `0.10.0` → `0.11.0` at S1, `0.12.0` at S2, **`0.13.0`** at S3, and the profile hash
+  moves with each. S3 changes no field and no shape: the rule id changes *value*, because
+  `hyphenated-line-break` projects `hyphen-\n\nated` under one and `hyphenated` under the other.
 
 ## 8. Standing rules, carried forward
 

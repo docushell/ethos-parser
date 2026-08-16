@@ -149,7 +149,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v1");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v2");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -188,6 +188,7 @@ fn the_map_tiles_the_markdown_on_every_fixture() {
         conformance("synthetic/two-lines/document.pdf"),
         conformance("synthetic/two-columns/document.pdf"),
         conformance("synthetic/heading-export/document.pdf"),
+        conformance("synthetic/hyphenated-line-break/document.pdf"),
         conformance("synthetic/table-regular-grid/document.pdf"),
         engine_fixture("ruled-table-grid"),
         engine_fixture("markdown-table-cells"),
@@ -235,6 +236,9 @@ fn the_coverage_census_balances_on_every_fixture() {
         conformance("synthetic/simple-text/document.pdf"),
         conformance("synthetic/two-lines/document.pdf"),
         conformance("synthetic/heading-export/document.pdf"),
+        // v1.1-S3: the first document whose census carries a character the projection itself
+        // removed, so the sweep has to see it balance rather than only the goldens.
+        conformance("synthetic/hyphenated-line-break/document.pdf"),
         engine_fixture("markdown-table-cells"),
         engine_fixture("tagged-list-items"),
     ]
@@ -603,6 +607,132 @@ fn a_document_with_no_table_and_no_list_projects_exactly_as_it_did_at_s1() {
     }
 }
 
+// -------------------------------------------------------------------------------------------
+// v1.1-S3 — the one cosmetic, and the line it does not cross
+// -------------------------------------------------------------------------------------------
+
+/// A word the page broke across a line reads as one word — **in the export, and nowhere else**.
+///
+/// The whole slice in one test. `extract` still emits `hyphen-` and `ated` as two `Extracted`
+/// runs — `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is that half, and it is
+/// a *policy*, because telling a soft break-hyphen from a compound one needs a dictionary. What
+/// changes here is the projection: `docs/10-V11-SCOPE.md` §5 puts a cosmetic in the export or
+/// nowhere.
+///
+/// So the assertions come in pairs. The Markdown reads `hyphenated`; the two runs the map names
+/// still hold `hyphen-` and `ated`, hyphen and all. That gap is the difference between a cosmetic
+/// and a rewrite, and it is why the hyphen is a **counted** character rather than a quiet one.
+#[test]
+fn a_word_broken_across_a_line_is_joined_in_the_export_and_nowhere_else() {
+    let dir = scratch("hyphen");
+    let repr = extract_to(
+        &dir,
+        &conformance("synthetic/hyphenated-line-break/document.pdf"),
+    );
+    let a = markdown_of(&repr);
+
+    assert_eq!(
+        a["markdown"].as_str().unwrap(),
+        "hyphenated\n",
+        "the export closes the word up; the hyphen is not in the string"
+    );
+
+    // **One `source` segment over the joined letters, naming both runs.** Not two adjacent
+    // segments: the hyphen that marked where the halves met is gone, so there is no offset at
+    // which the first run stops being the answer, and splitting would invent one.
+    let segs = a["anchor_map"]["segments"].as_array().expect("segments");
+    assert_eq!(
+        segs.len(),
+        2,
+        "the joined word, then the trailing newline: {segs:?}"
+    );
+    assert_eq!(segs[0]["kind"], "source");
+    assert_eq!(
+        (segs[0]["start"].as_u64(), segs[0]["end"].as_u64()),
+        (Some(0), Some(10))
+    );
+    let ids: Vec<&str> = segs[0]["node_ids"]
+        .as_array()
+        .expect("node_ids")
+        .iter()
+        .map(|v| v.as_str().expect("an id"))
+        .collect();
+    assert_eq!(
+        ids.len(),
+        2,
+        "these bytes came from two runs and the map has to say both: {ids:?}"
+    );
+
+    // **The other half of the pair.** The runs the map just named still hold what the page drew.
+    let doc: Value =
+        serde_json::from_slice(&std::fs::read(&repr).unwrap()).expect("representation");
+    let nodes = doc["representation"]["nodes"].as_array().expect("nodes");
+    let text_of = |id: &str| -> String {
+        nodes
+            .iter()
+            .find(|n| n["id"].as_str() == Some(id))
+            .and_then(|n| n["text"].as_str())
+            .unwrap_or_else(|| panic!("the map names `{id}`, which must be a node"))
+            .to_string()
+    };
+    assert_eq!(text_of(ids[0]), "hyphen-", "the record keeps the hyphen");
+    assert_eq!(text_of(ids[1]), "ated");
+    assert!(
+        !nodes
+            .iter()
+            .any(|n| n["text"].as_str() == Some("hyphenated")),
+        "no node holds the joined word, so a quote of it is READABLE and NOT CITABLE — that is \
+         the correct answer for a word the page drew in two pieces, not a verifier defect. The \
+         citable strings are the two the map names."
+    );
+
+    // **The dropped hyphen has a number.** A cosmetic that removed a character the document drew
+    // and said nothing would be exactly the silent edit A14 exists to forbid.
+    let c = &a["coverage"];
+    let b = c["dropped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["code"] == "hyphenation-rejoin-dropped-v1")
+        .expect("the hyphen is a named bucket, not a rounding");
+    assert_eq!(b["chars"].as_u64(), Some(1));
+    assert_eq!(b["nodes"].as_u64(), Some(1));
+    assert_eq!(
+        c["source_chars_emitted"].as_u64().unwrap() + c["source_chars_dropped"].as_u64().unwrap(),
+        c["source_chars_in_representation"].as_u64().unwrap(),
+        "and the census still balances with it"
+    );
+
+    // A cosmetic is not a structural erasure: the thing removed IS a character of node text.
+    assert!(c["structural_erasures"].as_array().unwrap().is_empty());
+}
+
+/// A hyphen the projection must leave alone: `simple-text` grows no joins.
+///
+/// The companion to the test above, and the reason the rule needs a letter on each side. Without
+/// one, any run ending in a dash would swallow the next block.
+#[test]
+fn a_document_with_no_line_break_hyphen_declares_no_join() {
+    let dir = scratch("nojoin");
+    for name in ["simple-text", "two-lines"] {
+        let sub = dir.join(name);
+        std::fs::create_dir_all(&sub).expect("scratch");
+        let repr = extract_to(
+            &sub,
+            &conformance(&format!("synthetic/{name}/document.pdf")),
+        );
+        let a = markdown_of(&repr);
+        assert!(
+            !a["coverage"]["dropped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|b| b["code"] == "hyphenation-rejoin-dropped-v1"),
+            "{name}: nothing was joined, so the bucket is absent rather than reading 0"
+        );
+    }
+}
+
 /// The profile says which rule ran, and it no longer declares a limitation that stopped being
 /// true.
 #[test]
@@ -629,7 +759,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v1");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v2");
 }
 
 // -------------------------------------------------------------------------------------------

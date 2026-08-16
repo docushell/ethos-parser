@@ -12,7 +12,8 @@ roadmap row, and nothing in it closes v1.
 | **S0** | v1.1 scope + this document | — | **done** |
 | **S1** | Linear Markdown + Anchor Map + coverage + the verify golden | S0 | **done** |
 | **S2** | Tables and lists as Markdown, erasure declared (A14), still with the map | S1 | **done** |
-| **S3** | HTML and/or export-only cosmetics, under the same map law | S1 | **not started** |
+| **S3** | Hyphenation join in the export only, counted (P15) | S1 | **done** |
+| **S4** | HTML, under the same four laws (checklist O9) | S1 | **not started** |
 
 ---
 
@@ -322,13 +323,127 @@ roadmap row, and nothing in it closes v1.
 
 ---
 
-## S3 — HTML and/or export-only cosmetics — **not started**
+## S3 — the hyphenation join, in the export only
 
-- **Goal:** either an HTML projection under the same map law, or hyphenation joining / dot-leader
-  removal / drop-cap merging as export-only transforms — each `syntax` or an invertible emit,
-  never a rewrite of node text.
+- **Status: done.** `markdown-blocks-v2` at **0.13.0**. One cosmetic, counted. No HTML — that is
+  now S4.
 
-- **The standing constraint:** checklist O9. HTML gets the same map discipline or it does not ship.
+- **Goal:** a word the page broke across a line reads as one word in the Markdown, and the
+  evidence record is untouched. Checklist **P15**: the export repairs, `element.text` does not.
+
+### Why the row was split rather than half-ticked
+
+S3 was written as "HTML **and/or** cosmetics". Those are two products. HTML is a second artifact
+owing the same four laws (checklist **O9**) and a chunk of work; a hyphenation join is a few lines
+in `to_markdown`. Shipping both under one label would have made "S3 is done" unreadable, so HTML
+moved to **S4, not started**, and this row is exactly what shipped.
+
+Dot-leaders and drop-caps are **not implemented and have no fixture**. P16 stays `[I]`. Inventing
+a `....` collapse with nothing to measure it against is the speculative work the standing rules
+refuse — YAGNI, not a plan.
+
+### The rule, and the one thing it costs
+
+Adjacent text runs, same page, **on different baselines**, the first's emitted text ending in an
+ASCII `-` with a letter in front of it and the second starting with a letter. The hyphen goes;
+nothing else does. Not across a cell, a list item, a heading, or **the page-furniture boundary**;
+not `foo -`, where the dash is its own word; and pairwise, so a word broken twice joins once and
+says so by leaving the second hyphen alone.
+
+**A running head is the one block boundary no other clause can see.** `heading_level` and
+`list_role` both bail unless the locator is `PdfTagged`, so a `pdf_artifact` run passes every other
+guard. A page whose last body line ends in a soft hyphen and whose footer is the next node in
+reading order projected `Rates may be recalcu-` + `Confidential draft` as
+**`recalcuConfidential`** — a word on no page, welded from two streams the document itself declared
+separate (PDF 32000 §14.8.2.2; `engine-pdf`'s binding rule is *artifact wins*).
+
+That also broke a promise rule 1 makes out loud: artifacts are kept in the projection *so a
+consumer that wants them gone drops them itself, knowing it did*, and the per-run `source` segment
+is the only handle for that. One segment spanning body text and a footer takes the handle away. The
+test is **equality, not exclusion** — a two-line running head hyphenates like any paragraph; what
+may not happen is a join across the boundary.
+
+**The baseline clause was found by measuring, and it is the whole rule.** Written without it — as
+"adjacent runs, same page" — the rule joins any run ending in `-` to the run after it, including
+two fragments of *one line*. `cfpb-home-loan-toolkit` page 24 draws `non-escrowed` as a string of
+tiny runs at a single baseline — `non-`, `escr`, `o`, `w` … — so the rule produced **`nonescr`**:
+a compound hyphen the author wrote, deleted, and a word that is not one. It was the **only** place
+the rule fired on the entire benchmark corpus, and it fired wrongly.
+
+A hyphen inside a line is a hyphen the author wrote. Only a hyphen at a line's end is a candidate
+for having been put there by the break, which is the premise of P15 and of the
+`hyphenated-line-break` fixture alike. The test is conservative — runs with no glyph-run locator,
+or whose lines do not separate in `origin_y`, simply do not join — because a missed join reads as
+the two words the page drew, and a wrong join invents one.
+
+| corpus document | joins before the baseline clause | after |
+| --- | --- | --- |
+| `cfpb-home-loan-toolkit` | 1 (`non-` + `escr` → `nonescr`) | **0** |
+| `irs-form-1040-2025` | 0 | 0 |
+| `nist-sp-800-63b` | 0 | 0 |
+| `synthetic/hyphenated-line-break` | 1 (`hyphen-` + `ated`) | **1** |
+
+**The export joins. The evidence record does not.**
+`hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is untouched and green: `extract`
+still emits `hyphen-` and `ated` as two `Extracted` runs, because telling a soft break-hyphen from
+a real compound one ("well-known" split across lines) needs a dictionary, and this project does
+not guess in the record.
+
+So there is a quote that reads perfectly and **does not ground** — `hyphenated`, which no element
+of `ethos.grounding.v1` contains. That is the correct answer and not a verifier defect. The
+artifact does not leave it to be inferred:
+
+| where | what it says |
+| --- | --- |
+| the map | one `source` segment over the joined letters, naming **both** runs — so the citable strings are recoverable |
+| `coverage.dropped` | `hyphenation-rejoin-dropped-v1`, `chars` = hyphens removed, `nodes` = runs that lost one |
+| the census | still balances, with the hyphen on the dropped side |
+
+A **character** bucket rather than a `structural_erasure`, and that is the whole test for which
+census a disclosure belongs in: a hyphen *is* a character of node text and it really is not in the
+Markdown. The GFM erasures are counted separately precisely because their characters are all still
+there.
+
+- **In:** `hyphen_tail` and `Emit::joined_source` in `engine-core/src/markdown.rs`;
+  `hyphenation-rejoin-dropped-v1`; `markdown-blocks-v2`; `0.13.0` and the moved profile hash;
+  schema, PUBLIC-API, CHANGELOG.
+
+- **Out:** HTML (S4). Dot-leaders, drop-caps, sub/superscript. A `Computed` hyphen node in the
+  representation. Any change to `extract`, the three detection rules, or the table gate. A new
+  crate, a new CLI, a new artifact type. A tag.
+
+- **Acceptance tests:**
+  - [x] `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` still green — the record
+        keeps both halves and the hyphen, as `Extracted`
+  - [x] `hyphenated-line-break` projects `hyphenated\n`; the map tiles it;
+        `hyphenation-rejoin-dropped-v1` reads 1; `emitted + dropped == in_representation`
+  - [x] The joined `source` segment names **two** node ids, and those two nodes still hold
+        `hyphen-` and `ated`
+  - [x] No node holds the joined word — asserted, so "readable and not citable" is a test rather
+        than a comment
+  - [x] A hyphen **inside** a line is not joined — pinned on the `non-` / `escr` shape that found
+        the defect, plus a dangling `foo -` and a word broken twice
+  - [x] A page artifact is not joined onto body text, in either direction, and every `source`
+        segment still names exactly one run across that boundary — while a running head broken
+        across its **own** two lines still joins
+  - [x] `simple-text`, `markdown-two-blocks` and the GFM cell golden unchanged — body and map
+        geometry, as literals — and neither declares the bucket
+  - [x] S1's verify golden still grounds the source quote and still refuses the spanning one with
+        `text_mismatch`; S2's cell golden likewise
+  - [x] `markdown_rule` is `markdown-blocks-v2`, the version is `0.13.0`, the profile hash moved
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication 0
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+
+- **Depends on:** S1.
+
+---
+
+## S4 — HTML, under the same four laws — **not started**
+
+- **Goal:** an HTML projection carrying the same map discipline the Markdown one does.
+
+- **The standing constraint:** checklist **O9**. HTML gets the four laws or it does not ship.
 
 - **Not started.** Starts when the owner asks.
 

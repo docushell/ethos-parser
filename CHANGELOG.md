@@ -7,7 +7,130 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.1-S2, GFM tables and lists, as 0.12.0
+## [Unreleased] — v1.1-S3, the hyphenation join, as 0.13.0
+
+**A word the page broke across a line reads as one word — in the export, and nowhere else.**
+`markdown_rule` moves from `markdown-blocks-v1` to **`markdown-blocks-v2`**, and
+`hyphenated-line-break` projects `hyphenated` where it used to project `hyphen-\n\nated`.
+Everything else about a document projects exactly as it did. **v1 is still not done** — the S7
+gate is measured and missed at 64‰ — and nothing here closes it. Not tagged.
+
+### The scope was narrowed, and the row split
+
+S3 was written as "HTML **and/or** export-only cosmetics". Those are two products: HTML is a second
+artifact owing the same four laws (checklist **O9**), a hyphenation join is a few lines in
+`to_markdown`. Shipping both under one label would have made "S3 is done" unreadable, so **HTML is
+now S4, not started**, and this entry is exactly what shipped.
+
+**Dot-leaders and drop-caps are not implemented and have no fixture.** P16 stays `[I]`. A `....`
+collapse invented with nothing to measure it against is the speculative work the standing rules
+refuse.
+
+### The export joins; the evidence record does not
+
+`hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is **untouched and green**:
+`extract` still emits `hyphen-` and `ated` as two `Extracted` runs with the hyphen verbatim. That
+is a policy, not an omission — telling a soft break-hyphen from a real compound one ("well-known"
+split across lines) needs a dictionary, and a rule that guesses is the cliff-shaped heuristic this
+project refuses everywhere. `docs/10-V11-SCOPE.md` §5 puts a cosmetic in the export or nowhere, and
+checklist **P15** says the same thing from the other side: the export repairs, `element.text` does
+not.
+
+**So there is a quote that reads perfectly and does not ground: `hyphenated`.** No element of
+`ethos.grounding.v1` contains it. That is the correct answer for a word the page drew in two
+pieces, not a defect in the verifier — and it is stated rather than left to be discovered:
+
+| where | what it says |
+| --- | --- |
+| the map | **one `source` segment** over the joined letters, naming **both** runs — so the two citable strings are recoverable from the artifact |
+| `coverage.dropped` | `hyphenation-rejoin-dropped-v1` — `chars` is the hyphens removed, `nodes` the runs that lost one |
+| the census | still balances, with the hyphen on the dropped side |
+
+One segment rather than two adjacent ones, deliberately: the hyphen that marked where the halves
+met is gone, so there is no offset at which the first run stops being the answer and the second
+starts. Splitting would put that boundary somewhere and claim a precision the join threw away.
+
+A **character** bucket rather than a `structural_erasure`, and that is the whole test for which
+census a disclosure belongs in: a hyphen *is* a character of node text and it really is not in the
+Markdown. The GFM erasures are counted separately precisely because their characters are all still
+there and a `tables-flattened` character bucket would read `0`.
+
+### The rule, in one sentence
+
+Adjacent text runs, same page, **on different baselines**, the first's **emitted** text ending in
+an ASCII `-` with a letter in front of it, the second starting with a letter. Not across a cell, a
+list item, a heading, or the page-furniture boundary; not `foo -`, where the dash is its own word
+rather than half of one; and the *immediately* next node, so an annotation or a form field between
+the halves stops the join rather than being reached past.
+
+**Pairwise, once.** A word broken twice joins its first pair and leaves the second hyphen where it
+is — a stated bound, not an oversight: the census still balances and the segment still names
+exactly the runs it came from.
+
+### The line test was found by measuring, and it is the whole rule
+
+Specified as "adjacent runs, same page", the rule joins any run ending in `-` to the run after it
+— **including two fragments of one line**. Run against the benchmark corpus, that version fired
+exactly once, and it fired wrongly: `cfpb-home-loan-toolkit` page 24 draws `non-escrowed` as a
+string of tiny runs at a single baseline — `non-`, `escr`, `o`, `w` … — and the join produced
+**`nonescr`**. A compound hyphen the author wrote, deleted; a word that is not a word; and the only
+place on the whole corpus the feature did anything at all.
+
+| corpus document | joins without the baseline clause | with it |
+| --- | --- | --- |
+| `cfpb-home-loan-toolkit` | 1 — `non-` + `escr` → `nonescr` | **0** |
+| `irs-form-1040-2025` | 0 | 0 |
+| `nist-sp-800-63b` | 0 | 0 |
+| `synthetic/hyphenated-line-break` | 1 — `hyphen-` + `ated` | **1** |
+
+So the rule requires the two runs to sit on **different `origin_y` baselines**. A hyphen inside a
+line is a hyphen the author wrote; only a hyphen at a line's end is a candidate for having been put
+there by the break, which is the premise of P15 and of the fixture's own name. The test is
+deliberately conservative — a run with no glyph-run locator, or a page whose lines do not separate
+in `origin_y`, simply does not join — because a missed join reads as the two words the page drew
+and a wrong join invents one, and this project's fabrication count is 0.
+
+Pinned by unit tests on the exact `non-` / `escr` shape, on a dangling `foo -`, and on a word
+broken twice.
+
+### A running head is the one block boundary no other clause could see
+
+`heading_level` and `list_role` both bail unless the locator is `PdfTagged`, so a `pdf_artifact`
+run — a running head, a footer, a folio — passed every other tail guard. A page whose last body
+line ends in a soft hyphen and whose footer is the next node in reading order projected
+`Rates may be recalcu-` + `Confidential draft` as **`recalcuConfidential`**: a word on no page,
+welded out of two streams the document itself declared separate (PDF 32000 §14.8.2.2, and
+`engine-pdf`'s own binding rule — *artifact wins*).
+
+It also broke a promise `to_markdown` rule 1 makes out loud. Artifacts are kept in the projection
+precisely so **a consumer that wants them gone drops them itself, knowing it did** — checklist
+O21/O22 — and the per-run `source` segment is the only handle a consumer has for that. One segment
+spanning body text and a running head takes the handle away.
+
+So the two halves must be **both furniture or both not**. Equality rather than exclusion: a
+two-line running head hyphenates like any paragraph, and that case still joins. What may not happen
+is a join across the boundary — pinned in both directions, with an assertion that no `source`
+segment spans it.
+
+### Identity
+
+`markdown-blocks-v2`, workspace **0.13.0**, profile hash
+`sha256:4712002b4ada5138c0d49a6a8336a612f2daf470f5591f8720e994ec96f77c8c`. No field arrived and no
+shape moved — the rule id changed *value*, because a document with a hyphenated line break comes
+out differently under the two rules, and two artifacts either side must not compare equal. 0.13.0
+rather than 0.12.1 for the same reason 0.12.0 was not a patch.
+
+### Unchanged
+
+The representation (0.5.0) and every artifact shape. The three detection rules, the table gate
+(**still missed at 64‰**), `extract`, the oracle (12/3), `irs-form-1040-2025` at 0 tables,
+fabrication 0. Four crates, no new CLI, no new artifact type, no new fixture. `engine-pdf` still
+has no Markdown in it. No HTML, no dot-leaders, no drop-caps, no MCP, no tag. v1.1-S4 has not
+started.
+
+---
+
+## v1.1-S2, GFM tables and lists, as 0.12.0
 
 **The grid ships, and the flattening is counted.** `markdown_rule` moves from
 `markdown-linear-v1` to **`markdown-blocks-v1`**: a table on the representation becomes a GFM
@@ -109,7 +232,7 @@ to add them.
 
 The three detection rules, the table gate (**still missed at 64‰**), `extract`, the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0. Four crates. No HTML, no hyphenation joining, no
-MCP, no tag. v1.1-S3 has not started.
+MCP, no tag. v1.1-S3 had not started at this point.
 
 ---
 

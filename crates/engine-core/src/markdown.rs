@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Safe Markdown: a projection of the representation that stays citable (v1.1-S1, S2).
+//! Safe Markdown: a projection of the representation that stays citable (v1.1-S1, S2, S3).
 //!
 //! # Why a Markdown module exists here at all, after seven slices of refusing one
 //!
@@ -61,6 +61,24 @@
 //! merge costs is *slots*, and what the separator row costs is a *header claim the document never
 //! made*. Neither is a number of characters, so neither is counted as one.
 //!
+//! # What v1.1-S3 added, and the thing it costs
+//!
+//! One cosmetic: a word the document broke across a line comes out closed up. `hyphen-` and
+//! `ated` are two runs on the page and read as one word in the export.
+//!
+//! **The export joins; the evidence record does not.** `extract` still emits two `Extracted` runs
+//! with the hyphen verbatim — `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is
+//! the standing test — because a rule that tells a soft break-hyphen from a real compound one
+//! ("well-known" split across lines) needs a dictionary, and this project does not guess in the
+//! record. `docs/10-V11-SCOPE.md` §5 puts cosmetics in the export or nowhere.
+//!
+//! So there is a quote that reads perfectly and does not ground: **`hyphenated`**, which no
+//! element of `ethos.grounding.v1` contains. That is the correct answer and not a verifier defect
+//! — the page drew two words. The artifact does not leave it to be inferred: the joined bytes are
+//! **one `source` segment naming both runs**, and the hyphen that is no longer in the string is a
+//! named character bucket, `hyphenation-rejoin-dropped-v1`, with a count. Law 4 still balances,
+//! and a consumer that wants the citable strings has them in the map.
+//!
 //! # The consumer's rule, in one line
 //!
 //! **A quote that touches a `syntax` byte is not invertible.** It may be a fine thing to show a
@@ -95,20 +113,28 @@ pub const MARKDOWN_ARTIFACT_TYPE: &str = "ethos.markdown.v1";
 /// version exists.
 pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 
-/// The projection rule v1.1-S2 ships: block structure — GFM tables and tagged lists — with
-/// headings still only from the structure tree.
+/// The projection rule v1.1-S3 ships: block structure — GFM tables and tagged lists — with
+/// headings still only from the structure tree, and a word broken across a line closed up.
 ///
 /// A versioned id for the same reason every detector has one: it decides what comes out. A run
 /// that projected headings from font sizes and a run that refused to would disagree about the
 /// same document, and an artifact whose hash could not tell them apart would claim a
 /// comparability it lacks.
 ///
-/// **The id moved from `markdown-linear-v1` at S2, and the string is the only place it is
-/// spelled.** A document with a table comes out differently under the two rules — one linear
-/// paragraph per cell run, versus a grid — so a reader holding two artifacts must be able to see
-/// which rule produced each. Bumping the parser version alone would not have said it: the
-/// projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V1: &str = "markdown-blocks-v1";
+/// **Three values so far, one per slice that changed what comes out**, and this string is the only
+/// place the current one is spelled:
+///
+/// | slice | value | what it did that the one before did not |
+/// | --- | --- | --- |
+/// | v1.1-S1 | `markdown-linear-v1` | a table's cell runs as consecutive paragraphs, no grid |
+/// | v1.1-S2 | `markdown-blocks-v1` | a GFM table, and a list item from a tagged `/L` |
+/// | v1.1-S3 | `markdown-blocks-v2` | a word broken across a line closed up in the export |
+///
+/// A document with a table comes out differently under the first two; a document with a hyphenated
+/// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
+/// reader holding two artifacts must be able to see which rule produced each, and bumping the
+/// parser version alone would not have said it: the projection rule is what changed.
+pub const MARKDOWN_RULE_BLOCKS_V2: &str = "markdown-blocks-v2";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -528,6 +554,12 @@ impl MarkdownArtifact {
 /// `node.text` verbatim.** Said out loud here and in the artifact's own documentation, because a
 /// map that claimed exact bytes and delivered normalized ones would be the subtlest lie available
 /// to this module.
+///
+/// Since v1.1-S3 there is one more departure, and it is the reason [`Segment::node_ids`] is a list:
+/// a segment naming **two** nodes is a hyphenated line break closed up, so its bytes are the two
+/// normalizations concatenated with the trailing `-` of the first removed. The removed character
+/// is counted, in `hyphenation-rejoin-dropped-v1`. Inverting such a segment still lands on real
+/// node text — both runs of it — which is what the page drew.
 pub fn normalize(s: &str) -> String {
     let trimmed = s.trim();
     let mut out = String::with_capacity(trimmed.len());
@@ -610,6 +642,142 @@ struct ListRole {
     /// Whether this run is the item's `/Lbl` — the marker the document itself drew.
     label: bool,
 }
+
+/// The next run, when this one ends in a line-break hyphen and that run finishes the word.
+///
+/// Returns the run to consume and the joined text: the head's emitted text without its trailing
+/// `-`, followed by the tail's.
+///
+/// # The rule, and why each clause is in it
+///
+/// The head's **emitted** text — after [`normalize`], the same bytes the map would have covered —
+/// ends in an ASCII `-` with a letter in front of it; the very next node in reading order is a
+/// plain paragraph run on the same page **and on a different baseline**; and its emitted text
+/// starts with a letter.
+///
+/// - **A different baseline**, so only a hyphen at the end of a *line* is a candidate. See
+///   [`on_different_lines`] — without this the rule welds two fragments of one line together and
+///   deletes a compound hyphen the author wrote, which is measured and not hypothetical.
+/// - **A letter in front of the hyphen**, so a run ending `foo -` is left alone. A dash standing
+///   as its own word is punctuation the page drew, and closing it up would delete a character the
+///   document meant.
+/// - **The immediately next node**, so an annotation, a form field or a run of another table
+///   between the halves stops the join. A rule that reached past intervening nodes would be
+///   reordering the document to make a word.
+/// - **The same page**, by parent page record.
+/// - **Neither half is a heading, a list item or a cell.** Joining across a block boundary would
+///   pull source text through syntax this exporter wrote — and by the time this is asked, a
+///   heading's `#` marker is already on the string. The head is known to be neither a cell run nor
+///   a list item because the projection has already routed those elsewhere; the tail is checked
+///   here because nothing else has looked at it.
+/// - **Both halves are page furniture, or neither is.** See [`is_page_artifact`]: a running head
+///   is the one block boundary no other clause here can see, and welding one onto body text
+///   fabricates a word and destroys the addressability rule 1 promises.
+///
+/// **Pairwise, once.** Three runs breaking one word twice join the first pair and leave the second
+/// hyphen where it is. A bound rather than an oversight: the census still balances, the segment
+/// still names exactly the runs it came from, and no fixture or corpus document does it.
+///
+/// # This rejoins nothing in the representation
+///
+/// `docs/10-V11-SCOPE.md` §5: a cosmetic is export-only. `extract` still emits `hyphen-` and
+/// `ated` as two `Extracted` runs with the hyphen verbatim, and
+/// `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is the test that keeps it that
+/// way. **A quote of the joined word therefore does not ground** — no element contains it — which
+/// is the right answer for a word the page drew in two pieces, not a defect in the verifier.
+fn hyphen_tail<'a>(
+    head: &crate::Node,
+    head_text: &str,
+    next: Option<&'a crate::Node>,
+    owner: &std::collections::BTreeMap<&str, usize>,
+) -> Option<(&'a crate::Node, String)> {
+    let stem = head_text.strip_suffix('-')?;
+    if !stem.chars().next_back().is_some_and(char::is_alphabetic) || heading_level(head).is_some() {
+        return None;
+    }
+
+    let next = next?;
+    if next.parent != head.parent
+        || dropped_code(next.kind).is_some()
+        || owner.contains_key(next.id.as_str())
+        || heading_level(next).is_some()
+        || list_role(next).is_some()
+        || is_page_artifact(head) != is_page_artifact(next)
+        || !on_different_lines(head, next)
+    {
+        return None;
+    }
+
+    let tail = normalize(&next.text);
+    if !tail.starts_with(char::is_alphabetic) {
+        return None;
+    }
+    Some((next, format!("{stem}{tail}")))
+}
+
+/// Whether the content stream marked this run as page furniture rather than flow content.
+///
+/// **Neither [`heading_level`] nor [`list_role`] can see this**, because both bail unless the
+/// locator is [`crate::StructuralLocator::PdfTagged`] — so without an explicit test a running head
+/// or a footer passes every other clause of [`hyphen_tail`] and joins onto the body run before it.
+///
+/// # Why that is a defect and not a curiosity
+///
+/// A page whose last body line ends in a soft hyphen and whose footer is the next node in reading
+/// order projects `Rates may be recalcu-` + `Confidential draft` as **`recalcuConfidential`** — a
+/// word that appears nowhere on the page, welded out of two streams the document itself declared
+/// separate (PDF 32000 §14.8.2.2, and `engine-pdf`'s own binding rule: *artifact wins*).
+///
+/// It also breaks a promise [`to_markdown`] rule 1 makes out loud. Artifacts are kept in the
+/// projection precisely so *a consumer that wants them gone drops them itself, knowing it did* —
+/// and the per-run `source` segment is the only handle a consumer has for that. One segment
+/// spanning body text and a running head takes the handle away.
+///
+/// **Equality rather than exclusion**, because a two-line running head may hyphenate exactly like
+/// a paragraph. What may not happen is a join *across* the boundary.
+fn is_page_artifact(node: &crate::Node) -> bool {
+    matches!(
+        node.structural_locator,
+        Some(crate::StructuralLocator::PdfArtifact(_))
+    )
+}
+
+/// Whether two runs sit on different baselines — the test for "broken across a line".
+///
+/// # Measured, not assumed
+///
+/// Without this clause the rule joins any run ending in `-` to the run after it, **including two
+/// fragments of one line**. That is not hypothetical: `cfpb-home-loan-toolkit` page 24 draws
+/// `non-escrowed` as a string of tiny runs at one baseline — `non-`, `escr`, `o`, `w` … — and the
+/// rule fired on `non-` + `escr` and produced **`nonescr`**, deleting a compound hyphen the
+/// document meant and yielding a word that is not one. It was the only place the rule fired on the
+/// whole benchmark corpus, and it fired wrongly.
+///
+/// A hyphen inside a line is a hyphen the author wrote. Only a hyphen at a line's end is a
+/// candidate for having been inserted by the line break, which is the whole premise of checklist
+/// **P15** and of the `hyphenated-line-break` fixture.
+///
+/// **Conservative on purpose.** Runs without a glyph-run locator, or on a page whose lines do not
+/// separate in `origin_y`, simply do not join. A missed join reads as two words, which is what the
+/// page drew; a wrong join invents one. Given `docs/01-CONTRACT.md`'s posture on fabrication, those
+/// are not comparable costs.
+fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
+    match (&a.native_locator, &b.native_locator) {
+        (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) => x.origin_y != y.origin_y,
+        _ => false,
+    }
+}
+
+/// Hyphens removed closing up a word the document broke across a line (v1.1-S3).
+///
+/// **A character bucket, not a [`StructuralErasure`]**, and that is the whole test for which
+/// census a disclosure belongs in: a hyphen *is* a character of node text, and it really is not in
+/// the Markdown. The GFM erasures are counted separately because a merged cell's text is emitted
+/// in full and a `tables-flattened` character bucket would read `0`.
+///
+/// `chars` is the number of hyphens dropped; `nodes` is the number of runs that lost one, which is
+/// the same number — a run is the head of at most one join.
+const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-v1";
 
 /// The bucket a non-projected node belongs to.
 ///
@@ -702,6 +870,29 @@ impl Emit {
         self.emitted_chars += s.chars().count();
     }
 
+    /// The two halves of a word the document broke across a line, written as one word (v1.1-S3).
+    ///
+    /// # One segment naming two nodes
+    ///
+    /// [`Segment::node_ids`] has always been a list; this is the first emitter to put more than
+    /// one id in it. It has to be one segment: the hyphen that marked where the halves met is no
+    /// longer in the string, so there is no byte offset at which the first run stops being the
+    /// answer and the second starts. Splitting it into two adjacent segments would put that
+    /// boundary somewhere and claim a precision the join threw away.
+    ///
+    /// A consumer inverting these bytes gets both runs, which is what the page has.
+    fn joined_source(&mut self, s: &str, first: &str, second: &str) {
+        let start = self.markdown.len();
+        self.markdown.push_str(s);
+        self.segments.push(Segment {
+            kind: SegmentKind::Source,
+            start,
+            end: self.markdown.len(),
+            node_ids: vec![first.to_string(), second.to_string()],
+        });
+        self.emitted_chars += s.chars().count();
+    }
+
     /// A node's text inside a GFM cell, with the two characters GFM reads as structure escaped.
     ///
     /// # The backslash is syntax and the character it escapes is source
@@ -759,7 +950,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v1`
+/// # The rule, in full — `markdown-blocks-v2`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -776,6 +967,13 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 /// 5. **Blank line between blocks**, which is `syntax` — the document drew no such bytes.
 /// 6. **Node text is normalized** by [`normalize`], and a node whose normalization is empty
 ///    contributes no segment at all rather than an empty one.
+/// 7. **A word broken across a line is closed up** — v1.1-S3's one cosmetic, and the only clause
+///    here that removes a character that is not whitespace (rule 6 collapses runs of it, and
+///    counts them too). The conditions are [`hyphen_tail`]'s, the joined bytes are one `source`
+///    segment naming both runs, and the hyphen is counted in `HYPHENATION_REJOIN_DROPPED`.
+///    **The representation is untouched**: `extract` still holds both halves with the hyphen
+///    verbatim, so the joined word is readable and *not* citable, and the map says which two
+///    strings are.
 ///
 /// # Where the tables go
 ///
@@ -821,9 +1019,18 @@ pub fn to_markdown(
     let mut last: Option<Block> = None;
     // The list item currently open, and whether the previous run in it was the item's own `/Lbl`.
     let mut open_item: Option<(usize, bool)> = None;
+    // Set when the previous node's hyphen join already emitted this one's text, as the tail of a
+    // joined word. Its characters still count toward `in_representation` — they are in the record
+    // whether or not this pass reaches them separately — so the flag is read after that.
+    let mut joined_tail = false;
 
-    for node in &payload.nodes {
+    for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
+
+        if joined_tail {
+            joined_tail = false;
+            continue;
+        }
 
         if let Some(code) = dropped_code(node.kind) {
             let b = buckets.entry(code).or_insert((0, 0));
@@ -890,6 +1097,18 @@ pub fn to_markdown(
         if let Some(level) = heading_level(node) {
             e.syntax(&"#".repeat(level as usize));
             e.syntax(" ");
+        }
+
+        // A word the page broke across a line, closed up here and nowhere else. The two halves
+        // become one `source` segment naming both runs, no separator goes between them, and the
+        // hyphen that is no longer in the string is counted — see `HYPHENATION_REJOIN_DROPPED`.
+        if let Some((tail, joined)) = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner) {
+            e.joined_source(&joined, node.id.as_str(), tail.id.as_str());
+            let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
+            b.0 += 1;
+            b.1 += 1;
+            joined_tail = true;
+            continue;
         }
 
         e.source(&text, node.id.as_str());
@@ -1438,6 +1657,67 @@ mod tests {
         repr_of(&[("Hello Ethos", None)])
     }
 
+    /// The same as [`repr_of`], but each run gets **its own baseline** — one run per line.
+    ///
+    /// `text_node` puts every node at `origin_y: 7200`, which is one line, and that is the right
+    /// default for every other test here. The hyphenation join is the one rule that reads the
+    /// baseline ([`on_different_lines`]), so it needs a representation whose lines actually
+    /// differ, and a test that used `repr_of` would be asserting against a page whose runs the
+    /// document drew side by side.
+    fn repr_of_lines(specs: &[&str]) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 30000,
+            height: 14400,
+            rotation: 0,
+        };
+        let nodes: Vec<Node> = specs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let mut n = text_node(&mut alloc, &page.id, i as u32 + 1, t, None);
+                n.native_locator = NativeLocator::Pdf(PdfLocator {
+                    page: 1,
+                    origin_x: 7200,
+                    origin_y: 7200 + (i as i64) * 2400,
+                    advance: Some(1000),
+                });
+                n
+            })
+            .collect();
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            })
+            .collect();
+        DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap()
+    }
+
+    /// Re-seal a representation with node `index` marked as **page furniture**.
+    ///
+    /// `text_node` can only build a `PdfTagged` locator, and the artifact case is exactly the one
+    /// no tagged role can express: an artifact is content the page declared to be *outside* the
+    /// structure tree, which is why no `heading_level` or `list_role` clause can see it.
+    fn mark_artifact(repr: &DocumentRepresentation, index: usize) -> DocumentRepresentation {
+        let mut nodes = repr.payload().nodes.clone();
+        nodes[index].structural_locator = Some(StructuralLocator::PdfArtifact(
+            crate::representation::PdfArtifactLocator { mcid: None },
+        ));
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
+            })
+            .collect();
+        let pages = repr.payload().pages.clone();
+        DocumentRepresentation::seal(payload(nodes, pages), geometry).unwrap()
+    }
+
     /// A node carrying a full role path rather than the one-role shorthand `text_node` takes.
     ///
     /// Lists need the whole chain — `Document/L/LI/LBody` — because depth is the number of `/L`
@@ -1617,6 +1897,159 @@ mod tests {
         assert!(a.coverage.balances());
         assert_eq!(a.coverage.source_chars_emitted, 11);
         assert!(a.coverage.dropped.is_empty());
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // v1.1-S3 — the hyphenation join, and the line test that keeps it honest
+    // ---------------------------------------------------------------------------------------
+
+    /// A hyphen at the end of a **line** is closed up, and the hyphen is counted.
+    #[test]
+    fn a_hyphen_at_a_line_end_is_joined_and_the_hyphen_is_counted() {
+        let a = artifact_of(repr_of_lines(&["hyphen-", "ated"]));
+        assert_eq!(a.markdown, "hyphenated\n");
+
+        // One segment over the joined letters, naming both runs — there is no offset inside them
+        // at which the first run stops being the answer, because the hyphen that marked it is gone.
+        assert_eq!(a.anchor_map.segments.len(), 2);
+        assert_eq!(a.anchor_map.segments[0].kind, SegmentKind::Source);
+        assert_eq!(a.anchor_map.segments[0].node_ids.len(), 2);
+
+        assert!(a.coverage.balances());
+        assert_eq!(a.coverage.source_chars_emitted, 10);
+        assert_eq!(a.coverage.source_chars_in_representation, 11);
+        let b = a
+            .coverage
+            .dropped
+            .iter()
+            .find(|b| b.code == HYPHENATION_REJOIN_DROPPED)
+            .expect("the removed hyphen is a named bucket");
+        assert_eq!((b.chars, b.nodes), (1, 1));
+    }
+
+    /// A running head is **not** the second half of a body word.
+    ///
+    /// # The one block boundary no other clause can see
+    ///
+    /// `heading_level` and `list_role` both bail unless the locator is `PdfTagged`, so a
+    /// `pdf_artifact` run passes every other tail guard. Before [`is_page_artifact`], a page whose
+    /// last body line ended in a soft hyphen and whose footer came next in reading order projected
+    /// `Rates may be recalcu-` + `Confidential draft` as **`recalcuConfidential`** — a word on no
+    /// page, welded from two streams the document itself declared separate.
+    ///
+    /// It also broke `to_markdown` rule 1 out loud: artifacts are kept *so a consumer that wants
+    /// them gone drops them itself, knowing it did*, and the per-run `source` segment is the only
+    /// handle for that. One segment over body text and a footer removes it.
+    #[test]
+    fn a_page_artifact_is_not_joined_onto_body_text() {
+        let repr = repr_of_lines(&["Rates may be recalcu-", "Confidential draft"]);
+        let a = artifact_of(mark_artifact(&repr, 1));
+        assert_eq!(
+            a.markdown, "Rates may be recalcu-\n\nConfidential draft\n",
+            "the footer stays its own block, and the body keeps the hyphen the page drew"
+        );
+        assert!(
+            !a.markdown.contains("recalcuConfidential"),
+            "a word welded out of body text and page furniture is on no page"
+        );
+        // Rule 1's promise, mechanically: each run still has its own segment, so a consumer can
+        // drop the running head without taking body text with it.
+        for s in a
+            .anchor_map
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Source)
+        {
+            assert_eq!(
+                s.node_ids.len(),
+                1,
+                "no segment spans the furniture boundary"
+            );
+        }
+        assert!(a.coverage.balances());
+    }
+
+    /// The mirrored case: an artifact head does not swallow the body run after it.
+    #[test]
+    fn body_text_is_not_joined_onto_a_page_artifact() {
+        let repr = repr_of_lines(&["Chapter inter-", "national text"]);
+        let a = artifact_of(mark_artifact(&repr, 0));
+        assert_eq!(a.markdown, "Chapter inter-\n\nnational text\n");
+        assert!(!a.markdown.contains("international"));
+    }
+
+    /// Two lines of one running head hyphenate like any paragraph — **equality, not exclusion**.
+    #[test]
+    fn a_running_head_broken_across_its_own_two_lines_still_joins() {
+        let repr = mark_artifact(&repr_of_lines(&["Confiden-", "tial"]), 0);
+        let a = artifact_of(mark_artifact(&repr, 1));
+        assert_eq!(a.markdown, "Confidential\n");
+        assert_eq!(a.anchor_map.segments[0].node_ids.len(), 2);
+    }
+
+    /// A hyphen **inside** a line is the author's, and it stays.
+    ///
+    /// # This is a measurement, not a hypothetical
+    ///
+    /// Without the baseline test the rule joined any run ending in `-` to the run after it, and
+    /// `cfpb-home-loan-toolkit` page 24 is the case that found it: the document draws
+    /// `non-escrowed` as a string of tiny runs at one baseline — `non-`, `escr`, `o`, `w` … — so
+    /// the rule produced **`nonescr`**, deleting a compound hyphen the author wrote and yielding a
+    /// word that is not one. It was the *only* place the rule fired on the whole benchmark corpus,
+    /// and it fired wrongly.
+    ///
+    /// Two runs at the same `origin_y` were drawn side by side. A hyphen between them was never a
+    /// line break, so there is nothing for this rule to repair.
+    #[test]
+    fn a_hyphen_inside_a_line_is_the_authors_and_is_not_joined() {
+        // `repr_of` puts every run on one baseline, which is exactly the shape being pinned.
+        let a = artifact_of(repr_of(&[("non-", None), ("escr", None)]));
+        assert_eq!(
+            a.markdown, "non-\n\nescr\n",
+            "the hyphen the author wrote survives, and the runs stay two blocks"
+        );
+        assert!(
+            !a.markdown.contains("nonescr"),
+            "the join must not invent a word the page never drew"
+        );
+        assert!(
+            a.coverage
+                .dropped
+                .iter()
+                .all(|b| b.code != HYPHENATION_REJOIN_DROPPED),
+            "nothing was joined, so the bucket is absent rather than reading 0"
+        );
+        assert!(a.coverage.balances());
+    }
+
+    /// A dash standing as its own word is punctuation, not half of one.
+    #[test]
+    fn a_dangling_dash_at_a_line_end_is_not_joined() {
+        let a = artifact_of(repr_of_lines(&["foo -", "bar"]));
+        assert_eq!(a.markdown, "foo -\n\nbar\n");
+        assert!(a
+            .coverage
+            .dropped
+            .iter()
+            .all(|b| b.code != HYPHENATION_REJOIN_DROPPED));
+    }
+
+    /// A word broken twice joins its first pair and leaves the second hyphen alone.
+    ///
+    /// The stated bound of a pairwise rule, pinned so it is a decision rather than a surprise: the
+    /// census still balances and the segment still names exactly the runs it came from.
+    #[test]
+    fn a_word_broken_twice_joins_once_and_says_so_by_leaving_the_second_hyphen() {
+        let a = artifact_of(repr_of_lines(&["hy-", "phen-", "ated"]));
+        assert_eq!(a.markdown, "hyphen-\n\nated\n");
+        let b = a
+            .coverage
+            .dropped
+            .iter()
+            .find(|b| b.code == HYPHENATION_REJOIN_DROPPED)
+            .expect("one join happened");
+        assert_eq!(b.chars, 1, "one hyphen removed, not two");
+        assert!(a.coverage.balances());
     }
 
     /// **The branch the corpus cannot reach.** No fixture in either corpus carries a heading role,

@@ -92,7 +92,7 @@ pub use markdown::{
     to_markdown, AnchorMap, Coverage, DroppedBucket, MarkdownArtifact, Segment, SegmentKind,
     StructuralErasure, GFM_CELL_NOT_PLACED, GFM_CELL_RUN_CLAIMED_TWICE, GFM_LIST_ITEM_RUN_JOINS,
     GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE, GFM_TABLE_NOT_PROJECTED,
-    MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_BLOCKS_V1, MARKDOWN_SCHEMA_VERSION,
+    MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_BLOCKS_V2, MARKDOWN_SCHEMA_VERSION,
 };
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
