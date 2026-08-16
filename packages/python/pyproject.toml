@@ -1,0 +1,53 @@
+# ethos-engine — the Python SDK (v1.2-S2).
+#
+# **Runtime dependencies are empty, and that is a contract rather than an accident.** This
+# package shells out to the `engine` binary with `subprocess` and parses its stdout with `json`.
+# Both are stdlib. A wheel that pulled `requests` or `pydantic` to hand back bytes the CLI
+# already printed would be adding a place for those bytes to change.
+#
+# There is no PyO3, no maturin and no native extension. `docs/13-V12-MILESTONES.md` S2 asks for
+# "a thin Python surface over the same library or CLI, so it cannot diverge from what the CLI
+# prints"; wrapping the CLI makes that a tautology instead of a promise, at the cost of one
+# process spawn. A native module would be a fifth build surface and a wheel matrix, and it would
+# reach the library by a second path that could then disagree with the first.
+#
+# NOT PUBLISHED. This is not on PyPI and this slice does not put it there.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ethos-engine"
+description = "A thin Python surface over the ethos-engine CLI. Locators are minted by the engine, never composed by a caller."
+readme = "README.md"
+# 3.10 rather than 3.9: 3.9 reached end of life in October 2025, and the dependency gate in
+# `tests/test_cli_surface.py` reads `sys.stdlib_module_names`, which arrived in 3.10. Supporting
+# a version nobody receives security fixes for, at the cost of the check that proves this package
+# pulls nothing, is the wrong trade.
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "ethos-engine maintainers" }]
+# Empty, and asserted empty by `tests/test_cli_surface.py`. See the note at the top of this file.
+dependencies = []
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/docushell/ethos-engine"
+
+[project.optional-dependencies]
+# Dev only. `pip install ethos-engine` installs nothing but this package.
+dev = ["pytest>=7"]
+
+# One source of truth for the version, inside the package, so the distribution metadata cannot
+# drift from what `ethos_engine.__version__` reports. A test pins both to the workspace
+# `Cargo.toml`, because an SDK claiming a version the engine does not is the same class of lie
+# `parser_version` exists to prevent.
+[tool.hatch.version]
+path = "src/ethos_engine/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ethos_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

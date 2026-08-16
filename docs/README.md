@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2-S1 shipped, as 0.15.0.** v1.1 is complete. v1 is the DocuShell replacement gate
+**Status:** **v1.2-S2 shipped, as 0.16.0.** v1.1 is complete. v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -20,7 +20,13 @@ locator, returns it as an opaque handle, and re-validates it on the way back in*
 and MCP is the worst host on the list rather than the best. A forged node id is an error, an edited
 representation fails its fingerprint, and no tool argument names a coordinate.
 [`12-V12-SCOPE.md`](12-V12-SCOPE.md) states the law; [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md)
-names S2–S5 (Python SDK, Node SDK, LangChain, liteparse) as not started.
+names S3–S5 (Node SDK, LangChain, liteparse) as not started.
+
+**S2 is the Python SDK, and it wraps the CLI rather than the library.** `packages/python/` is three
+functions over `subprocess` with **no runtime dependency** — so byte-identity with the CLI is a
+tautology, not a promise, and a test proves it on a whole artifact. No signature names a coordinate;
+`node_get` ports c14n v1 to check a fingerprint before any lookup, because it is the one function
+with no subcommand behind it. No PyO3, no `capabilities.python`, not on PyPI.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots

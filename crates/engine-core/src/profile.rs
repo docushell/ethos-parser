@@ -1078,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.15.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.16.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1202,11 +1202,21 @@ mod tests {
              `capabilities.mcp` would put a flag on every artifact that no consumer could act on. \
              Two artifacts either side of this hash say exactly the same thing about the same \
              document; the hash moves because `parser_version` is in it, and a version claiming \
-             otherwise is the one lie this field cannot afford."
+             otherwise is the one lie this field cannot afford.\n\n\
+             Moved a TWENTIETH time at v1.2-S2 (0.16.0), and again NOTHING but the version moved \
+             — the third time, after v1-S7b and v1.2-S1. S2 is the Python SDK, and it adds no \
+             Rust at all: `packages/python/` shells out to this binary, so `extract` and `ground` \
+             return the bytes the CLI printed and cannot diverge from them. An SDK is an adopter \
+             rather than a parse capability, so there is no `capabilities.python` for the reason \
+             there is no `capabilities.mcp` — a flag on every artifact that no consumer can act \
+             on. What DID have to be got right lives outside this hash: `node_get` has no \
+             subcommand behind it, so c14n v1 is ported to Python and pinned against this \
+             module's own parity vectors, because a fingerprint that is merely NEARLY this one \
+             would accept an artifact the engine refuses."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:c5f06d323e5fe0028e779edd622e9c6a35aa7f3eae73c02188c35bb6be286c64"
+            "sha256:1b7a4208734b9ed52f1c0b2b725322bc854ffac229c019c01226203c67c5a81a"
         );
     }
 

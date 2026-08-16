@@ -31,7 +31,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, and v1.2-S0/S1 as 0.15.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, and v1.2-S2 as 0.16.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -87,10 +87,23 @@ exclude = ["fuzz"]
 # ALONE — the same shape v1-S7b (0.9.0) had, where nothing else moved and the hash moved anyway,
 # because a version claiming otherwise is the one lie that field cannot afford.
 #
+# **0.16.0 is v1.2-S2, the Python SDK, and it adds no Rust at all.** `packages/python/` wraps the
+# `engine` binary with `subprocess` and the stdlib `json` module: `extract` and `ground` shell out
+# to the subcommands a shell would run, so byte-identity with the CLI is a tautology rather than a
+# promise. `node_get` is the one function with no subcommand behind it — MCP already carries the
+# tool and a third CLI verb is speculative — so c14n v1 is ported to Python and runs the Rust
+# module's own parity vectors. No PyO3, no maturin, no fifth crate, no runtime dependency.
+#
+# Nothing but the version moves, the THIRD time that has happened after v1-S7b (0.9.0) and
+# v1.2-S1 (0.15.0). An SDK is an adopter, not a parse capability, and `capabilities.python` would
+# put a flag on every artifact that no consumer can act on (docs/12-V12-SCOPE.md §7). The hash
+# moves on `parser_version` alone, because a version claiming otherwise is the one lie that field
+# cannot afford.
+#
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.15.0"
+version = "0.16.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -111,9 +124,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.15.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.15.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.15.0" }
+engine-core = { path = "crates/engine-core", version = "0.16.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.16.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.16.0" }
 
 [profile.release]
 strip = "symbols"

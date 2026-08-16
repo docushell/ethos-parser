@@ -11,7 +11,7 @@ the owner asked for the next roadmap row, and nothing in it closes v1.
 | --- | --- | --- | --- |
 | **S0** | v1.2 scope + this document | — | **done** |
 | **S1** | MCP over stdio: `extract`, `ground`, `node_get` | S0 | **done** |
-| **S2** | Python SDK — thin, over the same library or CLI | S1 | **not started** |
+| **S2** | Python SDK — thin, over the same library or CLI | S1 | **done** |
 | **S3** | Node SDK | S1 | **not started** |
 | **S4** | LangChain tool, locators in `artifact` never `content` | S2, S3 | **not started** |
 | **S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | S1 | **not started** |
@@ -140,12 +140,115 @@ enumerate.
 
 ---
 
-## S2 — Python SDK — **not started**
+## S2 — Python SDK
+
+- **Status: done.** `packages/python/` at **0.16.0**. Three functions, **no runtime dependency**,
+  no new crate, no Rust changed but the version.
 
 - **Goal:** a thin Python surface over the same library or CLI, so it cannot diverge from what the
   CLI prints.
+
 - **The standing constraint:** §3's handle law. A locator is returned, never accepted as prose.
-- **Not started.** Starts when the owner asks.
+
+### The decision that makes divergence impossible rather than unlikely
+
+**It wraps the CLI with `subprocess`, and that is the whole design.** `extract` and `ground` run
+the subcommands a shell would run and hand back the bytes those subcommands printed, parsed by the
+stdlib `json` module. There is no second serialization anywhere in the package, so byte-identity
+with the CLI is a **tautology** rather than a promise — `tests/test_cli_surface.py` re-canonicalizes
+what `extract` returned and compares it against the CLI's stdout byte for byte, and the only way
+that could fail is if Python's JSON parser lost something.
+
+PyO3 was the alternative and it was refused. It would reach the library by a **second path**, which
+is a second thing that can disagree with the first — plus a wheel matrix, a fifth build surface,
+and a route by which a Rust dependency could arrive on the Python side of the fence. The cost of
+the chosen shape is one process spawn per call, which nobody has measured a need to avoid.
+
+The same reasoning refuses an MCP client here: MCP is a **process** and this is a **library**.
+They are two callers of one binary, not layers.
+
+### The surface, and the one function with nothing behind it
+
+| function | shells out to | returns |
+| --- | --- | --- |
+| `extract(pdf_path)` | `engine extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `node_get(representation, node_id)` | **nothing** | the node record from **that** artifact |
+
+`ground` takes the artifact `extract` returned — the object itself, or a path to bytes this engine
+wrote — which is what the MCP tool of the same name takes. **It does not take a quote, and it does
+not take a page**, because `engine ground` takes neither: it projects a representation into
+`ethos.grounding.v1`, and a locator-shaped argument would be the corollary violation in its purest
+form.
+
+`node_get` has **no `engine node-get` subcommand** and this slice did not add one. MCP already
+carries the tool; a third CLI verb would exist for symmetry, which is not a reason. So its checks
+are **ported**, in the order `mcp.rs` runs them:
+
+1. the value is a representation — `artifact_type` under `ethos.engine.representation.`;
+2. `representation` is re-canonicalized and re-hashed and must equal `representation_c14n_sha256`
+   — an artifact edited on the way through is refused **before any lookup happens**;
+3. `node_id` is looked up among **that artifact's own nodes**, and a miss raises.
+
+That is why `src/ethos_engine/_c14n.py` exists: it is c14n v1 in Python, ~100 lines, running
+`engine-core/src/c14n.rs`'s **own parity vectors**. A fingerprint that were merely *nearly* the
+engine's would be worse than none — it would accept an artifact the engine refuses, or refuse one
+the engine minted, and either way a caller would be told something false about a document. The
+load-bearing proof is not the vectors but the whole artifact: `extract`'s output, re-canonicalized
+in Python, reproduces the CLI's bytes exactly, which means the port agrees with the Rust on real
+input and not merely on five hand-written values.
+
+### The handle law in Python
+
+- `node_get(rep, minted_id)` returns that node — **the object the artifact carries**, not a copy.
+- `node_get(rep, "s-forged")` raises `NodeNotFound`, naming what was refused. **Never `None`,
+  never `{}`.**
+- `node_get(edited_rep, minted_id)` raises `FingerprintMismatch`, naming both digests.
+- **No public function signature contains** `page`, `bbox`, `x`, `y`, `width`, `height`, `row` or
+  `column` — read off `inspect.signature`, against the same banned list `mcp.rs` uses.
+
+`ground` deliberately does **not** repeat the fingerprint check in Python. The engine runs it, and
+the SDK surfaces the engine's own refusal with its stderr intact: a second check here is a second
+thing that could drift from the first, which is the failure mode this whole slice is arranged
+against.
+
+### What is deliberately absent
+
+`markdown()` and `html()` exist on the CLI and are not wrapped — neither proves anything this slice
+claims, and a function that exists because it was cheap is a surface to keep honest forever.
+`verify()` is absent for a stronger reason: it relays the pinned Ethos CLI, and a Python function
+of that name would look like this package had an opinion about whether a claim is supported.
+`07-VERIFY-BOUNDARY.md` is exactly what an SDK's convenience must not bend.
+
+- **In:** `packages/python/` (`pyproject.toml`, `src/ethos_engine/`, tests, README); `0.16.0` and
+  the moved profile hash; `12`/`13`; CHANGELOG; README; `docs/README.md`.
+
+- **Out:** PyO3, maturin, a native extension, a fifth crate. Any runtime dependency. An
+  `engine node-get` CLI verb. `markdown`/`html`/`verify` Python functions. An MCP Python client.
+  `capabilities.python`. A Node SDK, a LangChain tool, a liteparse mapper. Publication to PyPI. A
+  tag.
+
+- **Acceptance tests:**
+  - [x] `packages/python/` exists and `import ethos_engine` works
+  - [x] Runtime dependencies are **empty** — asserted both from `pyproject.toml` and by walking
+        every `import` statement in the package against `sys.stdlib_module_names`
+  - [x] `extract(pdf)` re-canonicalizes to `engine extract`'s stdout **byte for byte**
+  - [x] `ground` matches `engine ground` from the object and from a path
+  - [x] `node_get` with a minted id returns that node; a forged id **raises**; an edited payload
+        **raises** at the fingerprint
+  - [x] No public signature names `page`, `bbox`, `x`, `y`, `width`, `height`, `row` or `column`
+  - [x] No `markdown` / `html` / `verify` / `mcp` Python API
+  - [x] The c14n port matches `engine-core`'s own parity vectors, and rejects floats at every depth
+  - [x] `ETHOS_ENGINE` is authoritative; a missing binary is a **named failure**, never a skip
+  - [x] No PyO3, no fifth crate, no Tokio; `cargo deny check` still passes
+  - [x] Workspace **0.16.0**, profile hash
+        `sha256:1b7a4208734b9ed52f1c0b2b725322bc854ffac229c019c01226203c67c5a81a`
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables; the
+        markdown and html goldens still green
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+  - [x] `pytest` green in `packages/python`
+
+- **Depends on:** S1.
 
 ---
 

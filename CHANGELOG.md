@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.2-S0/S1, adoption begins with MCP over stdio, as 0.15.0
+## [Unreleased] — v1.2-S0/S1/S2, adoption: MCP over stdio, then a Python SDK, as 0.16.0
 
 **v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
@@ -70,7 +70,7 @@ already had. `Cargo.lock` gains nothing; `cargo deny check` is the standing proo
 stdio is a pipe rather than a socket, and newline-delimited JSON-RPC is MCP's own stdio transport
 rather than a dialect invented here.
 
-### Identity
+### Identity, after S1
 
 Workspace **0.15.0**, profile hash
 `sha256:c5f06d323e5fe0028e779edd622e9c6a35aa7f3eae73c02188c35bb6be286c64`. **Nothing but the
@@ -79,13 +79,76 @@ capability: a transport is not a parse capability, and `capabilities.mcp` would 
 artifact that no consumer could act on. Two artifacts either side of this hash say exactly the same
 thing about the same document, and the hash moves because `parser_version` is in it.
 
+### S2 — the Python SDK, and the decision that makes divergence impossible
+
+`packages/python/` — **`extract`, `ground`, `node_get`, and nothing else.** It wraps the `engine`
+binary with `subprocess` and parses stdout with the stdlib `json` module, so **byte-identity with
+the CLI is a tautology rather than a promise**: there is no second serialization anywhere in the
+package for an artifact to change in. A test re-canonicalizes what `extract` returned and compares
+it against the CLI's stdout byte for byte.
+
+**PyO3 was refused.** It would reach the library by a second path, which is a second thing that can
+disagree with the first — plus a wheel matrix, a fifth build surface, and a route by which a Rust
+dependency could arrive on the Python side of the fence. The cost of the shape chosen instead is
+one process spawn per call, which nobody has measured a need to avoid. **Runtime dependencies are
+empty**, asserted from `pyproject.toml` and again by walking every `import` in the package against
+`sys.stdlib_module_names`.
+
+There is no MCP client here either: MCP is a process and this is a library. They are two callers of
+one binary, not layers.
+
+| function | shells out to | returns |
+| --- | --- | --- |
+| `extract(pdf_path)` | `engine extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `node_get(representation, node_id)` | **nothing** | the node record from **that** artifact |
+
+**`ground` takes a representation, not a quote and not a page.** `engine ground` takes neither — it
+projects the record into `ethos.grounding.v1` — and a locator-shaped argument would be §3's
+corollary violation in its purest form.
+
+**`node_get` has no subcommand behind it**, and this slice did not add an `engine node-get` for
+symmetry. MCP already carries the tool. So its checks are ported in the order `mcp.rs` runs them:
+the value is a representation; its payload is re-canonicalized and re-hashed and must equal
+`representation_c14n_sha256`, **before any lookup happens**; the id is looked up among that
+artifact's own nodes, and a miss **raises**.
+
+That is why `_c14n.py` exists — c14n v1 in Python, running `engine-core/src/c14n.rs`'s own parity
+vectors. A fingerprint that were merely *nearly* the engine's would be worse than none: it would
+accept an artifact the engine refuses, or refuse one the engine minted, and either way a caller
+would be told something false about a document. The load-bearing proof is not the five vectors but
+the whole artifact, which agrees on real input.
+
+**The handle law, in Python:** a minted id returns the node the artifact carries; `s-forged` raises
+`NodeNotFound` naming what was refused, never `None` and never `{}`; an edited payload raises
+`FingerprintMismatch` naming both digests. **No public signature contains** `page`, `bbox`, `x`,
+`y`, `width`, `height`, `row` or `column` — read off `inspect.signature`, against the same banned
+list `mcp.rs` uses.
+
+`markdown()`, `html()` and `verify()` are **absent**. The first two would be a few lines each and
+prove nothing this slice claims. `verify` relays the pinned Ethos CLI, and a Python function of
+that name would look like this package had an opinion about whether a claim is supported —
+`07-VERIFY-BOUNDARY.md` is exactly what an SDK's convenience must not bend.
+
+**Not published.** It is not on PyPI and this slice does not put it there.
+
+### Identity, after S2
+
+Workspace **0.16.0**, profile hash
+`sha256:1b7a4208734b9ed52f1c0b2b725322bc854ffac229c019c01226203c67c5a81a`. **Again nothing but the
+version moved** — the third time, after v1-S7b (0.9.0) and S1 above. An SDK is an adopter rather
+than a parse capability, so there is no `capabilities.python` for the reason there is no
+`capabilities.mcp`: a flag on every artifact that no consumer can act on. No Rust changed but the
+version string.
+
 ### Unchanged
 
 Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
 representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. Four crates, no new
-dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No Python, no npm, no LangChain, no
-liteparse, no tag. v1.2-S2 has not started.
+Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no native
+extension, no runtime Python dependency. No npm, no LangChain, no liteparse, no tag. v1.2-S3 has
+not started.
 
 ---
 

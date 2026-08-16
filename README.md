@@ -16,8 +16,9 @@ measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor,
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
 
 **v1.1 is Safe Markdown and it is complete** (S0–S4). **v1.2 is adoption, and it has started: the
-workspace is at 0.15.0** with S0 and S1 done — the scope document and the first adapter, MCP over
-stdio. Each began because the owner asked for the next roadmap row, not because the gate cleared.
+workspace is at 0.16.0** with S0, S1 and S2 done — the scope document, the first adapter (MCP over
+stdio), and the Python SDK. Each began because the owner asked for the next roadmap row, not
+because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
@@ -67,6 +68,22 @@ representation, checks that representation's fingerprint, and looks the id up am
 artifact's nodes; an id the engine did not mint is an **error**, never a nearest match and never an
 empty result. No tool argument anywhere names a coordinate, and a test reads the advertised schemas
 to keep it that way. Locators travel in `structuredContent`; the text the model reads is counts.
+
+**The Python SDK is another caller of that binary, not a second engine.**
+[`packages/python/`](packages/python/) is three functions — `extract`, `ground`, `node_get` — that
+shell out with `subprocess` and parse stdout with the stdlib `json` module. **Runtime dependencies
+are empty**, and there is no PyO3: a native extension would reach the library by a second path,
+which is a second thing that can disagree with the first. Wrapping the CLI makes byte-identity a
+tautology instead of a promise, and a test re-canonicalizes what `extract` returned and compares it
+against the CLI's stdout byte for byte.
+
+The handle law carries over unchanged. **No function signature names a coordinate** — no `page`, no
+`bbox`, no `x`/`y`, no row/column pair — because a locator is returned and never accepted as prose.
+`node_get` is the only function with no subcommand behind it (MCP already has that tool, and a
+third CLI verb would exist for symmetry), so c14n v1 is ported to Python and pinned against
+`engine-core`'s own parity vectors: a minted id returns the node, a forged one **raises**, and an
+edited artifact fails at its fingerprint before any lookup happens. `markdown`, `html` and `verify`
+are deliberately absent. **Not on PyPI**, and this slice does not put it there.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds
@@ -143,6 +160,19 @@ would delete the only thing proving this engine and the verifier read an artifac
 The oracle harness needs the Ethos repo for its fixture corpus and CLI. It resolves
 `../ethos/fixtures` and `../ethos/target/release/ethos` by default; override with `ETHOS_FIXTURES`,
 `ETHOS_BENCH_CORPUS` and `ETHOS_BIN`. Absence is a failure, never a skip.
+
+The Python SDK is its own suite, and it needs a built binary rather than a build of its own:
+
+```bash
+pip install -e 'packages/python[dev]' && pytest packages/python
+```
+
+The package reads `ETHOS_ENGINE` first and **authoritatively** — a path named there and not present
+is an error, not a reason to go looking for some other build — then `engine` on `PATH`. The suite
+additionally falls back to the workspace `target/`, so a plain `cargo build` is enough to run it.
+Its fixture PDF is in-tree, so the suite depends on nothing outside this repository. A missing
+binary fails the run by name; it is never a skip, for the reason the oracle's absence is never a
+skip.
 
 ## The v0 exit criteria, as CI
 
