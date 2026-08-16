@@ -54,7 +54,7 @@ pub const FONT_WIDTHS_ABSENT: &str = "font-widths-absent";
 /// This document's cross-reference table was padded from 19-byte entries to the specified 20.
 ///
 /// Declared on every artifact produced from a repaired open. New at v0.1 — see
-/// [`crate::xref`] for the repair and `docs/01-CONTRACT.md` §12 for the decision.
+/// `crate::xref` for the repair and `docs/01-CONTRACT.md` §12 for the decision.
 pub const XREF_ENTRY_PADDED: &str = "xref-entry-padded";
 
 /// A font's encoding could not map every code, so the affected runs were dropped, not guessed.

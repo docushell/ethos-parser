@@ -44,7 +44,7 @@ pub enum OcrNeedReason {
     NoText,
     /// Very little text *alongside* imagery, suggesting content the text layer does not cover.
     ///
-    /// Requires the imagery. See [`crate::thresholds`] for why short text on its own is not
+    /// Requires the imagery. See `crate::thresholds` for why short text on its own is not
     /// sparse text — it is just short.
     SparseText,
     /// Raster imagery is present. On its own this says nothing about whether OCR is needed.
@@ -52,7 +52,7 @@ pub enum OcrNeedReason {
     /// Extracted text appears to be mojibake.
     ///
     /// **Never emitted by this profile.** Declared in the artifact's `not_detected` list. See
-    /// [`crate::thresholds`] for the measured reason.
+    /// `crate::thresholds` for the measured reason.
     Garbled,
     /// Substantial vector drawing with no text — glyphs may have been converted to curves.
     VectorText,
