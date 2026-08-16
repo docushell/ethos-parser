@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.1-S4 shipped, as 0.14.1 — v1.1 is complete.** v1 is the DocuShell replacement gate
+**Status:** **v1.2-S1 shipped, as 0.15.0.** v1.1 is complete. v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -11,6 +11,16 @@ a Markdown string and the **Anchor Map** that inverts every source byte of it ba
 representation nodes, plus a coverage census of what did not make it. `docs/01-CONTRACT.md` §12
 refused a Markdown projection for the whole of v1 on Workbench rule 8; the map is what makes that
 objection payable.
+
+**v1.2 is ADOPTION, and S1 is its first adapter: `engine mcp`, MCP over stdio.** Three tools —
+`extract`, `ground`, `node_get` — over newline-delimited JSON-RPC on a pipe, with no HTTP, no
+socket and no async runtime, so `deny.toml`'s network bans hold. The whole slice turns on one
+sentence from the parser memo §16.7: MCP tools are model-controlled, so **the engine mints every
+locator, returns it as an opaque handle, and re-validates it on the way back in** — get that wrong
+and MCP is the worst host on the list rather than the best. A forged node id is an error, an edited
+representation fails its fingerprint, and no tool argument names a coordinate.
+[`12-V12-SCOPE.md`](12-V12-SCOPE.md) states the law; [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md)
+names S2–S5 (Python SDK, Node SDK, LangChain, liteparse) as not started.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots
@@ -229,7 +239,9 @@ Then, as needed:
 | [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 is measured once at S7 · the ruled/unruled split · capability flip plan | Before any v1 work |
 | [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S8**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
 | [`10-V11-SCOPE.md`](10-V11-SCOPE.md) | What v1.1 is and is not · Workbench rule 8 and why Markdown waited · the four laws of the Anchor Map | Before any v1.1 work |
-| [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) | **v1.1-S0–S4**, with S0–S3 done and S4 (HTML) not started | Every v1.1 PR. This is the v1.1 code-review map |
+| [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) | **v1.1-S0–S4**, all done | Every v1.1 PR. This is the v1.1 code-review map |
+| [`12-V12-SCOPE.md`](12-V12-SCOPE.md) | **v1.2 adoption**: what it is, what it is not, and the handle law | Before any adapter |
+| [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) | **v1.2-S0–S5**, with S0/S1 done and S2–S5 not started | Every v1.2 PR. This is the v1.2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |

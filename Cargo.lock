@@ -324,7 +324,7 @@ dependencies = [
 
 [[package]]
 name = "engine-cli"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "clap",
  "engine-core",
@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "engine-core"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "proptest",
  "serde",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "engine-grounding"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "engine-core",
  "serde",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "engine-pdf"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "engine-core",
  "lopdf",

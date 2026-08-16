@@ -136,7 +136,7 @@ says how much*.
 two products: HTML is a second artifact owing the same four laws, and a hyphenation join is a few
 lines in `to_markdown`. Doing both under one label would have made "S3 is done" unreadable.
 
-v1.1 is complete. v1.2 starts when the owner asks. Not before.
+v1.1 is complete. **v1.2 has started** — see [`12-V12-SCOPE.md`](12-V12-SCOPE.md).
 
 ## 7. Identity
 

@@ -7,7 +7,89 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.1-S4, HTML under the same four laws, as 0.14.1
+## [Unreleased] — v1.2-S0/S1, adoption begins with MCP over stdio, as 0.15.0
+
+**v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
+already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
+and no new dependency. **v1 is still not done** — the S7 gate is measured and missed at 64‰ — and
+nothing here closes it. **v1.1 stays complete** and untouched. Not tagged.
+
+### S0 — the law, written before the host that could break it
+
+`docs/12-V12-SCOPE.md` and `docs/13-V12-MILESTONES.md`, on the pattern `10`/`11` set for v1.1.
+S2–S5 — Python SDK, Node SDK, LangChain tool, optional liteparse adapter — are named and **not
+started**.
+
+The scope document exists mostly to hold one paragraph. The parser memo §16.7 puts MCP first
+without hesitation, and then says why it could be the worst choice instead of the best:
+
+> MCP tools are model-controlled — the model chooses the arguments. If any tool accepts a locator
+> as a free-text argument that the engine then trusts, the model has become the citation authority
+> in a single step.
+
+A model that types `{"page": 3, "bbox": [10, 10, 90, 40]}` into a tool this engine believes has
+*become* the thing the repository exists to prevent, and the output looks exactly like a citation
+because it is shaped like one. §16.7's mitigation is structural rather than advisory — **the engine
+mints every locator, returns it as an opaque handle, and re-validates it on the way back in** — and
+`12-V12-SCOPE.md` §3 turns that into three obligations plus a corollary that can be tested:
+**no tool argument may name document geometry.**
+
+**A forged handle fails closed** — an error, never an empty result. An empty result tells a model
+its guess was merely unlucky; an error tells it the guess was not admissible.
+
+### S1 — the adapter, and where each half of it lives
+
+| tool | argument | returns |
+| --- | --- | --- |
+| `extract` | `path` | `DocumentRepresentation v0`, byte-identical to `engine extract` |
+| `ground` | `representation` | `ethos.grounding.v1` |
+| `node_get` | `representation`, `node_id` | the node record from **that** artifact |
+
+`node_get` is the version gate in its smallest form. The representation comes back inline or as a
+path, is `verify_fingerprint()`-checked before anything reads it — so a model that edited the JSON
+on the way through is refused rather than answered — and the id is looked up among that artifact's
+own nodes. An id nothing minted is a tool error naming what was refused.
+
+**`markdown`, `html` and `verify` are deliberately absent.** The first two would be a few lines
+each and neither proves anything this slice claims; a tool that exists because it was cheap is a
+surface to keep honest forever. `verify` relays the pinned Ethos CLI, and wrapping a relay in a
+second protocol is a second place for a verdict to be re-derived — which is exactly what
+`07-VERIFY-BOUNDARY.md` must not bend for a host's convenience.
+
+**Locators live in `structuredContent`; `content` carries counts.** That split is §16.7's, and it
+is the difference between a locator a pipeline binds and a locator a model edits. A test asserts no
+coordinate reaches the model-facing string.
+
+### No framework, and no widening of the ban
+
+`deny.toml` bans `tokio`, `hyper`, `reqwest`, `ureq`, `rustls` and the rest of the reachable
+network surface. The MCP crates available pull an async runtime, which would spend that ban to save
+a few dozen lines of `match`, so this is a loop over stdin with the `serde_json` the workspace
+already had. `Cargo.lock` gains nothing; `cargo deny check` is the standing proof.
+
+stdio is a pipe rather than a socket, and newline-delimited JSON-RPC is MCP's own stdio transport
+rather than a dialect invented here.
+
+### Identity
+
+Workspace **0.15.0**, profile hash
+`sha256:c5f06d323e5fe0028e779edd622e9c6a35aa7f3eae73c02188c35bb6be286c64`. **Nothing but the
+version moved** — the second time that has happened, after v1-S7b (0.9.0). No field, no rule id, no
+capability: a transport is not a parse capability, and `capabilities.mcp` would put a flag on every
+artifact that no consumer could act on. Two artifacts either side of this hash say exactly the same
+thing about the same document, and the hash moves because `parser_version` is in it.
+
+### Unchanged
+
+Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
+representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
+`irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. Four crates, no new
+dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No Python, no npm, no LangChain, no
+liteparse, no tag. v1.2-S2 has not started.
+
+---
+
+## v1.1-S4, HTML under the same four laws, as 0.14.1
 
 **A second projection, and it is not the first one with angle brackets.** `ethos.html.v1` carries
 an HTML string, the same **Anchor Map** that inverts every source byte of it back to representation
@@ -99,7 +181,7 @@ likely to lift. Embedding a fragment is one concatenation; unwrapping a document
 ### Identity
 
 `html-blocks-v2`, `capabilities.html`, workspace **0.14.1**, profile hash
-`sha256:a3e398e44613f67bf92df9becf3daac411b29f204c98efc95aa9adfbebef27e4`. Two fields arrived, so
+`sha256:c5f06d323e5fe0028e779edd622e9c6a35aa7f3eae73c02188c35bb6be286c64`. Two fields arrived, so
 the hash moves for a reason a reader can name. A profile JSON with no `html_rule` is **refused**,
 not defaulted — the posture `markdown_rule` and `table_detection.stroke_ruled` each took.
 

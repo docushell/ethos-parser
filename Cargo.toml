@@ -31,7 +31,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, and its repair as 0.14.1.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, and v1.2-S0/S1 as 0.15.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -79,10 +79,18 @@ exclude = ["fuzz"]
 # producing different bytes under one id is precisely the state a rule id exists to make
 # impossible. A patch bump, on the precedent of the S6 repair slices (0.8.1, 0.8.2).
 #
+# **0.15.0 starts v1.2 — ADOPTION — and adds no parse feature at all.** `engine mcp` serves the
+# existing stages over MCP on stdio: newline-delimited JSON-RPC over a pipe, no HTTP, no socket, no
+# async runtime, so `deny.toml`'s network bans stay in force and `Cargo.lock` gains nothing. No
+# profile FIELD moves: a transport is not a parse capability, and `capabilities.mcp` would put a
+# flag on every artifact that no consumer can act on. The profile hash moves on `parser_version`
+# ALONE — the same shape v1-S7b (0.9.0) had, where nothing else moved and the hash moved anyway,
+# because a version claiming otherwise is the one lie that field cannot afford.
+#
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.14.1"
+version = "0.15.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -103,9 +111,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.14.1" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.14.1" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.14.1" }
+engine-core = { path = "crates/engine-core", version = "0.15.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.15.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.15.0" }
 
 [profile.release]
 strip = "symbols"

@@ -15,13 +15,14 @@ as 0.10.0 with S1–S7b and S8 done and S7 open.** Its gate — table-cell accur
 measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor, by the method in
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
 
-**v1.1 is Safe Markdown, and it is complete: the workspace is at 0.14.1** with S0–S4 done. It
-began because the owner asked for the next roadmap row, not because the gate cleared.
+**v1.1 is Safe Markdown and it is complete** (S0–S4). **v1.2 is adoption, and it has started: the
+workspace is at 0.15.0** with S0 and S1 done — the scope document and the first adapter, MCP over
+stdio. Each began because the owner asked for the next roadmap row, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
 
-Eight subcommands, one library, one document load:
+Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
@@ -32,6 +33,7 @@ engine html            representation.json               # ethos.html.v1        
 engine grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
 engine verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
 engine overlay         document.pdf                      # an annotated PDF          · 0 / 2
+engine mcp                                               # MCP over stdio            · 0 / 2
 ```
 
 **`markdown` never emits Markdown alone.** `ethos.markdown.v1` carries the string *and* the
@@ -50,6 +52,21 @@ built. What earns it a subcommand rather than a stylesheet is tables: GFM has no
 `markdown` must expand a merged cell and count the slots that costs, while this emits one
 `<td colspan="2">` and carries the merge the document drew. Same four laws, same census — the two
 artifacts of one document are asserted to agree character for character.
+
+**`engine mcp` serves the engine to an agent, and it will not take a locator from one.** MCP over
+**stdio** — newline-delimited JSON-RPC on a pipe, so no HTTP, no socket, no TLS and no async
+runtime; the network bans in `deny.toml` stay in force. Three tools: `extract`, `ground`, and
+`node_get`.
+
+The hazard is that MCP tools are **model-controlled** — the model chooses the arguments — so a tool
+that accepted a `page` or a `bbox` the engine then trusted would make the model the citation
+authority in one step, and the result would look exactly like a citation. The mitigation is
+structural rather than a prompt: **the engine mints every locator inside an artifact, hands it back
+as an opaque handle, and re-validates it on the way in.** `node_get` takes a node id copied from a
+representation, checks that representation's fingerprint, and looks the id up among *that*
+artifact's nodes; an id the engine did not mint is an **error**, never a nearest match and never an
+empty result. No tool argument anywhere names a coordinate, and a test reads the advertised schemas
+to keep it that way. Locators travel in `structuredContent`; the text the model reads is counts.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds

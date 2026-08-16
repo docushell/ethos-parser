@@ -1078,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.14.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.15.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1194,11 +1194,19 @@ mod tests {
              grid, and a list whose tree skipped a depth came out unbalanced. Nothing was ever \
              published under it, so no consumer holds such an artifact; the id and the version \
              move anyway, because two builds in this repository's own history producing \
-             different bytes under one id is the state a rule id exists to make impossible."
+             different bytes under one id is the state a rule id exists to make impossible.\n\n\
+             Moved a NINETEENTH time at v1.2-S1 (0.15.0), and NOTHING but the version moved — the \
+             second time that has happened, after v1-S7b. v1.2 is adoption: `engine mcp` serves \
+             the existing stages over MCP on stdio and adds no parse feature, so no field, no \
+             rule id and no capability changed. A transport is not a parse capability, and \
+             `capabilities.mcp` would put a flag on every artifact that no consumer could act on. \
+             Two artifacts either side of this hash say exactly the same thing about the same \
+             document; the hash moves because `parser_version` is in it, and a version claiming \
+             otherwise is the one lie this field cannot afford."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a3e398e44613f67bf92df9becf3daac411b29f204c98efc95aa9adfbebef27e4"
+            "sha256:c5f06d323e5fe0028e779edd622e9c6a35aa7f3eae73c02188c35bb6be286c64"
         );
     }
 

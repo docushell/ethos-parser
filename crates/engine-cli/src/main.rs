@@ -28,6 +28,8 @@
 
 #![forbid(unsafe_code)]
 
+mod mcp;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -117,6 +119,26 @@ enum Command {
     /// Exit codes: **0** projected · **2** could not read, or the representation does not hash to
     /// its declared digest.
     Html(HtmlArgs),
+
+    /// Serve the engine over MCP on stdin/stdout (v1.2-S1).
+    ///
+    /// **stdio, newline-delimited JSON-RPC** — MCP's own stdio transport, so it is a pipe rather
+    /// than a socket: no HTTP, no SSE, no TLS, no async runtime, and `deny.toml`'s network bans
+    /// stay in force.
+    ///
+    /// Three tools — `extract`, `ground`, `node_get` — each calling the same library entry point
+    /// the matching subcommand calls, so an artifact returned here is the artifact this CLI
+    /// prints, byte for byte.
+    ///
+    /// **No tool accepts a locator.** The memo's §16.7 hazard is that MCP tools are
+    /// model-controlled, so a tool taking a `page` or a `bbox` the engine then trusts makes the
+    /// model the citation authority in one step. Every locator is minted by the engine inside an
+    /// artifact, travels back as an opaque handle, and is re-validated against that artifact on
+    /// the way in — a handle this engine did not mint is an error, never a best guess. See
+    /// `docs/12-V12-SCOPE.md` §3.
+    ///
+    /// Exit codes: **0** the stream closed cleanly · **2** stdin or stdout failed.
+    Mcp,
 
     /// Draw what was detected onto a copy of the document (v1-S6).
     ///
@@ -281,6 +303,9 @@ fn main() -> ExitCode {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_html(args))
         }
+        // Not `timed`: a server has no one input path and no one stage, and inventing a
+        // diagnostics row for the whole session would put a duration on a pipe.
+        Command::Mcp => run_mcp(),
         Command::Ground(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_ground(args))
@@ -473,6 +498,21 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
             ExitCode::from(PROJECTED as u8)
         }
         Err(e) => fail(&e),
+    }
+}
+
+/// Serve MCP over stdin/stdout until the stream closes.
+///
+/// Thin, like every other subcommand: the protocol plumbing is `mcp.rs` and every tool in it calls
+/// the same library entry point the matching subcommand calls (`docs/04-ARCHITECTURE.md` §1).
+fn run_mcp() -> ExitCode {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    match mcp::serve(stdin.lock(), stdout.lock()) {
+        Ok(()) => ExitCode::from(PROJECTED as u8),
+        Err(e) => fail(&EngineError::Io {
+            detail: format!("mcp stdio: {e}"),
+        }),
     }
 }
 
