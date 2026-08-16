@@ -1205,10 +1205,13 @@ pub fn to_markdown(
 /// that holds 13, and the two missing ones would be invisible. The denominator is the RAW text of
 /// every node, and the difference gets its own named class.
 ///
-/// `erasures` is empty for HTML. That is not an oversight: the `gfm-*` codes name things *GFM*
-/// cannot say, and HTML says most of them — `<td rowspan>` carries the merge GFM had to flatten.
-/// Copying the codes onto an artifact that does not commit the erasure would be a disclosure that
-/// discloses nothing, which is the failure mode A14 is about.
+/// `erasures` is **not** the same set on both artifacts, and the caller decides which it passes.
+/// The test is whether that projection commits the erasure: HTML drops `gfm-row-zero-separator-v1`
+/// (it asserts no header) and recomputes `gfm-span-slots-unrepresentable-v1` from what its grid
+/// could not hold, while keeping every code that describes a fault in the **record** rather than a
+/// limit of GFM. See `crate::html`'s module documentation for the table. Copying a code onto an
+/// artifact that does not commit the erasure would disclose nothing; dropping one it does commit
+/// would be worse.
 pub(crate) fn census(
     payload: &crate::representation::RepresentationPayload,
     in_representation: usize,
@@ -1216,9 +1219,19 @@ pub(crate) fn census(
     mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)>,
     erasures: std::collections::BTreeMap<&'static str, usize>,
 ) -> Coverage {
-    let collapsed: usize = in_representation
-        - emitted_chars
-        - buckets.values().map(|(chars, _)| *chars).sum::<usize>();
+    // **Saturating, not wrapping, and the difference matters.** This is a residue: whatever the
+    // representation offered that neither reached a `source` segment nor landed in a named bucket.
+    // A plain `usize` subtraction underflows if the two projections ever double-count a character
+    // — panicking in debug, and in release producing a bucket of 18 446 744 073 709 551 578 that
+    // `Coverage::balances()` accepts, because both sides wrap by the same amount. That is the one
+    // failure mode law 4 cannot afford: a census that is wrong AND self-consistent.
+    //
+    // Reachable today only from a hand-authored record — a table cell may name any declared node,
+    // including an annotation, and such a node is charged to its dropped bucket AND emitted inside
+    // the table. `engine extract` never writes one, but `engine markdown` and `engine html` accept
+    // any correctly-fingerprinted representation, so the arithmetic fails closed instead.
+    let accounted = emitted_chars + buckets.values().map(|(chars, _)| *chars).sum::<usize>();
+    let collapsed: usize = in_representation.saturating_sub(accounted);
     if collapsed > 0 {
         let nodes = payload
             .nodes
@@ -1279,6 +1292,13 @@ pub(crate) struct TablePlan<'a> {
     /// `<td rowspan>` carries the merge — the origin cell has to know its own span, and the slots
     /// it covers must produce no `<td>` at all rather than an empty one.
     pub(crate) roles: Vec<SlotRole>,
+    /// Slots a declared merge asked for and this grid could not give it (v1.1-S4).
+    ///
+    /// Zero on every well-formed table. Non-zero when a span ran off the grid edge or collided
+    /// with another cell's origin — see the resolution pass in [`plan_tables`]. A projection that
+    /// carries merges declares this as [`GFM_SPAN_SLOTS_UNREPRESENTABLE`], because a merge the
+    /// record asked for and the output does not show is exactly what that code counts.
+    pub(crate) spans_clamped: usize,
     pub(crate) rows: usize,
     pub(crate) columns: usize,
 }
@@ -1322,6 +1342,7 @@ pub(crate) fn plan_tables<'a>(
                 projected: false,
                 slots: Vec::new(),
                 roles: Vec::new(),
+                spans_clamped: 0,
                 rows,
                 columns,
             });
@@ -1331,6 +1352,9 @@ pub(crate) fn plan_tables<'a>(
         let mut slots: Vec<Vec<&crate::Node>> = vec![Vec::new(); rows * columns];
         let mut placed = vec![false; rows * columns];
         let mut roles = vec![SlotRole::Empty; rows * columns];
+        // Origins with the span they DECLARED, resolved after every cell is placed — a span
+        // cannot be clamped against origins that have not been seen yet.
+        let mut declared: Vec<(usize, usize, usize, usize, usize)> = Vec::new();
 
         for cell in &table.cells {
             let (r, c) = (cell.position.row as usize, cell.position.column as usize);
@@ -1357,21 +1381,10 @@ pub(crate) fn plan_tables<'a>(
                 *erasures.entry(GFM_SPAN_SLOTS_UNREPRESENTABLE).or_insert(0) += covered - 1;
             }
 
-            // The span, recorded for the projection that can express it. **`placed` is left
-            // alone deliberately**: marking covered slots there would change which later cells
-            // count as `gfm-cell-not-placed-v1`, and S2's numbers are not this slice's to move.
-            roles[index] = SlotRole::Origin { rowspan, colspan };
-            for dr in 0..rowspan {
-                for dc in 0..colspan {
-                    if dr == 0 && dc == 0 {
-                        continue;
-                    }
-                    let (rr, cc) = (r + dr, c + dc);
-                    if rr < rows && cc < columns && roles[rr * columns + cc] == SlotRole::Empty {
-                        roles[rr * columns + cc] = SlotRole::Covered;
-                    }
-                }
-            }
+            // The declared span, kept for a second pass. **`placed` is left alone deliberately**:
+            // marking covered slots there would change which later cells count as
+            // `gfm-cell-not-placed-v1`, and S2's numbers are not this slice's to move.
+            declared.push((index, r, c, rowspan, colspan));
 
             for id in &cell.node_ids {
                 // A cell naming a node this record does not carry is refused at seal time
@@ -1388,6 +1401,56 @@ pub(crate) fn plan_tables<'a>(
             }
         }
 
+        // **Resolve the spans, now that every origin is known.**
+        //
+        // A declared span is clamped to the slots it can actually reach: it stops at the grid
+        // edge, and it stops at a slot another cell originates in. Both matter, and the second one
+        // is not hypothetical — `fixtures/engine/ruled-table-overlap` declares a 2x2 whose row 1
+        // holds BOTH a `colspan: 2` cell at (1,0) and an ordinary cell at (1,1). Without the
+        // clamp the covered slot is promoted back to an origin by the later cell and the row emits
+        // three cells wide in a two-column table.
+        //
+        // GFM never had to care: it expands every merge, so a covered slot and an empty one come
+        // out identically and the arithmetic is the same either way. A projection that USES the
+        // span has to resolve the collision, and the clamp is the only answer that neither drops a
+        // cell nor widens the row. What the clamp costs is a merge the record asked for and this
+        // grid cannot hold — which is what `GFM_SPAN_SLOTS_UNREPRESENTABLE` already means, so
+        // `TablePlan::spans_clamped` carries it to whichever projection wants to declare it.
+        let mut spans_clamped = 0usize;
+        for &(index, r, c, rowspan, colspan) in &declared {
+            // Clamped to the grid first, so a cell declaring `rowspan: 4_000_000_000` costs a
+            // bounded walk rather than one proportional to a number the document chose.
+            let max_rows = rows - r;
+            let max_columns = columns - c;
+            let mut fit_rows = rowspan.min(max_rows);
+            let mut fit_columns = colspan.min(max_columns);
+
+            // Then shrunk until it collides with no other origin.
+            while fit_columns > 1
+                && (0..fit_rows).any(|dr| placed[(r + dr) * columns + c + fit_columns - 1])
+            {
+                fit_columns -= 1;
+            }
+            while fit_rows > 1
+                && (0..fit_columns).any(|dc| placed[(r + fit_rows - 1) * columns + c + dc])
+            {
+                fit_rows -= 1;
+            }
+
+            spans_clamped += rowspan.saturating_mul(colspan) - fit_rows * fit_columns;
+            roles[index] = SlotRole::Origin {
+                rowspan: fit_rows,
+                colspan: fit_columns,
+            };
+            for dr in 0..fit_rows {
+                for dc in 0..fit_columns {
+                    if dr != 0 || dc != 0 {
+                        roles[(r + dr) * columns + c + dc] = SlotRole::Covered;
+                    }
+                }
+            }
+        }
+
         // GFM's delimiter row makes row 0 a header on every renderer there is, and nothing in the
         // representation says the document declared one. Once per table — see the constant.
         *erasures.entry(GFM_ROW_ZERO_SEPARATOR).or_insert(0) += 1;
@@ -1396,6 +1459,7 @@ pub(crate) fn plan_tables<'a>(
             projected: true,
             slots,
             roles,
+            spans_clamped,
             rows,
             columns,
         });

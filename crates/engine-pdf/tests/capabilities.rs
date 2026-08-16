@@ -220,8 +220,10 @@ fn proof_table() -> Vec<Proof> {
             claimed: html,
             // v1.1-S4, and the proof is the same shape as `markdown`'s for the same reason: an
             // HTML serializer is easy, and an HTML serializer whose bytes invert back to evidence
-            // is the claim. The golden this names also pins the half that only HTML can show —
-            // a merged cell carried as `<td colspan>` rather than flattened.
+            // is the claim. This golden runs on `markdown-two-blocks`, which has no table — the
+            // merge that only HTML can carry is pinned separately, by
+            // `the_two_projections_disagree_about_the_merge_and_say_so`, because that needs a
+            // fixture with a merged cell and this one needs measured ink on two runs.
             proof_test: Some("an_html_quote_verifies_end_to_end"),
             why_not: None,
         },

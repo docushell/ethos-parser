@@ -499,16 +499,27 @@ and the covered slot emits nothing:
 | on `markdown-table-cells` | `ethos.markdown.v1` | `ethos.html.v1` |
 | --- | --- | --- |
 | the merged cell | expanded, text in the origin, covered slot empty | `<td colspan="2">merged span</td>` |
-| `gfm-span-slots-unrepresentable-v1` | **1** | **0** |
+| `gfm-span-slots-unrepresentable-v1` | **1** | **0** — the grid held the merge |
 | `gfm-row-zero-separator-v1` | **1** — the delimiter row asserts a header | **0** — every cell is a `<td>` |
+
+**The two dropped codes are dropped because HTML does not commit them — not because they are
+named `gfm-*`.** Three of the six describe faults in the *record* rather than limits of GFM
+(`gfm-cell-not-placed-v1`, `gfm-cell-run-claimed-twice-v1`, `gfm-table-not-projected-v1`), and HTML
+meets those identically, so it keeps them. `gfm-span-slots-unrepresentable-v1` is **recomputed**
+rather than dropped: a merge costs HTML nothing *unless the grid cannot hold it*. On
+`ruled-table-overlap`, whose row 1 declares both a `colspan: 2` cell and an ordinary cell in the
+next slot, the span is clamped so the row stays two cells wide — and the merge that was lost is
+declared, count 1. Only `gfm-row-zero-separator-v1` is unconditionally absent, because HTML asserts
+no header.
 
 **No `<th>` appears anywhere in the projection.** Neither detector reads `/TH` and the
 representation carries no header declaration, so a header row would be this exporter deciding what
 the document meant. GFM had no such choice, which is why S2 owed a code for it and S4 does not.
 
-### The one erasure HTML still declares
+### The erasures HTML still declares
 
-`gfm-list-item-run-joins-v1`, and it is on **both** artifacts. Two sibling `/LI`s have identical
+Four of the six, and `gfm-list-item-run-joins-v1` is the clearest of them — it is on **both**
+artifacts. Two sibling `/LI`s have identical
 role paths, so nothing in the representation distinguishes "the rest of this item" from "the next
 item" — every projection has to guess, and HTML guesses the same way Markdown does, because two
 artifacts of one document that disagreed about how many items it has would both be wrong to cite.
@@ -521,13 +532,17 @@ id that stayed put while its output changed is the one dishonesty a version id e
 ### What is reused rather than rewritten
 
 Everything that decides *what* to emit: `normalize`, `heading_level`, `list_role`, `dropped_code`,
-`hyphen_tail` and `plan_tables`. `html.rs` decides only how the result is spelled, and the census
-is closed by one shared `census` function so the two artifacts **cannot** disagree about what a
-document contains — asserted on every fixture in the sweep, not just described.
+`hyphen_tail` and `plan_tables`. The census is closed by one shared `census` function, so the two
+artifacts **cannot** disagree about how many characters a document contains or which are dropped
+and why — asserted on every fixture in the sweep, not just described. Their `structural_erasures`
+do differ, and that difference is the point.
 
-The one structural difference is lists: a Markdown item is a line and needs no state, an HTML one
-is a `<li>` inside a `<ul>` that must be opened, nested inside its parent's open `<li>`, and
-closed. That is why this is a second walk rather than a vocabulary handed to the first.
+**Two things are more than spelling, and both follow from using the span instead of expanding it.**
+Lists: a Markdown item is a line and needs no state, an HTML one is a `<li>` inside a `<ul>` that
+must be opened, nested inside its parent's open `<li>`, and closed — tracked per level, because a
+tree that skips a depth otherwise closes an item that was never opened. And spans: a merge that
+collides with another cell's origin has to be clamped, because GFM expands every merge and so never
+had to resolve the collision at all.
 
 ### Entities, and why the whole one is `source`
 

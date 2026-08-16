@@ -30,23 +30,30 @@
 //! `<td>`** and there is no `<th>` in this file at all. Neither detector reads `/TH`, so a `<th>`
 //! here would be this exporter deciding what the document meant.
 //!
-//! # Which erasures this artifact still declares, and why exactly one
+//! # Which erasures this artifact declares, and which two it does not
 //!
-//! **Every `gfm-*` code about a TABLE is absent**, because this projection does not commit those
-//! erasures. Copying them over for symmetry would be a disclosure that discloses nothing, which is
-//! the failure A14 names.
+//! The test is not "is the code named `gfm-*`" — it is **does this projection commit that
+//! erasure**. Only two of the six are GFM's alone:
 //!
-//! **[`crate::markdown::GFM_LIST_ITEM_RUN_JOINS`] is present**, because this projection commits
-//! that one identically. Two sibling `/LI`s have identical role paths, so *nothing in the
-//! representation* distinguishes "the rest of this item" from "the next item" — every projection
-//! has to guess, and this one guesses the same way the Markdown one does, because two artifacts of
-//! one document that disagreed about how many list items it has would both be wrong to cite.
+//! | code | here | why |
+//! | --- | --- | --- |
+//! | `gfm-row-zero-separator-v1` | **dropped** | GFM's delimiter row asserts a header on every renderer; HTML emits only `<td>` and asserts none |
+//! | `gfm-span-slots-unrepresentable-v1` | **recomputed** | GFM pays a slot for every merge; `<td rowspan>` pays nothing — unless the grid could not hold the span, and then it is counted |
+//! | `gfm-cell-not-placed-v1` | **kept** | a cell outside the declared grid has nowhere to print in either projection |
+//! | `gfm-cell-run-claimed-twice-v1` | **kept** | a run two cells claim is kept by the first in both, or one node's characters would be counted twice |
+//! | `gfm-table-not-projected-v1` | **kept** | a table with zero rows or columns has no grid to draw in either |
+//! | `gfm-list-item-run-joins-v1` | **kept** | two sibling `/LI`s have identical role paths, so nothing in the representation separates "the rest of this item" from "the next item", and both projections must guess |
 //!
-//! Its `gfm-` prefix is therefore **historical rather than descriptive**: the erasure belongs to
-//! the tagged tree, not to GFM, and it carries the name of the slice that first met it. Renaming
-//! it would change what `ethos.markdown.v1` says under a `markdown_rule` this slice deliberately
-//! does not move, and a rule id that stayed put while its output changed is the one dishonesty a
-//! version id exists to prevent.
+//! The three kept table codes describe faults in the **record**, not limits of GFM, so dropping
+//! them here would be an artifact quietly committing an erasure its sibling discloses. The list
+//! join is the same: HTML guesses the way Markdown does, because two artifacts of one document
+//! that disagreed about how many list items it has would both be wrong to cite.
+//!
+//! The `gfm-` prefix on all six is therefore **historical rather than descriptive** — the codes
+//! carry the name of the slice that first met them. Renaming them would change what
+//! `ethos.markdown.v1` says under a `markdown_rule` this slice deliberately does not move, and a
+//! rule id that stayed put while its output changed is the one dishonesty a version id exists to
+//! prevent.
 //!
 //! # The four laws are the same four laws
 //!
@@ -56,14 +63,21 @@
 //! 3. **Two segment kinds.** Every tag, attribute, and newline this file writes is `syntax`. Only
 //!    node text is `source`.
 //! 4. **Coverage is a census.** The same [`crate::markdown::census`] closes it, so the two
-//!    artifacts cannot disagree about what a document contains.
+//!    artifacts cannot disagree about how many CHARACTERS a document contains, nor about which
+//!    are dropped and why. Their `structural_erasures` do differ, and that difference is the
+//!    point — see the table below.
 //!
 //! # What is reused rather than rewritten
 //!
 //! Everything that decides *what* to emit: [`crate::markdown::normalize`], `heading_level`,
-//! `list_role`, `dropped_code`, `hyphen_tail` and `plan_tables`. This file decides only how the
-//! result is spelled. A second copy of the hyphen predicate would be a second rule that could
-//! drift from the first, and only one of them would have the corpus test that found `nonescr`.
+//! `list_role`, `dropped_code`, `hyphen_tail` and `plan_tables`. A second copy of the hyphen
+//! predicate would be a second rule that could drift from the first, and only one of them would
+//! have the corpus test that found `nonescr`.
+//!
+//! **Two things here are more than spelling, and both are consequences of using the span rather
+//! than expanding it.** [`ListState`] carries nesting state a Markdown line never needs, and the
+//! span-resolution pass in [`plan_tables`] has to clamp a merge that collides with another
+//! origin — GFM expands every merge, so it never had to resolve the collision at all.
 //!
 //! # A fragment, deliberately
 //!
@@ -77,7 +91,8 @@ use serde::{Deserialize, Serialize};
 use crate::c14n::c14n_bytes;
 use crate::markdown::{
     census, dropped_code, heading_level, hyphen_tail, list_role, normalize, plan_tables, AnchorMap,
-    Coverage, Emit, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS, HYPHENATION_REJOIN_DROPPED,
+    Coverage, Emit, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS, GFM_ROW_ZERO_SEPARATOR,
+    GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
 };
 use crate::{sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, Sha256Hex};
 
@@ -209,23 +224,53 @@ fn escaped_source(e: &mut Emit, text: &str, node: &str) {
 /// and it is why this file has a walk of its own rather than a vocabulary passed to the other one.
 #[derive(Default)]
 struct ListState {
-    /// How many `<ul>` are open.
-    open: usize,
-    /// Whether the innermost open list has an unclosed `<li>`.
-    item_open: bool,
+    /// One entry per open `<ul>`, innermost last: whether **that level** has an unclosed `<li>`.
+    ///
+    /// # A vector rather than a count and a flag
+    ///
+    /// The first version of this tracked `open: usize` and one `item_open: bool`, and assumed that
+    /// closing an inner `<ul>` always lands back inside a parent `<li>`. That is false whenever a
+    /// level was opened without an item under it, which happens as soon as the tree skips a depth
+    /// — a run at `Document/L/L/LI/LBody` is depth 1 with no depth-0 item before it, and the tagged
+    /// tree is free to say that. The result was `</li>` emitted for a level that never opened one:
+    /// unbalanced HTML, from a representation the engine accepts.
+    ///
+    /// Per level, the question has an answer that is always right.
+    levels: Vec<bool>,
 }
 
 impl ListState {
-    /// Close nested lists until `open == down_to`, emitting the tags that requires.
+    /// Close nested lists until `levels.len() == down_to`, emitting the tags that requires.
     fn close_to(&mut self, e: &mut Emit, down_to: usize) {
-        while self.open > down_to {
-            if self.item_open {
+        while self.levels.len() > down_to {
+            if self.levels.pop() == Some(true) {
                 e.syntax("</li>\n");
             }
             e.syntax("</ul>\n");
-            self.open -= 1;
-            // A closed inner list leaves us inside the parent's `<li>`, which is still open.
-            self.item_open = self.open > 0;
+        }
+    }
+
+    /// Open the `<ul>`s needed to reach `depth`, then start an `<li>` in the innermost one.
+    ///
+    /// **A skipped depth opens a bare `<ul>` inside a `<ul>`.** That is not valid HTML5 — a `<ul>`
+    /// may only contain `<li>` — and it is still the right answer here, because the alternative is
+    /// to invent an `<li>` the document never declared so the output validates. This projection
+    /// does not synthesize structure to look tidy; it does not synthesize a header row either. The
+    /// output is balanced, every byte is `syntax`, and the nesting is exactly what the tree said.
+    fn open_item(&mut self, e: &mut Emit, depth: usize) {
+        self.close_to(e, depth + 1);
+        while self.levels.len() < depth + 1 {
+            // Opened INSIDE the parent's still-open `<li>` when there is one, which is what
+            // nesting means.
+            e.syntax("<ul>\n");
+            self.levels.push(false);
+        }
+        if self.levels.last() == Some(&true) {
+            e.syntax("</li>\n");
+        }
+        e.syntax("<li>");
+        if let Some(last) = self.levels.last_mut() {
+            *last = true;
         }
     }
 }
@@ -263,15 +308,22 @@ pub fn to_html(
     let mut e = Emit::new();
     let mut buckets: std::collections::BTreeMap<&'static str, (usize, usize)> =
         std::collections::BTreeMap::new();
-    // The TABLE erasure counts `plan_tables` computes are **discarded**: every one of them names
-    // something GFM cannot say, and this projection says it. See this module's header.
+    // **Only the two erasures GFM alone commits are dropped.** See this module's header: the other
+    // table codes describe faults in the RECORD, which this projection meets identically.
     let mut erasures: std::collections::BTreeMap<&'static str, usize> =
-        std::collections::BTreeMap::new();
-    let mut table_erasures: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
     let mut in_representation = 0usize;
 
-    let plans = plan_tables(payload, &mut table_erasures);
+    let plans = plan_tables(payload, &mut erasures);
+    // Every merge costs GFM a slot; here a merge costs nothing unless the grid could not hold it,
+    // so the blanket count is replaced by what was actually clamped away.
+    erasures.remove(GFM_SPAN_SLOTS_UNREPRESENTABLE);
+    // HTML has no delimiter row, so it asserts no header and owes no count for one.
+    erasures.remove(GFM_ROW_ZERO_SEPARATOR);
+    let clamped: usize = plans.iter().map(|p| p.spans_clamped).sum();
+    if clamped > 0 {
+        *erasures.entry(GFM_SPAN_SLOTS_UNREPRESENTABLE).or_insert(0) += clamped;
+    }
     let mut owner: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for (t, plan) in plans.iter().enumerate() {
         for slot in &plan.slots {
@@ -335,18 +387,7 @@ pub fn to_html(
                 }
                 e.syntax(" ");
             } else {
-                list.close_to(&mut e, role.depth + 1);
-                while list.open < role.depth + 1 {
-                    // Opened INSIDE the parent's still-open `<li>`, which is what nesting means.
-                    e.syntax("<ul>\n");
-                    list.open += 1;
-                    list.item_open = false;
-                }
-                if list.item_open {
-                    e.syntax("</li>\n");
-                }
-                e.syntax("<li>");
-                list.item_open = true;
+                list.open_item(&mut e, role.depth);
             }
             escaped_source(&mut e, &text, node.id.as_str());
             open_item = Some((role.depth, role.label));
@@ -400,8 +441,8 @@ pub fn to_html(
     let anchor_map = AnchorMap::new(e.segments, &e.markdown)?;
     let html = e.markdown;
 
-    // The table erasures are gone and the list-item one is not. See the module header: this
-    // artifact declares the erasures it actually commits, and no others.
+    // See the module header: this artifact declares the erasures it actually commits, and no
+    // others.
     let coverage = census(payload, in_representation, emitted_chars, buckets, erasures);
 
     let artifact = HtmlArtifact {
@@ -680,6 +721,68 @@ mod tests {
         assert_tiles(&a);
     }
 
+    /// **Every row is exactly as wide as the table declares**, whatever the record asked for.
+    ///
+    /// Found by review, on a shipped fixture. `fixtures/engine/ruled-table-overlap` declares a 2x2
+    /// whose row 1 holds BOTH a `colspan: 2` cell at (1,0) and an ordinary cell at (1,1). Before
+    /// the span-resolution pass, the later cell promoted the covered slot back to an origin and
+    /// the row emitted three cells wide in a two-column table.
+    ///
+    /// GFM never had to care — it expands every merge, so the arithmetic is the same either way.
+    /// A projection that USES the span has to resolve the collision, and clamping is the only
+    /// answer that neither drops a cell nor widens the row.
+    #[test]
+    fn a_span_colliding_with_another_origin_is_clamped_rather_than_widening_the_row() {
+        let a = artifact_of(repr_with_table(
+            &["A", "B", "C", ""],
+            2,
+            2,
+            &[
+                cell(0, 0, &[0]),
+                cell(0, 1, &[1]),
+                spanning(1, 0, 1, 2, &[2]),
+                cell(1, 1, &[3]),
+            ],
+        ));
+        assert_eq!(
+            a.html,
+            "<table>\n<tr>\n<td>A</td>\n<td>B</td>\n</tr>\n\
+             <tr>\n<td>C</td>\n<td></td>\n</tr>\n</table>\n",
+            "row 1 is two cells wide, and the colspan the record asked for is gone"
+        );
+        assert_tiles(&a);
+        assert_eq!(
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == "gfm-span-slots-unrepresentable-v1")
+                .map(|e| e.count),
+            Some(1),
+            "and the merge that could not be held is DECLARED, not silently dropped: {:?}",
+            a.coverage.structural_erasures
+        );
+    }
+
+    /// A span running off the grid edge is clamped too, and costs a bounded walk.
+    ///
+    /// `rowspan` is a `u32` on the wire. Filling the covered slots by iterating the DECLARED span
+    /// rather than the part that intersects the grid made a four-byte number into minutes of CPU,
+    /// on the shared plan both projections use.
+    #[test]
+    fn a_span_running_off_the_grid_is_clamped_and_costs_a_bounded_walk() {
+        let a = artifact_of(repr_with_table(
+            &["huge"],
+            1,
+            1,
+            &[spanning(0, 0, 4_000_000_000, 4_000_000_000, &[0])],
+        ));
+        assert_eq!(
+            a.html, "<table>\n<tr>\n<td>huge</td>\n</tr>\n</table>\n",
+            "one slot exists, so the span is one slot"
+        );
+        assert_tiles(&a);
+    }
+
     /// A hole the document drew is still a cell. Truncating it is the erasure A14 names.
     #[test]
     fn an_empty_trailing_row_is_not_truncated() {
@@ -747,6 +850,95 @@ mod tests {
                 .any(|e| e.code.starts_with("gfm-") && e.code.contains("span")),
             "and no TABLE erasure, because `<td rowspan>` commits none"
         );
+    }
+
+    /// **The tags balance and nest, on every depth sequence the tree can produce.**
+    ///
+    /// Found by review. The first `ListState` tracked one `item_open` flag and assumed closing an
+    /// inner `<ul>` always lands inside a parent `<li>`. A tree that SKIPS a depth breaks that —
+    /// `Document/L/L/LI/LBody` is depth 1 with no depth-0 item before it — and the projection
+    /// emitted `</li>` for a level that never opened one.
+    #[test]
+    fn the_list_tags_balance_on_every_depth_sequence() {
+        /// Every tag this projection writes, matched against its closer in order.
+        fn balanced(html: &str) -> bool {
+            let mut stack: Vec<&str> = Vec::new();
+            let mut rest = html;
+            while let Some(at) = rest.find('<') {
+                rest = &rest[at + 1..];
+                let Some(end) = rest.find('>') else {
+                    return false;
+                };
+                let (tag, after) = (&rest[..end], &rest[end + 1..]);
+                rest = after;
+                // `td colspan="2"` closes as `td`, so the name is the first word.
+                let name = tag.split_whitespace().next().unwrap_or("");
+                match name.strip_prefix('/') {
+                    Some(close) if stack.pop() != Some(close) => return false,
+                    Some(_) => {}
+                    None => stack.push(name),
+                }
+            }
+            stack.is_empty()
+        }
+
+        // **The checker checks.** A balance assertion that cannot fail would make every case below
+        // pass for free, so it is pointed at the exact shape this test exists to catch: the stray
+        // `</li>` the old single-flag `ListState` emitted for a level that never opened one.
+        assert!(balanced("<ul>\n<li>x</li>\n</ul>\n"));
+        assert!(
+            !balanced("<ul>\n<ul>\n<li>x</li>\n</ul>\n</li>\n</ul>\n"),
+            "the balance checker must reject a stray `</li>`"
+        );
+
+        let path_at = |depth: usize| -> Vec<&'static str> {
+            let mut p = vec!["Document"];
+            for _ in 0..=depth {
+                p.push("L");
+                p.push("LI");
+            }
+            p.push("LBody");
+            p
+        };
+
+        // Includes the sequences that used to fail: a first item below depth 0, a jump of two, and
+        // a descent from a skipped level.
+        for depths in [
+            vec![0usize],
+            vec![0, 1, 0],
+            vec![0, 0],
+            vec![1],
+            vec![0, 2],
+            vec![2, 0],
+            vec![0, 2, 0],
+            vec![1, 0],
+            vec![0, 1, 1, 0],
+            vec![2],
+            vec![3, 1],
+        ] {
+            let owned: Vec<Vec<&str>> = depths.iter().map(|d| path_at(*d)).collect();
+            let specs: Vec<(&str, Option<&[&str]>)> =
+                owned.iter().map(|p| ("item", Some(p.as_slice()))).collect();
+            let a = artifact_of(repr_of_paths(&specs));
+            assert!(
+                balanced(&a.html),
+                "depths {depths:?} produced unbalanced HTML: {}",
+                a.html
+            );
+            assert_eq!(
+                a.html.matches("<ul>").count(),
+                a.html.matches("</ul>").count(),
+                "depths {depths:?}: {}",
+                a.html
+            );
+            assert_eq!(
+                a.html.matches("<li>").count(),
+                a.html.matches("</li>").count(),
+                "depths {depths:?}: {}",
+                a.html
+            );
+            assert_tiles(&a);
+        }
     }
 
     /// An untagged document grows no list, exactly as in Markdown.

@@ -34,7 +34,7 @@
     "profile_sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "description": "Hash of the pinned configuration profile. Two artifacts are comparable if and only if this matches — and since v1.1-S1 the profile carries `markdown_rule`, so a run under a different projection rule is correctly non-comparable."
+      "description": "Hash of the pinned configuration profile. Two artifacts are comparable if and only if this matches — and since v1.1-S4 the profile carries `html_rule` beside `markdown_rule`, so a run under a different projection rule is correctly non-comparable."
     },
     "source_sha256": {
       "type": "string",
@@ -64,7 +64,7 @@
       "required": [
         "segments"
       ],
-      "description": "The map from `markdown` bytes back to evidence. Its segments TOTAL-TILE the string: sorted, contiguous, no overlap, no gap, covering 0..len(markdown) exactly. A map with a hole is worse than no map, because the hole is exactly where an unquotable byte hides — so an incomplete map is a hard error on both construction and parse, never a warning.",
+      "description": "The map from `html` bytes back to evidence. Its segments TOTAL-TILE the string: sorted, contiguous, no overlap, no gap, covering 0..len(html) exactly. A map with a hole is worse than no map, because the hole is exactly where an unquotable byte hides — so an incomplete map is a hard error on both construction and parse, never a warning.",
       "properties": {
         "segments": {
           "type": "array",
@@ -87,7 +87,7 @@
               "start": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "First UTF-8 BYTE offset into `markdown`, inclusive. Bytes rather than characters, and the description says so: every language's slice takes one or the other, and saying which is the difference between a map and a hint."
+                "description": "First UTF-8 BYTE offset into `html`, inclusive. Bytes rather than characters, and the description says so: every language's slice takes one or the other, and saying which is the difference between a map and a hint."
               },
               "end": {
                 "type": "integer",

@@ -29,8 +29,18 @@ asserted rather than described:
 | | `ethos.markdown.v1` | `ethos.html.v1` |
 | --- | --- | --- |
 | the merged cell | expanded — text in the origin, covered slot empty | `<td colspan="2">merged span</td>`, covered slot emits **nothing** |
-| `gfm-span-slots-unrepresentable-v1` | **1** | **0** |
+| `gfm-span-slots-unrepresentable-v1` | **1** | **0** — the grid held the merge |
 | `gfm-row-zero-separator-v1` | **1** — the delimiter row asserts a header the document never declared | **0** — every cell is a `<td>` |
+
+**The two dropped codes are dropped because HTML does not commit them — not because they are
+named `gfm-*`.** Three of the six describe faults in the *record* rather than limits of GFM
+(`gfm-cell-not-placed-v1`, `gfm-cell-run-claimed-twice-v1`, `gfm-table-not-projected-v1`), and HTML
+meets those identically, so it keeps them. `gfm-span-slots-unrepresentable-v1` is **recomputed**
+rather than dropped: a merge costs HTML nothing *unless the grid cannot hold it*. On
+`ruled-table-overlap`, whose row 1 declares both a `colspan: 2` cell and an ordinary cell in the
+next slot, the span is clamped so the row stays two cells wide — and the merge that was lost is
+declared, count 1. Only `gfm-row-zero-separator-v1` is unconditionally absent, because HTML asserts
+no header.
 
 **No `<th>` appears anywhere in the projection.** Neither detector reads `/TH` and the
 representation carries no header declaration, so a header row would be this exporter deciding what
@@ -103,8 +113,10 @@ finding a schema that had drifted for want of one.
 `markdown_rule` and every byte of Markdown it produces. The representation (0.5.0), `extract`, the
 three detection rules, the table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0. Four crates, no new dependency, no HTML parser, no
-fixture added. `engine-pdf` still has zero mentions of HTML or Markdown. No CSS, no JS, no MCP, no
-tag. v1.2 has not started.
+fixture added. **`engine-pdf` imports neither projection** and its `src/` has zero mentions of
+Markdown; its three `html` mentions are pre-existing magic-byte sniffing (a file that *is*
+HTML) and one analogy in a doc comment. Its `tests/` names the new capability, which is where
+the capability table lives. No CSS, no JS, no MCP, no tag. v1.2 has not started.
 
 ---
 
