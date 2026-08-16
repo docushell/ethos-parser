@@ -65,6 +65,52 @@ Not the full table. These are the ones a reasonable engineer would get wrong.
 | — | **Wrapping pdf-inspector (or any competitor) as the grounded PDF core** | **REFUSE** | Reference-only. See below |
 | L31 | Build-time PDFium download, unpinned | **REFUSE** | Vendor fork, by tag, no checksum, `vendor/` absent so the build is network-dependent by default |
 | L19 | Sourcing character origins from LiteParse's design | **REFUSE — structural** | `FPDFText_GetCharOrigin` has **zero call sites**. The fingerprint-critical primitive is not bound at all, so that design cannot be the grounded PDF core |
+| — | **A `liteparse` → `ethos.grounding.v1` adapter** | **REFUSE — measured at v1.2-S5** | Two walls in the *artifact type*, not in any document. Their JSON emits `page, width, height, text, text_items` and nothing else (L20), so it cannot name its own producer — and this schema requires `producer: {name, version}` with no way to mark a field asserted rather than measured. Their boxes are loose em boxes (L18) and §`01-CONTRACT.md` 5.3 requires an emitted box to declare its kind; this schema has nowhere to. Coordinates were **not** the blocker the memo predicted — see below. Pinned by `engine-grounding/tests/liteparse_refusal.rs` |
+
+#### The adapter, measured (v1.2-S5)
+
+This file and the parity checklist both listed a `liteparse → ethos.grounding.v1` adapter as a
+reasonable v1.2+ convenience — *"~300–500 LOC"*, and *"would declare `coordinate_origin: unknown`
+unless it also reads the source PDF"*. v1.2-S5 implemented that as far as the evidence allows and
+the answer is **no adapter**.
+
+**The predicted blocker dissolved.** LiteParse's space is top-left, 72 DPI, `CropBox`→`MediaBox`
+(memo §18.2 #3), and this engine's visible box is `/CropBox` clipped to the media box, or the media
+box where none is declared. Same box, same origin; 72 DPI is one point per unit, so points × 100 is
+centipoints exactly. An adapter that read the PDF for page geometry — which is reading a document
+this repository already knows how to measure, not laundering foreign text — could have declared
+`top-left` honestly. Floats are not a blocker either: a value that will not land on an integer
+centipoint is an omission with a count, the same honesty `project()` already uses.
+
+**Two different walls stopped it, and both are in `ethos.grounding.v1` itself:**
+
+1. **Provenance.** Their output *"emits `page, width, height, text, text_items` and nothing else"*
+   (checklist §8, measured from `output/json.rs:46-65`) — checklist **L20**, the missing versioned
+   contract this repository exists to attack. It cannot say what produced it. The grounding schema
+   requires `producer: {name, version}`, both non-empty, and `additionalProperties: false` runs its
+   whole length, so there is nowhere to record that an identity was *asserted by a caller* rather
+   than *measured*. `VerifierBinary::identify` sets this repository's precedent in the opposite
+   direction: a verifier is pinned by version **and** binary digest, because an identity that can
+   be claimed is one that can disagree with what it describes.
+2. **Box semantics.** Their bbox is a union of `FPDFText_GetLooseCharBox` — em boxes,
+   ascent-to-descent, not ink (**L18**). `01-CONTRACT.md` §5.3: *"When a box is emitted, the
+   artifact says what kind of box it is … If a future version emits loose boxes, it declares those
+   separately."* This schema has no such field and no room for one. Loose boxes here would be L18 —
+   *"sold as precise positioning, with nothing in the output saying which it is"* — reproduced
+   inside this repository's own `artifact_type`, which is worse than not shipping, because the
+   result would look like evidence.
+
+Neither wall is per-document, so no adapter could clear them by being careful. The refusal is
+pinned to those schema facts by `crates/engine-grounding/tests/liteparse_refusal.rs`: relax the
+`producer` requirement or add a box-semantics field and the test fails, and this decision gets taken
+again on purpose rather than lapsing.
+
+**What would change the answer:** LiteParse emitting a self-identifying, versioned artifact, and
+either side gaining a way to declare box semantics on the wire. Neither is this repository's to do
+for them, and widening `ethos.grounding.v1` is a change to the **verifier's** contract, not an
+adapter's business.
+
+---
 
 ### IMPROVE — take the goal, change the mechanism
 

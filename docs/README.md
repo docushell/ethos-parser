@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2-S4 shipped, as 0.18.0.** v1.1 is complete. v1 is the DocuShell replacement gate
+**Status:** **v1.2 is complete, as 0.19.0.** v1.1 is complete. v1 is the DocuShell replacement gate
 (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
 489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
@@ -20,7 +20,7 @@ locator, returns it as an opaque handle, and re-validates it on the way back in*
 and MCP is the worst host on the list rather than the best. A forged node id is an error, an edited
 representation fails its fingerprint, and no tool argument names a coordinate.
 [`12-V12-SCOPE.md`](12-V12-SCOPE.md) states the law; [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md)
-names S5 (liteparse) as not started.
+records S5 as **done and refused**.
 
 **S2 is the Python SDK, and it wraps the CLI rather than the library.** `packages/python/` is three
 functions over `subprocess` with **no runtime dependency** — so byte-identity with the CLI is a
@@ -43,6 +43,14 @@ against what `engine mcp` emits, so the two adapters cannot drift into two sente
 document. The argument schemas are MCP's own, verbatim. LangChain is an optional extra and an
 optional peer on a subpath, so the default import still pulls nothing. No LangGraph adapter (the
 memo refused one), no trust state, no `verify` tool, no `capabilities.langchain`.
+
+**S5 measured the liteparse adapter and refused it, which completes v1.2.** Two walls, both in
+`ethos.grounding.v1` itself: their output *"emits `page, width, height, text, text_items` and
+nothing else"*, so it cannot name its own producer, and the schema requires one with no way to mark
+a field asserted rather than measured; and their boxes are loose em boxes that §5.3 says must be
+declared, with nowhere in the schema to declare them. The predicted blocker — an unknown coordinate
+origin — **dissolved**: their space and this engine's visible box are the same box. The refusal is
+pinned by `engine-grounding/tests/liteparse_refusal.rs` so relaxing either schema fact reopens it.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots

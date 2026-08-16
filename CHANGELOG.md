@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.2-S0–S4, adoption: MCP, two SDKs, and LangChain tools, as 0.18.0
+## [Unreleased] — v1.2 complete: MCP, two SDKs, LangChain tools, and one refused adapter, as 0.19.0
 
 **v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
@@ -264,15 +264,69 @@ version moved** — the fifth time, after v1-S7b (0.9.0) and S1, S2 and S3 above
 is an adopter rather than a parse capability, so there is no `capabilities.langchain` for the reason
 there is no `capabilities.node`.
 
+### S5 — the liteparse adapter, measured and REFUSED
+
+S5 asked for a `liteparse → ethos.grounding.v1` mapper **"if it is worth it"**. It was run down
+rather than assumed either way, and **no adapter ships**: no mapper, no subcommand, no foreign
+parser, no fixture. Two walls, and both are properties of `ethos.grounding.v1` itself rather than of
+any document, so no adapter could clear them by being careful.
+
+**Wall 1 — the producer cannot name itself.** Measured from `output/json.rs:46-65` and recorded in
+the parity checklist §8: LiteParse *"emits `page, width, height, text, text_items` and nothing
+else"* — checklist **L20**, the missing versioned output contract this repository exists to attack.
+The grounding schema **requires** `producer: {name, version}`, both non-empty. A caller-supplied
+version is not a way out: `additionalProperties: false` runs that schema's whole length, so there is
+nowhere to record that an identity was *asserted* rather than *measured*, and a claimed version
+would be indistinguishable from one the engine read. `VerifierBinary::identify` sets the precedent
+in the opposite direction — a verifier is pinned by version **and** binary digest.
+
+**Wall 2 — the boxes are loose and the schema cannot say so.** Checklist **L18**: their bbox is a
+union of `FPDFText_GetLooseCharBox`, em boxes ascent-to-descent, **not ink**. `01-CONTRACT.md` §5.3
+requires an emitted box to declare what kind it is, and says loose boxes would be *"declared
+separately"*. There is no such field and no room for one. Loose boxes here would be L18 — *"sold as
+precise positioning, with nothing in the output saying which it is"* — reproduced inside this
+repository's own `artifact_type`, which is worse than shipping nothing, because it would look like
+evidence.
+
+**The hazard everyone predicted was not the one that bit.** The memo said an adapter *"would declare
+`coordinate_origin: unknown` unless it also reads the source PDF"*. That dissolves: LiteParse's
+space is top-left, 72 DPI, `CropBox`→`MediaBox`, and this engine's visible box is `/CropBox` clipped
+to the media box or the media box where none is declared — same box, same origin, and 72 DPI means
+points × 100 is centipoints exactly. Floats are survivable too: a value that will not land on an
+integer centipoint is an omission with a count. **The refusal is about provenance and box semantics,
+not geometry**, and recording which hazards were false is what makes it re-openable on evidence.
+
+**No refusing subcommand, deliberately.** One that can only exit 2 is a permanent surface that does
+nothing — S1's argument for refusing cheap MCP tools — and refusing *per document* would need a
+parser for a JSON shape this tree has no sample of, so it would reject real LiteParse output as
+malformed when the truth is that this engine guessed their schema.
+
+Instead the refusal is executable the way this repository makes rules executable:
+`crates/engine-grounding/tests/liteparse_refusal.rs` asserts `producer` requires a non-empty name
+and version, that no property anywhere in the schema declares box semantics, and that
+`additionalProperties: false` leaves no room to add one. Relax any of those and the test fails, and
+S5 is reopened **deliberately**.
+
+### Identity, after S5
+
+Workspace **0.19.0**, profile hash
+`sha256:3ad382d0bfb4cbc53cdd74f8dae44e4807c5764452e34517ca384503fdc96f5f`. Nothing but the version
+moved — the sixth time — and this one shipped no feature at all. It bumps on the precedent of
+v1-S7b (0.9.0), where a slice measured a dead end and moved the version anyway: two builds that
+disagree about what this repository decided must not both call themselves 0.18.0.
+
 ### Unchanged
 
 Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
 representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
-`irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. Four crates, no new
-Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no napi, no
+`irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. `project()` and
+`engine ground` are untouched — `engine-grounding/src` has no diff in this slice. Four crates, no
+new Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no napi, no
 neon, no node-gyp, no native extension, and **no default-install dependency in either SDK**. No
-LangGraph, no LlamaIndex, no Haystack. Not on PyPI, not on npm. No liteparse, no tag. v1.2-S5 has
-not started.
+LangGraph, no LlamaIndex, no Haystack, no liteparse, no PDFium. Not on PyPI, not on npm. No tag.
+
+**v1.2 is complete.** **v1 is not** — the S7 table-cell gate is measured and missed at 64‰, and
+nothing in this entry closes it.
 
 ---
 

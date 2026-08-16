@@ -31,7 +31,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, and v1.2-S4 as 0.18.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, and v1.2-S5 as 0.19.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -131,10 +131,29 @@ exclude = ["fuzz"]
 # framework binding is an adopter, not a parse capability, so there is no `capabilities.langchain`
 # for the reason there is no `capabilities.node` (docs/12-V12-SCOPE.md §7).
 #
+# **0.19.0 is v1.2-S5, and the slice's answer is NO.** S5 asked for a `liteparse ->
+# ethos.grounding.v1` adapter "IF IT IS WORTH IT". It is not, for two reasons that are properties of
+# `ethos.grounding.v1` rather than of any document: their JSON emits `page,width,height,text,
+# text_items` AND NOTHING ELSE, so it cannot name its own producer, while this schema requires
+# `producer: {name, version}` and has no way to mark a field asserted rather than measured; and
+# their boxes are loose em boxes, which 01-CONTRACT.md §5.3 says must be declared as such, and this
+# schema has nowhere to declare it. Loose boxes here would be checklist L18 — "sold as precise
+# positioning, with nothing in the output saying which it is" — reproduced inside this repository's
+# own artifact type. No adapter ships, and the refusal is pinned to those schema facts by
+# `engine-grounding/tests/liteparse_refusal.rs` so relaxing one reopens the decision deliberately.
+#
+# The memo's predicted blocker — `coordinate_origin: unknown` — DISSOLVED and that is recorded:
+# their space is top-left/72-DPI/CropBox->MediaBox and this engine's visible box is the same box,
+# so geometry was never the problem. Provenance and box semantics were.
+#
+# The version moves on the precedent of v1-S7b (0.9.0), where a slice measured a dead end, shipped
+# no feature, and bumped anyway: two builds that disagree about what this repository decided must
+# not both call themselves 0.18.0.
+#
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.18.0"
+version = "0.19.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -155,9 +174,9 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.18.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.18.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.18.0" }
+engine-core = { path = "crates/engine-core", version = "0.19.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.19.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.19.0" }
 
 [profile.release]
 strip = "symbols"

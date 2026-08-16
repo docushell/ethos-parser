@@ -14,7 +14,7 @@ the owner asked for the next roadmap row, and nothing in it closes v1.
 | **S2** | Python SDK — thin, over the same library or CLI | S1 | **done** |
 | **S3** | Node SDK | S2 | **done** |
 | **S4** | LangChain tool, locators in `artifact` never `content` | S2, S3 | **done** |
-| **S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | S1 | **not started** |
+| **S5** | Optional `liteparse` → `ethos.grounding.v1` adapter | S1 | **done — refused** |
 
 ---
 
@@ -522,13 +522,115 @@ slice's first `engine mcp` call.
 
 ---
 
-## S5 — optional `liteparse` → `ethos.grounding.v1` adapter — **not started**
+## S5 — optional `liteparse` → `ethos.grounding.v1` adapter
 
-- **Goal:** map a foreign parser's output into the grounding shape, if it is worth it.
+- **Status: done — and the answer is NO ADAPTER.** `0.19.0`. No mapper, no subcommand, no foreign
+  parser in the tree. The refusal is pinned by
+  `crates/engine-grounding/tests/liteparse_refusal.rs`.
+
+- **Goal:** map a foreign parser's output into the grounding shape, **if it is worth it**.
+
 - **The standing constraint:** whatever it maps is **not** `Extracted` — this engine did not read
   those bytes, and an adapter that laundered someone else's output into the derivation class this
   repository reserves for its own reader would be the worst defect in the tree.
-- **Not started.** Starts when the owner asks.
+
+### "If it is worth it" is a gate, and it was measured
+
+The slice ran the question down rather than assuming either answer. **Two of the four hazards are
+real and both are properties of `ethos.grounding.v1` itself**, so no adapter could clear them by
+being careful about a particular document.
+
+**Wall 1 — the producer cannot name itself.** Checklist §8, measured from `output/json.rs:46-65`:
+LiteParse *"emits `page, width, height, text, text_items` **and nothing else**"*. That is checklist
+**L20**, the missing versioned output contract this repository was built to attack — so a LiteParse
+artifact does not say what produced it. `ethos.grounding.v1` **requires** `producer: {name,
+version}`, both non-empty.
+
+A caller-supplied version is not a way out. `additionalProperties: false` runs the length of that
+schema, so there is nowhere to record that an identity was **asserted** rather than **measured**,
+and a claimed version would be indistinguishable from one the engine read. This repository's own
+precedent runs the other way and says why: `VerifierBinary::identify` pins a verifier by version
+**and binary digest**, because an identity that can be asserted is an identity that can disagree
+with what it describes.
+
+**Wall 2 — the boxes are loose and the schema cannot say so.** Checklist **L18**, measured
+(§18.2 #5): their bbox is a union of `FPDFText_GetLooseCharBox` — em boxes, ascent-to-descent,
+**not ink**. `01-CONTRACT.md` §5.3 is directly on point:
+
+> When a box *is* emitted, the artifact says **what kind of box it is** … v0 emits measured ink
+> boxes only … **If a future version emits loose boxes, it declares those separately.**
+
+There is no field for that declaration in `ethos.grounding.v1` and no room to add one. Loose boxes
+in this schema would be L18 — *"sold as precise positioning, with nothing in the output saying which
+it is"* — reproduced inside this repository's own `artifact_type`. **That is worse than shipping
+nothing, because the result would look like evidence.**
+
+### What was NOT a wall, which is the more useful half of the measurement
+
+The memo predicted the blocker would be geometry: an adapter *"would declare
+`coordinate_origin: unknown` unless it also reads the source PDF"*. **That one dissolves.**
+
+| hazard | predicted | measured |
+| --- | --- | --- |
+| coordinate origin | `unknown`, unless the PDF is read | **fine.** Their space is top-left, 72 DPI, `CropBox`→`MediaBox` (§18.2 #3); this engine's visible box is `/CropBox` clipped to media, media where none is declared. Same box, same origin |
+| unit conversion | — | **fine.** 72 DPI is one point per unit, so points × 100 is centipoints exactly |
+| floats on the wire (L22) | lossy | **survivable.** A value that will not land on an integer centipoint is an omission with a count — the honesty `project()` already uses for a node with no measurable ink box |
+| producer identity | not raised | **fatal** (wall 1) |
+| box semantics | raised as L18, not as an adapter blocker | **fatal** (wall 2) |
+
+So the refusal is narrow and specific: **provenance and box semantics, not geometry.** Recording
+which hazards were false is what makes the decision re-openable on evidence rather than on mood.
+
+### Why there is no refusing subcommand
+
+The brief allowed shipping a CLI that refuses. There is none, for two reasons.
+
+A subcommand that can only ever exit 2 is a permanent public surface that does nothing, which is the
+argument S1 used to refuse `markdown` and `html` MCP tools — *a tool that exists because it was
+cheap is a surface to keep honest forever*. And to refuse **per document** it would have to parse
+LiteParse JSON, of which this tree has no sample: the shape is known only as a field list in a memo.
+A parser built on that guess would refuse real LiteParse output as *malformed* when the truth is
+*this engine guessed your schema*, which is a worse artifact than no command.
+
+The refusal is executable in the way this repository makes rules executable — as a guard test
+against the thing the decision was made about. `liteparse_refusal.rs` asserts that `producer`
+requires a non-empty name and version, that no property anywhere in the schema declares box
+semantics, and that `additionalProperties: false` leaves no room to add one. Relax any of those and
+the test fails, and S5 is reopened **deliberately**.
+
+- **In:** `crates/engine-grounding/tests/liteparse_refusal.rs`; the REFUSE row and the measurement
+  in `06-STEAL-REFUSE.md`; `0.19.0` and the moved profile hash; both SDK version pins; `12`/`13`;
+  CHANGELOG; README; `docs/README.md`.
+
+- **Out:** any mapper, any `adapt-liteparse` subcommand, any liteparse fixture or parser. A
+  `DocumentRepresentation` on a foreign path. `capabilities.liteparse`. An `unknown` origin in the
+  grounding schema — widening it is a change to the **verifier's** contract, not an adapter's
+  business. A liteparse / PDFium / AGPL dependency. Docling, LlamaIndex, Haystack. MCP, LangChain,
+  Python or Node surface for a mapper that does not exist. A tag.
+
+- **Acceptance tests:**
+  - [x] No `ethos.grounding.v1` is emitted on a foreign path, because there is no foreign path
+  - [x] No `DocumentRepresentation` is produced from foreign bytes
+  - [x] `project()` and `engine ground` are **untouched** — no diff in `engine-grounding/src`
+  - [x] The refusal is pinned to the schema: `producer` requires a non-empty name and version; no
+        property declares box semantics; `additionalProperties: false` on the artifact, `element`
+        and `span`; `coordinate_system` admits no `unknown` origin
+  - [x] No MCP / LangChain / Python / Node surface for the mapper
+  - [x] No liteparse, PDFium or AGPL dependency; `cargo deny check` passes
+  - [x] No confidence field anywhere (the grep gate is the standing proof)
+  - [x] Workspace **0.19.0**, both SDKs **0.19.0**, profile hash
+        `sha256:3ad382d0bfb4cbc53cdd74f8dae44e4807c5764452e34517ca384503fdc96f5f`
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables; the
+        markdown and html goldens still green
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt
+
+- **Depends on:** S1.
+
+---
+
+**v1.2 is complete at 0.19.0.** S0–S4 shipped adapters; S5 measured one and refused it. **v1 is
+still not done** — the S7 table-cell gate is measured and missed at 64‰ — and no slice in this
+document may be cited as evidence that it is.
 
 ---
 
