@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 is scoped and not started.** v1.1 is complete. v1 is
+**Status:** **v1.2 is complete at 0.19.0; v2 has decided its contract at 0.20.0 and written no reader.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
@@ -62,7 +62,14 @@ and `01-CONTRACT.md` §5.1 already says a rendered page is never substituted for
 the question the gate's own wording depends on: `ethos.grounding.v1` is a PDF schema —
 `media_type` is `const application/pdf`, every element needs a `page` and a `bbox` — so either it
 revises or v2's gate is met at the representation level. [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md)
-makes that decision S1, ahead of any reader. No code, no version bump, no crate.
+made that decision S1, ahead of any reader.
+
+**S1 answered it: `ethos.grounding.v1` stays PDF-only.** Revising the artifact is a change to the
+**verifier's** contract — the oracle agrees with the pinned Ethos CLI on this exact schema — so an
+engine-only revision would fork what the engine does not own. **And the measurement resized S2:**
+`DocumentRepresentation::seal` refuses a node whose parent is not a declared page, so a page-less
+document cannot become a representation at all. The page assumption is in `engine-core`, not in
+grounding, and reaching v2's gate is upstream of the schema question S0 asked.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots
@@ -285,7 +292,7 @@ Then, as needed:
 | [`12-V12-SCOPE.md`](12-V12-SCOPE.md) | **v1.2 adoption**: what it is, what it is not, and the handle law | Before any adapter |
 | [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) | **v1.2-S0–S5**, all done — S5 **refused** | Every v1.2 PR. This is the v1.2 code-review map |
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
-| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S4**, with S0 done and S1–S4 **not started** | Every v2 PR. This is the v2 code-review map |
+| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S4**, with S0 and S1 done and S2–S4 **not started** | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |

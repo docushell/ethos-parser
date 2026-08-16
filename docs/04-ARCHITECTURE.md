@@ -211,6 +211,16 @@ mechanism**, only new values.
 | **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection behaviour | None — provided `engine-grounding` never learned about pages |
 | **Second backend** | A trait seam modelled on Ethos's `EthosPdfBackend` 3-method shape, with backend identity in the profile | Design the seam in v0; implement one side |
 
+**The second-format row's precondition, verified at v2-S1 — and it points at the wrong crate.**
+`engine-grounding` never learned what a page *is*: it reads no locator, derives no geometry, and
+addresses pages by id, which `engine_grounding_has_no_pdf_concept` enforces. But the assumption that
+**every node has a page parent** lives in `engine-core`: `DocumentRepresentation::check_structure`
+refuses a node whose parent is not a declared page, on both construction paths, so a page-less
+document cannot become a representation at all. That is permitted by §1's M5 line — a contract
+invariant is not format machinery — and it is the sentence v2 has to revisit, so "None" in the row
+above is the cost to *grounding*, not the cost to the version.
+`crates/engine-grounding/tests/page_less_source.rs` measures it; `14-V2-SCOPE.md` §5 records it.
+
 **Rule 7 enforcement, designed now, implemented when assist exists:** give every lane a **declared
 processor identity** in the processing run. A run whose drafting model and representation processor
 share an identity is **rejected mechanically**, not caught in review. This is cheaper than the

@@ -3,8 +3,8 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 is scoped, not started.** S0 is these two documents; **S1–S4 are not started** and no office
-parser exists in this tree.
+**v2 has decided its contract and written no reader.** S0 is these two documents and **S1 is done**;
+**S2–S4 are not started** and no office parser exists in this tree.
 
 **v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
 (`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -14,8 +14,8 @@ closes v1.
 | Slice | Theme | Depends on | State |
 | --- | --- | --- | --- |
 | **S0** | v2 scope + this document | — | **done** |
-| **S1** | The grounding contract for a page-less source: decide, or say what would decide it | S0 | **not started** |
-| **S2** | DOCX → representation: the reader, the locator variant, the profile | S1 | **not started** |
+| **S1** | The grounding contract for a page-less source | S0 | **done — (b), and one finding** |
+| **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **not started** |
 | **S3** | XLSX → representation: sheets and cells | S2 | **not started** |
 | **S4** | The remaining office formats — PPTX, ODF, RTF, EPUB, CSV | S3 | **not started** |
 
@@ -61,33 +61,92 @@ it may not.*
 
 ---
 
-## S1 — the grounding contract for a page-less source — **not started**
+## S1 — the grounding contract for a page-less source
+
+- **Status: done — the answer is (b).** `0.20.0`. No reader, no crate, no schema field.
+  `ethos.grounding.v1` **stays PDF-only**, and the slice's measurement resized S2.
 
 - **Goal:** decide what *"a DOCX quote grounds"* means, **before** a reader exists whose output
   depends on the answer.
 
-- **The standing constraint:** `14-V2-SCOPE.md` §5. `ethos.grounding.v1` has three walls against a
-  page-less source — `source.media_type` is `{"const": "application/pdf"}`, `element` requires
-  `page` and `bbox`, and `page` requires integer `width`/`height`/`rotation`. Neither honest reading
-  permits inventing a page to get past them.
+### The decision, and why the other two were not available
 
-- **The two readings**, either of which is a legitimate outcome:
-  - **(a) revise the schema** — a page-less source shape, with a written rationale, a version, and
-    tests, taken as a deliberate change to the **verifier's** contract;
-  - **(b) grounding stays PDF-only** — v2's gate is met at the representation level through the
-    fingerprint-checked handle path `node_get` already uses, and `ethos.grounding.v1` keeps meaning
-    *"a box on a page in a PDF"*.
+| | reading | verdict |
+| --- | --- | --- |
+| **(a)** | revise `ethos.grounding.v1` for a page-less source | **blocked on Ethos.** Not refused — owned elsewhere |
+| **(b)** | grounding stays PDF-only | **chosen** |
+| **(c)** | not yet | not needed; the question was decidable |
 
-- **A third outcome is legitimate and S5 is the precedent:** *"not yet, and here is what S2 would
-  have to produce for this to be decidable."* A slice that measures a question and refuses to answer
-  it early is done, provided the refusal is written down with its evidence and pinned by a test.
+**(a) is not this repository's to make.** `07-VERIFY-BOUNDARY.md` puts the artifact's contract on
+the verifier's side, and `engine-cli/tests/oracle.rs` agrees with the pinned Ethos CLI on this exact
+schema. An engine-only revision would produce artifacts the verifier does not speak while both still
+called themselves `ethos.grounding.v1` — a fork of the contract M6 exists to keep identical. Adding
+an optional `page` to the engine's copy would be the lying artifact v1.2-S5 refused for loose boxes,
+wearing a different field name.
 
-- **Also in scope:** verifying `04-ARCHITECTURE.md` §6's precondition — whether `engine-grounding`
-  merely passes `PageRecord`s through or has actually learned about pages — because the answer
-  decides whether a second format is a variant or a rewrite.
+So **(b)**, and the tradeoff it buys, stated in one table:
 
-- **Out:** any reader. Any format. Any change to `ethos.grounding.v1` made *without* the decision
-  this slice exists to record.
+| | under (b) |
+| --- | --- |
+| **gate wording** | *"a DOCX quote … grounds"* does **not** mean `ethos.grounding.v1`. The gate sentence needs re-reading, or the gate needs (a) |
+| **schema** | untouched. Three walls intact, PDF-shaped, pinned by a test |
+| **verifier ownership** | unchanged. The engine does not fork what it does not own |
+| **S2 unblocked?** | **no — and that is the finding below** |
+
+### The finding: the page assumption is not where S0 thought
+
+S0 wrote that under (b) the gate would be met *"at the representation level"*. **That is false.**
+`DocumentRepresentation::seal` refuses a node whose parent is not a declared page, in
+`check_structure`, which runs on **both** construction paths:
+
+> node `s1` names parent page `p1`, which is not a declared page
+
+**A page-less document cannot become a representation at all.** So reaching the gate is upstream of
+grounding, in the IR's own page-parent invariant — a v2 design decision about the representation,
+not a schema question. S2 carries it, and now knows it before writing a reader against an invariant
+that would have rejected its output.
+
+### `04-ARCHITECTURE.md` §6's precondition, verified
+
+> None — **provided `engine-grounding` never learned about pages**
+
+**It holds, and it points at the wrong crate.** `engine-grounding` never learned what a page *is*:
+it reads no locator (`engine_grounding_has_no_pdf_concept` fails if it mentions `NativeLocator`),
+derives no geometry, and addresses pages by id. `project()`'s check that `node.parent` names a
+declared page is a **re-assertion of an invariant `seal` already guarantees** — it can never be
+handed a page-less representation, because one cannot be constructed. The assumption lives in
+`engine-core`, which the M5 line permits (a contract invariant is not format machinery) and which
+v2 has to revisit anyway.
+
+- **In:** `crates/engine-grounding/tests/page_less_source.rs` (four guards); the decision in
+  `14-V2-SCOPE.md` §5 and the verified precondition in §4; the §6 note in `04-ARCHITECTURE.md`;
+  `0.20.0` and the moved profile hash; both SDK version pins; CHANGELOG; `docs/README.md`.
+
+- **Out:** any reader, any format, any `zip` or `quick-xml`, `engine-office`. Any change to
+  `ethos.grounding.v1`. Any `project()` change — the PDF path is untouched, and relaxing its page
+  requirement "for office" would change PDF behaviour to accommodate a format that does not exist
+  here yet.
+
+- **Acceptance tests:**
+  - [x] The three walls are pinned: `source.media_type` is `{"const": "application/pdf"}`, `element`
+        requires `page` and `bbox`, `page` requires integer `index`/`width`/`height`/`rotation` with
+        `width` bounded below by 1 — so a zero-width page is not a way to spell "no pages"
+  - [x] A node whose parent is not a declared page **fails to seal**, with a message that names the
+        reason
+  - [x] The **same document with its page declared** seals *and* projects, so the test above fails
+        for the page and for nothing else
+  - [x] No renderer in `Cargo.lock` — LibreOffice, soffice, headless Chrome, wkhtmltopdf,
+        WeasyPrint, chromiumoxide, printpdf — because **L30 lapses as a transitive dependency**
+        before it lapses as a design decision
+  - [x] `project()` unchanged; PDF goldens and the oracle (12 / 3) unchanged in meaning
+  - [x] No office parser, no fifth crate, no schema field added
+  - [x] Workspace **0.20.0**, both SDKs **0.20.0**, profile hash
+        `sha256:30820a15ee750530f5232e622ee40cbfad3e8cb158d41011104cc25f5fd06c15`
+  - [x] Table gate still **64‰**; `irs-form-1040-2025` still 0 tables; fabrication still 0
+  - [x] `cargo test --workspace --locked`, clippy `-D warnings`, `deny`, both grep gates, fmt;
+        Python and Node suites green after the version pin
+
+- **Depends on:** S0.
 
 ---
 
@@ -99,6 +158,14 @@ it may not.*
 - **The standing constraint:** §3's three obligations. The locator is a new `NativeLocator` variant
   addressing the document's own structure; geometry is `NotApplicableToKind`; `pages` is empty; no
   renderer enters the dependency graph.
+
+- **What S1 handed this slice:** `pages` being empty is **not currently legal for a document with
+  nodes** — `check_structure` requires every node's parent to be a declared page. So S2's first
+  question is not "how do I read a DOCX" but **"what is a node's parent in a document with no
+  pages?"** A structural parent (a body, a section, a paragraph) is the obvious answer and it is a
+  change to `engine-core`'s invariant, which is a v2 design decision with review cost — not
+  something to discover halfway through a reader. Whatever it becomes, `Node.parent`'s doc comment
+  (*"The page this node was drawn on"*) stops being true and has to move with it.
 
 - **Expected shape**, to be confirmed rather than assumed: a `DocxLocator` naming the part, the
   paragraph and the run — the addresses OOXML itself contains. **If a field on it would have to be

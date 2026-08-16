@@ -1078,7 +1078,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.19.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.20.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1238,11 +1238,19 @@ mod tests {
              type, not of a document, so no per-document adapter could clear them. The version \
              moves anyway on the precedent of v1-S7b, where a slice measured a dead end and \
              bumped: two builds that disagree about what this repository decided must not both \
-             call themselves 0.18.0."
+             call themselves 0.18.0.\n\n\
+             Moved a TWENTY-FOURTH time at v2-S1 (0.20.0), and this one is a CONTRACT DECISION \
+             with no reader. `ethos.grounding.v1` stays PDF-only: revising it is a change to the \
+             verifier's contract, not the engine's, and the oracle agrees with the pinned Ethos \
+             CLI on this exact schema. The slice's finding is that the page assumption is not \
+             where v2-S0 thought it was — `DocumentRepresentation::seal` refuses a node whose \
+             parent is not a declared page, so a page-less document cannot become a \
+             representation at all, and that invariant lives in THIS crate rather than in \
+             grounding. No detector moved, no rule id moved, no capability moved."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:3ad382d0bfb4cbc53cdd74f8dae44e4807c5764452e34517ca384503fdc96f5f"
+            "sha256:30820a15ee750530f5232e622ee40cbfad3e8cb158d41011104cc25f5fd06c15"
         );
     }
 

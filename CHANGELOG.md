@@ -7,7 +7,56 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 scoped, and v1.2 complete: MCP, two SDKs, LangChain tools, and one refused adapter, as 0.19.0
+## [Unreleased] — v2 scoped and its contract decided, as 0.20.0
+
+### v2-S1 — `ethos.grounding.v1` stays PDF-only, and the page assumption is not where S0 thought
+
+**A contract decision with no reader.** S0 posed the question and S1 answers it: **(b)**, grounding
+stays PDF-only. No page-less source shape, no optional `page`, no forked schema. Revising the
+artifact is **(a)**, a change to the **verifier's** contract — `engine-cli/tests/oracle.rs` agrees
+with the pinned Ethos CLI on this exact schema, so an engine-only revision would produce artifacts
+the verifier does not speak while both still called themselves `ethos.grounding.v1`. (a) is recorded
+as **blocked on an Ethos-side revision**, owned rather than refused. Adding an optional `page` to
+the engine's copy would be the lying artifact v1.2-S5 refused for loose boxes, wearing a different
+field name.
+
+**And the measurement resized S2.** S0 wrote that deciding (b) would leave v2's gate reachable *"at
+the representation level"*. **That is false.** `DocumentRepresentation::seal` refuses a node whose
+parent is not a declared page — in `check_structure`, which runs on **both** construction paths, so
+it cannot be reached around by deserializing instead of sealing:
+
+> node `s1` names parent page `p1`, which is not a declared page
+
+**A page-less document cannot become a representation at all**, let alone a grounding artifact. So
+§3's claim that the empty `pages` vector spells *"this document has no pages"* is true of the **type**
+and false of the **invariant**: today the empty vector is only legal for a document with no nodes
+either. Reaching v2's gate is upstream of grounding, in the IR's own page-parent invariant — a v2
+design decision about the representation rather than a schema question. `15` hands it to S2, which
+now knows it **before** writing a reader against an invariant that would have rejected its output.
+
+**`04-ARCHITECTURE.md` §6's precondition — *"provided `engine-grounding` never learned about
+pages"* — holds, and points at the wrong crate.** This crate never learned what a page *is*: it
+reads no locator, derives no geometry, and addresses pages by id. `project()`'s check that
+`node.parent` names a declared page is a **re-assertion of an invariant `seal` already guarantees**,
+not independent knowledge — it can never be handed a page-less representation, because one cannot be
+constructed. The assumption lives in `engine-core`, which the M5 line permits.
+
+Four guards in `crates/engine-grounding/tests/page_less_source.rs`: the three schema walls; the seal
+refusal with its named message; **the same document with its page declared, which seals and
+projects**, so the refusal test fails for the page and for nothing else; and a `Cargo.lock` scan for
+LibreOffice, soffice, headless Chrome, wkhtmltopdf, WeasyPrint, chromiumoxide and printpdf, because
+**L30 lapses as a transitive dependency before it lapses as a design decision**.
+
+`project()` is untouched — relaxing the PDF path's page requirement "for office" would change PDF
+behaviour to accommodate a format that does not exist here yet. No reader, no `zip`, no
+`quick-xml`, no `engine-office`, no schema field.
+
+### Identity, after v2-S1
+
+Workspace **0.20.0**, profile hash
+`sha256:30820a15ee750530f5232e622ee40cbfad3e8cb158d41011104cc25f5fd06c15`. Nothing but the version
+moved — the seventh time. The version moves because tests landed and because a slice that measures
+still moves it, on the S7b and v1.2-S5 precedent.
 
 ### v2-S0 — office formats, scoped and not started
 

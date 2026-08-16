@@ -3,8 +3,9 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 is scoped, not started.** No parser for any office format exists in this tree, and S0 is these
-two documents.
+**v2 is scoped; S1 is decided; no reader exists.** No parser for any office format is in this tree.
+S0 is these two documents and S1 is the grounding decision in §5 — both are contract work, and the
+first format arrives at S2.
 
 **v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -75,16 +76,21 @@ machinery for it:
   **false** for it, so a page-less format does not inflate the limitation count with a gap that is
   not one. A DOCX run is that variant. It is not `NotReportedByReader`, which means the reader tried
   and could not.
-- **Pages.** `RepresentationPayload.pages` is a `Vec<PageRecord>`. A format without pages carries
-  the empty vector. **An empty `pages` array is the spelling of "this document has no pages"**, and
-  a non-empty one on a DOCX is the defect this law exists to catch.
+- **Pages.** `RepresentationPayload.pages` is a `Vec<PageRecord>`, so **an empty `pages` array is
+  the spelling of "this document has no pages"** — and a non-empty one on a DOCX is the defect this
+  law exists to catch. **That is true of the type and, today, not of the invariant:** v2-S1 measured
+  that `seal` refuses a node whose parent is not a declared page, so the empty vector is currently
+  only legal for a document with no nodes either. §5 records what that costs and whose problem it
+  is.
 - **The locator.** A new union variant, per §5.1. A `DocxLocator` that contains a page number is the
   same violation as a `bbox`, wearing a field name.
 - **The dependency graph.** `deny.toml` is the standing proof for the third obligation: a renderer
   is a dependency, and one that arrives shows up there before it shows up in a review.
 
-S1+ turn these into tests. S0's job is that the sentences exist **before** the first parser that
-could break them — the pattern `12-V12-SCOPE.md` §3 set for the handle law, for the same reason.
+S1 turned the third obligation into a test (`page_less_source.rs` reads the lock file for a
+renderer) and S2+ turn the rest into tests as the code that could break them arrives. The sentences
+exist **before** the first parser — the pattern `12-V12-SCOPE.md` §3 set for the handle law, for the
+same reason.
 
 ## 4. One IR, one serializer
 
@@ -103,10 +109,17 @@ Anydoc's **A2** (`06-STEAL-REFUSE.md`, target v2): shared IR → one serializer.
 > **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection
 > behaviour | None — **provided `engine-grounding` never learned about pages**
 
-That precondition is **not yet verified** and S1 must verify it rather than assume it. Today
-`engine-grounding` passes `PageRecord`s through from the representation into `ethos.grounding.v1`,
-which is a weaker position than "never learned about pages" implies. Whether that is pass-through
-or knowledge is the first question §5 asks.
+**Verified at v2-S1: the precondition holds, and it points at the wrong crate.**
+`engine-grounding` never learned what a page *is* — it reads no locator
+(`engine_grounding_has_no_pdf_concept` fails if it so much as mentions `NativeLocator`), derives no
+geometry, and addresses pages by id. `project()`'s own check that `node.parent` names a declared
+page is a **re-assertion of an invariant `seal` already guarantees**, not independent knowledge:
+`project()` can never be handed a page-less representation, because one cannot be constructed.
+
+The assumption that every node has a page parent lives in **`engine-core`**. That is permitted by
+§1's M5 line — a contract invariant is not format machinery, and nothing there can parse anything —
+but it is the sentence v2 has to revisit, and it is the finding §5 records. Pinned by
+`crates/engine-grounding/tests/page_less_source.rs`.
 
 ### Where an office crate would live, and why it does not exist yet
 
@@ -119,7 +132,7 @@ So: the name is `engine-office`, its rules are the existing table's (`engine-cor
 what a DOCX is, exactly as it never learned what a PDF is), and **S0 does not create it.** A second
 format is what makes it stop being speculative; a scope document is not.
 
-## 5. The open contract question, posed and not answered
+## 5. The contract question, decided at S1
 
 **`ethos.grounding.v1` is a PDF schema today, and a DOCX cannot enter it.** Three independent walls,
 read off `crates/engine-grounding/schemas/ethos-grounding-source.schema.json`:
@@ -131,20 +144,47 @@ read off `crates/engine-grounding/schemas/ethos-grounding-source.schema.json`:
 | 3 | `page.required` is `["id", "index", "width", "height", "rotation"]`, all integers ≥ 1 | no page geometry to put there |
 
 The v2 gate says *"a DOCX quote and an XLSX cell both **ground**"*. Those three walls mean the word
-`ground` in that sentence is **undefined for a page-less format**, and it has exactly two honest
-readings:
+`ground` in that sentence is **undefined for a page-less format**.
 
-- **(a) The schema revises.** `ethos.grounding.v1` gains a page-less source shape — a decision with a
-  written rationale, a version, and tests, made in the open. It is a change to the **verifier's**
-  contract, so it is not an adapter's business and not a thing to do quietly inside a parser slice.
-- **(b) Grounding stays PDF-only**, and v2's gate is met at the **representation** level: a DOCX
-  quote resolves to a node through the same fingerprint-checked handle path `node_get` already uses,
-  and `ethos.grounding.v1` continues to mean *"a box on a page in a PDF"*.
+### Decided at v2-S1: (b) — `ethos.grounding.v1` stays PDF-only
 
-**S0 does not choose.** It records that the choice exists, that it is load-bearing for the gate's own
-wording, and that **neither reading permits inventing a page to satisfy the schema** — which is the
-third option and the only one that is forbidden outright. `15-V2-MILESTONES.md` S1 is where the
-decision is made, before any reader exists whose output would depend on it.
+**No page-less source shape, no optional `page`, no forked schema in this repository.**
+
+The alternative — **(a)**, revising the artifact so it can name a page-less source — is a change to
+the **verifier's** contract, and `07-VERIFY-BOUNDARY.md` is why it cannot be made here.
+`engine-cli/tests/oracle.rs` agrees with the pinned Ethos CLI on this exact schema, so an
+engine-only revision would produce artifacts the verifier does not speak while both still called
+themselves `ethos.grounding.v1`. **(a) is therefore blocked on an Ethos-side revision** — recorded
+as owned elsewhere, not refused. Adding an optional `page` to the engine's copy would be the lying
+artifact v1.2-S5 refused for loose boxes, wearing a different field name.
+
+Pinned by `crates/engine-grounding/tests/page_less_source.rs`, which asserts all three walls. Relax
+one and S1 is reopened deliberately.
+
+### And the measurement that resized S2
+
+S0 wrote the sentence above assuming the page assumption lived in `ethos.grounding.v1` — so that
+deciding (b) would leave v2's gate reachable *"at the representation level"*. **That was wrong, and
+S1 measured it.**
+
+`DocumentRepresentation::seal` refuses a node whose parent is not a declared page. The check is in
+`check_structure`, which runs on **both** construction paths, so it cannot be reached around by
+deserializing instead of sealing:
+
+> node `s1` names parent page `p1`, which is not a declared page
+
+**A page-less document cannot become a representation at all**, let alone a grounding artifact. So
+§3's statement that the empty `pages` vector spells *"this document has no pages"* is true of the
+**type** and false of the **invariant**: today the empty vector is only legal for a document with no
+nodes either.
+
+That does not change the decision — (b) is still right, and for the reason given. It changes **whose
+problem the gate is**: reaching *"a DOCX quote grounds"* is upstream of grounding, in the
+representation's own page-parent invariant, and that is a v2 design decision about the IR rather
+than a schema question. `15-V2-MILESTONES.md` S2 carries it.
+
+**Neither reading permits inventing a page to satisfy either constraint** — that is the third option
+and the only one forbidden outright.
 
 ## 6. What v2 is
 
