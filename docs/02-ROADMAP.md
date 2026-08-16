@@ -86,6 +86,12 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What shape must every artifact have? | `01-CONTRACT.md` |
 | Can I borrow feature X from parser Y? | `06-STEAL-REFUSE.md` |
 | Where does verification live? | `07-VERIFY-BOUNDARY.md` |
+| What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **the gate is missed at 64‰** |
+| What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
+| What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **scoped, not started** |
 
-Nothing past v0.1 has an implementation document, and nothing should get one until v0's exit criteria
-are green.
+Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
+for v0. A version gets that pair before it gets code, and v2 has it while having none. Nothing past
+v2 has an implementation document, and v2.1, v2.2 and v3 should not get one until v2's gate is in
+sight.

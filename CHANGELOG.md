@@ -7,7 +7,47 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v1.2 complete: MCP, two SDKs, LangChain tools, and one refused adapter, as 0.19.0
+## [Unreleased] — v2 scoped, and v1.2 complete: MCP, two SDKs, LangChain tools, and one refused adapter, as 0.19.0
+
+### v2-S0 — office formats, scoped and not started
+
+Two documents and nothing else: [`docs/14-V2-SCOPE.md`](docs/14-V2-SCOPE.md) and
+[`docs/15-V2-MILESTONES.md`](docs/15-V2-MILESTONES.md), on the pattern `10`/`11` and `12`/`13` set.
+**No code, no crate, no fixture, no schema change, and the workspace stays at 0.19.0** — the profile
+hash does not move, because nothing about this build parses differently.
+
+v2's gate is *a DOCX quote and an XLSX cell both ground; **no synthesised pages***, and the second
+clause is the whole hazard. A DOCX has no page: where one appears is a decision a renderer makes
+from a font stack and a paper size, so a `page` on a Word citation measures the machine that printed
+it rather than the document — and it looks exactly like a locator, because it is shaped like one.
+`06-STEAL-REFUSE.md` **L30** already refuses the shortest path to that (*"LibreOffice → PDF … It
+invents pagination … This is a refusal, not a fallback"*), and `01-CONTRACT.md` §5.1 already says a
+rendered page/bbox is never substituted for a native source address.
+
+So S0's contribution is making that **checkable** rather than quotable. The law names the four
+places a violation would show: the empty `pages` vector as the spelling of *"this document has no
+pages"*, `GeometryAbsence::NotApplicableToKind` as the spelling of *"no geometry, and that is not a
+gap"*, a new `NativeLocator` variant (§5.1 already names `DocxLocator` and `XlsxLocator`), and
+`deny.toml`, where a renderer would appear as a dependency before it appeared in a review.
+
+**One question is posed and deliberately not answered.** `ethos.grounding.v1` is a PDF schema —
+`source.media_type` is `{"const": "application/pdf"}`, `element` requires `page` and `bbox`, `page`
+requires integer `width`/`height`/`rotation` — so the word *"ground"* in v2's own gate is undefined
+for a page-less format. Either the schema revises, as a deliberate change to the **verifier's**
+contract with a rationale and tests, or grounding stays PDF-only and the gate is met at the
+representation level. **Inventing a page to satisfy the schema is the third option and the only one
+forbidden outright.** `15` makes that decision S1, ahead of any reader whose output would depend on
+it — the shape v1.2-S0 used for the handle law.
+
+`engine-office` is **named** as where an office crate would live (`04-ARCHITECTURE.md` already
+named it) and **not created**: a fifth crate before a second format is speculative structure. A1's
+14-format horizon is parked as a single row until DOCX and XLSX have shipped and the cost of the
+third is measured rather than guessed. No LibreOffice, no Anydoc dependency, no JVM, no AGPL.
+
+**v1 is still not done** — the S7 table-cell gate is measured and missed at 64‰ — and nothing in
+this entry closes it.
+
+### v1.2 — complete
 
 **v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
