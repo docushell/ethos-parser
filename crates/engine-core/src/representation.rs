@@ -40,7 +40,7 @@
 //!
 //! # The fingerprint, and why it is a subtree rather than a filter
 //!
-//! [`DocumentRepresentation::representation_c14n_sha256`] is
+//! The `representation_c14n_sha256` field — [`DocumentRepresentation::fingerprint`] — is
 //! `"sha256:" + hex(sha256(c14n(doc["representation"])))` — the digest of a **literal subtree of
 //! the emitted document**. A reader recomputes it with no domain knowledge: canonicalize that
 //! one member, hash it.
@@ -75,7 +75,7 @@ pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.5.0";
 ///
 /// **Source identity, not representation identity.** `docs/01-CONTRACT.md` §2 requires both and
 /// they are not the same thing: this is what went in, and
-/// [`DocumentRepresentation::representation_c14n_sha256`] is what came out.
+/// [`DocumentRepresentation::fingerprint`] is what came out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceIdentity {

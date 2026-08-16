@@ -63,11 +63,11 @@ use crate::profile::Capabilities;
 /// backend's xref strictness, an undescended form XObject) belong to the crate that owns the
 /// format; `engine-core` never learns what a PDF is (`docs/04-ARCHITECTURE.md` §1).
 pub mod codes {
-    /// [`Capabilities::spans`] is false: no text spans are emitted.
+    /// [`crate::Capabilities::spans`] is false: no text spans are emitted.
     pub const SPANS_NOT_EMITTED: &str = "spans-not-emitted";
-    /// [`Capabilities::char_offsets`] is false: spans carry no character offsets.
+    /// [`crate::Capabilities::char_offsets`] is false: spans carry no character offsets.
     pub const CHAR_OFFSETS_NOT_EMITTED: &str = "char-offsets-not-emitted";
-    /// [`Capabilities::tables`] is false: no table is detected or emitted.
+    /// [`crate::Capabilities::tables`] is false: no table is detected or emitted.
     pub const TABLES_NOT_EXTRACTED: &str = "tables-not-extracted";
     /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
@@ -100,7 +100,7 @@ pub mod codes {
     /// Profile-scoped, because it is true of every document this build reads.
     pub const UNDRAWN_TABLE_EDGES_NOT_SUPPLIED: &str = "undrawn-table-edges-not-supplied";
 
-    /// [`Capabilities::markdown`] is false: no Markdown projection is emitted.
+    /// [`crate::Capabilities::markdown`] is false: no Markdown projection is emitted.
     ///
     /// **The honest state for a profile that declines to project**, and `docs/01-CONTRACT.md` §12
     /// is explicit that declining is respectable: Workbench rule 8 *prefers no projection at all*
@@ -171,9 +171,9 @@ pub mod codes {
     /// **Not a confidence score**, exactly as for the other two: it names the precondition that
     /// failed and never grades how close the ruling lines came.
     pub const STROKE_RULED_TABLE_CANDIDATE_REFUSED: &str = "stroke-ruled-table-candidate-refused";
-    /// [`Capabilities::measured_ink_boxes`] is false: geometry is typed-absent throughout.
+    /// [`crate::Capabilities::measured_ink_boxes`] is false: geometry is typed-absent throughout.
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
-    /// [`Capabilities::multi_column_reading_order`] is false: order is single-column.
+    /// [`crate::Capabilities::multi_column_reading_order`] is false: order is single-column.
     ///
     /// **The limitation v0 had to declare explicitly** (`docs/03-V0-SCOPE.md` §3.2). A two-column
     /// document was read in the wrong order and the artifact said so, rather than silently
@@ -193,7 +193,7 @@ pub mod codes {
     pub const INVISIBLE_RENDER_MODE_TEXT: &str = "invisible-render-mode-text";
     /// Text on this document sits outside the visible page box (v1-S6).
     ///
-    /// Same posture as [`Self::INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
+    /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
     pub const OFF_PAGE_TEXT: &str = "off-page-text";
     /// Low-contrast text is not detected, at any threshold (v1-S6).
     ///
@@ -209,7 +209,7 @@ pub mod codes {
     /// so it has no object number to address and no stream to digest independently. It is counted
     /// so that "this page has no image nodes" cannot be read as "this page has no images".
     pub const INLINE_IMAGES_NOT_EMITTED: &str = "inline-images-not-emitted";
-    /// [`Capabilities::images`] is true: what an image node does and does not say.
+    /// [`crate::Capabilities::images`] is true: what an image node does and does not say.
     pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
     /// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).
     ///
@@ -219,23 +219,23 @@ pub mod codes {
     pub const COMPOSITE_FONT_CODES_FROM_TOUNICODE: &str = "composite-font-codes-from-tounicode";
     /// A `Do` named an XObject this profile could not resolve (v1-S6).
     pub const XOBJECT_NAME_UNRESOLVED: &str = "xobject-name-unresolved";
-    /// [`Capabilities::images`] is false: no image is located or fingerprinted.
+    /// [`crate::Capabilities::images`] is false: no image is located or fingerprinted.
     pub const IMAGES_NOT_EMITTED: &str = "images-not-emitted";
-    /// [`Capabilities::page_screenshots`] is false: no page raster is produced.
+    /// [`crate::Capabilities::page_screenshots`] is false: no page raster is produced.
     pub const PAGE_RASTER_NOT_EMITTED: &str = "page-raster-not-emitted";
-    /// [`Capabilities::multi_column_reading_order`] is true: the rule reads geometry only.
+    /// [`crate::Capabilities::multi_column_reading_order`] is true: the rule reads geometry only.
     ///
-    /// The narrower leftover that replaced [`Self::MULTI_COLUMN_READING_ORDER`] on the default
+    /// The narrower leftover that replaced [`MULTI_COLUMN_READING_ORDER`] on the default
     /// profile at v1-S5 — the same move `stroke-ruled-tables-not-detected` made when the
     /// alignment rule retired `unruled-tables-not-detected`.
     pub const READING_ORDER_GEOMETRIC_ONLY: &str = "reading-order-geometric-only";
-    /// [`Capabilities::structural_locators`] is false: no structural address is claimed.
+    /// [`crate::Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
 
-    /// [`Capabilities::form_fields`] is false: the document's form-field tree is not read.
+    /// [`crate::Capabilities::form_fields`] is false: the document's form-field tree is not read.
     pub const FORM_FIELDS_NOT_EXTRACTED: &str = "form-fields-not-extracted";
 
-    /// [`Capabilities::annotations`] is false: page annotations are not read.
+    /// [`crate::Capabilities::annotations`] is false: page annotations are not read.
     pub const ANNOTATIONS_NOT_EXTRACTED: &str = "annotations-not-extracted";
 
     /// The document carries a dynamic-form packet this profile does not parse (v1-S4).

@@ -38,7 +38,8 @@
 //!
 //! The dangerous version of that rule is one where "omit" can be reached from a quality
 //! judgement — a classifier reason code, a page state, a boolean someone set. So the only
-//! constructor for an emittable box, [`GroundedBox`], takes a [`GeometryPresence`] and builds
+//! constructor for an emittable box, [`GroundedBox`], takes an [`engine_core::GeometryPresence`]
+//! and builds
 //! nothing from any other input. There is no `GroundedBox::new(x0, y0, x1, y1)`. A future edit
 //! that wanted to omit a node "because the page looked bad" would have to add a constructor, and
 //! adding one is a visible act.
