@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ethos.dev/schemas/draft/ethos.markdown.v1.json",
+  "$id": "urn:ethos-engine:draft-schema:markdown:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §12 (which DECLINES to define a Markdown projection, on Workbench rule 8) and docs/10-V11-SCOPE.md §4 (the four laws this artifact is built to satisfy instead). Written from crates/engine-core/src/markdown.rs. A PROJECTION, not the record: the representation is the evidence, this is derived from it and is deliberately lossy, and `coverage` is where it says how. The id was a https://ethos.dev/ URL at v1.1-S1, which implied a published, resolvable schema location that does not exist; it now uses the same urn scheme as every sibling here.",
   "title": "ethos.markdown.v1",
   "description": "A Markdown projection of a DocumentRepresentation, carried TOGETHER WITH the Anchor Map that inverts it back to representation nodes, a coverage census of every source character that did not reach it, and a second census of the structure GFM could not carry (v1.1-S1, S2, S3). docs/01-CONTRACT.md §12 declines to define a Markdown projection on Workbench rule 8 — a projection sitting between what a retriever ranks and what a citation binds is where a locator dies silently — and the parity checklist's O8 records that the rule PREFERS no projection at all to one without the map. This artifact exists because the map makes that objection payable, not because it lapsed. The consumer's rule is one line: a quote that touches a `syntax` byte is not invertible.",
   "type": "object",

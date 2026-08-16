@@ -756,3 +756,73 @@ fn the_representation_schema_pins_the_version_the_code_emits() {
         "and the artifact type with it"
     );
 }
+
+/// The markdown draft schema pins the shape version **and the rule id** the code actually emits.
+///
+/// The third of these guards, and the reason there is a third: the v1-S3 note above says the
+/// representation schema drifted precisely because the profile one had a guard and it did not.
+/// `markdown.draft.json` arrived at v1.1-S1 with neither, so its `schema_version` and its
+/// `markdown_rule` example could both go stale silently — and `markdown_rule` is the one field on
+/// this artifact whose whole job is to say which projection produced it.
+///
+/// The rule id is checked through `examples` rather than a `const` on purpose: the schema
+/// describes the artifact *shape*, and an artifact produced by an older rule is still a valid
+/// `ethos.markdown.v1`. What the README promises is that these files describe what the engine
+/// emits, so the example has to be a rule the engine can actually emit today.
+#[test]
+fn the_markdown_schema_pins_the_version_and_rule_the_code_emits() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/markdown.draft.json");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    assert_eq!(
+        schema["properties"]["schema_version"]["const"].as_str(),
+        Some(engine_core::MARKDOWN_SCHEMA_VERSION),
+        "markdown.draft.json pins a schema_version the code no longer emits. Update the schema in \
+         the same commit that bumps the constant — docs/draft-schemas/README.md tells readers this \
+         file describes what the engine actually produces."
+    );
+    assert_eq!(
+        schema["properties"]["artifact_type"]["const"].as_str(),
+        Some(engine_core::MARKDOWN_ARTIFACT_TYPE),
+        "and the artifact type with it"
+    );
+
+    let examples: Vec<&str> = schema["properties"]["markdown_rule"]["examples"]
+        .as_array()
+        .expect("markdown_rule carries examples")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(
+        examples.contains(&engine_core::MARKDOWN_RULE_BLOCKS_V2),
+        "markdown.draft.json's `markdown_rule` examples are {examples:?}, none of which is the \
+         rule this build emits ({}). A reader takes the example as the current answer, and the id \
+         moved at v1.1-S2 and again at v1.1-S3.",
+        engine_core::MARKDOWN_RULE_BLOCKS_V2
+    );
+
+    // The example artifact is a whole document, so its own `markdown_rule` has to agree too — an
+    // example that disagrees with the property beside it is worse than no example.
+    if let Some(example) = schema["examples"].as_array().and_then(|a| a.first()) {
+        assert_eq!(
+            example["markdown_rule"].as_str(),
+            Some(engine_core::MARKDOWN_RULE_BLOCKS_V2),
+            "the worked example names a different rule than the schema's own property does"
+        );
+        assert_eq!(
+            example["artifact_type"].as_str(),
+            Some(engine_core::MARKDOWN_ARTIFACT_TYPE)
+        );
+        assert_eq!(
+            example["schema_version"].as_str(),
+            Some(engine_core::MARKDOWN_SCHEMA_VERSION)
+        );
+    }
+}

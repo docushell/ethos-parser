@@ -10,24 +10,38 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 ## Status
 
-**v0 is complete and frozen (0.1.0); v0.1 shipped on top of it as 0.2.0. v1 is at 0.10.0 with
-S1–S7b and S8 done and S7 open.** Its gate — table-cell accuracy above 0.489 — is measured and
-**missed**: macro cell-slot F1 is **64‰** against a 489‰ floor, by the method in
+**v0 is complete and frozen (0.1.0); v0.1 shipped on top of it as 0.2.0. v1's last slice shipped
+as 0.10.0 with S1–S7b and S8 done and S7 open.** Its gate — table-cell accuracy above 0.489 — is
+measured and **missed**: macro cell-slot F1 is **64‰** against a 489‰ floor, by the method in
 [`docs/table-gate-v1.md`](docs/table-gate-v1.md). **v1 is not done.**
+
+**v1.1 is Safe Markdown, and the workspace is at 0.13.0** with S0–S3 done and S4 (HTML) not
+started. It began because the owner asked for the next roadmap row, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
 
-Six subcommands, one library, one document load:
+Seven subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
 engine extract         document.pdf                      # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
+engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
 engine verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
 engine overlay         document.pdf                      # an annotated PDF          · 0 / 2
 ```
+
+**`markdown` never emits Markdown alone.** `ethos.markdown.v1` carries the string *and* the
+**Anchor Map** that inverts every source byte of it back to representation nodes, as fields of one
+artifact rather than two files — a companion file is a thing a pipeline strips, and a field is not.
+There is no `--md-only`. Every byte is `source` (it inverts to node text) or `syntax` (this exporter
+invented it), so **a quote touching a `syntax` byte is not a citation**, mechanically. A coverage
+census accounts for every source character that did not make it, by named bucket with a count.
+`docs/01-CONTRACT.md` §12 refused a Markdown projection for the whole of v1 on Workbench rule 8 —
+a projection between what a retriever ranks and what a citation binds is where a locator dies
+silently — and the map is what makes that objection payable rather than lapsed.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds
@@ -71,6 +85,24 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
 Asking the other question found a real defect and fixed it. The ruled detector required every cell of a candidate grid to be covered by some painted rectangle — and a page-background panel answers yes for every cell at once, while the same detector separately threw that panel away as "the table's own border". One rectangle cannot be both the only evidence a cell exists and not a cell. Two CFPB pages that paint a panel behind highlight bars were emitting a 17 × 13 table holding 12 cells, on a page whose own tags declare no table. `ruled-rects-v2` removes exactly those two and nothing else: **detection precision goes from 900‰ to 1000‰, cross-check disagreements from 2 to 0, and the gate from 43‰ to 61‰, with no true positive lost.** S7b also added the gate the harness was missing, a cell-level one: **macro cell-F1 was 61‰ against the 489‰ floor**, computed by the method in [`docs/table-gate-v1.md`](docs/table-gate-v1.md) and **missed**. Fabrication stays 0 and the gold negatives stay clean. **v1 is not done**, and the number is written down rather than talked around. The largest lead left was then named, measured, and built: every table the engine misses on the one document that draws real grids is **stroked** rather than filled, 103 cells behind a limitation the engine has always declared. A complete `stroke-ruled-v1` slice finds 29 of those cells that nothing had found before — and emits 236 more that no tag calls a table, regresses the document it was built for, and makes a tax form yield four tables where every slice since v1-S1 has held it at zero. **S7b measured it and did not ship it**, with the numbers kept — and **S8 then found why**: both of its failures were one defect, an `extract` filter that discarded the page's vertical segments before the rule saw them, so "where are the columns" was answered by where horizontal rules happen to end. Reading that ink makes the coherence test ask that every column line interior to a band be stroked across it, which finds page 13's worksheet and refuses the Closing Disclosure furniture in the same change; a second precondition — a cell whose four edges are a form field's four edges is that field's box — holds the tax form at zero. **Shipped as `stroke-ruled-v1` at 0.10.0: CFPB 246‰ → 259‰, the gate 61‰ → 64‰, fabrication still 0, the canary still silent.** Page rasters are a
   named leftover rather than part of S6: rendering needs a PDF renderer, and this build depends on
   no C++ stack and no AGPL code by decision.
+- **v1.1 is Safe Markdown** ([`docs/10-V11-SCOPE.md`](docs/10-V11-SCOPE.md),
+  [`docs/11-V11-MILESTONES.md`](docs/11-V11-MILESTONES.md)), and it is the version that pays
+  §12's objection rather than lifting it. **S1** shipped `ethos.markdown.v1` — the string, the
+  Anchor Map, and a character census — with a golden that runs the four real binaries and watches
+  the pinned Ethos CLI ground a quote lifted from a `source` segment and **refuse** one spanning
+  the blank line between two paragraphs, which is real text in the Markdown that the page never
+  drew. **S2** projected blocks: a GFM table for every table and a list item for every run the
+  tree places in an `/L`. GFM has no `rowspan` and no headerless table, so what the flattening
+  costs is *counted* — `coverage.structural_erasures`, `{code, count}` — rather than footnoted,
+  and `markdown-table-structure-not-projected` was **deleted** rather than reworded, because a
+  reader acts on a stale limitation. **S3** joins a hyphenated line break **in the export only**:
+  the page draws `recalcu-` / `lated`, the Markdown reads `recalculated`, and `extract` still holds
+  both halves with the hyphen verbatim. So the joined word reads perfectly and **does not ground** —
+  the golden pins each half as grounded and the joined word as `text_mismatch` — while the map
+  names the two strings that *are* citable and the removed hyphen sits in a counted bucket.
+  Two clauses of that rule were found by measuring: without a baseline test it welded
+  `non-` + `escr` into `nonescr` on a real corpus document, and without a furniture test it welded
+  a running head onto body text. **S4 (HTML) is not started.**
 
 ## Building
 

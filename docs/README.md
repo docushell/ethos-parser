@@ -221,7 +221,7 @@ Then, as needed:
 | [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) | **v1.1-S0–S4**, with S0–S3 done and S4 (HTML) not started | Every v1.1 PR. This is the v1.1 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
-| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and the M2/M3 artifacts. Not a shipped contract | When you need a wire shape |
+| [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
 | [`attic/`](attic/) | Work that was **built, measured and deliberately not shipped**, as a patch that still applies | Before rebuilding something this project already tried |
 
