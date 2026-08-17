@@ -3,9 +3,11 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads its first format.** S0–S2 are done: this document, the grounding decision in §5, and
-`engine-office` — the fifth crate, and DOCX is what stopped it being speculative. S3 (XLSX) and S4
-(the rest) are not started.
+**v2 reads two formats.** S0–S3 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, and XLSX. S4 (the rest) is not started. §3's law has now
+been applied to a format that has *print* layout as well as one that has none, and it held without
+loosening: a cell is addressed by sheet, row and column, and no page, column width or print range
+appears anywhere on that path.
 
 **v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is

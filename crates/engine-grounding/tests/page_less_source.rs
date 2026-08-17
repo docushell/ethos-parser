@@ -66,12 +66,12 @@ use std::path::PathBuf;
 
 use engine_core::assurance::{codes, Limitation, PageStateEntry};
 use engine_core::{
-    c14n::sha256_hex_bytes, ArtifactIdentity, Assurance, Capabilities, CoordinateSystem,
-    DerivationClass, DocumentRepresentation, DocxLocator, GeometryAbsence, GeometryPresence,
-    IdAllocator, IdKind, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind,
-    OfficeRunAttributes, PageRecord, PdfLocator, ProcessingRun, ProcessorIdentity, Profile,
-    RepresentationPayload, Sha256Hex, SourceIdentity, TextRunAttributes,
-    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    c14n::sha256_hex_bytes, ArtifactIdentity, Assurance, Capabilities, CellTextSource,
+    CellValueType, CoordinateSystem, DerivationClass, DocumentRepresentation, DocxLocator,
+    GeometryAbsence, GeometryPresence, IdAllocator, IdKind, NativeLocator, Node, NodeAttributes,
+    NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes, PageRecord, PdfLocator,
+    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
+    TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 use serde_json::Value;
 
@@ -242,12 +242,64 @@ fn a_page_less_representation_is_refused_by_project() {
     );
 }
 
+/// **And so is a workbook** (v2-S3), for the same reason and with no change to this crate.
+///
+/// The second page-less format is the check that the refusal is on the *family* rather than on
+/// one media type that happened to be handled: a spreadsheet has a shape that tempts a page —
+/// print ranges, page breaks, "fit to page" — and none of it reaches `ethos.grounding.v1`.
+#[test]
+fn an_xlsx_representation_is_refused_by_project() {
+    let mut alloc = IdAllocator::new(Profile::xlsx_v0().profile_sha256().unwrap());
+    let part = alloc.next(IdKind::Part).unwrap();
+    let node = Node {
+        id: alloc.next(IdKind::Span).unwrap(),
+        kind: NodeKind::TextRun,
+        parent: part,
+        ordinal: 1,
+        text: "a cell".into(),
+        native_locator: NativeLocator::Xlsx(XlsxLocator {
+            part: "xl/worksheets/sheet1.xml".into(),
+            sheet: "Ledger".into(),
+            row: 12,
+            column: "B".into(),
+        }),
+        structural_locator: None,
+        derivation: DerivationClass::Extracted,
+        attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
+            value_type: CellValueType::Number,
+            text_source: CellTextSource::StoredValue,
+        }),
+    };
+    let geometry = NodeGeometry {
+        node: node.id.clone(),
+        presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+    };
+
+    let mut payload = payload(vec![node], Vec::new());
+    payload.source.media_type = engine_workbook_media_type();
+    let sealed =
+        DocumentRepresentation::seal(payload, vec![geometry]).expect("a workbook artifact seals");
+
+    let error = engine_grounding::project(&sealed).expect_err("and it does not project");
+    let message = error.to_string();
+    assert!(message.contains("application/pdf"), "{message}");
+    assert!(
+        message.contains("14-V2-SCOPE.md"),
+        "the refusal points at the law it is enforcing: {message}"
+    );
+}
+
 /// The media type a word-processing document declares.
 ///
 /// Spelled out rather than imported: `engine-grounding` does not depend on `engine-office`, and
 /// this crate having a *dependency* on a format reader is exactly what the boundary table forbids.
 fn engine_office_media_type() -> String {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document".into()
+}
+
+/// The media type a workbook declares. Spelled out for the reason above.
+fn engine_workbook_media_type() -> String {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into()
 }
 
 // -------------------------------------------------------------------------------------------

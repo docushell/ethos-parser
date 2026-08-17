@@ -422,7 +422,11 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
             })
         }
     };
-    if engine_office::is_docx(&head) {
+    // **One question, not two ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
+    // second would make a package containing both main parts resolve to whichever line came
+    // first; `engine_office::read` decides on the package's own central directory and refuses
+    // the ambiguous case by name, so the answer does not depend on the order of this file.
+    if engine_office::is_docx(&head) || engine_office::is_xlsx(&head) {
         return emit_representation(engine_office::read(&head));
     }
 

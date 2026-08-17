@@ -45,10 +45,10 @@ the items re-exported at the crate root.
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
 | `html` | `to_html`, `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V2` |
 | `markdown` | `to_markdown`, `AnchorMap`, `Segment`, `SegmentKind`, `Coverage`, `DroppedBucket`, `StructuralErasure`, `MarkdownArtifact`, `MARKDOWN_ARTIFACT_TYPE`, `MARKDOWN_SCHEMA_VERSION`, `MARKDOWN_RULE_BLOCKS_V2`, `GFM_SPAN_SLOTS_UNREPRESENTABLE`, `GFM_ROW_ZERO_SEPARATOR`, `GFM_CELL_RUN_CLAIMED_TWICE`, `GFM_CELL_NOT_PLACED`, `GFM_TABLE_NOT_PROJECTED`, `GFM_LIST_ITEM_RUN_JOINS` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V1`, `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `DocxLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `DocxLocator`, `XlsxLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes`, `OfficeCellAttributes`, `CellValueType`, `CellTextSource`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
@@ -162,6 +162,28 @@ wrote, and retyping them by hand is how a consumer silently stops matching.
 **Internal, do not use:** `grounded_box` as a module. It is private already, and that privacy is
 load-bearing rather than tidy — `project()` lives outside it and therefore cannot construct a
 `GroundedBox` from anything but a measurement state. See the crate docs.
+
+## `engine-office` — the OOXML readers
+
+**New to this document at v2-S3, and the omission is worth recording.** The crate shipped at
+v2-S2 outside the freeze table, which by this document's own rule at the top made
+`engine_office::read` — the entry point for two of the three formats `engine extract` accepts —
+"internal", renameable without a note. A second format is what surfaced it: the same gap would
+have let `is_xlsx` arrive unguarded.
+
+| Kind | Supported items |
+| --- | --- |
+| Entry point | `read` — dispatches on the package's own central directory, and refuses one claiming to be both formats |
+| Detection | `is_docx`, `is_xlsx` — **content, never extension** (Anydoc's **A4**) |
+| Media types | `DOCX_MEDIA_TYPE`, `XLSX_MEDIA_TYPE` |
+| Readers | `docx` (runs of `word/document.xml`), `xlsx` (sheets, relationships, shared strings, cells) |
+| Container | `zip` — `looks_like_zip`, `entry_names`, `read_entry` over the existing `flate2` |
+| Marker | `CRATE_NAME` |
+
+**Internal, do not use:** `xml`, the module holding the entity rule and the local-name helper both
+readers share. Private on purpose: it is one rule about *what counts as text*, and two callers is
+already the reason it exists — a third caller reaching it from outside the crate would make it a
+contract before anyone decided it should be one.
 
 ## `engine-cli` — the binary
 

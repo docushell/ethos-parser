@@ -168,6 +168,15 @@ pub enum NativeLocator {
     /// fields, and `01-CONTRACT.md` §5.1's rule is that a new *kind* of address is a new variant
     /// rather than a lie in an old one.
     Docx(DocxLocator),
+    /// A cell's address inside an OOXML workbook: part, sheet, row, column (v2-S3).
+    ///
+    /// **Every field is something the file contains**, and the two halves of the address are
+    /// spelled the two different ways the file spells them — see [`XlsxLocator`].
+    ///
+    /// There is no page, no bbox, no column width and no print range. A spreadsheet's "page" is
+    /// something a printer decides, not something the workbook states, so it is exactly the
+    /// rendering `docs/14-V2-SCOPE.md` §3 forbids a locator from addressing.
+    Xlsx(XlsxLocator),
 }
 
 impl NativeLocator {
@@ -181,7 +190,10 @@ impl NativeLocator {
     pub fn is_paginated(&self) -> bool {
         match self {
             Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => true,
-            Self::Docx(_) => false,
+            // A workbook has print layout, not pages. Where a page break falls depends on the
+            // printer, the paper and a "fit to page" setting, none of which is in the file —
+            // which is why `docs/06-STEAL-REFUSE.md` L30 is a refusal rather than a fallback.
+            Self::Docx(_) | Self::Xlsx(_) => false,
         }
     }
 
@@ -190,6 +202,7 @@ impl NativeLocator {
         match self {
             Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => None,
             Self::Docx(d) => Some(d.part.as_str()),
+            Self::Xlsx(x) => Some(x.part.as_str()),
         }
     }
 }
@@ -209,6 +222,64 @@ pub struct DocxLocator {
     pub paragraph: u32,
     /// 1-based position of the `<w:r>` within that paragraph.
     pub run: u32,
+}
+
+/// A cell's address inside an OOXML worksheet part (v2-S3).
+///
+/// # Four fields, and each one is a string the package wrote
+///
+/// `docs/14-V2-SCOPE.md` §3 names "a cell, a sheet" as things a v2 locator may address, and this
+/// is that address. Nothing here is laid out and nothing here could be: a workbook has no page
+/// until a printer decides where one falls, and a column's *width* is a rendering instruction
+/// rather than part of a cell's name.
+///
+/// # Why both `part` and `sheet`, when one address usually needs one name
+///
+/// They answer different questions and neither substitutes for the other.
+///
+/// `part` is the **package's** name for the worksheet — `xl/worksheets/sheet1.xml` — and it is
+/// what `check_structure`'s part-id ↔ part-name bijection is checked against, exactly as
+/// [`DocxLocator::part`] is. `sheet` is the **workbook's** name for it — what `<sheet name="…">`
+/// says, which is what a person citing a cell writes down and what the part name does not
+/// contain. The two are bound by `xl/_rels/workbook.xml.rels`, which the reader resolves rather
+/// than guesses: part names are author-chosen, and a workbook that has had a sheet deleted has
+/// `sheet1.xml` and `sheet3.xml` with no `sheet2.xml`, so position is not the mapping.
+///
+/// # Why the row is a number and the column is a string
+///
+/// Because that is how the file writes them. `<c r="B12">` states the column as the letters `B`
+/// and the row as the digits `12`; `<row r="12">` states the same row the same way. Reading `12`
+/// as a number is reading — the attribute's own type is an integer. Turning `B` into `2` is
+/// **arithmetic on a bijective base-26 numeral**, which is a computation the file never performed
+/// and a value it never contains. The asymmetry is the file's, not this reader's, and carrying it
+/// through is what keeps the locator a quotation rather than a derivation.
+///
+/// Concatenating [`Self::column`] and [`Self::row`] reproduces the `r` attribute exactly, so
+/// nothing is lost by splitting it and there is no second place for the address to live.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct XlsxLocator {
+    /// The package part this cell was read from, e.g. `xl/worksheets/sheet1.xml`.
+    ///
+    /// The package's own name for it, resolved through `xl/_rels/workbook.xml.rels` — not a path
+    /// on disk, and not `sheet{n}.xml` guessed from the sheet's position in `<sheets>`.
+    pub part: String,
+    /// The workbook's own name for the sheet, from `<sheet name="…">` in `xl/workbook.xml`.
+    ///
+    /// Verbatim, with XML entities resolved — a `&amp;` dropped from a sheet name would be a
+    /// *wrong address* rather than merely wrong text, which is the worse of the two failures.
+    pub sheet: String,
+    /// The row as the file numbers it: the digits of `<c r="B12">`, 1-based.
+    ///
+    /// **Read, not counted.** A workbook's rows are sparse — a sheet may jump from row 2 to row
+    /// 12 with nothing in between — so a reader that incremented a counter would give the same
+    /// cell a different address than the file gives it.
+    pub row: u32,
+    /// The column as the file letters it: the letters of `<c r="B12">`, e.g. `B`, `AA`.
+    ///
+    /// A `String` and not an index, for the reason on the type's own documentation: `2` is a
+    /// number the workbook does not contain.
+    pub column: String,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -542,6 +613,13 @@ pub enum NodeAttributes {
     /// never made, which is the fabrication `01-CONTRACT.md` §5.2 forbids. The union discipline
     /// §5.1 sets for locators is the same one here: a new *kind* of fact is a new variant.
     OfficeRun(OfficeRunAttributes),
+    /// A spreadsheet cell's facts (v2-S3).
+    ///
+    /// **A third variant rather than [`Self::OfficeRun`], because a `<c>` is not a `<w:r>`.** A
+    /// cell has no `xml:space="preserve"` to record and a run has no value type and no formula,
+    /// so either struct filled with the other's fields would be claims the file never made — the
+    /// same argument that made `OfficeRun` a variant rather than a blanked [`Self::TextRun`].
+    OfficeCell(OfficeCellAttributes),
 }
 
 impl NodeAttributes {
@@ -557,6 +635,13 @@ impl NodeAttributes {
             // locator is what says which. A second kind would make every consumer handle two
             // names for one concept at no gain.
             Self::OfficeRun(_) => NodeKind::TextRun,
+            // **And so is a cell**, for the standing rule rather than in spite of it. v1-S1
+            // refused a `TableCell` kind because a PDF cell's text was already in runs; here the
+            // cell *is* the atom, so the question is only whether "this text is a cell" is a fact
+            // no existing node carries — and it is not. [`XlsxLocator`] says sheet, row and
+            // column, which is cell-ness spelled out; a kind would restate the locator, which is
+            // exactly why v1-S3 refused `Paragraph` when the role path already said `P`.
+            Self::OfficeCell(_) => NodeKind::TextRun,
         }
     }
 }
@@ -862,6 +947,86 @@ pub struct OfficeRunAttributes {
     /// whether this run's spaces are the document's or the parser's. Recorded rather than
     /// resolved: this reader takes the text verbatim either way and says which case it was.
     pub space_preserved: bool,
+}
+
+/// A spreadsheet cell's facts: what SpreadsheetML states about a `<c>` and nothing else (v2-S3).
+///
+/// Two fields, and neither is derivable from the other. The value type is what the cell's `t`
+/// attribute says the stored value *is*; the text source is where the node's `text` came *from*.
+/// A numeric cell computed by a formula is `Number` + [`CellTextSource::CachedFormulaResult`],
+/// and a text cell that stores its own string is `InlineString` + [`CellTextSource::StoredValue`]
+/// — the pair is not two spellings of one fact.
+///
+/// **Nothing here is a rendering.** A cell's displayed form comes from a number format in
+/// `xl/styles.xml` — `42` shown as `$42.00` or as `1970-02-11` — and this reader does not read
+/// styles, does not apply them, and does not carry a formatted string the file did not store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeCellAttributes {
+    /// What the cell's `t` attribute says its stored value is.
+    pub value_type: CellValueType,
+    /// Where this node's `text` came from.
+    pub text_source: CellTextSource,
+}
+
+/// What a `<c>`'s `t` attribute declares its stored value to be (v2-S3).
+///
+/// ECMA-376 `ST_CellType`. Every variant is one of the attribute's own legal values, and a `t`
+/// this build does not recognise is a **named refusal** rather than a guess — the posture the
+/// entity reader takes for the same reason, in `engine-office`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CellValueType {
+    /// `t="n"`, **or no `t` at all** — SpreadsheetML's own default.
+    ///
+    /// The absent case is not this engine choosing: ECMA-376 defines the attribute's default as
+    /// `n`, so a cell with no `t` states "number" by stating nothing. Reading a format's declared
+    /// default is reading; assuming *text* — which is what a reader that defaulted to string
+    /// would do — would put a quoted numeral in the evidence for a cell that holds a number.
+    Number,
+    /// `t="s"` — `<v>` is a 0-based index into `xl/sharedStrings.xml`.
+    SharedString,
+    /// `t="inlineStr"` — the text is in the cell's own `<is>`, and `<v>` is unused.
+    InlineString,
+    /// `t="str"` — `<v>` is a formula's cached **string** result, stored verbatim.
+    FormulaString,
+    /// `t="b"` — `<v>` is `0` or `1`, as stored. Not translated to `true`/`false`.
+    Boolean,
+    /// `t="e"` — `<v>` is an error literal, e.g. `#DIV/0!`, as stored.
+    Error,
+    /// `t="d"` — `<v>` is an ISO 8601 date **as text**, as stored.
+    ///
+    /// Distinct from [`Self::Number`] on purpose: a date stored as a serial number under a date
+    /// number format is a `Number` here, because that is what the file stores. Converting one to
+    /// the other needs the workbook's 1900/1904 epoch and a calendar, and a calendar conversion
+    /// is a computation, not a reading.
+    Date,
+}
+
+/// Where a cell node's `text` came from (v2-S3).
+///
+/// # Why this exists as its own field
+///
+/// A `<c>` may carry a formula. `<f>` is **not a second authority**: this engine has no evaluator
+/// and will not acquire one, so the text is whatever the file stored. But "the number the
+/// workbook last cached" and "the formula's source, because nothing was cached" are different
+/// facts about the same cell, and a consumer that could not tell them apart would read
+/// `SUM(B2:B2)` as if the sheet displayed that string. Labelling which one it is costs one field;
+/// leaving it unlabelled costs the artifact its honesty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CellTextSource {
+    /// The value the cell stores: its `<v>`, or the `<is>` of an inline string. No formula.
+    StoredValue,
+    /// The cell carries a `<f>` **and** a cached `<v>`. The text is that cached value, as stored.
+    ///
+    /// Nothing was evaluated. This says the workbook's own last-computed value is what is here.
+    CachedFormulaResult,
+    /// The cell carries a `<f>` and **no** cached `<v>`. The text is the formula source, as
+    /// stored — `SUM(B2:B2)`, which is not a value the sheet ever displayed.
+    FormulaSource,
 }
 
 /// A character the reader authored rather than read, flagged where it was created.
@@ -1302,7 +1467,35 @@ impl DocumentRepresentation {
 
         self.check_geometry_matches_its_declaration()?;
         self.check_cell_runs_are_declared_nodes(&seen_nodes)?;
+        self.check_attributes_agree_with_kind()?;
 
+        Ok(())
+    }
+
+    /// Every node's `kind` agrees with the kind its own attributes belong to.
+    ///
+    /// [`NodeAttributes`]'s documentation has said since v0 that this redundancy is a **checked**
+    /// one — *"redundancy that is tested is a cross-check; redundancy that is not is two places
+    /// for the truth to live"* — and until v2-S3 nothing checked it. Both construction paths ran
+    /// straight past a node reading `"kind":"annotation"` with `office_cell` attributes, so a
+    /// consumer dispatching on `kind` and one dispatching on the attributes tag would read the
+    /// same node as two different things.
+    ///
+    /// Found while adding the third variant that relies on the claim.
+    fn check_attributes_agree_with_kind(&self) -> Result<(), EngineError> {
+        for node in &self.representation.nodes {
+            let claimed = node.attributes.kind();
+            if node.kind != claimed {
+                return Err(Self::malformed(format!(
+                    "node `{}` is a `{}` but carries `{}` attributes. The two are a cross-check, \
+                     not a convenience: a record whose kind and attributes disagree reads as two \
+                     different things depending on which field a consumer trusts.",
+                    node.id,
+                    node.kind.as_str(),
+                    claimed.as_str()
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -1789,6 +1982,127 @@ mod tests {
         ];
         let err = seal(vec![n1, n2], Vec::new(), geometry).unwrap_err();
         assert!(err.to_string().contains("means exactly one part"), "{err}");
+    }
+
+    /// **Two parts is legal, and this is the case that proves the rule above is a bijection.**
+    ///
+    /// A workbook is the first format that produces one part per sheet, and nothing in
+    /// `check_page_less_shape` had to change for it: two ids mapping to two names violates
+    /// neither direction, and `check_structure` counts ordinals **per parent**, so each part
+    /// carries its own contiguous 1-based sequence.
+    #[test]
+    fn two_parts_with_two_names_seal_and_keep_separate_ordinals() {
+        let mut alloc = IdAllocator::new(Profile::xlsx_v0().profile_sha256().unwrap());
+        let first = alloc.next(IdKind::Part).unwrap();
+        let second = alloc.next(IdKind::Part).unwrap();
+
+        let mut nodes = Vec::new();
+        for (part, sheet, name, ordinals) in [
+            (&first, "Ledger", "xl/worksheets/sheet1.xml", 1..=2u32),
+            (&second, "Notes", "xl/worksheets/sheet3.xml", 1..=1u32),
+        ] {
+            for ordinal in ordinals {
+                nodes.push(Node {
+                    id: alloc.next(IdKind::Span).unwrap(),
+                    kind: NodeKind::TextRun,
+                    parent: part.clone(),
+                    ordinal,
+                    text: format!("{sheet} {ordinal}"),
+                    native_locator: NativeLocator::Xlsx(XlsxLocator {
+                        part: name.into(),
+                        sheet: sheet.into(),
+                        row: ordinal,
+                        column: "A".into(),
+                    }),
+                    structural_locator: None,
+                    derivation: DerivationClass::Extracted,
+                    attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
+                        value_type: CellValueType::Number,
+                        text_source: CellTextSource::StoredValue,
+                    }),
+                });
+            }
+        }
+        let geometry: Vec<_> = nodes
+            .iter()
+            .map(|n| {
+                geom(
+                    n,
+                    GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+                )
+            })
+            .collect();
+
+        seal(nodes, Vec::new(), geometry).expect("many parts is what a workbook is");
+    }
+
+    /// **The cross-check `NodeAttributes`' own docs promised, made real at v2-S3.**
+    ///
+    /// A node whose `kind` and attributes disagree is refused on both construction paths. Before
+    /// this, the claim was prose only, and the third variant to rely on it is what surfaced that.
+    #[test]
+    fn a_node_whose_kind_disagrees_with_its_attributes_is_refused() {
+        let mut alloc = IdAllocator::new(Profile::xlsx_v0().profile_sha256().unwrap());
+        let part = alloc.next(IdKind::Part).unwrap();
+        let mut node = Node {
+            id: alloc.next(IdKind::Span).unwrap(),
+            // Cell facts under an annotation's kind: two readings of one node.
+            kind: NodeKind::Annotation,
+            parent: part,
+            ordinal: 1,
+            text: "a cell".into(),
+            native_locator: NativeLocator::Xlsx(XlsxLocator {
+                part: "xl/worksheets/sheet1.xml".into(),
+                sheet: "Ledger".into(),
+                row: 1,
+                column: "A".into(),
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
+                value_type: CellValueType::Number,
+                text_source: CellTextSource::StoredValue,
+            }),
+        };
+        let geometry = vec![geom(
+            &node,
+            GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        )];
+        let err = seal(vec![node.clone()], Vec::new(), geometry.clone()).unwrap_err();
+        assert!(err.to_string().contains("cross-check"), "{err}");
+
+        // And the same node with the kind its attributes name seals, so the test above fails for
+        // the disagreement and for nothing else.
+        node.kind = NodeKind::TextRun;
+        seal(vec![node], Vec::new(), geometry).expect("agreement is all that was missing");
+    }
+
+    /// A cell's address carries no page and no box, and none can be added quietly.
+    #[test]
+    fn an_xlsx_locator_denies_a_page_and_a_box() {
+        let honest =
+            r#"{"part":"xl/worksheets/sheet1.xml","sheet":"Ledger","row":12,"column":"B"}"#;
+        serde_json::from_str::<XlsxLocator>(honest).expect("the four fields the file states");
+
+        for smuggled in [
+            r#"{"part":"p","sheet":"s","row":1,"column":"A","page":1}"#,
+            r#"{"part":"p","sheet":"s","row":1,"column":"A","bbox":[0,0,1,1]}"#,
+            r#"{"part":"p","sheet":"s","row":1,"column":"A","column_width":2048}"#,
+            r#"{"part":"p","sheet":"s","row":1,"column":"A","print_area":"A1:B2"}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<XlsxLocator>(smuggled).is_err(),
+                "`deny_unknown_fields` is what stops a rendering arriving as a field: {smuggled}"
+            );
+        }
+    }
+
+    /// A workbook artifact is comparable with neither a PDF one nor a DOCX one.
+    #[test]
+    fn the_xlsx_profile_is_neither_the_pdf_nor_the_docx_profile() {
+        let xlsx = Profile::xlsx_v0().profile_sha256().unwrap();
+        assert_ne!(xlsx, Profile::default().profile_sha256().unwrap());
+        assert_ne!(xlsx, Profile::docx_v0().profile_sha256().unwrap());
     }
 
     /// A DOCX profile and the PDF default are **provably non-comparable** (`14-V2-SCOPE.md` §8).

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The office reader: OOXML word-processing documents into the representation (v2-S2).
+//! The office reader: OOXML documents (v2-S2) and workbooks (v2-S3) into the representation.
 //!
 //! # The fifth crate, and why it exists now and not before
 //!
@@ -24,7 +24,7 @@
 //!
 //! # The one sentence
 //!
-//! **A DOCX has no page, and nothing here invents one.** `docs/14-V2-SCOPE.md` §3, made
+//! **Neither format has a page, and nothing here invents one.** `docs/14-V2-SCOPE.md` §3, made
 //! mechanical in three places:
 //!
 //! - `payload.pages` is **empty**. There is no A4 record, no "72 DPI" default, and no renderer in
@@ -35,25 +35,41 @@
 //!   on a page-less node outright, so the rule is not a convention this crate follows — it is one
 //!   the artifact cannot break.
 //!
+//! A workbook is the sharper case of the same rule: it has column widths, row heights, print
+//! areas and page breaks, and every one of them describes a *printing* rather than the file's own
+//! structure. A cell is addressed as `xl/workbook.xml` and its worksheet address it — sheet, row,
+//! column — and by nothing else.
+//!
+//! # One artifact per package, and more than one part
+//!
+//! A DOCX is one part; a workbook is **one part per sheet**. v2-S2's page-less invariant already
+//! allowed that — part id ↔ part name is a bijection rather than a cardinality-of-one rule, and
+//! ordinals count per parent — so v2-S3 added nothing to `engine-core` and is simply the first
+//! artifact to use the shape with more than one part in it.
+//!
 //! # Detection is content-based
 //!
-//! Anydoc's **A4**. [`is_docx`] reads the bytes: a ZIP local-file-header signature, and
-//! `word/document.xml` in the package's own central directory. A `.docx` that is not OOXML is
-//! refused, and an OOXML document named `report.bin` is read — because an extension is a claim
-//! anybody can make and a magic number is one only the file can.
+//! Anydoc's **A4**. [`is_docx`] and [`is_xlsx`] read the bytes: a ZIP local-file-header
+//! signature, and `word/document.xml` or `xl/workbook.xml` in the package's own central
+//! directory. A `.docx` that is not OOXML is refused, and an OOXML document named `report.bin` is
+//! read — because an extension is a claim anybody can make and a magic number is one only the file
+//! can. [`read`] is the router, so a package claiming to be **both** is a named refusal rather
+//! than whichever check happens to run first.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod docx;
+pub mod xlsx;
+mod xml;
 pub mod zip;
 
 use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
-    NodeAttributes, NodeGeometry, NodeKind, OfficeRunAttributes, ProcessingRun, ProcessorIdentity,
-    Profile, RepresentationPayload, Sha256Hex, SourceIdentity, REPRESENTATION_ARTIFACT_TYPE,
-    REPRESENTATION_SCHEMA_VERSION,
+    NodeAttributes, NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes,
+    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
+    XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -62,6 +78,10 @@ pub const CRATE_NAME: &str = "engine-office";
 /// The media type an OOXML word-processing document declares.
 pub const DOCX_MEDIA_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/// The media type an OOXML workbook declares.
+pub const XLSX_MEDIA_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /// Whether these bytes are an OOXML word-processing document, **read from the bytes**.
 ///
@@ -81,13 +101,39 @@ pub fn is_docx(bytes: &[u8]) -> bool {
     }
 }
 
-/// Read an OOXML word-processing document into a sealed representation.
+/// Whether these bytes are an OOXML workbook, **read from the bytes**.
+///
+/// The same two questions [`is_docx`] asks, over the part only a workbook has. A `.docx` is a ZIP
+/// too and does not list `xl/workbook.xml`, which is what keeps the two apart without either one
+/// consulting a file name (**A4**).
+///
+/// Note that `xl/workbook.bin` — a macro-enabled binary workbook, `.xlsb` — is deliberately not
+/// this: it is a different format with a different reader, and claiming it here would produce an
+/// artifact from a part this crate cannot parse.
+pub fn is_xlsx(bytes: &[u8]) -> bool {
+    if !zip::looks_like_zip(bytes) {
+        return false;
+    }
+    match zip::entry_names(bytes) {
+        Ok(names) => names.iter().any(|n| n == xlsx::WORKBOOK_PART),
+        Err(_) => false,
+    }
+}
+
+/// Read an OOXML package into a sealed representation, dispatching on **what the bytes contain**.
+///
+/// A word-processing document and a workbook are told apart by the parts their own central
+/// directory lists, never by a file name (**A4**). A package that lists both main parts is a
+/// **named refusal** rather than a race between two `if`s: one representation describes one
+/// document, and picking whichever check ran first would make the answer depend on the order of
+/// this function's lines.
 ///
 /// # Errors
 ///
-/// Every failure is named and nothing is partial: a package with no `word/document.xml`, a part
-/// that will not inflate, XML that will not parse, or a payload the seal refuses. `01-CONTRACT.md`
-/// §8 — a document read as far as it went is a shorter document that still looks whole.
+/// Every failure is named and nothing is partial: a package with neither main part, one with
+/// both, a part that will not inflate, XML that will not parse, or a payload the seal refuses.
+/// `01-CONTRACT.md` §8 — a document read as far as it went is a shorter document that still looks
+/// whole.
 pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     if !zip::looks_like_zip(bytes) {
         return Err(EngineError::Malformed {
@@ -98,15 +144,37 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         });
     }
     let names = zip::entry_names(bytes)?;
-    if !names.iter().any(|n| n == docx::MAIN_PART) {
-        return Err(EngineError::MissingPart {
-            part: format!(
-                "`{}` — this package is a ZIP but not a word-processing document",
-                docx::MAIN_PART
-            ),
-        });
-    }
+    let has_document = names.iter().any(|n| n == docx::MAIN_PART);
+    let has_workbook = names.iter().any(|n| n == xlsx::WORKBOOK_PART);
 
+    match (has_document, has_workbook) {
+        (true, false) => read_docx(bytes, &names),
+        (false, true) => read_xlsx(bytes, &names),
+        (true, true) => Err(EngineError::Malformed {
+            what: "office package".into(),
+            detail: format!(
+                "this package lists both `{}` and `{}`, so it claims to be a word-processing \
+                 document and a workbook at once. A representation describes one document; \
+                 reading it as either would be this engine choosing which of the file's two \
+                 claims about itself to believe.",
+                docx::MAIN_PART,
+                xlsx::WORKBOOK_PART
+            ),
+        }),
+        // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
+        // renamed or corrupted `.docx` needs, and it is pinned by a test.
+        (false, false) => Err(EngineError::MissingPart {
+            part: format!(
+                "`{}` — this package is a ZIP but not a word-processing document, and it is not \
+                 a workbook either (`{}` is absent)",
+                docx::MAIN_PART,
+                xlsx::WORKBOOK_PART
+            ),
+        }),
+    }
+}
+
+fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
     let part = zip::read_entry(bytes, docx::MAIN_PART)?;
     let runs = docx::read_runs(&part)?;
 
@@ -158,12 +226,20 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         });
     }
 
-    let mut limitations = vec![Limitation::document(
-        engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
-        "this format carries no geometry: a word-processing document has no page and no ink box \
-         until something lays it out, and this engine does not",
-    )];
-    let unread = docx::unread_text_parts(&names);
+    // **Declared only when there is something to declare about.** `check_geometry_matches_its_
+    // declaration` requires this code to be present exactly when at least one node has no
+    // measurable box, so a package with no text at all must not carry it: nothing would be
+    // reconciled against it and the seal refuses the mismatch. Found at v2-S3, where an empty
+    // sheet is ordinary rather than pathological.
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: a word-processing document has no page and no ink \
+             box until something lays it out, and this engine does not",
+        ));
+    }
+    let unread = docx::unread_text_parts(names);
     if unread > 0 {
         limitations.push(Limitation::document(
             engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
@@ -204,6 +280,170 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         tables: Vec::new(),
         // No pages, so nothing was authorized and nothing has a page state. The coverage summary
         // reconciles zero against zero, which is what a document with no pages honestly is.
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an OOXML workbook into a sealed representation (v2-S3).
+///
+/// # One part id per worksheet, and why that needed nothing new
+///
+/// A DOCX has one part and one part id. A workbook has one **per sheet**, and the page-less
+/// invariant already allows it: `check_page_less_shape` checks that a part id and a part name
+/// agree *in both directions*, which is a bijection rather than a cardinality-of-one rule, and
+/// `check_structure` counts ordinals **per parent**, so each sheet gets its own contiguous 1-based
+/// sequence. v2-S3 added no invariant to `engine-core`; it is the first artifact to use the shape
+/// v2-S2 built.
+fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    let workbook = zip::read_entry(bytes, xlsx::WORKBOOK_PART)?;
+    let declared = xlsx::read_sheets(&workbook)?;
+
+    let rels_part =
+        zip::read_entry(bytes, xlsx::WORKBOOK_RELS_PART).map_err(|_| EngineError::MissingPart {
+            part: format!(
+                "`{}` — a workbook states its sheet names in `{}` and the part each one lives in \
+                 only here, so without it no cell has an address this reader can stand behind",
+                xlsx::WORKBOOK_RELS_PART,
+                xlsx::WORKBOOK_PART
+            ),
+        })?;
+    let rels = xlsx::read_relationships(&rels_part, xlsx::WORKBOOK_RELS_PART)?;
+    let (sheets, non_worksheets) = xlsx::resolve_sheets(&declared, &rels)?;
+
+    // **The string table is bound by relationship too**, for the reason the sheets are: its part
+    // name is author-chosen, and `xl/sharedStrings.xml` is a convention rather than a rule.
+    //
+    // Absent is a legal package — a workbook whose cells are all numbers or inline strings needs
+    // no table — and only *absent* becomes the empty table. A part that exists and will not
+    // inflate, exceeds the size cap, or will not parse is **propagated**, because swallowing it
+    // would re-surface later as "the table has 0 entries" pointing at a worksheet, which names
+    // the wrong part and states the wrong cause.
+    let shared = match xlsx::shared_strings_part(&rels, names) {
+        Some(part_name) => {
+            let part = zip::read_entry(bytes, &part_name)?;
+            xlsx::read_shared_strings(&part, &part_name)?
+        }
+        None => Vec::new(),
+    };
+
+    let profile = Profile::xlsx_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "xlsx profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+
+    let mut nodes = Vec::new();
+    let mut geometry = Vec::new();
+    for sheet in &sheets {
+        let part = zip::read_entry(bytes, &sheet.part)?;
+        let cells = xlsx::read_cells(&part, &sheet.part, &shared)?;
+
+        // One sheet, one part id — minted per sheet so the bijection holds in both directions.
+        let part_id = alloc.next(IdKind::Part)?;
+        for (index, cell) in cells.iter().enumerate() {
+            let id = alloc.next(IdKind::Span)?;
+            geometry.push(NodeGeometry {
+                node: id.clone(),
+                // A cell has no ink box by construction, exactly as a `<w:r>` has none. Not
+                // `NotReportedByReader`: nothing tried to measure and failed, there is nothing
+                // to measure until something lays the sheet out, and laying it out is the
+                // invented pagination `docs/14-V2-SCOPE.md` §3 refuses.
+                presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            });
+            nodes.push(Node {
+                id,
+                // The same kind a PDF run and a `<w:r>` carry. The locator is what says this one
+                // is a cell — see `NodeAttributes::kind`.
+                kind: NodeKind::TextRun,
+                parent: part_id.clone(),
+                // Contiguous **within this sheet**, in the order the part lists its cells.
+                ordinal: index as u32 + 1,
+                text: cell.text.clone(),
+                native_locator: NativeLocator::Xlsx(XlsxLocator {
+                    part: sheet.part.clone(),
+                    sheet: sheet.name.clone(),
+                    row: cell.row,
+                    column: cell.column.clone(),
+                }),
+                // No style tree is read, so no structural address is claimed.
+                structural_locator: None,
+                derivation: DerivationClass::Extracted,
+                attributes: NodeAttributes::OfficeCell(OfficeCellAttributes {
+                    value_type: cell.value_type,
+                    text_source: cell.text_source,
+                }),
+            });
+        }
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: a workbook has no page and no ink box until \
+             something prints it, and where a page break falls is a fact about the printer \
+             rather than about the file",
+        ));
+    }
+
+    let unread = xlsx::unread_text_parts(names);
+    if unread > 0 || non_worksheets > 0 {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} part(s) of this package carry text and were not read — charts, \
+                 drawings, comments or pivot caches. "
+            ));
+        }
+        if non_worksheets > 0 {
+            detail.push_str(&format!(
+                "{non_worksheets} sheet(s) this workbook lists are not worksheets — a chart \
+                 sheet or a dialog sheet — and have no cells to address. "
+            ));
+        }
+        detail.push_str(
+            "v2-S3 reads worksheet cells only, and a phrase absent from this artifact may still \
+             be present in the workbook",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: XLSX_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // A spreadsheet's pages are a print artefact. `docs/06-STEAL-REFUSE.md` L30 refuses the
+        // printer, so there is nothing here to declare and the vector stays empty.
+        pages: Vec::new(),
+        nodes,
+        // **Not a table, on the format made of grids.** `tables` here means this engine's table
+        // IR, produced by the PDF detectors from ruled and unruled evidence. Those never ran;
+        // this artifact carries cells, and `Profile::xlsx_v0` declares `tables: false` to say so.
+        tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 

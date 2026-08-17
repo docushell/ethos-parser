@@ -216,9 +216,9 @@ where
     if directory_offset == ZIP64_SENTINEL {
         return Err(EngineError::Unsupported {
             what: "zip64 container".into(),
-            detail: "this reader implements the 32-bit container, which is what a \
-                     word-processing document uses; a Zip64 archive is refused rather than read \
-                     with the wrong offsets"
+            detail: "this reader implements the 32-bit container, which is what an OOXML \
+                     package uses; a Zip64 archive is refused rather than read with the wrong \
+                     offsets"
                 .into(),
         });
     }

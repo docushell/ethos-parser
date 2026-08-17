@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads its first format at 0.21.0.** v1.1 is complete. v1 is
+**Status:** **v1.2 is complete at 0.19.0; v2 reads two formats at 0.22.0.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its gate — table-cell
 accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
@@ -53,7 +53,7 @@ declared, with nowhere in the schema to declare them. The predicted blocker — 
 origin — **dissolved**: their space and this engine's visible box are the same box. The refusal is
 pinned by `engine-grounding/tests/liteparse_refusal.rs` so relaxing either schema fact reopens it.
 
-**v2 is office formats, and it is scoped rather than started.** Its gate is *a DOCX quote and an
+**v2 is office formats, and it reads two of them.** Its gate is *a DOCX quote and an
 XLSX cell both ground; no synthesised pages*, and the second clause is the whole hazard: a DOCX has
 no page, so a page on a Word citation is a measurement of the machine that printed it rather than of
 the document. `06-STEAL-REFUSE.md` **L30** already refuses the shortest path — LibreOffice → PDF —
@@ -77,6 +77,17 @@ address still needs its declared page, a page-less one needs a part id, `pages` 
 page-less node with a measured box is refused outright. `DocxLocator` is part + paragraph + run and
 nothing else. `ethos.grounding.v1`, `mcp.rs` and both SDKs are **untouched** — and `node_get`
 resolves a DOCX run anyway, which is what one IR and one serializer buys.
+
+**S3 read the second format, and it is the one that used the shape S2 built.** `engine extract`
+reads an `.xlsx`; `XlsxLocator` is part + sheet + row + column, with the **column kept as the
+letters the file wrote** because `B` → `2` is arithmetic the workbook never performed. A workbook is
+one part per *sheet*, so it is the first artifact with more than one — and `engine-core` needed no
+change for it, because the part-id ↔ part-name rule is a bijection and ordinals count per parent.
+The sheet-to-part binding is resolved through `xl/_rels/workbook.xml.rels` rather than guessed from
+position, since a workbook that has had a sheet deleted has `sheet1.xml` and `sheet3.xml` and the
+guess would attach the wrong sheet's name to the right cells. **S3 also closed the question S2
+left open:** `coordinate_system` stays inert on both page-less profiles, because nothing reads it
+for a page-less artifact and a mode enum would have moved every PDF hash to respell it.
 
 **S4 adds a SECOND projection, `ethos.html.v1`, under the same four laws.** Not the first one with
 angle brackets: GFM has no `rowspan`, so `markdown` must expand a merged cell and count the slots
@@ -299,7 +310,7 @@ Then, as needed:
 | [`12-V12-SCOPE.md`](12-V12-SCOPE.md) | **v1.2 adoption**: what it is, what it is not, and the handle law | Before any adapter |
 | [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) | **v1.2-S0–S5**, all done — S5 **refused** | Every v1.2 PR. This is the v1.2 code-review map |
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
-| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S4**, with S0–S2 done and S3–S4 **not started** | Every v2 PR. This is the v2 code-review map |
+| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S4**, with S0–S3 done and S4 **not started** | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |

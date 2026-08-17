@@ -89,9 +89,10 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **the gate is missed at 64‰** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **scoped, not started** |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S3 done at 0.22.0; S4 not started** |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
-for v0. A version gets that pair before it gets code, and v2 has it while having none. Nothing past
+for v0. A version gets that pair before it gets code — v2 had both while having none, and now has
+`engine-office` reading two formats under them. Nothing past
 v2 has an implementation document, and v2.1, v2.2 and v3 should not get one until v2's gate is in
 sight.

@@ -21,9 +21,10 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads its first one at 0.21.0.** `engine extract` takes a `.docx` and
-emits the same record a PDF does — and **no page appears anywhere on that path**, because a DOCX has
-none until a renderer decides where one falls. Each row began because the owner asked for it, not
+**v2 is office formats and it reads two of them at 0.22.0.** `engine extract` takes a `.docx` or an
+`.xlsx` and emits the same record a PDF does — and **no page appears anywhere on that path**, because
+neither format has one until something decides where a break falls. A cell is addressed as its
+workbook addresses it: sheet, row and column, with the column kept as the letters the file wrote. Each row began because the owner asked for it, not
 because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
@@ -33,7 +34,7 @@ Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf | document.docx      # DocumentRepresentation v0 · 0 / 2
+engine extract         document.pdf|.docx|.xlsx          # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine html            representation.json               # ethos.html.v1             · 0 / 2
@@ -112,7 +113,7 @@ LangChain is an **optional extra** and an **optional peer**, so `import ethos_en
 carrying the install command. There is no LangGraph adapter — a bindable tool is already what
 LangGraph binds — no trust state on any result, and no `verify` tool.
 
-**`extract` reads a DOCX too, and refuses to invent a page for it.** Dispatch is by content, never
+**`extract` reads a DOCX and an XLSX too, and refuses to invent a page for either.** Dispatch is by content, never
 by extension — a renamed `report.bin` still reads and a `.docx` full of something else is a named
 failure — and the artifact is the **same** `DocumentRepresentation v0`: one type, one canonical
 JSON, one fingerprint. The reader is [`crates/engine-office/`](crates/engine-office/), the fifth
@@ -124,9 +125,20 @@ on a page-less node** outright, so this is a property of the artifact rather tha
 reader. Headers, footers and footnotes are not read and are **counted and declared**, so a phrase
 absent from the record is not read as absent from the document.
 
-`ethos.grounding.v1` stays PDF-only, so `engine ground` on that artifact is a **named refusal** —
-that was decided at v2-S1 and is why no DOCX ever acquires a bbox. `engine mcp` and both SDKs were
-not taught anything: `node_get` resolves a DOCX run because there is one IR.
+**And it reads a workbook, where the same rule bites harder.** A cell is addressed by `part` +
+`sheet` + `row` + `column`, and the column stays as the **letters the file wrote** — `B`, not `2`,
+because turning one into the other is arithmetic the workbook never performed. A spreadsheet has
+column widths, print areas and page breaks, and every one of them describes a *printing* rather
+than the file; none is read. The sheet-to-part binding comes from `xl/_rels/workbook.xml.rels`
+rather than from position, because a workbook that has had a sheet deleted has `sheet1.xml` and
+`sheet3.xml` and guessing would put the wrong sheet's name on the right cells. A workbook is also
+the first artifact with **more than one part** — one per sheet — which the page-less invariant
+already allowed.
+
+`ethos.grounding.v1` stays PDF-only, so `engine ground` on either artifact is a **named refusal** —
+that was decided at v2-S1 and is why no DOCX and no cell ever acquires a bbox. `engine mcp` and
+both SDKs were not taught anything: `node_get` resolves a DOCX run and a spreadsheet cell because
+there is one IR.
 
 **`overlay` is the one subcommand whose stdout is a PDF rather than canonical JSON.** It draws what
 was detected — table boxes, image placements, flagged runs — onto a copy of the document, and adds

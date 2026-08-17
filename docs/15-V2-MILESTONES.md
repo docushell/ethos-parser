@@ -3,8 +3,9 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads its first format.** S0–S2 are **done**; **S3–S4 are not started**. `engine-office` is the
-fifth crate and DOCX is the format that stopped it being speculative.
+**v2 reads two formats.** S0–S3 are **done**; **S4 is not started**. `engine-office` is the fifth
+crate, DOCX is the format that stopped it being speculative, and XLSX is the one that made the
+page-less invariant carry more than one part.
 
 **v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
 (`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -16,7 +17,7 @@ closes v1.
 | **S0** | v2 scope + this document | — | **done** |
 | **S1** | The grounding contract for a page-less source | S0 | **done — (b), and one finding** |
 | **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **done** |
-| **S3** | XLSX → representation: sheets and cells | S2 | **not started** |
+| **S3** | XLSX → representation: sheets and cells | S2 | **done — and the `coordinate_system` decision** |
 | **S4** | The remaining office formats — PPTX, ODF, RTF, EPUB, CSV | S3 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
@@ -282,7 +283,10 @@ directory, XML that will not parse, and a part that ends with elements still ope
 
 ---
 
-## S3 — XLSX → representation — **not started**
+## S3 — XLSX → representation
+
+- **Status: done.** `0.22.0`. `engine extract` reads a `.xlsx`, a cell binds, and the artifact
+  carries **two parts** — the first this engine has ever produced.
 
 - **Goal:** the second half of the v2 gate — an XLSX **cell** binds.
 
@@ -291,15 +295,229 @@ directory, XML that will not parse, and a part that ends with elements still ope
   or a print range is not part of it. A spreadsheet's "page" is a print artefact and is exactly the
   thing §3 forbids.
 
-- **What S2 handed this slice:** `Profile::docx_v0` carries `coordinate_system:
-  {centipoint, top-left}` because the field is required and there is no page-less spelling of it.
-  Nothing under that profile ever emits a coordinate — `measured_ink_boxes` is false and every
-  geometry row is absent — so the declaration is inert rather than wrong, but it is a field saying
-  something it cannot mean. Giving it an honest spelling is a mode enum on a field every existing
-  artifact carries, which moves every PDF hash; **S3 is where that is worth deciding**, because
-  XLSX gives the question a second format's worth of evidence rather than one.
+### The locator, and the two spellings the file uses
 
-- **Out:** formulas as anything but text, charts, pivot caches, and every format S4 parks.
+`XlsxLocator { part, sheet, row, column }` — `deny_unknown_fields`, **no page, no bbox, no column
+width, no print area**. Two things about it are worth arguing.
+
+**Both `part` and `sheet`, because they answer different questions.** `part` is the package's name
+for the worksheet (`xl/worksheets/sheet1.xml`) and is what `check_structure`'s part-id ↔ part-name
+bijection checks. `sheet` is the workbook's name for it (`<sheet name="Ledger">`) and is what a
+person citing a cell writes down. The part name does not contain the sheet name and never will.
+
+**`row: u32` and `column: String`, and the asymmetry is the file's.** `<c r="B12">` states the
+column as the letters `B` and the row as the digits `12`. Reading `12` as a number is reading — the
+attribute's own type is an integer. Turning `B` into `2` is arithmetic on a bijective base-26
+numeral, which is a computation the file never performed and a value it never contains.
+Concatenating the two reproduces the `r` attribute exactly, so splitting it loses nothing and
+creates no second place for the address to live.
+
+### The part the shortcut would have skipped
+
+**`xl/workbook.xml` contains no part names at all.** A `<sheet>` carries `name`, `sheetId` and
+`r:id`, and only `xl/_rels/workbook.xml.rels` says which part an `r:id` means. So the reader reads
+four parts, not three.
+
+The shortcut — assume `xl/worksheets/sheet{n}.xml` in `<sheets>` order — is wrong in *ordinary*
+files. Reordering sheets in Excel reorders the `<sheet>` elements and leaves the part names alone,
+so the first sheet is routinely `sheet3.xml`; deleting a sheet leaves a gap; and part names are
+author-chosen. Every one of those failures attaches the **wrong sheet name to the right cells** —
+a locator that is confidently wrong, which is strictly worse than one that is absent. The fixture's
+second sheet is `sheet3.xml` behind `rId7` for exactly this reason, so the shortcut cannot pass.
+
+### The invariant that did not have to change
+
+**S3 added nothing to `engine-core`'s page-less rules.** A workbook is one part per sheet, and
+v2-S2's shape already allows it: the part-id ↔ part-name check is a **bijection**, not a
+cardinality-of-one rule, so two ids naming two parts violates neither direction; and
+`check_structure` counts ordinals **per parent**, so each sheet carries its own contiguous 1-based
+sequence. S2 built the shape with one part and S3 is the first artifact to use it with more than
+one — which is what `two_parts_with_two_names_seal_and_keep_separate_ordinals` now pins.
+
+### `NodeKind::TextRun` is reused, and here is the tradeoff
+
+v1-S1 refused a `TableCell` kind for PDF because a cell's text was already in runs. For a workbook
+that argument does not apply — the cell **is** the atom and no run exists — so the question is the
+standing rule's other half: *does "this text is a cell" name a fact no existing node carries?*
+
+It does not. `XlsxLocator` says sheet, row and column, which is cell-ness spelled out in the one
+place a consumer must already look; the locator union is externally tagged, so telling a cell from
+a glyph run is one match arm. A second kind would restate the locator — exactly why v1-S3 refused
+`Paragraph` when the role path already said `P` — and would make every consumer handle two names
+for one concept. So the kind is reused and **`NodeAttributes::OfficeCell` is a new variant**,
+because *that* is where the facts with no home live: `value_type` (what `t` says the stored value
+is) and `text_source` (whether the text is a stored value, a cached formula result, or a formula's
+source because nothing was cached). A `<c>` has no `xml:space` to record and a `<w:r>` has no value
+type, so `OfficeRun` with fields blanked would have been three claims the file never made.
+
+`capabilities.tables` stays **false** on a format made of grids, and that is not modesty: `tables`
+means *this run emitted `TableRecord`s*, and this slice emits cells. A consumer reading `true`
+would go looking for a table IR that is not there.
+
+### `<f>` is not a second authority
+
+No evaluator, and no `computed_value` field. A cell's text is the value the workbook **stored** —
+its cached `<v>`, or the formula source as written when nothing was cached — and `text_source` says
+which, so `SUM(B2:B2)` can never be read as a number the sheet displayed.
+
+### `coordinate_system` — measured, and deliberately left inert
+
+**The decision S2 handed this slice, and the answer is: no mode enum.**
+
+S2 left `docx_v0` carrying `centipoint`/`top-left` because the field is required and has no
+page-less spelling, and asked S3 to decide it with two formats' worth of evidence. The evidence is
+that **nothing acts on the value for a page-less artifact**:
+
+| where | what it does |
+| --- | --- |
+| `engine_grounding::project` | **hard-codes** `centipoint`/`top-left` rather than copying the representation's, and refuses a non-`application/pdf` source 179 lines earlier |
+| `engine-grounding/src/check.rs` | the only branch on the value anywhere — inside the `ethos.grounding.v1` validator, downstream of that same refusal |
+| both SDKs | zero occurrences; the field is re-hashed as opaque bytes and never parsed |
+| `library_surface.rs` | asserts the pair for *geometry-bearing* artifacts, all of them PDF |
+
+So a mode enum would have moved **every PDF artifact's profile hash** to respell a value nothing
+reads. `xlsx_v0` carries the same inert declaration, and the property that makes it honest rather
+than merely quiet is pinned instead: both page-less profiles declare `measured_ink_boxes: false`,
+and `the_page_less_profiles_declare_the_same_inert_coordinate_system` asserts **zero measured
+geometry rows** on a real workbook artifact. Written into `Profile::docx_v0`'s own doc comment and
+the profile-hash ledger's twenty-sixth entry, so the next slice finds the decision where it will
+look for it.
+
+### What is read, and what is declared unread
+
+`xl/workbook.xml`'s sheet list, `xl/_rels/workbook.xml.rels`, each worksheet's `<sheetData>`, and
+`xl/sharedStrings.xml`. Styles, number formats, charts, pivot caches, drawings, comments,
+conditional formatting, merged-cell geometry and VBA are **not** read.
+
+Charts, chart sheets, drawings, comments, threaded comments and pivot caches are counted and
+declared — `office-parts-not-read`, with the count — and so is a listed sheet that is **not a
+worksheet**: a chart sheet or a dialog sheet has no `<sheetData>`, and returning it as an empty
+worksheet would be a silent drop. That is **A14** applied to a workbook.
+
+The two halves are proven separately, because one fixture cannot do both.
+`fixtures/office/workbook-unread-parts` covers the unread *parts* half. The listed-sheet half
+needs a package with a **dialog sheet and no chart, drawing or comment part** — a real chart sheet
+drags `xl/charts/` and `xl/drawings/` along, so the parts count would fire anyway and the branch
+would stay unproven — so `a_listed_sheet_that_is_not_a_worksheet_is_declared_with_a_count` authors
+that package inside the test. Deleting `|| non_worksheets > 0` from the reader fails it; before
+that test existed, deleting it failed nothing.
+
+### Detection, and every failure closed
+
+**A4: the bytes decide.** A ZIP local-file-header signature plus `xl/workbook.xml` in the central
+directory. A package listing **both** main parts is a **named refusal** rather than a race between
+two `if`s — `engine_office::read` decides on the central directory, so the answer does not depend on
+the order of the dispatcher's lines. `xl/workbook.bin` (`.xlsb`) is deliberately not claimed.
+
+Each of these is a named refusal: a `<c>` with no `r` attribute (an implied address is one this
+engine would have *counted*), an `r` that is not an A1 reference, a cell whose row disagrees with
+its `<row r="…">`, a `t` outside `ST_CellType`, a shared-string index that does not exist or is not
+a number, a `<sheet>` whose `r:id` matches no relationship, a part that will not inflate, XML that
+will not parse, and a part that ends with elements still open.
+
+### Two things measured in passing, and what was done about each
+
+**`quick-xml` 0.41 delivers a numeric character reference as a `GeneralRef` event too**, named
+`#66`. So the five-entity rule refuses `&#66;` — ordinary XML that needs no DTD. It is a **named
+refusal of a valid document**, not a silent drop, so it fails in the safe direction; recorded in
+`engine-office/src/xml.rs` and left alone, because widening it would change what a shipped DOCX
+artifact contains and nothing in this slice measured a need for that.
+
+**`Event::CData` was unmatched**, and an unmatched CDATA arm is a *silent drop* — the one failure
+the v2 standing rules name first. The workbook reader matches it. The DOCX reader's arms are
+unchanged, and the observation is recorded here rather than acted on for the same scope reason.
+
+**One repair shipped:** the `geometry-absent-not-groundable` limitation was pushed
+unconditionally, and `check_geometry_matches_its_declaration` requires it to be present exactly
+when at least one node has no measurable box — so a package with **no text at all** could not seal.
+Pathological for a `.docx`, ordinary for a workbook with an empty sheet. Both readers now push it
+only when there are nodes.
+
+### What reviewing the slice against §3 found before it shipped
+
+The reader was written, then read back against the standing rules rather than against its own
+intent. That found **eight** defects, and fixing them surfaced a ninth. The pattern in them is
+worth keeping: every one was a *silent* failure, and three were in code whose own comment
+described the hazard it had.
+
+| | defect | why it was silent |
+| --- | --- | --- |
+| 1 | a self-closing `<si/>` took no slot in the shared string table | `Empty` is its own event; only `Start`/`End` were matched, so every later index resolved to the **next** string — a right address carrying another cell's text |
+| 2 | `<rPh>` furigana concatenated into inline-string cells | the shared-string path stripped it; `<is>` is the same content type and did not |
+| 3 | a second `<v>` appended instead of being refused | `<v>1</v><v>2</v>` became `12`, and under `t="s"` resolved shared string **12** |
+| 4 | a `t` naming a child the cell did not have returned "no node" | indistinguishable from an empty cell, so present characters vanished |
+| 5 | `split_reference` repaired `A+1` and `A01` into `A1` | `u32::from_str` accepts a sign and leading zeros, so the locator spelled a **different cell** |
+| 6 | two cells at one address both became nodes | a citation to that address would have had two answers |
+| 7 | errors reading the string table were swallowed | a part over the size cap re-surfaced as "the table has 0 entries", blaming a worksheet |
+| 8 | `NodeAttributes`' documented kind cross-check did not exist | prose since v0; a record could read as two different things depending on which field was trusted |
+| 9 | a cell carrying **both** a `<v>` and an `<is>` | found while fixing 4: whichever `t` named would be read and the other dropped without a word |
+
+Numbers 1, 2 and 5 are the ones that matter most, because each produced a **sealed,
+byte-identical, error-free artifact with the wrong text at the right address** — the failure this
+module's own header calls strictly worse than no address at all. Number 5 also falsified
+`XlsxLocator`'s documented promise that its two halves concatenate back to the `r` attribute,
+which is now true rather than intended.
+
+Two more were found in this repository's claims rather than its code: `engine-office` had been
+**outside the public-API freeze** since S2 — making `read` and `is_docx` "internal" by
+`PUBLIC-API.md`'s own rule — and the non-worksheet declaration branch was ticked as covered while
+no test reached it. Both are closed, the second mutation-checked: deleting `|| non_worksheets > 0`
+now fails a test, and before it did not fail anything.
+
+- **In:** `crates/engine-office/{xlsx.rs, xml.rs}` and the router in `lib.rs`; `XlsxLocator`,
+  `NodeAttributes::OfficeCell`, `OfficeCellAttributes`, `CellValueType`, `CellTextSource`,
+  `Profile::xlsx_v0`, `XLSX_READING_ORDER_RULE_V1` and `XLSX_TEXT_CODE_RULE_V1` in `engine-core`;
+  content dispatch in `engine extract`; `fixtures/office/workbook-cells` and
+  `workbook-unread-parts` with their generator; `0.22.0`, the moved profile hash and both SDK
+  pins; `PUBLIC-API.md` and its gate — **which `engine-office` had been outside since S2, so
+  `read` and `is_docx` were "internal" by that document's own rule until this slice put the crate
+  in the frozen table**; `14`/`15`; `04-ARCHITECTURE.md`; CHANGELOG; README.
+
+- **Out:** PPTX, ODF, RTF, EPUB, CSV. Formula evaluation, styles, number formats, charts, pivot
+  caches, drawings, comments, conditional formatting, merged-cell geometry, VBA. Any change to
+  `ethos.grounding.v1`. Any `project()` change. Markdown or HTML for a workbook. New MCP tools,
+  new SDK functions. A mode enum on `coordinate_system` — decided above, with the evidence.
+
+- **Acceptance tests:**
+  - [x] A known cell's text is on a node with an `XlsxLocator`; `pages` is `[]`; `node_get` over
+        **unmodified MCP** resolves the minted id and `s-forged` fails closed
+  - [x] The locator carries no page, no bbox, no column width and no print area, and
+        `deny_unknown_fields` refuses each of those by name
+  - [x] Sheet ↔ part is resolved through `xl/_rels/workbook.xml.rels`, proven by a fixture whose
+        second sheet is `sheet3.xml` behind `rId7`; a dangling `r:id` is a named refusal
+  - [x] Rows are read, not counted: a sheet numbering rows 1, 2, 12 has no cell at row 3
+  - [x] Two sheets seal as **two parts**, with the bijection holding in both directions and
+        ordinals restarting at 1 per part — with **no change to `engine-core`'s invariant**
+  - [x] A shared-string index that does not exist **fails closed**; a self-closing `<si/>` still
+        holds its position, so no later index is repointed; `&amp;` survives in a cell's text
+        *and* in a sheet name; rich-text `<si>` runs concatenate; `<rPh>` furigana does not — on
+        **both** the shared-string and the inline-string path
+  - [x] A cell with no `t` is a number, which is SpreadsheetML's declared default
+  - [x] A formula cell carries its cached `<v>` and is labelled `cached_formula_result`; one with
+        no cached value carries its source and is labelled `formula_source`; nothing is evaluated
+  - [x] Detection is content-based both ways: a renamed workbook reads, a `.xlsx` that is not one
+        is a named failure with empty stdout, a DOCX is never claimed as a workbook, and a package
+        that is **both** is refused by name
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the
+        law — with **no change to `engine-grounding`**
+  - [x] Every geometry row is `NotApplicableToKind`; `xlsx_v0`'s hash differs from `docx_v0`'s and
+        from the PDF default; `capabilities.tables` is false
+  - [x] Unread parts and non-worksheet listed sheets are counted and declared — **each held by
+        its own test**, the second by a package authored inside the test rather than by a fixture
+        that does not contain the case; the clean fixture declares none
+  - [x] Two runs over one workbook produce identical bytes
+  - [x] The `coordinate_system` decision is written down with its evidence, both page-less
+        profiles keep the inert declaration, and **no PDF hash moved for it** — the hash moved on
+        `parser_version` alone, as at S2
+  - [x] `Cargo.lock` still has no LibreOffice, soffice, headless Chrome, wkhtmltopdf, WeasyPrint,
+        chromiumoxide or printpdf, and no `zip`, `zopfli`, `calamine` or `umya-spreadsheet`;
+        `cargo deny check` passes
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication still 0; the markdown and html goldens still green
+  - [x] Workspace **0.22.0**, both SDKs **0.22.0**, profile hash
+        `sha256:26c10d2a73e41c357c82589b0acfabffd8b33f9f93e3c666452b8a437743b6fa`
+
+- **Depends on:** S2.
 
 ---
 

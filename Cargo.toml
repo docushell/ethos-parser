@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, and v2-S2 as 0.21.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, and v2-S3 as 0.22.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -195,7 +195,29 @@ exclude = ["fuzz"]
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
 # 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
-version = "0.21.0"
+#
+# **0.22.0 is v2-S3: a workbook's CELL binds, and the coordinate_system question closes.** XLSX
+# enters the representation — sheets from `xl/workbook.xml`, cells from each worksheet's
+# `<sheetData>`, strings from the shared table — addressed by part + sheet + row + column, and
+# NOTHING ON THAT PATH IS A PAGE. A spreadsheet's page is a print artefact: column widths, print
+# areas and page breaks are all rendering instructions, and none of them is read.
+#
+# THE COLUMN STAYS AS LETTERS. `<c r="B12">` writes the column as `B` and the row as `12`; reading
+# `12` as a number is reading, but turning `B` into `2` is arithmetic on a bijective base-26
+# numeral that the workbook never performed. The two halves concatenate back to the `r` attribute
+# exactly, which is the difference between a locator that quotes and one that computes.
+#
+# NO NEW CRATE and NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over
+# `flate2`, the same `quick-xml` — no `zip`, no `calamine`, no spreadsheet library. What IS new is
+# a workbook being the first artifact with MORE THAN ONE PART, which `engine-core` needed no
+# change to allow: the part-id/part-name rule was already a bijection and ordinals already counted
+# per parent.
+#
+# THE COORDINATE_SYSTEM DECISION LANDS HERE, as v2-S2 said it would. Nothing acts on the value for
+# a page-less artifact, so both office profiles keep the inert `centipoint`/`top-left` declaration
+# and NO mode enum was added — one would have moved every PDF artifact's hash to respell a value
+# nothing reads. This version moves the PDF hash on `parser_version` ALONE, exactly as S2 did.
+version = "0.22.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -216,10 +238,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.21.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.21.0" }
-engine-office = { path = "crates/engine-office", version = "0.21.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.21.0" }
+engine-core = { path = "crates/engine-core", version = "0.22.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.22.0" }
+engine-office = { path = "crates/engine-office", version = "0.22.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.22.0" }
 
 [profile.release]
 strip = "symbols"

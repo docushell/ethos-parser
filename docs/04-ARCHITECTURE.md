@@ -51,7 +51,7 @@ and still refused on the same rule.
 | --- | --- | --- |
 | `engine-core` | nothing in this workspace | Any PDF concept. No `lopdf`, no operator, no page-tree type. **And no OOXML concept**: no zip, no XML reader, no part name it parses (v2-S2) |
 | `engine-pdf` | `engine-core` | Any grounding or verification concept. **Any office concept** — a DOCX reader in here is what the fifth crate exists to prevent |
-| `engine-office` | `engine-core` | Any PDF concept, any grounding concept. It reads one package format and emits the shared representation (v2-S2) |
+| `engine-office` | `engine-core` | Any PDF concept, any grounding concept. It reads OOXML packages — documents (v2-S2) and workbooks (v2-S3) — and emits the shared representation |
 | `engine-grounding` | `engine-core` | Any **format** concept — it projects the *representation*, never a document |
 | `engine-cli` | all four | Any logic. It parses arguments, calls the library, maps errors to exit codes |
 

@@ -217,6 +217,14 @@ const CORE: &[&str] = &[
     "NOT_RUN",
     "DOCX_READING_ORDER_RULE_V1",
     "DOCX_TEXT_CODE_RULE_V1",
+    // v2-S3. The third format's address and its facts. A cell is not a run: it has a value type
+    // and it may have a formula, and neither is a thing a `<w:r>` has.
+    "XlsxLocator",
+    "OfficeCellAttributes",
+    "CellValueType",
+    "CellTextSource",
+    "XLSX_READING_ORDER_RULE_V1",
+    "XLSX_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -397,10 +405,29 @@ const GROUNDING: &[&str] = &[
     "to_canonical_bytes",
 ];
 
-const FROZEN: [(&str, &[&str]); 3] = [
+/// `engine-office` — the OOXML readers. **New to the freeze at v2-S3.**
+///
+/// It shipped at v2-S2 outside this table, which meant `engine_office::read` — the entry point
+/// for two of the three input formats `engine extract` accepts — was classified "internal" by
+/// `PUBLIC-API.md`'s own rule and could have been renamed without a note. A second format is what
+/// made that visible: the same omission would have left `is_xlsx` unguarded on arrival.
+const OFFICE: &[&str] = &[
+    "CRATE_NAME",
+    "DOCX_MEDIA_TYPE",
+    "XLSX_MEDIA_TYPE",
+    "docx",
+    "is_docx",
+    "is_xlsx",
+    "read",
+    "xlsx",
+    "zip",
+];
+
+const FROZEN: [(&str, &[&str]); 4] = [
     ("engine-core", CORE),
     ("engine-pdf", PDF),
     ("engine-grounding", GROUNDING),
+    ("engine-office", OFFICE),
 ];
 
 // -------------------------------------------------------------------------------------------

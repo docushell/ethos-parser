@@ -183,30 +183,11 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
             // measured, not feared: that is what the first version of this file did, and the
             // fixture's ampersand is in the corpus because of it.
             //
-            // The five XML predefined entities are resolved and **everything else is refused**.
-            // A `.docx` has no DTD and no custom entities; one that arrives is either malformed
-            // or an expansion attack, and either way a name this reader cannot resolve must not
-            // become an empty string in the evidence.
+            // The rule itself moved to `xml.rs` at v2-S3, unchanged and message-identical,
+            // because the workbook reader needs the same one and two copies of "what counts as
+            // text" is two places for the answer to drift.
             Ok(Event::GeneralRef(entity)) if in_text => {
-                let name = entity.as_ref();
-                let resolved = match name {
-                    b"amp" => "&",
-                    b"lt" => "<",
-                    b"gt" => ">",
-                    b"quot" => "\"",
-                    b"apos" => "'",
-                    other => {
-                        return Err(EngineError::Malformed {
-                            what: MAIN_PART.into(),
-                            detail: format!(
-                                "`&{};` is not one of the five XML predefined entities. This \
-                                 reader resolves those and refuses the rest rather than dropping \
-                                 a character out of the text it is supposed to be evidence for.",
-                                String::from_utf8_lossy(other)
-                            ),
-                        })
-                    }
-                };
+                let resolved = crate::xml::resolve_entity(entity.as_ref(), MAIN_PART)?;
                 if let Some(run) = open_run.as_mut() {
                     run.text.push_str(resolved);
                 }
@@ -227,18 +208,7 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
     Ok(runs)
 }
 
-/// The local name of a possibly-namespaced element: `w:p` → `p`.
-///
-/// By suffix rather than by resolving the namespace binding, and the tradeoff is stated: a
-/// package that bound `w:` to something other than WordprocessingML would be read as if it had
-/// not. No such package exists in practice, resolving prefixes properly is a real amount of code,
-/// and the failure mode is a refusal to find runs rather than a wrong run.
-fn local_name(qualified: &[u8]) -> &[u8] {
-    match qualified.iter().rposition(|b| *b == b':') {
-        Some(colon) => &qualified[colon + 1..],
-        None => qualified,
-    }
-}
+use crate::xml::local_name;
 
 fn has_preserve(start: &quick_xml::events::BytesStart<'_>) -> Result<bool, EngineError> {
     for attribute in start.attributes() {

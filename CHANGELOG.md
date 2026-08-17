@@ -7,7 +7,153 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads its first format, as 0.21.0
+## [Unreleased] — v2 reads a second format, as 0.22.0
+
+### v2-S3 — XLSX into the representation, and the `coordinate_system` question closed
+
+**A cell binds.** `engine extract` reads an `.xlsx` into the same
+`ethos.engine.representation.v0` a PDF and a DOCX produce — and nothing on that path is a page, a
+column width or a print range.
+
+#### The locator, and the two spellings the file uses
+
+`XlsxLocator { part, sheet, row, column }`, `deny_unknown_fields`, no page and no box.
+
+**Both `part` and `sheet`**, because they answer different questions: `part` is the package's name
+for the worksheet and is what the part-id ↔ part-name bijection is checked against; `sheet` is the
+workbook's name for it, which is what a person citing a cell writes down and which the part name
+does not contain.
+
+**`row: u32` and `column: String`, and the asymmetry is the file's.** `<c r="B12">` writes the
+column as letters and the row as digits. Reading `12` as a number is reading. Turning `B` into `2`
+is arithmetic on a bijective base-26 numeral — a value the workbook never contains — so the letters
+are carried through. The two concatenate back to the `r` attribute exactly.
+
+#### `xl/_rels/workbook.xml.rels` is read, not guessed around
+
+`xl/workbook.xml` contains **no part names**. A `<sheet>` carries a name, a `sheetId` and an
+`r:id`, and only the relationship part says which package part that `r:id` means. The shortcut —
+`xl/worksheets/sheet{n}.xml` in `<sheets>` order — is wrong in ordinary files: reordering sheets in
+Excel leaves part names alone, deleting one leaves a gap, and part names are author-chosen. Each of
+those attaches the **wrong sheet name to the right cells**, which is worse than no address at all.
+The fixture's second sheet is `sheet3.xml` behind `rId7` so the shortcut cannot pass silently.
+
+#### The first artifact with more than one part — and `engine-core` did not change
+
+A workbook is one part per sheet. v2-S2's page-less rules already allowed that and nobody had
+exercised it: the part-id ↔ part-name check is a **bijection**, not a cardinality-of-one rule, and
+`check_structure` counts ordinals **per parent**, so each sheet gets its own contiguous 1-based
+sequence. S3 added no invariant; it is the first slice to use the shape S2 built.
+
+#### A cell reuses `NodeKind::TextRun` and gets its own attributes
+
+The standing rule is *do not add a kind for a fact an existing node already carries*. `XlsxLocator`
+already says sheet, row and column, which is cell-ness spelled out, and the locator union is
+externally tagged — so a second kind would restate the address and make every consumer handle two
+names for one concept. `NodeAttributes::OfficeCell` **is** new, because that is where the homeless
+facts are: `value_type` (what `t` declares the stored value to be) and `text_source` (stored value,
+cached formula result, or formula source because nothing was cached).
+
+**`<f>` is not a second authority.** No evaluator, no `computed_value`. A cell's text is what the
+workbook stored, and `text_source` is what stops `SUM(B2:B2)` being read as a number the sheet
+displayed. **`capabilities.tables` stays false** on a format made of grids: `tables` means this
+engine's `TableRecord` IR, and this slice emits cells.
+
+#### The `coordinate_system` decision — measured, and left inert
+
+v2-S2 left `coordinate_system` declaring `centipoint`/`top-left` on a page-less profile and asked
+S3 to settle it with a second format's evidence. **Nothing acts on the value for a page-less
+artifact**: `engine_grounding::project` hard-codes the pair rather than copying it and refuses a
+non-`application/pdf` source long before reaching it; the only branch on the value in the workspace
+is inside the `ethos.grounding.v1` validator, downstream of that refusal; and both SDKs re-hash the
+field as opaque bytes without parsing it.
+
+So **no mode enum**, because one would have moved every PDF artifact's `profile_sha256` to respell
+a value nothing reads. Both page-less profiles keep the inert declaration, and the property that
+makes it honest is pinned instead — `measured_ink_boxes: false` and **zero** measured geometry rows
+on a real workbook artifact. Recorded in `Profile::docx_v0`'s doc comment and the profile-hash
+ledger's twenty-sixth entry.
+
+#### Declared erasure, and every failure closed
+
+Charts, drawings, comments, threaded comments and pivot caches are counted and declared under
+`office-parts-not-read` — and so is a listed sheet that is **not a worksheet**, since returning a
+chart sheet as an empty worksheet would be a silent drop (**A14**).
+
+Named refusals, each of them: a `<c>` with no `r` attribute (an implied address is one this engine
+would have *counted*), an `r` that is not an A1 reference, a cell whose row disagrees with its
+`<row>`, a `t` outside `ST_CellType`, a shared-string index that does not exist or is not a number,
+a `<sheet>` whose `r:id` matches no relationship, a workbook that lists no sheets, and a package
+that claims to be **both** a document and a workbook.
+
+#### Fixed
+
+Six of these were found by reviewing this slice against the project's own laws before shipping it,
+and every one of them is the "silent" failure mode those laws exist to name. Each has a test that
+fails without the fix.
+
+- **A self-closing `<si/>` took no slot in the shared string table**, so every index after it
+  resolved to the *next* string — the right cell address carrying another cell's text, sealed,
+  byte-identical and with no error. The worst kind of defect this engine can produce, and it
+  arrived through the one door the code's own comment about that hazard did not cover: `<si/>` is
+  an `Event::Empty`, and only `Start`/`End` were matched. Any XML round-trip writes `<si/>` for
+  `<si></si>`, so no unusual writer was needed.
+- **`<rPh>` furigana was concatenated into inline-string cells**, producing `漢字かんじ` for a cell
+  showing `漢字` — characters the reader authored. The shared-string path already stripped it; the
+  inline path is the same content type and did not.
+- **A second `<v>` in one cell appended instead of being refused**, so `<v>1</v><v>2</v>` became
+  the value `12` — and under `t="s"` resolved shared string **12**, an entry the workbook never
+  pointed at.
+- **A cell whose `t` named a child it did not have was silently emptied.** `<c t="s"><is><t>Total
+  revenue</t></is></c>` returned "no node", indistinguishable from an empty cell, so a caller
+  could conclude a phrase was absent from a workbook containing it. Now a named refusal — the file
+  contradicts itself about where the value is, and this reader does not choose a half.
+- **`split_reference` repaired malformed addresses.** `u32::from_str` accepts a leading `+` and
+  leading zeros, so `r="A+1"` emitted the locator `A1` — a *different cell*, and a direct
+  falsification of `XlsxLocator`'s documented promise that its halves concatenate back to `r`.
+- **Errors reading the shared string table were swallowed** by an `Err(_) => Vec::new()`, so a
+  part that exceeded the size cap or would not inflate re-surfaced later as "the table has 0
+  entries" blaming a *worksheet* — the wrong part and the wrong cause. Only an **absent** table is
+  now the empty table. The table's part is also resolved through the workbook's relationships,
+  since its name is author-chosen exactly as a worksheet's is.
+- **Two cells at one address** are refused: an artifact carrying both would leave a citation to
+  that address with two answers.
+- **A cell carrying both a `<v>` and an `<is>`** is refused. Those are two answers to where its
+  value is, and reading whichever `t` named would have discarded the other in silence. Found while
+  fixing the mismatch above.
+- **A package with no text at all could not seal.** The `geometry-absent-not-groundable`
+  limitation was pushed unconditionally, and `check_geometry_matches_its_declaration` requires it
+  exactly when at least one node has no measurable box — so a zero-node artifact was refused with a
+  message about nothing. Pathological for a `.docx`, ordinary for a workbook with an empty sheet.
+  Both readers now push it only when there are nodes.
+- **`NodeAttributes`' documented cross-check did not exist.** Since v0 the type has said the tag
+  duplicating `Node.kind` is a *checked* redundancy; nothing checked it, so a record reading
+  `"kind":"annotation"` with `office_cell` attributes sealed cleanly and read as two different
+  things depending on which field a consumer trusted. `check_structure` now enforces it on both
+  construction paths. Found while adding the third variant that relies on the claim.
+- **`engine-office` was outside the public-API freeze.** It shipped at v2-S2 without a row in
+  `docs/PUBLIC-API.md` or the gate's `FROZEN` table, which by that document's own rule made
+  `engine_office::read` — the entry point for two of the three formats `engine extract` accepts —
+  "internal", renameable without a note. Added, with its own section.
+
+#### Measured in passing, recorded rather than acted on
+
+- **`quick-xml` 0.41 delivers a numeric character reference as a `GeneralRef` event**, named
+  `#66`. The five-entity rule therefore refuses `&#66;` — ordinary XML needing no DTD. It is a
+  *named refusal of a valid document*, not a silent drop, so it fails safe; widening it would
+  change what a shipped DOCX artifact contains, which nothing in this slice measured a need for.
+- **`Event::CData` was unmatched in the DOCX reader**, which is a silent drop. The workbook reader
+  matches it; the DOCX reader's arms are left unchanged for the same scope reason.
+
+#### Changed
+
+- Workspace and both SDKs to **0.22.0**. The PDF default profile hash moves to
+  `sha256:26c10d2a73e41c357c82589b0acfabffd8b33f9f93e3c666452b8a437743b6fa` on `parser_version`
+  **alone** — every other byte of that profile is identical, as at S2.
+- `engine_office::read` is now a router. `is_xlsx` joins `is_docx`; both refuse to decide by
+  extension (**A4**).
+- The five-entity rule and the local-name helper moved to `engine-office/src/xml.rs`, unchanged and
+  message-identical, so the two readers cannot drift on what counts as text.
 
 ### v2-S2 — DOCX into the representation, and the page-parent invariant S1 found
 

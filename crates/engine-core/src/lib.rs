@@ -104,6 +104,7 @@ pub use profile::{
     FORM_ANNOTATION_RULE_V1, NOT_RUN, OBSERVATION_RULE_V1, READING_ORDER_RULE_V0,
     READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1, TABLE_DETECTION_STROKE_V1,
     TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1, TABLE_DETECTION_V2, TEXT_CODE_RULE_V1,
+    XLSX_READING_ORDER_RULE_V1, XLSX_TEXT_CODE_RULE_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
@@ -117,12 +118,13 @@ pub use verifier::{
 };
 
 pub use representation::{
-    AnnotationAttributes, AnnotationRect, DocumentRepresentation, DocxLocator, FieldValue,
-    FormFieldAttributes, ImageAttributes, ImageMediaType, NativeLocator, Node, NodeAttributes,
-    NodeGeometry, NodeKind, OfficeRunAttributes, PageRecord, PaintedRect, PdfArtifactLocator,
-    PdfImageLocator, PdfLocator, PdfObjectLocator, PdfTaggedLocator, ProcessingRun,
-    ProcessorIdentity, RepresentationPayload, SourceIdentity, StructuralLocator, SynthesizedAt,
-    TextFinding, TextRunAttributes, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    AnnotationAttributes, AnnotationRect, CellTextSource, CellValueType, DocumentRepresentation,
+    DocxLocator, FieldValue, FormFieldAttributes, ImageAttributes, ImageMediaType, NativeLocator,
+    Node, NodeAttributes, NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes,
+    PageRecord, PaintedRect, PdfArtifactLocator, PdfImageLocator, PdfLocator, PdfObjectLocator,
+    PdfTaggedLocator, ProcessingRun, ProcessorIdentity, RepresentationPayload, SourceIdentity,
+    StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

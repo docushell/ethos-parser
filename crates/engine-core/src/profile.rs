@@ -499,6 +499,24 @@ pub const DOCX_READING_ORDER_RULE_V1: &str = "docx-document-order-v1";
 /// to declare.
 pub const DOCX_TEXT_CODE_RULE_V1: &str = "docx-wt-verbatim-v1";
 
+/// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
+/// order their worksheet part lists them.
+///
+/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V1`] is
+/// not. The workbook states its own sheet order and each sheet states its own cell order; this
+/// engine follows both and sorts nothing. In particular it does **not** re-order cells into
+/// row-major address order — a sheet whose part lists `B1` before `A1` is read that way, because
+/// the alternative is this engine deciding a reading order the file did not state.
+pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1";
+
+/// v2-S3's XLSX text rule: the characters the cell's stored value carries, verbatim.
+///
+/// Shared strings are resolved by index, inline strings are taken from `<is>`, and everything
+/// else is the `<v>` as stored. **No number formatting is applied**: `42` under a currency format
+/// is `42` here, because `$42.00` is a string `xl/styles.xml` would have to be read and *run* to
+/// produce, and a rendered string is not a stored one.
+pub const XLSX_TEXT_CODE_RULE_V1: &str = "xlsx-stored-value-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -835,10 +853,17 @@ impl Profile {
     /// profile carries the same `centipoint`/`top-left` pair a PDF does. **Nothing under this
     /// profile ever emits a coordinate** — `measured_ink_boxes` is false, every geometry row is
     /// absent, and `DocxLocator` has no geometry field — so the declaration is inert rather than
-    /// wrong. Giving it an honest page-less spelling means a mode enum on a field every existing
-    /// artifact carries, which moves every PDF hash for a value no DOCX consumer reads.
-    /// `docs/15-V2-MILESTONES.md` S3 carries it, when XLSX gives the question a second format's
-    /// worth of evidence.
+    /// wrong.
+    ///
+    /// **v2-S3 measured it and left it inert.** S2 deferred the question to the slice that would
+    /// have a second page-less format to judge it by; that slice found **no consumer that acts on
+    /// the value for a page-less artifact**. `engine-grounding::project` hard-codes the pair
+    /// rather than copying it, and refuses a non-`application/pdf` source 179 lines earlier; the
+    /// only branch on the value in the workspace is inside the `ethos.grounding.v1` validator,
+    /// downstream of that same refusal; both SDKs re-hash the field as opaque bytes and never
+    /// parse it. A mode enum would move every PDF artifact's `profile_sha256` to give an honest
+    /// spelling to a value nothing reads. [`Self::xlsx_v0`] therefore carries the same inert
+    /// declaration, and the pair is pinned by tests instead of respelled.
     pub fn docx_v0() -> Self {
         Self {
             backend: BackendIdentity {
@@ -875,6 +900,68 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             text_code_rule: DOCX_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
+    /// The profile a page-less OOXML **workbook** is read under (v2-S3).
+    ///
+    /// **Its own hash, not [`Self::docx_v0`]'s.** The two formats are read by two rules over two
+    /// package shapes, and an artifact that could not tell a cell from a run apart by profile
+    /// would claim a comparability it does not have — the same argument that separated
+    /// `docx_v0` from [`Self::default`] at S2, applied one format further along.
+    ///
+    /// # `tables: false`, on a format made of grids
+    ///
+    /// The load-bearing declaration on this profile, and it is not modesty. `capabilities.tables`
+    /// means *this run emitted this engine's table IR* — [`crate::tables::TableRecord`], with
+    /// cell slots, spans and a locator cross-check. v2-S3 emits **cells**: one node per `<c>`,
+    /// addressed by sheet, row and column. A workbook is obviously tabular and that is exactly
+    /// why the claim has to stay false — a consumer reading `tables: true` would go looking for
+    /// `TableRecord`s and find none, and the PDF table detectors that produce them never ran here
+    /// and must not be pointed at a workbook.
+    ///
+    /// `measured_ink_boxes: false` is the other one, for the reason it is false on `docx_v0`: a
+    /// cell has no ink box until something lays the sheet out, and `check_structure` refuses a
+    /// measured box on a page-less node outright.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair `docx_v0` does,
+    /// and the paragraph on that method is the decision and the evidence for it.
+    pub fn xlsx_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: XLSX_TEXT_CODE_RULE_V1.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1177,7 +1264,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.21.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.22.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1354,11 +1441,25 @@ mod tests {
              OCR'd page from comparing equal to a born-digital one. `XrefRepair` gained a \
              `not-run-for-this-format` state for that profile to use, and this one still says \
              `pad-19-to-20-v1`, so the new variant is invisible here. That is the point: a second \
-             format is a new VALUE, not a change to what this profile claims."
+             format is a new VALUE, not a change to what this profile claims.\n\n\
+             Moved a TWENTY-SIXTH time at v2-S3 (0.22.0) on `parser_version` ALONE, and this \
+             entry exists to record a decision NOT to move it further. v2-S2 left \
+             `coordinate_system` carrying `centipoint`/`top-left` on a page-less profile — inert, \
+             because nothing under that profile emits a coordinate — and deferred the question of \
+             an honest page-less spelling to the slice that would have a second such format to \
+             judge by. S3 measured it: no consumer ACTS on the value for a page-less artifact. \
+             `engine_grounding::project` hard-codes the pair rather than copying it, and refuses \
+             a non-`application/pdf` source long before reaching it; the only branch on the value \
+             anywhere is inside the `ethos.grounding.v1` validator, downstream of that refusal; \
+             both SDKs re-hash the field as opaque bytes and never parse it. A mode enum would \
+             have moved THIS hash — and every PDF artifact's — to respell a value nothing reads, \
+             so it was not added. `Profile::xlsx_v0` carries the same inert declaration and its \
+             own hash, and tests pin that both page-less profiles agree with this one on the \
+             field while emitting zero measured geometry rows."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:1a7844f5a291cdd1430ecead0523980283a6c3e7bbf3f6f431ce5a056c5d92f1"
+            "sha256:26c10d2a73e41c357c82589b0acfabffd8b33f9f93e3c666452b8a437743b6fa"
         );
     }
 
