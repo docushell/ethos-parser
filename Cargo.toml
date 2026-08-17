@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, and v2-S3 as 0.22.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, and v2-S4 as 0.23.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -217,7 +217,29 @@ exclude = ["fuzz"]
 # a page-less artifact, so both office profiles keep the inert `centipoint`/`top-left` declaration
 # and NO mode enum was added — one would have moved every PDF artifact's hash to respell a value
 # nothing reads. This version moves the PDF hash on `parser_version` ALONE, exactly as S2 did.
-version = "0.22.0"
+# **0.23.0 is v2-S4: a SLIDE binds, and a slide is a PART.** PPTX enters the representation —
+# `ppt/presentation.xml`'s slide list, each slide's shapes, `<a:t>` runs — addressed by part +
+# shape + paragraph + run.
+#
+# THIS IS THE FORMAT THAT TESTED THE LAW RATHER THAN EXTENDING IT. A DOCX has no page until a
+# renderer invents one and a spreadsheet's page is a printer's, but a SLIDE IS REAL: discrete,
+# listed in the package, and counted out loud. Both routes to calling it a page are refused —
+# `p:sldSz` is a size nothing measured against, and a position in `<p:sldIdLst>` is display order
+# that changes when a deck is reordered. `pages` is `[]` and the locator carries NO SLIDE NUMBER.
+#
+# TWO MEASUREMENTS CHANGED THE DESIGN BEFORE IT SHIPPED. Shape ids are not unique in real decks
+# (12 of 329 measured slides reuse one, and PowerPoint opens them), so the address is a position
+# and the id is a label. And `<mc:Fallback>` duplicates its sibling `<mc:Choice>`, so reading both
+# would emit one phrase twice at two addresses — the mirror of a silent drop.
+#
+# NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+# `quick-xml`. What moved is internal: the `r:id`-to-part rule to `opc.rs` and the XML plumbing to
+# `xml.rs`, because a third copy of a rule is how two copies of it start disagreeing.
+#
+# The remaining-formats row SPLIT here, which is what S2 and S3 were measured for: S4 is PPTX and
+# is done, S5 parks ODF, RTF, EPUB and CSV. v2's gate names a DOCX quote and an XLSX cell and both
+# bind; this is coverage beyond it. v1 is STILL missed at 64‰.
+version = "0.23.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -238,10 +260,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.22.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.22.0" }
-engine-office = { path = "crates/engine-office", version = "0.22.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.22.0" }
+engine-core = { path = "crates/engine-core", version = "0.23.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.23.0" }
+engine-office = { path = "crates/engine-office", version = "0.23.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.23.0" }
 
 [profile.release]
 strip = "symbols"

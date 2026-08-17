@@ -47,9 +47,16 @@
 
 use engine_core::{CellTextSource, CellValueType, EngineError};
 use quick_xml::events::{BytesStart, Event};
-use quick_xml::Reader;
 
-use crate::xml::{local_name, resolve_entity, unescape_attribute};
+use crate::opc::resolve_target;
+use crate::xml::{
+    attribute_value, cdata_text, check_closed, decode, local_name, new_reader, parse_error,
+    resolve_entity,
+};
+
+// The OPC relationship machinery moved to `opc.rs` at v2-S4 so the slide reader could use the
+// same rule rather than a second copy of it. Re-exported so this module's surface is unchanged.
+pub use crate::opc::{read_relationships, Relationship};
 
 /// The part every workbook package keeps its sheet list in.
 pub const WORKBOOK_PART: &str = "xl/workbook.xml";
@@ -93,19 +100,6 @@ pub struct SheetRef {
     pub name: String,
     /// The `r:id` that names its relationship. Meaningless without [`WORKBOOK_RELS_PART`].
     pub rel_id: String,
-}
-
-/// One `<Relationship>` of a rels part.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Relationship {
-    /// The `Id` other parts refer to it by.
-    pub id: String,
-    /// The `Type` URI, which says what kind of part is on the other end.
-    pub kind: String,
-    /// The `Target`, verbatim — still relative, and still possibly external.
-    pub target: String,
-    /// Whether `TargetMode="External"`, in which case the target is not a package part at all.
-    pub external: bool,
 }
 
 /// A sheet whose package part is known: the pairing this reader had to resolve to make.
@@ -156,7 +150,7 @@ pub fn shared_strings_part(rels: &[Relationship], entry_names: &[String]) -> Opt
         .iter()
         .find(|r| !r.external && r.kind == SHARED_STRINGS_REL_TYPE)
     {
-        return Some(resolve_target(&rel.target));
+        return Some(resolve_target(&rel.target, "xl"));
     }
     entry_names
         .iter()
@@ -243,76 +237,6 @@ fn sheet_ref(start: &BytesStart<'_>) -> Result<SheetRef, EngineError> {
     }
 }
 
-/// Read a `_rels` part into its relationships.
-///
-/// # Errors
-///
-/// [`EngineError::Malformed`] if the XML will not parse or a `<Relationship>` lacks `Id` or
-/// `Target`.
-pub fn read_relationships(part: &[u8], part_name: &str) -> Result<Vec<Relationship>, EngineError> {
-    let mut reader = new_reader(part, part_name)?;
-    let mut rels = Vec::new();
-    let mut depth: i32 = 0;
-
-    loop {
-        match reader.read_event() {
-            Err(e) => return Err(parse_error(&reader, part_name, &e)),
-            Ok(Event::Eof) => break,
-            Ok(Event::Start(start)) => {
-                depth += 1;
-                if local_name(start.name().as_ref()) == b"Relationship" {
-                    rels.push(relationship(&start, part_name)?);
-                }
-            }
-            Ok(Event::Empty(start)) => {
-                if local_name(start.name().as_ref()) == b"Relationship" {
-                    rels.push(relationship(&start, part_name)?);
-                }
-            }
-            Ok(Event::End(_)) => depth -= 1,
-            Ok(_) => {}
-        }
-    }
-
-    check_closed(depth, part_name)?;
-    Ok(rels)
-}
-
-fn relationship(start: &BytesStart<'_>, part_name: &str) -> Result<Relationship, EngineError> {
-    let mut id = None;
-    let mut kind = String::new();
-    let mut target = None;
-    let mut external = false;
-    for attribute in start.attributes() {
-        let attribute = attribute.map_err(|e| EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: format!("attribute will not parse: {e}"),
-        })?;
-        let value = attribute_value(&attribute, part_name)?;
-        match local_name(attribute.key.as_ref()) {
-            b"Id" => id = Some(value),
-            b"Type" => kind = value,
-            b"Target" => target = Some(value),
-            b"TargetMode" => external = value == "External",
-            _ => {}
-        }
-    }
-    match (id, target) {
-        (Some(id), Some(target)) => Ok(Relationship {
-            id,
-            kind,
-            target,
-            external,
-        }),
-        _ => Err(EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: "a `<Relationship>` carries no `Id` or no `Target`, so nothing it is supposed \
-                     to bind can be resolved"
-                .into(),
-        }),
-    }
-}
-
 /// Pair every listed sheet with the worksheet part it names, through the relationship part.
 ///
 /// Returns the worksheets in the workbook's own order, plus the count of listed sheets that are
@@ -352,27 +276,11 @@ pub fn resolve_sheets(
         }
         worksheets.push(Sheet {
             name: sheet.name.clone(),
-            part: resolve_target(&rel.target),
+            part: resolve_target(&rel.target, "xl"),
         });
     }
 
     Ok((worksheets, other_kinds))
-}
-
-/// A `Target` from `xl/_rels/workbook.xml.rels`, as a package part name.
-///
-/// Targets are resolved against the source part's folder, which for `xl/workbook.xml` is `xl/`;
-/// a leading `/` makes the target absolute instead.
-///
-/// **Percent-encoding is deliberately not decoded.** A target with an escaped character simply
-/// will not match a central-directory entry, and the result is `read_entry`'s named
-/// part-not-found refusal rather than a wrong part — the same trade `xml.rs` states for namespace
-/// prefixes, failing toward finding nothing rather than finding the wrong thing.
-fn resolve_target(target: &str) -> String {
-    match target.strip_prefix('/') {
-        Some(absolute) => absolute.to_string(),
-        None => format!("xl/{target}"),
-    }
 }
 
 /// Read `xl/sharedStrings.xml` into the table cells index into.
@@ -983,81 +891,6 @@ fn shared_string(
         })
 }
 
-fn new_reader<'a>(part: &'a [u8], part_name: &str) -> Result<Reader<&'a [u8]>, EngineError> {
-    let text = std::str::from_utf8(part).map_err(|e| EngineError::Malformed {
-        what: part_name.to_string(),
-        detail: format!("the part is not UTF-8: {e}"),
-    })?;
-    let mut reader = Reader::from_str(text);
-    reader.config_mut().trim_text(false);
-    Ok(reader)
-}
-
-fn parse_error(reader: &Reader<&[u8]>, part_name: &str, e: &quick_xml::Error) -> EngineError {
-    EngineError::Malformed {
-        what: part_name.to_string(),
-        detail: format!(
-            "XML will not parse at byte {}: {e}",
-            reader.buffer_position()
-        ),
-    }
-}
-
-/// The text of a `<![CDATA[…]]>` section, which is character data with no escaping in it.
-///
-/// **Matched rather than ignored.** An unhandled `CData` event falls through to the catch-all arm
-/// and the text inside it disappears with no error — a silent drop, which is the one failure the
-/// v2 standing rules name first. CDATA is unusual in an OOXML part and entirely legal in one.
-fn cdata_text<'a>(
-    cdata: &'a quick_xml::events::BytesCData<'_>,
-    part_name: &str,
-) -> Result<std::borrow::Cow<'a, str>, EngineError> {
-    match std::str::from_utf8(cdata.as_ref()) {
-        Ok(text) => Ok(std::borrow::Cow::Borrowed(text)),
-        Err(e) => Err(EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: format!("a CDATA section is not UTF-8: {e}"),
-        }),
-    }
-}
-
-fn decode<'a>(
-    text: &'a quick_xml::events::BytesText<'_>,
-    part_name: &str,
-) -> Result<std::borrow::Cow<'a, str>, EngineError> {
-    text.decode().map_err(|e| EngineError::Malformed {
-        what: part_name.to_string(),
-        detail: format!("text will not decode: {e}"),
-    })
-}
-
-fn attribute_value(
-    attribute: &quick_xml::events::attributes::Attribute<'_>,
-    part_name: &str,
-) -> Result<String, EngineError> {
-    let raw =
-        std::str::from_utf8(attribute.value.as_ref()).map_err(|e| EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: format!("an attribute value is not UTF-8: {e}"),
-        })?;
-    unescape_attribute(raw, part_name)
-}
-
-/// A part that ends with elements still open is truncated, and a truncated part read as far as
-/// it went would be a shorter sheet that still looked whole — `docs/01-CONTRACT.md` §8.
-fn check_closed(depth: i32, part_name: &str) -> Result<(), EngineError> {
-    if depth != 0 {
-        return Err(EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: format!(
-                "the part ends with {depth} element(s) still open; it is truncated, and a sheet \
-                 read as far as it went would be a shorter sheet that still looked whole"
-            ),
-        });
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1471,15 +1304,6 @@ mod tests {
         let (resolved, others) = resolve_sheets(&sheets, &rels).expect("resolves");
         assert!(resolved.is_empty());
         assert_eq!(others, 1, "declared, not silently dropped");
-    }
-
-    #[test]
-    fn an_absolute_target_is_not_prefixed_with_the_workbook_folder() {
-        assert_eq!(resolve_target("worksheets/s.xml"), "xl/worksheets/s.xml");
-        assert_eq!(
-            resolve_target("/xl/worksheets/s.xml"),
-            "xl/worksheets/s.xml"
-        );
     }
 
     #[test]

@@ -69,9 +69,10 @@ use engine_core::{
     c14n::sha256_hex_bytes, ArtifactIdentity, Assurance, Capabilities, CellTextSource,
     CellValueType, CoordinateSystem, DerivationClass, DocumentRepresentation, DocxLocator,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, NativeLocator, Node, NodeAttributes,
-    NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes, PageRecord, PdfLocator,
-    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
-    TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes, OfficeSlideRunAttributes,
+    PageRecord, PdfLocator, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
+    RepresentationPayload, Sha256Hex, SourceIdentity, TextRunAttributes, XlsxLocator,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 use serde_json::Value;
 
@@ -287,6 +288,54 @@ fn an_xlsx_representation_is_refused_by_project() {
         message.contains("14-V2-SCOPE.md"),
         "the refusal points at the law it is enforcing: {message}"
     );
+}
+
+/// **And so is a presentation** (v2-S4), still with no change to this crate.
+///
+/// The third page-less format, and the one that most looks like it has pages: a deck has slides,
+/// a slide has a size, and neither becomes a `page` in `ethos.grounding.v1`.
+#[test]
+fn a_pptx_representation_is_refused_by_project() {
+    let mut alloc = IdAllocator::new(Profile::pptx_v0().profile_sha256().unwrap());
+    let part = alloc.next(IdKind::Part).unwrap();
+    let node = Node {
+        id: alloc.next(IdKind::Span).unwrap(),
+        kind: NodeKind::TextRun,
+        parent: part,
+        ordinal: 1,
+        text: "a slide run".into(),
+        native_locator: NativeLocator::Pptx(PptxLocator {
+            part: "ppt/slides/slide1.xml".into(),
+            shape: 1,
+            paragraph: 1,
+            run: 1,
+        }),
+        structural_locator: None,
+        derivation: DerivationClass::Extracted,
+        attributes: NodeAttributes::OfficeSlideRun(OfficeSlideRunAttributes {
+            shape_id: 2,
+            shape_name: "Title 1".into(),
+        }),
+    };
+    let geometry = NodeGeometry {
+        node: node.id.clone(),
+        presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+    };
+
+    let mut payload = payload(vec![node], Vec::new());
+    payload.source.media_type = engine_deck_media_type();
+    let sealed =
+        DocumentRepresentation::seal(payload, vec![geometry]).expect("a deck artifact seals");
+
+    let error = engine_grounding::project(&sealed).expect_err("and it does not project");
+    let message = error.to_string();
+    assert!(message.contains("application/pdf"), "{message}");
+    assert!(message.contains("14-V2-SCOPE.md"), "{message}");
+}
+
+/// The media type a presentation declares. Spelled out for the reason below.
+fn engine_deck_media_type() -> String {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation".into()
 }
 
 /// The media type a word-processing document declares.

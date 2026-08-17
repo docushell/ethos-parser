@@ -7,6 +7,109 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
+## [Unreleased] — v2 reads a third format, as 0.23.0
+
+### v2-S4 — PPTX into the representation, and the format that tested the page law
+
+**A slide's text binds, and a slide is a part.** `engine extract` reads a `.pptx` into the same
+`ethos.engine.representation.v0` the other three formats produce.
+
+#### The temptation this slice exists to have refused
+
+DOCX has no page until a renderer decides where one falls; a spreadsheet's page is a printer's.
+**A slide is neither** — it is discrete, addressable, listed in the package, and people count them
+out loud. This is the first v2 format where inventing a page would not have felt like inventing
+one, which is exactly why both routes to it are refused by name: `p:sldSz` is a size the authoring
+tool wrote and this engine measured nothing against, and a position in `<p:sldIdLst>` is display
+order that changes when a deck is reordered. `pages` is `[]`, each slide is one part id, and
+`PptxLocator` carries **no slide number at all**. A test asserts the locator's exact field set, so
+one cannot arrive later as a fifth field.
+
+#### Two measurements changed the design before it shipped
+
+- **Shape ids are not unique.** `<p:cNvPr id="7">` is a number the file wrote, so the locator
+  addressed by it first. Across 18 real decks — 329 slides, 3,335 shapes — the id is present every
+  time and unique only most of the time: 12 slides from an Open XML SDK generator reuse one, and
+  PowerPoint opens them. Addressing by it would have given one address two answers on real files;
+  refusing those files would have rejected decks that open everywhere else. The address is a
+  **position**; the id is carried on the attributes, where a non-unique label is what it is.
+- **`<mc:AlternateContent>` states one phrase several ways.** It appeared on 162 of 329 slides,
+  carrying one or more `<mc:Choice>` and an optional `<mc:Fallback>` for consumers of different
+  capability. A descendant walk emits that phrase at two or three addresses — the mirror of a
+  silent drop. Exactly one branch is read: the first `Choice`. The rest are counted when they held
+  text.
+
+#### What is read, and what is counted
+
+Of 5,297 `<a:t>` elements measured: 4,670 in top-level shapes and 160 in nested `<p:grpSp>`
+groups are **read** (91.2%), while 287 in `<p:graphicFrame>` tables and charts and 180 in
+`<a:fld>` fields are **counted** (**A14**), along with notes, masters, layouts, comments and
+diagram parts. A reader that stopped at top-level shapes would return 88.2% of a deck and say
+nothing about the rest; groups appeared on essentially every slide, so that is the ordinary case
+rather than an edge one.
+
+The field is the interesting refusal: an `<a:fld type="slidenum">` holds a **cached** slide number
+written at save time that goes stale the moment the deck is reordered. Reading it would put a
+number in the evidence that is not on the screen and is shaped exactly like the page index this
+version refuses.
+
+#### The rule that moved rather than being copied a third time
+
+`xl/workbook.xml` and `ppt/presentation.xml` both list things and name no parts; both invite the
+`sheet{n}` / `slide{n}` shortcut; both break under it. That rule now lives in **`opc.rs`**, and
+`xml.rs` grew from the entity rule to the whole XML-reader plumbing — because the alternative was
+a third copy, and three of the nine defects v2-S3's review found were two copies of one rule
+disagreeing. Nothing in the moved code changed, and the DOCX and XLSX suites passed unaltered
+across the move.
+
+`resolve_target` gained `.`/`..` normalisation: 2,318 of the measured relationship targets climb a
+directory, and a literal join would refuse packages that open everywhere else. A target that
+climbs out of the package resolves to a name no central directory contains.
+
+One shipped message changed with the move: the truncation refusal said *"a shorter **sheet** that
+still looked whole"* because only the workbook reader used it, and now says *"a shorter **part**"*.
+No test pinned the word, and the DOCX reader has its own copy of that check, so this affects
+XLSX and PPTX refusal text only. Recorded because a message a caller reads is output.
+
+#### Found by reviewing the slice before it shipped
+
+Three defects, none of which lost text — each made a locator disagree with what a consumer
+counting elements in the file would find, which is the "right address, wrong thing" class v2-S3's
+review named.
+
+- **A `<p:sp>` inside a skipped `<mc:AlternateContent>` branch did not advance the shape count**,
+  so every shape after it was numbered one short and a verifier following the documented rule
+  landed on the skipped shape. The counters now advance **through** skipped branches, because
+  `shape` promises a position in the part's own document order — not among the shapes this reader
+  chose to keep.
+- **A self-closing `<a:p/>` was invisible to the paragraph count.** `<a:p/>` and `<a:p></a:p>` are
+  the same infoset, so the address turned on how the deck was serialized — and python-pptx and
+  Apache POI write the first for a blank line.
+- **Every `<mc:Choice>` was read rather than the first**, so one displayed phrase became two or
+  three citable nodes. The code's own comment claimed to prevent exactly this and guarded only the
+  `Fallback` half of it.
+
+Each fix is mutation-checked: deleting it fails a test.
+
+#### Changed
+
+- Workspace and both SDKs to **0.23.0**. The PDF default profile hash moves to
+  `sha256:8dfca0e41d51668c6d540ec45bf83dd66503dbc2dcb1fa7c188cceebe255d4bd` on `parser_version`
+  **alone**, as at S2 and S3. All four profile hashes are now mutually distinct.
+- `engine_office::read` counts the main parts a package lists instead of asking three ordered
+  questions, so a package claiming two formats is a named refusal rather than whichever `if` ran
+  first. `is_pptx` joins `is_docx` and `is_xlsx`; none consults a file name (**A4**).
+- **`docs/15-V2-MILESTONES.md`'s remaining-formats row split**, which is what S2 and S3 were
+  measured for. S4 is PPTX and is done; **S5** parks ODF, RTF, EPUB and CSV, which share no
+  container with each other and would have been scheduled on a guess.
+- `coordinate_system` is untouched: v2-S3 decided it stays inert on page-less profiles, and a
+  third such profile did not reopen it.
+
+#### Not done
+
+v2's gate names a DOCX quote and an XLSX cell, and both bind. PPTX is coverage beyond the gate,
+and S5 is not required for it. v1 is still **missed at 64‰**.
+
 ## [Unreleased] — v2 reads a second format, as 0.22.0
 
 ### v2-S3 — XLSX into the representation, and the `coordinate_system` question closed

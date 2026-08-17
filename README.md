@@ -21,8 +21,8 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads two of them at 0.22.0.** `engine extract` takes a `.docx` or an
-`.xlsx` and emits the same record a PDF does — and **no page appears anywhere on that path**, because
+**v2 is office formats and it reads three of them at 0.23.0.** `engine extract` takes a `.docx`, an
+`.xlsx` or a `.pptx` and emits the same record a PDF does — and **no page appears anywhere on that path**, because
 neither format has one until something decides where a break falls. A cell is addressed as its
 workbook addresses it: sheet, row and column, with the column kept as the letters the file wrote. Each row began because the owner asked for it, not
 because the gate cleared.
@@ -34,7 +34,7 @@ Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf|.docx|.xlsx          # DocumentRepresentation v0 · 0 / 2
+engine extract         document.pdf|.docx|.xlsx|.pptx    # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine html            representation.json               # ethos.html.v1             · 0 / 2
@@ -135,8 +135,16 @@ rather than from position, because a workbook that has had a sheet deleted has `
 the first artifact with **more than one part** — one per sheet — which the page-less invariant
 already allowed.
 
-`ethos.grounding.v1` stays PDF-only, so `engine ground` on either artifact is a **named refusal** —
-that was decided at v2-S1 and is why no DOCX and no cell ever acquires a bbox. `engine mcp` and
+**And it reads a deck, which is the format that tested the rule.** A slide is a real, countable
+thing the package contains — the first v2 format where calling a part "page 12" would not have
+felt like inventing anything. It is a *part*: `pages` is `[]`, a run is addressed by
+`part` + `shape` + `paragraph` + `run`, and there is **no slide number in the locator at all**,
+because `p:sldSz` is a size nothing measured and a position in `<p:sldIdLst>` is display order a
+consumer would read as a page. Tables, charts and slide-number fields are **counted, not read** —
+a field's text is a cached number that goes stale when the deck is reordered.
+
+`ethos.grounding.v1` stays PDF-only, so `engine ground` on any of them is a **named refusal** —
+that was decided at v2-S1 and is why no DOCX, no cell and no slide run ever acquires a bbox. `engine mcp` and
 both SDKs were not taught anything: `node_get` resolves a DOCX run and a spreadsheet cell because
 there is one IR.
 

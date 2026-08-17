@@ -517,6 +517,24 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// produce, and a rendered string is not a stored one.
 pub const XLSX_TEXT_CODE_RULE_V1: &str = "xlsx-stored-value-verbatim-v1";
 
+/// v2-S4's PPTX reading order: slides in the order `ppt/presentation.xml` lists them, shapes and
+/// runs in the order each slide part lists them.
+///
+/// **Not a rule that decides anything**, for the reason its two siblings are not. The
+/// presentation states its own slide order and each slide states its own shape order; this engine
+/// follows both and sorts nothing. In particular it does **not** re-order shapes into reading
+/// order on the slide canvas — where a shape sits is a position this engine did not read, and
+/// sorting by it would be a layout decision wearing a rule id.
+pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order-v1";
+
+/// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
+///
+/// The DrawingML counterpart to `docx-wt-verbatim-v1`, and the same small claim: the text is
+/// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
+/// resolved**: text that a slide layout or master would supply is not substituted in, because
+/// this reader did not read those parts and a substituted string is not one the slide stated.
+pub const PPTX_TEXT_CODE_RULE_V1: &str = "pptx-at-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -968,6 +986,62 @@ impl Profile {
         }
     }
 
+    /// The profile a page-less OOXML **presentation** is read under (v2-S4).
+    ///
+    /// **Its own hash**, for the reason `xlsx_v0` has one: three formats read by three rules over
+    /// three package shapes, and an artifact that could not tell a slide run from a cell by
+    /// profile would claim a comparability it does not have.
+    ///
+    /// # `measured_ink_boxes: false`, on the format that draws everything in boxes
+    ///
+    /// A slide *is* a canvas — every shape carries an `<a:xfrm>` with an offset and an extent in
+    /// EMUs — and that is exactly why the declaration matters here. Those numbers describe where
+    /// an authoring tool placed a shape, not where ink was measured, and `check_structure`
+    /// refuses a measured box on a page-less node outright, so this profile could not emit one
+    /// even if a later edit read `<a:xfrm>`.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other two
+    /// page-less profiles do; `Profile::docx_v0`'s doc comment is the decision and the evidence,
+    /// and v2-S4 did not reopen it.
+    pub fn pptx_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: PPTX_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1264,7 +1338,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.22.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.23.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1455,11 +1529,19 @@ mod tests {
              have moved THIS hash — and every PDF artifact's — to respell a value nothing reads, \
              so it was not added. `Profile::xlsx_v0` carries the same inert declaration and its \
              own hash, and tests pin that both page-less profiles agree with this one on the \
-             field while emitting zero measured geometry rows."
+             field while emitting zero measured geometry rows.\n\n\
+             Moved a TWENTY-SEVENTH time at v2-S4 (0.23.0) on `parser_version` ALONE, and this \
+             entry records a third page-less format that changed nothing here. PPTX is the format \
+             that most looks like it has pages — a deck HAS slides, a slide HAS a size in EMUs, \
+             and a person counts them out loud — so the temptation was to give this profile a \
+             raster or a page budget that meant something. It has neither: a slide is a PART, \
+             `pages` is empty, `measured_ink_boxes` is false, and `Profile::pptx_v0` carries the \
+             same inert `coordinate_system` v2-S3 decided to leave alone. Three formats now share \
+             that declaration and none of them emits a coordinate."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:26c10d2a73e41c357c82589b0acfabffd8b33f9f93e3c666452b8a437743b6fa"
+            "sha256:8dfca0e41d51668c6d540ec45bf83dd66503dbc2dcb1fa7c188cceebe255d4bd"
         );
     }
 

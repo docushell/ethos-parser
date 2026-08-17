@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The XML rules both office readers obey, in one place (v2-S3).
+//! The XML rules every office reader obeys, in one place (v2-S3, widened at v2-S4).
 //!
 //! # Why this module exists
 //!
@@ -21,6 +21,12 @@
 //! drift — the drift being silent, because a reader that resolved one entity set and a reader
 //! that resolved another would both produce artifacts that look fine. The rule is extracted
 //! **unchanged**, message included, so the DOCX path is byte-identical across the move.
+//!
+//! **v2-S4 widened it from the rule to the plumbing**, for the same reason one slice later: the
+//! reader setup, the truncation check, the CDATA and text decoding and the attribute unescape
+//! were all about to be copied a third time. Three of the nine defects v2-S3's review found were
+//! two copies of one rule disagreeing, so a third copy is the shape of the next one. Nothing in
+//! the moved code changed.
 //!
 //! # The entity rule, and the one thing it refuses that is not an attack
 //!
@@ -37,6 +43,7 @@
 //! change what a shipped DOCX artifact contains and no measurement in this slice asked for that.
 
 use engine_core::EngineError;
+use quick_xml::Reader;
 
 /// The local name of a possibly-namespaced element or attribute: `w:p` → `p`, `r:id` → `id`.
 ///
@@ -108,6 +115,88 @@ pub(crate) fn unescape_attribute(raw: &str, part: &str) -> Result<String, Engine
     }
     out.push_str(rest);
     Ok(out)
+}
+
+pub(crate) fn new_reader<'a>(
+    part: &'a [u8],
+    part_name: &str,
+) -> Result<Reader<&'a [u8]>, EngineError> {
+    let text = std::str::from_utf8(part).map_err(|e| EngineError::Malformed {
+        what: part_name.to_string(),
+        detail: format!("the part is not UTF-8: {e}"),
+    })?;
+    let mut reader = Reader::from_str(text);
+    reader.config_mut().trim_text(false);
+    Ok(reader)
+}
+
+pub(crate) fn parse_error(
+    reader: &Reader<&[u8]>,
+    part_name: &str,
+    e: &quick_xml::Error,
+) -> EngineError {
+    EngineError::Malformed {
+        what: part_name.to_string(),
+        detail: format!(
+            "XML will not parse at byte {}: {e}",
+            reader.buffer_position()
+        ),
+    }
+}
+
+/// The text of a `<![CDATA[…]]>` section, which is character data with no escaping in it.
+///
+/// **Matched rather than ignored.** An unhandled `CData` event falls through to the catch-all arm
+/// and the text inside it disappears with no error — a silent drop, which is the one failure the
+/// v2 standing rules name first. CDATA is unusual in an OOXML part and entirely legal in one.
+pub(crate) fn cdata_text<'a>(
+    cdata: &'a quick_xml::events::BytesCData<'_>,
+    part_name: &str,
+) -> Result<std::borrow::Cow<'a, str>, EngineError> {
+    match std::str::from_utf8(cdata.as_ref()) {
+        Ok(text) => Ok(std::borrow::Cow::Borrowed(text)),
+        Err(e) => Err(EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("a CDATA section is not UTF-8: {e}"),
+        }),
+    }
+}
+
+pub(crate) fn decode<'a>(
+    text: &'a quick_xml::events::BytesText<'_>,
+    part_name: &str,
+) -> Result<std::borrow::Cow<'a, str>, EngineError> {
+    text.decode().map_err(|e| EngineError::Malformed {
+        what: part_name.to_string(),
+        detail: format!("text will not decode: {e}"),
+    })
+}
+
+pub(crate) fn attribute_value(
+    attribute: &quick_xml::events::attributes::Attribute<'_>,
+    part_name: &str,
+) -> Result<String, EngineError> {
+    let raw =
+        std::str::from_utf8(attribute.value.as_ref()).map_err(|e| EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("an attribute value is not UTF-8: {e}"),
+        })?;
+    unescape_attribute(raw, part_name)
+}
+
+/// A part that ends with elements still open is truncated, and a truncated part read as far as
+/// it went would be a shorter part that still looked whole — `docs/01-CONTRACT.md` §8.
+pub(crate) fn check_closed(depth: i32, part_name: &str) -> Result<(), EngineError> {
+    if depth != 0 {
+        return Err(EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!(
+                "the part ends with {depth} element(s) still open; it is truncated, and a part \
+                 read as far as it went would be a shorter part that still looked whole"
+            ),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -60,6 +60,8 @@
 #![deny(missing_docs)]
 
 pub mod docx;
+mod opc;
+pub mod pptx;
 pub mod xlsx;
 mod xml;
 pub mod zip;
@@ -68,8 +70,9 @@ use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
     NodeAttributes, NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes,
-    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
-    XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
+    RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
+    REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -82,6 +85,10 @@ pub const DOCX_MEDIA_TYPE: &str =
 /// The media type an OOXML workbook declares.
 pub const XLSX_MEDIA_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/// The media type an OOXML presentation declares.
+pub const PPTX_MEDIA_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 /// Whether these bytes are an OOXML word-processing document, **read from the bytes**.
 ///
@@ -120,6 +127,22 @@ pub fn is_xlsx(bytes: &[u8]) -> bool {
     }
 }
 
+/// Whether these bytes are an OOXML presentation, **read from the bytes**.
+///
+/// The same two questions [`is_docx`] asks, over the part only a presentation has. Never the
+/// extension (**A4**): a deck named `deck.bin` reads, and a `.pptx` full of something else does
+/// not. A legacy `.ppt` is an OLE compound file rather than a ZIP and is refused at the first
+/// question, which is correct — it is a different format with a different reader.
+pub fn is_pptx(bytes: &[u8]) -> bool {
+    if !zip::looks_like_zip(bytes) {
+        return false;
+    }
+    match zip::entry_names(bytes) {
+        Ok(names) => names.iter().any(|n| n == pptx::PRESENTATION_PART),
+        Err(_) => false,
+    }
+}
+
 /// Read an OOXML package into a sealed representation, dispatching on **what the bytes contain**.
 ///
 /// A word-processing document and a workbook are told apart by the parts their own central
@@ -144,31 +167,43 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         });
     }
     let names = zip::entry_names(bytes)?;
-    let has_document = names.iter().any(|n| n == docx::MAIN_PART);
-    let has_workbook = names.iter().any(|n| n == xlsx::WORKBOOK_PART);
 
-    match (has_document, has_workbook) {
-        (true, false) => read_docx(bytes, &names),
-        (false, true) => read_xlsx(bytes, &names),
-        (true, true) => Err(EngineError::Malformed {
-            what: "office package".into(),
-            detail: format!(
-                "this package lists both `{}` and `{}`, so it claims to be a word-processing \
-                 document and a workbook at once. A representation describes one document; \
-                 reading it as either would be this engine choosing which of the file's two \
-                 claims about itself to believe.",
+    // **Counted, not asked in order.** With three formats a chain of `if`s would make the answer
+    // depend on which line ran first for a package claiming to be two of them; collecting the
+    // main parts a package actually lists makes the ambiguous case impossible to reach by
+    // accident and names it instead.
+    let claimed: Vec<&str> = [
+        docx::MAIN_PART,
+        xlsx::WORKBOOK_PART,
+        pptx::PRESENTATION_PART,
+    ]
+    .into_iter()
+    .filter(|part| names.iter().any(|n| n == part))
+    .collect();
+
+    match claimed[..] {
+        [docx::MAIN_PART] => read_docx(bytes, &names),
+        [xlsx::WORKBOOK_PART] => read_xlsx(bytes, &names),
+        [pptx::PRESENTATION_PART] => read_pptx(bytes, &names),
+        [] => Err(EngineError::MissingPart {
+            // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
+            // renamed or corrupted `.docx` needs, and it is pinned by a test.
+            part: format!(
+                "`{}` — this package is a ZIP but not a word-processing document, and it is \
+                 neither a workbook (`{}`) nor a presentation (`{}`)",
                 docx::MAIN_PART,
-                xlsx::WORKBOOK_PART
+                xlsx::WORKBOOK_PART,
+                pptx::PRESENTATION_PART
             ),
         }),
-        // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
-        // renamed or corrupted `.docx` needs, and it is pinned by a test.
-        (false, false) => Err(EngineError::MissingPart {
-            part: format!(
-                "`{}` — this package is a ZIP but not a word-processing document, and it is not \
-                 a workbook either (`{}` is absent)",
-                docx::MAIN_PART,
-                xlsx::WORKBOOK_PART
+        _ => Err(EngineError::Malformed {
+            what: "office package".into(),
+            detail: format!(
+                "this package lists {} main parts — {} — so it claims to be more than one kind \
+                 of document at once. A representation describes one document; reading it as any \
+                 of them would be this engine choosing which of the file's own claims to believe.",
+                claimed.len(),
+                claimed.join("`, `")
             ),
         }),
     }
@@ -443,6 +478,165 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // **Not a table, on the format made of grids.** `tables` here means this engine's table
         // IR, produced by the PDF detectors from ruled and unruled evidence. Those never ran;
         // this artifact carries cells, and `Profile::xlsx_v0` declares `tables: false` to say so.
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an OOXML presentation into a sealed representation (v2-S4).
+///
+/// # One part id per slide, and no page anywhere
+///
+/// A slide is a part, so the shape v2-S3 built for one-part-per-sheet serves unchanged: a part id
+/// per slide, ordinals contiguous within each, and the part-id ↔ part-name bijection carrying
+/// three formats now instead of one. `pages` stays empty — see `pptx.rs` for why a slide's size
+/// and its position in the deck are both things this engine will not turn into a `PageRecord`.
+fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    let presentation = zip::read_entry(bytes, pptx::PRESENTATION_PART)?;
+    let rel_ids = pptx::read_slide_refs(&presentation)?;
+
+    let rels_part = zip::read_entry(bytes, pptx::PRESENTATION_RELS_PART).map_err(|_| {
+        EngineError::MissingPart {
+            part: format!(
+                "`{}` — a presentation lists its slides in `{}` and the part each one lives in \
+                 only here, so without it no run has an address this reader can stand behind",
+                pptx::PRESENTATION_RELS_PART,
+                pptx::PRESENTATION_PART
+            ),
+        }
+    })?;
+    let rels = opc::read_relationships(&rels_part, pptx::PRESENTATION_RELS_PART)?;
+    let (slides, non_slides) = pptx::resolve_slides(&rel_ids, &rels)?;
+
+    let profile = Profile::pptx_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "pptx profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+
+    let mut nodes = Vec::new();
+    let mut geometry = Vec::new();
+    let mut shapes_not_read = 0u32;
+    let mut alternatives_not_read = 0u32;
+
+    for slide in &slides {
+        let part = zip::read_entry(bytes, slide)?;
+        let content = pptx::read_slide(&part, slide)?;
+        shapes_not_read += content.shapes_not_read;
+        alternatives_not_read += content.alternatives_not_read;
+
+        // One slide, one part id — minted per slide so the bijection holds in both directions.
+        let part_id = alloc.next(IdKind::Part)?;
+        for (index, run) in content.runs.iter().enumerate() {
+            let id = alloc.next(IdKind::Span)?;
+            geometry.push(NodeGeometry {
+                node: id.clone(),
+                // A slide shape has an `<a:xfrm>` offset and extent, and this is still typed
+                // absence: those are numbers an authoring tool wrote about placement, not ink
+                // this engine measured. `check_structure` refuses a measured box on a page-less
+                // node, so the reader could not emit one even if a later edit read the xfrm.
+                presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            });
+            nodes.push(Node {
+                id,
+                kind: NodeKind::TextRun,
+                parent: part_id.clone(),
+                // Contiguous **within this slide**, in the order the part lists its shapes.
+                ordinal: index as u32 + 1,
+                text: run.text.clone(),
+                native_locator: NativeLocator::Pptx(PptxLocator {
+                    part: slide.clone(),
+                    shape: run.shape,
+                    paragraph: run.paragraph,
+                    run: run.run,
+                }),
+                structural_locator: None,
+                derivation: DerivationClass::Extracted,
+                attributes: NodeAttributes::OfficeSlideRun(OfficeSlideRunAttributes {
+                    shape_id: run.shape_id,
+                    shape_name: run.shape_name.clone(),
+                }),
+            });
+        }
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: a slide states where an authoring tool placed a \
+             shape, which is not a measurement of ink and not a page this engine read",
+        ));
+    }
+
+    let unread = pptx::unread_text_parts(names);
+    if unread > 0 || non_slides > 0 || shapes_not_read > 0 || alternatives_not_read > 0 {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} part(s) of this package carry text and were not read — speaker notes, \
+                 masters, layouts, comments, charts or diagrams. "
+            ));
+        }
+        if non_slides > 0 {
+            detail.push_str(&format!(
+                "{non_slides} entry(ies) in the slide list are not slides. "
+            ));
+        }
+        if shapes_not_read > 0 {
+            detail.push_str(&format!(
+                "{shapes_not_read} shape(s) on the slides that were read hold text this slice \
+                 does not read — a table or chart in a `<p:graphicFrame>`, or an `<a:fld>` whose \
+                 text is a cached slide number rather than something the deck states. "
+            ));
+        }
+        if alternatives_not_read > 0 {
+            detail.push_str(&format!(
+                "{alternatives_not_read} `<mc:AlternateContent>` branch(es) holding text were \
+                 passed over — a deck states the same content more than once for consumers of \
+                 different capability, and this reader takes the first rather than emitting one \
+                 phrase at two addresses. "
+            ));
+        }
+        detail.push_str(
+            "v2-S4 reads slide shape text only, and a phrase absent from this artifact may still \
+             be present in the presentation",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: PPTX_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // **A slide is a part, not a page.** The empty vector is what keeps a deck's slide
+        // numbers from becoming page numbers on the wire.
+        pages: Vec::new(),
+        nodes,
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

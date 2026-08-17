@@ -177,6 +177,15 @@ pub enum NativeLocator {
     /// something a printer decides, not something the workbook states, so it is exactly the
     /// rendering `docs/14-V2-SCOPE.md` §3 forbids a locator from addressing.
     Xlsx(XlsxLocator),
+    /// A text run's address inside an OOXML presentation: part, shape, paragraph, run (v2-S4).
+    ///
+    /// **The format where calling a part a page is most tempting, and still wrong.** A slide is a
+    /// discrete addressable thing the package contains — unlike a DOCX page, which does not exist
+    /// until a renderer decides where one falls, and unlike a spreadsheet's page, which a printer
+    /// decides. That makes it a **part**, exactly as a worksheet is, and not a `PageRecord`: a
+    /// slide's position in `p:sldIdLst` is display order, and putting it on the wire as a page
+    /// index would be a citation shaped like a PDF page number.
+    Pptx(PptxLocator),
 }
 
 impl NativeLocator {
@@ -193,7 +202,10 @@ impl NativeLocator {
             // A workbook has print layout, not pages. Where a page break falls depends on the
             // printer, the paper and a "fit to page" setting, none of which is in the file —
             // which is why `docs/06-STEAL-REFUSE.md` L30 is a refusal rather than a fallback.
-            Self::Docx(_) | Self::Xlsx(_) => false,
+            // A workbook has print layout, not pages; a presentation has slides, which are
+            // parts. `p:sldSz` states a slide's size, but a size is not a page and this engine
+            // measured nothing against it.
+            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) => false,
         }
     }
 
@@ -203,6 +215,7 @@ impl NativeLocator {
             Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => None,
             Self::Docx(d) => Some(d.part.as_str()),
             Self::Xlsx(x) => Some(x.part.as_str()),
+            Self::Pptx(p) => Some(p.part.as_str()),
         }
     }
 }
@@ -280,6 +293,56 @@ pub struct XlsxLocator {
     /// A `String` and not an index, for the reason on the type's own documentation: `2` is a
     /// number the workbook does not contain.
     pub column: String,
+}
+
+/// A text run's address inside an OOXML slide part (v2-S4).
+///
+/// # No slide number, and that is the whole design
+///
+/// A presentation is the first v2 format whose parts a person naturally counts — *"slide 12"* —
+/// and this locator deliberately does not carry that number. `p:sldIdLst` states display **order**,
+/// which changes when a deck is reordered and which a consumer would read as a page index; the
+/// part name is what the package uses to identify a slide, and it does not move. A caller that
+/// genuinely needs deck position can read `ppt/presentation.xml`, where it is a fact about the
+/// presentation rather than a claim baked into every citation.
+///
+/// Nor is there a `p:sldSz`-derived width and height. A slide states a size in EMUs, but a size
+/// is not a page, nothing here measured anything against it, and a `PageRecord` minted from it is
+/// the invented pagination `docs/14-V2-SCOPE.md` §3 exists to refuse.
+///
+/// # Why the shape is a position and its id is not the address
+///
+/// `<p:cNvPr id="7" name="Title 1"/>` looks like the right thing to address a shape by — it is a
+/// number the file wrote, and this locator was written that way first. **It was measured and
+/// changed.** Across 18 real decks (329 slides, 3,335 shapes) the id is present every time and
+/// **unique only most of the time**: 12 slides produced by an Open XML SDK generator reuse one
+/// id, and PowerPoint opens them without complaint. An address that is not unique gives a
+/// citation two answers, and refusing those files instead would reject decks that open everywhere
+/// else — so the id is carried on [`OfficeSlideRunAttributes`], where being a non-unique label is
+/// exactly what it is, and the address is a **position**.
+///
+/// All three components are therefore 1-based positions in the part's own document order: the
+/// shape among the part's shapes, the paragraph within that shape's `<p:txBody>`, the run within
+/// that paragraph. That is the spelling [`DocxLocator`] uses, for the reason it uses it — the file
+/// states that order, and nothing was laid out to obtain it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PptxLocator {
+    /// The package part this run was read from, e.g. `ppt/slides/slide1.xml`.
+    ///
+    /// Resolved through `ppt/_rels/presentation.xml.rels` — not `slide{n}.xml` guessed from the
+    /// slide's position in `<p:sldIdLst>`.
+    pub part: String,
+    /// 1-based position of the `<p:sp>` within this part, in its own document order.
+    ///
+    /// **Shapes nest.** A `<p:sp>` inside a `<p:grpSp>` group is a shape and is counted as one,
+    /// because it is one — groups appeared on essentially every slide of every real deck this was
+    /// checked against, and a reader that skipped them would return a fraction of the deck.
+    pub shape: u32,
+    /// 1-based position of the `<a:p>` within that shape's `<p:txBody>`.
+    pub paragraph: u32,
+    /// 1-based position of the `<a:r>` within that paragraph.
+    pub run: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -620,6 +683,13 @@ pub enum NodeAttributes {
     /// so either struct filled with the other's fields would be claims the file never made — the
     /// same argument that made `OfficeRun` a variant rather than a blanked [`Self::TextRun`].
     OfficeCell(OfficeCellAttributes),
+    /// A slide run's facts (v2-S4).
+    ///
+    /// **A fourth variant rather than [`Self::OfficeRun`] with a borrowed field.** DrawingML does
+    /// not use `xml:space` — checked against three real decks, zero occurrences — so
+    /// `space_preserved: false` would be a claim about a mechanism the format does not have,
+    /// which is the fabrication that made `OfficeRun` a variant in the first place.
+    OfficeSlideRun(OfficeSlideRunAttributes),
 }
 
 impl NodeAttributes {
@@ -642,6 +712,9 @@ impl NodeAttributes {
             // column, which is cell-ness spelled out; a kind would restate the locator, which is
             // exactly why v1-S3 refused `Paragraph` when the role path already said `P`.
             Self::OfficeCell(_) => NodeKind::TextRun,
+            // And so is a slide run, for the standing rule: `PptxLocator` already says which
+            // shape and which paragraph, so a `Slide` kind would restate the address.
+            Self::OfficeSlideRun(_) => NodeKind::TextRun,
         }
     }
 }
@@ -947,6 +1020,34 @@ pub struct OfficeRunAttributes {
     /// whether this run's spaces are the document's or the parser's. Recorded rather than
     /// resolved: this reader takes the text verbatim either way and says which case it was.
     pub space_preserved: bool,
+}
+
+/// A slide run's facts: what PresentationML states about the shape holding it (v2-S4).
+///
+/// Everything else a run
+/// could carry — a language, bold, a theme colour — is in an `<a:rPr>` or a slide layout this
+/// slice does not read, and a field that is always empty because nobody populated it is worse
+/// than no field.
+///
+/// The shape's **placeholder type** (`<p:ph type="title"/>`) is the one further fact worth having
+/// and is deliberately absent: resolving what a placeholder means needs the slide layout and the
+/// master, which this slice does not read, so a `placeholder` field would be either incomplete or
+/// a second reader's worth of work. Named here so the next slice finds the decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeSlideRunAttributes {
+    /// The `id` on the shape's `<p:cNvPr>`, as the slide states it.
+    ///
+    /// **A label, not an address**, and the distinction is measured rather than cautious: real
+    /// decks exist in which two shapes on one slide carry the same id, so [`PptxLocator::shape`]
+    /// is a position instead. Carried anyway because it is a fact the file states and the one a
+    /// consumer needs to match this run against the same shape in the original package.
+    pub shape_id: u32,
+    /// The `name` on the shape's `<p:cNvPr>`, e.g. `Title 1`, verbatim.
+    ///
+    /// What the authoring tool called the shape, which is what a person reading a citation
+    /// recognises. It may be empty: the attribute is required by the schema, its content is not.
+    pub shape_name: String,
 }
 
 /// A spreadsheet cell's facts: what SpreadsheetML states about a `<c>` and nothing else (v2-S3).
@@ -2094,6 +2195,47 @@ mod tests {
                 serde_json::from_str::<XlsxLocator>(smuggled).is_err(),
                 "`deny_unknown_fields` is what stops a rendering arriving as a field: {smuggled}"
             );
+        }
+    }
+
+    /// A slide run's address carries no page, no box and **no slide number**.
+    #[test]
+    fn a_pptx_locator_denies_a_page_a_box_and_a_slide_index() {
+        let honest = r#"{"part":"ppt/slides/slide1.xml","shape":1,"paragraph":2,"run":1}"#;
+        serde_json::from_str::<PptxLocator>(honest).expect("the four fields the file states");
+
+        for smuggled in [
+            r#"{"part":"p","shape":1,"paragraph":1,"run":1,"page":3}"#,
+            r#"{"part":"p","shape":1,"paragraph":1,"run":1,"slide":3}"#,
+            r#"{"part":"p","shape":1,"paragraph":1,"run":1,"slide_index":3}"#,
+            r#"{"part":"p","shape":1,"paragraph":1,"run":1,"bbox":[0,0,1,1]}"#,
+            r#"{"part":"p","shape":1,"paragraph":1,"run":1,"x":914400,"y":914400}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<PptxLocator>(smuggled).is_err(),
+                "a slide is a part, not a page, and `deny_unknown_fields` is what holds it: \
+                 {smuggled}"
+            );
+        }
+    }
+
+    /// All four profiles are mutually distinct, so no two formats' artifacts compare equal.
+    #[test]
+    fn every_profile_is_distinct_from_every_other() {
+        let profiles = [
+            ("pdf", Profile::default()),
+            ("docx", Profile::docx_v0()),
+            ("xlsx", Profile::xlsx_v0()),
+            ("pptx", Profile::pptx_v0()),
+        ];
+        for (i, (left_name, left)) in profiles.iter().enumerate() {
+            for (right_name, right) in profiles.iter().skip(i + 1) {
+                assert_ne!(
+                    left.profile_sha256().unwrap(),
+                    right.profile_sha256().unwrap(),
+                    "{left_name} and {right_name} must be provably non-comparable"
+                );
+            }
         }
     }
 

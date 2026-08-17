@@ -3,9 +3,17 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads two formats.** S0–S3 are **done**; **S4 is not started**. `engine-office` is the fifth
-crate, DOCX is the format that stopped it being speculative, and XLSX is the one that made the
-page-less invariant carry more than one part.
+**v2 reads three formats.** S0–S4 are **done**; **S5 is not started**. `engine-office` is the fifth
+crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
+page-less invariant carry more than one part, and PPTX is the one that tested whether a part this
+engine *can* count would become a page. It did not.
+
+**The remaining-formats row split here, and that is what S2 and S3 were measured for.** S0 wrote
+that row as one line on purpose — *"this row splits into real slices when S2 and S3 are done and
+that cost is measured"* — and the cost is now known: a third OOXML format is one reader, one
+profile and one fixture pair, because the container, the XML rules and the `r:id`-to-part rule are
+shared. ODF, RTF, EPUB and CSV share none of that, so they stay parked together in S5 rather than
+being scheduled on a guess about what PPTX cost.
 
 **v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
 (`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -18,7 +26,8 @@ closes v1.
 | **S1** | The grounding contract for a page-less source | S0 | **done — (b), and one finding** |
 | **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **done** |
 | **S3** | XLSX → representation: sheets and cells | S2 | **done — and the `coordinate_system` decision** |
-| **S4** | The remaining office formats — PPTX, ODF, RTF, EPUB, CSV | S3 | **not started** |
+| **S4** | PPTX → representation: slides and shapes | S3 | **done — and a slide is a part** |
+| **S5** | The remaining office formats — ODF, RTF, EPUB, CSV | S4 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -521,18 +530,198 @@ now fails a test, and before it did not fail anything.
 
 ---
 
-## S4 — the remaining office formats — **not started**
+## S4 — PPTX → representation
 
-- **Goal:** PPTX, ODF, RTF, EPUB and CSV, on the terms the first two established.
+- **Status: done.** `0.23.0`. `engine extract` reads a `.pptx`, a slide's text binds, and **a
+  slide is a part rather than a page** — which is the whole of this slice's argument.
 
-- **Deliberately one row.** **A1** — Anydoc's 14-format coverage — is v2's horizon, not its
-  checklist. Scheduling five formats before two have shipped would be a waterfall built on a guess
-  about what the second one costs. This row splits into real slices when S2 and S3 are done and that
-  cost is **measured**.
+- **Goal:** the next format on the roadmap line, on the terms the first two established.
+
+### The temptation this format exists to test
+
+DOCX has no page at all: one does not exist until a renderer decides where it falls. XLSX's page
+is a print artefact: a printer decides it. **A slide is neither.** It is discrete, addressable,
+listed in the package, and a person counts them out loud — *"it's on slide 12"*. This is the first
+v2 format where inventing a page would not even feel like inventing one.
+
+It is still a **part**, and the two things that would have made it a page are both refused by name:
+
+| the tempting field | what it actually is |
+| --- | --- |
+| `p:sldSz` → `PageRecord {width, height}` | a size the authoring tool wrote, which this engine measured nothing against |
+| position in `<p:sldIdLst>` → `PageRecord.index` | display **order**, which changes when a deck is reordered, and which a consumer would read as a page number |
+
+So `pages` is `[]`, each slide is one part id, and `PptxLocator` carries **no slide number at
+all** — a caller that wants deck position reads `ppt/presentation.xml`, where it is a fact about
+the presentation rather than a claim baked into every citation. `a_deck_declares_no_pages_and_
+carries_no_page_number` asserts the locator's exact field set, so a slide index cannot arrive
+later as a fifth field.
+
+### The locator, and the field that measurement moved
+
+`PptxLocator { part, shape, paragraph, run }` — `deny_unknown_fields`, no page, no bbox, no
+`x`/`y`.
+
+**`shape` was going to be the shape's own id, and measurement changed it.** `<p:cNvPr id="7"
+name="Title 1"/>` is a number the file wrote, which is exactly the kind of thing this engine
+prefers over one it counted. Across 18 real decks — 329 slides, 3,335 shapes — the id is present
+every time and **unique only most of the time**: 12 slides from an Open XML SDK generator reuse
+one, and PowerPoint opens them without complaint. Addressing by it would have given one address
+two answers on real files, and refusing those files would have rejected decks that open
+everywhere else. So the id moved to the attributes, where a non-unique label is exactly what it
+is, and all three components are 1-based positions in the part's own document order.
+
+That is the same correction v2-S3 made twice, arriving before the code shipped rather than after.
+
+### What a reader that only saw top-level shapes would miss
+
+Measured, not assumed. Of 5,297 `<a:t>` elements across those decks:
+
+| where | count | this reader |
+| --- | --- | --- |
+| `p:sp > p:txBody` | 4,670 | **read** |
+| `p:grpSp > … > p:sp` (nested groups) | 160 | **read** — groups are shapes |
+| `p:graphicFrame` (tables, charts, SmartArt) | 287 | **counted** (A14) |
+| `a:fld` (slide numbers, dates) | 180 | **counted** (A14) |
+
+A reader that saw only **top-level** shapes would get 4,670 of 5,297 — 88.2% — and say nothing
+about the rest; descending into groups brings this one to 91.2%, and the remaining 8.8% is
+counted rather than dropped. Groups appeared on essentially every slide of every deck, so handling
+them is not an edge case; and the field is the interesting refusal, because an
+`<a:fld type="slidenum">` holds a **cached** slide number written at save time that goes stale the
+moment the deck is reordered. Reading it would put a number in the evidence
+that is not on the screen and is shaped exactly like the page index this version refuses.
+
+### `mc:AlternateContent`: one phrase, one node — and the counters still see the rest
+
+`mc:AlternateContent` appeared on 162 of 329 slides. It carries one or more `mc:Choice` and an
+optional `mc:Fallback`, **all stating the same content** for consumers of different capability. A
+descendant walk emits that phrase at two or three addresses — the mirror image of a silent drop.
+Exactly one branch is read: the first `Choice`, deterministically. The rest are counted when they
+held text, and a branch wrapping only a transition is not counted at all.
+
+**The counters still advance through the skipped branches**, and that is the half worth stating.
+`shape` promises a position in the part's own document order, so a consumer checking it counts
+`<p:sp>` elements in the file. Counting only what was read would leave every address after an
+`AlternateContent` one short — a locator that is confidently wrong, which is exactly the failure
+this slice's own review caught before it shipped. The same holds one level down for `<a:p>` and
+`<a:r>`, and for the self-closing `<a:p/>` that python-pptx and Apache POI write for a blank
+line: the address must not turn on how a deck was serialized.
+
+### The rule that moved to a module of its own
+
+**Three formats now share one answer to "what part does this `r:id` mean?"** `xl/workbook.xml` and
+`ppt/presentation.xml` both list things and name no parts; both invite the `sheet{n}` / `slide{n}`
+shortcut; both break under it. `opc.rs` holds that rule now, along with the target resolution, and
+`xml.rs` grew from the entity rule to the whole XML-reader plumbing — because the alternative was
+a third copy, and **three of the nine defects v2-S3's review found were two copies of one rule
+disagreeing**. Nothing in the moved code changed; the DOCX and XLSX suites passed unaltered across
+the move, which is what made it a move rather than a rewrite.
+
+`resolve_target` did gain one thing: `.` and `..` normalisation. 2,318 of the measured relationship
+targets climb a directory, and a reader that joined them literally would refuse packages that open
+everywhere else. A target that climbs out of the package resolves to a name no central directory
+contains, which is a named refusal rather than a path this reader goes looking for.
+
+### Detection, and every failure closed
+
+**A4: the bytes decide.** `ppt/presentation.xml` in the central directory. The router now counts
+the main parts a package lists rather than asking three ordered questions, so a package claiming
+two formats is a **named refusal** rather than whichever `if` ran first. A legacy `.ppt` is an OLE
+compound file, not a ZIP, and is refused at the first question — correctly, since it is a
+different format with a different reader.
+
+Named refusals: a `<p:sldId>` with no `r:id`; an `r:id` matching no relationship; two entries
+resolving to one part; a presentation listing no slides; a `<p:sp>` with text and no `<p:cNvPr
+id>`; a non-numeric id; a truncated part.
+
+- **In:** `crates/engine-office/{pptx.rs, opc.rs}` and the widened `xml.rs`; the three-way router
+  in `lib.rs`; `PptxLocator`, `NodeAttributes::OfficeSlideRun`, `OfficeSlideRunAttributes`,
+  `Profile::pptx_v0`, `PPTX_READING_ORDER_RULE_V1` and `PPTX_TEXT_CODE_RULE_V1` in `engine-core`;
+  content dispatch in `engine extract`; `fixtures/office/deck-slides` and `deck-unread-parts`;
+  `0.23.0`, the moved profile hash and both SDK pins; `PUBLIC-API.md` and its gate; `14`/`15`;
+  CHANGELOG; README.
+
+- **Out:** ODF, RTF, EPUB, CSV — parked in S5. Speaker notes, masters and layouts as evidence;
+  SmartArt and chart text; animations, transitions, embedded workbooks, theme fonts, shape
+  positions. Any change to `ethos.grounding.v1`. Any `project()` change. Markdown or HTML for a
+  deck. A `coordinate_system` mode enum — v2-S3 closed that and this slice did not reopen it.
+
+- **Acceptance tests:**
+  - [x] A known slide phrase is on a node with a `PptxLocator`; `pages` is `[]`; `node_get` over
+        **unmodified MCP** resolves the minted id and `s-forged` fails closed
+  - [x] The locator's field set is exactly `{part, shape, paragraph, run}` — **no slide number**,
+        no page, no box — and `deny_unknown_fields` refuses each of those by name
+  - [x] Slide parts are resolved through `ppt/_rels/presentation.xml.rels`, proven by a fixture
+        whose second slide is `slide7.xml` behind `rId4`; a dangling `r:id` is a named refusal
+  - [x] Two shapes sharing one `<p:cNvPr id>` — a file PowerPoint opens — still get distinct
+        addresses, and the id survives as a label
+  - [x] A shape inside a `<p:grpSp>` is read and addressed like any other
+  - [x] Two slides seal as **two parts**, ordinals restarting at 1 per part, with **no change to
+        `engine-core`'s invariant**
+  - [x] `&amp;` survives; CDATA is matched rather than dropped; only the **first** `<mc:Choice>`
+        of an `<mc:AlternateContent>` is read, and the branches passed over are counted **when
+        they held text**
+  - [x] The document-order counters advance **through** a skipped branch, so a shape after an
+        `<mc:AlternateContent>` keeps the number the file gives it; a self-closing `<a:p/>` counts
+        as a paragraph, so the address does not turn on how the deck was serialized. Both
+        mutation-checked
+  - [x] Detection is content-based: a renamed deck reads, a `.pptx` that is not one fails with
+        empty stdout, a DOCX and an XLSX are never claimed as presentations, and a package that
+        is two formats is refused by name
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the
+        law — with **no change to `engine-grounding`**
+  - [x] Every geometry row is `NotApplicableToKind`; all four profile hashes are mutually
+        distinct; `capabilities.tables` is false
+  - [x] Unread parts **and** unread shapes are counted and declared, each held by its own test —
+        and the shape branch is **mutation-checked**: deleting it fails a test, and the first
+        version of that assertion did not, because `v2-S4 reads slide shape text only` contains
+        both a `2` and the word `shape`
+  - [x] Two runs over one deck produce identical bytes
+  - [x] `Cargo.lock` gains **no new dependency** — no `zip`, `zopfli`, `calamine` or renderer
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication still 0
+  - [x] Workspace **0.23.0**, both SDKs **0.23.0**, profile hash
+        `sha256:8dfca0e41d51668c6d540ec45bf83dd66503dbc2dcb1fa7c188cceebe255d4bd`
+
+### What reviewing the slice against §3 found before it shipped
+
+Three defects, all of the same class v2-S3's review named: **a right address pointing at the wrong
+thing.** None of them lost text; each made a locator disagree with what a consumer counting
+elements in the file would find.
+
+| | defect | why it was wrong |
+| --- | --- | --- |
+| 1 | a `<p:sp>` in a skipped `<mc:AlternateContent>` branch did not advance the shape count | every shape after it was numbered one short, so a verifier following the documented rule landed on the skipped shape |
+| 2 | a self-closing `<a:p/>` was invisible to the paragraph count | `<a:p/>` and `<a:p></a:p>` are the same infoset; the address turned on the serialization, and python-pptx and Apache POI write the first |
+| 3 | every `<mc:Choice>` was read, not just the first | one displayed phrase became two or three citable nodes — the duplication this reader's own comment claimed to prevent, enforced against `Fallback` only |
+
+Defect 3 is the sharpest: the code said *"reading both would emit the same text twice at two
+addresses"* and then guarded one of the two ways that happens. All three are fixed and each is
+mutation-checked — deleting the fix fails a test.
+
+- **Depends on:** S3.
+
+---
+
+## S5 — the remaining office formats — **not started**
+
+- **Goal:** ODF, RTF, EPUB and CSV, on the terms the first three established.
+
+- **Still deliberately one row.** **A1** — Anydoc's 14-format coverage — is v2's horizon, not its
+  checklist. What S4 measured is that a *fourth OOXML* format would be cheap; these four are not
+  OOXML and share nothing with each other either. ODF is a different ZIP with a different XML
+  vocabulary, RTF is not XML at all, EPUB is a ZIP of XHTML, and CSV has no container. Scheduling
+  them as one slice each before any of them has been looked at would be the waterfall S0 refused.
 
 - **The one thing already known about this row:** EPUB may genuinely have pages and CSV genuinely
-  has none, so §3's law is not "no page ever" but "no page this engine did not read from the file."
-  Whichever formats have a native pagination declare it; the rest carry the empty vector.
+  has none, so §3's law is not "no page ever" but "no page this engine did not read from the
+  file." Whichever formats have a native pagination declare it; the rest carry the empty vector.
+  S4 is the precedent for the first half: a slide looked like a page, was checked against the
+  file, and turned out to be a part.
+
+- **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
+  This row is coverage beyond it.
 
 ---
 

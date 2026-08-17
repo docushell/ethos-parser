@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "ethos-engine office reader: OOXML documents and workbooks, with no pagination."
+description = "ethos-engine office reader: OOXML documents, workbooks and presentations, with no pagination."
 
 [dependencies]
 engine-core.workspace = true

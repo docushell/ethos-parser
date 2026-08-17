@@ -3,11 +3,15 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads two formats.** S0–S3 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, and XLSX. S4 (the rest) is not started. §3's law has now
-been applied to a format that has *print* layout as well as one that has none, and it held without
-loosening: a cell is addressed by sheet, row and column, and no page, column width or print range
-appears anywhere on that path.
+**v2 reads three formats.** S0–S4 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX and PPTX. S5 (ODF, RTF, EPUB, CSV) is not started.
+
+§3's law has now been tested against all three shapes a "page" can take. A DOCX has none until a
+renderer invents one. A spreadsheet's is a print artefact. **And a slide is a real, discrete,
+countable thing the package contains** — the case the law had not yet met, and the one where
+inventing a page would not have felt like inventing one. It is a **part**: `pages` is empty,
+`PptxLocator` carries no slide number, and neither `p:sldSz` nor a position in `<p:sldIdLst>`
+reaches the wire.
 
 **v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is

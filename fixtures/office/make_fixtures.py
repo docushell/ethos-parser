@@ -275,8 +275,177 @@ WORKBOOK_WITH_UNREAD_PARTS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# v2-S4 — presentations
+#
+# Authored to the same rules as the documents and workbooks above, plus the two the slide reader
+# needs, both of which came out of measuring 18 real decks:
+#
+# 1. **The slide-to-part mapping is not positional, and the relationship ids are not either.**
+#    The deck's second slide is `slide7.xml` behind `rId4`, so a reader that assumed
+#    `ppt/slides/slide{N}.xml` in `<p:sldIdLst>` order — or that sorted by relationship id — puts
+#    the wrong slide's text at the wrong address. In a real 55-slide deck `rId13` binds
+#    `slides/slide12.xml`, so this is the ordinary case rather than an adversarial one.
+# 2. **Shapes nest and shape ids repeat.** Slide one puts a shape inside a `<p:grpSp>` (groups
+#    appeared on essentially every slide of every real deck) and gives two shapes the same
+#    `<p:cNvPr id>` — which real Open XML SDK output does, and which PowerPoint opens — so the
+#    locator cannot be addressing by that id.
+# ---------------------------------------------------------------------------
+
+PML = "http://schemas.openxmlformats.org/presentationml/2006/main"
+DML = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+DECK_CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+  <Override PartName="/ppt/slides/slide7.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+</Types>
+"""
+
+DECK_RELS = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{PKG_RELS}">
+  <Relationship Id="rId1" Type="{OFFICE_RELS}/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>
+"""
+
+# `p:notesSz` is REQUIRED by `CT_Presentation` — measured present in 18/18 real decks — so it is
+# here even though nothing reads it. `p:sldSz` is present and deliberately ignored: a slide's
+# size in EMUs is not a page, and turning it into one is what this version refuses.
+PRESENTATION = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="{PML}" xmlns:r="{OFFICE_RELS}">
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId2"/>
+    <p:sldId id="257" r:id="rId4"/>
+  </p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>
+"""
+
+PRESENTATION_RELS = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{PKG_RELS}">
+  <Relationship Id="rId2" Type="{OFFICE_RELS}/slide" Target="slides/slide1.xml"/>
+  <Relationship Id="rId4" Type="{OFFICE_RELS}/slide" Target="slides/slide7.xml"/>
+</Relationships>
+"""
+
+# Shape 2 is a plain title. Shape 3 lives inside a group and REUSES id 2 — legal enough that
+# PowerPoint opens such files, and the reason the locator addresses shapes by position.
+SLIDE_ONE = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld><p:spTree>
+  <p:nvGrpSpPr><p:cNvPr id="1" name=""/></p:nvGrpSpPr>
+  <p:sp>
+    <p:nvSpPr><p:cNvPr id="2" name="Title 1"/></p:nvSpPr>
+    <p:txBody>
+      <a:p><a:r><a:t>Evidence, not extraction.</a:t></a:r></a:p>
+      <a:p><a:r><a:t>Slides &amp; shapes are S4</a:t></a:r><a:r><a:t> and never a page.</a:t></a:r></a:p>
+    </p:txBody>
+  </p:sp>
+  <p:grpSp>
+    <p:nvGrpSpPr><p:cNvPr id="9" name="Group 8"/></p:nvGrpSpPr>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="2" name="Grouped 2"/></p:nvSpPr>
+      <p:txBody><a:p><a:r><a:t>Inside a group, and still read.</a:t></a:r></a:p></p:txBody>
+    </p:sp>
+  </p:grpSp>
+</p:spTree></p:cSld></p:sld>
+"""
+
+SLIDE_SEVEN = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld><p:spTree>
+  <p:nvGrpSpPr><p:cNvPr id="1" name=""/></p:nvGrpSpPr>
+  <p:sp>
+    <p:nvSpPr><p:cNvPr id="4" name="Body 3"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>Read because the deck listed it.</a:t></a:r></a:p></p:txBody>
+  </p:sp>
+</p:spTree></p:cSld></p:sld>
+"""
+
+DECK_PARTS = {
+    "[Content_Types].xml": DECK_CONTENT_TYPES,
+    "_rels/.rels": DECK_RELS,
+    "ppt/presentation.xml": PRESENTATION,
+    "ppt/_rels/presentation.xml.rels": PRESENTATION_RELS,
+    "ppt/slides/slide1.xml": SLIDE_ONE,
+    "ppt/slides/slide7.xml": SLIDE_SEVEN,
+}
+
+
+# A deck whose notes, layout and master carry text this slice does not read, and whose one slide
+# holds a table and a slide-number field. Three unread PARTS and two unread SHAPES, counted and
+# named — the declared erasure (Anydoc's A14) in both of its halves.
+NOTES_SLIDE = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld><p:spTree>
+  <p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>A speaker note nobody read.</a:t></a:r></a:p></p:txBody></p:sp>
+</p:spTree></p:cSld></p:notes>
+"""
+
+SLIDE_LAYOUT = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld name="Title Slide"><p:spTree>
+  <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title Placeholder"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>Click to edit Master title style</a:t></a:r></a:p></p:txBody></p:sp>
+</p:spTree></p:cSld></p:sldLayout>
+"""
+
+SLIDE_MASTER = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld><p:spTree>
+  <p:sp><p:nvSpPr><p:cNvPr id="2" name="Footer"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>Confidential — on every slide, and unread</a:t></a:r></a:p></p:txBody></p:sp>
+</p:spTree></p:cSld></p:sldMaster>
+"""
+
+SLIDE_WITH_UNREAD_SHAPES = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="{PML}" xmlns:a="{DML}"><p:cSld><p:spTree>
+  <p:sp>
+    <p:nvSpPr><p:cNvPr id="2" name="Title 1"/></p:nvSpPr>
+    <p:txBody><a:p><a:r><a:t>The shapes are all this slice reads.</a:t></a:r></a:p></p:txBody>
+  </p:sp>
+  <p:graphicFrame>
+    <p:nvGraphicFramePr><p:cNvPr id="5" name="Table 4"/></p:nvGraphicFramePr>
+    <a:graphic><a:graphicData><a:tbl><a:tr><a:tc><a:txBody>
+      <a:p><a:r><a:t>A table cell nobody read.</a:t></a:r></a:p>
+    </a:txBody></a:tc></a:tr></a:tbl></a:graphicData></a:graphic>
+  </p:graphicFrame>
+  <p:sp>
+    <p:nvSpPr><p:cNvPr id="6" name="Slide Number Placeholder 5"/></p:nvSpPr>
+    <p:txBody><a:p><a:fld id="{{C51EAA63-D034-42AE-91FA-B13B9518C7BE}}" type="slidenum"><a:t>1</a:t></a:fld></a:p></p:txBody>
+  </p:sp>
+</p:spTree></p:cSld></p:sld>
+"""
+
+ONE_SLIDE_ONLY = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="{PML}" xmlns:r="{OFFICE_RELS}">
+  <p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>
+"""
+
+ONE_SLIDE_RELS = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="{PKG_RELS}">
+  <Relationship Id="rId2" Type="{OFFICE_RELS}/slide" Target="slides/slide1.xml"/>
+</Relationships>
+"""
+
+DECK_WITH_UNREAD_PARTS = {
+    "[Content_Types].xml": DECK_CONTENT_TYPES,
+    "_rels/.rels": DECK_RELS,
+    "ppt/presentation.xml": ONE_SLIDE_ONLY,
+    "ppt/_rels/presentation.xml.rels": ONE_SLIDE_RELS,
+    "ppt/slides/slide1.xml": SLIDE_WITH_UNREAD_SHAPES,
+    "ppt/notesSlides/notesSlide1.xml": NOTES_SLIDE,
+    "ppt/slideLayouts/slideLayout1.xml": SLIDE_LAYOUT,
+    "ppt/slideMasters/slideMaster1.xml": SLIDE_MASTER,
+}
+
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
     write(HERE / "workbook-cells" / "workbook.xlsx", WORKBOOK_PARTS)
     write(HERE / "workbook-unread-parts" / "workbook.xlsx", WORKBOOK_WITH_UNREAD_PARTS)
+    write(HERE / "deck-slides" / "deck.pptx", DECK_PARTS)
+    write(HERE / "deck-unread-parts" / "deck.pptx", DECK_WITH_UNREAD_PARTS)
