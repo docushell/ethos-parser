@@ -26,15 +26,19 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads four of them at 0.24.0**, with **S6 (ODS)** and **S7 (ODP, RTF,
-EPUB, CSV)** not started. `engine extract` takes a `.docx`, an
-`.xlsx`, a `.pptx` or an `.odt` and emits the same record a PDF does — and **no page appears
+**v2 is office formats and it reads five of them at 0.25.0**, with **S7 (ODP, RTF, EPUB, CSV)** not
+started and v2 **not complete**. `engine extract` takes a `.docx`, an
+`.xlsx`, a `.pptx`, an `.odt` or an `.ods` and emits the same record a PDF does — and **no page appears
 anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
 with the column kept as the letters the file wrote. An ODT is the sharpest case, because its
 `content.xml` **contains an actual page break**: `<text:soft-page-break/>` records where the
 producing application's layout fell, so a `PageRecord` would need no arithmetic at all. It is read,
 recognised and discarded, because it is a measurement of a word processor rather than of the
-document. Each row began because the owner asked for it, not because the gate cleared.
+document. **An ODS is the sharpest address case**, because OpenDocument writes none: no row number,
+no column letter, anywhere. A cell's position is where it sits among its siblings, compressed into
+`table:number-columns-repeated="n"` — so the repeat *is* the statement of position, honouring it is
+reading, and the column stays a number because the file contains no letters. Each row began because
+the owner asked for it, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
@@ -43,7 +47,7 @@ Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf|.docx|.xlsx|.pptx|.odt   # DocumentRepresentation v0 · 0 / 2
+engine extract         document.pdf|.docx|.xlsx|.pptx|.odt|.ods  # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine html            representation.json               # ethos.html.v1             · 0 / 2

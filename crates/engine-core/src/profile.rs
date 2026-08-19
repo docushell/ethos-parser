@@ -552,6 +552,24 @@ pub const ODT_READING_ORDER_RULE_V1: &str = "odt-content-document-order-v1";
 /// list's number and a footnote's mark are all produced by a layout this reader does not perform.
 pub const ODT_TEXT_CODE_RULE_V1: &str = "odt-text-content-verbatim-v1";
 
+/// v2-S6's ODS reading-order rule: the cells in the part's own document order (v2-S6).
+///
+/// **Not row-major over a grid**, which is the shape a reader would get by sorting on the address.
+/// The two coincide for every document a producer writes, and they stop coinciding the moment one
+/// does not — and the file's order is the one this engine read. The address is stated separately,
+/// on [`OdsLocator`](crate::OdsLocator), so a consumer that wants grid order can sort and know it
+/// did.
+pub const ODS_READING_ORDER_RULE_V1: &str = "ods-content-document-order-v1";
+
+/// v2-S6's ODS text rule: the cell's own blocks, verbatim, joined by a line feed.
+///
+/// [`ODT_TEXT_CODE_RULE_V1`]'s three exceptions apply unchanged, because it is the same engine
+/// reading the same `<text:p>`. The one addition is the join: a cell holding two paragraphs
+/// displays two lines, and the line feed is what the file states by writing two blocks rather than
+/// one. Nothing here reads `office:value` — the text is what the document **displays**, and the
+/// stored typed value is a separate declared fact.
+pub const ODS_TEXT_CODE_RULE_V1: &str = "ods-cell-blocks-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -1119,6 +1137,53 @@ impl Profile {
         }
     }
 
+    /// The profile v2-S6's OpenDocument **spreadsheet** reader runs under.
+    ///
+    /// **Its own profile, and its own hash**, for §5.1's reason: an artifact from an `.ods` and one
+    /// from an `.odt` are not comparable, and the hash is what makes saying so mechanical rather
+    /// than a matter of trusting a media type. `capabilities.tables` is **false** and that is not
+    /// modesty — a `TableRecord` is the PDF detector's finding about a grid it inferred, and a
+    /// spreadsheet's cells are addresses the file states. Claiming `tables` would say a detector
+    /// ran.
+    pub fn ods_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: ODS_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1415,7 +1480,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.24.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.25.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1627,11 +1692,22 @@ mod tests {
              empty. `Profile::odt_v0` carries the same inert `coordinate_system` the other three \
              page-less profiles do — four formats now share that declaration and none of them \
              emits a coordinate — and this profile's own bytes are untouched, because a fourth \
-             page-less format is a new VALUE rather than a change to what this one claims."
+             page-less format is a new VALUE rather than a change to what this one claims.\n\n\
+             Moved a TWENTY-NINTH time at v2-S6 (0.25.0) on `parser_version` ALONE, and the format \
+             behind it is the one that states no address. SpreadsheetML writes `<c r=\"B12\">` and \
+             `XlsxLocator` READS it; OpenDocument writes neither a row number nor a column letter \
+             anywhere, and states a cell's position by where it sits among its siblings — \
+             compressed by `table:number-columns-repeated`, which is the file saying \"and n more \
+             of these\". Honouring that is reading the only statement of position the format \
+             makes. `Profile::ods_v0` carries the same inert `coordinate_system` the other four \
+             page-less profiles do — five formats now share that declaration and none of them \
+             emits a coordinate — its `capabilities.tables` is FALSE because a spreadsheet's cells \
+             are addresses the file states rather than a grid a detector inferred, and this \
+             profile's own bytes are untouched for the reason they were at S5."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:dc89ca65af172b8d9537d96b0579dcf2c3fdf7fe8e0200bf85282fc9d1b6cd67"
+            "sha256:bdd835b47ac40b05928375961f832878e4134171ab6f2bdf436c6f531dfb89aa"
         );
     }
 

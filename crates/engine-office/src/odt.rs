@@ -158,9 +158,9 @@ use crate::xml::{
 /// Both are conforming-document cases rather than malformed ones, so the tradeoff is re-argued
 /// here rather than inherited: element names are resolved, and a name in an unexpected namespace
 /// is [`Element::Foreign`].
-const NS_TEXT: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:text:1.0";
-const NS_OFFICE: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:office:1.0";
-const NS_DRAW: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
+pub(crate) const NS_TEXT: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+pub(crate) const NS_OFFICE: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:office:1.0";
+pub(crate) const NS_DRAW: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
 
 /// What one element means to this reader.
 ///
@@ -182,7 +182,7 @@ const NS_DRAW: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
 /// [`crate::xml`]'s three sibling readers get for free by gating on `<w:t>`, `<t>` and `<a:t>`.
 /// ODF has no such element, so the gate has to be built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Element {
+pub(crate) enum Element {
     /// `text:p` / `text:h` — a block of text, and the unit [`engine_core::OdtLocator`] addresses.
     Block { heading: bool },
     /// `text:s` — the number of spaces the file states.
@@ -211,7 +211,7 @@ enum Element {
 /// name has its characters **declared** rather than spliced, which is the over-declaring direction
 /// this slice commits to everywhere else: the failure mode is a phrase reported missing, never a
 /// phrase the document does not contain.
-fn classify(namespace: Option<&[u8]>, local: &[u8]) -> Element {
+pub(crate) fn classify(namespace: Option<&[u8]>, local: &[u8]) -> Element {
     match (namespace, local) {
         (Some(NS_TEXT), b"p") => Element::Block { heading: false },
         (Some(NS_TEXT), b"h") => Element::Block { heading: true },
@@ -238,7 +238,7 @@ fn classify(namespace: Option<&[u8]>, local: &[u8]) -> Element {
 }
 
 /// The namespace a resolved event reports, as bytes.
-fn namespace_of<'a>(resolved: &'a ResolveResult<'a>) -> Option<&'a [u8]> {
+pub(crate) fn namespace_of<'a>(resolved: &'a ResolveResult<'a>) -> Option<&'a [u8]> {
     match resolved {
         ResolveResult::Bound(ns) => Some(ns.as_ref()),
         _ => None,
@@ -269,7 +269,7 @@ const PACKAGING_ENTRIES: [&str; 3] = [MIMETYPE_ENTRY, MANIFEST_PART, CONTENT_PAR
 /// Real nesting is a handful — a paragraph anchoring a frame holding a text box holding a
 /// paragraph — and `zip.rs` bounds the part at 256 MiB, which is 29 million `<text:p>` opens. That
 /// is a stack of `OpenBlock`s, not a parse depth, so it is bounded here rather than left to grow.
-const MAX_BLOCK_NESTING: usize = 256;
+pub(crate) const MAX_BLOCK_NESTING: usize = 256;
 
 /// A ceiling on the characters one `content.xml` may expand to, across every block.
 ///
@@ -278,7 +278,7 @@ const MAX_BLOCK_NESTING: usize = 256;
 /// aggregate bound, so a conforming part inside the ZIP cap could expand past any host's memory.
 /// `zip.rs` states the discipline this keeps: a bomb is "a named refusal rather than an
 /// out-of-memory kill".
-const MAX_TEXT_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_TEXT_BYTES: usize = 64 * 1024 * 1024;
 
 /// A ceiling on one `<text:s text:c="…">`, refused by name rather than allocated.
 const MAX_SPACES_PER_ELEMENT: usize = 4096;
@@ -297,32 +297,32 @@ pub struct Paragraph {
 }
 
 /// A block being read, plus the state ODF's whitespace rule and the allowlist need.
-struct OpenBlock {
-    ordinal: u32,
-    heading: bool,
-    text: String,
+pub(crate) struct OpenBlock {
+    pub(crate) ordinal: u32,
+    pub(crate) heading: bool,
+    pub(crate) text: String,
     /// Whether collapsible whitespace has been seen since the last character was appended.
     ///
     /// **Deferred rather than appended**, which is what makes the rule's two halves one flag: a
     /// space is only written once a character follows it, so a run of them collapses to one and a
     /// run at the end of the block is never written at all.
-    pending_space: bool,
+    pub(crate) pending_space: bool,
     /// How many [`Element::Foreign`] elements are open between this block and the reader's cursor.
     ///
     /// Non-zero means the characters arriving now are inside something whose text is not this
     /// block's — an image's description, an object's base64, a field's cached value. They are
     /// counted rather than appended. See [`Element`].
-    foreign_depth: u32,
+    pub(crate) foreign_depth: u32,
     /// Whether any foreign subtree of this block held characters, so the count is per block
     /// rather than per element and a frame with a title *and* a description declares once.
-    foreign_text: bool,
+    pub(crate) foreign_text: bool,
 }
 
 /// A region being passed over: where it began, and what it turned out to hold.
-struct Skip {
-    from_depth: i32,
+pub(crate) struct Skip {
+    pub(crate) from_depth: i32,
     /// Whether this region held body characters — see [`Content::regions_not_read`].
-    held_text: bool,
+    pub(crate) held_text: bool,
     /// How many `text:p` / `text:h` blocks are open inside this region.
     ///
     /// The reason the count is not simply "did any character appear": **every** ODF note carries a
@@ -330,7 +330,7 @@ struct Skip {
     /// `<dc:creator>` and `<dc:date>`. Those are metadata, not erased body text, so counting them
     /// would make the guard below always true and declare an erasure for a comment that has no
     /// body at all. A region's erasure is its **blocks**.
-    block_depth: u32,
+    pub(crate) block_depth: u32,
 }
 
 /// What one `content.xml` yielded, plus what it passed over.
@@ -802,7 +802,7 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
 /// Three destinations, and which one the characters reach is the whole of [`Element`]'s argument:
 /// a passed-over region records that it held body text, a [`Element::Foreign`] subtree records
 /// that its block passed some over, and anything else is the block's own text.
-fn push_source(
+pub(crate) fn push_source(
     open: &mut [OpenBlock],
     text: &str,
     skips: &mut [Skip],
@@ -848,7 +848,7 @@ fn push_source(
 /// Exempt from the collapsing rule, because surviving it is the entire reason ODF spells them this
 /// way. A collapsible space already seen is written out first, so `a <text:s text:c="2"/>b` is the
 /// three spaces the document displays rather than two.
-fn push_stated(
+pub(crate) fn push_stated(
     open: &mut [OpenBlock],
     text: &str,
     skips: &mut [Skip],
@@ -935,7 +935,7 @@ fn is_collapsible(character: char) -> bool {
 /// only question is whether the region held characters at all, and **a malformed count in a branch
 /// nobody reads must not refuse the document** — v2-S4's rule for a shape id in a skipped
 /// `<mc:Choice>`, applied to the one attribute this reader parses.
-fn spaces(start: &BytesStart<'_>, skipping: bool) -> Result<String, EngineError> {
+pub(crate) fn spaces(start: &BytesStart<'_>, skipping: bool) -> Result<String, EngineError> {
     if skipping {
         return Ok(" ".into());
     }

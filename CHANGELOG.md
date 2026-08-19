@@ -7,7 +7,147 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads a fourth format, as 0.24.0
+## [Unreleased] — v2 reads a fifth format, as 0.25.0
+
+### v2-S6 — ODS into the representation, and the address the file never writes
+
+**An OpenDocument cell binds, and `pages` is still `[]`.** `engine extract` reads a `.ods` into the
+same `ethos.engine.representation.v0` the other five formats produce. **S6 is ODS and is done; S7
+still parks ODP, RTF, EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still
+bind, and **v2 is not complete**.
+
+#### The format that states no address at all
+
+SpreadsheetML writes `<c r="B12">` and `XlsxLocator` **reads** it — its own documentation says why
+counting would be wrong there: a sheet's rows are sparse, so a counter would give a cell a different
+address than the file gives it.
+
+**OpenDocument writes neither half.** There is no `r`, no row number and no column letter anywhere
+in a `.ods`. A cell's position is where it sits among its siblings, and a run of identical cells is
+compressed into one element carrying `table:number-columns-repeated="n"`. So the question was never
+"read or count" — it was *what does this file state position with*, and the answer is document order
+plus those repeats. Honouring them is reading: the compressed run is the file saying *"and n more of
+these"*. A reader that ignored it would put every cell after the first compressed gap at the wrong
+column, and every real producer writes such a gap on every row.
+
+`OdsLocator { part, table, row, column }`, `deny_unknown_fields`, and the test refuses `page`,
+`bbox`, `x`, `print_page` and `soft_page_break` by name. `table:name` is carried verbatim with
+entities resolved — a `&` dropped there is a **wrong address**, not merely wrong text — and two
+tables of one name are refused, which is v2-S4's non-unique-shape-id finding in ODF's spelling.
+
+**The column is a number, and that is the decision most likely to be questioned.** `B` is a
+spreadsheet application's convention for displaying an index. The document contains no such string,
+so putting one in the address would be inventing the half the file does not state.
+
+#### One allowlist, not two
+
+`odt.rs`'s `Element`, `classify`, namespace resolution and block-text engine are **imported by the
+new reader**, not restated — widened to `pub(crate)` with no logic change. The list's entire content
+is *which inline names are the sentence*, and two copies of that drift silently: a rule that gains
+`<text:page-count>` in one reader and not the other puts a word processor's page arithmetic into one
+artifact and not the other, with nothing failing anywhere. `ods.rs` adds only what sits above the
+paragraph, and everything else falls through to the shared answer.
+
+Building it that way surfaced several gaps the shared engine did not have, every one of them the
+same shape: **text neither read nor counted**, which is the one failure the allowlist exists to
+prevent. Character data reaching a cell while no block is open (`<xhtml:table><xhtml:p>` is legal
+there); a cell outside every row; a row outside every table, whose cells would otherwise have
+collided on one nameless address; a covered cell carrying content the merge hides; and a drawing's
+`<svg:title>`, which sits in no `<text:p>` and so escaped the block-only rule `odt.rs` applies to
+notes and comments for a reason particular to them. All are counted now.
+
+Two more, found the same way. The million-cell cap was consulted **once per XML event** while one
+`</table:table-row>` expands rows × columns in a single call — so a document at both per-axis limits
+reached 1.83 GB resident before the cap fired, which is the out-of-memory kill the module says it
+refuses by name. It binds inside the expansion now, as `odt.rs`'s own budget does. And the address
+cursors used `saturating_add`, so a large repeat pinned every later cell to `u32::MAX` and gave
+distinct cells one address — the confidently-wrong locator the contract calls strictly worse than an
+absent one. They refuse instead.
+
+#### The frame-alternative rule, measured — what v2-S5 owed this slice
+
+v2-S5 wrote first-rendition-wins off the OpenDocument specification and recorded plainly that **it
+had never been measured against a document that nests two renditions**, because no such file was
+available and none could be produced. It is measured here.
+
+ODF puts `<draw:frame>` in the `<text:p>` content model for **every** document type, and a
+spreadsheet cell's content is `<text:p>` — so a conforming `.ods` can hold a frame with two
+`<draw:text-box>` children, and this repository authors one. **No half ODP reader was written to
+host the fixture.**
+
+**The measurement did not return what the rule was scoped to return, and that is the result worth
+having.** In an ODT the atom is the paragraph, so a frame's first rendition becomes nodes. A
+spreadsheet's atom is the **cell**, and a frame floats over the sheet — its words belong to no cell,
+so there is no address at which *"one displayed phrase becomes one node"* could be true. The first
+implementation here merged them into the anchoring cell, and that was a **mis-attribution**: the
+artifact put a phrase at `Sheet1 row 1 column 2` that a person reading the document does not find
+there. A frame inside a cell is now a declared region, the same answer `<table:shapes>` already got,
+and a `<table:table>` nested in a frame is no longer minted as a sheet address no consumer can
+resolve.
+
+What survives the atom change is the half the rule is actually about, and it is measured: two
+renditions declare **two** erasures where one declares **one**, the self-closing spelling still
+claims the frame's slot, and the anchoring cell keeps its own text. Mutation-checked — deleting the
+second rendition from the package's bytes lowers the count. **The ODT rule is unchanged**, and the
+half that does not transfer is written down in `15` rather than asserted as though it had passed.
+
+#### The `%PDF-` message v2-S5 deferred here
+
+An `.ods` used to fall past the office branch to the PDF reader and come back with *"expected a PDF
+header (%PDF-) at byte 0"* — fail-closed, and naming the wrong cause.
+
+Two changes, neither a special case. `engine_office::is_opendocument` asks the **family** question —
+*is the office reader the one to ask* — which only an ODF package can answer about itself, and the
+CLI dispatches on that instead of on `is_odt`. It checks the declared **type**, not merely that a
+stored first `mimetype` entry exists: that container rule is **OCF**'s, and an `.epub` follows it
+too, so answering on the entry's presence would have routed an EPUB here to be told *"this is an
+OpenDocument package"* — false, and the same wrong-cause refusal this slice exists to close, for a
+format S7 parks. Then `read` refuses a declared ODF type it does not
+implement, by name, **before** the router runs, so a package carrying an ODF `mimetype` and an OOXML
+main part cannot resolve to the OOXML reader. An `.odp` now names itself, and the test asserts the
+message does **not** contain `%PDF-`.
+
+#### A second cell type, rather than the first one blanked
+
+`NodeAttributes::OfficeOdfCell(OfficeOdfCellAttributes { value_type, text_source })`, with
+`OdfValueType` and `OdfCellTextSource` as ODF's own lists. Reusing `OfficeCellAttributes` was the
+obvious move and does not survive the vocabularies: `CellValueType` is ECMA-376's `ST_CellType`, in
+which `SharedString` names a workbook-only table and `percentage` and `currency` do not exist. That
+leaves one variant permanently unreachable and two ODF types unsayable — blanked fields or an
+invented mapping, and `14-V2-SCOPE.md` §8 refuses both.
+
+A `table:formula` labels the text **cached**; no formula source ever reaches a node. `office:value`
+is not read: the text is what the document **displays**, and the stored typed value is a separate
+declared fact. A cell holding two paragraphs is two displayed lines of **one** node, joined in
+document order — by the order blocks *opened*, because a nested block closes first and a join on
+close put a framed line ahead of the cell's own.
+
+#### Identity and limits
+
+`Profile::ods_v0` has its own hash; **six profiles are now mutually distinct**.
+`capabilities.tables` is **false** — a `TableRecord` is the PDF detector's finding about a grid it
+inferred from ink, and a spreadsheet's cells are addresses the file states, so claiming it would say
+a detector ran. The default PDF profile hash moves on `parser_version` **alone**, for the
+twenty-ninth time, to
+`sha256:bdd835b47ac40b05928375961f832878e4134171ab6f2bdf436c6f531dfb89aa`.
+
+Two caps, both named refusals rather than allocations: a **text-bearing** repeat past 4 096 per
+axis, and a part yielding more than a million cells. An *empty* repeat costs one addition, so the
+`table:number-columns-repeated="16384"` every producer writes for a row's trailing blanks is free.
+
+**No new dependency.** The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+`quick-xml` — no `zip`, no `calamine`, no ODF crate, no LibreOffice.
+
+#### What could not be measured, recorded
+
+**No corpus of real `.ods` files was available and no ODF producer was either** — the statement
+v2-S5 had to make, repeated rather than quietly inherited. Every rule is read off the specification
+and pinned against packages this repository authors byte by byte, and every assertion about a
+fixture's contents **inflates that package's own `content.xml`** rather than grepping the generator,
+which is how v2-S5's first version of that guard passed on a `#` comment.
+
+Unchanged and re-asserted: oracle 12 / 3, table gate **64‰**, `irs-form-1040-2025` at **0 tables**,
+fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S6-docs — the 0.489 chase parked, the research archive off-tree, S6 split from S7
 

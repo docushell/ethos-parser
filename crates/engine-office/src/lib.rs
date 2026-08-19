@@ -76,6 +76,7 @@
 #![deny(missing_docs)]
 
 pub mod docx;
+pub mod ods;
 pub mod odt;
 mod opc;
 pub mod pptx;
@@ -86,10 +87,11 @@ pub mod zip;
 use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
-    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdtLocator, OfficeCellAttributes,
-    OfficeParagraphAttributes, OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator,
-    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
-    XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdfCellTextSource, OdsLocator,
+    OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes, OfficeParagraphAttributes,
+    OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity,
+    Profile, RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -121,6 +123,18 @@ pub const ODT_MEDIA_TYPE: &str = odt::ODT_MEDIA_TYPE;
 /// package. This one is a sentence, because an ODF package identifies itself and the honest thing
 /// to put in an "this package claims to be N kinds of document" message is the claim it made.
 const ODT_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.text";
+
+/// The media type an OpenDocument spreadsheet declares (v2-S6).
+pub const ODS_MEDIA_TYPE: &str = ods::ODS_MEDIA_TYPE;
+
+/// How [`read`]'s router names the evidence that a package is an OpenDocument spreadsheet.
+const ODS_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.spreadsheet";
+
+/// The prefix every OpenDocument media type shares.
+///
+/// What separates an ODF package from the other users of the same container rule — an `.epub`
+/// declares `application/epub+zip` in the same first, stored `mimetype` entry.
+const ODF_MEDIA_TYPE_PREFIX: &str = "application/vnd.oasis.opendocument.";
 
 /// Whether these bytes are an OOXML word-processing document, **read from the bytes**.
 ///
@@ -190,6 +204,39 @@ pub fn is_odt(bytes: &[u8]) -> bool {
     odt::is_odt(bytes)
 }
 
+/// Whether these bytes are an OpenDocument **spreadsheet**, **read from the bytes** (v2-S6).
+///
+/// The same question [`is_odt`] asks against a different declared type. Exact rather than
+/// prefixed, so an `.ots` template is not claimed.
+pub fn is_ods(bytes: &[u8]) -> bool {
+    ods::is_ods(bytes)
+}
+
+/// Whether these bytes are **any** OpenDocument package — one this engine reads or one it does not.
+///
+/// # Why this is a third question rather than an `||` of the other two
+///
+/// A caller dispatching on format needs to know *"is the office reader the one to ask"* before it
+/// knows *"is this a kind the office reader implements"*, and only an ODF package can answer the
+/// first about itself: it writes its type into a first, uncompressed `mimetype` entry.
+///
+/// Without this, an `.odp` answers `false` to every predicate here and falls through to the PDF
+/// reader, which refuses it for having no `%PDF-` header. That is fail-closed and it names the
+/// wrong cause — `docs/15-V2-MILESTONES.md` S5 recorded it as the one defect S5 deferred to S6, and
+/// this is the half of the fix that lives outside [`read`].
+///
+/// # The declared type is checked, because the container rule is not ODF's alone
+///
+/// "First entry, stored, named `mimetype`" is the **OCF** rule, and EPUB uses it too — an `.epub`
+/// declares `application/epub+zip` in exactly that place. Answering `true` on the entry's mere
+/// presence would route an EPUB here to be told *"this is an OpenDocument package"*, which is
+/// false, and would re-create for a format S7 parks precisely the wrong-cause refusal this slice
+/// exists to close. So the declared type must be in OpenDocument's own namespace.
+pub fn is_opendocument(bytes: &[u8]) -> bool {
+    odt::declared_media_type(bytes)
+        .is_some_and(|declared| declared.starts_with(ODF_MEDIA_TYPE_PREFIX))
+}
+
 /// Read an office package into a sealed representation, dispatching on **what the bytes contain**.
 ///
 /// A word-processing document and a workbook are told apart by the parts their own central
@@ -233,25 +280,55 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     .into_iter()
     .filter(|part| names.iter().any(|n| n == part))
     .chain(odt::is_odt(bytes).then_some(ODT_CLAIM))
+    .chain(ods::is_ods(bytes).then_some(ODS_CLAIM))
     .collect();
+
+    // **An ODF package states what it is, and this engine reads two of the family.** A declared
+    // type it does not implement is refused here, by name, rather than left to fall past the
+    // office branch — where the PDF reader would refuse it for having no `%PDF-` header and name a
+    // cause that is not the one. Checked before the match rather than inside its `[]` arm, so a
+    // package carrying an ODF `mimetype` *and* an OOXML main part cannot resolve to the OOXML
+    // reader: that would be this engine choosing which of the file's own claims to believe, which
+    // is the ambiguity the `claimed` list exists to refuse.
+    if let Some(declared) = odt::declared_media_type(bytes) {
+        if declared.starts_with(ODF_MEDIA_TYPE_PREFIX)
+            && declared != ODT_MEDIA_TYPE
+            && declared != ODS_MEDIA_TYPE
+        {
+            return Err(EngineError::Unsupported {
+                what: "media type".into(),
+                detail: format!(
+                    "this is an OpenDocument package: its `{}` entry declares `{declared}`, and \
+                     this engine reads `{ODT_MEDIA_TYPE}` and `{ODS_MEDIA_TYPE}` only. The \
+                     container is shared and the vocabulary is not — a presentation's content is \
+                     `<draw:page>` and a drawing's is `<draw:frame>`, so reading either with a \
+                     reader built for `<text:p>` or `<table:table-cell>` would return a document \
+                     with no text and no error, which is a gap presented as a success.",
+                    odt::MIMETYPE_ENTRY
+                ),
+            });
+        }
+    }
 
     match claimed[..] {
         [docx::MAIN_PART] => read_docx(bytes, &names),
         [xlsx::WORKBOOK_PART] => read_xlsx(bytes, &names),
         [pptx::PRESENTATION_PART] => read_pptx(bytes, &names),
         [ODT_CLAIM] => read_odt(bytes, &names),
+        [ODS_CLAIM] => read_ods(bytes, &names),
         [] => Err(EngineError::MissingPart {
             // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
             // renamed or corrupted `.docx` needs, and it is pinned by a test.
             part: format!(
                 "`{}` — this package is a ZIP but not a word-processing document, and it is \
-                 neither a workbook (`{}`), a presentation (`{}`) nor an OpenDocument text \
-                 document (`{}` declaring `{}`)",
+                 neither a workbook (`{}`), a presentation (`{}`), an OpenDocument text document \
+                 (`{}` declaring `{}`) nor an OpenDocument spreadsheet (declaring `{}`)",
                 docx::MAIN_PART,
                 xlsx::WORKBOOK_PART,
                 pptx::PRESENTATION_PART,
                 odt::MIMETYPE_ENTRY,
-                ODT_MEDIA_TYPE
+                ODT_MEDIA_TYPE,
+                ODS_MEDIA_TYPE
             ),
         }),
         _ => Err(EngineError::Malformed {
@@ -716,6 +793,194 @@ fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // so neither is read and there is nothing here to declare.
         pages: Vec::new(),
         nodes,
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an OpenDocument spreadsheet into a sealed representation (v2-S6).
+///
+/// # One part, one part id — and a cell rather than a paragraph
+///
+/// The container work is v2-S5's, unchanged and shared: the duplicate-entry refusal, the manifest
+/// check, the fixed `content.xml` name. What differs is above it. The atom is the
+/// `<table:table-cell>`, addressed by the table's own name and the row and column the file states
+/// positionally — see [`engine_core::OdsLocator`] for why ODF leaves no third option — and the
+/// facts are ODF's own value type rather than SpreadsheetML's.
+fn read_ods(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The same refusal `read_odt` opens with, and for the same reason: `zip::read_entry` takes the
+    // first entry of a duplicated name, so a second `content.xml` would be neither read nor
+    // counted and a consumer preferring the last would see a different document.
+    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+    sorted.sort_unstable();
+    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
+        return Err(EngineError::Malformed {
+            what: "opendocument package".into(),
+            detail: format!(
+                "this package lists `{}` more than once. Consumers disagree about which entry of \
+                 a duplicated name wins, so reading either would be this engine choosing which of \
+                 the file's own claims to believe — and the entry it did not read would leave the \
+                 record with nothing naming it.",
+                pair[0]
+            ),
+        });
+    }
+
+    let manifest =
+        zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
+            part: format!(
+                "`{}` — an OpenDocument package states what it contains only here, and a package \
+                 with no manifest is one this reader cannot say it has read",
+                odt::MANIFEST_PART
+            ),
+        })?;
+    odt::check_content_declared(&odt::read_manifest(&manifest)?)?;
+
+    let part = zip::read_entry(bytes, odt::CONTENT_PART)?;
+    let sheets = ods::read_content(&part)?;
+
+    let profile = Profile::ods_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "ods profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+    let part_id = alloc.next(IdKind::Part)?;
+
+    let mut nodes = Vec::with_capacity(sheets.cells.len());
+    let mut geometry = Vec::with_capacity(sheets.cells.len());
+    for (index, cell) in sheets.cells.iter().enumerate() {
+        let id = alloc.next(IdKind::Span)?;
+        geometry.push(NodeGeometry {
+            node: id.clone(),
+            // Nothing tried to measure and failed. A spreadsheet cell has no ink box until a
+            // printer is chosen, and choosing one is the arithmetic §3 refuses.
+            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        });
+        nodes.push(Node {
+            id,
+            kind: NodeKind::TextRun,
+            parent: part_id.clone(),
+            // Contiguous within the part, in the order the part lists its cells. **Not** the
+            // address: `OdsLocator` carries that, and the two differ the moment a producer writes
+            // a row out of order or repeats one.
+            ordinal: index as u32 + 1,
+            text: cell.text.clone(),
+            native_locator: NativeLocator::Ods(OdsLocator {
+                part: odt::CONTENT_PART.to_string(),
+                table: cell.table.clone(),
+                row: cell.row,
+                column: cell.column,
+            }),
+            // `styles.xml` is not read, so no structural address is claimed.
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeOdfCell(OfficeOdfCellAttributes {
+                value_type: cell.value_type,
+                text_source: if cell.formula {
+                    OdfCellTextSource::CachedFormulaText
+                } else {
+                    OdfCellTextSource::StoredText
+                },
+            }),
+        });
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: an OpenDocument spreadsheet has no ink box, and the \
+             paper its `<style:page-layout>` names is a print setting rather than a measurement of \
+             this document",
+        ));
+    }
+
+    let unread = odt::unread_entries(names);
+    if unread > 0
+        || sheets.regions_not_read > 0
+        || sheets.foreign_text_not_read > 0
+        || sheets.text_outside_a_cell > 0
+    {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} entry(ies) of this package were not read — styles, metadata, settings, \
+                 pictures or an embedded object. "
+            ));
+        }
+        if sheets.regions_not_read > 0 {
+            detail.push_str(&format!(
+                "{} region(s) of `{}` hold text this slice does not read — a note body, a comment, \
+                 a tracked-changes record, a table's page-anchored drawings, or a second rendition \
+                 of one framed object, which a consumer displays once and this reader therefore \
+                 cites once. ",
+                sheets.regions_not_read,
+                odt::CONTENT_PART
+            ));
+        }
+        if sheets.foreign_text_not_read > 0 {
+            detail.push_str(&format!(
+                "{} block(s) contain characters that are not the block's own text — an image's \
+                 title or description, an embedded object's data, or a field's cached value such \
+                 as a page number. Those are produced by a layout or a numbering pass this reader \
+                 does not perform, so they are counted rather than read into the cell they sit \
+                 inside. ",
+                sheets.foreign_text_not_read
+            ));
+        }
+        if sheets.text_outside_a_cell > 0 {
+            detail.push_str(&format!(
+                "{} block(s) held text while no cell was open, so there is no address this reader \
+                 could cite them at. ",
+                sheets.text_outside_a_cell
+            ));
+        }
+        detail.push_str(
+            "v2-S6 reads the content part's own cells only, and a phrase absent from this artifact \
+             may still be present in the document",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: ODS_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // A spreadsheet's page is a printer's — v2-S3's finding, in ODF's spelling. A
+        // `<style:page-layout>` states paper and a `<text:soft-page-break/>` may sit inside a
+        // cell's own paragraph; both are the producing application's print arithmetic, so neither
+        // is read and there is nothing here to declare.
+        pages: Vec::new(),
+        nodes,
+        // **Not the `tables` vector, and that is the decision this reader is most likely to be
+        // asked about.** A `TableRecord` is the PDF detector's finding about a grid it inferred
+        // from ink, carrying a rule id that says how. A spreadsheet's cells are addresses the file
+        // states outright — putting them here would claim a detector ran, and `capabilities.tables`
+        // is false for the same reason.
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

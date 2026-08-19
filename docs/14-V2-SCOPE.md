@@ -3,9 +3,9 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads four formats.** S0–S5 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX and ODT. **S6 (ODS) and S7 (ODP, RTF, EPUB,
-CSV) have not started.**
+**v2 reads five formats.** S0–S6 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT and ODS. **S7 (ODP, RTF, EPUB, CSV) has
+not started, and v2 is not complete.**
 
 §3's law has now been tested against all four shapes a "page" can take, and the fourth is the one
 that costs something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's is a
@@ -247,9 +247,10 @@ and the only one forbidden outright.
   a checklist this version implements. The gate names two formats. The rest are split out of the
   remaining-formats row only when the cost of the next one has been **measured** rather than
   guessed: S4 measured that a third OOXML format was cheap, and S5 measured that the first
-  non-OOXML format was not. On that finding the row split again on paper — **S6 is ODS alone**, and
-  **S7 is the one row that is left**: ODP, RTF, EPUB, CSV. Neither has started, and S6 does not
-  acquire a second format because its reader happened to be open.
+  non-OOXML format was not. On that finding the row split again on paper before any of it was
+  written — **S6 is ODS alone**, and **S7 is the one row that is left**: ODP, RTF, EPUB, CSV. S6 has
+  since shipped ODS and did **not** acquire a second format while its reader was open, which is what
+  writing the split first bought.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

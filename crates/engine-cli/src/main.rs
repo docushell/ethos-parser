@@ -427,10 +427,15 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // first; `engine_office::read` decides on the package's own evidence and refuses the
     // ambiguous case by name, so the answer does not depend on the order of this file. These
     // four `||`s only decide whether the office reader is the one to ask.
+    //
+    // The fourth line is the ODF **family**, not one member of it (v2-S6). An OpenDocument package
+    // declares its own type, so "this is OpenDocument" is knowable before "this is a kind we read"
+    // — and asking the narrow question here is what used to send an `.odp` to the PDF reader, to
+    // be refused for having no `%PDF-` header. Fail-closed, and naming the wrong cause.
     if engine_office::is_docx(&head)
         || engine_office::is_xlsx(&head)
         || engine_office::is_pptx(&head)
-        || engine_office::is_odt(&head)
+        || engine_office::is_opendocument(&head)
     {
         return emit_representation(engine_office::read(&head));
     }

@@ -195,6 +195,16 @@ pub enum NativeLocator {
     /// forbids a locator from addressing — so neither reaches this variant and neither becomes a
     /// `PageRecord`.
     Odt(OdtLocator),
+    /// A cell's address inside an OpenDocument **spreadsheet** part (v2-S6).
+    ///
+    /// **The first v2 format that states no address at all.** A workbook writes `<c r="B12">` and
+    /// [`XlsxLocator`] reads it; OpenDocument writes neither a row number nor a column letter, and
+    /// states a cell's position by where it sits among its siblings — compressed by
+    /// `table:number-columns-repeated`, which is the file saying *"and n more of these"*. Counting
+    /// that is reading the position the file states, in the same sense [`OdtLocator::paragraph`]
+    /// counts blocks. Inventing a letter for it would be worse: `B` is a spreadsheet
+    /// application's convention, not a string this document contains.
+    Ods(OdsLocator),
 }
 
 impl NativeLocator {
@@ -221,7 +231,11 @@ impl NativeLocator {
             // down. It is a record of somebody else's rendering, which is the thing L30 refuses
             // rather than a fact about the document — so it is not read, and there is no page
             // here either.
-            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) | Self::Odt(_) => false,
+            // An OpenDocument spreadsheet is the workbook case again, in ODF's spelling: a
+            // `<style:page-layout>` states paper and a `<text:soft-page-break/>` may appear in a
+            // cell, and both are the producing application's print arithmetic rather than a page
+            // this engine measured.
+            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) | Self::Odt(_) | Self::Ods(_) => false,
         }
     }
 
@@ -233,6 +247,7 @@ impl NativeLocator {
             Self::Xlsx(x) => Some(x.part.as_str()),
             Self::Pptx(p) => Some(p.part.as_str()),
             Self::Odt(o) => Some(o.part.as_str()),
+            Self::Ods(o) => Some(o.part.as_str()),
         }
     }
 }
@@ -409,6 +424,63 @@ pub struct OdtLocator {
     /// be the position a consumer counting elements in `content.xml` would find, not a position in
     /// the subset this slice kept.
     pub paragraph: u32,
+}
+
+/// A cell's address inside an OpenDocument **spreadsheet** part (v2-S6).
+///
+/// # The address the file does not write
+///
+/// [`XlsxLocator`] carries a row *read* and a column *lettered* because SpreadsheetML writes both
+/// into one attribute — `<c r="B12">` — and its own documentation says so: counting would give a
+/// sparse sheet's cell a different address than the file gives it.
+///
+/// **OpenDocument writes neither.** There is no `r`, no row number and no column letter anywhere
+/// in a `.ods`; a cell's position is where it sits among its siblings, and a run of identical
+/// cells is compressed into one element carrying `table:number-columns-repeated="n"`. So the
+/// question is not "read or count" — it is *what the file states position with*, and the answer is
+/// document order plus those repeat counts. Honouring them is reading. Ignoring them would put a
+/// cell at the wrong column the moment a producer compressed a gap, which every real producer does
+/// on every row.
+///
+/// Inventing `B` for column 2 would be the other failure and the worse one: the letters are a
+/// spreadsheet application's convention for displaying an index, and this document contains no
+/// such string. `docs/01-CONTRACT.md` §5.2 — an address the file does not contain is not an
+/// address.
+///
+/// # No page, and no print layout either
+///
+/// A `.ods` states paper size in a `<style:page-layout>` and may carry `<text:soft-page-break/>`
+/// inside a cell's own paragraph. Both are the producing application's print arithmetic — the
+/// thing `docs/14-V2-SCOPE.md` §3 forbids addressing — so neither is here, `pages` is `[]`, and
+/// `deny_unknown_fields` is what stops a print page arriving later as a fifth field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OdsLocator {
+    /// The package part this cell was read from: `content.xml`.
+    ///
+    /// Fixed by the OpenDocument package specification, and still checked against
+    /// `META-INF/manifest.xml` rather than reached for directly.
+    pub part: String,
+    /// The document's own name for the table, from `<table:table table:name="…">`.
+    ///
+    /// Verbatim, with XML entities resolved — the same rule [`XlsxLocator::sheet`] states, for the
+    /// same reason: a `&amp;` dropped from a table name is a *wrong address*, not merely wrong
+    /// text. **A package whose tables do not have distinct names is refused**, because an address
+    /// that resolves two ways gives a citation two answers (v2-S4's finding, in ODF's spelling).
+    pub table: String,
+    /// 1-based position of the row within its table, counting `table:number-rows-repeated`.
+    ///
+    /// A position, not a number the file wrote — see the type's own documentation for why ODF
+    /// leaves no third option. Rows nested inside `<table:table-header-rows>` and
+    /// `<table:table-row-group>` count where they sit, because those elements group rows without
+    /// moving them.
+    pub row: u32,
+    /// 1-based position of the cell within its row, counting `table:number-columns-repeated`.
+    ///
+    /// **A number and not letters**, because the file contains no letters. `table:covered-table-cell`
+    /// — the placeholder a merge leaves behind — advances this the same as a cell does, since it
+    /// occupies the position whether or not it displays.
+    pub column: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -764,6 +836,15 @@ pub enum NodeAttributes {
     /// claim about a mechanism this format does not have, exactly as it would have been for a
     /// slide run.
     OfficeParagraph(OfficeParagraphAttributes),
+    /// An OpenDocument spreadsheet cell's facts (v2-S6).
+    ///
+    /// **A sixth variant, and the first one that is a second *cell*.** The obvious move is
+    /// [`Self::OfficeCell`], and it does not survive contact with the two formats' vocabularies:
+    /// its [`CellValueType`] is ECMA-376's list, in which `SharedString` names a workbook-only
+    /// table and `percentage` and `currency` do not exist at all. Reusing it would leave one
+    /// variant permanently unreachable and two ODF types unsayable — a shape that either blanks
+    /// fields or invents a mapping, and `docs/14-V2-SCOPE.md` §8 refuses both.
+    OfficeOdfCell(OfficeOdfCellAttributes),
 }
 
 impl NodeAttributes {
@@ -795,6 +876,9 @@ impl NodeAttributes {
             // belongs on the attributes, and `OdtLocator` already says it is a paragraph-shaped
             // address. A kind would restate one and misplace the other.
             Self::OfficeParagraph(_) => NodeKind::TextRun,
+            // And so is an ODF cell, for the reason `OfficeCell` is: `OdsLocator` says table, row
+            // and column, which is cell-ness already spelled out in the address.
+            Self::OfficeOdfCell(_) => NodeKind::TextRun,
         }
     }
 }
@@ -1241,6 +1325,85 @@ pub enum CellTextSource {
     /// The cell carries a `<f>` and **no** cached `<v>`. The text is the formula source, as
     /// stored — `SUM(B2:B2)`, which is not a value the sheet ever displayed.
     FormulaSource,
+}
+
+/// An OpenDocument spreadsheet cell's facts: what ODF states about a `<table:table-cell>` (v2-S6).
+///
+/// # A second cell type, rather than [`OfficeCellAttributes`] with ODF poured into it
+///
+/// [`CellValueType`] is ECMA-376's `ST_CellType` — its variants are `n`, `s`, `inlineStr`, `str`,
+/// `b`, `e`, `d`, and `SharedString` names a table that exists only in a workbook. ODF's
+/// `office:value-type` is a different, overlapping list with `percentage` and `currency` in it and
+/// no shared-string index anywhere. Mapping one onto the other would need a translation table this
+/// engine would then have to defend, and reusing the type with `SharedString` unreachable and
+/// `text_source` half-meaningless is the "blank those fields" shape `docs/14-V2-SCOPE.md` §8
+/// refuses: a new format is a new **value**, and a value it cannot express needs its own type.
+///
+/// **Nothing here is a rendering.** ODF stores a cell's typed value in an attribute
+/// (`office:value`, `office:date-value`, …) and its *displayed* form as `<text:p>` children. This
+/// reader takes the displayed form, because that is the text a person quotes, and states which
+/// attribute-declared type sat behind it. It applies no number format and computes no date.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeOdfCellAttributes {
+    /// What the cell's `office:value-type` attribute says its stored value is.
+    pub value_type: OdfValueType,
+    /// Where this node's `text` came from.
+    pub text_source: OdfCellTextSource,
+}
+
+/// What a `<table:table-cell>`'s `office:value-type` declares its stored value to be (v2-S6).
+///
+/// OpenDocument's own list. A value this build does not recognise is a **named refusal** rather
+/// than a guess, which is the posture [`CellValueType`] takes for the same reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum OdfValueType {
+    /// `office:value-type="float"` — ODF's only numeric type. There is no separate integer.
+    Float,
+    /// `office:value-type="percentage"` — a float whose stored value is the fraction, not the
+    /// percent. `office:value="0.25"` displays as `25%`, and `25%` is the displayed text.
+    Percentage,
+    /// `office:value-type="currency"` — a float with an `office:currency` code beside it.
+    Currency,
+    /// `office:value-type="date"` — `office:date-value`, an ISO 8601 date **as text**.
+    Date,
+    /// `office:value-type="time"` — `office:time-value`, an ISO 8601 duration **as text**.
+    Time,
+    /// `office:value-type="boolean"` — `office:boolean-value`, `true` or `false`.
+    Boolean,
+    /// `office:value-type="string"` — the value is the cell's own text.
+    String,
+    /// **No `office:value-type` at all.**
+    ///
+    /// Not this engine choosing a default: ODF defines the attribute as optional and a cell
+    /// without one declares no typed value. Every real producer writes it on a cell that holds
+    /// something, so this is the empty cell, the covered cell, and the cell whose only content is
+    /// a shape. Distinct from [`Self::String`], which is a cell that states it holds text.
+    Void,
+}
+
+/// Where an OpenDocument cell node's `text` came from (v2-S6).
+///
+/// Two variants where [`CellTextSource`] has three, and the missing one is the point. A
+/// SpreadsheetML formula cell may cache nothing, leaving a reader with only the formula source to
+/// report — ODF's `<text:p>` **is** the display form, so a cell with a `table:formula` and no
+/// paragraph displays nothing and becomes no node at all. This reader therefore never puts a
+/// formula's source text in `text`, and has no variant that would let it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum OdfCellTextSource {
+    /// The cell carries no `table:formula`. The text is the paragraphs the file stores.
+    StoredText,
+    /// The cell carries a `table:formula`. The text is the display form the producer **last
+    /// cached**, as stored.
+    ///
+    /// Nothing was evaluated, and this engine has no evaluator. The label exists so a consumer
+    /// can tell a typed-in `42` from a `42` that is one recalculation away from being something
+    /// else.
+    CachedFormulaText,
 }
 
 /// A character the reader authored rather than read, flagged where it was created.

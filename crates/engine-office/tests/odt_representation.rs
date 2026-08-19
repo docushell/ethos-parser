@@ -598,17 +598,30 @@ fn detection_reads_the_bytes() {
     }
 }
 
-/// **A spreadsheet and a presentation are the same container**, and neither is claimed here.
+/// **The ODF siblings share this container, and none of them is claimed as text.**
 ///
-/// The single reason detection asks the `mimetype` entry rather than looking for `content.xml`: an
-/// `.ods` has one too, full of `<table:table-cell>`, and reading it with this vocabulary would
-/// return a document with no text and no error — a gap presented as a success.
+/// The single reason detection asks the `mimetype` entry rather than looking for `content.xml`:
+/// every ODF document has one, and reading a spreadsheet's with the text vocabulary would return a
+/// document with no text and no error — a gap presented as a success.
+///
+/// **The `.ods` row moved to v2-S6**, which reads it under its own vocabulary and its own profile;
+/// what is asserted here is only that *this* reader does not claim it. The two that remain unread
+/// are refused **by name** as of v2-S6 — before it they fell past the office branch to the PDF
+/// reader, which named a missing `%PDF-` header instead.
 #[test]
 fn a_spreadsheet_and_a_presentation_are_not_claimed_as_text() {
-    for (media_type, kind) in [
-        ("application/vnd.oasis.opendocument.spreadsheet", "ods"),
-        ("application/vnd.oasis.opendocument.presentation", "odp"),
-        ("application/vnd.oasis.opendocument.graphics", "odg"),
+    for (media_type, kind, read_elsewhere) in [
+        (
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "ods",
+            true,
+        ),
+        (
+            "application/vnd.oasis.opendocument.presentation",
+            "odp",
+            false,
+        ),
+        ("application/vnd.oasis.opendocument.graphics", "odg", false),
     ] {
         let archive = build_odt(
             media_type,
@@ -621,10 +634,24 @@ fn a_spreadsheet_and_a_presentation_are_not_claimed_as_text() {
             !engine_office::is_odt(&archive),
             "an {kind} is a different vocabulary with a different reader"
         );
-        assert!(
-            engine_office::read(&archive).is_err(),
-            "and it is refused rather than read as an empty text document"
+        assert_eq!(
+            engine_office::is_ods(&archive),
+            read_elsewhere,
+            "and only the spreadsheet is claimed by the reader v2-S6 added"
         );
+
+        let error = engine_office::read(&archive).expect_err("neither reads as a text document");
+        if !read_elsewhere {
+            let text = error.to_string();
+            assert!(
+                text.contains("OpenDocument") && text.contains(media_type),
+                "an unimplemented ODF type is refused by name: {text}"
+            );
+            assert!(
+                !text.contains("%PDF-"),
+                "and not as a missing PDF header, which is what v2-S5 handed to S6: {text}"
+            );
+        }
     }
 }
 
@@ -670,7 +697,9 @@ fn a_mimetype_that_is_not_first_and_stored_is_not_an_odf_package() {
 /// A conforming package whose central directory happens to be written in name order — which any
 /// tool that sorts its index produces — has `META-INF/manifest.xml` listed before `mimetype`. A
 /// check that read directory order would decline a genuine `.odt`, and through the CLI it would
-/// fall past the office branch to the PDF reader and be refused with a message about a PDF header.
+/// fall past the office branch to the PDF reader. Before v2-S6 that meant a message about a missing
+/// `%PDF-` header; since v2-S6 the CLI asks the ODF family question, so it would be refused as an
+/// OpenDocument package this engine could not identify — still wrong, and still worth failing here.
 #[test]
 fn a_conforming_package_with_a_name_ordered_directory_still_reads() {
     let archive = build_zip_with_sorted_directory(&[
@@ -833,6 +862,7 @@ fn a_zip_that_is_no_office_format_names_every_one_it_is_not() {
         "xl/workbook.xml",
         "ppt/presentation.xml",
         "mimetype",
+        "application/vnd.oasis.opendocument.spreadsheet",
     ] {
         assert!(
             text.contains(evidence),

@@ -240,6 +240,17 @@ const CORE: &[&str] = &[
     "OdfBlockKind",
     "ODT_READING_ORDER_RULE_V1",
     "ODT_TEXT_CODE_RULE_V1",
+    // v2-S6. The sixth format's address and its facts. The address is the first in this contract
+    // that the source file does not write down at all — ODF states a cell's position by where it
+    // sits among its siblings, compressed by `table:number-columns-repeated` — and the facts are a
+    // second cell type rather than `OfficeCellAttributes` reused, because `CellValueType` is
+    // ECMA-376's list and has no `percentage` or `currency` in it.
+    "OdsLocator",
+    "OfficeOdfCellAttributes",
+    "OdfValueType",
+    "OdfCellTextSource",
+    "ODS_READING_ORDER_RULE_V1",
+    "ODS_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -435,11 +446,18 @@ const OFFICE: &[&str] = &[
     // doing rather than an inconsistency: an OOXML package is identified by which main part it
     // lists, and an ODF package declares its own type in a first, uncompressed `mimetype` entry.
     "ODT_MEDIA_TYPE",
+    // v2-S6. `is_opendocument` is a THIRD kind of question, and the CLI is why it exists: a caller
+    // dispatching on format needs "is the office reader the one to ask" before "is this a kind the
+    // office reader implements", and only an ODF package can answer the first about itself.
+    "ODS_MEDIA_TYPE",
     "docx",
     "is_docx",
     "is_odt",
+    "is_ods",
+    "is_opendocument",
     "is_pptx",
     "is_xlsx",
+    "ods",
     "odt",
     "pptx",
     "read",

@@ -601,6 +601,180 @@ ODT_WITH_UNREAD_PARTS = {
 }
 
 
+# ---------------------------------------------------------------------------------------
+# v2-S6 — OpenDocument spreadsheet
+#
+# The container is v2-S5's, unchanged: `mimetype` first and stored, a manifest that declares
+# `content.xml`. What is authored here is the vocabulary above it, to four rules:
+#
+# 1. **The address is a position, and the file compresses it.** `table:number-columns-repeated`
+#    is how ODF states a run of cells, so the clean package writes one — a reader that ignored it
+#    would put `Total` at column 3 instead of column 5, and the test asserts 5.
+# 2. **The ampersand is in a cell AND in a table name.** A `&` dropped from a cell is wrong text;
+#    one dropped from `table:name` is a wrong ADDRESS, which is the worse of the two.
+# 3. **The page is in the file, and is not read.** `content.xml` carries a
+#    `<text:soft-page-break/>` inside a cell's own paragraph and `styles.xml` carries an
+#    `fo:page-width`, so the test that `pages` is empty is not vacuous.
+# 4. **Every leak the ODT reader's review found has a byte-level cousin here**, in the second
+#    package: an image title and description, an embedded object's base64, a generated number, a
+#    field's cached page count and page number, and ruby guide text. Each is asserted ABSENT from
+#    `Node.text` by inflating this package's own `content.xml` — never by grepping this file,
+#    which is how v2-S5's first version of that guard passed on a `#` comment.
+# ---------------------------------------------------------------------------------------
+
+ODF_SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ODF_DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+XHTML = "http://www.w3.org/1999/xhtml"
+MATHML = "http://www.w3.org/1998/Math/MathML"
+
+ODS_MIMETYPE = "application/vnd.oasis.opendocument.spreadsheet"
+
+# One table, six cells that become nodes and several that do not. The empty run of three columns
+# is the load-bearing part: `Total` is at column 5 because the file says three cells sit between.
+ODS_CONTENT = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:table="{ODF_TABLE}" office:version="1.3">
+  <office:body>
+    <office:spreadsheet>
+      <table:table table:name="Rows &amp; Columns">
+        <table:table-column table:number-columns-repeated="5"/>
+        <table:table-row>
+          <table:table-cell office:value-type="string"><text:p>Evidence, not extraction.</text:p></table:table-cell>
+          <table:table-cell table:number-columns-repeated="3"/>
+          <table:table-cell office:value-type="string"><text:p>Total</text:p></table:table-cell>
+        </table:table-row>
+        <table:table-row>
+          <table:table-cell office:value-type="float" office:value="42"><text:p>42</text:p></table:table-cell>
+          <table:table-cell office:value-type="percentage" office:value="0.25"><text:p>25%</text:p></table:table-cell>
+          <table:table-cell office:value-type="string"><text:p>Rows &amp; columns<text:tab/>are tabbed.</text:p></table:table-cell>
+          <table:table-cell office:value-type="string"><text:p>Three spaces:<text:s text:c="3"/>stated, not measured.</text:p></table:table-cell>
+          <table:table-cell table:formula="of:=SUM([.A2:.A2])" office:value-type="float" office:value="42"><text:p>42</text:p></table:table-cell>
+        </table:table-row>
+        <table:table-row>
+          <table:table-cell table:number-columns-spanned="2" office:value-type="string"><text:p>Split by the producer<text:soft-page-break/> and rejoined here.</text:p></table:table-cell>
+          <table:covered-table-cell/>
+          <table:table-cell office:value-type="string"><text:p>First line</text:p><text:p>Second line</text:p></table:table-cell>
+        </table:table-row>
+      </table:table>
+    </office:spreadsheet>
+  </office:body>
+</office:document-content>
+"""
+
+ODS_MANIFEST = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODS_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>
+"""
+
+# Only the three entries the reader consumes, so the clean package declares NO erasure.
+ODS_PARTS = {
+    "mimetype": ODS_MIMETYPE,
+    "META-INF/manifest.xml": ODS_MANIFEST,
+    "content.xml": ODS_CONTENT,
+}
+
+
+# The package that declares erasures, both kinds. Three unread ENTRIES and, inside `content.xml`,
+# a comment, a page-anchored shape, a second framed rendition, and six foreign leaks.
+#
+# The two renditions in one `<draw:frame>` are what v2-S5 owed this slice: it wrote the
+# first-rendition-wins rule off the specification and recorded that it had never been measured
+# against a document that nests two. This is that document.
+ODS_CONTENT_WITH_UNREAD = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:table="{ODF_TABLE}" xmlns:draw="{ODF_DRAW}" xmlns:svg="{ODF_SVG}" xmlns:xhtml="{XHTML}" xmlns:math="{MATHML}" xmlns:dc="{DC}" office:version="1.3">
+  <office:body>
+    <office:spreadsheet>
+      <table:table table:name="Ledger">
+        <table:shapes>
+          <draw:frame><draw:text-box><text:p>FLOATING-SHAPE-TEXT</text:p></draw:text-box></draw:frame>
+        </table:shapes>
+        <table:table-row>
+          <table:table-cell office:value-type="string">
+            <text:p>Kept sentence.</text:p>
+            <office:annotation><dc:creator>Reviewer</dc:creator><text:p>COMMENT-BODY</text:p></office:annotation>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p>Framed:<draw:frame>
+              <draw:text-box><text:p>FIRST-RENDITION</text:p></draw:text-box>
+              <draw:text-box><text:p>SECOND-RENDITION</text:p></draw:text-box>
+            </draw:frame></text:p>
+          </table:table-cell>
+        </table:table-row>
+        <table:table-row>
+          <table:table-cell office:value-type="string">
+            <text:p>Leaks:<draw:frame><draw:image><svg:title>IMAGE-TITLE</svg:title><svg:desc>IMAGE-DESC</svg:desc></draw:image></draw:frame></text:p>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p>Object:<draw:object-ole><office:binary-data>QkFTRTY0LURBVEE=</office:binary-data></draw:object-ole></text:p>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p><text:number>2.1</text:number>Numbered heading label</text:p>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p>Fields:<text:page-count>17</text:page-count><text:page-number>4</text:page-number></text:p>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p><text:ruby><text:ruby-base>kanji</text:ruby-base><text:ruby-text>RUBY-GUIDE</text:ruby-text></text:ruby></text:p>
+          </table:table-cell>
+        </table:table-row>
+        <table:table-row>
+          <table:table-cell office:value-type="string">
+            <text:p>Namespaces.</text:p>
+            <xhtml:table><xhtml:p>XHTML-STOLEN</xhtml:p></xhtml:table>
+          </table:table-cell>
+          <table:table-cell office:value-type="string">
+            <text:p>Formula source:<math:annotation>MATHML-ANNOTATION</math:annotation></text:p>
+          </table:table-cell>
+        </table:table-row>
+      </table:table>
+    </office:spreadsheet>
+  </office:body>
+</office:document-content>
+"""
+
+# `fo:page-width` lives here, and is not read. Together with the `<text:soft-page-break/>` in the
+# clean package's own content it is why "no pages" is a refusal rather than an absence.
+ODS_STYLES = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="{ODF_OFFICE}" xmlns:style="{ODF_STYLE}" xmlns:fo="{ODF_FO}" office:version="1.3">
+  <office:automatic-styles>
+    <style:page-layout style:name="Mpm1">
+      <style:page-layout-properties fo:page-width="8.5in" fo:page-height="11in"/>
+    </style:page-layout>
+  </office:automatic-styles>
+</office:document-styles>
+"""
+
+ODS_META = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="{ODF_OFFICE}" xmlns:meta="{ODF_META}" xmlns:dc="{DC}" office:version="1.3">
+  <office:meta><dc:title>UNREAD-METADATA-TITLE</dc:title></office:meta>
+</office:document-meta>
+"""
+
+ODS_SETTINGS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-settings xmlns:office="{ODF_OFFICE}" office:version="1.3"/>
+"""
+
+ODS_MANIFEST_WITH_PARTS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODS_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>
+"""
+
+ODS_WITH_UNREAD_PARTS = {
+    "mimetype": ODS_MIMETYPE,
+    "META-INF/manifest.xml": ODS_MANIFEST_WITH_PARTS,
+    "content.xml": ODS_CONTENT_WITH_UNREAD,
+    "styles.xml": ODS_STYLES,
+    "meta.xml": ODS_META,
+    "settings.xml": ODS_SETTINGS,
+}
+
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
@@ -612,5 +786,11 @@ if __name__ == "__main__":
     write(
         HERE / "text-unread-parts" / "document.odt",
         ODT_WITH_UNREAD_PARTS,
+        stored_first="mimetype",
+    )
+    write(HERE / "sheet-cells" / "workbook.ods", ODS_PARTS, stored_first="mimetype")
+    write(
+        HERE / "sheet-unread-parts" / "workbook.ods",
+        ODS_WITH_UNREAD_PARTS,
         stored_first="mimetype",
     )

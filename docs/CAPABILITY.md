@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**Version in this file, not in its name:** these two tables describe **0.24.0**. When the workspace
+**Version in this file, not in its name:** these two tables describe **0.25.0**. When the workspace
 version moves, this page moves with it or it is wrong.
 
 This is the honest inventory, for the question *"what does ethos-engine actually do today?"* It is
@@ -23,8 +23,8 @@ Everything below runs locally, in this tree, with no network and no renderer.
 | **Verify** | Shells out to the Ethos CLI as a *declared capability*, relaying its bytes verbatim, with the verifier pinned in the profile. The engine does not verify anything itself | `engine verify` |
 | **Overlay** | An annotated PDF showing what was detected — including what has **no** box | `engine overlay` |
 | **Adapters** | MCP over stdio (`extract`, `ground`, `node_get`), a Python SDK, a Node SDK, and LangChain tools over both. The engine **mints** every locator, hands it back **opaque**, and **re-validates** it on the way in. No adapter takes a geometry keyword argument | `engine mcp`, `packages/python`, `packages/node` |
-| **Extract (office)** | **DOCX, XLSX, PPTX, ODT** into the same representation, with **structural** locators, every field a thing the file contains — `{part, paragraph, run}`, `{part, sheet, row, column}`, `{part, shape}`, `{part, paragraph}`. Each is `deny_unknown_fields` | `engine extract` |
-| **Office pages** | **`pages: []`, always.** No office format synthesises a page — not a spreadsheet's print range, not a slide, not an ODT's `<text:soft-page-break/>`, which is read, recognised and discarded | — |
+| **Extract (office)** | **DOCX, XLSX, PPTX, ODT, ODS** into the same representation, with **structural** locators, every field a thing the file contains — `{part, paragraph, run}`, `{part, sheet, row, column}`, `{part, shape}`, `{part, paragraph}`, `{part, table, row, column}`. Each is `deny_unknown_fields`. The ODS row and column are **positions**, because OpenDocument writes no address at all — see `15-V2-MILESTONES.md` S6 | `engine extract` |
+| **Office pages** | **`pages: []`, always.** No office format synthesises a page — not a spreadsheet's print range, not a slide, not an ODT's or an ODS's `<text:soft-page-break/>`, which is read, recognised and discarded | — |
 | **Office grounding** | `engine ground` on an office artifact is a **named refusal** naming `application/pdf` and the law. It fails closed with empty stdout and exit 2 | `engine ground` |
 | **Tables** | The row/column + span **model**, `CellSlot` occupancy, three named detection rules (`ruled-rects-v2`, `unruled-align-v1`, `stroke-ruled-v1`), and the geometric↔structural **cross-check**, whose disagreements go on the artifact | `engine extract` |
 | **Fabrication** | **0** on the four-PDF labelled set — measured every run, not asserted | `table-gate-v1.md` |
@@ -40,13 +40,13 @@ Some of these are *not yet*; some are **refusals** that no version reverses. The
 | Claim | Kind | Why |
 | --- | --- | --- |
 | **"v1 is complete"** | not yet | S7 is open. The table number is measured and missed at 64‰, and the **> 0.489 chase is parked, which is not a pass** (`00-NORTH-STAR.md` #10) |
-| **"v2 is complete"** | not yet | S0–S5 are done. **S6 (ODS) and S7 (ODP, RTF, EPUB, CSV) have not started** |
+| **"v2 is complete"** | not yet | S0–S6 are done. **S7 (ODP, RTF, EPUB, CSV) has not started** |
 | **Beating 0.489, or quoting it as this engine's score** | **refusal** | 0.489 is a published ODL-local score on **their** corpus; 64‰ is this engine on **four tagged PDFs this repository owns**. Same unit, different exam. It is never published as ours, and it is no longer chased |
 | **OCR, or a scan read as `Extracted`** | not yet — **v2.1**, under its own profile | Recognition is a different derivation class and a different trust ladder. An OCR fingerprint must be provably incomparable with a born-digital parse before the lane exists |
 | **Wrapping LiteParse, OpenDataLoader, Anydoc or pdf-inspector as the grounded PDF core** | **refusal** | Reference-only, and their ideas are taken rather than their code (`06-STEAL-REFUSE.md`). The measured LiteParse adapter was **refused** and is pinned by a test |
 | **LibreOffice → PDF for office formats** | **refusal** | **It invents pagination.** Pagination does not exist in a DOCX and must not be synthesised. Not a fallback, not behind a flag (row **L30**) |
 | **Grounding a DOCX quote as `ethos.grounding.v1`** | **decided at v2-S1**, option (b): the schema stays PDF-only | Three walls — `source.media_type` is a `const` of `application/pdf`, every element requires a `page`, every page requires integer geometry. Widening the engine's copy would be a change to the **verifier's** contract, which `07-VERIFY-BOUNDARY.md` forbids making here; option (a) is **blocked on an Ethos-side revision, owned elsewhere rather than refused**. Pinned by `engine-grounding/tests/page_less_source.rs` (`14-V2-SCOPE.md` §5) |
-| **ODS, ODP, RTF, EPUB, CSV** | not yet — **S6** and **S7** | Through the CLI today an `.ods` fails closed with a message about a missing PDF header. Correct outcome, wrong cause; S6 owns fixing it |
+| **ODP, RTF, EPUB, CSV** | not yet — **S7** | An unimplemented ODF sibling is refused **by name**, naming OpenDocument and the type the package declares about itself. v2-S6 closed the older defect where it was refused for having no `%PDF-` header |
 | **A public confidence float, score, grade, or `is_good`** | **refusal** | Workbench rule 9, `01-CONTRACT.md` §9, and a CI grep (`ci/forbidden-tokens.sh confidence`) that fails the build |
 | **Any AGPL dependency** | **refusal** | Forced decision #14. `cargo deny` proves it, and CI proves the proof by flipping a crate to AGPL and requiring rejection |
 | **A JVM anywhere** | **refusal** | OpenDataLoader's cost of entry, and the reason its capabilities cannot be borrowed wholesale |
