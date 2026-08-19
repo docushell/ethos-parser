@@ -186,6 +186,15 @@ pub enum NativeLocator {
     /// slide's position in `p:sldIdLst` is display order, and putting it on the wire as a page
     /// index would be a citation shaped like a PDF page number.
     Pptx(PptxLocator),
+    /// A paragraph's address inside an OpenDocument **text** document: part, paragraph (v2-S5).
+    ///
+    /// **The first v2 format that is not OOXML**, and the first whose file *does* contain
+    /// something spelled as a page: `<text:soft-page-break/>` marks where the producing
+    /// application's own layout broke the page, and `style:master-page` states a paper size. Both
+    /// are a rendering the producer performed — which is exactly what `docs/14-V2-SCOPE.md` §3
+    /// forbids a locator from addressing — so neither reaches this variant and neither becomes a
+    /// `PageRecord`.
+    Odt(OdtLocator),
 }
 
 impl NativeLocator {
@@ -205,7 +214,14 @@ impl NativeLocator {
             // A workbook has print layout, not pages; a presentation has slides, which are
             // parts. `p:sldSz` states a slide's size, but a size is not a page and this engine
             // measured nothing against it.
-            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) => false,
+            //
+            // And an OpenDocument text document is the sharpest of the four, because its
+            // `content.xml` literally contains `<text:soft-page-break/>`: a position the
+            // *producing application* computed from its own font stack and paper size and wrote
+            // down. It is a record of somebody else's rendering, which is the thing L30 refuses
+            // rather than a fact about the document — so it is not read, and there is no page
+            // here either.
+            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) | Self::Odt(_) => false,
         }
     }
 
@@ -216,6 +232,7 @@ impl NativeLocator {
             Self::Docx(d) => Some(d.part.as_str()),
             Self::Xlsx(x) => Some(x.part.as_str()),
             Self::Pptx(p) => Some(p.part.as_str()),
+            Self::Odt(o) => Some(o.part.as_str()),
         }
     }
 }
@@ -343,6 +360,55 @@ pub struct PptxLocator {
     pub paragraph: u32,
     /// 1-based position of the `<a:r>` within that paragraph.
     pub run: u32,
+}
+
+/// A paragraph's address inside an OpenDocument text part (v2-S5).
+///
+/// # Two fields, and the second one is the whole address
+///
+/// `part` is the package's name for the part the paragraph was read from — `content.xml`, which
+/// the OpenDocument package specification fixes rather than leaving to a relationship. `paragraph`
+/// is the 1-based position of the `<text:p>` or `<text:h>` element in that part's own document
+/// order, which is the same spelling [`DocxLocator::paragraph`] uses and is obtained the same way:
+/// by counting elements the file contains, never by laying anything out.
+///
+/// # Why the paragraph is the atom, and `<text:span>` is not
+///
+/// ODF splits a paragraph into `<text:span>` elements wherever formatting changes, and a paragraph
+/// may contain **no span at all** — `<text:p>Plain text</text:p>` is ordinary. Addressing by span
+/// would therefore leave the commonest case with no address to give, or force a span number the
+/// file does not contain; and where spans do exist, their boundaries fall wherever a word was
+/// bolded, so *"The **important** part."* would become three nodes and the sentence a reader
+/// quotes would bind to none of them. The paragraph is the unit ODF itself treats as the block of
+/// text, so it is the unit a citation lands on.
+///
+/// # No page, and this format is where that costs something to say
+///
+/// `content.xml` contains `<text:soft-page-break/>` — the position at which the *producing
+/// application* broke a page, written from its own font metrics — and `styles.xml` contains a
+/// `style:master-page` with an `fo:page-width`. Both look like the page a citation wants and
+/// neither is one this engine measured, so neither is here and neither becomes a
+/// [`PageRecord`]. `deny_unknown_fields` is what stops one arriving later as a third field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OdtLocator {
+    /// The package part this paragraph was read from: `content.xml`.
+    ///
+    /// The package's own name for it, verbatim. Unlike OOXML's `r:id` indirection this name is
+    /// fixed by the OpenDocument package specification, and this reader still checks that
+    /// `META-INF/manifest.xml` declares it rather than reading a part the package does not list.
+    pub part: String,
+    /// 1-based position of the `<text:p>` or `<text:h>` in the part's own document order.
+    ///
+    /// **Counted over both elements together**, because both are blocks of text and a consumer
+    /// citing "the third paragraph" is not distinguishing them — which of the two it was is on
+    /// [`OfficeParagraphAttributes::block`] instead.
+    ///
+    /// **The count advances through regions this reader does not read**: a footnote body, a
+    /// comment, a tracked-changes record. The number promises a position in the file, so it has to
+    /// be the position a consumer counting elements in `content.xml` would find, not a position in
+    /// the subset this slice kept.
+    pub paragraph: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -690,6 +756,14 @@ pub enum NodeAttributes {
     /// `space_preserved: false` would be a claim about a mechanism the format does not have,
     /// which is the fabrication that made `OfficeRun` a variant in the first place.
     OfficeSlideRun(OfficeSlideRunAttributes),
+    /// An OpenDocument paragraph's facts (v2-S5).
+    ///
+    /// **A fifth variant, and the argument has not changed.** ODF does not use
+    /// `xml:space="preserve"` — whitespace is carried by `<text:s text:c="…">` instead, which this
+    /// reader reads as the count the file states — so [`Self::OfficeRun`]'s one field would be a
+    /// claim about a mechanism this format does not have, exactly as it would have been for a
+    /// slide run.
+    OfficeParagraph(OfficeParagraphAttributes),
 }
 
 impl NodeAttributes {
@@ -715,6 +789,12 @@ impl NodeAttributes {
             // And so is a slide run, for the standing rule: `PptxLocator` already says which
             // shape and which paragraph, so a `Slide` kind would restate the address.
             Self::OfficeSlideRun(_) => NodeKind::TextRun,
+            // And so is an ODF paragraph. v1-S3 refused a `Paragraph` kind when the role path
+            // already said `P`, and the same answer holds here for a stronger reason: whether
+            // this block was a `<text:p>` or a `<text:h>` is a *fact about the element*, which
+            // belongs on the attributes, and `OdtLocator` already says it is a paragraph-shaped
+            // address. A kind would restate one and misplace the other.
+            Self::OfficeParagraph(_) => NodeKind::TextRun,
         }
     }
 }
@@ -1048,6 +1128,39 @@ pub struct OfficeSlideRunAttributes {
     /// What the authoring tool called the shape, which is what a person reading a citation
     /// recognises. It may be empty: the attribute is required by the schema, its content is not.
     pub shape_name: String,
+}
+
+/// An OpenDocument paragraph's facts: what `content.xml` states about the block (v2-S5).
+///
+/// One field, and it is the one thing the element says about itself that [`OdtLocator`] does not
+/// carry. Everything else a paragraph could carry — `text:style-name`, a list level, a language —
+/// resolves through `styles.xml`, which this slice does not read, and a field nobody populated is
+/// worse than no field.
+///
+/// **`text:outline-level` is deliberately absent.** A `<text:h>` states one, and it is a real fact
+/// the file contains — but reading it would put a document *outline* on the wire while
+/// `structural_locators` is false and no structure was read, which is a half of a claim rather
+/// than a small one. Named here so the next slice finds the decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeParagraphAttributes {
+    /// Which of ODF's two text blocks this node was read from.
+    pub block: OdfBlockKind,
+}
+
+/// Whether an OpenDocument block was a paragraph or a heading (v2-S5).
+///
+/// The two elements ODF uses for a block of text, and the distinction is the file's own: a
+/// `<text:h>` is a heading and a `<text:p>` is not, stated by the element name rather than
+/// inferred from a font size — which `docs/14-V2-SCOPE.md` §9's second standing rule forbids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum OdfBlockKind {
+    /// `<text:p>`.
+    Paragraph,
+    /// `<text:h>`.
+    Heading,
 }
 
 /// A spreadsheet cell's facts: what SpreadsheetML states about a `<c>` and nothing else (v2-S3).

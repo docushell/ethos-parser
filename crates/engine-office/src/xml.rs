@@ -130,17 +130,39 @@ pub(crate) fn new_reader<'a>(
     Ok(reader)
 }
 
+/// A reader that **resolves namespace prefixes**, for the one format that needs it.
+///
+/// The three OOXML readers match element names by suffix, and `local_name`'s own documentation
+/// states why that is an acceptable trade there: the match only ever selects content, so the
+/// failure mode is finding nothing rather than finding the wrong thing. `odt.rs` re-argues it,
+/// because in that reader the same match feeds a **locator ordinal** and a **skip decision** —
+/// where the failure mode is a wrong address and a mis-named gap. See `odt::classify`.
+pub(crate) fn new_ns_reader<'a>(
+    part: &'a [u8],
+    part_name: &str,
+) -> Result<quick_xml::NsReader<&'a [u8]>, EngineError> {
+    let text = std::str::from_utf8(part).map_err(|e| EngineError::Malformed {
+        what: part_name.to_string(),
+        detail: format!("the part is not UTF-8: {e}"),
+    })?;
+    let mut reader = quick_xml::NsReader::from_str(text);
+    reader.config_mut().trim_text(false);
+    Ok(reader)
+}
+
 pub(crate) fn parse_error(
     reader: &Reader<&[u8]>,
     part_name: &str,
     e: &quick_xml::Error,
 ) -> EngineError {
+    parse_error_at(reader.buffer_position(), part_name, e)
+}
+
+/// The same refusal, for a reader this module does not own the type of.
+pub(crate) fn parse_error_at(at: u64, part_name: &str, e: &quick_xml::Error) -> EngineError {
     EngineError::Malformed {
         what: part_name.to_string(),
-        detail: format!(
-            "XML will not parse at byte {}: {e}",
-            reader.buffer_position()
-        ),
+        detail: format!("XML will not parse at byte {at}: {e}"),
     }
 }
 

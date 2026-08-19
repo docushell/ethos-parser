@@ -72,10 +72,24 @@ PARTS = {
 }
 
 
-def write(path: pathlib.Path, parts: dict) -> None:
+def write(path: pathlib.Path, parts: dict, stored_first=None) -> None:
+    """Write a deterministic package.
+
+    `stored_first` names an entry that must be written FIRST and UNCOMPRESSED. Only ODF needs it,
+    and it is not a convenience: the OpenDocument package specification requires the `mimetype`
+    entry to be the first file and to be stored, so that a consumer can identify the document from
+    the leading bytes without inflating anything. `engine-office`'s reader checks both, so a
+    fixture that deflated it — which `zipfile` does by default — would not read.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        if stored_first is not None:
+            info = zipfile.ZipInfo(stored_first, date_time=FIXED_DATE)
+            info.compress_type = zipfile.ZIP_STORED
+            archive.writestr(info, parts[stored_first])
         for name, body in parts.items():
+            if name == stored_first:
+                continue
             info = zipfile.ZipInfo(name, date_time=FIXED_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, body)
@@ -442,6 +456,151 @@ DECK_WITH_UNREAD_PARTS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# v2-S5 — OpenDocument text
+#
+# The first fixture family here that is not OOXML, and it is authored to three rules the ODF
+# readers need on top of the ones above:
+#
+# 1. **`mimetype` is first and stored.** The OpenDocument package specification requires it, so
+#    that a consumer can identify the document from the leading bytes. `write(..., stored_first=)`
+#    is what makes `zipfile` do it — its default would deflate the entry and put it wherever the
+#    dict order fell, and the reader would refuse the package. This is also what keeps an `.ods`
+#    and an `.odp` from ever being claimed as text.
+# 2. **The page is in the file, and is not read.** `content.xml` carries a
+#    `<text:soft-page-break/>` and `styles.xml` carries an `fo:page-width` — between them a
+#    `PageRecord` would need no arithmetic at all. The fixture contains both precisely so the test
+#    that `pages` is empty is not vacuous.
+# 3. **The counter advances through what is not read.** The footnote and the comment in the second
+#    package each hold a `<text:p>`, so the blocks after them are numbered 3 and 5. A reader that
+#    counted only what it kept would call them 2 and 3, and every citation after a footnote would
+#    land on the wrong paragraph.
+# ---------------------------------------------------------------------------
+
+ODF_OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ODF_TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ODF_TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ODF_STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ODF_FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+ODF_MANIFEST = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"
+ODF_META = "urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+DC = "http://purl.org/dc/elements/1.1/"
+
+ODT_MIMETYPE = "application/vnd.oasis.opendocument.text"
+
+# Six blocks that become nodes and one that does not. The `<text:p/>` is block 3 and carries no
+# text, so it is no node — and the block after it is still block 4, which is what a consumer
+# counting elements in this file would find. The ampersand is here for the reason it is in every
+# other fixture in this file, the span is here so the test that a sentence is ONE node rather than
+# three is not vacuous, and the paragraph is indented across three source lines so the test that
+# ODF's own whitespace rule is applied has something to apply it to.
+ODT_CONTENT = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:table="{ODF_TABLE}" office:version="1.3">
+  <office:body>
+    <office:text>
+      <text:h text:style-name="Heading_20_1" text:outline-level="1">Evidence, not extraction.</text:h>
+      <text:p text:style-name="Standard">A quote binds to a <text:span text:style-name="T1">paragraph</text:span>
+        and never
+        to a page.</text:p>
+      <text:p/>
+      <text:p>Rows &amp; columns<text:tab/>are tabbed.</text:p>
+      <text:p>Three spaces:<text:s text:c="3"/>stated, not measured.</text:p>
+      <text:p>Split by the producer<text:soft-page-break/> and rejoined here.</text:p>
+      <table:table table:name="Ledger">
+        <table:table-row>
+          <table:table-cell office:value-type="string"><text:p>In a cell, and still a paragraph.</text:p></table:table-cell>
+        </table:table-row>
+      </table:table>
+    </office:text>
+  </office:body>
+</office:document-content>
+"""
+
+ODT_MANIFEST = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODT_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>
+"""
+
+# Deliberately only the three entries the reader consumes, so the clean package declares NO
+# erasure — the same shape `simple-paragraphs` has for a DOCX. A package a word processor wrote
+# would carry styles, metadata and settings as well, which is what the second fixture is.
+ODT_PARTS = {
+    "mimetype": ODT_MIMETYPE,
+    "META-INF/manifest.xml": ODT_MANIFEST,
+    "content.xml": ODT_CONTENT,
+}
+
+
+# A package whose styles, metadata and picture are not read, and whose content part holds a
+# footnote and a comment that are not read either. Both halves of the declared erasure (Anydoc's
+# A14) in one document — three unread ENTRIES and two unread REGIONS.
+#
+# `styles.xml` is where an ODF header lives, and it is also where `fo:page-width` lives. Both are
+# in this fixture on purpose: the header is text a caller could otherwise conclude is absent, and
+# the page width is the number a reader looking for a `PageRecord` would reach for.
+ODT_STYLES = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="{ODF_OFFICE}" xmlns:style="{ODF_STYLE}" xmlns:text="{ODF_TEXT}" xmlns:fo="{ODF_FO}" office:version="1.3">
+  <office:automatic-styles>
+    <style:page-layout style:name="pm1">
+      <style:page-layout-properties fo:page-width="21.001cm" fo:page-height="29.7cm"/>
+    </style:page-layout>
+  </office:automatic-styles>
+  <office:master-styles>
+    <style:master-page style:name="Standard" style:page-layout-name="pm1">
+      <style:header><text:p>Confidential — on every page, and unread</text:p></style:header>
+    </style:master-page>
+  </office:master-styles>
+</office:document-styles>
+"""
+
+ODT_META = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="{ODF_OFFICE}" xmlns:meta="{ODF_META}" xmlns:dc="{DC}" office:version="1.3">
+  <office:meta><dc:title>A title nobody read</dc:title></office:meta>
+</office:document-meta>
+"""
+
+ODT_BODY_WITH_REGIONS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:dc="{DC}" office:version="1.3">
+  <office:body>
+    <office:text>
+      <text:p>The body is all this slice reads.<text:note text:id="ftn1" text:note-class="footnote"><text:note-citation>1</text:note-citation><text:note-body><text:p>A source nobody read.</text:p></text:note-body></text:note></text:p>
+      <text:p>Reviewed<office:annotation><dc:creator>A reviewer</dc:creator><text:p>A remark nobody read.</text:p></office:annotation> and unchanged.</text:p>
+      <text:p>After both, and still block five.</text:p>
+    </office:text>
+  </office:body>
+</office:document-content>
+"""
+
+ODT_MANIFEST_WITH_PARTS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODT_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="Pictures/10000000.png" manifest:media-type="image/png"/>
+</manifest:manifest>
+"""
+
+# A 1x1 PNG, authored here rather than sampled: the point is that a package entry holding
+# something this reader cannot read is COUNTED, and the smallest valid file makes that point.
+ODT_PICTURE = bytes.fromhex(
+    "89504e470d0a1a0a0000000d494844520000000100000001080600000"
+    "01f15c4890000000a49444154789c6300010000050001"
+    "0d0a2db40000000049454e44ae426082"
+)
+
+ODT_WITH_UNREAD_PARTS = {
+    "mimetype": ODT_MIMETYPE,
+    "META-INF/manifest.xml": ODT_MANIFEST_WITH_PARTS,
+    "content.xml": ODT_BODY_WITH_REGIONS,
+    "styles.xml": ODT_STYLES,
+    "meta.xml": ODT_META,
+    "Pictures/10000000.png": ODT_PICTURE,
+}
+
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
@@ -449,3 +608,9 @@ if __name__ == "__main__":
     write(HERE / "workbook-unread-parts" / "workbook.xlsx", WORKBOOK_WITH_UNREAD_PARTS)
     write(HERE / "deck-slides" / "deck.pptx", DECK_PARTS)
     write(HERE / "deck-unread-parts" / "deck.pptx", DECK_WITH_UNREAD_PARTS)
+    write(HERE / "text-paragraphs" / "document.odt", ODT_PARTS, stored_first="mimetype")
+    write(
+        HERE / "text-unread-parts" / "document.odt",
+        ODT_WITH_UNREAD_PARTS,
+        stored_first="mimetype",
+    )

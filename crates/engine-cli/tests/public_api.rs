@@ -231,6 +231,15 @@ const CORE: &[&str] = &[
     "OfficeSlideRunAttributes",
     "PPTX_READING_ORDER_RULE_V1",
     "PPTX_TEXT_CODE_RULE_V1",
+    // v2-S5. The fifth format's address and its facts, and the first that is not OOXML. The
+    // address is a BLOCK rather than a run, because ODF paragraphs often carry no inline element
+    // to address; the fact is which of ODF's two blocks it was, because ODF has no `xml:space` to
+    // record and its whitespace mechanism is a count the file states instead.
+    "OdtLocator",
+    "OfficeParagraphAttributes",
+    "OdfBlockKind",
+    "ODT_READING_ORDER_RULE_V1",
+    "ODT_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -411,7 +420,7 @@ const GROUNDING: &[&str] = &[
     "to_canonical_bytes",
 ];
 
-/// `engine-office` — the OOXML readers. **New to the freeze at v2-S3.**
+/// `engine-office` — the OOXML readers, and OpenDocument text. **New to the freeze at v2-S3.**
 ///
 /// It shipped at v2-S2 outside this table, which meant `engine_office::read` — the entry point
 /// for two of the three input formats `engine extract` accepts — was classified "internal" by
@@ -422,10 +431,16 @@ const OFFICE: &[&str] = &[
     "DOCX_MEDIA_TYPE",
     "XLSX_MEDIA_TYPE",
     "PPTX_MEDIA_TYPE",
+    // v2-S5. `is_odt` asks a different question from its three siblings, and that is the format's
+    // doing rather than an inconsistency: an OOXML package is identified by which main part it
+    // lists, and an ODF package declares its own type in a first, uncompressed `mimetype` entry.
+    "ODT_MEDIA_TYPE",
     "docx",
     "is_docx",
+    "is_odt",
     "is_pptx",
     "is_xlsx",
+    "odt",
     "pptx",
     "read",
     "xlsx",

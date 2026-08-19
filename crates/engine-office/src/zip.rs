@@ -101,6 +101,42 @@ pub fn entry_names(archive: &[u8]) -> Result<Vec<String>, EngineError> {
     Ok(names)
 }
 
+/// The archive's **first physical entry**: its name, and whether it is stored uncompressed.
+///
+/// Read from the local file header at **offset 0**, not from the central directory.
+///
+/// `None` when the bytes do not begin with a local file header, or when the header is truncated.
+///
+/// # Why this one reads the leading bytes when everything else reads the directory
+///
+/// [`entry_names`] and [`read_entry`] use the central directory because it is the archive's own
+/// index and its order is "an implementation detail of whoever wrote it". This function exists for
+/// the one requirement where that is exactly wrong. The OpenDocument package specification says the
+/// `mimetype` entry *shall be the first file of the zip file* and *shall not be compressed*, and
+/// the stated purpose is that **a consumer can identify the document type from the leading bytes
+/// without inflating anything**. That is a claim about the archive's physical layout.
+///
+/// Checking the directory's order instead is a proxy, and it is wrong in both directions: a
+/// conforming package repacked by any tool that writes its directory in name order has
+/// `META-INF/manifest.xml` sorted before `mimetype`, so a genuine `.odt` would be declined — and
+/// through the CLI it would fall past the office branch to the PDF reader and be refused with a
+/// message about a PDF header. Reading offset 0 asks the question the specification actually poses.
+pub fn first_entry(archive: &[u8]) -> Result<Option<(String, bool)>, EngineError> {
+    if !archive.starts_with(&LOCAL_SIGNATURE) {
+        return Ok(None);
+    }
+    let method = u16_at(archive, 8)?;
+    let name_len = u16_at(archive, 26)? as usize;
+    let Some(name_bytes) = archive.get(30..30 + name_len) else {
+        return Ok(None);
+    };
+    // A non-UTF-8 name is refused rather than replaced, for the reason the directory walk gives:
+    // a lossy name would make `mimetype` look absent when it is present under mangled bytes.
+    let name = std::str::from_utf8(name_bytes)
+        .map_err(|e| malformed(format!("the first local header has a non-UTF-8 name: {e}")))?;
+    Ok(Some((name.to_string(), method == METHOD_STORED)))
+}
+
 /// Read one entry by name, or a named error saying which of the ways it could fail happened.
 pub fn read_entry(archive: &[u8], want: &str) -> Result<Vec<u8>, EngineError> {
     let mut found: Option<(u16, u32, u32)> = None;

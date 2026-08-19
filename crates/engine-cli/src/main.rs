@@ -422,13 +422,15 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
             })
         }
     };
-    // **One question, not two ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
+    // **One question, not four ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
     // second would make a package containing both main parts resolve to whichever line came
-    // first; `engine_office::read` decides on the package's own central directory and refuses
-    // the ambiguous case by name, so the answer does not depend on the order of this file.
+    // first; `engine_office::read` decides on the package's own evidence and refuses the
+    // ambiguous case by name, so the answer does not depend on the order of this file. These
+    // four `||`s only decide whether the office reader is the one to ask.
     if engine_office::is_docx(&head)
         || engine_office::is_xlsx(&head)
         || engine_office::is_pptx(&head)
+        || engine_office::is_odt(&head)
     {
         return emit_representation(engine_office::read(&head));
     }

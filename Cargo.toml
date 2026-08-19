@@ -8,7 +8,7 @@
 # Boundary rules, enforced in review:
 #   engine-core       — no PDF concept, and no OOXML concept
 #   engine-pdf        — no grounding concept
-#   engine-office     — no PDF concept, no grounding concept
+#   engine-office     — no PDF concept, no grounding concept (OOXML and ODF both live here)
 #   engine-grounding  — no format concept — it projects the representation, never a document
 #   engine-cli        — no logic
 
@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, and v2-S4 as 0.23.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, and v2-S5 as 0.24.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -239,7 +239,39 @@ exclude = ["fuzz"]
 # The remaining-formats row SPLIT here, which is what S2 and S3 were measured for: S4 is PPTX and
 # is done, S5 parks ODF, RTF, EPUB and CSV. v2's gate names a DOCX quote and an XLSX cell and both
 # bind; this is coverage beyond it. v1 is STILL missed at 64‰.
-version = "0.23.0"
+#
+# **0.24.0 is v2-S5: an ODT PARAGRAPH binds, and the page break is IN THE FILE.** OpenDocument text
+# enters the representation — `content.xml`'s `<text:p>` and `<text:h>` blocks, addressed by part +
+# paragraph — and this is the first v2 format that could have had a page for free. DOCX has none
+# until a renderer invents one and a workbook's is a printer's, but an ODT literally contains
+# `<text:soft-page-break/>`: the position at which the PRODUCING APPLICATION's layout fell, written
+# down at save time, next to an `fo:page-width` in `styles.xml`. A `PageRecord` needed no arithmetic
+# at all. It is refused for L30's own reason — it invents pagination, and it moves when the font
+# stack or the paper does — so the break is read, discarded, and `pages` stays `[]`.
+#
+# THE ATOM IS THE PARAGRAPH, and `<text:span>` was rejected for two reasons the format supplies: an
+# ODF paragraph may contain no span at all, and where spans exist their boundaries are wherever a
+# word was bolded, so a quoted sentence would bind to none of the three nodes it became.
+#
+# TWO NUMBERS ON ONE NODE, deliberately different: `Node.ordinal` counts nodes in the artifact and
+# `OdtLocator.paragraph` counts blocks IN THE FILE, including the ones inside a footnote or a
+# comment this slice does not read. A reader that numbered only what it kept would put every
+# citation after a footnote on the wrong paragraph.
+#
+# NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+# `quick-xml` — no `zip`, no ODF crate, no LibreOffice. `Profile::odt_v0` has its own hash, five
+# profiles are now mutually distinct, and this hash moves on `parser_version` ALONE as at S2, S3
+# and S4.
+#
+# WHAT COULD NOT BE MEASURED IS RECORDED: no corpus of real `.odt` files was available and no ODF
+# producer was either, so unlike S3 and S4 nothing here changed after meeting real files. Every rule
+# is read off the OpenDocument specification and pinned against fixtures this repository authored,
+# and the judgement calls are made toward OVER-DECLARING.
+#
+# The parked row splits again: S5 is ODT and is done, S6 parks ODS, ODP, RTF, EPUB and CSV. v2's
+# gate is still a DOCX quote and an XLSX cell; this is coverage beyond it. v1 is STILL missed at
+# 64‰.
+version = "0.24.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -260,10 +292,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.23.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.23.0" }
-engine-office = { path = "crates/engine-office", version = "0.23.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.23.0" }
+engine-core = { path = "crates/engine-core", version = "0.24.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.24.0" }
+engine-office = { path = "crates/engine-office", version = "0.24.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.24.0" }
 
 [profile.release]
 strip = "symbols"

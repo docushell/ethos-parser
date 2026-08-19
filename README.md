@@ -21,11 +21,14 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads three of them at 0.23.0.** `engine extract` takes a `.docx`, an
-`.xlsx` or a `.pptx` and emits the same record a PDF does — and **no page appears anywhere on that path**, because
-neither format has one until something decides where a break falls. A cell is addressed as its
-workbook addresses it: sheet, row and column, with the column kept as the letters the file wrote. Each row began because the owner asked for it, not
-because the gate cleared.
+**v2 is office formats and it reads four of them at 0.24.0.** `engine extract` takes a `.docx`, an
+`.xlsx`, a `.pptx` or an `.odt` and emits the same record a PDF does — and **no page appears
+anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
+with the column kept as the letters the file wrote. An ODT is the sharpest case, because its
+`content.xml` **contains an actual page break**: `<text:soft-page-break/>` records where the
+producing application's layout fell, so a `PageRecord` would need no arithmetic at all. It is read,
+recognised and discarded, because it is a measurement of a word processor rather than of the
+document. Each row began because the owner asked for it, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).
@@ -34,7 +37,7 @@ Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf|.docx|.xlsx|.pptx    # DocumentRepresentation v0 · 0 / 2
+engine extract         document.pdf|.docx|.xlsx|.pptx|.odt   # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine html            representation.json               # ethos.html.v1             · 0 / 2

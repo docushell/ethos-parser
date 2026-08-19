@@ -3,15 +3,21 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads three formats.** S0–S4 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX and PPTX. S5 (ODF, RTF, EPUB, CSV) is not started.
+**v2 reads four formats.** S0–S5 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX and ODT. S6 (ODS, ODP, RTF, EPUB, CSV) is not
+started.
 
-§3's law has now been tested against all three shapes a "page" can take. A DOCX has none until a
-renderer invents one. A spreadsheet's is a print artefact. **And a slide is a real, discrete,
-countable thing the package contains** — the case the law had not yet met, and the one where
-inventing a page would not have felt like inventing one. It is a **part**: `pages` is empty,
-`PptxLocator` carries no slide number, and neither `p:sldSz` nor a position in `<p:sldIdLst>`
-reaches the wire.
+§3's law has now been tested against all four shapes a "page" can take, and the fourth is the one
+that costs something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's is a
+print artefact. A slide is a real, discrete, countable thing the package contains — and is a
+**part**, so `pages` is empty and `PptxLocator` carries no slide number.
+
+**And an ODT states its own page breaks.** `content.xml` contains `<text:soft-page-break/>` and
+`styles.xml` contains an `fo:page-width`, so a `PageRecord` would need no arithmetic at all — the
+first time in this version that has been true. It is still refused, for L30's own reason: a soft
+page break records where the *producing application's* layout fell, and it moves when the font
+stack, the paper size or the producer changes. The reader sees the element, contributes no
+character and no address from it, and `pages` stays empty.
 
 **v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -68,7 +74,7 @@ obligations, and a format satisfies all three or it does not ship:
 
 | | obligation | what it forbids |
 | --- | --- | --- |
-| **Structural** | the native locator names things the file itself contains — a paragraph, a run, a cell, a sheet | a page index, a bbox, or a line number derived from layout |
+| **Structural** | the native locator names things the file itself contains — a paragraph, a run, a cell, a sheet | a page index, a bbox, or a line number derived from layout — **including one the file contains**, because v2-S5 measured that a file can state a page break and the obligation is about what the number *is*, not where it was found |
 | **Absent, not invented** | a format with no geometry says so in the type system | a zero box, a page-sized box, or `pages: [{width: 61200, height: 79200}]` because A4 |
 | **No renderer in the graph** | nothing converts, prints, paginates or lays out to obtain a locator | LibreOffice, a headless browser, a PDF round-trip, a layout engine, "A4 at 72 DPI" |
 
@@ -88,8 +94,10 @@ machinery for it:
   that spelling; **v2-S2 made it allow it**, by splitting `check_structure` on the locator family
   rather than by loosening the page rule. A paginated address still needs its declared page.
 - **The locator.** A new union variant, per §5.1 — `DocxLocator { part, paragraph, run }` as of
-  v2-S2. A locator that contained a page number would be the same violation as a `bbox`, wearing a
-  field name, and `deny_unknown_fields` is what stops one arriving quietly.
+  v2-S2, and `OdtLocator { part, paragraph }` as of v2-S5. A locator that contained a page number
+  would be the same violation as a `bbox`, wearing a field name, and `deny_unknown_fields` is what
+  stops one arriving quietly. v2-S5's test refuses `page`, `bbox`, `x` **and `soft_page_break`** by
+  name, because for that format the last one is the field somebody would actually reach for.
 - **Geometry, again, and this one is stronger than a convention.** `check_structure` **refuses a
   measured box on a page-less node**: a box is validated against the page containing it, so a node
   with no page has nothing to validate against, and a rectangle nobody can check is the fabrication
@@ -148,6 +156,10 @@ including a *compressor* — to save a hundred lines of central-directory readin
 call and is not hand-rolled: entities, namespaces, CDATA and encodings are where a hand-rolled
 reader silently gets **text** wrong, and text is the evidence. Both halves are v1.2-S1's reasoning
 about an MCP framework, applied twice with opposite answers.
+
+**And nothing has arrived since.** XLSX, PPTX and ODT each added a reader and no dependency: no
+`zip`, no `zopfli`, no `calamine`, no ODF library and no LibreOffice. v2-S5 is the sharpest case,
+because the shortest path to an ODT is a converter and `06-STEAL-REFUSE.md` L30 is what refuses it.
 
 ## 5. The contract question, decided at S1
 
@@ -230,7 +242,9 @@ and the only one forbidden outright.
   grounded PDF core.
 - **Not 14 formats.** **A1** — Anydoc's coverage breadth — is the horizon this version aims at, not
   a checklist this version implements. The gate names two formats. The rest are parked in `15` as
-  one row until two have shipped and the cost of the third is measured rather than guessed.
+  one row and split out of it only when the cost of the next one has been **measured** rather than
+  guessed: S4 measured that a third OOXML format was cheap, and S5 measured that the first
+  non-OOXML format was not — so ODS, ODP, RTF, EPUB and CSV are still one row.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

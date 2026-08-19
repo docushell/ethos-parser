@@ -7,7 +7,163 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads a third format, as 0.23.0
+## [Unreleased] — v2 reads a fourth format, as 0.24.0
+
+### v2-S5 — ODT into the representation, and the page break that is in the file
+
+**An OpenDocument paragraph binds, and `pages` is still `[]`.** `engine extract` reads a `.odt`
+into the same `ethos.engine.representation.v0` the other four formats produce. The
+remaining-formats row splits again: **S5 is ODT and is done; S6 parks ODS, ODP, RTF, EPUB and CSV.**
+
+#### The format that could have had a page for free
+
+DOCX has no page until a renderer invents one; a spreadsheet's is a printer's; a slide is a part.
+**An ODT states its own page breaks.** `content.xml` contains `<text:soft-page-break/>` — the
+position at which the *producing application's* layout fell, computed from its font stack and paper
+size and written down at save time — and `styles.xml` contains an `fo:page-width`. Between them a
+`PageRecord` needs **no arithmetic at all**, which is the first time that has been true in v2.
+
+It is refused for L30's own reason: *"It invents pagination."* A soft page break moves when the
+font stack, the paper size or the producing application changes, so a citation carrying it would be
+a measurement of a word processor. The reader matches the element, contributes no character and no
+address from it, and `pages` stays empty. The clean fixture contains one on purpose, and the test
+asserts it does — so "no pages" is not vacuous.
+
+#### The atom is the paragraph, and `<text:span>` was measured against and rejected
+
+`OdtLocator { part, paragraph }` — `deny_unknown_fields`, and the test refuses `page`, `bbox`, `x`
+and **`soft_page_break`** by name, because for this format the last is the field somebody would
+actually reach for.
+
+`<text:span>` is the obvious analogue of `<w:r>` and is the wrong atom twice over. A paragraph may
+contain **no span at all** — `<text:p>Plain text</text:p>` is ordinary ODF — so a span address
+would leave the commonest case with no address or force a number the file does not contain. And
+where spans do exist their boundaries are wherever a word was bolded, so *"The **important**
+part."* would become three nodes and the sentence a reader quotes would bind to none of them. ODF
+treats the block as the unit of text, so the block is the address.
+
+`NodeAttributes::OfficeParagraph` is a fifth variant rather than `OfficeRun` with a borrowed field:
+ODF has no `xml:space`, so `space_preserved` would be a claim about a mechanism the format does not
+have. Its whitespace mechanism is `<text:s text:c="n">`, a count the file states.
+
+#### Two numbers on one node, deliberately different
+
+`Node.ordinal` counts nodes in the artifact. `OdtLocator.paragraph` counts `<text:p>` and
+`<text:h>` elements **in the file**, including those inside a footnote, a comment or a
+tracked-changes record that this slice does not read, and including a self-closing `<text:p/>`. The
+unread fixture's three nodes carry ordinals 1, 2, 3 and paragraphs 1, 3, 5 — a reader that numbered
+only what it kept would put **every citation after a footnote on the wrong paragraph**. Both are
+mutation-checked.
+
+#### ODF's own whitespace rule is applied, because not applying it is worse
+
+OpenDocument defines what character data means: a tab, line feed or carriage return counts as a
+space, a run of spaces counts as one, and the spaces at a block's ends are not part of it — which
+is *why* a producer wanting three spaces must write `<text:s text:c="3">`. Not following it would
+make the text depend on how the file was **serialized**, so a producer that indented inside a
+paragraph would hand back a sentence with a newline in the middle. `<text:s>`, `<text:tab/>` and
+`<text:line-break/>` are exempt, because surviving the rule is their whole purpose.
+
+#### Detection asks a different question, and that is the format's doing
+
+An OOXML package is identified by which main part it lists. An ODF package **declares its own
+type**, in a `mimetype` entry the specification requires to be first and uncompressed — so `is_odt`
+asks that entry, and `zip::first_entry` is public for it. That is what keeps an `.ods` and an
+`.odp` out: both have a `content.xml`, and reading a spreadsheet's with this vocabulary would
+return a document with no text and no error, which is a gap presented as a success. The manifest is
+consulted before anything is inflated, and an undeclared or **encrypted** `content.xml` is a named
+refusal rather than a "will not parse" naming the wrong cause.
+
+#### What a second, adversarial review found — and the rule it inverted
+
+The self-review below found four nesting defects. A second pass over the shipped slice found the
+**architecture** wrong: `read_content` was a descendant walk with a four-item exception list, so
+every other element's character data landed in the enclosing sentence. A text-anchored
+`<draw:frame>` is a *child of the paragraph it is anchored in*, which is ODF's ordinary shape, so
+this reached real documents: an image's `<svg:title>`/`<svg:desc>`, an embedded object's base64 in
+`<office:binary-data>`, a heading's generated `<text:number>` (`2.1Scope of this report`), a
+`<text:ruby-text>` furigana guide, and — worst — a field's cached `<text:page-number>`. That last
+one means the reader refused `<text:soft-page-break/>` **by name** and then put the same producer's
+page arithmetic into `Node.text` through a different element, while `ODT_TEXT_CODE_RULE_V1`'s own
+doc comment claimed it did not.
+
+**The rule is inverted**: character data reaches a block only through an allowlisted inline element
+(a span, a hyperlink, a ruby *base*); everything else is counted under A14 in a new
+`foreign_text_not_read` bucket. Two of those five rows had already been fixed once, in another
+format, by another slice — `<rPh>` furigana at v2-S3 and `<a:fld type="slidenum">` at v2-S4. The
+rule existed; the new reader did not apply it.
+
+Three more from the same review: element names are now **namespace-resolved**, because matching by
+suffix let a conforming `<xhtml:p>` advance the block counter (shifting every later address) and let
+MathML's `<annotation>` be declared as an unread reviewer's remark; the skip state is now a stack,
+because a comment inside a footnote was declared as one erasure rather than two; and `text:c` is
+read as the `positiveInteger` its schema says it is, so `" 3"` is three and `0` is refused rather
+than repaired into the `NameValue` join these elements exist to prevent.
+
+At the container level: `zip::first_entry` now reads the archive's **leading bytes** rather than its
+central directory, because a conforming `.odt` repacked with a name-ordered index was being refused
+and sent to the PDF reader; and a package that lists one entry twice — or a manifest that declares
+`content.xml` twice — is refused, rather than silently reading the first and declaring nothing about
+the second.
+
+#### And what it found in the tests, which is the more uncomfortable half
+
+Seven assertions did not test what they were named for, and several acceptance boxes ticked them
+off. The worst is the one this slice leaned on hardest: the guard proving the fixture "really
+contains" a `<text:soft-page-break/>` grepped **`make_fixtures.py`**, where the literal also appears
+inside a `#` comment — so deleting the real element from the fixture left it green, and it asserted
+a property of a Python file rather than of the bytes under test. It now inflates the fixture's own
+`content.xml`. Also fixed: the frame-stack test wrote its nested frame self-closing so the asymmetry
+it was named for was never created; `Event::CData` and the `stored` half of ODF detection each had
+no test while the boxes claimed both; `OdfBlockKind::Paragraph` was asserted nowhere; and the
+ordinal sort was a no-op in every test. **Twelve mutations now fail a test** across the repair.
+
+#### What the review found, and what could not be measured
+
+The defect worth recording is a **nesting** one, and both halves of it are ODF-specific. ODF puts a
+footnote's body, a comment's body and a text box's contents *inside* the paragraph they are
+anchored to, as their own `<text:p>` elements. A reader concatenating every descendant produces
+`Cited hereA source nobody read. and continued.` — a sealed, error-free artifact stating a phrase
+the document does not contain. And the first version that fixed *that* closed the anchoring block
+when the footnote's `</text:p>` fired, which swallowed the rest of the sentence citing it. Both are
+pinned by tests.
+
+**And what could not be done is stated rather than skipped: no corpus of real `.odt` files was
+available, and no ODF producer was either.** S3 and S4 both changed a design after measuring real
+files; that method was not available here, so every rule is read off the OpenDocument specification
+and pinned against fixtures this repository authored. Where that left a judgement call it is made
+toward over-declaring, so the failure mode is a phrase declared missing rather than a phrase
+invented. The ODF frame-alternative rule is the clearest case — spec-derived, fixture-tested, not
+measured — and S6 reads ODS and ODP over the same container and should measure it there.
+
+#### No new dependency, and no new mechanism
+
+The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same `quick-xml`. No `zip`,
+no ODF crate, no LibreOffice. `mcp.rs` is untouched and `node_get` resolves an ODF paragraph
+anyway; `engine-grounding` is untouched and `engine ground` on an ODT is a named refusal, per
+v2-S1's decision (b). `Profile::odt_v0` has its own hash — five profiles, mutually distinct — and
+carries the same inert `coordinate_system` the other three page-less profiles do. The PDF profile
+hash moves on `parser_version` **alone**, as at S2, S3 and S4:
+`sha256:dc89ca65af172b8d9537d96b0579dcf2c3fdf7fe8e0200bf85282fc9d1b6cd67`.
+
+**v2 is not complete and v1 is still missed at 64‰.** The gate names a DOCX quote and an XLSX cell
+and both bind; ODT is coverage beyond it, and S6 has not started.
+
+#### Added
+
+- `engine_office::{odt, is_odt, ODT_MEDIA_TYPE}` and `zip::first_entry` — frozen surface,
+  `docs/PUBLIC-API.md`
+- `OdtLocator`, `NativeLocator::Odt`, `NodeAttributes::OfficeParagraph`,
+  `OfficeParagraphAttributes`, `OdfBlockKind`, `Profile::odt_v0`, `ODT_READING_ORDER_RULE_V1`,
+  `ODT_TEXT_CODE_RULE_V1` in `engine-core`
+- `fixtures/office/text-paragraphs` and `fixtures/office/text-unread-parts`, authored by
+  `fixtures/office/make_fixtures.py` with `mimetype` written first and stored
+
+#### Changed
+
+- Workspace and both SDKs to **0.24.0**; `engine extract` dispatches on ODT bytes as well
+- `docs/15-V2-MILESTONES.md` splits the parked row: S5 is ODT and done, S6 is ODS/ODP/RTF/EPUB/CSV
+  and not started
 
 ### v2-S4 — PPTX into the representation, and the format that tested the page law
 

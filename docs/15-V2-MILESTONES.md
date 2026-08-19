@@ -3,17 +3,23 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads three formats.** S0–S4 are **done**; **S5 is not started**. `engine-office` is the fifth
+**v2 reads four formats.** S0–S5 are **done**; **S6 is not started**. `engine-office` is the fifth
 crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
-page-less invariant carry more than one part, and PPTX is the one that tested whether a part this
-engine *can* count would become a page. It did not.
+page-less invariant carry more than one part, PPTX is the one that tested whether a part this
+engine *can* count would become a page, and ODT is the one whose file **contains an actual page
+break** and still declares none. None of them did.
 
-**The remaining-formats row split here, and that is what S2 and S3 were measured for.** S0 wrote
-that row as one line on purpose — *"this row splits into real slices when S2 and S3 are done and
-that cost is measured"* — and the cost is now known: a third OOXML format is one reader, one
-profile and one fixture pair, because the container, the XML rules and the `r:id`-to-part rule are
-shared. ODF, RTF, EPUB and CSV share none of that, so they stay parked together in S5 rather than
-being scheduled on a guess about what PPTX cost.
+**The remaining-formats row split twice, each time against a measurement.** S0 wrote it as one line
+on purpose — *"this row splits into real slices when S2 and S3 are done and that cost is measured"*.
+S4 measured the first half: a third OOXML format is one reader, one profile and one fixture pair,
+because the container, the XML rules and the `r:id`-to-part rule are shared. **S5 measured the
+second half** by taking the cheapest non-OOXML format and finding that only the container
+transferred — a new vocabulary, a new atom, a new detection question and a new class of
+nested-block defect did not. So ODT is its own slice, and **S6** carries ODS, ODP, RTF, EPUB and
+CSV.
+
+**The v2 gate is still DOCX + XLSX, and both still bind.** ODT is coverage beyond it. v2 is not
+complete: S6 has not started, and no slice here closes v1.
 
 **v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
 (`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -27,7 +33,8 @@ closes v1.
 | **S2** | DOCX → representation — **and the page-parent invariant S1 found** | S1 | **done** |
 | **S3** | XLSX → representation: sheets and cells | S2 | **done — and the `coordinate_system` decision** |
 | **S4** | PPTX → representation: slides and shapes | S3 | **done — and a slide is a part** |
-| **S5** | The remaining office formats — ODF, RTF, EPUB, CSV | S4 | **not started** |
+| **S5** | ODT → representation: paragraphs, and the page break in the file | S4 | **done — and the break is still not a page** |
+| **S6** | The remaining office formats — ODS, ODP, RTF, EPUB, CSV | S5 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -704,24 +711,358 @@ mutation-checked — deleting the fix fails a test.
 
 ---
 
-## S5 — the remaining office formats — **not started**
+## S5 — ODT → representation
 
-- **Goal:** ODF, RTF, EPUB and CSV, on the terms the first three established.
+- **Status: done.** `0.24.0`. `engine extract` reads a `.odt`, a paragraph binds, and **the one v2
+  format whose file contains a page break still declares no pages** — which is this slice's whole
+  argument.
 
-- **Still deliberately one row.** **A1** — Anydoc's 14-format coverage — is v2's horizon, not its
-  checklist. What S4 measured is that a *fourth OOXML* format would be cheap; these four are not
-  OOXML and share nothing with each other either. ODF is a different ZIP with a different XML
-  vocabulary, RTF is not XML at all, EPUB is a ZIP of XHTML, and CSV has no container. Scheduling
-  them as one slice each before any of them has been looked at would be the waterfall S0 refused.
+- **Goal:** OpenDocument **text**, on the terms the first three established, and the
+  remaining-formats row split so the next one is scheduled against a measurement rather than a
+  guess.
+
+### Why this slice is ODT and not "ODF"
+
+S4 measured that a *fourth OOXML* format would be cheap, and said so. ODT is the first case where
+that finding does not transfer: it is a ZIP, and that is the end of the overlap. The vocabulary is
+`text:p` rather than `w:p`; the `r:id`-to-part indirection **`opc.rs` exists for does not apply**,
+because the OpenDocument package specification fixes the content part's name; and the package
+declares its own type in a `mimetype` entry rather than being identified by which main part it
+lists.
+
+**An `.ods` would have been a second slice wearing this one's name.** A spreadsheet's `content.xml`
+is `<table:table-cell>`, which is a different reader with a different atom and a different locator
+— the distance between `xlsx.rs` and `docx.rs`, not the distance between two OOXML packages. So S5
+is ODT alone, and **S6 carries what is left**: ODS, ODP, RTF, EPUB, CSV.
+
+### The format that tested the law the hardest, and still did not move it
+
+S4's argument was that a slide *looks* like a page and is a part. ODT is one step past that: its
+`content.xml` **contains an actual page break**.
+
+| what the file states | what it is |
+| --- | --- |
+| `<text:soft-page-break/>` | the position at which the *producing application's* layout broke the page, computed from its font stack and paper size and written down at save time |
+| `styles.xml`'s `fo:page-width` / `fo:page-height` | the paper the author chose, which this engine measured nothing against |
+
+Between them a `PageRecord` would have needed **no arithmetic at all** — an index from counting
+breaks, a width and a height from the master page. That is exactly why it is refused, and the
+reason is L30's own, quoted rather than paraphrased: *"It invents pagination."* A soft page break
+moves when the font stack, the paper size or the producing application changes, so a citation
+carrying it would be a measurement of a word processor. It is **read and discarded**: the reader
+matches the element, contributes no character and no address, and `pages` stays `[]`. The clean
+fixture contains one on purpose, so the test that `pages` is empty is not vacuous.
+
+### The locator, and why the atom is the paragraph
+
+`OdtLocator { part, paragraph }` — `deny_unknown_fields`, no page, no bbox, no `x`/`y`, and
+`a_text_document_declares_no_pages_and_carries_no_page_number` refuses `page`, `bbox`, `x` and
+`soft_page_break` by name.
+
+**`<text:span>` was the obvious analogue of `<w:r>` and it is the wrong atom**, for two reasons the
+format supplies:
+
+1. **A paragraph may contain no span at all.** `<text:p>Plain text</text:p>` is ordinary ODF. A
+   span-based address would leave the commonest case with no address, or force a span number the
+   file does not contain — which is the invented identifier §9's fourth standing rule forbids.
+2. **Where spans do exist, their boundaries are wherever a word was bolded.** *"The **important**
+   part."* would become three nodes, and the sentence a reader quotes would bind to none of them.
+   DOCX has the same property and S2 accepted it because a `<w:r>` is the only address a DOCX
+   offers; ODF offers the block, and the block is what ODF itself treats as the unit of text.
+
+So the address is the block, and `NodeAttributes::OfficeParagraph` carries the one fact the element
+states that the locator does not: whether it was a `<text:p>` or a `<text:h>`. A fifth attributes
+variant rather than `OfficeRun` with a borrowed field, for the reason there was a fourth: **ODF does
+not use `xml:space`**, so `space_preserved` would be a claim about a mechanism this format does not
+have. Its whitespace mechanism is `<text:s text:c="n">`, which this reader reads as the count the
+file states.
+
+### Two numbers on one node, and they are deliberately different
+
+`Node.ordinal` counts nodes in the artifact, contiguously, as it does for every other format.
+`OdtLocator.paragraph` counts `<text:p>` and `<text:h>` elements **in the file** — including the
+ones inside a footnote, a comment or a tracked-changes record that this slice does not read, and
+including a self-closing `<text:p/>` blank line.
+
+The unread fixture makes the difference visible: its three nodes carry ordinals 1, 2, 3 and
+paragraphs 1, 3, 5. A reader that numbered only what it kept would call them 1, 2, 3 in both
+columns, and **every citation after a footnote would name the wrong paragraph** — the confidently
+wrong locator S4's review caught three times, arriving here through a different door. Both
+directions are mutation-checked.
+
+### ODF's own whitespace rule is applied, and that is reading
+
+The three elements that become characters — `<text:s text:c="n">`, `<text:tab/>`,
+`<text:line-break/>` — exist because OpenDocument **defines** what the character data around them
+means: a tab, line feed or carriage return counts as a space, a run of spaces counts as one, and
+the spaces at a block's two ends are not part of it. That rule is in the format, not in a layout
+engine; it is *why* a producer wanting three spaces must write `<text:s text:c="3">` rather than
+typing three.
+
+Not applying it would make the text depend on how the file was **serialized** — a producer that
+indented inside a paragraph would hand back a sentence with a newline in the middle of it. That is
+S4's defect 2 (*"the address turned on the serialization"*) arriving one slice later in the *text*,
+which is worse. The characters the three elements state are exempt, because surviving the rule is
+their whole purpose.
+
+### Detection, and the reason it asks a different question
+
+**A4: the bytes decide**, and for ODF the bytes say so out loud. `is_odt` asks whether the
+**first** central-directory entry is a **stored** `mimetype` containing
+`application/vnd.oasis.opendocument.text` — first and stored because the package specification
+requires it, so that a consumer can identify a document from its leading bytes.
+
+That is what keeps an `.ods` and an `.odp` out. Both have a `content.xml`; reading a spreadsheet's
+with this vocabulary would return a document with **no text and no error**, which is a gap
+presented as a success (§9, rule 5). A package carrying an ODF `mimetype` *and* `word/document.xml`
+is a named refusal, because the router counts evidence rather than asking four ordered questions.
+
+### One thing measured in passing, recorded rather than acted on
+
+**Through the CLI, an `.ods` is refused with a message about PDF.** `is_odt` correctly declines it,
+none of the other three claim it either, so it falls through to the PDF reader and gets *"expected a
+PDF header (%PDF-) at byte 0"*. It fails closed with empty stdout and exit 2, which is what §3 and
+§9's fifth rule require — but the message names the wrong cause, which is the same complaint this
+slice makes about handing an encrypted `content.xml` to the XML reader.
+
+It is **not fixed here**, on v2-S3's precedent for `&#66;` and the unmatched `CData` arm: a named
+refusal for the ODF family means deciding what this engine says about a spreadsheet it will read in
+S6, and inventing that sentence now would put a claim about ODS in a slice that does not read one.
+Recorded so S6 finds it, where the answer is one line rather than a guess.
+
+### The manifest, which replaces the rule `opc.rs` holds for OOXML
+
+`content.xml`'s name is fixed, so there is no relationship to resolve — but the package's own list
+of what it contains is still consulted before anything is inflated. `META-INF/manifest.xml` is read,
+and two failures are named rather than discovered later:
+
+- the manifest **does not declare** `content.xml` — a package that does not list its own content is
+  not one this reader can speak for
+- the manifest declares it **encrypted** — refused by name, because handing ciphertext to the XML
+  reader would come back as *"will not parse"* and name the wrong cause
+
+### What is read, and what is declared unread
+
+Read: `content.xml`'s `<text:p>` and `<text:h>` blocks, wherever they sit — a table cell's, a text
+box's and a list item's are blocks like any other. Not read, and **counted** (**A14**):
+
+| | why it is not read |
+| --- | --- |
+| every package entry but the three consumed | `styles.xml` (where a header or footer lives), `meta.xml`, `settings.xml`, `Pictures/`, embedded objects. Counted by subtraction rather than by a prefix list, so a producer naming something new cannot slip past |
+| `<text:note>` | a footnote or endnote body — a second stream of text, as `word/footnotes.xml` is in a DOCX |
+| `<office:annotation>` | a comment; reading it would put a reviewer's remark in the record as the document's own |
+| `<text:tracked-changes>` | what a revision **deleted**; reading it would put text the document no longer states into the evidence |
+| a second `<draw:text-box>` in one `<draw:frame>`, **or any text box with no enclosing frame** | ODF frames hold *alternative renditions* of one object and a consumer uses the first it can process — reading both emits one displayed phrase at two citable addresses, which is S4's `<mc:AlternateContent>` finding in ODF's spelling. A frameless text box cannot occur in a conforming package, so it is passed over rather than guessed at — stated here because the reader's behaviour is wider than "a second one" and the prose used to claim otherwise |
+| any element inside a block that is not an allowlisted inline one | an image's `<svg:title>`/`<svg:desc>`, an embedded object's `<office:binary-data>`, a generated `<text:number>`, a field's cached value, `<text:ruby-text>` furigana. Counted in their own bucket, because they are characters *inside* a block rather than a region of the part |
+
+### What an adversarial review found *after* the author's own, and the rule it changed
+
+The self-review below found four nesting defects. A second, adversarial pass over the shipped slice
+found the **architecture** wrong, and that is the finding worth keeping.
+
+`read_content` was a descendant walk with a four-item exception list: every `Event::Text` reached
+the innermost open block unless it sat inside a note, a comment, a tracked change or a second
+`<draw:text-box>`. ODF puts a great deal of non-displayed character data inside a `<text:p>`, and a
+text-anchored `<draw:frame>` is a **child of the paragraph it is anchored in** — the ordinary shape,
+not an edge case. So all of this landed in the sentence:
+
+| what | where it comes from |
+| --- | --- |
+| `<svg:title>`, `<svg:desc>` | an image's title and alt text; LibreOffice writes them whenever the user fills them in |
+| `<office:binary-data>` | an embedded object's base64, a spec-legal alternative to `xlink:href` — a kilobyte of `iVBORw0KGgo…` spliced mid-sentence |
+| `<text:number>` | a heading's **generated** label, present only for consumers that do not number: `2.1Scope of this report` |
+| `<text:page-number>`, `<text:page-count>`, `<text:chapter>` | a field's **cached** value |
+| `<text:ruby-text>` | furigana — a pronunciation guide, not part of the word |
+
+The fourth row is the one that indicts the slice rather than the code: this reader refuses
+`<text:soft-page-break/>` **by name** and then put the same producer's page arithmetic into
+`Node.text` anyway. `ODT_TEXT_CODE_RULE_V1`'s own doc comment already said *"a field's cached
+rendering, a list's number and a footnote's mark are all produced by a layout this reader does not
+perform"* — a sentence that was false about the code it names. That is v2-S3's pattern exactly:
+three of its nine defects were in code whose own comment described the hazard it had.
+
+**So the rule is inverted.** Character data reaches a block only when every element between them is
+an allowlisted inline one — a span, a hyperlink, a ruby *base*. Everything else is foreign: its
+characters are counted (**A14**, a new `foreign_text_not_read` bucket) rather than spliced. Two of
+the five rows above were already fixed once, in another format, by another slice: `<rPh>` furigana
+on both of v2-S3's string paths, and `<a:fld type="slidenum">` in v2-S4. **The rule existed; the new
+reader did not apply it** — which is the shape of nearly every defect these reviews find.
+
+Three further defects came from the same review and are fixed with it:
+
+| | defect | why it was wrong |
+| --- | --- | --- |
+| 1 | element names matched by **suffix**, so a conforming `<xhtml:p>` advanced the block counter | ODF §3.17 permits foreign elements in mixed content, so this shifted every later address — and `xml.rs`'s "a refusal to find content rather than wrong content" trade was written for readers where the match selects *content*, not an *address*. This reader now resolves namespaces |
+| 2 | MathML's `<annotation>` shares a local name with `<office:annotation>` | an inline formula was declared to the caller as an unread *reviewer's remark*, naming a gap the document does not have |
+| 3 | `skip_from` was one slot, on the claim these regions "do not meaningfully nest" | they do — ODF puts a comment inside a footnote body — so two erased passages were declared as one, under-declaring, which is the direction A14 exists to prevent |
+
+And `<text:s text:c>` is now read as the `positiveInteger` its schema says it is: `" 3"` is three
+(whiteSpace `collapse`), `0` is refused rather than repaired to nothing — which was the `NameValue`
+join this module's header says these elements exist to prevent — and `xmlns:c` is no longer mistaken
+for `text:c`.
+
+### What the same review found in the tests, which is the more uncomfortable half
+
+Seven assertions did not test what they were named for, and the acceptance boxes below ticked
+several of them off. The worst was the guard this slice leaned on hardest:
+
+> `a_text_document_declares_no_pages_and_carries_no_page_number` proved the fixture "really
+> contains" a `<text:soft-page-break/>` by grepping **`make_fixtures.py`** — where the literal also
+> appears inside a `#` comment. Deleting the real element from the fixture left the test green.
+
+It also asserted a property of a Python source file rather than of the bytes under test. It now
+inflates the fixture's own `content.xml` and looks there, and deleting the element fails it.
+
+The others, each now fixed and mutation-checked: the frame-stack test wrote its nested frame
+self-closing, so the push/pop asymmetry it was named for was never created; `Event::CData` had no
+ODT test while the box ticked "CDATA is matched rather than dropped"; the `stored` half of ODF
+detection had none either, and the test's own comment conceded it (`build_zip` stores everything —
+there is now a builder that deflates); `OdfBlockKind::Paragraph` was asserted nowhere, so the
+mapping could have been a constant `Heading`; and `paragraphs.sort_by_key` was a no-op in every
+test, because no test had a kept block nested inside a kept block.
+
+**Twelve mutations now fail a test** across the repair. The pattern in the seven is one this
+repository has named before and should expect again: *an assertion whose subject can be empty, or
+whose evidence is a file other than the one under test, is not an assertion.*
+
+### What reviewing the slice against §3 found before it shipped
+
+Four defects, and every one of them is about **nesting** — which is the thing ODF does that no OOXML
+format in v2 does. ODF puts a footnote's body, a comment's body and a text box's contents *inside*
+the block they are anchored to, as their own `<text:p>` elements.
+
+| | defect | why it was wrong |
+| --- | --- | --- |
+| 1 | a descendant walk concatenated a footnote into the sentence citing it | `Cited hereA source nobody read. and continued.` — a sealed, error-free, byte-identical artifact stating a phrase the document does not contain |
+| 2 | fixing 1 made the footnote's `</text:p>` close the **anchoring** block | the rest of the sentence after the footnote was silently lost: `Cited here` with ` and continued.` gone |
+| 3 | the block counter advanced only for blocks that were read | every address after a footnote was one short, so a citation landed on the wrong paragraph |
+| 4 | `<draw:frame>` was pushed under the skip guard and popped without one | a frame inside a footnote popped an **enclosing** frame's flag, and the enclosing frame's first text box then read as a second rendition and was declared unread |
+
+Defects 1 and 2 are the pair worth keeping: **the fix for a splice introduced a truncation**, in the
+same five lines, and only a test that asserted the whole sentence caught the second. Defect 4 came
+out of reading the reader back against itself rather than from a failing test — no fixture nests a
+frame inside a passed-over region — which is the review S3 and S4 both did and the reason it is done
+here too. All four are fixed and mutation-checked.
+
+One thing worth naming that is **not** a defect: `Node.ordinal` and `OdtLocator.paragraph`
+disagreeing looks like one on first read, and is the design. The artifact carries both, and the
+table above is why.
+
+### What this slice could not do, stated rather than skipped
+
+**No corpus of real `.odt` files was available, and no ODF producer was either.** S3 and S4 both
+changed a design after measuring real files — shape ids are not unique, `<mc:AlternateContent>` is
+on half the slides — and that method was not available here. Every rule in `odt.rs` is read off the
+OpenDocument specification and pinned against fixtures this repository authored.
+
+Where that left a judgement call it is made toward **over-declaring**: a region this reader is
+unsure about is counted as unread rather than concatenated into a paragraph, so the failure mode is
+a phrase declared missing rather than a phrase invented. The frame-alternative rule is the clearest
+case — it is spec-derived and fixture-tested, not measured against files in the wild. **S6 should
+measure it**, and the honest statement today is that it has not been.
+
+- **In:** `crates/engine-office/{odt.rs, lib.rs, zip.rs}` — `zip::first_entry`, the four-way router
+  and `read_odt`; `OdtLocator`, `NativeLocator::Odt`, `NodeAttributes::OfficeParagraph`,
+  `OfficeParagraphAttributes`, `OdfBlockKind`, `Profile::odt_v0`, `ODT_READING_ORDER_RULE_V1` and
+  `ODT_TEXT_CODE_RULE_V1` in `engine-core`; content dispatch in `engine extract`;
+  `fixtures/office/text-paragraphs` and `text-unread-parts` with their generator; `0.24.0`, the
+  moved profile hash and both SDK pins; `PUBLIC-API.md` and its gate; `14`/`15`; CHANGELOG; README.
+
+- **Out:** ODS, ODP, RTF, EPUB, CSV — S6. Styles as evidence, tracked changes as a second
+  authority, embedded objects, `text:outline-level`, headers and footers beyond the A14 count. Any
+  change to `ethos.grounding.v1`. Any `project()` change. Markdown or HTML for an ODT. New MCP
+  tools, new SDK functions. A `coordinate_system` mode enum — v2-S3 closed that and this slice did
+  not reopen it. Any new dependency: no `zip`, no ODF crate, no LibreOffice.
+
+- **Acceptance tests:**
+  - [x] A known phrase is on a node with an `OdtLocator`; `pages` is `[]`; `node_get` over
+        **unmodified MCP** resolves the minted id and `s-forged` fails closed
+  - [x] The locator's field set is exactly `{part, paragraph}`, and `deny_unknown_fields` refuses
+        `page`, `bbox`, `x` and `soft_page_break` **by name**
+  - [x] The fixture **contains** a `<text:soft-page-break/>` — asserted by inflating the fixture's
+        own `content.xml`, **not** by grepping the generator, which is how the first version of this
+        guard passed on a `#` comment — so the empty `pages` vector is a refusal rather than an
+        absence. Mutation-checked by deleting the element from the fixture
+  - [x] The block count advances **through** a footnote and a comment, so the blocks after them are
+        3 and 5 rather than 2 and 3; a self-closing `<text:p/>` counts, so the address does not turn
+        on how the document was serialized. Both mutation-checked
+  - [x] A sentence split by a `<text:span>` is **one** node, so the sentence a reader quotes binds
+  - [x] `&amp;` survives; **CDATA is matched rather than dropped, held by its own test**;
+        `<text:s text:c="3">` is the three spaces the file states, `" 3"` is also three because the
+        attribute's schema type collapses whitespace, and a non-numeric *or zero* count is a named
+        refusal; ODF's whitespace rule is applied and the three stated characters are exempt — each
+        mutation-checked
+  - [x] A nested block does not leak into the block that anchors it, in both directions: the
+        footnote's text is not in the sentence, and the sentence after the footnote is not lost
+  - [x] Only the first `<draw:text-box>` of a `<draw:frame>` is read — claimed on the self-closing
+        path too, so the artifact does not turn on whether the producer wrote `<draw:text-box/>` —
+        and a passed-over rendition is counted **when it held a block with characters in it**, so a
+        comment carrying only its author's name is not declared an erasure. Mutation-checked
+  - [x] Character data reaches a block only through an **allowlisted inline element**: an image's
+        title and description, an embedded object's base64, a generated `<text:number>`, a field's
+        cached value and `<text:ruby-text>` furigana are each counted rather than spliced into the
+        sentence — five tests, each mutation-checked
+  - [x] Element names are **namespace-resolved**, so a foreign `<xhtml:p>` moves no address and
+        MathML's `<annotation>` is not declared as a comment — mutation-checked
+  - [x] Nested passed-over regions count separately: a comment inside a footnote is two erasures
+  - [x] Both block kinds reach the artifact, and document order survives nesting — the sort was a
+        no-op in every earlier test
+  - [x] Detection is content-based: a renamed document reads, an `.odt` that is not one fails with
+        empty stdout, an `.ods`/`.odp`/`.odg` is **never** claimed, and a package that is two
+        formats is refused by name
+  - [x] The `mimetype` entry is checked **first and stored**, both halves held by their own test —
+        the ordering one over a reordered package, the compression one over a package whose first
+        entry is deflated, which needed a ZIP builder that can deflate because the old one stored
+        everything and said so
+  - [x] "First" means the **archive's leading bytes**, not its index: a conforming package whose
+        central directory is written in name order still reads, where reading directory order
+        refused a genuine `.odt` and sent it to the PDF reader
+  - [x] A package that lists one entry twice is refused, and so is a manifest that declares
+        `content.xml` twice — which otherwise let an unencrypted declaration hide an encrypted one
+  - [x] The manifest is consulted: an undeclared `content.xml` and an **encrypted** one are each a
+        named refusal, and so is a package with no manifest — mutation-checked
+  - [x] Unread package entries **and** unread regions are counted and declared, each held by its own
+        test, the second by a package authored inside the test; the clean fixture declares none
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the law
+        — with **no change to `engine-grounding`**
+  - [x] Every geometry row is `NotApplicableToKind`; all **five** profile hashes are mutually
+        distinct; `capabilities.tables` is false
+  - [x] Two runs over one document produce identical bytes
+  - [x] `Cargo.lock` gains **no new dependency** — no `zip`, `zopfli`, ODF crate or renderer
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication still 0
+  - [x] Workspace **0.24.0**, both SDKs **0.24.0**, profile hash
+        `sha256:dc89ca65af172b8d9537d96b0579dcf2c3fdf7fe8e0200bf85282fc9d1b6cd67`
+
+- **Depends on:** S4.
+
+---
+
+## S6 — the remaining office formats — **not started**
+
+- **Goal:** ODS, ODP, RTF, EPUB and CSV, on the terms the first four established.
+
+- **Still deliberately one row, and S5 is why it is a shorter one.** **A1** — Anydoc's 14-format
+  coverage — is v2's horizon, not its checklist. S4 measured that a fourth *OOXML* format would be
+  cheap. **S5 measured what the next one actually cost**, and the answer is that ODF's container
+  was free and everything above it was not: a new vocabulary, a new atom, a new detection question
+  and a new class of nested-block defect. ODS and ODP inherit the container work and none of the
+  rest — a `<table:table-cell>` is a different reader from a `<text:p>` — and RTF is not XML at
+  all, EPUB is a ZIP of XHTML, and CSV has no container. Scheduling them as one slice each before
+  any of them has been looked at would still be the waterfall S0 refused.
 
 - **The one thing already known about this row:** EPUB may genuinely have pages and CSV genuinely
   has none, so §3's law is not "no page ever" but "no page this engine did not read from the
   file." Whichever formats have a native pagination declare it; the rest carry the empty vector.
-  S4 is the precedent for the first half: a slide looked like a page, was checked against the
-  file, and turned out to be a part.
+  S4 and S5 are the precedent for the first half: a slide looked like a page and was a part, and an
+  ODT's soft page break *is* a page break and is still somebody else's.
+
+- **And one thing S5 owes it:** the ODF frame-alternative rule is spec-derived and was **not
+  measured against real files**, because none were available. S6 reads ODS and ODP over the same
+  container and should measure it there.
 
 - **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
-  This row is coverage beyond it.
+  This row, and S5 before it, is coverage beyond it.
 
 ---
 

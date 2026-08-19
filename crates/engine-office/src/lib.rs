@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The office reader: OOXML documents (v2-S2) and workbooks (v2-S3) into the representation.
+//! The office reader: OOXML documents, workbooks and presentations, and OpenDocument text.
 //!
 //! # The fifth crate, and why it exists now and not before
 //!
@@ -47,19 +47,36 @@
 //! ordinals count per parent — so v2-S3 added nothing to `engine-core` and is simply the first
 //! artifact to use the shape with more than one part in it.
 //!
+//! # Not every container here is OOXML
+//!
+//! **v2-S5 adds OpenDocument text**, which shares this crate's ZIP reader and its XML plumbing and
+//! nothing else. Its vocabulary is different (`text:p`, not `w:p`), its content part is named by
+//! the specification rather than by a relationship — so `opc.rs`'s whole reason for existing does
+//! not apply — and it is the only one of the four that **declares its own type**, in an
+//! uncompressed `mimetype` entry the package specification requires to come first.
+//!
+//! It is also the format where refusing a page costs the most to say, because an ODT is the only
+//! one whose file contains an actual page break: `<text:soft-page-break/>` records where the
+//! producing application's layout fell. It is a measurement of that producer, not of the document,
+//! so it is read and discarded rather than turned into a `PageRecord` — see `odt.rs`.
+//!
 //! # Detection is content-based
 //!
-//! Anydoc's **A4**. [`is_docx`] and [`is_xlsx`] read the bytes: a ZIP local-file-header
-//! signature, and `word/document.xml` or `xl/workbook.xml` in the package's own central
-//! directory. A `.docx` that is not OOXML is refused, and an OOXML document named `report.bin` is
-//! read — because an extension is a claim anybody can make and a magic number is one only the file
-//! can. [`read`] is the router, so a package claiming to be **both** is a named refusal rather
-//! than whichever check happens to run first.
+//! Anydoc's **A4**. [`is_docx`], [`is_xlsx`] and [`is_pptx`] read the bytes: a ZIP
+//! local-file-header signature, and `word/document.xml`, `xl/workbook.xml` or
+//! `ppt/presentation.xml` in the package's own central directory. [`is_odt`] asks the ODF question
+//! instead — a first, stored `mimetype` entry declaring [`ODT_MEDIA_TYPE`] — which is what keeps
+//! an `.ods` and an `.odp` from being claimed by a reader that speaks neither. A `.docx` that is
+//! not OOXML is refused, and an OOXML document named `report.bin` is read, because an extension is
+//! a claim anybody can make and a magic number is one only the file can. [`read`] is the router,
+//! so a package claiming to be **more than one** is a named refusal rather than whichever check
+//! happens to run first.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod docx;
+pub mod odt;
 mod opc;
 pub mod pptx;
 pub mod xlsx;
@@ -69,10 +86,10 @@ pub mod zip;
 use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
-    NodeAttributes, NodeGeometry, NodeKind, OfficeCellAttributes, OfficeRunAttributes,
-    OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
-    RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
-    REPRESENTATION_SCHEMA_VERSION,
+    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdtLocator, OfficeCellAttributes,
+    OfficeParagraphAttributes, OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator,
+    ProcessingRun, ProcessorIdentity, Profile, RepresentationPayload, Sha256Hex, SourceIdentity,
+    XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -89,6 +106,21 @@ pub const XLSX_MEDIA_TYPE: &str =
 /// The media type an OOXML presentation declares.
 pub const PPTX_MEDIA_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+/// The media type an OpenDocument text document declares (v2-S5).
+///
+/// **The only one of the four the package states about itself.** An OOXML package's type is
+/// inferred from which main part its central directory lists; an ODF package writes it into an
+/// uncompressed `mimetype` entry that the specification requires to come first, so this is read
+/// rather than deduced. See [`odt::declared_media_type`].
+pub const ODT_MEDIA_TYPE: &str = odt::ODT_MEDIA_TYPE;
+
+/// How [`read`]'s router names the evidence that a package is an OpenDocument text document.
+///
+/// The other three entries in that list are part names, because that is what identifies an OOXML
+/// package. This one is a sentence, because an ODF package identifies itself and the honest thing
+/// to put in an "this package claims to be N kinds of document" message is the claim it made.
+const ODT_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.text";
 
 /// Whether these bytes are an OOXML word-processing document, **read from the bytes**.
 ///
@@ -143,7 +175,22 @@ pub fn is_pptx(bytes: &[u8]) -> bool {
     }
 }
 
-/// Read an OOXML package into a sealed representation, dispatching on **what the bytes contain**.
+/// Whether these bytes are an OpenDocument **text** package, **read from the bytes** (v2-S5).
+///
+/// A different question from the three above, because ODF is a different container convention: an
+/// OOXML package is identified by which main part it lists, and an ODF package **states its own
+/// type** in a `mimetype` entry the specification requires to be first and uncompressed. So this
+/// asks that entry, which is why an `.ods` and an `.odp` are not claimed here — they are the same
+/// container with a different vocabulary and a different reader, and returning an empty text
+/// document for one would be a gap presented as a success.
+///
+/// Never the extension (**A4**), in both directions: a document named `report.bin` reads, and an
+/// `.odt` full of something else does not.
+pub fn is_odt(bytes: &[u8]) -> bool {
+    odt::is_odt(bytes)
+}
+
+/// Read an office package into a sealed representation, dispatching on **what the bytes contain**.
 ///
 /// A word-processing document and a workbook are told apart by the parts their own central
 /// directory lists, never by a file name (**A4**). A package that lists both main parts is a
@@ -161,17 +208,23 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     if !zip::looks_like_zip(bytes) {
         return Err(EngineError::Malformed {
             what: "office document".into(),
-            detail: "these bytes do not open like a ZIP container, so there is no OOXML package \
+            detail: "these bytes do not open like a ZIP container, so there is no office package \
                      here to read"
                 .into(),
         });
     }
     let names = zip::entry_names(bytes)?;
 
-    // **Counted, not asked in order.** With three formats a chain of `if`s would make the answer
+    // **Counted, not asked in order.** With four formats a chain of `if`s would make the answer
     // depend on which line ran first for a package claiming to be two of them; collecting the
-    // main parts a package actually lists makes the ambiguous case impossible to reach by
+    // evidence a package actually carries makes the ambiguous case impossible to reach by
     // accident and names it instead.
+    //
+    // The fourth entry is a different *kind* of evidence and that is the format's doing, not a
+    // shortcut: OOXML packages are told apart by which main part they list, while an ODF package
+    // declares its own type in a first, uncompressed `mimetype` entry. A package carrying both
+    // kinds of evidence is exactly the ambiguity this shape exists to refuse — an ODF `mimetype`
+    // wrapped around `word/document.xml` is a file claiming to be two documents.
     let claimed: Vec<&str> = [
         docx::MAIN_PART,
         xlsx::WORKBOOK_PART,
@@ -179,21 +232,26 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     ]
     .into_iter()
     .filter(|part| names.iter().any(|n| n == part))
+    .chain(odt::is_odt(bytes).then_some(ODT_CLAIM))
     .collect();
 
     match claimed[..] {
         [docx::MAIN_PART] => read_docx(bytes, &names),
         [xlsx::WORKBOOK_PART] => read_xlsx(bytes, &names),
         [pptx::PRESENTATION_PART] => read_pptx(bytes, &names),
+        [ODT_CLAIM] => read_odt(bytes, &names),
         [] => Err(EngineError::MissingPart {
             // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
             // renamed or corrupted `.docx` needs, and it is pinned by a test.
             part: format!(
                 "`{}` — this package is a ZIP but not a word-processing document, and it is \
-                 neither a workbook (`{}`) nor a presentation (`{}`)",
+                 neither a workbook (`{}`), a presentation (`{}`) nor an OpenDocument text \
+                 document (`{}` declaring `{}`)",
                 docx::MAIN_PART,
                 xlsx::WORKBOOK_PART,
-                pptx::PRESENTATION_PART
+                pptx::PRESENTATION_PART,
+                odt::MIMETYPE_ENTRY,
+                ODT_MEDIA_TYPE
             ),
         }),
         _ => Err(EngineError::Malformed {
@@ -478,6 +536,186 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // **Not a table, on the format made of grids.** `tables` here means this engine's table
         // IR, produced by the PDF detectors from ruled and unruled evidence. Those never ran;
         // this artifact carries cells, and `Profile::xlsx_v0` declares `tables: false` to say so.
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an OpenDocument text document into a sealed representation (v2-S5).
+///
+/// # One part, and the manifest is consulted anyway
+///
+/// The OpenDocument package specification fixes the content part's name, so there is no
+/// `r:id`-to-part resolution here and `opc.rs` does not apply. What replaces it is the package's
+/// own manifest: `META-INF/manifest.xml` is asked whether it declares `content.xml` and whether it
+/// declares it **encrypted**, before anything is inflated. Reaching straight for the part would
+/// read one the package does not list, and would hand ciphertext to the XML reader — which would
+/// come back as "will not parse" and name the wrong cause.
+fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // **A package that names one entry twice is refused before anything is read.** ZIP permits
+    // duplicate names and consumers disagree about which one wins; `zip::read_entry` takes the
+    // first. So a second `content.xml` would be neither read nor counted — the artifact would state
+    // the first one's text, declare no erasure, and a consumer preferring the last would see a
+    // different document. `mimetype` is worse still, because it decides detection.
+    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+    sorted.sort_unstable();
+    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
+        return Err(EngineError::Malformed {
+            what: "opendocument package".into(),
+            detail: format!(
+                "this package lists `{}` more than once. Consumers disagree about which entry of \
+                 a duplicated name wins, so reading either would be this engine choosing which of \
+                 the file's own claims to believe — and the entry it did not read would leave the \
+                 record with nothing naming it.",
+                pair[0]
+            ),
+        });
+    }
+
+    let manifest =
+        zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
+            part: format!(
+                "`{}` — an OpenDocument package states what it contains only here, and a package \
+                 with no manifest is one this reader cannot say it has read",
+                odt::MANIFEST_PART
+            ),
+        })?;
+    odt::check_content_declared(&odt::read_manifest(&manifest)?)?;
+
+    let part = zip::read_entry(bytes, odt::CONTENT_PART)?;
+    let content = odt::read_content(&part)?;
+
+    let profile = Profile::odt_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "odt profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+
+    // **One part, one part id**, as a DOCX has. Every node names `content.xml` in its own locator
+    // and `check_structure` checks the two agree in both directions.
+    let part_id = alloc.next(IdKind::Part)?;
+
+    let mut nodes = Vec::with_capacity(content.paragraphs.len());
+    let mut geometry = Vec::with_capacity(content.paragraphs.len());
+    for (index, block) in content.paragraphs.iter().enumerate() {
+        let id = alloc.next(IdKind::Span)?;
+        geometry.push(NodeGeometry {
+            node: id.clone(),
+            // Not `NotReportedByReader`: nothing tried to measure and failed. An ODF paragraph
+            // has no ink box until something lays the document out, and the one thing in the file
+            // that looks like the result of doing so — `<text:soft-page-break/>` — is a record of
+            // the producing application's layout rather than a measurement of this one's.
+            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        });
+        nodes.push(Node {
+            id,
+            // The same kind a PDF run, a `<w:r>`, a cell and a slide run carry. The locator is
+            // what says which — see `NodeAttributes::kind`.
+            kind: NodeKind::TextRun,
+            parent: part_id.clone(),
+            // Contiguous within the part, in the order the part lists its blocks. **Not** the
+            // locator's `paragraph`: that one counts every block the file contains, including the
+            // ones in regions this reader passed over, so the two are deliberately different
+            // numbers and the artifact carries both.
+            ordinal: index as u32 + 1,
+            text: block.text.clone(),
+            native_locator: NativeLocator::Odt(OdtLocator {
+                part: odt::CONTENT_PART.to_string(),
+                paragraph: block.ordinal,
+            }),
+            // `styles.xml` is not read, so no structural address is claimed.
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeParagraph(OfficeParagraphAttributes {
+                block: if block.heading {
+                    OdfBlockKind::Heading
+                } else {
+                    OdfBlockKind::Paragraph
+                },
+            }),
+        });
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: an OpenDocument text document has no ink box until \
+             something lays it out, and the page break its producer stored is a record of that \
+             producer's layout rather than a measurement of this document",
+        ));
+    }
+
+    let unread = odt::unread_entries(names);
+    if unread > 0 || content.regions_not_read > 0 || content.foreign_text_not_read > 0 {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} entry(ies) of this package were not read — styles, which is where a \
+                 header or a footer lives, metadata, settings, pictures or an embedded object. "
+            ));
+        }
+        if content.regions_not_read > 0 {
+            detail.push_str(&format!(
+                "{} region(s) of `{}` hold text this slice does not read — a footnote or endnote \
+                 body, a comment, a tracked-changes record, or a second rendition of one framed \
+                 object, which a consumer displays once and this reader therefore cites once. ",
+                content.regions_not_read,
+                odt::CONTENT_PART
+            ));
+        }
+        if content.foreign_text_not_read > 0 {
+            detail.push_str(&format!(
+                "{} block(s) contain characters that are not the block's own text — an image's \
+                 title or description, an embedded object's data, a field's cached value, or a \
+                 generated heading number. Those are produced by a layout or a numbering pass this \
+                 reader does not perform, so they are counted rather than read into the sentence \
+                 they sit inside. ",
+                content.foreign_text_not_read
+            ));
+        }
+        detail.push_str(
+            "v2-S5 reads the content part's own paragraphs only, and a phrase absent from this \
+             artifact may still be present in the document",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: ODT_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // **The format that writes its own page breaks down, and the vector is still empty.**
+        // `<text:soft-page-break/>` is in `content.xml` and `fo:page-width` is in `styles.xml`;
+        // between them a `PageRecord` would need no arithmetic at all. It would still be a
+        // measurement of the word processor that saved the file — `docs/06-STEAL-REFUSE.md` L30 —
+        // so neither is read and there is nothing here to declare.
+        pages: Vec::new(),
+        nodes,
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

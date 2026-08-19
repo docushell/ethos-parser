@@ -535,6 +535,23 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 /// this reader did not read those parts and a substituted string is not one the slide stated.
 pub const PPTX_TEXT_CODE_RULE_V1: &str = "pptx-at-verbatim-v1";
 
+/// v2-S5's ODT reading order: paragraphs in the order `content.xml` lists them.
+///
+/// **Not a rule that decides anything**, for the reason its three siblings are not. One part, one
+/// order, stated by the file. In particular the order is **not** the order a reader would
+/// encounter the paragraphs on a rendered page: `<text:soft-page-break/>` records where the
+/// producing application broke a page, and this rule neither reads it nor sorts by it.
+pub const ODT_READING_ORDER_RULE_V1: &str = "odt-content-document-order-v1";
+
+/// v2-S5's ODT text rule: the characters the paragraph's own content states, verbatim.
+///
+/// Verbatim with three exceptions, and each of them is a character the file spells as an element
+/// because XML would otherwise collapse it: `<text:s text:c="n">` is **n** spaces — the count the
+/// file states, never a count inferred from where anything sits — `<text:tab/>` is a tab and
+/// `<text:line-break/>` is a line feed. Nothing else is substituted: a field's cached rendering, a
+/// list's number and a footnote's mark are all produced by a layout this reader does not perform.
+pub const ODT_TEXT_CODE_RULE_V1: &str = "odt-text-content-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -1042,6 +1059,66 @@ impl Profile {
         }
     }
 
+    /// The profile a page-less OpenDocument **text** document is read under (v2-S5).
+    ///
+    /// **Its own hash**, for the reason the other three page-less profiles have one: four formats
+    /// read by four rules over three container shapes, and an artifact that could not tell an ODF
+    /// paragraph from a `<w:r>` by profile would claim a comparability it does not have.
+    ///
+    /// # `measured_ink_boxes: false`, on the first format that writes its own page breaks down
+    ///
+    /// A DOCX has no page until a renderer invents one, a workbook's is a printer's and a slide is
+    /// a part — but an ODT's `content.xml` contains `<text:soft-page-break/>`, a position the
+    /// producing application computed and **stored**. That is the closest any v2 format comes to
+    /// handing this engine a page for free, and it is still somebody else's rendering: it moves
+    /// when the font stack, the paper size or the producer changes, which is precisely why
+    /// `docs/06-STEAL-REFUSE.md` L30 refuses the LibreOffice bridge rather than treating it as a
+    /// fallback. It is not read, `pages` stays empty, and `check_structure` refuses a measured box
+    /// on a page-less node outright, so this profile could not emit one even if a later edit read
+    /// the break.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other three
+    /// page-less profiles do; [`Self::docx_v0`]'s doc comment is the decision and the evidence, and
+    /// v2-S5 did not reopen it.
+    pub fn odt_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: ODT_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1338,7 +1415,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.23.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.24.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1537,11 +1614,24 @@ mod tests {
              raster or a page budget that meant something. It has neither: a slide is a PART, \
              `pages` is empty, `measured_ink_boxes` is false, and `Profile::pptx_v0` carries the \
              same inert `coordinate_system` v2-S3 decided to leave alone. Three formats now share \
-             that declaration and none of them emits a coordinate."
+             that declaration and none of them emits a coordinate.\n\n\
+             Moved a TWENTY-EIGHTH time at v2-S5 (0.24.0) on `parser_version` ALONE, and the \
+             format behind it is the one that could have moved more than the version. An ODT's \
+             `content.xml` contains `<text:soft-page-break/>` — the position at which the \
+             PRODUCING APPLICATION broke the page, written down at save time — and its \
+             `styles.xml` contains an `fo:page-width`. Between them a `PageRecord` needs no \
+             arithmetic at all, which is the first time that has been true in this version. It is \
+             still a measurement of a word processor rather than of the document, and it moves \
+             when the font stack or the paper does, so `docs/06-STEAL-REFUSE.md` L30 refuses it as \
+             a refusal rather than a fallback: the break is read, discarded, and `pages` stays \
+             empty. `Profile::odt_v0` carries the same inert `coordinate_system` the other three \
+             page-less profiles do — four formats now share that declaration and none of them \
+             emits a coordinate — and this profile's own bytes are untouched, because a fourth \
+             page-less format is a new VALUE rather than a change to what this one claims."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8dfca0e41d51668c6d540ec45bf83dd66503dbc2dcb1fa7c188cceebe255d4bd"
+            "sha256:dc89ca65af172b8d9537d96b0579dcf2c3fdf7fe8e0200bf85282fc9d1b6cd67"
         );
     }
 
