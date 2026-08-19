@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, and v2-S6 as 0.25.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, and v2-S7 as 0.26.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -310,7 +310,45 @@ exclude = ["fuzz"]
 # S6 is ODS and is done; S7 still parks ODP, RTF, EPUB and CSV. v2's gate is still a DOCX quote and
 # an XLSX cell; this is coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and
 # the 0.489 chase is STILL parked.
-version = "0.25.0"
+#
+# **0.26.0 is v2-S7: an ODP BLOCK binds, and the page that was free stays out.** OpenDocument
+# presentations enter the representation — `content.xml`'s `<draw:page>` shapes and their
+# `<text:p>` blocks — and the reason this is a slice is the refusal rather than the reader.
+#
+# THE PAGE WAS FREE HERE. Every page-less format before this one had to ARGUE that its page was
+# somebody else's: a DOCX has none until a renderer picks one, a workbook's is a printer's, a PPTX
+# slide is a PART, an ODT's soft page break is a word processor's arithmetic. A presentation needs
+# no argument at all — `<draw:page>` elements are discrete, listed, ordered and named, a
+# `<style:master-page>` states `fo:page-width` beside them, and a `PageRecord` would need NO
+# ARITHMETIC. It is refused anyway, on `docs/06-STEAL-REFUSE.md` L30's own four words: "It invents
+# pagination." A draw page is a part of the presentation's structure, not a page this engine
+# measured. `pages` stays `[]`, and `OdpLocator { part, draw_page, shape, paragraph }` carries a
+# POSITION named for the element rather than for what it resembles — `deny_unknown_fields` refuses
+# `page`, `bbox`, `x`, `slide_number` and `soft_page_break` by name.
+#
+# THE NAMES ARE LABELS, on v2-S4's measured precedent. `draw:name` on a page and on a shape is
+# optional in ODF and could not be measured unique, because no corpus of real `.odp` files was
+# available — so it goes on the attributes, where `<p:cNvPr id>` went when S4 measured it across 18
+# real decks and found it unique only most of the time.
+#
+# THE FRAME RULE, MEASURED A THIRD TIME, AND THE ATOM IS AGAIN WHAT DECIDES. v2-S5 read
+# first-rendition-wins off the specification; v2-S6 measured it on a spreadsheet and found that a
+# frame floats over the SHEET, so both renditions are erasures. A presentation is a drawing and
+# there is nothing to float over: the frame IS the shape this reader addresses, so the first
+# rendition becomes nodes — ODT's outcome, reached by neither ODT's nor ODS's argument.
+#
+# ONE ALLOWLIST, STILL NOT TWO. `odt.rs`'s `Element`, `classify`, namespaces and block engine are
+# imported for the third reader. What this format added was a silent drop none of the others had:
+# `<draw:frame><draw:image><svg:title>` contains no `<text:p>` at all, so a per-block foreign
+# counter never sees it. Counted at the SHAPE now.
+#
+# NO NEW DEPENDENCY. `Profile::odp_v0` has its own hash, seven profiles are now mutually distinct,
+# and this hash moves on `parser_version` ALONE.
+#
+# S7 is ODP and is done; S8 parks RTF, EPUB and CSV. v2's gate is still a DOCX quote and an XLSX
+# cell; this is coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and the 0.489
+# chase is STILL parked.
+version = "0.26.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -331,10 +369,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.25.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.25.0" }
-engine-office = { path = "crates/engine-office", version = "0.25.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.25.0" }
+engine-core = { path = "crates/engine-core", version = "0.26.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.26.0" }
+engine-office = { path = "crates/engine-office", version = "0.26.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.26.0" }
 
 [profile.release]
 strip = "symbols"

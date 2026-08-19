@@ -76,6 +76,7 @@
 #![deny(missing_docs)]
 
 pub mod docx;
+pub mod odp;
 pub mod ods;
 pub mod odt;
 mod opc;
@@ -87,11 +88,12 @@ pub mod zip;
 use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
     GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
-    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdfCellTextSource, OdsLocator,
-    OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes, OfficeParagraphAttributes,
-    OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity,
-    Profile, RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator,
-    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdfCellTextSource, OdpLocator,
+    OdsLocator, OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes,
+    OfficeOdfShapeAttributes, OfficeParagraphAttributes, OfficeRunAttributes,
+    OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
+    RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
+    REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -129,6 +131,12 @@ pub const ODS_MEDIA_TYPE: &str = ods::ODS_MEDIA_TYPE;
 
 /// How [`read`]'s router names the evidence that a package is an OpenDocument spreadsheet.
 const ODS_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.spreadsheet";
+
+/// The media type an OpenDocument presentation declares (v2-S7).
+pub const ODP_MEDIA_TYPE: &str = odp::ODP_MEDIA_TYPE;
+
+/// How [`read`]'s router names the evidence that a package is an OpenDocument presentation.
+const ODP_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.presentation";
 
 /// The prefix every OpenDocument media type shares.
 ///
@@ -212,6 +220,18 @@ pub fn is_ods(bytes: &[u8]) -> bool {
     ods::is_ods(bytes)
 }
 
+/// Whether these bytes are an OpenDocument **presentation**, **read from the bytes** (v2-S7).
+///
+/// The same question [`is_odt`] asks against a different declared type. Exact rather than
+/// prefixed, so an `.otp` template is not claimed — and neither is an `.odg`, whose `content.xml`
+/// is the **same** `<draw:page>` vocabulary this reader knows. That last one is the reason the
+/// match has to be exact rather than "does it look like a drawing": a graphics document would
+/// parse and produce nodes, so a prefix match here would return a plausible artifact for a format
+/// nobody decided to support.
+pub fn is_odp(bytes: &[u8]) -> bool {
+    odp::is_odp(bytes)
+}
+
 /// Whether these bytes are **any** OpenDocument package — one this engine reads or one it does not.
 ///
 /// # Why this is a third question rather than an `||` of the other two
@@ -281,6 +301,7 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     .filter(|part| names.iter().any(|n| n == part))
     .chain(odt::is_odt(bytes).then_some(ODT_CLAIM))
     .chain(ods::is_ods(bytes).then_some(ODS_CLAIM))
+    .chain(odp::is_odp(bytes).then_some(ODP_CLAIM))
     .collect();
 
     // **An ODF package states what it is, and this engine reads two of the family.** A declared
@@ -294,16 +315,21 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         if declared.starts_with(ODF_MEDIA_TYPE_PREFIX)
             && declared != ODT_MEDIA_TYPE
             && declared != ODS_MEDIA_TYPE
+            && declared != ODP_MEDIA_TYPE
         {
             return Err(EngineError::Unsupported {
                 what: "media type".into(),
                 detail: format!(
                     "this is an OpenDocument package: its `{}` entry declares `{declared}`, and \
-                     this engine reads `{ODT_MEDIA_TYPE}` and `{ODS_MEDIA_TYPE}` only. The \
-                     container is shared and the vocabulary is not — a presentation's content is \
-                     `<draw:page>` and a drawing's is `<draw:frame>`, so reading either with a \
-                     reader built for `<text:p>` or `<table:table-cell>` would return a document \
-                     with no text and no error, which is a gap presented as a success.",
+                     this engine reads `{ODT_MEDIA_TYPE}`, `{ODS_MEDIA_TYPE}` and \
+                     `{ODP_MEDIA_TYPE}` only. The container is shared and the vocabulary is not — \
+                     a formula's content is `<math:math>` and a chart's is `<chart:chart>`, so \
+                     reading either with a reader built for `<text:p>`, `<table:table-cell>` or \
+                     `<draw:page>` would return a document with no text and no error, which is a \
+                     gap presented as a success. A drawing (`.odg`) is the sharper case and is \
+                     refused for a sharper reason: its content really is `<draw:page>`, so a \
+                     presentation reader would produce a plausible artifact for a format nobody \
+                     decided to support.",
                     odt::MIMETYPE_ENTRY
                 ),
             });
@@ -316,19 +342,22 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         [pptx::PRESENTATION_PART] => read_pptx(bytes, &names),
         [ODT_CLAIM] => read_odt(bytes, &names),
         [ODS_CLAIM] => read_ods(bytes, &names),
+        [ODP_CLAIM] => read_odp(bytes, &names),
         [] => Err(EngineError::MissingPart {
             // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
             // renamed or corrupted `.docx` needs, and it is pinned by a test.
             part: format!(
                 "`{}` — this package is a ZIP but not a word-processing document, and it is \
                  neither a workbook (`{}`), a presentation (`{}`), an OpenDocument text document \
-                 (`{}` declaring `{}`) nor an OpenDocument spreadsheet (declaring `{}`)",
+                 (`{}` declaring `{}`), an OpenDocument spreadsheet (declaring `{}`) nor an \
+                 OpenDocument presentation (declaring `{}`)",
                 docx::MAIN_PART,
                 xlsx::WORKBOOK_PART,
                 pptx::PRESENTATION_PART,
                 odt::MIMETYPE_ENTRY,
                 ODT_MEDIA_TYPE,
-                ODS_MEDIA_TYPE
+                ODS_MEDIA_TYPE,
+                ODP_MEDIA_TYPE
             ),
         }),
         _ => Err(EngineError::Malformed {
@@ -981,6 +1010,201 @@ fn read_ods(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // from ink, carrying a rule id that says how. A spreadsheet's cells are addresses the file
         // states outright — putting them here would claim a detector ran, and `capabilities.tables`
         // is false for the same reason.
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an OpenDocument presentation into a sealed representation (v2-S7).
+///
+/// # One part for the whole deck, and still no page
+///
+/// The container work is v2-S5's, unchanged and shared for the third time. What differs is what
+/// sits above it, and it differs from PresentationML as much as from ODS. A `.pptx` keeps every
+/// slide in **its own part**, so [`read_pptx`] mints a part id per slide and the part name is what
+/// identifies one. An `.odp` keeps every `<draw:page>` in the single `content.xml`, so there is
+/// one part id here and the draw page is a **position inside it** — which is why
+/// [`engine_core::OdpLocator`] has a field [`engine_core::PptxLocator`] deliberately does not.
+///
+/// That field is a position among elements, never a [`PageRecord`]. See [`odp`] for why this is
+/// the format where that refusal costs something and is made anyway.
+fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The same refusal `read_odt` and `read_ods` open with, and for the same reason:
+    // `zip::read_entry` takes the first entry of a duplicated name, so a second `content.xml`
+    // would be neither read nor counted and a consumer preferring the last would see a different
+    // document.
+    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+    sorted.sort_unstable();
+    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
+        return Err(EngineError::Malformed {
+            what: "opendocument package".into(),
+            detail: format!(
+                "this package lists `{}` more than once. Consumers disagree about which entry of \
+                 a duplicated name wins, so reading either would be this engine choosing which of \
+                 the file's own claims to believe — and the entry it did not read would leave the \
+                 record with nothing naming it.",
+                pair[0]
+            ),
+        });
+    }
+
+    let manifest =
+        zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
+            part: format!(
+                "`{}` — an OpenDocument package states what it contains only here, and a package \
+                 with no manifest is one this reader cannot say it has read",
+                odt::MANIFEST_PART
+            ),
+        })?;
+    odt::check_content_declared(&odt::read_manifest(&manifest)?)?;
+
+    let part = zip::read_entry(bytes, odt::CONTENT_PART)?;
+    let deck = odp::read_content(&part)?;
+
+    let profile = Profile::odp_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "odp profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+    let part_id = alloc.next(IdKind::Part)?;
+
+    let mut nodes = Vec::with_capacity(deck.blocks.len());
+    let mut geometry = Vec::with_capacity(deck.blocks.len());
+    for (index, block) in deck.blocks.iter().enumerate() {
+        let id = alloc.next(IdKind::Span)?;
+        geometry.push(NodeGeometry {
+            node: id.clone(),
+            // Nothing tried to measure and failed. A shape states `svg:x` and `svg:width` on the
+            // draw page's own canvas, and this reader neither reads them nor converts them: they
+            // are a position in a drawing rather than an ink box, and `docs/14-V2-SCOPE.md` §3
+            // refuses a rectangle nobody can check against a page.
+            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        });
+        nodes.push(Node {
+            id,
+            kind: NodeKind::TextRun,
+            parent: part_id.clone(),
+            // Contiguous within the part, in the order the part lists its blocks. **Not** the
+            // address: `OdpLocator` carries that, and the two differ the moment a shape nests
+            // inside another one.
+            ordinal: index as u32 + 1,
+            text: block.text.clone(),
+            native_locator: NativeLocator::Odp(OdpLocator {
+                part: odt::CONTENT_PART.to_string(),
+                draw_page: block.draw_page,
+                shape: block.shape,
+                paragraph: block.paragraph,
+            }),
+            // `styles.xml` and the master pages are not read, so no structural address is claimed
+            // — and a presentation layout's outline level is exactly the half-claim v2-S5 refused.
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeOdfShape(OfficeOdfShapeAttributes {
+                draw_page_name: block.draw_page_name.clone(),
+                shape_name: block.shape_name.clone(),
+                block: odp::block_kind(block.heading),
+            }),
+        });
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: a shape's `svg:x` and `svg:width` place it on a \
+             drawing canvas rather than measure its ink, and the paper a `<style:master-page>` \
+             names is the producing application's rather than a measurement of this document",
+        ));
+    }
+
+    let unread = odt::unread_entries(names);
+    if unread > 0
+        || deck.regions_not_read > 0
+        || deck.foreign_text_not_read > 0
+        || deck.text_outside_a_shape > 0
+    {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} entry(ies) of this package were not read — styles and the master pages \
+                 they carry, metadata, settings, pictures or an embedded object. "
+            ));
+        }
+        if deck.regions_not_read > 0 {
+            detail.push_str(&format!(
+                "{} region(s) of `{}` hold text this slice does not read — a speaker-notes body, a \
+                 second rendition of one framed object, a drawing shape this slice does not name, \
+                 a note body, a comment, or a tracked-changes record. **Speaker notes are the one \
+                 to check first**: they are a second stream rather than a gap, and reading them as \
+                 slide text would put a phrase in the record that nobody watching the presentation \
+                 sees. ",
+                deck.regions_not_read,
+                odt::CONTENT_PART
+            ));
+        }
+        if deck.foreign_text_not_read > 0 {
+            detail.push_str(&format!(
+                "{} block(s) or shape(s) contain characters that are not displayed text — an \
+                 image's title or description, an embedded object's data, or a field's cached \
+                 value such as a page number. Those are produced by a layout or a numbering pass \
+                 this reader does not perform, so they are counted rather than read into the shape \
+                 they sit inside. ",
+                deck.foreign_text_not_read
+            ));
+        }
+        if deck.text_outside_a_shape > 0 {
+            detail.push_str(&format!(
+                "{} block(s) held text while no shape was open, so there is no address this reader \
+                 could cite them at. ",
+                deck.text_outside_a_shape
+            ));
+        }
+        detail.push_str(
+            "v2-S7 reads the content part's own draw pages only, and a phrase absent from this \
+             artifact may still be present in the document",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: ODP_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // **The one place in this crate where a `PageRecord` was available for free**, and the
+        // vector is still empty. `<draw:page>` elements are discrete, ordered and named, and a
+        // `<style:master-page>` states `fo:page-width` beside them — no arithmetic at all. A draw
+        // page is a part of the presentation's structure rather than a page this engine measured,
+        // and `docs/06-STEAL-REFUSE.md` L30 refuses invented pagination whether inventing it costs
+        // a renderer or costs nothing.
+        pages: Vec::new(),
+        nodes,
+        // Not the `tables` vector either. A `<table:table>` on a draw page is a shape's content,
+        // and a `TableRecord` is the PDF detector's finding about a grid it inferred from ink;
+        // `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

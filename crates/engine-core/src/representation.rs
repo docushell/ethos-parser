@@ -205,6 +205,18 @@ pub enum NativeLocator {
     /// counts blocks. Inventing a letter for it would be worse: `B` is a spreadsheet
     /// application's convention, not a string this document contains.
     Ods(OdsLocator),
+    /// A block's address inside an OpenDocument **presentation** part (v2-S7).
+    ///
+    /// **The format where a `PageRecord` would need no arithmetic at all**, and still does not get
+    /// one. A `<draw:page>` is discrete, listed, named, and counted out loud — *"it's on slide
+    /// 12"* — and a master page states paper in an `fo:page-width` beside it. Between them a
+    /// [`PageRecord`] could be minted without this engine measuring anything, which is exactly why
+    /// it is refused: a draw page is **a part of the presentation's structure**, and putting its
+    /// position on the wire as a page would hand a consumer a page index this engine never
+    /// verified. `docs/06-STEAL-REFUSE.md` L30 states the reason in four words — *"It invents
+    /// pagination"* — so [`OdpLocator::draw_page`] is a position among elements the file lists,
+    /// spelled as the element ODF actually writes.
+    Odp(OdpLocator),
 }
 
 impl NativeLocator {
@@ -235,7 +247,19 @@ impl NativeLocator {
             // `<style:page-layout>` states paper and a `<text:soft-page-break/>` may appear in a
             // cell, and both are the producing application's print arithmetic rather than a page
             // this engine measured.
-            Self::Docx(_) | Self::Xlsx(_) | Self::Pptx(_) | Self::Odt(_) | Self::Ods(_) => false,
+            //
+            // And an OpenDocument presentation is the sharpest of the six, because it needs no
+            // arithmetic at all: `<draw:page>` elements are discrete, listed and ordered, and a
+            // master page states `fo:page-width` beside them. A `PageRecord` was available for
+            // free and is still refused — a draw page is a part of the presentation's structure,
+            // not a page this engine measured, and L30's objection to the LibreOffice bridge is
+            // that pagination handed over by somebody else's renderer is invented here.
+            Self::Docx(_)
+            | Self::Xlsx(_)
+            | Self::Pptx(_)
+            | Self::Odt(_)
+            | Self::Ods(_)
+            | Self::Odp(_) => false,
         }
     }
 
@@ -248,6 +272,7 @@ impl NativeLocator {
             Self::Pptx(p) => Some(p.part.as_str()),
             Self::Odt(o) => Some(o.part.as_str()),
             Self::Ods(o) => Some(o.part.as_str()),
+            Self::Odp(o) => Some(o.part.as_str()),
         }
     }
 }
@@ -481,6 +506,82 @@ pub struct OdsLocator {
     /// — the placeholder a merge leaves behind — advances this the same as a cell does, since it
     /// occupies the position whether or not it displays.
     pub column: u32,
+}
+
+/// A block's address inside an OpenDocument **presentation** part (v2-S7).
+///
+/// # The page that was free, and is still not here
+///
+/// v2-S4 argued that a PowerPoint slide looks like a page and is a **part**, so [`PptxLocator`]
+/// carries no slide number. A `<draw:page>` is one step past that: it is discrete, it is listed in
+/// document order, it carries a `draw:name`, and a person counts them out loud. Put a master
+/// page's `fo:page-width` beside it and a [`PageRecord`] needs **no arithmetic at all** — the
+/// first time in this engine's history that has been true.
+///
+/// It is refused anyway, and the reason is what `docs/06-STEAL-REFUSE.md` L30 says about the
+/// LibreOffice bridge rather than a paraphrase of it: *"It invents pagination."* A draw page is a
+/// part of the presentation's **structure**. It is not a page this engine measured, and a number
+/// on the wire under the name `page` is one a consumer would resolve against a rendering. So
+/// `pages` stays `[]`, [`NativeLocator::is_paginated`] stays false for this variant, and the field
+/// below is named for the element ODF writes rather than for the thing it resembles.
+///
+/// # Why the address is a position four times over
+///
+/// Every field is a count of elements the part lists, in the part's own document order — the
+/// spelling [`OdtLocator::paragraph`] and [`OdsLocator::row`] use, obtained the same way.
+///
+/// **The names the file writes are on the attributes instead, and that is v2-S4's finding
+/// applied.** `<draw:page draw:name="…">` and `<draw:frame draw:name="…">` are both *optional* in
+/// OpenDocument, and no corpus of real `.odp` files was available to measure whether producers
+/// write them uniquely. S4 measured the OOXML counterpart — `<p:cNvPr id>` is present every time
+/// and unique only most of the time — and moved it off the address for that reason. An unmeasured
+/// name gets the same treatment rather than the benefit of the doubt: it is a label on
+/// [`OfficeOdfShapeAttributes`], where being a label is exactly what it is.
+///
+/// `deny_unknown_fields` is what stops a `page`, a `slide_number` or a `bbox` arriving later as a
+/// fifth field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OdpLocator {
+    /// The package part this block was read from: `content.xml`.
+    ///
+    /// Fixed by the OpenDocument package specification — a presentation keeps every draw page in
+    /// **one** part, unlike OOXML's `ppt/slides/slide{n}.xml` — and still checked against
+    /// `META-INF/manifest.xml` rather than reached for directly.
+    pub part: String,
+    /// 1-based position of the `<draw:page>` in the part's own document order.
+    ///
+    /// **Named for the element, not for what it resembles.** This is the count of `<draw:page>`
+    /// elements the part lists before this one, plus one. It is not a page number, nothing was
+    /// laid out to obtain it, and no [`PageRecord`] is minted from it — see the type's own
+    /// documentation for why that refusal costs something in this format and is made anyway.
+    pub draw_page: u32,
+    /// 1-based position of the shape within that draw page, in document order.
+    ///
+    /// **The shapes counted are the ones this slice names**: `<draw:frame>` and
+    /// `<draw:custom-shape>`, which are what a presentation writes for a text-bearing shape. A
+    /// drawing element outside that set — a `<draw:rect>`, a `<draw:connector>` — does not move
+    /// this count and does not become a node; text inside one is **declared** rather than dropped.
+    /// Naming the set is what makes the position reproducible: a consumer counting those two
+    /// elements in the draw page arrives at the same number.
+    ///
+    /// **Shapes nest**, and a nested one is counted where it sits. A `<draw:frame>` inside a
+    /// `<draw:g>` group is a shape, for v2-S4's measured reason — groups appeared on essentially
+    /// every slide of every real deck, and a reader that skipped them would return a fraction of
+    /// the presentation.
+    pub shape: u32,
+    /// 1-based position of the `<text:p>` or `<text:h>` within that shape.
+    ///
+    /// Counted over both elements together, for [`OdtLocator::paragraph`]'s reason, and **the
+    /// count advances through what this reader does not read** — a second `<draw:text-box>`
+    /// rendition of the same shape, a speaker-notes body — because the number promises a position
+    /// in the file rather than a position in the subset this slice kept.
+    ///
+    /// The paragraph is the atom, not the `<text:span>` and not the whole draw page. A page as one
+    /// node would leave a quotation of a title bound to the entire slide; a span would split *"The
+    /// **important** part."* into three nodes and bind the sentence to none of them — the argument
+    /// [`OdtLocator`] makes at length, unchanged by the change of vocabulary.
+    pub paragraph: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -845,6 +946,15 @@ pub enum NodeAttributes {
     /// variant permanently unreachable and two ODF types unsayable — a shape that either blanks
     /// fields or invents a mapping, and `docs/14-V2-SCOPE.md` §8 refuses both.
     OfficeOdfCell(OfficeOdfCellAttributes),
+    /// An OpenDocument presentation shape's facts (v2-S7).
+    ///
+    /// **A seventh variant, and the first that carries two names.** [`Self::OfficeParagraph`] has
+    /// the block kind and nothing else, which is all an ODT paragraph states about itself; a
+    /// presentation's block sits inside a shape on a draw page, and both of those carry an
+    /// optional `draw:name` the file writes down. Reusing `OfficeParagraph` would drop them, and
+    /// they are the two strings a person reading a citation recognises — the same argument that
+    /// put `shape_name` on [`Self::OfficeSlideRun`] rather than leaving it in the package.
+    OfficeOdfShape(OfficeOdfShapeAttributes),
 }
 
 impl NodeAttributes {
@@ -879,6 +989,11 @@ impl NodeAttributes {
             // And so is an ODF cell, for the reason `OfficeCell` is: `OdsLocator` says table, row
             // and column, which is cell-ness already spelled out in the address.
             Self::OfficeOdfCell(_) => NodeKind::TextRun,
+            // And so is a presentation's block. A `Slide` kind is the one this format would tempt
+            // somebody into, and it would be the restatement v1-S3 refused twice over: the address
+            // already says which draw page and which shape, and whether the block was a `<text:p>`
+            // or a `<text:h>` is on the attributes where a fact about an element belongs.
+            Self::OfficeOdfShape(_) => NodeKind::TextRun,
         }
     }
 }
@@ -1404,6 +1519,51 @@ pub enum OdfCellTextSource {
     /// can tell a typed-in `42` from a `42` that is one recalculation away from being something
     /// else.
     CachedFormulaText,
+}
+
+/// A presentation block's facts: the two names the file writes, and which block it was (v2-S7).
+///
+/// # Names here because they could not be measured unique
+///
+/// [`OdpLocator`] addresses by position. These are the strings the document itself puts on the
+/// draw page and the shape, and they are on the attributes for v2-S4's measured reason rather than
+/// as a matter of taste: an address that is not unique gives a citation two answers, and **no
+/// corpus of real `.odp` files was available to measure whether producers write `draw:name`
+/// uniquely** — or write it at all, since OpenDocument makes it optional on both elements. An
+/// unmeasured identifier is a label, which is where `<p:cNvPr id>` ended up when S4 measured it
+/// across 18 real decks and found it unique only most of the time.
+///
+/// # `presentation:class` is deliberately absent
+///
+/// `<draw:frame presentation:class="title">` states a placeholder role **on the frame**, so unlike
+/// PresentationML's `<p:ph>` it needs no layout and no master to read — which makes it the one
+/// further fact that could honestly be carried here. It is left out because this slice reads no
+/// styles and mints no structural locator, and a role field on a reader that claims
+/// `structural_locators: false` is half of a claim rather than a small one. Named here so the next
+/// slice finds the decision, exactly as v2-S4 named the placeholder type it did not resolve.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeOdfShapeAttributes {
+    /// The `draw:name` on the `<draw:page>`, verbatim with entities resolved, or **absent**.
+    ///
+    /// `None` is not the empty string: OpenDocument makes the attribute optional, so a page
+    /// without one has stated no name and this says so rather than inventing `""` to stand in for
+    /// it. What a producer writes here is what a person recognises — `Slide 1`, `page1` — which is
+    /// why it is carried at all when the address does not need it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draw_page_name: Option<String>,
+    /// The `draw:name` on the shape, verbatim with entities resolved, or **absent**.
+    ///
+    /// The counterpart to [`OfficeSlideRunAttributes::shape_name`], with the same optionality
+    /// rule as the field above: absent means the file states none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape_name: Option<String>,
+    /// Which of ODF's two text blocks this node was read from.
+    ///
+    /// The same [`OdfBlockKind`] v2-S5 introduced, reused rather than re-spelled: `<text:h>` and
+    /// `<text:p>` mean in a presentation exactly what they mean in a text document, and a second
+    /// enum for one of them is the drift the shared allowlist exists to prevent.
+    pub block: OdfBlockKind,
 }
 
 /// A character the reader authored rather than read, flagged where it was created.

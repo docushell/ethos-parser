@@ -604,24 +604,32 @@ fn detection_reads_the_bytes() {
 /// every ODF document has one, and reading a spreadsheet's with the text vocabulary would return a
 /// document with no text and no error — a gap presented as a success.
 ///
-/// **The `.ods` row moved to v2-S6**, which reads it under its own vocabulary and its own profile;
-/// what is asserted here is only that *this* reader does not claim it. The two that remain unread
-/// are refused **by name** as of v2-S6 — before it they fell past the office branch to the PDF
-/// reader, which named a missing `%PDF-` header instead.
+/// **The `.ods` row moved to v2-S6 and the `.odp` row to v2-S7.** Each is read under its own
+/// vocabulary and its own profile; what is asserted here is only that *this* reader claims
+/// neither, and that whichever predicate does claim one is the right one. A drawing is still
+/// unread, and is refused **by name** — before v2-S6 an unimplemented sibling fell past the office
+/// branch to the PDF reader, which named a missing `%PDF-` header instead.
 #[test]
-fn a_spreadsheet_and_a_presentation_are_not_claimed_as_text() {
-    for (media_type, kind, read_elsewhere) in [
+fn the_odf_siblings_are_not_claimed_as_text() {
+    for (media_type, kind, claimed_by_ods, claimed_by_odp) in [
         (
             "application/vnd.oasis.opendocument.spreadsheet",
             "ods",
             true,
+            false,
         ),
         (
             "application/vnd.oasis.opendocument.presentation",
             "odp",
             false,
+            true,
         ),
-        ("application/vnd.oasis.opendocument.graphics", "odg", false),
+        (
+            "application/vnd.oasis.opendocument.graphics",
+            "odg",
+            false,
+            false,
+        ),
     ] {
         let archive = build_odt(
             media_type,
@@ -636,22 +644,31 @@ fn a_spreadsheet_and_a_presentation_are_not_claimed_as_text() {
         );
         assert_eq!(
             engine_office::is_ods(&archive),
-            read_elsewhere,
-            "and only the spreadsheet is claimed by the reader v2-S6 added"
+            claimed_by_ods,
+            "only the spreadsheet is claimed by the reader v2-S6 added"
+        );
+        assert_eq!(
+            engine_office::is_odp(&archive),
+            claimed_by_odp,
+            "and only the presentation by the reader v2-S7 added — an `.odg` shares the \
+             `<draw:page>` vocabulary and is still not claimed"
         );
 
-        let error = engine_office::read(&archive).expect_err("neither reads as a text document");
-        if !read_elsewhere {
-            let text = error.to_string();
+        // None of these packages reads: the two that have a reader carry a manifest declaring
+        // nothing, and the third has no reader at all. What differs is the **cause**, and the
+        // cause is the whole point of this test.
+        let error = engine_office::read(&archive).expect_err("none of them reads as a document");
+        let text = error.to_string();
+        if !claimed_by_ods && !claimed_by_odp {
             assert!(
                 text.contains("OpenDocument") && text.contains(media_type),
                 "an unimplemented ODF type is refused by name: {text}"
             );
-            assert!(
-                !text.contains("%PDF-"),
-                "and not as a missing PDF header, which is what v2-S5 handed to S6: {text}"
-            );
         }
+        assert!(
+            !text.contains("%PDF-"),
+            "and never as a missing PDF header, which is what v2-S5 handed to S6: {text}"
+        );
     }
 }
 

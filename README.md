@@ -26,10 +26,10 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads five of them at 0.25.0**, with **S7 (ODP, RTF, EPUB, CSV)** not
+**v2 is office formats and it reads six of them at 0.26.0**, with **S8 (RTF, EPUB, CSV)** not
 started and v2 **not complete**. `engine extract` takes a `.docx`, an
-`.xlsx`, a `.pptx`, an `.odt` or an `.ods` and emits the same record a PDF does — and **no page appears
-anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
+`.xlsx`, a `.pptx`, an `.odt`, an `.ods` or an `.odp` and emits the same record a PDF does — and **no
+page appears anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
 with the column kept as the letters the file wrote. An ODT is the sharpest case, because its
 `content.xml` **contains an actual page break**: `<text:soft-page-break/>` records where the
 producing application's layout fell, so a `PageRecord` would need no arithmetic at all. It is read,
@@ -37,7 +37,11 @@ recognised and discarded, because it is a measurement of a word processor rather
 document. **An ODS is the sharpest address case**, because OpenDocument writes none: no row number,
 no column letter, anywhere. A cell's position is where it sits among its siblings, compressed into
 `table:number-columns-repeated="n"` — so the repeat *is* the statement of position, honouring it is
-reading, and the column stays a number because the file contains no letters. Each row began because
+reading, and the column stays a number because the file contains no letters. **And an ODP is the
+sharpest refusal**: a presentation lists `<draw:page>` elements — discrete, ordered, named, and
+counted out loud by anybody describing a deck — with a master page's `fo:page-width` beside them, so
+a `PageRecord` needed **no arithmetic at all**. It is refused anyway, because a draw page is a part
+of the presentation's structure rather than a page this engine measured. Each row began because
 the owner asked for it, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list

@@ -775,6 +775,186 @@ ODS_WITH_UNREAD_PARTS = {
 }
 
 
+# ---------------------------------------------------------------------------------------
+# v2-S7 — OpenDocument presentation
+#
+# The container is v2-S5's, unchanged for the third time: `mimetype` first and stored, a manifest
+# that declares `content.xml`. What is authored here is the vocabulary above it, to five rules:
+#
+# 1. **The draw pages are really there, so `pages: []` is a refusal rather than an absence.** The
+#    clean package lists TWO `<draw:page>` elements, each with a `draw:name`, and the second
+#    package's `styles.xml` carries a `<style:master-page>` with `fo:page-width`. Between them a
+#    PageRecord would need no arithmetic at all — which is exactly the temptation the test
+#    asserting an empty `pages` exists to pin.
+# 2. **The address must not turn on serialization.** Page two opens with `<draw:frame/>`, so the
+#    shape that follows it is shape 2 — a reader that skipped the self-closing form would say 1.
+# 3. **The ampersand is in visible text AND in both `draw:name`s.** A `&` dropped from text is
+#    wrong text; one dropped from a name is a wrong LABEL, which is what a person reading a
+#    citation matches against the original package.
+# 4. **The frame-alternative rule is expressible here, and the answer is not the spreadsheet's.**
+#    The second package nests two `<draw:text-box>` children in one `<draw:frame>` and puts a
+#    self-closing one first in another — the two constructs v2-S5 and v2-S6 each had to author by
+#    hand because no ODF producer was available, authored again because none is available now.
+# 5. **Every allowlist leak v2-S5 and v2-S6 listed has a byte-level cousin here**, plus the two
+#    this format adds: an image title inside a shape with NO `<text:p>` anywhere in it, and a
+#    speaker-notes body. Each is asserted ABSENT from `Node.text` by inflating this package's own
+#    `content.xml` — never by grepping this file.
+# ---------------------------------------------------------------------------------------
+
+ODF_PRESENTATION = "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+
+ODP_MIMETYPE = "application/vnd.oasis.opendocument.presentation"
+
+# Two draw pages, five shapes, seven blocks. `<text:soft-page-break/>` is inside a shape's own
+# paragraph so that the "a break is not a page" assertion has something to be about, and the
+# self-closing `<draw:frame/>` on page two is what makes the shape index measurable.
+ODP_CONTENT = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:draw="{ODF_DRAW}" xmlns:presentation="{ODF_PRESENTATION}" office:version="1.3">
+  <office:body>
+    <office:presentation>
+      <draw:page draw:name="Rows &amp; Columns" draw:master-page-name="Default">
+        <draw:frame draw:name="Title 1" presentation:class="title">
+          <draw:text-box><text:h>Evidence, not extraction.</text:h></draw:text-box>
+        </draw:frame>
+        <draw:frame draw:name="Body &amp; bullets" presentation:class="outline">
+          <draw:text-box>
+            <text:p>Rows &amp; columns bind to a shape<text:tab/>and never to a page.</text:p>
+            <text:p>Three spaces:<text:s text:c="3"/>stated, not measured.</text:p>
+            <text:p>Split by the producer<text:soft-page-break/> and rejoined here.</text:p>
+          </draw:text-box>
+        </draw:frame>
+      </draw:page>
+      <draw:page draw:name="Detail">
+        <draw:frame/>
+        <draw:frame draw:name="Title 2">
+          <draw:text-box><text:h>The second draw page</text:h></draw:text-box>
+        </draw:frame>
+        <draw:custom-shape draw:name="Arrow">
+          <text:p>Drawn shapes carry their blocks directly.</text:p>
+        </draw:custom-shape>
+      </draw:page>
+    </office:presentation>
+  </office:body>
+</office:document-content>
+"""
+
+ODP_MANIFEST = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODP_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>
+"""
+
+# Only the three entries the reader consumes, so the clean package declares NO erasure.
+ODP_PARTS = {
+    "mimetype": ODP_MIMETYPE,
+    "META-INF/manifest.xml": ODP_MANIFEST,
+    "content.xml": ODP_CONTENT,
+}
+
+
+# The package that declares erasures, all three kinds. Three unread ENTRIES and, inside
+# `content.xml`, speaker notes, two framed renditions, a self-closing first rendition, an unnamed
+# drawing shape, a comment, and the foreign leaks.
+ODP_CONTENT_WITH_UNREAD = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="{ODF_OFFICE}" xmlns:text="{ODF_TEXT}" xmlns:draw="{ODF_DRAW}" xmlns:presentation="{ODF_PRESENTATION}" xmlns:svg="{ODF_SVG}" xmlns:xhtml="{XHTML}" xmlns:math="{MATHML}" xmlns:dc="{DC}" office:version="1.3">
+  <office:body>
+    <office:presentation>
+      <draw:page draw:name="Leaks">
+        <draw:frame draw:name="Kept">
+          <draw:text-box>
+            <text:p>Kept sentence.</text:p>
+            <text:p>Reviewed<office:annotation><dc:creator>Reviewer</dc:creator><text:p>COMMENT-BODY</text:p></office:annotation> and unchanged.</text:p>
+          </draw:text-box>
+        </draw:frame>
+        <draw:frame draw:name="Two renditions">
+          <draw:text-box><text:p>FIRST-RENDITION</text:p></draw:text-box>
+          <draw:text-box><text:p>SECOND-RENDITION</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame draw:name="Empty first">
+          <draw:text-box/>
+          <draw:text-box><text:p>AFTER-AN-EMPTY-FIRST</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame draw:name="Picture">
+          <draw:image><svg:title>IMAGE-TITLE</svg:title><svg:desc>IMAGE-DESC</svg:desc></draw:image>
+        </draw:frame>
+        <draw:rect draw:name="Unread shape"><text:p>RECT-TEXT</text:p></draw:rect>
+        <presentation:notes>
+          <draw:frame draw:name="Notes">
+            <draw:text-box><text:p>SPOKEN-ALOUD</text:p></draw:text-box>
+          </draw:frame>
+        </presentation:notes>
+      </draw:page>
+      <draw:page draw:name="Foreign">
+        <draw:frame draw:name="Fields">
+          <draw:text-box>
+            <text:p>Object:<draw:object-ole><office:binary-data>QkFTRTY0LURBVEE=</office:binary-data></draw:object-ole></text:p>
+            <text:p><text:number>2.1</text:number>Numbered heading label</text:p>
+            <text:p>Fields:<text:page-count>17</text:page-count><text:page-number>4</text:page-number></text:p>
+            <text:p><text:ruby><text:ruby-base>kanji</text:ruby-base><text:ruby-text>RUBY-GUIDE</text:ruby-text></text:ruby></text:p>
+          </draw:text-box>
+        </draw:frame>
+        <draw:frame draw:name="Namespaces">
+          <draw:text-box>
+            <text:p>Namespaces.</text:p>
+            <xhtml:p>XHTML-STOLEN</xhtml:p>
+            <text:p>Formula source:<math:annotation>MATHML-ANNOTATION</math:annotation></text:p>
+          </draw:text-box>
+        </draw:frame>
+      </draw:page>
+    </office:presentation>
+  </office:body>
+</office:document-content>
+"""
+
+# `fo:page-width` and a `<style:master-page>` live here, and neither is read. Together with the
+# TWO `<draw:page>` elements in the clean package's own content, this is why "no pages" is a
+# refusal rather than an absence: a PageRecord was available off these two facts alone.
+ODP_STYLES = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="{ODF_OFFICE}" xmlns:style="{ODF_STYLE}" xmlns:text="{ODF_TEXT}" xmlns:draw="{ODF_DRAW}" xmlns:fo="{ODF_FO}" office:version="1.3">
+  <office:automatic-styles>
+    <style:page-layout style:name="PM1">
+      <style:page-layout-properties fo:page-width="28cm" fo:page-height="15.75cm"/>
+    </style:page-layout>
+  </office:automatic-styles>
+  <office:master-styles>
+    <style:master-page style:name="Default" style:page-layout-name="PM1">
+      <draw:frame draw:name="Master title"><draw:text-box><text:p>MASTER-PAGE-TEXT</text:p></draw:text-box></draw:frame>
+    </style:master-page>
+  </office:master-styles>
+</office:document-styles>
+"""
+
+ODP_META = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="{ODF_OFFICE}" xmlns:meta="{ODF_META}" xmlns:dc="{DC}" office:version="1.3">
+  <office:meta><dc:title>UNREAD-METADATA-TITLE</dc:title></office:meta>
+</office:document-meta>
+"""
+
+ODP_SETTINGS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<office:document-settings xmlns:office="{ODF_OFFICE}" office:version="1.3"/>
+"""
+
+ODP_MANIFEST_WITH_PARTS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="{ODF_MANIFEST}" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="{ODP_MIMETYPE}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>
+"""
+
+ODP_WITH_UNREAD_PARTS = {
+    "mimetype": ODP_MIMETYPE,
+    "META-INF/manifest.xml": ODP_MANIFEST_WITH_PARTS,
+    "content.xml": ODP_CONTENT_WITH_UNREAD,
+    "styles.xml": ODP_STYLES,
+    "meta.xml": ODP_META,
+    "settings.xml": ODP_SETTINGS,
+}
+
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
@@ -792,5 +972,15 @@ if __name__ == "__main__":
     write(
         HERE / "sheet-unread-parts" / "workbook.ods",
         ODS_WITH_UNREAD_PARTS,
+        stored_first="mimetype",
+    )
+    write(
+        HERE / "presentation-pages" / "presentation.odp",
+        ODP_PARTS,
+        stored_first="mimetype",
+    )
+    write(
+        HERE / "presentation-unread-parts" / "presentation.odp",
+        ODP_WITH_UNREAD_PARTS,
         stored_first="mimetype",
     )

@@ -570,6 +570,25 @@ pub const ODS_READING_ORDER_RULE_V1: &str = "ods-content-document-order-v1";
 /// stored typed value is a separate declared fact.
 pub const ODS_TEXT_CODE_RULE_V1: &str = "ods-cell-blocks-verbatim-v1";
 
+/// v2-S7's ODP reading order: draw pages, shapes and blocks in the part's own document order.
+///
+/// **Not a rule that decides anything**, for the reason its five siblings are not. One part, one
+/// order, stated by the file. In particular it is **not** reading order on the slide canvas: where
+/// a shape sits is a position this engine did not read, and sorting by it would be a layout
+/// decision wearing a rule id — [`PPTX_READING_ORDER_RULE_V1`]'s sentence, and it survives the
+/// change of vocabulary because the temptation does.
+pub const ODP_READING_ORDER_RULE_V1: &str = "odp-content-document-order-v1";
+
+/// v2-S7's ODP text rule: the block's own content, verbatim.
+///
+/// [`ODT_TEXT_CODE_RULE_V1`] unchanged — the same engine reading the same `<text:p>`, so
+/// `<text:s text:c="n">` is n spaces, `<text:tab/>` is a tab and `<text:line-break/>` is a line
+/// feed. **No placeholder inheritance is resolved**: text a master page or a presentation layout
+/// would supply is not substituted in, because this reader did not read those and a substituted
+/// string is not one the draw page stated. That is [`PPTX_TEXT_CODE_RULE_V1`]'s claim in ODF's
+/// spelling, and it is why a slide whose title lives only on its master reads as having none.
+pub const ODP_TEXT_CODE_RULE_V1: &str = "odp-shape-blocks-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -1184,6 +1203,59 @@ impl Profile {
         }
     }
 
+    /// The profile v2-S7's OpenDocument **presentation** reader runs under.
+    ///
+    /// **Its own profile and its own hash**, for §5.1's reason, and this is the format where the
+    /// hash has to carry the most weight: an `.odp` is the one input from which a [`PageRecord`]
+    /// could have been minted with no arithmetic at all — `<draw:page>` elements are discrete and
+    /// ordered, a master page states `fo:page-width` — so the profile that says
+    /// `measured_ink_boxes: false` and emits `pages: []` is the mechanical record that the
+    /// temptation was refused rather than merely discussed.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other five
+    /// page-less profiles do; [`Self::docx_v0`]'s doc comment is the decision and the evidence, and
+    /// v2-S3 closed the question of a mode enum. `capabilities.tables` is **false**: this reader
+    /// emits no [`crate::tables::TableRecord`] at all, and a true capability would say a detector
+    /// ran.
+    pub fn odp_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: ODP_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1480,7 +1552,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.25.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.26.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1703,11 +1775,25 @@ mod tests {
              page-less profiles do — five formats now share that declaration and none of them \
              emits a coordinate — its `capabilities.tables` is FALSE because a spreadsheet's cells \
              are addresses the file states rather than a grid a detector inferred, and this \
-             profile's own bytes are untouched for the reason they were at S5."
+             profile's own bytes are untouched for the reason they were at S5.\n\n\
+             Moved a THIRTIETH time at v2-S7 (0.26.0) on `parser_version` ALONE, and the format \
+             behind it is the one that could have had a page for free. An `.odp` lists \
+             `<draw:page>` elements — discrete, ordered, named, and counted out loud by anybody \
+             describing a deck — and a master page states `fo:page-width` beside them, so a \
+             `PageRecord` needed NO arithmetic at all for the first time in this engine's \
+             history. It is still not a page this engine measured: a draw page is a part of the \
+             presentation's structure, and `docs/06-STEAL-REFUSE.md` L30 refuses invented \
+             pagination whether the invention costs a renderer or costs nothing. `pages` stays \
+             empty and `OdpLocator` carries a `draw_page` POSITION named for the element rather \
+             than for what it resembles. `Profile::odp_v0` carries the same inert \
+             `coordinate_system` the other five page-less profiles do — six formats now share \
+             that declaration and none of them emits a coordinate — and this profile's own bytes \
+             are untouched, because a sixth page-less format is a new VALUE rather than a change \
+             to what this one claims."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:bdd835b47ac40b05928375961f832878e4134171ab6f2bdf436c6f531dfb89aa"
+            "sha256:ba367599bc4649f6ca71c45f71dd7b71c22a26f8a4997cb0e39544afdde02773"
         );
     }
 

@@ -3,13 +3,15 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads five formats.** S0–S6 are **done**; **S7 has not started**. `engine-office` is
+**v2 reads six formats.** S0–S7 are **done**; **S8 has not started**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
-engine *can* count would become a page, and ODT is the one whose file **contains an actual page
-break** and still declares none. None of them did.
+engine *can* count would become a page, ODT is the one whose file **contains an actual page
+break**, and ODP is the one that would have handed over a `PageRecord` for **free** — discrete
+`<draw:page>` elements and a master page's `fo:page-width`, no arithmetic anywhere. None of them
+became a page.
 
-**The remaining-formats row split three times, each time against a measurement.** S0 wrote it as one
+**The remaining-formats row split four times, each time against a measurement.** S0 wrote it as one
 line on purpose — *"this row splits into real slices when S2 and S3 are done and that cost is
 measured"*. S4 measured the first half: a third OOXML format is one reader, one profile and one
 fixture pair, because the container, the XML rules and the `r:id`-to-part rule are shared. **S5
@@ -22,12 +24,19 @@ finding says it: an `.ods` is not an `.odt` with different tags. `<table:table-c
 reader with a different atom and a different locator — the distance between `xlsx.rs` and `docx.rs`,
 not the distance between two OOXML packages. Writing the split *after* the ODS reader lands would
 mean writing it while somebody is already inside the file, which is exactly when "while we're here,
-ODP is nearly free" gets said. So **S6 is ODS alone** and **S7 is the one row that is left** — ODP,
-RTF, EPUB, CSV — and S7 stays one row until the cost of the next format in it is measured, on the
-rule S0 set and S4 and S5 both honoured.
+ODP is nearly free" gets said. So **S6 was ODS alone** and **S7 was the one row that was left** —
+ODP, RTF, EPUB, CSV — and it stayed one row until the cost of the next format in it was measured, on
+the rule S0 set and S4 and S5 both honoured.
 
-**The v2 gate is still DOCX + XLSX, and both still bind.** ODT and ODS are coverage beyond it. v2 is
-**not complete**: S7 has not started, and no slice here closes v1.
+**The fourth split is S7's, and it is the same rule applied to the same row.** S7 implements ODP
+alone and leaves **RTF, EPUB and CSV** as **S8**. The measurement it had was S6's: ODF's container
+transfers and everything above it does not, and ODP is inside the family while the other three are
+not — RTF is not XML at all, EPUB is a ZIP of XHTML that shares OCF's container rule and is **not**
+OpenDocument, and CSV has no container. Scheduling all four while somebody was already inside an
+ODF reader is exactly the "while we're here" that S0 refused.
+
+**The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS and ODP are coverage beyond it.
+v2 is **not complete**: S8 has not started, and no slice here closes v1.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -47,7 +56,8 @@ for the next roadmap row, and nothing in it closes v1.
 | **S4** | PPTX → representation: slides and shapes | S3 | **done — and a slide is a part** |
 | **S5** | ODT → representation: paragraphs, and the page break in the file | S4 | **done — and the break is still not a page** |
 | **S6** | ODS → representation: a spreadsheet the OpenDocument way | S5 | **done — and the address the file never writes** |
-| **S7** | The remaining office formats — ODP, RTF, EPUB, CSV | S6 | **not started** |
+| **S7** | ODP → representation: draw pages, shapes and blocks | S6 | **done — and the page that was free** |
+| **S8** | The remaining office formats — RTF, EPUB, CSV | S7 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -1209,7 +1219,8 @@ declares all three kinds.
         `is_opendocument` is the ODF **namespace**, not the container rule — an `.epub` uses the same
         first-and-stored `mimetype` entry and must not be told it is OpenDocument
   - [x] An unimplemented ODF type (`.odp`, `.odg`, `.odf`) is refused naming **OpenDocument** and
-        the declared type, and **not** naming `%PDF-`
+        the declared type, and **not** naming `%PDF-` — *the `.odp` row moved to S7, which reads
+        it; `.odg` and `.odf` still take this path*
   - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the law
         — with **no change to `engine-grounding`**
   - [x] Every geometry row is `NotApplicableToKind`; all **six** profile hashes are mutually
@@ -1225,30 +1236,238 @@ declares all three kinds.
 
 ---
 
-## S7 — the remaining office formats — **not started**
+## S7 — ODP → representation
 
-- **Goal:** ODP, RTF, EPUB and CSV, on the terms the first five established.
+- **Status: done.** `0.26.0`. `engine extract` reads an `.odp`, a block binds on the draw page and
+  shape the file lists, and **the one format that could have handed this engine a page for free
+  still declares none**.
 
-- **Still deliberately one row, and S5 and S6 are why it is a shorter one.** **A1** — Anydoc's
+- **Goal:** OpenDocument **presentation**, on the terms the first five established. One format.
+  Not "the ODF family", not "the rest of the office formats".
+
+### The page that was free, and is still refused
+
+Every page-less format before this one had to *argue* that its page belonged to somebody else, and
+each argument had a step in it. A DOCX has no page until a renderer picks one. A workbook's page
+depends on the printer, the paper and a "fit to page" setting. A PPTX slide is a **part**, and
+`p:sldSz` is a size rather than a page. An ODT contains a `<text:soft-page-break/>` — but it is a
+position a word processor computed from its own font stack.
+
+**A presentation needs no argument at all, and that is what makes it the sharpest case in v2.**
+
+| the tempting field | what it actually is |
+| --- | --- |
+| `<draw:page>` → `PageRecord.index` | display **order** in `content.xml`, which a consumer would read as a page number |
+| a master's `fo:page-width` / `fo:page-height` | paper the authoring tool wrote; this engine measured nothing against it |
+| cached `<text:page-number>` / `<text:page-count>` | producer arithmetic; the shared allowlist already refuses these as text |
+
+`<draw:page>` elements are discrete, listed, ordered and named, and a `<style:master-page>` states
+paper beside them. A `PageRecord` needed **no arithmetic** — the first time that has been true in
+this engine's history. It is refused on `docs/06-STEAL-REFUSE.md` L30's own four words rather than
+a paraphrase of them: *"It invents pagination."* L30 refuses the LibreOffice bridge because a page
+it produced is a rendering rather than a fact about the document, and a `<draw:page>` fails the same
+test from the other side — it is **a part of the presentation's structure**, and the number a
+consumer would read off it is a page index this engine never verified.
+
+So `pages` is `[]`, `is_paginated()` is false, and the address carries a `draw_page` **position**
+named for the element rather than for the thing it resembles.
+
+### The address, and the two names that are not in it
+
+`OdpLocator { part, draw_page, shape, paragraph }` — four positions in the part's own document
+order, `deny_unknown_fields`, and a test that refuses `page`, `bbox`, `x`, `slide_number` and
+`soft_page_break` **by name**.
+
+| component | what the file states | what this reader does |
+| --- | --- | --- |
+| `part` | `content.xml`, fixed by the package specification. **One part for the whole deck**, unlike `ppt/slides/slide{n}.xml` | carries it verbatim, and still checks the manifest declares it |
+| `draw_page` | nothing numeric — the pages are simply listed | counts `<draw:page>` elements in document order |
+| `shape` | nothing numeric | counts the shapes **this slice names** — `<draw:frame>` and `<draw:custom-shape>` — within the draw page |
+| `paragraph` | nothing numeric | counts `<text:p>` / `<text:h>` within the shape, advancing through what it does not read |
+
+**This is where `PptxLocator`'s argument stops transferring.** S4 kept a slide's identity in the
+*part name*, because `p:sldIdLst` states display order and a part name does not move. An `.odp` has
+**one** part for every draw page, so there is no part name to lean on — which is why this locator
+carries a component `PptxLocator` deliberately does not, and why that component had to be a
+position rather than a number the file wrote.
+
+**Both `draw:name`s are labels, not the address, and that is v2-S4's finding applied rather than
+quoted.** `<draw:page draw:name>` and `<draw:frame draw:name>` are *optional* in OpenDocument, and
+**no corpus of real `.odp` files was available to measure whether producers write them uniquely**.
+S4 measured the OOXML counterpart across 18 real decks — `<p:cNvPr id>` is present every time and
+unique only most of the time — and moved it onto the attributes. An unmeasured identifier gets the
+same treatment rather than the benefit of the doubt, so both names are on
+`OfficeOdfShapeAttributes`, where being a label is exactly what they are.
+
+**The shape set is named, and the consequence is stated rather than hidden.** `<draw:frame>` and
+`<draw:custom-shape>` are what a presentation writes for a text-bearing shape; a `<draw:rect>` or a
+`<draw:connector>` carrying text does **not** move the shape count and does **not** become a node —
+its text is declared instead. Naming the set is what makes the position reproducible: a consumer
+counting those two elements arrives at the same number this reader did. Widening the set later
+would move every address, which is what `parser_version` and the profile hash exist to make visible.
+
+### The frame-alternative rule, measured a third time — and the atom decides again
+
+S5 wrote first-rendition-wins off the specification and could not test it. S6 tested it on a
+spreadsheet and found **the atom decides the outcome**. S7 is the third data point, and it is worth
+one table:
+
+| slice | the atom | a `<draw:frame>` with two `<draw:text-box>` children | why |
+| --- | --- | --- | --- |
+| **S5 — ODT** | the paragraph | first rendition **becomes nodes**; second is **1** erasure | the frame is anchored *in* a paragraph, and paragraphs are what this reader addresses |
+| **S6 — ODS** | the **cell** | **neither** becomes a node; **2** erasures, and the anchoring cell keeps its own text | a frame floats over the sheet: its words belong to no cell, so there is no address at which "one displayed phrase becomes one node" could be true |
+| **S7 — ODP** | the block **inside the shape** | first rendition **becomes nodes**; second is **1** erasure | a presentation *is* a drawing, so there is nothing to float over — the frame **is** the shape this reader addresses |
+
+**The outcome matches ODT and the reason matches neither.** In an ODT a frame is a floating object
+inside a stream of text; in an ODP it is the text. Recording that distinction is the point of the
+table: a later reader that copies "frames are never nodes" from S6, or "frames are always nodes"
+from S5, will be right for the wrong reason in one of the three and wrong in the other.
+
+Measured on authored ODP XML and mutation-checked on the fixture's **bytes**: deleting the second
+`<draw:text-box>` from the package lowers the declared region count, and so does deleting the
+speaker notes. A **self-closing** first rendition still claims the slot — the construct S5 and S6
+both got wrong when their fixtures never nested one.
+
+### Speaker notes are A14 inverted, so they are counted rather than spliced
+
+`<presentation:notes>` holds a whole second page of shapes. Reading it as slide text would not be a
+silent **drop** — it would be a silent **extra**, putting a phrase in the record that nobody
+watching the presentation sees, which is worse because a consumer cannot tell it apart from
+evidence. It is a declared region with a count, and the A14 message names it first.
+
+Masters, layouts and handouts live in `styles.xml`, which is not read at all: they are unread
+package entries, and the fixture puts `MASTER-PAGE-TEXT` in one so the test that no master text
+reaches a node is not vacuous. That is v2-S4's *"no placeholder inheritance is resolved"* in ODF's
+spelling, and it means **a slide whose title lives only on its master reads as having none** —
+stated here rather than discovered by a caller.
+
+### One allowlist, still not two — and the silent drop this format added
+
+`odt.rs`'s `Element`, `classify`, namespace resolution and block-text engine are **imported** for
+the third reader, on S6's argument unchanged. `odp.rs` adds only what sits above the block:
+`draw:page`, the two shapes, and `presentation:notes`.
+
+Building it that way surfaced one gap neither earlier ODF reader had, and it is the **ordinary**
+shape of a presentation rather than an edge case: `<draw:frame><draw:image><svg:title>` contains no
+`<text:p>` **anywhere in it**, so the shared engine's per-block foreign counter never sees it and
+the characters were neither read nor counted. In an ODT and an ODS that subtree always sits inside
+a paragraph or a cell; in a presentation the shape is the thing and a block is only one of the
+things inside it. It is counted at the **shape** now. Text loose on a draw page, and text in a
+drawing element this slice does not name, are counted for the same reason.
+
+The namespace-resolved attribute matcher moved from `ods.rs` to `xml.rs` rather than being restated
+— the same argument as the allowlist, in a smaller place.
+
+### What could not be measured, recorded
+
+**No corpus of real `.odp` files was available and no ODF producer was either** — the third
+consecutive slice that has to say so, repeated rather than quietly inherited. Every rule is read off
+the OpenDocument specification and pinned against packages this repository authors byte by byte.
+The consequence is written into the design rather than left implicit: `draw:name` could not be
+measured unique, so it is never the address.
+
+Two fixtures: `presentation-pages` consumes every entry it contains and declares **no** erasure, and
+`presentation-unread-parts` declares all three kinds.
+
+- **In:** `crates/engine-office/{odp.rs, lib.rs}` — `read_content`, `TextBlock`, `Presentation`,
+  `is_odp`, `read_odp`, `ODP_MEDIA_TYPE` and the widened unimplemented-ODF refusal; `ods.rs`'s
+  attribute matcher moved to `xml.rs` with **no logic change**; `OdpLocator`,
+  `NativeLocator::Odp`, `NodeAttributes::OfficeOdfShape`, `OfficeOdfShapeAttributes`,
+  `Profile::odp_v0`, `ODP_READING_ORDER_RULE_V1` and `ODP_TEXT_CODE_RULE_V1` in `engine-core`;
+  `fixtures/office/presentation-pages` and `presentation-unread-parts` with their generator;
+  `0.26.0`, the moved profile hash and both SDK pins; `PUBLIC-API.md` and its gate; `14`/`15`;
+  `CAPABILITY.md`; CHANGELOG; README.
+
+- **Out:** RTF, EPUB, CSV — **S8**. Animations, transitions, `presentation:class` as a role, master
+  and layout text as body, notes as evidence, embedded spreadsheets and charts as evidence, theme
+  fonts, shape **geometry** as a locator, `.odg`. Any change to `ethos.grounding.v1`. Markdown or
+  HTML for an ODP. New MCP tools, new SDK functions. A `coordinate_system` mode enum — v2-S3 closed
+  that and this slice did not reopen it. Any new dependency: no `zip`, no ODF crate, no
+  LibreOffice. Any PDF detector change, and any move on the parked 0.489 chase.
+
+- **Acceptance tests:**
+  - [x] A known title is on a node with an `OdpLocator`; `pages` is `[]`; `tables` is `[]`;
+        `node_get` over **unmodified MCP** resolves the minted id and `s-forged` fails closed
+  - [x] The locator's field set is exactly `{part, draw_page, shape, paragraph}`, and
+        `deny_unknown_fields` refuses `page`, `bbox`, `x`, `slide_number` and `soft_page_break`
+        **by name**
+  - [x] **`<draw:page>` did not become a `PageRecord`**, and the test is not vacuous: the fixture's
+        own `content.xml` is inflated and asserted to list **two** of them, and the second
+        package's `styles.xml` to carry a `<style:master-page>` with `fo:page-width`
+  - [x] The serialization moves no address: `<draw:frame/>`, `<text:p/>` and `<draw:text-box/>`
+        each hold their position, asserted against the fixture's own bytes
+  - [x] Both `draw:name`s are on the attributes and never in the locator, and `&amp;` survives in
+        visible text **and** in both of them
+  - [x] Document-order counters advance through skipped regions and self-closing empties, and a
+        nested shape's blocks emit in the part's order rather than in close order
+  - [x] **The frame-alternative rule is measured** on authored ODP XML: the first rendition becomes
+        nodes and the second is one declared erasure, an empty first still claims the slot, and the
+        result is recorded against ODT **and** ODS in one table. Mutation-checked — removing the
+        second rendition from the **bytes** lowers the declared count, and so does removing the
+        speaker notes
+  - [x] Speaker notes, a comment, an unnamed drawing shape and a master page's text are each
+        **absent** from `Node.text` and **present** in a count
+  - [x] The allowlist holds through a shape: an image's title and description, an embedded object's
+        base64, a generated `<text:number>`, a cached `<text:page-count>` and `<text:page-number>`
+        and ruby guide text are each absent from `Node.text` and present in the A14 count — asserted
+        by inflating the fixture ZIP, never by grepping the generator. **Including the case with no
+        block open at all**, which is this format's own silent drop
+  - [x] Namespaces are resolved: a foreign `<xhtml:p>` is not a block, and MathML's `<annotation>`
+        is not `<office:annotation>`
+  - [x] A `<text:soft-page-break/>` inside a shape's paragraph contributes no character, and
+        `pages` stays `[]`
+  - [x] Detection is content-based and **exact**: `…presentation` is claimed,
+        `…presentation-template` is not, an `.odt` and an `.ods` are not, an `.epub` is not
+        OpenDocument at all, and a renamed presentation still reads
+  - [x] **An `.odg` is refused naming OpenDocument and the declared type**, and not naming `%PDF-`
+        — the sharpest case in the family, because its `content.xml` really is `<draw:page>`
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the law
+        — with **no change to `engine-grounding`**
+  - [x] Every geometry row is `NotApplicableToKind`; all **seven** profile hashes are mutually
+        distinct; `capabilities.tables` is false
+  - [x] Two runs over one document produce identical bytes, for both fixtures
+  - [x] `Cargo.lock` gains **no new dependency** — no `zip`, no ODF crate, no renderer
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication still 0; the 0.489 chase still parked
+  - [x] Workspace **0.26.0**, both SDKs **0.26.0**, and the PDF profile hash moved on
+        `parser_version` **alone** to `sha256:ba367599bc4649f6ca71c45f71dd7b71c22a26f8a4997cb0e39544afdde02773`
+
+- **Depends on:** S6.
+
+---
+
+## S8 — the remaining office formats — **not started**
+
+- **Goal:** RTF, EPUB and CSV, on the terms the first six established.
+
+- **Still deliberately one row, and S7 is why it is a shorter one again.** **A1** — Anydoc's
   14-format coverage — is v2's horizon, not its checklist. S4 measured that a fourth *OOXML* format
-  would be cheap. **S5 measured what the first non-OOXML format actually cost**, and the answer is
-  that ODF's container was free and everything above it was not: a new vocabulary, a new atom, a new
-  detection question and a new class of nested-block defect. That is why ODS left this row and
-  became S6. ODP inherits the container work and none of the rest; RTF is not XML at all; EPUB is a
-  ZIP of XHTML; CSV has no container. Scheduling them as one slice each before any of them has been
-  looked at would still be the waterfall S0 refused — and this row splits again the same way the
-  last two did, **against a measurement**, not against an estimate.
+  would be cheap. S5 measured what the first non-OOXML format cost. S6 measured that ODF's
+  container transfers and the vocabulary above it does not, and **S7 spent that measurement**: ODP
+  reused the container, the manifest check, the block engine and the whole allowlist, and paid for
+  a new structural vocabulary, a new atom, and one class of silent drop the earlier ODF readers
+  could not have. Nothing in this row is inside that family. **RTF is not XML at all**, EPUB is a
+  ZIP of XHTML, and CSV has no container — so none of them inherits what ODP inherited, and this
+  row splits again the same way the last three did, **against a measurement**, not against an
+  estimate.
 
-- **The one thing already known about this row:** EPUB may genuinely have pages and CSV genuinely
-  has none, so §3's law is not "no page ever" but "no page this engine did not read from the
-  file." Whichever formats have a native pagination declare it; the rest carry the empty vector.
-  S4 and S5 are the precedent for the first half: a slide looked like a page and was a part, and an
-  ODT's soft page break *is* a page break and is still somebody else's.
+- **The one thing already known about this row, unchanged since S6 wrote it down:** EPUB may
+  genuinely have pages and CSV genuinely has none, so §3's law is not "no page ever" but "no page
+  this engine did not read from the file." Whichever formats have a native pagination declare it;
+  the rest carry the empty vector. S4, S5 and S7 are the precedent for the first half: a slide
+  looked like a page and was a part, an ODT's soft page break *is* a page break and is somebody
+  else's, and a draw page needed no arithmetic at all and is still structure.
+
+- **And one thing S7 sharpened.** An `.epub` uses **OCF's** first-and-stored `mimetype` entry — the
+  same container rule every ODF package follows — and declares `application/epub+zip`. v2-S6 pinned
+  that `is_opendocument` must answer on the declared **type** rather than on that entry's presence,
+  precisely so this row's EPUB does not arrive to be told it is OpenDocument. Whoever implements it
+  must not "fix" EPUB by widening the ODF family question.
 
 - **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
   This row is coverage beyond it.
 
-- **Depends on:** S6.
+- **Depends on:** S7.
 
 ---
 

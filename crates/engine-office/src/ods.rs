@@ -70,7 +70,6 @@
 
 use engine_core::{EngineError, OdfValueType};
 use quick_xml::events::{BytesStart, Event};
-use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
 
 use crate::odt::{
@@ -78,8 +77,8 @@ use crate::odt::{
     MAX_BLOCK_NESTING, NS_OFFICE,
 };
 use crate::xml::{
-    attribute_value, cdata_text, check_closed, decode, local_name, new_ns_reader, parse_error_at,
-    resolve_entity,
+    cdata_text, check_closed, decode, local_name, new_ns_reader, parse_error_at, resolve_entity,
+    resolved_attribute,
 };
 
 /// The OpenDocument **table** namespace, where a spreadsheet's structure lives.
@@ -848,26 +847,16 @@ fn value_type(
 /// Not a suffix match. `name`, `formula` and `value-type` all feed either an address or a declared
 /// fact, and `docs/15-V2-MILESTONES.md` S5 states the rule this follows: a suffix match is
 /// acceptable where it can only select content, and not where it selects an address.
+///
+/// The matcher itself moved to [`crate::xml`] at v2-S7, unchanged, so the presentation reader asks
+/// `draw:name` the identical question rather than restating it.
 fn attribute(
     reader: &NsReader<&[u8]>,
     start: &BytesStart<'_>,
     namespace: &[u8],
     want: &[u8],
 ) -> Result<Option<String>, EngineError> {
-    for attribute in start.attributes() {
-        let attribute = attribute.map_err(|e| EngineError::Malformed {
-            what: odt::CONTENT_PART.into(),
-            detail: format!("attribute will not parse: {e}"),
-        })?;
-        let (resolved, local) = reader.resolver().resolve_attribute(attribute.key);
-        if local.as_ref() != want {
-            continue;
-        }
-        if matches!(resolved, ResolveResult::Bound(ns) if ns.as_ref() == namespace) {
-            return Ok(Some(attribute_value(&attribute, odt::CONTENT_PART)?));
-        }
-    }
-    Ok(None)
+    resolved_attribute(reader, start, namespace, want, odt::CONTENT_PART)
 }
 
 /// `table:number-columns-repeated` / `table:number-rows-repeated`, which default to one.

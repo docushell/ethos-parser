@@ -251,6 +251,16 @@ const CORE: &[&str] = &[
     "OdfCellTextSource",
     "ODS_READING_ORDER_RULE_V1",
     "ODS_TEXT_CODE_RULE_V1",
+    // v2-S7. The seventh format's address and its facts. The address carries a `draw_page`
+    // POSITION and no page: an `.odp` lists `<draw:page>` elements and a master page states
+    // `fo:page-width`, so a `PageRecord` needed no arithmetic and is refused anyway
+    // (`docs/06-STEAL-REFUSE.md` L30). The facts are the two `draw:name`s the file writes, which
+    // could not be measured unique because no corpus of real `.odp` files was available — so they
+    // are labels, where v2-S4 put `<p:cNvPr id>` after measuring it.
+    "OdpLocator",
+    "OfficeOdfShapeAttributes",
+    "ODP_READING_ORDER_RULE_V1",
+    "ODP_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -450,13 +460,19 @@ const OFFICE: &[&str] = &[
     // dispatching on format needs "is the office reader the one to ask" before "is this a kind the
     // office reader implements", and only an ODF package can answer the first about itself.
     "ODS_MEDIA_TYPE",
+    // v2-S7. `is_odp` is exact rather than prefixed, and the reason is sharper than `is_ods`'s: an
+    // `.odg` drawing's `content.xml` really IS the `<draw:page>` vocabulary this reader knows, so
+    // a prefix match would produce a plausible artifact for a format nobody decided to support.
+    "ODP_MEDIA_TYPE",
     "docx",
     "is_docx",
+    "is_odp",
     "is_odt",
     "is_ods",
     "is_opendocument",
     "is_pptx",
     "is_xlsx",
+    "odp",
     "ods",
     "odt",
     "pptx",

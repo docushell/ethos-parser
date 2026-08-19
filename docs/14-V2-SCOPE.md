@@ -3,21 +3,29 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads five formats.** S0–S6 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT and ODS. **S7 (ODP, RTF, EPUB, CSV) has
+**v2 reads six formats.** S0–S7 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS and ODP. **S8 (RTF, EPUB, CSV) has
 not started, and v2 is not complete.**
 
-§3's law has now been tested against all four shapes a "page" can take, and the fourth is the one
-that costs something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's is a
-print artefact. A slide is a real, discrete, countable thing the package contains — and is a
+§3's law has now been tested against all five shapes a "page" can take, and the last two are the
+ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's
+is a print artefact. A slide is a real, discrete, countable thing the package contains — and is a
 **part**, so `pages` is empty and `PptxLocator` carries no slide number.
 
 **And an ODT states its own page breaks.** `content.xml` contains `<text:soft-page-break/>` and
-`styles.xml` contains an `fo:page-width`, so a `PageRecord` would need no arithmetic at all — the
-first time in this version that has been true. It is still refused, for L30's own reason: a soft
-page break records where the *producing application's* layout fell, and it moves when the font
-stack, the paper size or the producer changes. The reader sees the element, contributes no
-character and no address from it, and `pages` stays empty.
+`styles.xml` contains an `fo:page-width`, so a `PageRecord` would need almost no arithmetic. It is
+still refused, for L30's own reason: a soft page break records where the *producing application's*
+layout fell, and it moves when the font stack, the paper size or the producer changes. The reader
+sees the element, contributes no character and no address from it, and `pages` stays empty.
+
+**An ODP removes the last of the arithmetic, and is the sharpest refusal in this version.** A
+presentation lists `<draw:page>` elements — discrete, ordered, named, and counted out loud by
+anybody describing a deck — and a `<style:master-page>` states `fo:page-width` beside them. A
+`PageRecord` needed **nothing computed at all**, which had never been true before. It is refused on
+L30's four words rather than a paraphrase — *"It invents pagination"* — because a draw page is a
+part of the presentation's **structure** and not a page this engine measured. `pages` is `[]`, and
+`OdpLocator` carries a `draw_page` **position** named for the element rather than for what it
+resembles.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, and fabrication is **0** (`table-gate-v1.md`,
@@ -97,10 +105,15 @@ machinery for it:
   that spelling; **v2-S2 made it allow it**, by splitting `check_structure` on the locator family
   rather than by loosening the page rule. A paginated address still needs its declared page.
 - **The locator.** A new union variant, per §5.1 — `DocxLocator { part, paragraph, run }` as of
-  v2-S2, and `OdtLocator { part, paragraph }` as of v2-S5. A locator that contained a page number
+  v2-S2, `OdtLocator { part, paragraph }` as of v2-S5, and
+  `OdpLocator { part, draw_page, shape, paragraph }` as of v2-S7, whose first component is a
+  **position among `<draw:page>` elements**, named for the element rather than for the page a
+  consumer would otherwise read it as. A locator that contained a page number
   would be the same violation as a `bbox`, wearing a field name, and `deny_unknown_fields` is what
   stops one arriving quietly. v2-S5's test refuses `page`, `bbox`, `x` **and `soft_page_break`** by
-  name, because for that format the last one is the field somebody would actually reach for.
+  name, because for that format the last one is the field somebody would actually reach for; v2-S7's
+  adds **`slide_number`**, for the same reason in a format where a person really does say
+  *"it's on slide 12"*.
 - **Geometry, again, and this one is stronger than a convention.** `check_structure` **refuses a
   measured box on a page-less node**: a box is validated against the page containing it, so a node
   with no page has nothing to validate against, and a rectangle nobody can check is the fabrication
@@ -248,9 +261,11 @@ and the only one forbidden outright.
   remaining-formats row only when the cost of the next one has been **measured** rather than
   guessed: S4 measured that a third OOXML format was cheap, and S5 measured that the first
   non-OOXML format was not. On that finding the row split again on paper before any of it was
-  written — **S6 is ODS alone**, and **S7 is the one row that is left**: ODP, RTF, EPUB, CSV. S6 has
-  since shipped ODS and did **not** acquire a second format while its reader was open, which is what
-  writing the split first bought.
+  written — **S6 is ODS alone**, and **S7 was the one row that was left**: ODP, RTF, EPUB, CSV. S6
+  shipped ODS and did **not** acquire a second format while its reader was open, which is what
+  writing the split first bought. **S7 then spent S6's measurement**: ODP is inside the ODF family
+  and inherited the container, the manifest check and the whole allowlist, while RTF, EPUB and CSV
+  inherit none of it — so ODP left the row and **S8 is RTF, EPUB, CSV**.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

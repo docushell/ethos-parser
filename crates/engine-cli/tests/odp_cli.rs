@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! `engine extract` reads an ODS, and the ODF sibling it does not read says so (v2-S6).
+//! `engine extract` reads an ODP, and the page it could have had for free stays out (v2-S7).
 //!
-//! The fifth sibling of `office_cli.rs`, proving the same claim once more: **one subcommand, one
-//! artifact type, one serializer**. There is no `ethos.engine.ods.v0` and no `engine extract-ods`.
+//! The sixth sibling of `office_cli.rs`, proving the same claim once more: **one subcommand, one
+//! artifact type, one serializer**. There is no `ethos.engine.odp.v0` and no `engine extract-odp`.
 //!
-//! What is new here is the refusal. v2-S5 measured that an `.ods` fell past the office branch to
-//! the PDF reader and came back with *"expected a PDF header (%PDF-)"* — fail-closed, and naming
-//! the wrong cause — and handed the fix to this slice. An `.ods` now reads; the ODF siblings that
-//! still have no reader are refused **as OpenDocument**, by the type they declare. The `.odp` row
-//! moved to v2-S7 and reads under its own profile, so the list below is one shorter than it was.
+//! What is new here is the refusal on the wire. Every earlier v2 format had to argue that its page
+//! belonged to somebody else. A presentation does not: `<draw:page>` elements are listed and
+//! ordered, and a `<style:master-page>` states paper. The artifact still carries `pages: []`, and
+//! the locator that arrives carries no `page` field to put one in.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -38,7 +37,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn fixture() -> PathBuf {
-    repo_root().join("fixtures/office/sheet-cells/workbook.ods")
+    repo_root().join("fixtures/office/presentation-pages/presentation.odp")
 }
 
 fn extract(path: &std::path::Path) -> (i32, Vec<u8>, String) {
@@ -61,61 +60,70 @@ fn extract(path: &std::path::Path) -> (i32, Vec<u8>, String) {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn extract_reads_an_ods_into_the_same_artifact_type_a_pdf_produces() {
+fn extract_reads_an_odp_into_the_same_artifact_type_a_pdf_produces() {
     let (code, stdout, stderr) = extract(&fixture());
     assert_eq!(code, 0, "{stderr}");
 
     let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON on stdout");
     assert_eq!(
         artifact["artifact_type"], "ethos.engine.representation.v0",
-        "one artifact type — there is no `ethos.engine.ods.v0`"
+        "one artifact type — there is no `ethos.engine.odp.v0`"
     );
     let payload = &artifact["representation"];
     assert_eq!(
         payload["source"]["media_type"],
-        "application/vnd.oasis.opendocument.spreadsheet"
+        "application/vnd.oasis.opendocument.presentation"
     );
     assert_eq!(
         payload["pages"],
         json!([]),
-        "a spreadsheet's page is a printer's, in ODF's spelling as in OOXML's"
+        "a `<draw:page>` is a part of the presentation's structure, not a page this engine measured"
     );
     assert_eq!(
         payload["tables"],
         json!([]),
-        "cells are addresses the file states, not a grid a detector inferred"
+        "and no detector ran, so there is no table record either"
     );
     assert!(
-        payload["nodes"].as_array().expect("nodes").len() >= 9,
+        payload["nodes"].as_array().expect("nodes").len() >= 6,
         "and that is not vacuous"
     );
 }
 
-/// A known cell arrives at the address the file states, on the new locator.
+/// A known title arrives at the address the file states, on the new locator.
 #[test]
-fn a_known_cell_arrives_at_the_position_the_file_states() {
+fn a_known_title_arrives_at_the_position_the_file_states() {
     let (_, stdout, _) = extract(&fixture());
     let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
     let nodes = artifact["representation"]["nodes"]
         .as_array()
         .expect("nodes");
 
-    let total = nodes
+    let title = nodes
         .iter()
-        .find(|n| n["text"] == "Total")
-        .expect("`Total` is a cell in the fixture");
-    let locator = &total["native_locator"]["ods"];
+        .find(|n| n["text"] == "The second draw page")
+        .expect("the phrase is a title on the fixture's second page");
+    let locator = &title["native_locator"]["odp"];
     assert_eq!(locator["part"], "content.xml");
-    assert_eq!(locator["table"], "Rows & Columns");
-    assert_eq!(locator["row"], json!(1));
+    assert_eq!(locator["draw_page"], json!(2));
     assert_eq!(
-        locator["column"],
-        json!(5),
-        "three repeated columns sit between it and the first cell: {locator:?}"
+        locator["shape"],
+        json!(2),
+        "a self-closing `<draw:frame/>` is shape 1, so this is shape 2: {locator:?}"
     );
+    assert_eq!(locator["paragraph"], json!(1));
     assert!(
-        locator.get("page").is_none() && locator.get("bbox").is_none(),
-        "and it carries no page and no box: {locator:?}"
+        locator.get("page").is_none()
+            && locator.get("bbox").is_none()
+            && locator.get("slide_number").is_none(),
+        "and it carries no page, no box and no slide number: {locator:?}"
+    );
+
+    let attributes = &title["attributes"]["office_odf_shape"];
+    assert_eq!(attributes["block"], "heading");
+    assert_eq!(
+        attributes["draw_page_name"], "Detail",
+        "the file's own name is a label on the attributes, never the address: {attributes:?}"
     );
 }
 
@@ -123,7 +131,7 @@ fn a_known_cell_arrives_at_the_position_the_file_states() {
 #[test]
 fn dispatch_is_by_content_not_by_extension() {
     let dir = tempdir();
-    let renamed = dir.join("report.bin");
+    let renamed = dir.join("deck.bin");
     std::fs::copy(fixture(), &renamed).expect("copy the fixture");
     let (code, stdout, stderr) = extract(&renamed);
     assert_eq!(
@@ -134,32 +142,57 @@ fn dispatch_is_by_content_not_by_extension() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// And a package that is two formats at once is a **named refusal**, not a race between two `if`s.
 #[test]
-fn two_runs_over_one_spreadsheet_produce_identical_bytes() {
+fn a_package_claiming_two_formats_is_refused_by_name() {
+    let dir = tempdir();
+    let path = dir.join("ambiguous.odp");
+    std::fs::write(
+        &path,
+        build_zip(&[
+            ("mimetype", "application/vnd.oasis.opendocument.presentation"),
+            (
+                "META-INF/manifest.xml",
+                r#"<?xml version="1.0"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"><manifest:file-entry manifest:full-path="content.xml"/></manifest:manifest>"#,
+            ),
+            ("content.xml", r#"<?xml version="1.0"?><office/>"#),
+            ("ppt/presentation.xml", "<p:presentation/>"),
+        ]),
+    )
+    .expect("write the package");
+
+    let (code, stdout, stderr) = extract(&path);
+    assert_eq!(code, 2, "a file claiming to be two documents fails closed");
+    assert!(stdout.is_empty(), "a refusal prints no artifact");
+    assert!(
+        stderr.contains("more than one kind") || stderr.contains("2 main parts"),
+        "and it names the ambiguity rather than picking a winner: {stderr}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn two_runs_over_one_presentation_produce_identical_bytes() {
     let (_, first, _) = extract(&fixture());
     let (_, second, _) = extract(&fixture());
     assert_eq!(first, second);
 }
 
 // -------------------------------------------------------------------------------------------
-// The refusal v2-S5 handed to this slice
+// The siblings that still have no reader
 // -------------------------------------------------------------------------------------------
 
-/// **An unimplemented ODF sibling is refused as OpenDocument, not as a missing PDF header.**
+/// **A drawing shares the vocabulary and is still refused by name.**
 ///
-/// The defect `docs/15-V2-MILESTONES.md` S5 recorded and deferred here. Before this slice `is_odt`
-/// correctly declined an `.odp`, nothing else claimed it, and it fell through to the PDF reader —
-/// which refused it with *"expected a PDF header (%PDF-) at byte 0"*. Correct outcome, wrong cause.
-///
-/// **The `.odp` row left this list at v2-S7**, which reads it. What remains are ODF types nothing
-/// in this engine speaks, and the assertion that carries the weight is unchanged and is the last
-/// one: the message must **not** mention `%PDF-`.
+/// The sharpest case in the ODF family and the reason [`engine_office::is_odp`] matches exactly
+/// rather than by prefix: an `.odg`'s `content.xml` really is `<draw:page>`, so a prefix match
+/// would have produced a *plausible* artifact for a format nobody decided to support. That is
+/// worse than the `%PDF-` message v2-S6 fixed, because it does not look like a failure at all.
 #[test]
-fn an_unimplemented_opendocument_type_is_refused_by_name_rather_than_as_a_missing_pdf() {
+fn an_unimplemented_opendocument_type_is_still_refused_by_name() {
     let dir = tempdir();
     for (extension, declared) in [
         ("odg", "application/vnd.oasis.opendocument.graphics"),
-        ("odf", "application/vnd.oasis.opendocument.formula"),
         (
             "otp",
             "application/vnd.oasis.opendocument.presentation-template",
@@ -181,7 +214,7 @@ fn an_unimplemented_opendocument_type_is_refused_by_name_rather_than_as_a_missin
         );
         assert!(
             !stderr.contains("%PDF-"),
-            "and it does NOT name a PDF header, which is the defect this closes: {stderr}"
+            "and it does NOT name a PDF header: {stderr}"
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
@@ -191,11 +224,13 @@ fn an_unimplemented_opendocument_type_is_refused_by_name_rather_than_as_a_missin
 // The grounding boundary, unmoved
 // -------------------------------------------------------------------------------------------
 
-/// **(b) still holds.** `ethos.grounding.v1` is PDF-only, and an ODS is refused by name.
+/// **(b) still holds.** `ethos.grounding.v1` is PDF-only, and a presentation is refused by name.
 ///
-/// This passes with **no change to `engine-grounding`**.
+/// This passes with **no change to `engine-grounding`** — which matters more for this format than
+/// for the five before it, because a presentation is the one whose own file could have supplied
+/// the page the grounding schema requires.
 #[test]
-fn ground_refuses_a_page_less_spreadsheet_by_name() {
+fn ground_refuses_a_page_less_presentation_by_name() {
     let dir = tempdir();
     let (_, stdout, _) = extract(&fixture());
     let path = dir.join("representation.json");
@@ -224,10 +259,10 @@ fn ground_refuses_a_page_less_spreadsheet_by_name() {
 // The handle law, over unmodified MCP
 // -------------------------------------------------------------------------------------------
 
-/// An ODF cell resolves through the same fingerprint-checked handle path a PDF run uses, and a
-/// forged id fails closed. `mcp.rs` is **unchanged** by this slice.
+/// A presentation block resolves through the same fingerprint-checked handle path a PDF run uses,
+/// and a forged id fails closed. `mcp.rs` is **unchanged** by this slice.
 #[test]
-fn node_get_resolves_a_cell_and_fails_closed_on_a_forged_id() {
+fn node_get_resolves_a_block_and_fails_closed_on_a_forged_id() {
     let (_, stdout, _) = extract(&fixture());
     let representation: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
 
@@ -253,13 +288,14 @@ fn node_get_resolves_a_cell_and_fails_closed_on_a_forged_id() {
     assert_eq!(ok["isError"], json!(false), "{ok:?}");
     assert_eq!(ok["structuredContent"]["id"], json!(minted));
 
-    let locator = &ok["structuredContent"]["native_locator"]["ods"];
+    let locator = &ok["structuredContent"]["native_locator"]["odp"];
     assert_eq!(
         locator["part"], "content.xml",
         "the address that came back is the document's own: {locator:?}"
     );
-    assert_eq!(locator["row"], json!(1));
-    assert_eq!(locator["column"], json!(1));
+    assert_eq!(locator["draw_page"], json!(1));
+    assert_eq!(locator["shape"], json!(1));
+    assert_eq!(locator["paragraph"], json!(1));
     assert!(
         locator.get("page").is_none() && locator.get("bbox").is_none(),
         "and it carries no page and no box: {locator:?}"
@@ -378,7 +414,7 @@ fn mcp_session(requests: &[Value]) -> Vec<Value> {
 /// A scratch directory beside the target dir, removed by each test that makes one.
 fn tempdir() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
-        "ethos-ods-{}-{:?}",
+        "ethos-odp-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));

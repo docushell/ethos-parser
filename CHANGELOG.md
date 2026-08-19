@@ -7,7 +7,159 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads a fifth format, as 0.25.0
+## [Unreleased] — v2 reads a sixth format, as 0.26.0
+
+### v2-S7 — ODP into the representation, and the page that was free
+
+**An OpenDocument presentation block binds, and `pages` is still `[]`.** `engine extract` reads an
+`.odp` into the same `ethos.engine.representation.v0` the other six formats produce. **S7 is ODP and
+is done; S8 parks RTF, EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still
+bind, and **v2 is not complete**.
+
+#### The page that was free, and is refused anyway
+
+Every page-less format before this one had to *argue* that its page belonged to somebody else, and
+each argument had a step in it. A DOCX has none until a renderer picks one. A workbook's page depends
+on the printer, the paper and a "fit to page" setting. A PPTX slide is a **part**, and `p:sldSz` is a
+size rather than a page. An ODT's `<text:soft-page-break/>` is a position a word processor computed
+from its own font stack.
+
+**A presentation needs no argument at all.** `<draw:page>` elements are discrete, listed, ordered and
+named; a `<style:master-page>` states `fo:page-width` beside them. A `PageRecord` needed **no
+arithmetic** — the first time in this engine's history that has been true.
+
+It is refused on `06-STEAL-REFUSE.md` L30's own four words rather than a paraphrase of them: *"It
+invents pagination."* L30 refuses the LibreOffice bridge because a page it produced is a rendering
+rather than a fact about the document, and a `<draw:page>` fails the same test from the other side —
+it is **a part of the presentation's structure**, and the number a consumer would read off it is a
+page index this engine never verified. `pages` is `[]`, `is_paginated()` is false, and the address
+carries a **position** named for the element rather than for what it resembles.
+
+#### The address, and the two names that are not in it
+
+`OdpLocator { part, draw_page, shape, paragraph }`, `deny_unknown_fields`, and the test refuses
+`page`, `bbox`, `x`, `slide_number` and `soft_page_break` by name. All four components are counts of
+elements the part lists, in its own document order.
+
+**This is where `PptxLocator`'s argument stops transferring.** v2-S4 kept a slide's identity in the
+*part name*, because `p:sldIdLst` states display order and a part name does not move. An `.odp` keeps
+every draw page in **one** `content.xml`, so there is no part name to lean on — which is why this
+locator carries a component `PptxLocator` deliberately does not, and why that component had to be a
+position rather than a number the file wrote.
+
+**Both `draw:name`s are labels, and that is v2-S4's finding applied rather than quoted.**
+`<draw:page draw:name>` and `<draw:frame draw:name>` are *optional* in OpenDocument, and no corpus of
+real `.odp` files was available to measure whether producers write them uniquely. S4 measured the
+OOXML counterpart across 18 real decks — `<p:cNvPr id>` is present every time and unique only most of
+the time — and moved it onto the attributes. An unmeasured identifier gets the same treatment rather
+than the benefit of the doubt, so both go on `OfficeOdfShapeAttributes`, carried verbatim with
+entities resolved.
+
+**The shape set is named, and its consequence is stated rather than hidden.** `<draw:frame>` and
+`<draw:custom-shape>` are what a presentation writes for a text-bearing shape; a `<draw:rect>` or a
+`<draw:connector>` carrying text does not move the shape count and does not become a node — its text
+is **declared** instead. Naming the set is what makes the position reproducible: a consumer counting
+those two elements arrives at the number this reader did.
+
+#### The frame-alternative rule, measured a third time — and the atom decides again
+
+v2-S5 wrote first-rendition-wins off the specification and could not test it. v2-S6 tested it on a
+spreadsheet and found that **the atom decides the outcome**. This is the third data point:
+
+| slice | the atom | a `<draw:frame>` with two `<draw:text-box>` children | why |
+| --- | --- | --- | --- |
+| **S5 — ODT** | the paragraph | first rendition **becomes nodes**; second is **1** erasure | the frame is anchored *in* a paragraph, and paragraphs are what that reader addresses |
+| **S6 — ODS** | the **cell** | **neither** becomes a node; **2** erasures, and the anchoring cell keeps its own text | a frame floats over the sheet, so its words belong to no cell |
+| **S7 — ODP** | the block **inside the shape** | first rendition **becomes nodes**; second is **1** erasure | a presentation *is* a drawing, so there is nothing to float over — the frame **is** the shape |
+
+**The outcome matches ODT and the reason matches neither.** Recording that is the point: a later
+reader that copies "frames are never nodes" from S6, or "frames are always nodes" from S5, will be
+right for the wrong reason in one of the three and wrong in the other.
+
+Mutation-checked on the fixture's **bytes**: deleting the second `<draw:text-box>` lowers the declared
+region count, and so does deleting the speaker notes. A **self-closing** first rendition still claims
+the slot — the construct S5 and S6 both got wrong when their fixtures never nested one.
+
+#### Speaker notes are A14 inverted, so they are counted rather than spliced
+
+`<presentation:notes>` holds a whole second page of shapes. Reading it as slide text would not be a
+silent **drop** — it would be a silent **extra**, putting a phrase in the record that nobody watching
+the presentation sees, which is worse because a consumer cannot tell it from evidence. It is a
+declared region with a count, and the A14 message names it first.
+
+Masters and layouts live in `styles.xml`, which is not read at all. That is v2-S4's *"no placeholder
+inheritance is resolved"* in ODF's spelling, and it means **a slide whose title lives only on its
+master reads as having none** — stated here rather than discovered by a caller.
+
+#### One allowlist, still not two — and the silent drop this format added
+
+`odt.rs`'s `Element`, `classify`, namespace resolution and block-text engine are **imported** for the
+third reader, on v2-S6's argument unchanged. `odp.rs` adds only what sits above the block:
+`draw:page`, the two shapes, and `presentation:notes`.
+
+Building it that way surfaced one gap neither earlier ODF reader had, and it is the **ordinary** shape
+of a presentation rather than an edge case: `<draw:frame><draw:image><svg:title>` contains no
+`<text:p>` **anywhere in it**, so the shared engine's per-block foreign counter never sees it and the
+characters were neither read nor counted. In an ODT and an ODS that subtree always sits inside a
+paragraph or a cell; in a presentation the shape is the thing and a block is only one of the things
+inside it. It is counted at the **shape** now. Text loose on a draw page, and text in a drawing
+element this slice does not name, are counted for the same reason.
+
+The namespace-resolved attribute matcher moved from `ods.rs` to `xml.rs` rather than being restated —
+the same argument as the allowlist, in a smaller place. No logic changed.
+
+#### Detection, and the sibling that is the real hazard
+
+Content-based (**A4**) and **exact**: the first, stored `mimetype` entry must declare
+`application/vnd.oasis.opendocument.presentation`. `…presentation-template` is not claimed, an `.odt`
+and an `.ods` are not, and an `.epub` — which shares OCF's first-and-stored `mimetype` rule — is still
+not told it is OpenDocument.
+
+**The `.odg` is the sharp one.** A drawing's `content.xml` really *is* the `<draw:page>` vocabulary
+this reader knows, so a prefix match would have produced a **plausible artifact for a format nobody
+decided to support** — worse than the `%PDF-` message v2-S6 fixed, because it does not look like a
+failure at all. It is refused by name, naming OpenDocument and the declared type.
+
+#### Identity and limits
+
+`Profile::odp_v0` has its own hash; **seven profiles are now mutually distinct**.
+`capabilities.tables` is **false** — this reader emits no `TableRecord` at all, and a true capability
+would say a detector ran. `measured_ink_boxes` is false and every geometry row is
+`NotApplicableToKind`: a shape's `svg:x` places it on a drawing canvas rather than measuring its ink.
+The default PDF profile hash moves on `parser_version` **alone**, for the thirtieth time, to
+`sha256:ba367599bc4649f6ca71c45f71dd7b71c22a26f8a4997cb0e39544afdde02773`.
+
+**No new dependency.** The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+`quick-xml` — no `zip`, no ODF crate, no LibreOffice.
+
+#### Added
+
+- `engine_core`: `NativeLocator::Odp`, `OdpLocator`, `NodeAttributes::OfficeOdfShape`,
+  `OfficeOdfShapeAttributes`, `Profile::odp_v0`, `ODP_READING_ORDER_RULE_V1`,
+  `ODP_TEXT_CODE_RULE_V1`
+- `engine_office`: the `odp` module (`read_content`, `TextBlock`, `Presentation`, `is_odp`,
+  `ODP_MEDIA_TYPE`), plus `is_odp` and `ODP_MEDIA_TYPE` at the crate root
+- `fixtures/office/presentation-pages` and `fixtures/office/presentation-unread-parts`, with their
+  generator
+
+#### Changed
+
+- Workspace **0.25.0 → 0.26.0**; both SDKs pinned to match
+- `engine_office::read` routes a declared `…presentation` to the new reader, and its
+  unimplemented-ODF refusal now names three implemented types instead of two
+- `xml` gained the namespace-resolved attribute matcher `ods` used to hold privately; `ods` calls it
+
+#### What could not be measured, recorded
+
+**No corpus of real `.odp` files was available and no ODF producer was either** — the third
+consecutive slice that has to say so, repeated rather than quietly inherited. Every rule is read off
+the OpenDocument specification and pinned against packages this repository authors byte by byte, and
+every assertion about a fixture's contents **inflates that package's own `content.xml`** rather than
+grepping the generator. The consequence is written into the design rather than left implicit:
+`draw:name` could not be measured unique, so it is never the address.
+
+Unchanged and re-asserted: oracle 12 / 3, table gate **64‰**, `irs-form-1040-2025` at **0 tables**,
+fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S6 — ODS into the representation, and the address the file never writes
 

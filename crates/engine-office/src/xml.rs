@@ -206,6 +206,42 @@ pub(crate) fn attribute_value(
     unescape_attribute(raw, part_name)
 }
 
+/// One attribute, matched on its **resolved namespace** and local name (v2-S6, shared at v2-S7).
+///
+/// Not a suffix match. Every caller here reads either an address component or a declared fact, and
+/// `docs/15-V2-MILESTONES.md` S5 states the rule: a suffix match is acceptable where it can only
+/// select content, and not where it selects an address. `name`, `value-type` and `formula` are
+/// local names other vocabularies use.
+///
+/// **One copy for both ODF readers.** v2-S6 wrote it inside `ods.rs`; v2-S7 needed the identical
+/// question for `draw:name` and moved it here rather than restating it, on the same argument the
+/// shared allowlist is built on — two copies of *how an attribute is matched* drift silently, and
+/// a reader that started suffix-matching would pick up a foreign `name` and put it in an address
+/// with nothing failing anywhere.
+pub(crate) fn resolved_attribute(
+    reader: &quick_xml::NsReader<&[u8]>,
+    start: &quick_xml::events::BytesStart<'_>,
+    namespace: &[u8],
+    want: &[u8],
+    part_name: &str,
+) -> Result<Option<String>, EngineError> {
+    for attribute in start.attributes() {
+        let attribute = attribute.map_err(|e| EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("attribute will not parse: {e}"),
+        })?;
+        let (resolved, local) = reader.resolver().resolve_attribute(attribute.key);
+        if local.as_ref() != want {
+            continue;
+        }
+        if matches!(resolved, quick_xml::name::ResolveResult::Bound(ns) if ns.as_ref() == namespace)
+        {
+            return Ok(Some(attribute_value(&attribute, part_name)?));
+        }
+    }
+    Ok(None)
+}
+
 /// A part that ends with elements still open is truncated, and a truncated part read as far as
 /// it went would be a shorter part that still looked whole — `docs/01-CONTRACT.md` §8.
 pub(crate) fn check_closed(depth: i32, part_name: &str) -> Result<(), EngineError> {
