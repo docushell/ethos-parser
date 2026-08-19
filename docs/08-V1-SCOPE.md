@@ -10,17 +10,19 @@
 **The DocuShell replacement gate.** v0 proved the engine can read a document honestly and say what
 it could not do. v1 is the version at which DocuShell could stop calling something else.
 
-`02-ROADMAP.md` states the gate as three conditions, and all three must hold together:
+`02-ROADMAP.md` stated the gate as three conditions. Two still bind as pass/fail; the third is
+**parked**.
 
-| Gate condition | Meaning |
-| --- | --- |
-| Table-cell accuracy **> 0.489** on a labelled set | Better than the deterministic baseline two publishers report bit-identically |
-| **Fabrication rate 0** | No cell text the document does not contain. Not "low" — zero |
-| **Cross-check diagnostics emitted** | Geometric and structural derivations of the same cell are compared, and disagreement is on the artifact |
+| Gate condition | Status | Meaning |
+| --- | --- | --- |
+| **Fabrication rate 0** | **binds** | No cell text the document does not contain. Not "low" — zero |
+| **Cross-check diagnostics emitted** | **binds** | Geometric and structural derivations of the same cell are compared, and disagreement is on the artifact |
+| Table-cell accuracy **> 0.489** on a labelled set | **parked as pass/fail** (owner, 2026-08-19) | **64‰** is this engine on **four tagged PDFs this repository owns**. **0.489** is a published ODL-local table score on **their** corpus. Same unit, different exam. The chase is **parked** until this repository has a labelled set it owns and chooses to resume |
 
-The second and third are properties of the design and are testable from the first slice. The first
-needs a labelled set that does not exist yet, and is therefore **the last slice's problem**, not
-every slice's.
+The first two are properties of the design, testable from the first slice, and they are not
+negotiable. The third was always the last slice's problem; it is now nobody's until the owner says
+otherwise. **Parking is not a pass. v1 is not complete**, the number stays measured at 64‰, and
+§3 below still says how not to chase it.
 
 ## 2. What v1 is not
 
@@ -37,26 +39,37 @@ every slice's.
 | A second PDF backend | undecided | One backend, one quirk set, one declared limitation set |
 | Verification of any kind | never here | `07-VERIFY-BOUNDARY.md`. v0.1 added a way to *invoke* a verifier and nothing else |
 
-## 3. About 0.489, and how not to chase it
+## 3. About 0.489, and how not to chase it — **parked, 2026-08-19**
 
 **0.489 is ODL-local.** It is the deterministic configuration's table-cell accuracy — the only
-number two publishers report bit-identically, which is exactly why it is the bar. It is a
-reproducible target rather than a good one.
+number two publishers report bit-identically, which is exactly why it was picked as the bar. It was
+a reproducible target rather than a good one.
+
+**And it is not comparable to what this repository measures.** **64‰** is this engine on **four
+tagged PDFs this repository owns**. **0.489** is a published ODL-local table score on **their**
+corpus. Same unit, different exam. The chase is **parked** until this repository has a labelled set
+it owns and chooses to resume. **Fabrication 0 still binds. v1 is not complete.**
 
 **ODL-hybrid scores roughly 0.9×, and that is a different product.** The hybrid path is not
-deterministic, and a determinism contract cannot sit under it. Beating a non-reproducible number
-by adopting a non-reproducible method would forfeit the property this engine exists to have.
+deterministic, and a determinism contract cannot sit under it. That one is not parked — it was never
+a target, and adopting a non-reproducible method to beat a non-reproducible number would forfeit the
+property this engine exists to have.
 
 Three rules follow, and they bind every slice:
 
-1. **No slice before S7 is measured against 0.489.** A detector tuned against a number nobody has
-   computed yet is tuned against its author's intuition.
+1. **No slice is tuned against 0.489.** Originally this read "no slice before S7", on the reasoning
+   that a detector tuned against a number nobody has computed yet is tuned against its author's
+   intuition. S7 has since computed it and missed, and v1.1, v1.2 and v2 shipped anyway — so the
+   implication that S7 had to be *cleared* before other work moved is already historical. What
+   replaces it is stronger: with the chase parked, **no slice is measured against 0.489 at all**,
+   and no slice may cite parking as progress.
 2. **No published comparison.** No bake-off table, no ranking, no "better than" in any README —
-   the v0 posture (`03-V0-SCOPE.md` §6) is unchanged. When S7 produces a number it is stated with
-   its corpus, its configuration, and its harness, or it is not stated.
+   the v0 posture (`03-V0-SCOPE.md` §6) is unchanged. The number S7 produced is stated with its
+   corpus, its configuration, and its harness, or it is not stated.
 3. **Fabrication 0 is not traded against accuracy.** A cell filled with plausible neighbouring text
    scores better and is worse. If the two ever appear to conflict, fabrication wins and the
-   accuracy number is reported lower.
+   accuracy number is reported lower. Parking the chase does not soften this one — it is the
+   condition that still decides whether a detector may ship.
 
 ## 4. In — the v1 row, as slices
 
@@ -75,13 +88,16 @@ ordered here. `09-V1-MILESTONES.md` is the detail; this is the map.
 | **S7a** | The labelled set and the harness, measuring only | **done** |
 | **S7b** | Detector calibration, measured. Six repairs rejected, one shipped (`ruled-rects-v2`) | **done** |
 | **S8** | The parked stroke-ruled rule, defect-fixed and shipped as a third rule | **done** |
-| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 64‰** |
+| **S7** | The > 0.489 gate; v1 declared done | **measured and MISSED: 64‰ — chase parked, slice still open** |
 
-**S7 is open, with the number written down.** The gate metric exists, is documented in
-`docs/table-gate-v1.md`, runs in CI and reruns to the same value; macro cell-F1 is **64‰** against
-a 489‰ floor. S7b ran seven investigations: the six aimed at the *alignment* rule were all measured
-and rejected, and one — `ruled-rects-v2`, which stops a background panel from witnessing its own
-lattice — shipped, taking precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing
+**S7 is open, with the number written down, and the chase for the number is parked.** The gate
+metric exists, is documented in `docs/table-gate-v1.md`, runs in CI and reruns to the same value;
+macro cell-F1 is **64‰**, historically measured against a 489‰ comparator that this repository no
+longer treats as a shipping floor (`00-NORTH-STAR.md` #10). Parking it closes nothing.
+
+S7b ran seven investigations: the six aimed at the *alignment* rule were all measured and rejected,
+and one — `ruled-rects-v2`, which stops a background panel from witnessing its own lattice —
+shipped, taking precision from 900‰ to 1000‰ and the gate from 43‰ to 61‰ without losing
 a true positive. **S8 then shipped a third detection rule**, `stroke-ruled-v1`, for the grid a
 document draws as ruling lines: `cfpb-home-loan-toolkit` 246‰ → 259‰ and the gate 61‰ → 64‰, with
 `irs-form-1040-2025` held at 0 tables and fabrication still 0.

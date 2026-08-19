@@ -4,8 +4,8 @@
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
 **v2 reads four formats.** S0–S5 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX and ODT. S6 (ODS, ODP, RTF, EPUB, CSV) is not
-started.
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX and ODT. **S6 (ODS) and S7 (ODP, RTF, EPUB,
+CSV) have not started.**
 
 §3's law has now been tested against all four shapes a "page" can take, and the fourth is the one
 that costs something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's is a
@@ -19,8 +19,11 @@ page break records where the *producing application's* layout fell, and it moves
 stack, the paper size or the producer changes. The reader sees the element, contributes no
 character and no address from it, and `pages` stays empty.
 
-**v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
-(`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). **v1.1 is complete** at 0.14.1 and **v1.2 is
+**v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
+four tagged PDFs this repository owns, and fabrication is **0** (`table-gate-v1.md`,
+`09-V1-MILESTONES.md` S7). The **> 0.489 chase is parked** — 0.489 is a published ODL-local score on
+*their* corpus, same unit and a different exam, and it is not a precondition for anything in v2
+(`00-NORTH-STAR.md` #10). Parking it does not close v1. **v1.1 is complete** at 0.14.1 and **v1.2 is
 complete** at 0.19.0. v2 is the next row of `02-ROADMAP.md` and it is scoped because the owner asked
 for it, **not** because the gate cleared. Nothing in this document closes v1, and no slice here may
 be cited as evidence that it did.
@@ -230,9 +233,9 @@ and the only one forbidden outright.
 - **Not a PDF change.** No detector moves, no rule id moves, no table number moves because an office
   format arrived. `ruled-rects-v2`, `stroke-ruled-v1`, `unruled-align-v1`, `markdown-blocks-v2` and
   `html-blocks-v2` keep their ids and their numbers.
-- **Not v1 closing.** Macro cell-slot F1 is **64‰** against a 489‰ floor. `08-V1-SCOPE.md`,
-  `09-V1-MILESTONES.md` and `table-gate-v1.md` still govern, and no v2 slice may be cited against
-  them.
+- **Not v1 closing.** Macro cell-slot F1 is **64‰**, and 489‰ is a published comparator rather than
+  a live floor — the chase is parked, which is not a pass. `08-V1-SCOPE.md`, `09-V1-MILESTONES.md`
+  and `table-gate-v1.md` still govern, and no v2 slice may be cited against them.
 - **Not a conversion pipeline.** L30 is a refusal, not a fallback. No LibreOffice, no headless
   browser, no PDF round-trip, in the default build or behind a flag.
 - **Not a wrap of Anydoc.** `06-STEAL-REFUSE.md`'s A-rows are ideas — the error taxonomy,
@@ -241,10 +244,12 @@ and the only one forbidden outright.
   (**O28**) are all refused, and the reason is the one that refused wrapping a competitor as the
   grounded PDF core.
 - **Not 14 formats.** **A1** — Anydoc's coverage breadth — is the horizon this version aims at, not
-  a checklist this version implements. The gate names two formats. The rest are parked in `15` as
-  one row and split out of it only when the cost of the next one has been **measured** rather than
+  a checklist this version implements. The gate names two formats. The rest are split out of the
+  remaining-formats row only when the cost of the next one has been **measured** rather than
   guessed: S4 measured that a third OOXML format was cheap, and S5 measured that the first
-  non-OOXML format was not — so ODS, ODP, RTF, EPUB and CSV are still one row.
+  non-OOXML format was not. On that finding the row split again on paper — **S6 is ODS alone**, and
+  **S7 is the one row that is left**: ODP, RTF, EPUB, CSV. Neither has started, and S6 does not
+  acquire a second format because its reader happened to be open.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

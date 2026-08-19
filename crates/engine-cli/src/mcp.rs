@@ -16,9 +16,9 @@
 //!
 //! # Why this host, and why it is also the hazard
 //!
-//! `docs/reference/ethos-parser-expansion-memo.md` §16.7 puts MCP first and says why: it is the
-//! only host whose native return type carries a locator under an **enforced** schema
-//! (`structuredContent`), where every other host is effectively `Dict[str, Any]`. One server
+//! `docs/12-V12-SCOPE.md` §2 puts MCP first and says why: it is the only host whose native return
+//! type carries a locator under an **enforced** schema (`outputSchema` + `structuredContent`),
+//! where every other host on the list is effectively `Dict[str, Any]`. One server
 //! reaches all of them — including the ones whose licences this repository refuses — without
 //! dragging those licences toward us.
 //!

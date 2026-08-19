@@ -54,7 +54,9 @@ pub const RECTANGLE_OPERATOR: &str = "re";
 /// heuristic (a 10% vowel floor) that strips items from the tally *before* the comparison. An
 /// acronym-dense page — a NIST control table of `AC-2`/`SC-7`, a parts list of `SKU`/`QTY`/`MFG` —
 /// can therefore be reported as `no-text` when its text extracted perfectly
-/// (`docs/reference/ethos-parser-expansion-memo.md` §18.3).
+/// (`docs/03-V0-SCOPE.md`'s open-measurements list, and
+/// `classification.rs::an_acronym_dense_document_is_not_reported_as_textless`, which pins that this
+/// engine does not do it).
 ///
 /// Two consequences for this engine:
 ///

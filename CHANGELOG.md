@@ -9,6 +9,93 @@ frozen at **0.1.0** and later entries are versions.
 
 ## [Unreleased] — v2 reads a fourth format, as 0.24.0
 
+### v2-S6-docs — the 0.489 chase parked, the research archive off-tree, S6 split from S7
+
+**Docs only. No parser, no version bump, no profile-hash move, no detector change.** The workspace
+stays at **0.24.0**, `GATE_PERMILLE` stays at **489**, the table gate still measures **64‰**,
+`irs-form-1040-2025` still yields **0 tables**, and fabrication is still **0**. Three owner
+decisions, recorded rather than argued:
+
+#### The 0.489 chase is parked — and parking is not passing
+
+**64‰** is this engine on **four tagged PDFs this repository owns**. **0.489** is a published
+ODL-local table score on **their** corpus. Same unit, different exam. The chase is **parked** until
+this repository has a labelled set it owns and chooses to resume. **Fabrication 0 still binds.
+v1 is not complete.**
+
+Recorded as an amendment to forced decision **#10** in `00-NORTH-STAR.md`, dated 2026-08-19, with
+the original bar left visible rather than rewritten out of history. The same sentence lands in `02`,
+`07`, `08` §1 and §3, `09` S7, `10`–`13`'s banners, `table-gate-v1.md`, both READMEs and the
+`accuracy.rs` module comment. `09` S7's `> 0.489` acceptance box **stays unticked**: it records a
+miss, and a parked chase does not tick it.
+
+`GATE_PERMILLE` stays **489** on purpose. The verdict test still prints the measured figure against
+it, so a sudden jump in either direction shows up in the report rather than in a diff. What changed
+is the doc comment calling it *"the floor v1 must clear"* — it is a published comparator, not a live
+shipping floor.
+
+`08` §3's rule 1 changed with it. It read *"no slice before S7 is measured against 0.489"*, whose
+implication — that S7 had to be **cleared** before other work moved — sailed at v1.1. It now reads
+that **no slice is measured against 0.489 at all**, and that no slice may cite parking as progress.
+
+#### The research archive is off-tree
+
+`docs/reference/ethos-parser-expansion-memo.md` and
+`docs/reference/ethos-engine-parity-checklist.md` are **removed from git**. The owner keeps them
+elsewhere; holding a second document describing where the project is going is the confusion this
+removes. `docs/reference/README.md` is now a stub saying
+so and pointing at the living authority. **They are not to be restored, and not to be summarised
+back in.**
+
+`06-STEAL-REFUSE.md` becomes **self-contained**: it is the living steal / refuse extract, its header
+no longer defers to the checklist, and the four-way steal formula stays quoted verbatim where it
+already was — the quote survives its source. Row ids (`O5`, `A14`, `L30`, `P6`, …) stay citable as
+the names of decisions recorded there.
+
+Every in-tree **path** citation is retargeted so nothing points at a missing file — `02`, `00`,
+`docs/README.md`, and four Rust comments (`engine-cli/src/mcp.rs`, `engine-pdf/src/thresholds.rs`,
+`engine-pdf/src/classify.rs`, `engine-grounding/tests/liteparse_refusal.rs`). Each was retargeted at
+a document that **actually records the claim being cited**, which is not always the obvious one: the
+MCP host ranking and its hazard are `12-V12-SCOPE.md` **§2**, not §3's handle law; the LiteParse
+vowel-floor trap is in `03-V0-SCOPE.md`'s open-measurements list and in the test that pins this
+engine against it, and is **not** in `06-STEAL-REFUSE.md` at all. Two provenance headers that named
+the memo without a path — `04-ARCHITECTURE.md`'s **Baseline** and `docs/README.md`'s MCP sentence —
+are retargeted too, because a header is where a reader goes looking.
+
+**Seventeen in-prose `memo §…` citations survive elsewhere, alongside the `checklist L…` row ids,
+and are deliberately left.** They are section and row references, not links, and each names a
+decision this tree records in its own words; rewriting all of them would be a history edit rather
+than a repair. They now
+resolve to a document the owner holds off-tree, which `reference/README.md` says plainly.
+
+#### S6 and S7 split on paper, before the ODS reader exists
+
+`15` listed S6 as ODS + ODP + RTF + EPUB + CSV. S4 and S5 both split that waterfall **after**
+measuring a cost; this splits it **before** the code, for the reason S0 and S1 used — so the first
+implementation cannot quietly acquire a second format "while we're in here" while nobody has written
+down that it may not.
+
+| Slice | Theme | State |
+| --- | --- | --- |
+| **S6** | ODS → representation | **not started** |
+| **S7** | The remaining office formats — ODP, RTF, EPUB, CSV | **not started** |
+
+S5's finding is the argument: `<table:table-cell>` is a different reader from `<text:p>`, with a
+different atom and a different locator — the distance between `xlsx.rs` and `docx.rs`, not the
+distance between two OOXML packages. S6's stub carries the two handoffs S5 owed it: an `.ods`
+currently fails closed with a message about a missing **PDF** header (right outcome, wrong cause —
+S6 fixes it), and the frame-alternative rule is **still unmeasured in the wild**, which S6 measures
+on authored ODS XML over the same container. `14` and `02`'s v2 row follow.
+
+Nothing here reads an office format, and **v2 is not complete**.
+
+#### `docs/CAPABILITY.md`
+
+One page, two tables: what **0.24.0** can do and what it cannot, with the version in the body rather
+than the filename. The **Cannot** table separates *not yet* from **refusal**, so "no OCR" and "no
+LibreOffice bridge" are not read as the same kind of statement. Linked once from `docs/README.md`
+and once from the root README. It claims no OCR, no ODS, and neither v1 nor v2 complete.
+
 ### v2-S5 — ODT into the representation, and the page break that is in the file
 
 **An OpenDocument paragraph binds, and `pages` is still `[]`.** `engine extract` reads a `.odt`

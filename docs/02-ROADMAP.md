@@ -14,22 +14,24 @@ version numbers get invented — every delta from the research folds into a row 
 | --- | --- | --- | --- |
 | **v0** | Honest PDF core | classify (reason codes on two orthogonal axes, counts, no confidence, three exit codes) · position-aware text runs · measured ink box or typed absence with declared semantics · `synthesized` flags · single-column order · format detection · error taxonomy · c14n/quanta/ids · capability declarations · `ethos.grounding.v1` · `grounding-check` · CLI + lib · fuzz + mutation tests | Validator agrees byte-identically with `ethos grounding check` on all 15 fixtures |
 | **v0.1** | Verify + robustness — **shipped as 0.2.0** | shell out to the Ethos CLI as a declared capability · encoding-issue detection · xref repair-or-refuse | An ungrounded claim exits 1 with a report; no silent skip. **Met**: `engine verify --fail-on-ungrounded`, bytes relayed verbatim, verifier pinned in the profile |
-| **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Table-cell accuracy **> 0.489** on a labelled set · fabrication rate 0 · cross-check diagnostics emitted |
+| **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Fabrication rate **0** · cross-check diagnostics emitted · an honest table number on the four-PDF set, measured at **64‰**. The **> 0.489** chase is **parked** — see below. **v1 is not complete** |
 | **v1.1** | Safe Markdown | Markdown + **Anchor Map** · HTML · hyphenation / dot-leaders / drop-caps as export-only cosmetics | A Markdown-quoted citation verifies end-to-end; coverage completeness asserted |
 | **v1.2** | Adoption | **MCP server** (first adapter) · Python + Node SDKs · LangChain tool · optional `liteparse → ethos.grounding.v1` adapter | Locators survive every adapter round-trip |
-| **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODF/RTF/EPUB/CSV · shared IR + one serializer · embedded assets | A DOCX quote and an XLSX cell both ground; **no synthesised pages** |
+| **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODT → **ODS (S6)** → RTF/EPUB/CSV and ODP (S7) · shared IR + one serializer · embedded assets | A DOCX quote and an XLSX cell both ground; **no synthesised pages** |
 | **v2.1** | OCR lane | PP-OCRv5/v6 ONNX in-process · LiteParse-compatible HTTP OCR contract · own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | OCR fingerprint provably incomparable with born-digital |
 | **v2.2** | Accessibility (**parallel lane**) | auto-tag → Tagged PDF | Only on a named accessibility requirement. Never on the critical path |
 | **v3** | Assist | propose-only VLM · dual-read → review · hybrid enrichments (formula, chart) as `Recognized` / `Proposed` | Byte-diff: assist on/off ⇒ identical grounded artifacts |
 
 ### The two gates worth memorising
 
-**v1 tables: beat 0.489, not 0.9×.** ODL's README leads with 0.907 overall; that is its **hybrid
-AI-backed** mode. Its deterministic local mode scores **0.831 overall / 0.489 table**, and that
-0.489 is the one figure ODL and pdf-inspector independently report **bit-identically** on the same
-corpus. Beating ODL-local deterministically is a realistic v1 target. Matching ODL-hybrid is a
-different, non-deterministic product, and where hybrid is better the honest move is to say so rather
-than to chase it. See `reference/ethos-engine-parity-checklist.md` §0.1.
+**v1 tables: 0.489 is incomparable here, so do not chase it — and do not chase hybrid 0.9× either.**
+**64‰** is this engine on **four tagged PDFs this repository owns**. **0.489** is a published
+ODL-local table score on **their** corpus — the one figure ODL and pdf-inspector report
+bit-identically, which is why it was picked. Same unit, different exam. The chase is **parked**
+(`00-NORTH-STAR.md` #10) until this repository has a labelled set it owns and chooses to resume.
+Hybrid ~0.9× was never the target and still is not: it is a non-deterministic mode, and a
+determinism contract cannot sit under it. **Fabrication 0 still binds. v1 is not complete**, and
+parking the chase is not a pass — `table-gate-v1.md` keeps the method and the miss.
 
 **v0: byte-identical agreement with the Ethos CLI.** Not "close," not "equivalent modulo
 formatting." Byte-identical on `structure`, `source_binding`, `representation_sha256`, `counts`,
@@ -40,7 +42,9 @@ across all 15 fixtures, as a CI job rather than a claim.
 ## Folded deltas
 
 Research passes 3 and 4 produced changes that fold into the rows above. Recorded here so nobody
-proposes a "v0.5" for them.
+proposes a "v0.5" for them. The **Source** column names research row ids; the archive they came from
+is off-tree (`reference/README.md`) and `06-STEAL-REFUSE.md` is the living record of the decisions
+those rows became.
 
 | Ver | Folded in | Source |
 | --- | --- | --- |
@@ -73,7 +77,7 @@ forced decision in `00-NORTH-STAR.md` §2.
 | A second verification implementation | `07-VERIFY-BOUNDARY.md`. Linking the same verifier is not a second integration; reimplementing its semantics is |
 | Any AGPL dependency | Forced decision #14 |
 | RAGFlow-class retrieval platforms in the trust core | Rejected on structure, not licence — DeepDoc cannot emit `TableCellPosition` with row/col spans, so the cross-check cannot run. Seven written reversal triggers exist (memo §16.8); absent all seven, no |
-| Rankings, "#1", "fastest", or any competitor bake-off table | Every headline number in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags (memo §18.4) |
+| Rankings, "#1", "fastest", or any competitor bake-off table | Every headline number in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags. **0.489 is one of them** — never published as this engine's score |
 
 ---
 
@@ -86,10 +90,10 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What shape must every artifact have? | `01-CONTRACT.md` |
 | Can I borrow feature X from parser Y? | `06-STEAL-REFUSE.md` |
 | Where does verification live? | `07-VERIFY-BOUNDARY.md` |
-| What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **the gate is missed at 64‰** |
+| What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 64‰, a miss; the 0.489 chase is parked** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S5 done at 0.24.0; S6 not started** |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S5 done at 0.24.0; S6 (ODS) and S7 (the rest) not started** |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has

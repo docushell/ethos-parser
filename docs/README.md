@@ -2,10 +2,14 @@
 
 **Status:** **v1.2 is complete at 0.19.0; v2 reads four formats at 0.24.0.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
-open**. Its gate — table-cell
-accuracy above 0.489 — is measured and **missed**: macro cell-slot F1 is **64‰** against a
-489‰ floor. The method is [`table-gate-v1.md`](table-gate-v1.md). **v1 is not done**, and v1.1
-began because the owner asked for the next roadmap row rather than because the gate cleared.
+open**. Its table number is measured and **missed**: macro cell-slot F1 is **64‰**, fabrication is
+**0**, and the method is [`table-gate-v1.md`](table-gate-v1.md). **The > 0.489 chase is parked** —
+64‰ is this engine on four tagged PDFs this repository owns, 0.489 is a published ODL-local score on
+*their* corpus, same unit and a different exam (`00-NORTH-STAR.md` #10). Parking is not a pass:
+**v1 is not done**, and v1.1 began because the owner asked for the next roadmap row rather than
+because the gate cleared.
+
+**What 0.24.0 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
 
 **v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
@@ -16,8 +20,9 @@ objection payable.
 **v1.2 is ADOPTION, and S1 is its first adapter: `engine mcp`, MCP over stdio.** Three tools —
 `extract`, `ground`, `node_get` — over newline-delimited JSON-RPC on a pipe, with no HTTP, no
 socket and no async runtime, so `deny.toml`'s network bans hold. The whole slice turns on one
-sentence from the parser memo §16.7: MCP tools are model-controlled, so **the engine mints every
-locator, returns it as an opaque handle, and re-validates it on the way back in** — get that wrong
+sentence in [`12-V12-SCOPE.md`](12-V12-SCOPE.md) §2: MCP tools are model-controlled, so **the
+engine mints every locator, returns it as an opaque handle, and re-validates it on the way back
+in** — get that wrong
 and MCP is the worst host on the list rather than the best. A forged node id is an error, an edited
 representation fails its fingerprint, and no tool argument names a coordinate.
 [`12-V12-SCOPE.md`](12-V12-SCOPE.md) states the law; [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md)
@@ -171,10 +176,11 @@ document, and undetectable downstream.
 
 Both are cross-checked two independent ways, and fabrication is 0 under both. S3 adds a **second**
 check — `tagged-vs-geometric-v1` — comparing the grid a document's tags declare against the grid a
-detector found. **The > 0.489 accuracy gate is S7's**, not any of these slices' — see
-`08-V1-SCOPE.md` §3 for why chasing it earlier would be tuning against nobody's number.
+detector found. **The > 0.489 accuracy gate was S7's**, not any of these slices' — see
+`08-V1-SCOPE.md` §3, both for why chasing it earlier would have been tuning against nobody's number
+and for why the chase is now **parked** outright.
 
-**S7 has now measured it: macro cell-F1 is 64‰ against the 489‰ floor — a miss.** The method is
+**S7 measured it: macro cell-F1 is 64‰ against the 489‰ comparator — a miss.** The method is
 [`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
 repository should be quoted from. S7b ran seven investigations: the six aimed at the
 *alignment* rule were all measured and rejected, and one — `ruled-rects-v2` — shipped, taking
@@ -273,7 +279,8 @@ built and parked. S8 is unstarted.
    representation, the projection, or the checker — and do not widen the public API without
    editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
    read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
-   first: v1 is **seven slices**, S1–S7b are done, the remaining work is closing S7, and the > 0.489 gate belongs to S7 alone
+   first: v1 is **seven slices**, S1–S7b are done, S7 is still open, and the > 0.489 gate belonged
+   to S7 alone before the chase was **parked** — no slice is measured against it now
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
    **older than its own source** (it prints the validation report bare; the ref CI pins wraps it
@@ -317,18 +324,19 @@ Then, as needed:
 | [`05-MILESTONES.md`](05-MILESTONES.md) | **M0–M7**, each with Goal / In / Out / Artifacts / Acceptance tests / Review checklist / Depends on | Every PR. This is the code-review map |
 | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) | The four-way steal formula · TAKE / IMPROVE / REFUSE / DEFER for the decisions that prevent bad PRs | Before borrowing anything from ODL, Anydoc, pdf-inspector, or LiteParse |
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Engine vs verifier · the staged path · BYO forever · OCR/agent/VLM boundaries · six anti-patterns | Before anything verification-shaped |
-| [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 is measured once at S7 · the ruled/unruled split · capability flip plan | Before any v1 work |
+| [`08-V1-SCOPE.md`](08-V1-SCOPE.md) | What v1 is and is not · why 0.489 was measured once at S7 and why the chase is now parked · the ruled/unruled split · capability flip plan | Before any v1 work |
 | [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) | **S0–S8**, each with Goal / In / Out / Acceptance / Depends on | Every v1 PR. This is the v1 code-review map |
 | [`10-V11-SCOPE.md`](10-V11-SCOPE.md) | What v1.1 is and is not · Workbench rule 8 and why Markdown waited · the four laws of the Anchor Map | Before any v1.1 work |
 | [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) | **v1.1-S0–S4**, all done | Every v1.1 PR. This is the v1.1 code-review map |
 | [`12-V12-SCOPE.md`](12-V12-SCOPE.md) | **v1.2 adoption**: what it is, what it is not, and the handle law | Before any adapter |
 | [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) | **v1.2-S0–S5**, all done — S5 **refused** | Every v1.2 PR. This is the v1.2 code-review map |
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
-| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S6**, with S0–S5 done and S6 **not started** | Every v2 PR. This is the v2 code-review map |
-| [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489 | Before quoting any table-accuracy number |
+| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S7**, with S0–S5 done, **S6 (ODS) not started** and **S7 (ODP, RTF, EPUB, CSV) not started** | Every v2 PR. This is the v2 code-review map |
+| [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489, which is why the chase is parked | Before quoting any table-accuracy number |
+| [`CAPABILITY.md`](CAPABILITY.md) | What **0.24.0** can and cannot do, as two tables | When someone asks what this engine actually does today |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
-| [`reference/`](reference/) | The research archive the above was derived from | To check the evidence behind a decision |
+| [`reference/`](reference/) | A stub. The two research files are **off-tree**; `06-STEAL-REFUSE.md` is the living steal / refuse record | Only to find out where the archive went |
 | [`attic/`](attic/) | Work that was **built, measured and deliberately not shipped**, as a patch that still applies | Before rebuilding something this project already tried |
 
 ---
@@ -371,11 +379,11 @@ Repeated from `05-MILESTONES.md`. If you remember nothing else:
 
 | What | Where | Status |
 | --- | --- | --- |
-| Research archive | `reference/` | Evidence, not roadmap. See [`reference/README.md`](reference/README.md) |
+| Research archive | **off-tree**, owner's copy | Removed 2026-08-19. Not the roadmap, not to be restored or summarised back in. See [`reference/README.md`](reference/README.md) |
 | Parked work | `attic/` | Built, measured, not shipped. `stroke-ruled-v1` is there with its numbers and its reason |
 | Ethos product repo | `~/Desktop/Stuff/repo/ethos/` | **Read-only.** Contracts, fixtures, CLI oracle |
 | DocuShell repo | `~/Desktop/Stuff/repo/docushell-repo/` | **Read-only.** Workbench rules, `DocumentRepresentation v0` spec |
-| Ethos-in-DocuShell parser plan | `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` | External. Architecture depth only; superseded where it conflicts with memo §16–§18 |
+| Ethos-in-DocuShell parser plan | `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` | External. Architecture depth only; superseded where it conflicts with `docs/00`–`docs/15` |
 
 Never edit the Ethos or DocuShell repos from this project.
 

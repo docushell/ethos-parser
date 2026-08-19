@@ -1,7 +1,8 @@
 # 06 — Steal / refuse
 
-**Status:** living extract · **Full detail:** `reference/ethos-engine-parity-checklist.md` (~70 rows,
-each with README claim, observed evidence, decision, target version, exit criterion)
+**Status:** the living steal / refuse extract. **This file is the authority** — the ~70-row research
+checklist it was extracted from is off-tree (`reference/README.md`), so nothing below defers to it.
+Row ids (`O5`, `A14`, `L30`, `P6`, …) stay citable as the names of decisions recorded here.
 
 **Read this before proposing a feature borrowed from another parser.** It exists to prevent a
 specific failure: a good-faith PR that imports a competitor's capability along with the bug that
@@ -11,7 +12,7 @@ makes it dishonest.
 
 ## The four-way steal formula
 
-From `reference/ethos-parser-expansion-memo.md` §18.6, verbatim:
+From the research pass that produced this file, quoted verbatim so the wording survives its source:
 
 > ethos-engine should take **the table model, tagged-PDF consumption, and XY-Cut reading order** from
 > **OpenDataLoader**; **the shared multi-format IR, the `CellSlot` merged-cell model, the six-variant
@@ -125,7 +126,7 @@ adapter's business.
 | P7 | Stable reading order | v1 | Multi-column flips on `min_lines < 15`. Fourteen lines interleave, fifteen go column-major. A one-line edit reorders the page |
 | O1 | Determinism as a **contract**, not a mode name | v0 | A mode can be turned off. A contract is checked |
 | O2 | Self-describing JSON | v0 | Declared coordinate system, real page geometry, versioned shape |
-| O5 | The table **detector** (the model is fine) | v1 | ODL's row/col + spans model is the best in open source. Its deterministic detection scores 0.489 |
+| O5 | The table **detector** (the model is fine) | v1 | ODL's row/col + spans model is the best in open source. Its deterministic detection scores 0.489 on their corpus — a comparator, not this engine's floor |
 | O8 | Markdown **only** with the Anchor Map | v1.1 | Rule 8 prefers no projection at all |
 | P20 | xref repair-or-refuse | v0.1 | `lopdf` refuses 19-byte entries (spec requires 20); PDFium repairs. Refusing is correct; the rate is a **declared limitation** |
 | A14 | Declared erasure | v2 | If something is removed, the artifact says so and says how much |
@@ -212,13 +213,19 @@ reads the source PDF.
 
 ---
 
-## One number, and how to use it
+## One number, and how to use it — **as of 2026-08-19, mostly not at all**
 
 **ODL-local scores 0.489 on tables.** It is the only figure two independent publishers report
 bit-identically on the same corpus. ODL's README leads with 0.907 — that is its **hybrid AI-backed**
 mode, a different and non-deterministic product.
 
-Use 0.489 as **the v1 floor to beat**, never as a claim to publish. And read every other number in
+**The chase is parked.** **64‰** is this engine on **four tagged PDFs this repository owns**;
+**0.489** is that published ODL-local score on **their** corpus. Same unit, different exam. 0.489 is
+no longer the floor the next slice must beat (`00-NORTH-STAR.md` #10), and it resumes only if this
+repository has a labelled set it owns and the owner chooses to resume. **Fabrication 0 still binds.
+v1 is not complete.**
+
+What has not changed: 0.489 is **never a claim to publish**. And read every other number in
 this landscape as configuration-dependent: ODL and pdf-inspector scored LiteParse on the same corpus
 with the same evaluator and got **0.576 vs 0.873 overall, 0.000 vs 0.693 on tables**. The corpus and
 evaluator are provably not the variable — ODL's own row and markitdown's row are bit-identical across

@@ -1,7 +1,13 @@
 # The v1 table gate, and how it is computed
 
-**Status: measured, and MISSED.** Macro cell-F1 is **64‰** against a floor of **489‰**.
+**Status: measured, and MISSED.** Macro cell-F1 is **64‰**. **489‰ is a published comparator, not a
+live shipping floor** — the chase for it is **parked** (`00-NORTH-STAR.md` #10, 2026-08-19), and
+parking it is not a pass.
 (**61‰** at v1-S7b, under `ruled-rects-v2` alone; v1-S8 added `stroke-ruled-v1` — see below.)
+
+**The method below does not change.** 64‰ is still measured, still reruns to the same value, still
+runs in CI, and **fabrication is still 0**. What is parked is treating 489‰ as the number the next
+slice must beat.
 
 This document states the method completely enough to recompute the number. It is written that way
 because `docs/06-STEAL-REFUSE.md` records what happens otherwise: two publishers scored the same
@@ -10,8 +16,14 @@ method is not a number.
 
 ## The number is not comparable to the 0.489 it is named after
 
-0.489 is a **published table-cell score from a third-party corpus this repository does not have**,
-and it is used here as a floor to clear, never as a claim to publish. The number below is computed
+**64‰** is this engine on **four tagged PDFs this repository owns**. **0.489** is a published
+ODL-local table score on **their** corpus. Same unit, different exam. That incomparability is the
+whole reason the chase is parked until this repository has a labelled set it owns and chooses to
+resume — the paragraph below is the long form of it, and it predates the park.
+
+0.489 is a **published table-cell score from a third-party corpus this repository does not have**.
+It was used here as a floor to clear, and never as a claim to publish; since 2026-08-19 it is not
+used as a floor either. The number below is computed
 on four documents this project happens to hold, with an evaluator written in this repository,
 against ground truth taken from the documents' own tagged structure trees. It shares a *unit* with
 0.489 and nothing else.
@@ -122,7 +134,8 @@ under `ruled-rects-v2` + `stroke-ruled-v1` + `unruled-align-v1`.
 | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** |
 | **MACRO over 4 documents** | | | | **64‰** |
 
-**Gate: 64‰ > 489‰ is false. v1-S7 is still not green.**
+**Gate: 64‰ > 489‰ is false. v1-S7 is still not green** — and 489‰ is now a comparator rather than a
+floor the next slice must clear. The verdict stands as a miss; the chase is parked, not passed.
 
 Alongside it, on the same run:
 

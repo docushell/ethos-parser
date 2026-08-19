@@ -1,6 +1,7 @@
 # 04 — Architecture
 
-**Status:** bootstrap authority · **Baseline:** memo §16.12 · **Scope:** v0 only
+**Status:** bootstrap authority · **Baseline:** the bootstrap research pass, now off-tree
+(`reference/README.md`) · **Scope:** v0 only
 **Rule:** if this document and `01-CONTRACT.md` disagree, the contract is right and this is a bug.
 
 ---

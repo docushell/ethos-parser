@@ -33,7 +33,7 @@ decision from the owner, recorded here first.
 | 7 | **v0 happy path only:** classify → extract → ground → grounding-check. No OCR, no tables, no Markdown-as-evidence, no office, no MCP, no SDKs, no citation verification inside the engine. |
 | 8 | **Classify:** LiteParse-shaped reason codes on two orthogonal axes (OCR-need vs layout-hard); boolean derived from reasons; no confidence float; three exit codes (simple / needs-attention / could-not-read). |
 | 9 | **OSS stance:** ODL = tables/tags/XY-Cut (later); Anydoc = office IR + error taxonomy + mutation/fuzz (later); pdf-inspector = reference-only (rects/encoding/single-load/mcid ideas); LiteParse = classify/OCR-contract/forms/vectors/screenshots/`trailing_space_generated` ideas — not a dependency for grounded PDF. |
-| 10 | **v1 table gate (document only):** beat ODL-local ~0.489 deterministic, not hybrid ~0.9×. Do not expand into full v1 specs in this pass. |
+| 10 | **v1 table gate (document only):** the bar was ODL-local ~0.489 deterministic, never hybrid ~0.9×. **Amended by the owner, 2026-08-19: the chase is parked.** 64‰ is this engine on four tagged PDFs this repository owns; 0.489 is a published ODL-local score on *their* corpus — same unit, different exam. 0.489 is **not** a shipping precondition for v2 and gates no slice. The number stays on the record, the method stays in `table-gate-v1.md`, **fabrication 0 still binds**, and **v1 is not complete**. The chase resumes if and when this repository has a labelled set it owns and chooses to resume it. |
 | 11 | **OCR (document only):** none in v0; PP-OCR ONNX deterministic lane + LiteParse-style HTTP contract at v2.1; confidence diagnostic only, never filter; Tesseract never default; VLM/`Proposed` at v3. |
 | 12 | **Optional agents:** allowed later as assist emitting `Proposed` only; never overwrite `Extracted`; never same processor identity for draft + evidence (Workbench rule 7). Out of v0. |
 | 13 | **LibreOffice→PDF office bridge:** forbidden (invents pagination). |
@@ -87,7 +87,7 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures, an
 | --- | --- | --- |
 | **v0** | Validator agrees byte-identically with `ethos grounding check` across all 15 fixtures | Honest PDF core: classify, position-aware runs, locators, capabilities, grounding emit |
 | **v0.1** | An ungrounded claim exits 1 with a report; no silent skip | Verify by shelling out to the Ethos CLI, as a declared capability |
-| **v1** | Table-cell accuracy **> 0.489** on a labelled set; fabrication rate 0 | The DocuShell replacement gate — tables, full element vocabulary, tagged PDF, forms, vectors |
+| **v1** | Fabrication rate **0** and an honest table number on the four-PDF set it owns — measured at **64‰**. The **> 0.489** chase is **parked** (decision #10). **Not complete** | The DocuShell replacement gate — tables, full element vocabulary, tagged PDF, forms, vectors |
 | **v1.1** | A Markdown-quoted citation verifies end-to-end | Safe Markdown, only with the Anchor Map |
 | **v1.2** | Locators survive every adapter round-trip | Adoption: MCP server, Python + Node SDKs, LangChain tool |
 | **v2** | A DOCX quote and an XLSX cell both ground; no synthesised pages | Anydoc-class office formats through one shared IR |
@@ -119,9 +119,11 @@ For a coding agent starting fresh:
 7. **`06-STEAL-REFUSE.md`** — read before proposing a feature borrowed from another parser
 8. **`02-ROADMAP.md`** — only to check that a v1+ idea has a home and does not belong in v0
 
-Research evidence: `reference/` (see `reference/README.md`). Architecture depth for the older
+What 0.24.0 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
+these documents is **off-tree** and is not a second roadmap (`reference/README.md`);
+`06-STEAL-REFUSE.md` is the living steal / refuse record. Architecture depth for the older
 Ethos-in-DocuShell framing: `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` — **external, not
-in this tree, superseded wherever it conflicts with memo §16–§18.**
+in this tree, superseded wherever it conflicts with the documents above.**
 
 ## 7. Anti-goals
 
@@ -129,7 +131,9 @@ Written down so they can be pointed at in review.
 
 - A public confidence float, score, grade, or any single field summarising document quality
 - A benchmark claim of "fastest," "#1," or "best" — every competitor headline number in this
-  landscape is publisher-owned and at least one is provably 34 points off (memo §18.4)
+  landscape is publisher-owned and at least one is provably 34 points off depending on invocation
+  flags. **0.489 included:** it is theirs, on their corpus, and this repository neither publishes it
+  as its own nor now chases it (decision #10)
 - Silent deletion: hidden text, headers, footers, small text, or low-confidence OCR removed without
   a record
 - Any coordinate, identifier, fingerprint, or pagination the source did not contain

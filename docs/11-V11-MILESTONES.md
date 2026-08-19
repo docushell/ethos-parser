@@ -3,8 +3,9 @@
 **Status:** implementation authority for v1.1 · **Scope document:** `10-V11-SCOPE.md`
 **This is the code-review map for v1.1.** Every v1.1 PR belongs to exactly one slice.
 
-**v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
-(`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). v1.1 began because the owner asked for the next
+**v1 is not done.** S7's gate is measured and **missed at 64‰**, and 489‰ is a published comparator
+rather than a live floor — the chase is **parked**, which is not a pass (`00-NORTH-STAR.md` #10,
+`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). v1.1 began because the owner asked for the next
 roadmap row, and nothing in it closes v1.
 
 | Slice | Theme | Depends on | State |
@@ -613,7 +614,8 @@ they get bent:
 Unchanged by v1.1, and listed here so a reader of this document does not mistake a shipped
 projection for a finished engine:
 
-- **The v1 table gate is missed at 64‰** against a 489‰ floor. `nist-sp-800-63b` and
+- **The v1 table gate is missed at 64‰**, against a 489‰ comparator whose chase is now parked.
+  `nist-sp-800-63b` and
   `nist-sp-800-53r5` both score 0‰ — they draw no table rulings at all, and several of their tagged
   tables are multi-page, which the page-granular join cannot match even in principle.
 - **Page rasters** (`page_screenshots`) — no renderer this project may depend on.

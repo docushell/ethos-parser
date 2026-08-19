@@ -3,28 +3,40 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads four formats.** S0–S5 are **done**; **S6 is not started**. `engine-office` is the fifth
-crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
+**v2 reads four formats.** S0–S5 are **done**; **S6 and S7 have not started**. `engine-office` is
+the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
 engine *can* count would become a page, and ODT is the one whose file **contains an actual page
 break** and still declares none. None of them did.
 
-**The remaining-formats row split twice, each time against a measurement.** S0 wrote it as one line
-on purpose — *"this row splits into real slices when S2 and S3 are done and that cost is measured"*.
-S4 measured the first half: a third OOXML format is one reader, one profile and one fixture pair,
-because the container, the XML rules and the `r:id`-to-part rule are shared. **S5 measured the
-second half** by taking the cheapest non-OOXML format and finding that only the container
-transferred — a new vocabulary, a new atom, a new detection question and a new class of
-nested-block defect did not. So ODT is its own slice, and **S6** carries ODS, ODP, RTF, EPUB and
-CSV.
+**The remaining-formats row split three times, each time against a measurement.** S0 wrote it as one
+line on purpose — *"this row splits into real slices when S2 and S3 are done and that cost is
+measured"*. S4 measured the first half: a third OOXML format is one reader, one profile and one
+fixture pair, because the container, the XML rules and the `r:id`-to-part rule are shared. **S5
+measured the second half** by taking the cheapest non-OOXML format and finding that only the
+container transferred — a new vocabulary, a new atom, a new detection question and a new class of
+nested-block defect did not. So ODT became its own slice.
+
+**The third split is this document's own, and it is on paper before the reader exists.** S5's
+finding says it: an `.ods` is not an `.odt` with different tags. `<table:table-cell>` is a different
+reader with a different atom and a different locator — the distance between `xlsx.rs` and `docx.rs`,
+not the distance between two OOXML packages. Writing the split *after* the ODS reader lands would
+mean writing it while somebody is already inside the file, which is exactly when "while we're here,
+ODP is nearly free" gets said. So **S6 is ODS alone** and **S7 is the one row that is left** — ODP,
+RTF, EPUB, CSV — and S7 stays one row until the cost of the next format in it is measured, on the
+rule S0 set and S4 and S5 both honoured.
 
 **The v2 gate is still DOCX + XLSX, and both still bind.** ODT is coverage beyond it. v2 is not
-complete: S6 has not started, and no slice here closes v1.
+complete: neither S6 nor S7 has started, and no slice here closes v1.
 
-**v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
-(`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1 and **v1.2 is
-complete** at 0.19.0. v2 began because the owner asked for the next roadmap row, and nothing in it
-closes v1.
+**v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
+four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
+0.489 is a published ODL-local score on *their* corpus, same unit and a different exam
+(`00-NORTH-STAR.md` #10, `09-V1-MILESTONES.md` S7, `table-gate-v1.md`). Parking is not a pass.
+**v1-S7 is `09`'s slice and has nothing to do with this document's S7.**
+
+**v1.1 is complete** at 0.14.1 and **v1.2 is complete** at 0.19.0. v2 began because the owner asked
+for the next roadmap row, and nothing in it closes v1.
 
 | Slice | Theme | Depends on | State |
 | --- | --- | --- | --- |
@@ -34,7 +46,8 @@ closes v1.
 | **S3** | XLSX → representation: sheets and cells | S2 | **done — and the `coordinate_system` decision** |
 | **S4** | PPTX → representation: slides and shapes | S3 | **done — and a slide is a part** |
 | **S5** | ODT → representation: paragraphs, and the page break in the file | S4 | **done — and the break is still not a page** |
-| **S6** | The remaining office formats — ODS, ODP, RTF, EPUB, CSV | S5 | **not started** |
+| **S6** | ODS → representation: a spreadsheet the OpenDocument way | S5 | **not started** |
+| **S7** | The remaining office formats — ODP, RTF, EPUB, CSV | S6 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -733,7 +746,8 @@ lists.
 **An `.ods` would have been a second slice wearing this one's name.** A spreadsheet's `content.xml`
 is `<table:table-cell>`, which is a different reader with a different atom and a different locator
 — the distance between `xlsx.rs` and `docx.rs`, not the distance between two OOXML packages. So S5
-is ODT alone, and **S6 carries what is left**: ODS, ODP, RTF, EPUB, CSV.
+is ODT alone. That finding is also what split the row again: **S6 is ODS alone**, and **S7 carries
+what is left** — ODP, RTF, EPUB, CSV.
 
 ### The format that tested the law the hardest, and still did not move it
 
@@ -828,7 +842,7 @@ slice makes about handing an encrypted `content.xml` to the XML reader.
 It is **not fixed here**, on v2-S3's precedent for `&#66;` and the unmatched `CData` arm: a named
 refusal for the ODF family means deciding what this engine says about a spreadsheet it will read in
 S6, and inventing that sentence now would put a claim about ODS in a slice that does not read one.
-Recorded so S6 finds it, where the answer is one line rather than a guess.
+**Recorded as S6's, and S6 owns fixing it** — where the answer is one line rather than a guess.
 
 ### The manifest, which replaces the rule `opc.rs` holds for OOXML
 
@@ -958,8 +972,10 @@ OpenDocument specification and pinned against fixtures this repository authored.
 Where that left a judgement call it is made toward **over-declaring**: a region this reader is
 unsure about is counted as unread rather than concatenated into a paragraph, so the failure mode is
 a phrase declared missing rather than a phrase invented. The frame-alternative rule is the clearest
-case — it is spec-derived and fixture-tested, not measured against files in the wild. **S6 should
-measure it**, and the honest statement today is that it has not been.
+case — it is spec-derived and fixture-tested, not measured against files in the wild, and **it is
+still unmeasured in the wild today**. **S6 measures it** on authored ODS XML over the same
+container, which is the nearest honest thing available; measuring it against real ODF producers
+needs a corpus this repository does not have.
 
 - **In:** `crates/engine-office/{odt.rs, lib.rs, zip.rs}` — `zip::first_entry`, the four-way router
   and `read_odt`; `OdtLocator`, `NativeLocator::Odt`, `NodeAttributes::OfficeParagraph`,
@@ -968,7 +984,7 @@ measure it**, and the honest statement today is that it has not been.
   `fixtures/office/text-paragraphs` and `text-unread-parts` with their generator; `0.24.0`, the
   moved profile hash and both SDK pins; `PUBLIC-API.md` and its gate; `14`/`15`; CHANGELOG; README.
 
-- **Out:** ODS, ODP, RTF, EPUB, CSV — S6. Styles as evidence, tracked changes as a second
+- **Out:** ODS — S6; ODP, RTF, EPUB, CSV — S7. Styles as evidence, tracked changes as a second
   authority, embedded objects, `text:outline-level`, headers and footers beyond the A14 count. Any
   change to `ethos.grounding.v1`. Any `project()` change. Markdown or HTML for an ODT. New MCP
   tools, new SDK functions. A `coordinate_system` mode enum — v2-S3 closed that and this slice did
@@ -1038,18 +1054,51 @@ measure it**, and the honest statement today is that it has not been.
 
 ---
 
-## S6 — the remaining office formats — **not started**
+## S6 — ODS → representation — **not started**
 
-- **Goal:** ODS, ODP, RTF, EPUB and CSV, on the terms the first four established.
+- **Goal:** OpenDocument **spreadsheet**, on the terms the first four established. One format. Not
+  "the ODF family", not "the rest of the office formats".
 
-- **Still deliberately one row, and S5 is why it is a shorter one.** **A1** — Anydoc's 14-format
-  coverage — is v2's horizon, not its checklist. S4 measured that a fourth *OOXML* format would be
-  cheap. **S5 measured what the next one actually cost**, and the answer is that ODF's container
-  was free and everything above it was not: a new vocabulary, a new atom, a new detection question
-  and a new class of nested-block defect. ODS and ODP inherit the container work and none of the
-  rest — a `<table:table-cell>` is a different reader from a `<text:p>` — and RTF is not XML at
-  all, EPUB is a ZIP of XHTML, and CSV has no container. Scheduling them as one slice each before
-  any of them has been looked at would still be the waterfall S0 refused.
+- **Why it is one format, written down before the reader exists.** S5 measured what the first
+  non-OOXML format cost and found that only the container transferred. An `.ods` inherits that
+  container and nothing above it: `<table:table-cell>` is a different reader from `<text:p>`, with a
+  different atom, a different locator and a different question about what a sheet is. The scope is
+  fixed here, ahead of the code, for the reason S0 and S1 both used — *so the first implementation
+  cannot quietly acquire a second format "while we're in here" while nobody has written down that
+  it may not.* **ODP is S7's**, and being one `zip::first_entry` call away does not move it.
+
+- **What S5 hands over, and S6 owes back.**
+
+  | Handoff | What it is | What S6 owes |
+  | --- | --- | --- |
+  | **An `.ods` is refused with a message about PDF** | `is_odt` correctly declines it, nothing else claims it, so it falls through to the PDF reader and gets *"expected a PDF header (%PDF-) at byte 0"*. It fails closed — empty stdout, exit 2 — but names the wrong cause | S6 fixes it, because S6 is where the ODF family's named refusal can be written without inventing a claim about a format nothing reads. It is not a "while we're here": it is the one thing S5 deferred **to** this slice |
+  | **The frame-alternative rule is unmeasured in the wild** | `odt.rs` reads only the first `<draw:text-box>` of a `<draw:frame>`. Spec-derived, fixture-tested, never seen against a real ODF producer | S6 measures it on **authored ODS XML** over the same container. That is the nearest honest thing available; a real-producer corpus does not exist here, and S6 says so rather than implying it measured one |
+
+- **The one thing already known about the shape:** a spreadsheet's page is a printer's, which v2-S3
+  settled for XLSX and §3's law settles again here. Whatever an `.ods` says about print ranges or
+  paper, `pages` stays `[]` and the locator carries no page.
+
+- **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind. This
+  slice, and S5 before it, is coverage beyond it. **Nothing here closes v1**, whose table chase is
+  parked rather than passed.
+
+- **Depends on:** S5.
+
+---
+
+## S7 — the remaining office formats — **not started**
+
+- **Goal:** ODP, RTF, EPUB and CSV, on the terms the first five established.
+
+- **Still deliberately one row, and S5 and S6 are why it is a shorter one.** **A1** — Anydoc's
+  14-format coverage — is v2's horizon, not its checklist. S4 measured that a fourth *OOXML* format
+  would be cheap. **S5 measured what the first non-OOXML format actually cost**, and the answer is
+  that ODF's container was free and everything above it was not: a new vocabulary, a new atom, a new
+  detection question and a new class of nested-block defect. That is why ODS left this row and
+  became S6. ODP inherits the container work and none of the rest; RTF is not XML at all; EPUB is a
+  ZIP of XHTML; CSV has no container. Scheduling them as one slice each before any of them has been
+  looked at would still be the waterfall S0 refused — and this row splits again the same way the
+  last two did, **against a measurement**, not against an estimate.
 
 - **The one thing already known about this row:** EPUB may genuinely have pages and CSV genuinely
   has none, so §3's law is not "no page ever" but "no page this engine did not read from the
@@ -1057,12 +1106,10 @@ measure it**, and the honest statement today is that it has not been.
   S4 and S5 are the precedent for the first half: a slide looked like a page and was a part, and an
   ODT's soft page break *is* a page break and is still somebody else's.
 
-- **And one thing S5 owes it:** the ODF frame-alternative rule is spec-derived and was **not
-  measured against real files**, because none were available. S6 reads ODS and ODP over the same
-  container and should measure it there.
-
 - **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
-  This row, and S5 before it, is coverage beyond it.
+  This row is coverage beyond it.
+
+- **Depends on:** S6.
 
 ---
 

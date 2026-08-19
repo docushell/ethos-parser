@@ -3,8 +3,9 @@
 **Status:** implementation authority for v1.2 · **Scope document:** `12-V12-SCOPE.md`
 **This is the code-review map for v1.2.** Every v1.2 PR belongs to exactly one slice.
 
-**v1 is not done.** S7's gate is measured and **missed at 64‰** against a 489‰ floor
-(`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1. v1.2 began because
+**v1 is not done.** S7's gate is measured and **missed at 64‰**, and 489‰ is a published comparator
+rather than a live floor — the chase is **parked**, which is not a pass (`00-NORTH-STAR.md` #10,
+`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1. v1.2 began because
 the owner asked for the next roadmap row, and nothing in it closes v1.
 
 | Slice | Theme | Depends on | State |

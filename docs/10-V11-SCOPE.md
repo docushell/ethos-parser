@@ -3,7 +3,8 @@
 **Status:** scope authority for v1.1 · **Slice detail:** `11-V11-MILESTONES.md`
 **This is the code-review map for v1.1.** Every v1.1 PR belongs to exactly one slice.
 
-**v1 is not done.** Its gate — table-cell accuracy above 0.489 — is measured and **missed at 64‰**
+**v1 is not done.** Its table number is measured and **missed at 64‰**; the **> 0.489 chase is
+parked** rather than passed (`00-NORTH-STAR.md` #10)
 (`table-gate-v1.md`, `09-V1-MILESTONES.md` S7). v1.1 is the next row of `02-ROADMAP.md` and it
 started because the owner asked for it, **not** because the gate cleared. Nothing in this document
 closes v1, and no slice here may be cited as evidence that it did.

@@ -34,7 +34,9 @@
 //! At most `profile.classify_sample_pages` pages are content-scanned, and
 //! [`Classification::pages_content_scanned`] records how many actually were. pdf-inspector
 //! advertises `Sample(8)` and then re-scans every page in a later phase, so asking for one page
-//! costs the same as asking for all of them (`docs/reference/…memo.md` §16.3). The counter makes
+//! costs the same as asking for all of them — measured on one file at `Pages(1)` 439 ms,
+//! `Sample(8)` 412 ms, `Full` 434 ms, and recorded by
+//! `classification.rs::the_sampler_is_bounded_on_a_492_page_document`. The counter makes
 //! that class of regression a test failure rather than a benchmark surprise.
 
 use serde::{Deserialize, Serialize};

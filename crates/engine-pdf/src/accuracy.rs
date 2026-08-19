@@ -37,6 +37,12 @@
 //! formula, join, whitespace rule, and why the number is **not** comparable to the 0.489 it is
 //! named after — is `docs/table-gate-v1.md`. It currently reads **64‰**, and that is a miss.
 //!
+//! **The chase for 0.489 is parked** (`docs/00-NORTH-STAR.md` #10, 2026-08-19): 64‰ is this engine
+//! on four tagged PDFs this repository owns, 0.489 is a published score on somebody else's corpus,
+//! and they are the same unit on a different exam. Nothing below changes — the measurement, the
+//! comparator constant and the printed verdict all stay — because parking a chase is not passing
+//! it, and the number is more useful written down than argued about.
+//!
 //! **61‰ was S7b's number**, under `ruled-rects-v2` alone. v1-S8 shipped `stroke-ruled-v1` and
 //! moved it to 64‰ — the rise is `cfpb-home-loan-toolkit` alone, 246‰ to 259‰, while
 //! `irs-form-1040-2025` contributes 0‰ on both sides. This sentence lagged that slice by two
@@ -585,8 +591,14 @@ mod tests {
         })
     }
 
-    /// The floor v1 must clear, in per-mille. See `docs/table-gate-v1.md` for why a number
-    /// computed on this corpus is **not** comparable to the published 0.489 it is named after.
+    /// The published ODL-local comparator, in per-mille — **not** a floor this repository is
+    /// still chasing. See `docs/table-gate-v1.md` for why a number computed on this corpus is not
+    /// comparable to the 0.489 it is named after, and `docs/00-NORTH-STAR.md` #10 for the owner's
+    /// 2026-08-19 decision to park the chase.
+    ///
+    /// It stays at 489 on purpose. The verdict test below prints the measured figure against it,
+    /// so a sudden jump in either direction is visible in the report rather than inferred from a
+    /// diff. Parking the chase changed what the comparison *means*, not whether it is printed.
     const GATE_PERMILLE: u32 = 489;
 
     /// The committed labelled set, as it sits on disk.

@@ -26,7 +26,8 @@
 //!
 //! # Wall 1 — the producer cannot be named, and the schema requires a name
 //!
-//! `docs/reference/ethos-engine-parity-checklist.md` §8, measured from `output/json.rs:46-65`:
+//! Checklist row **L20**, recorded in `docs/06-STEAL-REFUSE.md` and measured from
+//! `output/json.rs:46-65`:
 //!
 //! > LiteParse … emits `page, width, height, text, text_items` **and nothing else**
 //!
