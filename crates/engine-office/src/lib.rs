@@ -81,6 +81,7 @@ pub mod ods;
 pub mod odt;
 mod opc;
 pub mod pptx;
+pub mod rtf;
 pub mod xlsx;
 mod xml;
 pub mod zip;
@@ -92,8 +93,8 @@ use engine_core::{
     OdsLocator, OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes,
     OfficeOdfShapeAttributes, OfficeParagraphAttributes, OfficeRunAttributes,
     OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
-    RepresentationPayload, Sha256Hex, SourceIdentity, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
-    REPRESENTATION_SCHEMA_VERSION,
+    RepresentationPayload, RtfLocator, RtfParagraphAttributes, Sha256Hex, SourceIdentity,
+    XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, matching the sibling crates' own marker.
@@ -137,6 +138,13 @@ pub const ODP_MEDIA_TYPE: &str = odp::ODP_MEDIA_TYPE;
 
 /// How [`read`]'s router names the evidence that a package is an OpenDocument presentation.
 const ODP_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.presentation";
+
+/// The media type a Rich Text Format document is served as (v2-S8).
+///
+/// **The first format here that is not a package**, so unlike the six above it there is no part
+/// list, no manifest and no `mimetype` entry to consult — the bytes simply begin `{\rtf`. See
+/// [`rtf`].
+pub const RTF_MEDIA_TYPE: &str = rtf::RTF_MEDIA_TYPE;
 
 /// The prefix every OpenDocument media type shares.
 ///
@@ -232,6 +240,20 @@ pub fn is_odp(bytes: &[u8]) -> bool {
     odp::is_odp(bytes)
 }
 
+/// Whether these bytes are a Rich Text Format document, **read from the bytes** (v2-S8).
+///
+/// A different question again, and the simplest one in this crate: the specification requires an
+/// RTF document to begin with `{\rtf`, so that is the whole of it. There is no container to open
+/// and no part to look for.
+///
+/// **A bare `{` is not enough**, and neither is an OLE compound file — a legacy `.doc` begins
+/// `D0 CF 11 E0` and is a different format with a different reader. Never the extension (**A4**),
+/// in both directions: a document named `report.bin` reads, and an `.rtf` full of something else
+/// does not.
+pub fn is_rtf(bytes: &[u8]) -> bool {
+    rtf::is_rtf(bytes)
+}
+
 /// Whether these bytes are **any** OpenDocument package — one this engine reads or one it does not.
 ///
 /// # Why this is a third question rather than an `||` of the other two
@@ -272,11 +294,20 @@ pub fn is_opendocument(bytes: &[u8]) -> bool {
 /// `01-CONTRACT.md` §8 — a document read as far as it went is a shorter document that still looks
 /// whole.
 pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
+    // **Asked before the container question, because RTF has no container** (v2-S8). The six
+    // formats below are packages and are told apart by what their central directory lists; an
+    // `.rtf` is a brace-group byte stream that begins `{\rtf`. The two evidences cannot collide —
+    // a ZIP begins `PK\x03\x04` — so this is one `if` rather than a fifth entry in the `claimed`
+    // list, and the ambiguity that list exists to refuse is not reachable here.
+    if rtf::is_rtf(bytes) {
+        return read_rtf(bytes);
+    }
     if !zip::looks_like_zip(bytes) {
         return Err(EngineError::Malformed {
             what: "office document".into(),
-            detail: "these bytes do not open like a ZIP container, so there is no office package \
-                     here to read"
+            detail: "these bytes are neither a Rich Text Format stream (which begins `{\\rtf`) \
+                     nor something that opens like a ZIP container, so there is no office \
+                     document here to read"
                 .into(),
         });
     }
@@ -1205,6 +1236,143 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // Not the `tables` vector either. A `<table:table>` on a draw page is a shape's content,
         // and a `TableRecord` is the PDF detector's finding about a grid it inferred from ink;
         // `capabilities.tables` is false because no detector ran.
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read a Rich Text Format stream into a sealed representation (v2-S8).
+///
+/// # No container, and therefore no part id per part
+///
+/// Every reader above this one opens by asking a package a question, and mints one part id per
+/// part it reads. An `.rtf` has no parts: one stream, one container, one id that every node shares
+/// — which is the shape `check_structure`'s page-less invariant grew a fourth rule for, rather
+/// than this reader inventing a part name so the old rule would pass. See
+/// [`engine_core::NativeLocator::names_a_part`] and [`rtf`].
+fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
+    let document = rtf::read(bytes)?;
+
+    let profile = Profile::rtf_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "rtf profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+    let stream_id = alloc.next(IdKind::Part)?;
+
+    let mut nodes = Vec::with_capacity(document.paragraphs.len());
+    let mut geometry = Vec::with_capacity(document.paragraphs.len());
+    for (index, paragraph) in document.paragraphs.iter().enumerate() {
+        let id = alloc.next(IdKind::Span)?;
+        geometry.push(NodeGeometry {
+            node: id.clone(),
+            // Nothing tried to measure and failed. RTF states an indent in twips and a paper size
+            // in `\paperw`, and neither is an ink box: they are instructions to a layout engine
+            // this crate does not run, and `docs/14-V2-SCOPE.md` §3 refuses a rectangle nobody can
+            // check against a page.
+            presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+        });
+        nodes.push(Node {
+            id,
+            kind: NodeKind::TextRun,
+            parent: stream_id.clone(),
+            // Contiguous within the stream, in the order it lists its paragraphs. **Not** the
+            // address: `RtfLocator` carries that, and the two differ as soon as an empty paragraph
+            // or a skipped destination's `\par` moves the ordinal without minting a node.
+            ordinal: index as u32 + 1,
+            text: paragraph.text.clone(),
+            native_locator: NativeLocator::Rtf(RtfLocator {
+                paragraph: paragraph.ordinal,
+            }),
+            // `\stylesheet` is not read, so no structural address is claimed.
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::RtfParagraph(RtfParagraphAttributes {
+                terminator: paragraph.terminator,
+            }),
+        });
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: an RTF states indents in twips and a paper size in \
+             `\\paperw`, which are instructions to a layout engine rather than a measurement of \
+             this document",
+        ));
+    }
+
+    if document.destinations_not_read > 0 || document.undecodable_bytes > 0 {
+        let mut detail = String::new();
+        if document.destinations_not_read > 0 {
+            detail.push_str(&format!(
+                "{} destination(s) of this stream hold characters this slice does not read — a \
+                 font table, a colour table, a style sheet, document information, a picture or \
+                 embedded object, a header or footer, a footnote, a field's instruction and its \
+                 cached result, or any group whose first control word this reader does not \
+                 recognise as formatting. **A header's or footnote's words are the ones to check \
+                 first**: they are a second stream rather than a gap, and reading them as body \
+                 text would put a phrase in the record that nobody reading the document finds \
+                 there. ",
+                document.destinations_not_read
+            ));
+        }
+        if document.undecodable_bytes > 0 {
+            detail.push_str(&format!(
+                "{} byte(s) above 0x7F could not be decoded: RTF writes them as `\\'hh` and their \
+                 meaning depends on a code page (`\\ansicpg1252`, `\\ansicpg932`) that this \
+                 reader does not read and carries no table for. Each is counted and contributes \
+                 no character, because emitting a Latin-1 character for one would be a guess \
+                 presented as text. ",
+                document.undecodable_bytes
+            ));
+        }
+        detail.push_str(
+            "v2-S8 reads the stream's own body paragraphs only, and a phrase absent from this \
+             artifact may still be present in the document",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: RTF_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // **The format that says the word out loud**, and the vector is still empty. `\page` is a
+        // page break and `\paperw` a paper width, both written by the producer; neither is a page
+        // this engine measured, and `docs/06-STEAL-REFUSE.md` L30 refuses invented pagination
+        // whether inventing it costs a renderer or costs nothing.
+        pages: Vec::new(),
+        nodes,
+        // Not the `tables` vector either, and RTF is the format where that is most tempting: it
+        // writes `\cell` and `\row` outright. They are recorded as a paragraph's TERMINATOR, where
+        // they are a fact the file states — a `TableRecord` is the PDF detector's finding about a
+        // grid it inferred from ink, and `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

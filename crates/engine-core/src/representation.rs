@@ -217,6 +217,16 @@ pub enum NativeLocator {
     /// pagination"* — so [`OdpLocator::draw_page`] is a position among elements the file lists,
     /// spelled as the element ODF actually writes.
     Odp(OdpLocator),
+    /// A paragraph's address inside a Rich Text Format stream (v2-S8).
+    ///
+    /// **The first v2 format with no container at all.** Every format before this one is a
+    /// package: the address names a part, and `check_structure` checks that one part id means one
+    /// part name. An `.rtf` is a single brace-group byte stream with no parts, no manifest and no
+    /// name for itself — so this variant carries **one** field, and the invariant grew a third
+    /// case rather than this locator growing an invented part name. `docs/14-V2-SCOPE.md` §3's
+    /// second obligation is *"absent, not invented"*, and a constant standing in for a part the
+    /// format does not have is the small version of the page-sized box it forbids.
+    Rtf(RtfLocator),
 }
 
 impl NativeLocator {
@@ -254,12 +264,18 @@ impl NativeLocator {
             // free and is still refused — a draw page is a part of the presentation's structure,
             // not a page this engine measured, and L30's objection to the LibreOffice bridge is
             // that pagination handed over by somebody else's renderer is invented here.
+            //
+            // And an RTF mentions a page in the plainest words any of them use: `\page` is a
+            // page break and `\paperw` is a paper width, both written by the producer. Neither is
+            // a page this engine measured, which is the same sentence L30 makes about the
+            // LibreOffice bridge — a page handed over by somebody else's layout is invented here.
             Self::Docx(_)
             | Self::Xlsx(_)
             | Self::Pptx(_)
             | Self::Odt(_)
             | Self::Ods(_)
-            | Self::Odp(_) => false,
+            | Self::Odp(_)
+            | Self::Rtf(_) => false,
         }
     }
 
@@ -273,6 +289,30 @@ impl NativeLocator {
             Self::Odt(o) => Some(o.part.as_str()),
             Self::Ods(o) => Some(o.part.as_str()),
             Self::Odp(o) => Some(o.part.as_str()),
+            // **A page-less address that names no part**, which is a third answer rather than a
+            // missing one — see [`Self::names_a_part`], which is the question `check_structure`
+            // actually asks.
+            Self::Rtf(_) => None,
+        }
+    }
+
+    /// Whether this address names a part, for a page-less format that has one (v2-S8).
+    ///
+    /// Until this slice `part()` returning `None` meant *"paginated"*, because every page-less
+    /// format so far was a package. RTF is neither: it is page-less **and** part-less, so the
+    /// overload had to be separated before `check_structure` could tell the two apart. A locator
+    /// that answers false here is checked on the one integrity claim it can make — every node
+    /// shares one container id — rather than on the part-id bijection, which needs a part name to
+    /// be a bijection between.
+    pub fn names_a_part(&self) -> bool {
+        match self {
+            Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) | Self::Rtf(_) => false,
+            Self::Docx(_)
+            | Self::Xlsx(_)
+            | Self::Pptx(_)
+            | Self::Odt(_)
+            | Self::Ods(_)
+            | Self::Odp(_) => true,
         }
     }
 }
@@ -581,6 +621,47 @@ pub struct OdpLocator {
     /// node would leave a quotation of a title bound to the entire slide; a span would split *"The
     /// **important** part."* into three nodes and bind the sentence to none of them — the argument
     /// [`OdtLocator`] makes at length, unchanged by the change of vocabulary.
+    pub paragraph: u32,
+}
+
+/// A paragraph's address inside a Rich Text Format stream (v2-S8).
+///
+/// # One field, because the format has one stream
+///
+/// Every v2 format before this one is a **package**, and every one of their locators opens with a
+/// part name — `word/document.xml`, `content.xml`, `xl/worksheets/sheet1.xml`. An `.rtf` is a
+/// single sequence of brace groups. It has no parts, no manifest, no relationship table and no
+/// name for itself anywhere in its own bytes.
+///
+/// So there is no `part` here, and filling one in was the tempting move: a constant would have let
+/// `check_structure`'s part-id bijection run unchanged. It would also have been a string the
+/// document does not contain, which is `docs/14-V2-SCOPE.md` §3's *"absent, not invented"* in a
+/// smaller place than the page-sized box that obligation is usually about. The invariant grew a
+/// third case instead — see [`NativeLocator::names_a_part`].
+///
+/// # The paragraph is a position, and here is what to count
+///
+/// 1-based, in the order the byte stream delimits paragraphs. A paragraph ends at `\par`, at
+/// `\sect`, at `\cell` or `\row` inside a table, or at the end of the document — see
+/// [`RtfParagraphBreak`], which records which of those it was rather than making a consumer guess.
+///
+/// **The count advances through destinations this reader does not read.** A `\par` inside a
+/// `{\footer …}` or a `{\footnote …}` moves it, exactly as [`OdtLocator::paragraph`] advances
+/// through a footnote body, and for the same reason: the number promises a position in the file,
+/// so it has to be the position a consumer counting paragraph breaks in the bytes would find,
+/// not a position in the subset this slice kept.
+///
+/// # No page, and RTF says the word out loud
+///
+/// `\page` is a page break, `\paperw` and `\paperh` are a paper size, and `\sect` carries a
+/// whole section's page setup. All of them are the producing application's print arithmetic —
+/// plainer than an ODT's `<text:soft-page-break/>` and no more measured by this engine — so none
+/// of them reaches this variant and none becomes a [`PageRecord`]. `deny_unknown_fields` is what
+/// stops one arriving later as a second field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RtfLocator {
+    /// 1-based position of the paragraph in the stream's own order.
     pub paragraph: u32,
 }
 
@@ -955,6 +1036,16 @@ pub enum NodeAttributes {
     /// they are the two strings a person reading a citation recognises — the same argument that
     /// put `shape_name` on [`Self::OfficeSlideRun`] rather than leaving it in the package.
     OfficeOdfShape(OfficeOdfShapeAttributes),
+    /// A Rich Text Format paragraph's facts (v2-S8).
+    ///
+    /// **An eighth variant for one field, and the field is the reason.** RTF ends a paragraph with
+    /// four different control words, and which one it was is not cosmetic: `\cell` and `\row`
+    /// say the text sat in a table, which is a fact about the document that no other field here
+    /// carries and that this slice deliberately does **not** turn into a
+    /// [`crate::tables::TableRecord`]. [`Self::OfficeParagraph`] carries ODF's block kind, which
+    /// RTF has no counterpart for; reusing it would mean answering "was this a `<text:h>`" about a
+    /// format with no such distinction.
+    RtfParagraph(RtfParagraphAttributes),
 }
 
 impl NodeAttributes {
@@ -994,6 +1085,9 @@ impl NodeAttributes {
             // already says which draw page and which shape, and whether the block was a `<text:p>`
             // or a `<text:h>` is on the attributes where a fact about an element belongs.
             Self::OfficeOdfShape(_) => NodeKind::TextRun,
+            // And so is an RTF paragraph, for the reason the ODF one is: the locator already says
+            // this is a paragraph-shaped address, and a `Paragraph` kind would restate it.
+            Self::RtfParagraph(_) => NodeKind::TextRun,
         }
     }
 }
@@ -1566,6 +1660,46 @@ pub struct OfficeOdfShapeAttributes {
     pub block: OdfBlockKind,
 }
 
+/// A Rich Text Format paragraph's facts: how the stream ended it (v2-S8).
+///
+/// One field, and it is the one thing the bytes say about this paragraph that [`RtfLocator`] does
+/// not carry. Everything else an RTF paragraph could state — a style index, an indent, a
+/// justification — resolves through `\stylesheet`, which this slice does not read, and a field
+/// nobody populated is worse than no field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RtfParagraphAttributes {
+    /// Which control word ended this paragraph.
+    pub terminator: RtfParagraphBreak,
+}
+
+/// The control word that ended an RTF paragraph (v2-S8).
+///
+/// **A declared fact, not a table.** `\cell` and `\row` say the text sat inside a table, and
+/// recording that is the honest half of a decision this slice makes explicitly: a
+/// [`crate::tables::TableRecord`] is the PDF detector's finding about a grid it inferred from ink,
+/// so an RTF table does not become one and `capabilities.tables` stays false. A consumer that
+/// needs to know a phrase was in a cell reads it here, from a control word the file wrote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RtfParagraphBreak {
+    /// `\par` — the ordinary paragraph mark.
+    Paragraph,
+    /// `\sect` — a section break, which ends the paragraph before it as well.
+    Section,
+    /// `\cell` — the end of a table cell.
+    Cell,
+    /// `\row` — the end of a table row.
+    Row,
+    /// The stream ended while this paragraph still held text.
+    ///
+    /// Not a defect and not a repair: an RTF writer is not required to put `\par` after the last
+    /// paragraph, so this is the ordinary shape of a final paragraph rather than a truncation.
+    /// Truncation is a **closed** brace this reader never saw, and that is a named refusal.
+    EndOfStream,
+}
+
 /// A character the reader authored rather than read, flagged where it was created.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1832,6 +1966,12 @@ impl DocumentRepresentation {
     ///    artifact is self-describing as long as one part id means one part name and vice versa.
     ///    That is the integrity the declared-page lookup buys for a PDF, bought here without
     ///    inventing a list to look things up in.
+    /// 4. **A part-less format's nodes all share one container id** (v2-S8). RTF is page-less
+    ///    *and* part-less — one brace-group byte stream with no parts to name — so rule 3 has no
+    ///    part name to be a bijection between. The claim it can still make is the same one in the
+    ///    only shape the format allows: one document, one container, one id. **Mixing the two
+    ///    shapes is refused**, because a document whose nodes disagree about whether they live in
+    ///    a named part is a record describing two documents.
     fn check_page_less_shape(p: &RepresentationPayload) -> Result<(), EngineError> {
         if !p.pages.is_empty() {
             return Err(Self::malformed(format!(
@@ -1844,8 +1984,32 @@ impl DocumentRepresentation {
 
         let mut part_of_id: std::collections::BTreeMap<&str, &str> = Default::default();
         let mut id_of_part: std::collections::BTreeMap<&str, &str> = Default::default();
+        // The container every part-less node shares, once one has been seen (v2-S8).
+        let mut only_container: Option<&str> = None;
 
         for node in &p.nodes {
+            // **The part-less shape, checked on the one claim it can make.** Asked through
+            // `names_a_part` rather than through `part()` being `None`, because until v2-S8 that
+            // answer meant "paginated" and RTF made the overload wrong: an `.rtf` is page-less and
+            // has no part either.
+            if !node.native_locator.names_a_part() {
+                let id = node.parent.as_str();
+                match only_container {
+                    Some(previous) if previous != id => {
+                        return Err(Self::malformed(format!(
+                            "node `{}` is parented by `{id}` where another part-less node is \
+                             parented by `{previous}`. This format has one container, so its \
+                             nodes have one container id — the integrity a part name buys for the \
+                             package formats, in the only shape a stream can state it.",
+                            node.id
+                        )));
+                    }
+                    Some(_) => {}
+                    None => only_container = Some(id),
+                }
+                continue;
+            }
+
             let Some(part) = node.native_locator.part() else {
                 return Err(Self::malformed(format!(
                     "node `{}` has a paginated address in a document whose other nodes have \
@@ -1872,6 +2036,18 @@ impl DocumentRepresentation {
                     )));
                 }
             }
+        }
+
+        // **And the two shapes are not mixed.** A document whose nodes disagree about whether they
+        // live in a named part is a record describing two documents — the same objection rule 2
+        // makes about mixing a paginated address with a page-less one.
+        if only_container.is_some() && !part_of_id.is_empty() {
+            return Err(Self::malformed(
+                "this document mixes nodes that name a part with nodes that cannot. A \
+                 representation describes one document, and one document is either a package with \
+                 parts or a stream without them."
+                    .into(),
+            ));
         }
         Ok(())
     }

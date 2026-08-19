@@ -3,15 +3,15 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads six formats.** S0–S7 are **done**; **S8 has not started**. `engine-office` is
+**v2 reads seven formats.** S0–S8 are **done**; **S9 has not started**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
 engine *can* count would become a page, ODT is the one whose file **contains an actual page
-break**, and ODP is the one that would have handed over a `PageRecord` for **free** — discrete
-`<draw:page>` elements and a master page's `fo:page-width`, no arithmetic anywhere. None of them
-became a page.
+break**, ODP is the one that would have handed over a `PageRecord` for **free** — discrete `<draw:page>`
+elements and a master page's `fo:page-width`, no arithmetic anywhere — and RTF is the one that
+writes `\page` outright and has no container to hang an address on. None of them became a page.
 
-**The remaining-formats row split four times, each time against a measurement.** S0 wrote it as one
+**The remaining-formats row split five times, each time against a measurement.** S0 wrote it as one
 line on purpose — *"this row splits into real slices when S2 and S3 are done and that cost is
 measured"*. S4 measured the first half: a third OOXML format is one reader, one profile and one
 fixture pair, because the container, the XML rules and the `r:id`-to-part rule are shared. **S5
@@ -35,8 +35,15 @@ not — RTF is not XML at all, EPUB is a ZIP of XHTML that shares OCF's containe
 OpenDocument, and CSV has no container. Scheduling all four while somebody was already inside an
 ODF reader is exactly the "while we're here" that S0 refused.
 
-**The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS and ODP are coverage beyond it.
-v2 is **not complete**: S8 has not started, and no slice here closes v1.
+**The fifth split is S8's, and it is the measurement the row had been waiting for.** S8 implements
+RTF alone and leaves **EPUB and CSV** as **S9**. What it measured is that RTF inherited *nothing*:
+not the container, not the XML reader, not the allowlist, not even the shape of the locator — an
+`.rtf` has no parts, so `check_structure`'s page-less invariant grew a fourth rule for it. A format
+that shares no machinery with any of the seven before it is not a line item on somebody else's
+slice.
+
+**The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS, ODP and RTF are coverage
+beyond it. v2 is **not complete**: S9 has not started, and no slice here closes v1.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -57,7 +64,8 @@ for the next roadmap row, and nothing in it closes v1.
 | **S5** | ODT → representation: paragraphs, and the page break in the file | S4 | **done — and the break is still not a page** |
 | **S6** | ODS → representation: a spreadsheet the OpenDocument way | S5 | **done — and the address the file never writes** |
 | **S7** | ODP → representation: draw pages, shapes and blocks | S6 | **done — and the page that was free** |
-| **S8** | The remaining office formats — RTF, EPUB, CSV | S7 | **not started** |
+| **S8** | RTF → representation: a stream with no container | S7 | **done — and the address with no part** |
+| **S9** | The remaining office formats — EPUB, CSV | S8 | **not started** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -1436,38 +1444,240 @@ Two fixtures: `presentation-pages` consumes every entry it contains and declares
 
 ---
 
-## S8 — the remaining office formats — **not started**
+## S8 — RTF → representation
 
-- **Goal:** RTF, EPUB and CSV, on the terms the first six established.
+- **Status: done.** `0.27.0`. `engine extract` reads an `.rtf`, a paragraph binds at the position
+  the stream states, and **the first v2 format with no container at all** got there without
+  inventing one.
 
-- **Still deliberately one row, and S7 is why it is a shorter one again.** **A1** — Anydoc's
-  14-format coverage — is v2's horizon, not its checklist. S4 measured that a fourth *OOXML* format
-  would be cheap. S5 measured what the first non-OOXML format cost. S6 measured that ODF's
-  container transfers and the vocabulary above it does not, and **S7 spent that measurement**: ODP
-  reused the container, the manifest check, the block engine and the whole allowlist, and paid for
-  a new structural vocabulary, a new atom, and one class of silent drop the earlier ODF readers
-  could not have. Nothing in this row is inside that family. **RTF is not XML at all**, EPUB is a
-  ZIP of XHTML, and CSV has no container — so none of them inherits what ODP inherited, and this
-  row splits again the same way the last three did, **against a measurement**, not against an
-  estimate.
+- **Goal:** Rich Text Format, on the terms the first six established. One format. Not "the rest of
+  the office formats".
+
+### Not a package, and that is what cost something
+
+Every reader in `engine-office` before this one opens by asking a **container** a question: does
+the central directory list `word/document.xml`, does the first stored entry declare an OpenDocument
+type, which part does this `r:id` resolve to. An `.rtf` has none of that. It is one sequence of
+bytes — `{`, `}`, control words beginning with `\`, and everything else is text — with no manifest,
+no parts, and no name the document has for itself.
+
+So `RtfLocator` carries **one** field, and the tempting move was the other one: a constant part
+name would have let `check_structure`'s page-less shape run unchanged, because that check proves
+one part id means one part name. It would also have put a string in every citation that the
+document does not contain, which is `14-V2-SCOPE.md` §3's *"absent, not invented"* in a smaller
+place than the page-sized box that obligation is usually about.
+
+**The invariant grew a fourth rule instead.** A locator now answers `names_a_part`, and one that
+answers false is checked on the only integrity claim its format can make — **one document, one
+container, one id** — while mixing the two shapes in one artifact is refused by name. The overload
+that had to be separated first is worth recording: until this slice, `part()` returning `None`
+meant *"paginated"*, because every page-less format so far was a package. RTF is neither.
+
+### The page, said out loud
+
+| the tempting field | what it actually is |
+| --- | --- |
+| `\page` → a `PageRecord` boundary | where the **producing application** broke a page |
+| `\paperw` / `\paperh` | paper the authoring tool wrote; this engine measured nothing against it |
+| a `{\field{\*\fldinst PAGE }}`'s cached result | producer arithmetic, and the field is skipped whole |
+
+An ODT hides its page inside `<text:soft-page-break/>` and an ODP inside a `<draw:page>` element.
+RTF writes `\page`. It is matched, contributes no character, and produces no `PageRecord`;
+`pages` is `[]` and the locator has one field with no room for a second. L30 refuses invented
+pagination whether inventing it costs a renderer or costs nothing, and this is the fourth format in
+a row where the file says the word and the artifact does not.
+
+### The atom, and what a consumer counts
+
+A paragraph. `\par` ends one, and so do `\sect`, `\cell` and `\row` — recorded on
+`RtfParagraphAttributes::terminator` rather than flattened, because **which** of them it was is a
+fact the stream states and `\cell` is how a consumer learns the text sat in a table.
+
+**Spans are not the atom, for `OdtLocator`'s reason.** `{\b important}` is formatting, and a
+paragraph may contain no formatting group at all — addressing by run would leave the commonest case
+with no address to give.
+
+**The count advances through destinations this reader does not read.** A `\par` inside a
+`{\footer …}` moves it, so the fixture's addressed paragraphs are `1, 4, 5, 6, 7, 8` with the
+header's and the footer's own paragraphs occupying 2 and 3. That is `OdtLocator::paragraph`'s rule
+in RTF's spelling, and the reason is the same: the number promises a position in the file, so it
+has to be the position a consumer counting paragraph breaks in the bytes would find, not a position
+in the subset this slice kept.
+
+### Skip unless transparent — the inverted allowlist, outside XML
+
+`odt.rs` inverted its rule because ODF puts a great deal of non-displayed character data inside a
+`<text:p>`. RTF has the same hazard in a different shape: a group's text belongs to the body only
+if the group is **formatting**, and a group whose first control word names a *destination* holds
+something else entirely.
+
+There is no way to enumerate every destination a producer might write, so the rule is inverted the
+same way: a group is transparent only when its first control word is in a **deliberately short and
+closed list**, and everything else is skipped and counted. `{\*\…}` is skipped without consulting
+the list at all, because `\*` is the format's own marker for *"a destination a reader may ignore"*
+and honouring it is reading the file.
+
+The direction is the one every slice since v2-S5 has committed to, and it matters most here:
+over-skipping reports a phrase missing, which the artifact declares; under-skipping puts a
+`{\footer …}`'s words in the body, which is **A14 inverted** — a silent *extra* a consumer cannot
+tell from evidence.
+
+**One defect worth recording**, because it made the whole rule silently off. The first version
+marked the **new** group decided when a `{` opened, so every group was already decided by the time
+its first control word arrived and every destination read as transparent. The unit tests this list
+exists for caught it, and the fixed code marks the *enclosing* group instead.
+
+### Characters, and the code page this reader does not have
+
+Read: plain 7-bit characters, `\uN` as the scalar it names — surrogate pairs combined, because a
+producer writes an astral scalar as two of them — and a small closed set of special-character
+control words (`\tab`, `\emdash`, `\lquote`, …) that each stand for exactly one character.
+`\ucN` says how many fallback characters follow a `\u`, and reading them as well would put the same
+character in the record twice.
+
+**`\'hh` above 0x7F is declared, never guessed.** That byte's meaning depends on `\ansicpg1252`,
+`\ansicpg932` or another declaration, and this reader carries no table for one. Emitting a Latin-1
+character would be mojibake presented as a success, which is worse than the gap. Below 0x80 the
+byte is the same character in every ANSI code page, so reading it is reading rather than choosing —
+the fixture writes `\'26` and gets `&`, and writes `\'e9` and gets a counted erasure.
+
+### Detection, and the `%PDF-` message fixed for the shape rather than one more format
+
+`{\rtf` is the whole of it. A bare `{` is not enough, an OLE compound file — a legacy `.doc`,
+beginning `D0 CF 11 E0` — is a different format with a different reader, and a renamed `.rtf` reads.
+
+**The router's last line changed too, and it is not about RTF.** Before this slice an `.epub` was a
+ZIP that no office predicate claimed, so it fell to the PDF reader and was refused for having no
+`%PDF-` header — fail-closed, wrong cause, the third time that defect has appeared. A ZIP is
+definitively not a PDF, so the CLI now sends **any** ZIP to the office router, whose own refusal
+names what the package is and is not. v2-S6's pin holds untouched: `is_opendocument` still answers
+on the declared **type**, so an `.epub` is never told it *is* OpenDocument.
+
+**A CSV still takes the true-unknown-bytes path**, and that is recorded rather than fixed. Comma-
+separated text cannot be told from prose without a reader, and guessing would claim every comma
+file. It is refused for having no `%PDF-` header, which is honest for bytes nothing recognises.
+
+### No new dependency
+
+A hand-rolled control-word walker in `engine-office`, in character with `zip.rs`'s argument for
+hand-rolling the ZIP reader: an RTF crate would need a licence check, a determinism argument and a
+transitive-dependency review to save a few hundred lines that this repository can state completely.
+No RTF crate, no `zip` crate, no LibreOffice, no shelling out.
+
+### What could not be measured, recorded
+
+**No corpus of real `.rtf` files was available** — the fourth consecutive slice that has to say so,
+repeated rather than quietly inherited. Every rule is read off the RTF specification and pinned
+against streams this repository authors byte by byte. Two consequences are stated rather than
+hidden: the transparent list is short, so a formatting group it does not name has its text
+declared; and a control word this reader does not name contributes no character, which is right for
+the overwhelming majority of them and would be wrong for a special character the list misses.
+
+Two fixtures: `rich-text-paragraphs` carries only what the reader consumes and declares **no**
+erasure, and `rich-text-unread-destinations` declares both kinds.
+
+- **In:** `crates/engine-office/{rtf.rs, lib.rs}` — `read`, `Paragraph`, `Document`, `is_rtf`,
+  `read_rtf`, `RTF_MEDIA_TYPE` and the router's RTF branch; `RtfLocator`, `NativeLocator::Rtf`,
+  `NativeLocator::names_a_part`, `NodeAttributes::RtfParagraph`, `RtfParagraphAttributes`,
+  `RtfParagraphBreak`, the fourth rule in `check_page_less_shape`, `Profile::rtf_v0`,
+  `RTF_READING_ORDER_RULE_V1` and `RTF_TEXT_CODE_RULE_V1` in `engine-core`; the CLI's RTF and
+  container branches; `fixtures/office/rich-text-paragraphs` and `rich-text-unread-destinations`
+  with their generator; `0.27.0`, the moved profile hash and both SDK pins; `PUBLIC-API.md` and its
+  gate; `14`/`15`; `CAPABILITY.md`; CHANGELOG; README.
+
+- **Out:** EPUB and CSV — **S9**. RTF tables as `TableRecord`s, OLE and embedded objects as
+  evidence, `\pict` decoding, field evaluation, style resolution, code-page tables. `.odg`, and any
+  widening of ODP's shape set — v2-S7 recorded that widening moves every ODP address. Any change to
+  `ethos.grounding.v1`. Markdown or HTML for an RTF. New MCP tools, new SDK functions. A
+  `coordinate_system` mode enum. Any new dependency. Any PDF detector change, and any move on the
+  parked 0.489 chase.
+
+- **Acceptance tests:**
+  - [x] A known phrase is on a node with an `RtfLocator`; `pages` is `[]`; `tables` is `[]`;
+        `node_get` over **unmodified MCP** resolves the minted id and `s-forged` fails closed
+  - [x] The locator's field set is exactly `{paragraph}`, and `deny_unknown_fields` refuses `page`,
+        `bbox`, `x`, `part` and `sect` **by name**
+  - [x] The address **names no part** and does not invent one; every node shares one container id,
+        and mixing part-named with part-less locators in one artifact is refused
+  - [x] **`\page` did not become a `PageRecord`**, and the test is not vacuous: the fixture's own
+        bytes are asserted to carry `\page` and `\paperw`, and the break contributes no character
+  - [x] A4: `{\rtf` decides. A bare `{`, another first control word, an OLE compound file, a ZIP
+        and a PDF are each **not** claimed, and a renamed `.rtf` reads
+  - [x] Every destination class is **counted and absent from the body** — a font table, a colour
+        table, a style sheet, document information, an ignorable `{\*\…}`, a header, a footer, a
+        footnote, a field's instruction **and** its cached result, and a `\pict`'s `\bin` data —
+        asserted against the fixture's own bytes, never by grepping the generator
+  - [x] Mutation-checked: removing the footer from the **bytes** lowers the declared count by
+        exactly one, and nothing is promoted into the body by its removal
+  - [x] The paragraph counter advances through a destination this reader does not read: the
+        fixture's addressed paragraphs are `1, 4, 5, 6, 7, 8`
+  - [x] `\uN` is the scalar it names, a surrogate pair is one scalar, `\ucN` is honoured, `\'26` is
+        `&`, and **`\'e9` is a counted erasure rather than a Latin-1 guess**
+  - [x] `\cell` and `\row` are recorded as terminators and **not** as a `TableRecord`
+  - [x] A truncated stream, an extra `}`, a bare trailing `\`, a `\bin` past the end and an
+        unsupported `\rtfN` are each a **named refusal**
+  - [x] An `.epub` is still **not** OpenDocument, and an unread ZIP is refused naming the container
+        rather than a missing `%PDF-` header; an `.odg` still names OpenDocument and its type
+  - [x] `engine ground` on the artifact is a **named refusal** naming `application/pdf` and the law
+        — with **no change to `engine-grounding`**
+  - [x] Every geometry row is `NotApplicableToKind`; all **eight** profile hashes are mutually
+        distinct; `capabilities.tables` is false
+  - [x] Two runs over one document produce identical bytes, for both fixtures
+  - [x] `Cargo.lock` gains **no new dependency** — no RTF crate, no `zip` crate, no renderer
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `irs-form-1040-2025` still 0 tables;
+        fabrication still 0; the 0.489 chase still parked
+  - [x] Workspace **0.27.0**, both SDKs **0.27.0**, and the PDF profile hash moved on
+        `parser_version` **alone** to
+        `sha256:a9416ce96a7471d8a9cd951eda179978d737f1bfb1670faa151ad75ea734160d`
+
+- **Depends on:** S7.
+
+---
+
+## S9 — the remaining office formats — **not started**
+
+- **Goal:** EPUB and CSV, on the terms the first seven established.
+
+- **Still one row, and it is the last one.** **A1** — Anydoc's 14-format coverage — is v2's
+  horizon, not its checklist. Four measurements produced four splits: a third OOXML format was
+  cheap (S4), the first non-OOXML format was not (S5), ODF's container transfers and its vocabulary
+  does not (S6), and ODP spent that measurement while paying for a new structural vocabulary and a
+  new class of silent drop (S7). **S8 measured the fourth**: RTF inherited *nothing* — not the
+  container, not the XML reader, not the allowlist — and cost a new scanner and a change to a core
+  invariant. Neither format left in this row inherits from RTF either, so it splits again the same
+  way, **against a measurement**.
 
 - **The one thing already known about this row, unchanged since S6 wrote it down:** EPUB may
   genuinely have pages and CSV genuinely has none, so §3's law is not "no page ever" but "no page
   this engine did not read from the file." Whichever formats have a native pagination declare it;
-  the rest carry the empty vector. S4, S5 and S7 are the precedent for the first half: a slide
-  looked like a page and was a part, an ODT's soft page break *is* a page break and is somebody
-  else's, and a draw page needed no arithmetic at all and is still structure.
+  the rest carry the empty vector. There are now four precedents for the first half: a slide looked
+  like a page and was a part, an ODT's soft page break *is* a page break and is somebody else's, a
+  draw page needed no arithmetic at all and is still structure, and RTF writes `\page` outright.
 
-- **And one thing S7 sharpened.** An `.epub` uses **OCF's** first-and-stored `mimetype` entry — the
-  same container rule every ODF package follows — and declares `application/epub+zip`. v2-S6 pinned
-  that `is_opendocument` must answer on the declared **type** rather than on that entry's presence,
-  precisely so this row's EPUB does not arrive to be told it is OpenDocument. Whoever implements it
-  must not "fix" EPUB by widening the ODF family question.
+- **And two things S8 sharpened.**
+
+  1. **EPUB must not become OpenDocument.** An `.epub` uses **OCF's** first-and-stored `mimetype`
+     entry — the same container rule every ODF package follows — and declares
+     `application/epub+zip`. v2-S6 pinned that `is_opendocument` answers on the declared **type**
+     rather than on that entry's presence, precisely so this row's EPUB does not arrive to be told
+     it is OpenDocument, and v2-S8 added a test that keeps saying so. Do not "fix" EPUB by widening
+     the family question.
+  2. **A CSV is still refused for having no `%PDF-` header, and that is deliberate.** v2-S8 fixed
+     the wrong-cause message for the ZIP *shape* — any ZIP now reaches the office router's own
+     refusal — but comma-separated text cannot be told from prose without a reader, and a detector
+     that guessed would claim every comma file. The honest position is that the bytes are unknown,
+     which is what the PDF reader's refusal says. Whoever implements CSV owns that message, and
+     owes an argument for whatever distinguishes a CSV from a text file that happens to contain
+     commas.
+
+- **A part-less locator is now a shape the contract has**, and CSV is the second format that will
+  need it: a `.csv` has no parts either. `check_structure`'s fourth rule and
+  `NativeLocator::names_a_part` were built for RTF and are not RTF-specific.
 
 - **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
   This row is coverage beyond it.
 
-- **Depends on:** S7.
+- **Depends on:** S8.
 
 ---
 

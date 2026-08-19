@@ -955,6 +955,78 @@ ODP_WITH_UNREAD_PARTS = {
 }
 
 
+# ---------------------------------------------------------------------------------------
+# v2-S8 — Rich Text Format
+#
+# **Not a package**, so nothing above is reused: no ZIP, no manifest, no parts. These are written
+# as bytes with `write_stream` below, to four rules:
+#
+# 1. **The magic is the whole of detection.** Both files begin `{\rtf1`, and the tests assert a
+#    bare `{`, an OLE compound header and a ZIP are each NOT claimed.
+# 2. **The page is in the file, and is not read.** The clean stream carries `\paperw12240` and a
+#    `\page` between two paragraphs, so the test that `pages` is empty is not vacuous.
+# 3. **Every destination class has a byte-level cousin in the second file**: a font table, a
+#    colour table, a style sheet, document info, a picture with `\bin`, a header, a footer, a
+#    footnote, a field's instruction AND its cached result, and a `{\*\…}` a reader may ignore.
+#    Each is asserted ABSENT from `Node.text` by reading THIS FILE — never by grepping this
+#    generator, which is how v2-S5's first version of that guard passed on a `#` comment.
+# 4. **The characters are the file's own.** `\'26` is an ampersand below 0x80 and is read; `\'e9`
+#    is above it and is DECLARED, because its meaning depends on a code page this reader does not
+#    carry a table for. `\u233` says the same character unambiguously and is read.
+# ---------------------------------------------------------------------------------------
+
+
+def write_stream(path: pathlib.Path, body: str) -> None:
+    """Write an RTF stream verbatim, as bytes.
+
+    No container and no timestamp, so determinism costs nothing here — unlike the ZIP formats
+    above, where `zipfile` stamps a date into every entry.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body.encode("ascii"))
+    print(f"wrote {path.relative_to(HERE.parent.parent)} ({path.stat().st_size} bytes)")
+
+
+# Five paragraphs, one of them a pair of table cells. `\paperw` and `\page` are both here so the
+# empty `pages` vector is a refusal rather than an absence.
+#
+# **No `{\fonttbl}` here, deliberately.** Every real producer writes one and the second stream has
+# it; this one carries only what the reader consumes, so it declares NO erasure — the same shape
+# `simple-paragraphs` has for a DOCX, and what makes the erasure count testable at all.
+RTF_PLAIN = (
+    r"{\rtf1\ansi\ansicpg1252\paperw12240\paperh15840"
+    "\n"
+    r"\pard Evidence, not extraction.\par "
+    r"Rows \'26 columns bind to a paragraph\tab and never to a page.\par "
+    r"A quote binds to the {\b displayed} text, caf\u233 ? included.\par "
+    r"\page Split by the producer.\par "
+    r"\trowd\intbl Left cell\cell Right cell\cell\row "
+    "}"
+)
+
+
+# The stream that declares erasures. Every destination class this reader passes over, plus the two
+# byte classes it cannot decode.
+RTF_UNREAD = (
+    r"{\rtf1\ansi\ansicpg1252\deff0"
+    r"{\fonttbl{\f0\froman FONT-TABLE-NAME;}}"
+    r"{\colortbl;\red0\green0\blue0;}"
+    r"{\stylesheet{\s0 STYLE-SHEET-NAME;}}"
+    r"{\info{\title INFO-TITLE}{\author INFO-AUTHOR}}"
+    r"{\*\generator IGNORABLE-GENERATOR 1.0;}"
+    "\n"
+    r"\pard Kept sentence.\par "
+    r"{\header HEADER-TEXT\par }"
+    r"{\footer FOOTER-TEXT\par }"
+    r"Footnoted{\footnote FOOTNOTE-BODY} and kept.\par "
+    r"Page {\field{\*\fldinst PAGE }{\fldrslt FIELD-RESULT}} of many.\par "
+    r"{\pict\pngblip\picw1\pich1\bin4 {}\a}"
+    r"A picture sat above this line.\par "
+    r"Undecodable: caf\'e9 and r\'e9sum\'e9.\par "
+    r"Decodable: \'26 and \u233 ? are both read."
+    "}"
+)
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
@@ -984,3 +1056,5 @@ if __name__ == "__main__":
         ODP_WITH_UNREAD_PARTS,
         stored_first="mimetype",
     )
+    write_stream(HERE / "rich-text-paragraphs" / "document.rtf", RTF_PLAIN)
+    write_stream(HERE / "rich-text-unread-destinations" / "document.rtf", RTF_UNREAD)

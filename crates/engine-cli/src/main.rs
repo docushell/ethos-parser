@@ -432,10 +432,24 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // declares its own type, so "this is OpenDocument" is knowable before "this is a kind we read"
     // — and asking the narrow question here is what used to send an `.odp` to the PDF reader, to
     // be refused for having no `%PDF-` header. Fail-closed, and naming the wrong cause.
+    //
+    // The fifth line is not a container question at all (v2-S8). An `.rtf` is a brace-group byte
+    // stream that begins `{\rtf`; before this slice it answered `false` to every predicate here
+    // and fell through to the PDF reader, to be refused for having no `%PDF-` header — fail-closed,
+    // and naming the wrong cause, which is the same defect v2-S5 recorded for an `.ods`.
+    //
+    // And the last line is the **container**, not a format inside it (v2-S8). A ZIP is definitively
+    // not a PDF, so sending one to the PDF reader can only produce a message about a missing
+    // `%PDF-` header — which is what an `.epub` used to get. The office router's own refusal names
+    // what the package is and is not, so an unread ZIP now fails closed for the cause it actually
+    // has. This is the third time the same defect has been fixed for a different format, and it is
+    // fixed here for the shape rather than for one more member of it.
     if engine_office::is_docx(&head)
         || engine_office::is_xlsx(&head)
         || engine_office::is_pptx(&head)
         || engine_office::is_opendocument(&head)
+        || engine_office::is_rtf(&head)
+        || engine_office::zip::looks_like_zip(&head)
     {
         return emit_representation(engine_office::read(&head));
     }

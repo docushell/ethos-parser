@@ -589,6 +589,27 @@ pub const ODP_READING_ORDER_RULE_V1: &str = "odp-content-document-order-v1";
 /// spelling, and it is why a slide whose title lives only on its master reads as having none.
 pub const ODP_TEXT_CODE_RULE_V1: &str = "odp-shape-blocks-verbatim-v1";
 
+/// v2-S8's RTF reading order: paragraphs in the stream's own order.
+///
+/// **Not a rule that decides anything**, for the reason its six siblings are not. One stream, one
+/// order, stated by the file. In particular it is **not** the order a reader meets the paragraphs
+/// on a printed page: `\page` and `\sect` record where the producing application broke one, and
+/// this rule neither reads them as pages nor sorts by them.
+pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
+
+/// v2-S8's RTF text rule: the characters the stream states, and **nothing decoded from a code
+/// page**.
+///
+/// Three sources, all of them things the file writes down: plain 7-bit characters, `\uN` as the
+/// Unicode scalar it names, and the small closed set of special-character control words (`\tab`,
+/// `\emdash`, `\lquote`, …) that stand for exactly one character each.
+///
+/// **`\'hh` above 0x7F is declared, never guessed.** The byte's meaning depends on a code page
+/// this reader does not read and does not carry a table for, so it contributes no character and is
+/// counted instead. Emitting a Latin-1 character for it would be mojibake presented as a success,
+/// which is the failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value.
+pub const RTF_TEXT_CODE_RULE_V1: &str = "rtf-stated-characters-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -1256,6 +1277,57 @@ impl Profile {
         }
     }
 
+    /// The profile v2-S8's Rich Text Format reader runs under.
+    ///
+    /// **Its own profile and its own hash**, for §5.1's reason, and this is the first one whose
+    /// format is not a package at all: an `.rtf` is a brace-group byte stream with no parts, so an
+    /// artifact from one is not comparable with an artifact from any package format and the hash
+    /// is what makes saying so mechanical.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other six
+    /// page-less profiles do; [`Self::docx_v0`]'s doc comment is the decision and the evidence, and
+    /// v2-S3 closed the question of a mode enum. `capabilities.tables` is **false** even though
+    /// RTF writes `\cell` and `\row`: those are recorded as a paragraph's terminator, where they
+    /// are a fact the file states, and a [`crate::tables::TableRecord`] would say a detector ran.
+    pub fn rtf_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: RTF_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1552,7 +1624,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.26.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.27.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1789,11 +1861,24 @@ mod tests {
              `coordinate_system` the other five page-less profiles do — six formats now share \
              that declaration and none of them emits a coordinate — and this profile's own bytes \
              are untouched, because a sixth page-less format is a new VALUE rather than a change \
-             to what this one claims."
+             to what this one claims.\n\n\
+             Moved a THIRTY-FIRST time at v2-S8 (0.27.0) on `parser_version` ALONE, and the format \
+             behind it is the first that is not a package. Every v2 format before RTF is a ZIP \
+             with parts, and every one of their locators opens with a part name; an `.rtf` is one \
+             brace-group byte stream with no parts, no manifest and no name for itself. That did \
+             not move this profile and it did move an INVARIANT: `check_structure`'s page-less \
+             shape grew a fourth rule, because its part-id bijection has no part name to be a \
+             bijection between, and a constant standing in for a part the format lacks would have \
+             been `docs/14-V2-SCOPE.md` §3's invented value in a small place. `Profile::rtf_v0` \
+             carries the same inert `coordinate_system` the other six page-less profiles do — \
+             seven formats now share that declaration and none of them emits a coordinate — and \
+             its `capabilities.tables` is FALSE even though RTF writes `\\cell` and `\\row`, \
+             because those are recorded as a paragraph's terminator rather than as a grid a \
+             detector inferred."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ba367599bc4649f6ca71c45f71dd7b71c22a26f8a4997cb0e39544afdde02773"
+            "sha256:a9416ce96a7471d8a9cd951eda179978d737f1bfb1670faa151ad75ea734160d"
         );
     }
 

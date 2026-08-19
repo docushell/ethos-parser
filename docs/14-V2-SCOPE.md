@@ -3,11 +3,11 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads six formats.** S0–S7 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS and ODP. **S8 (RTF, EPUB, CSV) has
+**v2 reads seven formats.** S0–S8 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF. **S9 (EPUB, CSV) has
 not started, and v2 is not complete.**
 
-§3's law has now been tested against all five shapes a "page" can take, and the last two are the
+§3's law has now been tested against all six shapes a "page" can take, and the last three are the
 ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's
 is a print artefact. A slide is a real, discrete, countable thing the package contains — and is a
 **part**, so `pages` is empty and `PptxLocator` carries no slide number.
@@ -26,6 +26,13 @@ L30's four words rather than a paraphrase — *"It invents pagination"* — beca
 part of the presentation's **structure** and not a page this engine measured. `pages` is `[]`, and
 `OdpLocator` carries a `draw_page` **position** named for the element rather than for what it
 resembles.
+
+**And an RTF says the word out loud.** `\page` is a page break and `\paperw` a paper width, in the
+plainest language any of these formats use. Both are the producing application's print arithmetic,
+so `pages` is `[]` and `RtfLocator` has one field with no room for a second. RTF is also the first
+format here with **no container**, which §3's second obligation decided rather than the first: a
+constant part name would have let the page-less invariant run unchanged and would have been a
+string the document does not contain, so the invariant grew a fourth rule instead.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, and fabrication is **0** (`table-gate-v1.md`,
@@ -265,7 +272,9 @@ and the only one forbidden outright.
   shipped ODS and did **not** acquire a second format while its reader was open, which is what
   writing the split first bought. **S7 then spent S6's measurement**: ODP is inside the ODF family
   and inherited the container, the manifest check and the whole allowlist, while RTF, EPUB and CSV
-  inherit none of it — so ODP left the row and **S8 is RTF, EPUB, CSV**.
+  inherit none of it — so ODP left the row and **S8 became RTF, EPUB, CSV**. S8 then measured that
+  RTF inherits nothing at all — not the container, not the XML reader, not the allowlist, not the
+  shape of the locator — and left with **S9 as EPUB, CSV**.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

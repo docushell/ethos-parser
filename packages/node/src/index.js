@@ -83,7 +83,7 @@ import { CanonicalizationError, c14nBytes, sha256Hex } from "./c14n.js";
  * and `package.json`. An SDK claiming a version the engine does not is the same class of lie
  * `parser_version` exists to prevent.
  */
-export const version = "0.26.0";
+export const version = "0.27.0";
 
 /** The `artifact_type` `engine extract` stamps on a representation. */
 export const REPRESENTATION_ARTIFACT_TYPE = "ethos.engine.representation.v0";

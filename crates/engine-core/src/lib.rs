@@ -104,7 +104,8 @@ pub use profile::{
     FORM_ANNOTATION_RULE_V1, NOT_RUN, OBSERVATION_RULE_V1, ODP_READING_ORDER_RULE_V1,
     ODP_TEXT_CODE_RULE_V1, ODS_READING_ORDER_RULE_V1, ODS_TEXT_CODE_RULE_V1,
     ODT_READING_ORDER_RULE_V1, ODT_TEXT_CODE_RULE_V1, PPTX_READING_ORDER_RULE_V1,
-    PPTX_TEXT_CODE_RULE_V1, READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, STRUCT_TREE_RULE_V1,
+    PPTX_TEXT_CODE_RULE_V1, READING_ORDER_RULE_V0, READING_ORDER_RULE_V1,
+    RTF_READING_ORDER_RULE_V1, RTF_TEXT_CODE_RULE_V1, STRUCT_TREE_RULE_V1,
     TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1, TABLE_DETECTION_V2,
     TEXT_CODE_RULE_V1, XLSX_READING_ORDER_RULE_V1, XLSX_TEXT_CODE_RULE_V1,
 };
@@ -127,8 +128,9 @@ pub use representation::{
     OfficeOdfShapeAttributes, OfficeParagraphAttributes, OfficeRunAttributes,
     OfficeSlideRunAttributes, PageRecord, PaintedRect, PdfArtifactLocator, PdfImageLocator,
     PdfLocator, PdfObjectLocator, PdfTaggedLocator, PptxLocator, ProcessingRun, ProcessorIdentity,
-    RepresentationPayload, SourceIdentity, StructuralLocator, SynthesizedAt, TextFinding,
-    TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    RepresentationPayload, RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, SourceIdentity,
+    StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator,
+    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

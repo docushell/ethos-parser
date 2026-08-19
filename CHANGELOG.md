@@ -7,7 +7,152 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads a sixth format, as 0.26.0
+## [Unreleased] — v2 reads a seventh format, as 0.27.0
+
+### v2-S8 — RTF into the representation, and the address with no part
+
+**A Rich Text Format paragraph binds, and `pages` is still `[]`.** `engine extract` reads an `.rtf`
+into the same `ethos.engine.representation.v0` the other seven formats produce. **S8 is RTF and is
+done; S9 parks EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still bind,
+and **v2 is not complete**.
+
+#### The first format here that is not a package
+
+Every reader in `engine-office` before this one opens by asking a **container** a question: does the
+central directory list `word/document.xml`, does the first stored entry declare an OpenDocument
+type, which part does this `r:id` resolve to. An `.rtf` has none of that. It is one sequence of
+bytes — `{`, `}`, control words beginning with `\`, and everything else is text — with no manifest,
+no parts, and no name the document has for itself.
+
+So `RtfLocator` carries **one** field. The tempting move was the other one: a constant part name
+would have let `check_structure`'s page-less shape run unchanged, because that check proves one part
+id means one part name. It would also have put a string in every citation that the document does not
+contain, which is `14-V2-SCOPE.md` §3's *"absent, not invented"* in a smaller place than the
+page-sized box that obligation is usually about.
+
+**The invariant grew a fourth rule instead.** A locator now answers `names_a_part`, and one that
+answers false is checked on the only integrity claim its format can make — one document, one
+container, one id — while mixing the two shapes in one artifact is refused by name. The overload
+that had to be separated first is worth recording: until this slice, `part()` returning `None` meant
+*"paginated"*, because every page-less format so far was a package. RTF is neither.
+
+#### The page, said out loud
+
+An ODT hides its page inside `<text:soft-page-break/>` and an ODP inside a `<draw:page>` element.
+RTF writes `\page`, with `\paperw` beside it, in the plainest language any of these formats use.
+Both are the producing application's print arithmetic. `\page` is matched, contributes no character,
+and produces no `PageRecord`; `pages` is `[]`, and the locator has one field with no room for a
+second. `06-STEAL-REFUSE.md` L30 refuses invented pagination whether inventing it costs a renderer or
+costs nothing — the fourth format in a row where the file says the word and the artifact does not.
+
+#### The atom, and what a consumer counts
+
+A paragraph. `\par` ends one, and so do `\sect`, `\cell` and `\row` — recorded on
+`RtfParagraphAttributes::terminator` rather than flattened, because **which** of them it was is a
+fact the stream states and `\cell` is how a consumer learns the text sat in a table. Spans are not
+the atom, for `OdtLocator`'s reason: a paragraph may contain no formatting group at all, so
+addressing by run would leave the commonest case with no address to give.
+
+**The count advances through destinations this reader does not read.** A `\par` inside a
+`{\footer …}` moves it, so the fixture's addressed paragraphs are `1, 4, 5, 6, 7, 8` — the header's
+and the footer's own paragraphs occupy 2 and 3. That is `OdtLocator::paragraph`'s rule in RTF's
+spelling: the number promises a position in the file, not a position in the subset this slice kept.
+
+#### Skip unless transparent — the inverted allowlist, outside XML
+
+`odt.rs` inverted its rule because ODF puts a great deal of non-displayed character data inside a
+`<text:p>`. RTF has the same hazard in a different shape: a group's text belongs to the body only if
+the group is **formatting**, and a group whose first control word names a *destination* holds
+something else entirely.
+
+There is no way to enumerate every destination a producer might write, so the rule is inverted the
+same way: a group is transparent only when its first control word is in a **deliberately short and
+closed list**, and everything else — `\fonttbl`, `\colortbl`, `\stylesheet`, `\info`, `\pict`,
+`\object`, `\header`, `\footer`, `\footnote`, `\field` and its cached result, and every `{\*\…}` —
+is skipped and **counted**. Over-skipping reports a phrase missing, which the artifact declares;
+under-skipping puts a footer's words in the body, which is **A14 inverted** — a silent *extra* a
+consumer cannot tell from evidence.
+
+**One defect worth recording**, because it made the whole rule silently off. The first version
+marked the **new** group decided when a `{` opened, so every group was already decided by the time
+its first control word arrived and every destination read as transparent. The unit tests this list
+exists for caught it; the fixed code marks the *enclosing* group instead.
+
+#### Characters, and the code page this reader does not have
+
+Read: plain 7-bit characters, `\uN` as the scalar it names — surrogate pairs combined, because a
+producer writes an astral scalar as two of them — and a small closed set of special-character
+control words (`\tab`, `\emdash`, `\lquote`, …) that each stand for exactly one character. `\ucN`
+says how many fallback characters follow a `\u`, and reading them as well would put the same
+character in the record twice.
+
+**`\'hh` above 0x7F is declared, never guessed.** That byte's meaning depends on `\ansicpg1252`,
+`\ansicpg932` or another declaration, and this reader carries no table for one. Emitting a Latin-1
+character would be mojibake presented as a success. Below 0x80 the byte is the same character in
+every ANSI code page, so reading it is reading rather than choosing.
+
+#### Detection, and the `%PDF-` message fixed for the shape this time
+
+`{\rtf` is the whole of it. A bare `{` is not enough, an OLE compound file — a legacy `.doc`,
+beginning `D0 CF 11 E0` — is a different format with a different reader, and a renamed `.rtf` reads.
+
+**The router's last line changed too, and it is not about RTF.** Before this slice an `.epub` was a
+ZIP that no office predicate claimed, so it fell to the PDF reader and was refused for having no
+`%PDF-` header — fail-closed, wrong cause, the third time that defect has appeared. A ZIP is
+definitively not a PDF, so the CLI now sends **any** ZIP to the office router, whose own refusal
+names what the package is and is not. v2-S6's pin holds untouched: `is_opendocument` still answers on
+the declared **type**, so an `.epub` is never told it *is* OpenDocument.
+
+**A CSV still takes the unknown-bytes path**, and that is recorded rather than fixed. Comma-separated
+text cannot be told from prose without a reader, and a detector that guessed would claim every comma
+file.
+
+#### Identity and limits
+
+`Profile::rtf_v0` has its own hash; **eight profiles are now mutually distinct**.
+`capabilities.tables` is **false** even though RTF writes `\cell` and `\row`: those are a
+paragraph's terminator, where they are a fact the file states, and a `TableRecord` would say a
+detector ran. Every geometry row is `NotApplicableToKind` — an indent in twips places text on a
+layout engine's canvas rather than measuring its ink. The default PDF profile hash moves on
+`parser_version` **alone**, for the thirty-first time, to
+`sha256:a9416ce96a7471d8a9cd951eda179978d737f1bfb1670faa151ad75ea734160d`.
+
+**No new dependency.** A hand-rolled control-word walker in `engine-office`, in character with
+`zip.rs`'s argument for hand-rolling the ZIP reader: no RTF crate, no `zip` crate, no LibreOffice,
+no shelling out.
+
+#### Added
+
+- `engine_core`: `NativeLocator::Rtf`, `NativeLocator::names_a_part`, `RtfLocator`,
+  `NodeAttributes::RtfParagraph`, `RtfParagraphAttributes`, `RtfParagraphBreak`,
+  `Profile::rtf_v0`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`
+- `engine_office`: the `rtf` module (`read`, `Paragraph`, `Document`, `is_rtf`, `RTF_MEDIA_TYPE`),
+  plus `is_rtf` and `RTF_MEDIA_TYPE` at the crate root
+- `fixtures/office/rich-text-paragraphs` and `fixtures/office/rich-text-unread-destinations`, with
+  their generator
+
+#### Changed
+
+- Workspace **0.26.0 → 0.27.0**; both SDKs pinned to match
+- `check_structure`'s page-less shape gained a fourth rule for a format with no parts, and refuses
+  an artifact that mixes part-named locators with part-less ones
+- `engine_office::read` answers the RTF question **before** the container question, and its
+  no-container refusal now names both shapes
+- `engine extract` routes any ZIP to the office router, so an unread package fails closed for the
+  cause it has rather than for a missing `%PDF-` header
+
+#### What could not be measured, recorded
+
+**No corpus of real `.rtf` files was available** — the fourth consecutive slice that has to say so,
+repeated rather than quietly inherited. Every rule is read off the RTF specification and pinned
+against streams this repository authors byte by byte, and every assertion about a fixture reads that
+fixture's own bytes. Two consequences are stated rather than hidden: the transparent list is short,
+so a formatting group it does not name has its text declared; and a control word this reader does
+not name contributes no character, which is right for the overwhelming majority of them and would be
+wrong for a special character the list misses.
+
+Unchanged and re-asserted: oracle 12 / 3, table gate **64‰**, `irs-form-1040-2025` at **0 tables**,
+fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S7 — ODP into the representation, and the page that was free
 

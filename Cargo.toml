@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, and v2-S7 as 0.26.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, and v2-S8 as 0.27.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -348,7 +348,48 @@ exclude = ["fuzz"]
 # S7 is ODP and is done; S8 parks RTF, EPUB and CSV. v2's gate is still a DOCX quote and an XLSX
 # cell; this is coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and the 0.489
 # chase is STILL parked.
-version = "0.26.0"
+#
+# **0.27.0 is v2-S8: an RTF PARAGRAPH binds, and the format has no container at all.** Rich Text
+# Format enters the representation — a brace-group control-word byte stream, with `\par`, `\sect`,
+# `\cell` and `\row` as the addresses — and the reason this is a slice is what it does NOT have.
+#
+# NOT A PACKAGE. Every v2 format before this one is a ZIP: the reader opens by asking a container a
+# question and mints one part id per part. An `.rtf` has no parts, no manifest, no relationship
+# table and no name for itself. So `RtfLocator` carries ONE field and `check_structure`'s page-less
+# invariant grew a FOURTH rule — a part-less format's nodes all share one container id — rather than
+# this reader inventing a constant part name so the old bijection would pass. A string the document
+# does not contain is `docs/14-V2-SCOPE.md` §3's "absent, not invented" in a smaller place than the
+# page-sized box that obligation is usually about.
+#
+# THE PAGE, SAID OUT LOUD. An ODT hides its page in `<text:soft-page-break/>` and an ODP in a
+# `<draw:page>` element. RTF writes `\page`, and `\paperw` beside it. Both are the producing
+# application's print arithmetic, `pages` stays `[]`, and `docs/06-STEAL-REFUSE.md` L30 refuses
+# invented pagination whether inventing it costs a renderer or costs nothing.
+#
+# SKIP UNLESS TRANSPARENT, which is `odt.rs`'s inverted allowlist in a non-XML format. A group is
+# read only when its first control word is formatting; everything else — `\fonttbl`, `\stylesheet`,
+# `\info`, `\pict`, `\header`, `\footer`, `\footnote`, `\field`, and every `{\*\…}` — is
+# skipped and COUNTED. The failure mode is a phrase reported missing, never a header's words spliced
+# into the body, which is A14 inverted and the worse of the two.
+#
+# `\'hh` ABOVE 0x7F IS DECLARED, NEVER GUESSED. Its meaning depends on a code page this reader does
+# not carry a table for, so it contributes no character and is counted. Below 0x80 the byte is the
+# same character in every ANSI code page, so reading it is reading. `\uN` is the scalar it names,
+# surrogate pairs included, and `\ucN` says how many fallback characters to skip.
+#
+# ONE DEFECT WORTH NAMING: the first version marked the NEW group decided when a `{` opened, so
+# every destination test passed transparently and the whole skip rule was silently off. Found by the
+# unit tests it exists for.
+#
+# NO NEW DEPENDENCY. A hand-rolled control-word walker in `engine-office`, in character with
+# `zip.rs`: no RTF crate, no LibreOffice, no shelling out. `Profile::rtf_v0` has its own hash; eight
+# profiles are mutually distinct; `capabilities.tables` is FALSE even though RTF writes `\cell`,
+# because that is recorded as a paragraph's TERMINATOR rather than as a grid a detector inferred.
+#
+# S8 is RTF and is done; S9 parks EPUB and CSV. v2's gate is still a DOCX quote and an XLSX cell;
+# this is coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and the 0.489 chase
+# is STILL parked.
+version = "0.27.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -369,10 +410,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.26.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.26.0" }
-engine-office = { path = "crates/engine-office", version = "0.26.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.26.0" }
+engine-core = { path = "crates/engine-core", version = "0.27.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.27.0" }
+engine-office = { path = "crates/engine-office", version = "0.27.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.27.0" }
 
 [profile.release]
 strip = "symbols"

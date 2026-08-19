@@ -261,6 +261,15 @@ const CORE: &[&str] = &[
     "OfficeOdfShapeAttributes",
     "ODP_READING_ORDER_RULE_V1",
     "ODP_TEXT_CODE_RULE_V1",
+    // v2-S8. The eighth format's address and its facts, and the first that names no part: an
+    // `.rtf` is one brace-group byte stream with no container. `names_a_part` is the question
+    // `check_structure` asks instead of `part().is_none()`, which meant "paginated" until a format
+    // arrived that is neither paginated nor packaged.
+    "RtfLocator",
+    "RtfParagraphAttributes",
+    "RtfParagraphBreak",
+    "RTF_READING_ORDER_RULE_V1",
+    "RTF_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -464,6 +473,9 @@ const OFFICE: &[&str] = &[
     // `.odg` drawing's `content.xml` really IS the `<draw:page>` vocabulary this reader knows, so
     // a prefix match would produce a plausible artifact for a format nobody decided to support.
     "ODP_MEDIA_TYPE",
+    // v2-S8. `is_rtf` is the simplest predicate in this crate and the only one that asks no
+    // container question: the specification requires the file to begin `{\rtf`.
+    "RTF_MEDIA_TYPE",
     "docx",
     "is_docx",
     "is_odp",
@@ -471,12 +483,14 @@ const OFFICE: &[&str] = &[
     "is_ods",
     "is_opendocument",
     "is_pptx",
+    "is_rtf",
     "is_xlsx",
     "odp",
     "ods",
     "odt",
     "pptx",
     "read",
+    "rtf",
     "xlsx",
     "zip",
 ];
