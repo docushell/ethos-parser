@@ -121,6 +121,33 @@ use engine_core::{
 /// The crate name, matching the sibling crates' own marker.
 pub const CRATE_NAME: &str = "engine-office";
 
+/// Fold `more` things this reader saw and did not put in the record into `count`.
+///
+/// **Saturating, because a wrapped erasure count is a silent drop presented as a success.** Every
+/// A14 count in this crate is bounded only by what the input contains — a part's event count, and
+/// in the folds a package's part count on top of that — so a plain `+=` can pass `u32::MAX` and
+/// come back small, which is an artifact reporting that it erased almost nothing while it erased
+/// four billion things. A14's whole content is that the number is honest. Saturating over-declares
+/// at the ceiling, which is the direction every reader here already takes.
+///
+/// The width stays `u32`: a saturated count is honest at the ceiling, and widening would move the
+/// ceiling rather than remove it. v2-S9's adversarial review reproduced this as an 85×
+/// under-declaration in EPUB — a 31 MB publication exiting 0 while declaring 51,032,704 passed-over
+/// runs against a true 4,346,000,000 — and v2-S9.1 is the same defect repaired in the seven readers
+/// the fix did not reach.
+pub(crate) fn declare(count: u32, more: u32) -> u32 {
+    count.saturating_add(more)
+}
+
+/// The same ceiling for a count that arrives as a `usize`.
+///
+/// An `as u32` cast on an input-driven count is worse than a plain `+=`, because it wraps in debug
+/// **and** release — so no test and no CI job can catch it, where `+=` at least panics in debug.
+/// See [`declare`] for why the ceiling is the honest answer and the width is not the fix.
+pub(crate) fn declared_len(count: usize) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
 /// The media type an OOXML word-processing document declares.
 pub const DOCX_MEDIA_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -1675,8 +1702,10 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     for slide in &slides {
         let part = zip::read_entry(bytes, slide)?;
         let content = pptx::read_slide(&part, slide)?;
-        shapes_not_read += content.shapes_not_read;
-        alternatives_not_read += content.alternatives_not_read;
+        // A deck's slide count is bounded by nothing but its central directory, so this fold is the
+        // shape v2-S9 reproduced in EPUB: each part's count fits, and their sum need not.
+        shapes_not_read = declare(shapes_not_read, content.shapes_not_read);
+        alternatives_not_read = declare(alternatives_not_read, content.alternatives_not_read);
 
         // One slide, one part id — minted per slide so the bijection holds in both directions.
         let part_id = alloc.next(IdKind::Part)?;
@@ -1790,4 +1819,42 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     };
 
     DocumentRepresentation::seal(payload, geometry)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **v2-S9.1.** The cross-slide fold is the reachable half of the defect v2-S9 reproduced:
+    /// `zip.rs` bounds each entry it inflates, and nothing bounds the number of entries.
+    #[test]
+    fn the_cross_slide_fold_saturates_rather_than_wrapping() {
+        // Two below the ceiling, three slides each declaring one erasure.
+        let mut shapes_not_read = u32::MAX - 2;
+        for _ in 0..3 {
+            shapes_not_read = declare(shapes_not_read, 1);
+        }
+        assert_eq!(
+            shapes_not_read,
+            u32::MAX,
+            "the ceiling, not the 0 a wrap reports"
+        );
+
+        // And a single slide that already reached the ceiling does not drag the total back down.
+        assert_eq!(declare(u32::MAX, u32::MAX), u32::MAX);
+        assert_eq!(declare(0, u32::MAX), u32::MAX);
+    }
+
+    /// An `as u32` cast wraps in debug **and** release, so it is worse than the `+=` it hides
+    /// behind. The entry-name counters go through this instead.
+    #[test]
+    fn a_usize_count_past_the_ceiling_is_declared_as_the_ceiling() {
+        let past = usize::try_from(u32::MAX).expect("64-bit") + 1;
+        assert_eq!(declared_len(past), u32::MAX, "not the 0 `as u32` reports");
+        assert_eq!(declared_len(0), 0);
+        assert_eq!(
+            declared_len(usize::try_from(u32::MAX).expect("64-bit")),
+            u32::MAX
+        );
+    }
 }

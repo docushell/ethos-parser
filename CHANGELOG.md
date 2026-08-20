@@ -9,6 +9,84 @@ frozen at **0.1.0** and later entries are versions.
 
 ## [Unreleased] — v2 reads an eighth format, as 0.28.0
 
+### v2-S9.1 — the erasure counters that could wrap, as 0.28.1
+
+**A wrapped erasure count is a silent drop presented as a success.** v2-S9's adversarial review
+reproduced one: a 31 MB, 82-document EPUB exited `0` declaring **51,032,704** passed-over runs
+against a true **4,346,000,000** — an 85× under-declaration, caused by a plain `+=` on a `u32`
+accumulator. S9 repaired the EPUB sites and recorded the rest in two sentences of prose. **The same
+shape survived in seven other readers.** This is that defect, repaired everywhere it was found.
+
+#### The width is not the fix
+
+Every A14 erasure counter in `engine-office` is a `u32` and stays one. A **saturated** count is
+honest at the ceiling — it over-declares, which is the direction **A14** asks for everywhere else.
+A **wrapped** one is a drop presented as a success, and widening to `u64` would move the ceiling
+rather than remove it.
+
+#### What could actually reach the ceiling, stated rather than assumed
+
+`zip.rs` bounds each entry it inflates at 256 MiB, so a single `content.xml` cannot on its own
+reach `u32::MAX`. The **folds** can, because nothing bounds the number of entries: EPUB's spine
+fold is the one S9 reproduced, and `read_pptx`'s cross-slide fold at
+`crates/engine-office/src/lib.rs` is the same shape. RTF has no per-part bound at all. The
+remaining per-document counters were repaired for the shape, not because a file was found that
+reaches them.
+
+#### `as u32` is the worse half, and it was there
+
+The prompt for this slice asked whether any `as u32` cast on an input-driven count survived
+alongside the `+=`. **It did — eight of them**, and a cast is worse than a `+=` because it wraps in
+**debug as well as release**, so neither a test nor a CI job could catch it. `ods.rs` folded
+`row.done.len() as u32` straight into an erasure counter; `extract.rs` did the same twice, once
+into an accumulator that was otherwise already saturating; and `unread_text_parts` / `unread_entries` in `docx.rs`, `xlsx.rs`, `pptx.rs`, `odt.rs` and
+`epub.rs` each narrowed a package's entry count the same way. All now go through
+`declared_len`. **Casts that were left alone and why:** `rtf.rs`'s `stated as u32` is range-checked
+against `MAX_UNICODE_SKIP` on the line above it, and `lib.rs`'s `index as u32 + 1` ordinals are a
+different class — an **ordinal** must refuse rather than saturate, because a saturated address is a
+wrong address rather than a large one, and that is `IdAllocator`'s `ResourceLimit`, not this
+slice's.
+
+#### Fixed
+
+- `engine-office`: `lib.rs` (the cross-slide fold), `pptx.rs`, `xlsx.rs`, `odt.rs`, `ods.rs`,
+  `odp.rs` and `rtf.rs` fold every erasure through the new `declare`, which saturates. The site
+  list this slice started from named **19** places and **22** were found. `ods.rs` had a sixth the
+  list did not carry — and `other_kinds`, which counts entries in a slide list or a sheet list that
+  are not slides or sheets, was on a plain `+=` in **both** `pptx.rs` and `xlsx.rs`. It reaches the
+  artifact as a declared limitation, so it is an A14 count like any other; it was missed because
+  this slice's own search was for names ending `_not_read`, and it does not end that way. **A site
+  list is not a search, and a search shaped like the list finds only what the list already knew.**
+- `engine-pdf`: `extract.rs`'s `unclaimed_tree_items` and `mcids_unbound`, the two of eight
+  document-level accumulators still on `+=`. The other six already saturated
+- `engine-office`, `engine-pdf`: every `.count() as u32` feeding an erasure count
+
+#### Added
+
+- One saturation test per repaired reader, each driving that reader's own measured count past
+  `u32::MAX` and asserting `u32::MAX` rather than a small number
+- `crates/engine-office/tests/erasure_counters.rs` — the guard that fails on a **revert**, which
+  the per-reader tests cannot: a fold that is correct and a reader that stopped calling it would
+  leave every one of them passing, and that is precisely how the S9 defect survived. It reads the
+  source of all nine `engine-office` files plus `engine-pdf`'s `extract.rs`, and it recognises
+  every spelling of a wrapping accumulation rather than one — `x += 1`, `x  += 1` and `x = x + 1`
+  all wrap identically, and a guard that knew only the first would have called the other two clean.
+  `the_counter_list_is_complete` derives the counter names from the source rather than trusting the
+  list, because the list is what shipped short: deriving it is how `other_kinds` was found.
+  `the_test_region_skip_is_sound` asserts that skipping from each file's first `#[cfg(test)]`
+  really does skip only tests
+
+#### Changed
+
+- Workspace **0.28.0 → 0.28.1**; both SDKs pinned to match. All **nine** profile hashes move on
+  `parser_version` **alone** and stay mutually distinct — a build that counts differently is a
+  different profile, which is what `parser_version` is in identity for. The default PDF profile
+  hash moves for the thirty-third time, to
+  `sha256:8b64243d43920981e4441f7ac174a55189b19c97838f4aefd3a3dabeb113d825`
+
+No reader behaviour changed, no counter's meaning changed, no bucket was added, and no fixture
+moved. `docs/CAPABILITY.md` still reads **0.28.0** in its body; that line moves with v2-S10.
+
 ### v2-S9 — EPUB into the representation, and the page a publisher named
 
 **An EPUB block binds, and `pages` is still `[]`.** `engine extract` reads an `.epub` into the same

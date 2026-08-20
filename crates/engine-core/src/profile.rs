@@ -1707,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.28.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.28.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1974,11 +1974,22 @@ mod tests {
              `pages` stays empty. `Profile::epub_v0` carries the same inert `coordinate_system` \
              the other seven page-less profiles do — eight formats now share that declaration and \
              none of them emits a coordinate — and this profile's own bytes are untouched, for the \
-             reason they were at S5."
+             reason they were at S5.\n\n\
+             Moved a THIRTY-THIRD time at v2-S9.1 (0.28.1) on `parser_version` ALONE, which is \
+             the third time a PATCH release has moved it — v1-S6.1 (0.8.1) and v1-S6.2 (0.8.2) \
+             came first. Nothing about what any profile CLAIMS changed. \
+             What changed is that eight readers stopped reaching an A14 erasure count by an \
+             operation that can wrap: v2-S9's adversarial review reproduced a 31 MB EPUB exiting 0 \
+             while declaring 51,032,704 passed-over runs against a true 4,346,000,000, fixed the \
+             EPUB sites, and left the same plain `+=` in seven other readers plus two of \
+             `engine-pdf`'s eight document-level accumulators. `parser_version` is part of \
+             identity precisely so that a build which counts differently is a different profile — \
+             an artifact produced before this bump and one produced after can declare different \
+             numbers for the same bytes, and a consumer must be able to tell them apart."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8620b0fa728e47843d103d9707df90a846cdd63203d4808d52b1748fcddda7ed"
+            "sha256:8b64243d43920981e4441f7ac174a55189b19c97838f4aefd3a3dabeb113d825"
         );
     }
 

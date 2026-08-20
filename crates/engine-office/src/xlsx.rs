@@ -128,14 +128,15 @@ pub struct Cell {
 
 /// How many parts in this package carry text that this slice does not read.
 pub fn unread_text_parts(entry_names: &[String]) -> u32 {
-    entry_names
+    let matched = entry_names
         .iter()
         .filter(|name| {
             UNREAD_TEXT_PART_PREFIXES
                 .iter()
                 .any(|prefix| name.starts_with(prefix))
         })
-        .count() as u32
+        .count();
+    crate::declared_len(matched)
 }
 
 /// The package part holding the shared string table, or `None` if this workbook has none.
@@ -271,7 +272,7 @@ pub fn resolve_sheets(
             });
         };
         if rel.external || rel.kind != WORKSHEET_REL_TYPE {
-            other_kinds += 1;
+            other_kinds = crate::declare(other_kinds, 1);
             continue;
         }
         worksheets.push(Sheet {

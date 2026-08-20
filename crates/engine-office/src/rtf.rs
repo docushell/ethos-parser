@@ -347,7 +347,7 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
                     if groups.len() < open.from_depth {
                         let open = skip.take().expect("checked above");
                         if open.held_text {
-                            destinations_not_read += 1;
+                            destinations_not_read = crate::declare(destinations_not_read, 1);
                         }
                     }
                 }
@@ -1084,5 +1084,25 @@ mod tests {
     fn groups_nested_past_the_cap_are_refused() {
         let deep = format!("{{\\rtf1{}{}", "{".repeat(300), "}".repeat(300));
         assert!(read(deep.as_bytes()).is_err());
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// RTF is the format with no per-part bound at all — one brace-group stream, as long as the
+    /// file is — so its single counter is the one an ordinary large document could reach.
+    #[test]
+    fn an_rtf_erasure_count_saturates_rather_than_wrapping() {
+        let document = read_body(r"Body one.\par {\footer A footer\par }Body two.");
+        assert_eq!(document.destinations_not_read, 1, "the footer held text");
+
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = crate::declare(folded, document.destinations_not_read);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
     }
 }

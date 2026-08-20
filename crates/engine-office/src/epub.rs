@@ -346,10 +346,11 @@ pub fn read(bytes: &[u8]) -> Result<Publication, EngineError> {
 /// the navigation document already carries is counted too — and over-counting is the direction A14
 /// asks for: the number tells a caller there is more in the package.
 pub fn unread_entries(entry_names: &[String], read: &[String]) -> u32 {
-    entry_names
+    let matched = entry_names
         .iter()
         .filter(|name| !name.ends_with('/') && !read.iter().any(|seen| seen == *name))
-        .count() as u32
+        .count();
+    crate::declared_len(matched)
 }
 
 // -------------------------------------------------------------------------------------------

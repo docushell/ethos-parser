@@ -482,7 +482,7 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                         let skip = skips.pop().expect("checked above");
                         skip_counts_bare.pop();
                         if skip.held_text {
-                            regions_not_read += 1;
+                            regions_not_read = crate::declare(regions_not_read, 1);
                         }
                         closed_region = true;
                     }
@@ -497,7 +497,7 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                     {
                         let shape = shapes.pop().expect("checked above");
                         if shape.foreign_text {
-                            foreign_text_not_read += 1;
+                            foreign_text_not_read = crate::declare(foreign_text_not_read, 1);
                         }
                     }
                     Structure::Odf(Element::Block { .. }) => {
@@ -506,7 +506,7 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                         } else if let Some(block) = open.pop() {
                             let address = addresses.pop().flatten();
                             if block.foreign_text {
-                                foreign_text_not_read += 1;
+                                foreign_text_not_read = crate::declare(foreign_text_not_read, 1);
                             }
                             if !block.text.is_empty() {
                                 match address {
@@ -526,7 +526,10 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                                     // a shape, or outside every draw page. It has no address, so
                                     // it is declared rather than filed under an index this reader
                                     // would have had to invent.
-                                    None => text_outside_a_shape += 1,
+                                    None => {
+                                        text_outside_a_shape =
+                                            crate::declare(text_outside_a_shape, 1);
+                                    }
                                 }
                             }
                         }
@@ -1108,5 +1111,31 @@ mod tests {
         ] {
             assert_ne!(near, ODP_MEDIA_TYPE);
         }
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// The shape v2-S9's review reproduced in EPUB at 85×, repaired here.
+    #[test]
+    fn an_odp_erasure_count_saturates_rather_than_wrapping() {
+        let deck = read(&framed(
+            "T",
+            r#"<text:p>Fields:<text:page-count>17</text:page-count></text:p>
+               <text:p><text:ruby><text:ruby-base>kanji</text:ruby-base><text:ruby-text>GUIDE</text:ruby-text></text:ruby></text:p>"#,
+        ));
+        assert_eq!(
+            deck.foreign_text_not_read, 2,
+            "one per block that passed something over"
+        );
+
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = crate::declare(folded, deck.foreign_text_not_read);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
     }
 }

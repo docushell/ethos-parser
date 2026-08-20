@@ -151,14 +151,15 @@ pub struct SlideContent {
 
 /// How many parts in this package carry text that this slice does not read.
 pub fn unread_text_parts(entry_names: &[String]) -> u32 {
-    entry_names
+    let matched = entry_names
         .iter()
         .filter(|name| {
             UNREAD_TEXT_PART_PREFIXES
                 .iter()
                 .any(|prefix| name.starts_with(prefix))
         })
-        .count() as u32
+        .count();
+    crate::declared_len(matched)
 }
 
 /// Read the `<p:sldIdLst>` of a `ppt/presentation.xml` into relationship ids, in its own order.
@@ -257,7 +258,7 @@ pub fn resolve_slides(
             });
         };
         if rel.external || rel.kind != SLIDE_REL_TYPE {
-            other_kinds += 1;
+            other_kinds = crate::declare(other_kinds, 1);
             continue;
         }
         let part = resolve_target(&rel.target, PRESENTATION_FOLDER);
@@ -400,7 +401,9 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                     }
                     // Text this slice does not read, counted rather than dropped: a table or a
                     // chart in a `<p:graphicFrame>`, and a field's cached rendering.
-                    b"graphicFrame" | b"fld" if skip_from.is_none() => shapes_not_read += 1,
+                    b"graphicFrame" | b"fld" if skip_from.is_none() => {
+                        shapes_not_read = crate::declare(shapes_not_read, 1);
+                    }
                     _ => {}
                 }
             }
@@ -424,7 +427,9 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                         shape = Some(shape_identity(&start, part_name)?);
                     }
                     b"t" if skip_from.is_some() => skipped_text = true,
-                    b"graphicFrame" | b"fld" if skip_from.is_none() => shapes_not_read += 1,
+                    b"graphicFrame" | b"fld" if skip_from.is_none() => {
+                        shapes_not_read = crate::declare(shapes_not_read, 1);
+                    }
                     _ => {}
                 }
             }
@@ -437,7 +442,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
                     if depth + 1 == started_at {
                         skip_from = None;
                         if skipped_text {
-                            alternatives_not_read += 1;
+                            alternatives_not_read = crate::declare(alternatives_not_read, 1);
                         }
                         skipped_text = false;
                     }
@@ -959,5 +964,29 @@ mod tests {
         .collect();
         // A theme and an image carry no text a citation could land in.
         assert_eq!(unread_text_parts(&names), 3);
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// v2-S9's adversarial review reproduced the wrap in EPUB — a 31 MB publication exiting 0
+    /// while declaring 51,032,704 passed-over runs against a true 4,346,000,000 — and the same
+    /// plain `+=` was here, both on this reader's per-slide counters and on the fold in
+    /// [`crate::read_pptx`] that sums them. A deck's slide count is bounded by nothing but its
+    /// central directory, so the fold is the reachable half.
+    #[test]
+    fn a_slide_erasure_count_saturates_rather_than_wrapping() {
+        let out = read("<p:graphicFrame/><p:graphicFrame/>").expect("well-formed");
+        assert_eq!(out.shapes_not_read, 2, "both frames are counted");
+
+        // Three slides' worth of this slide's count, from two below the ceiling, is four over it.
+        let mut folded = u32::MAX - 2;
+        for _ in 0..3 {
+            folded = crate::declare(folded, out.shapes_not_read);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
     }
 }

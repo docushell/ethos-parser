@@ -105,6 +105,29 @@ impl ExtractArtifact {
     }
 }
 
+/// Fold `more` things this reader saw and did not put in the record into `count`.
+///
+/// **Saturating, because a wrapped erasure count is a silent drop presented as a success.** These
+/// are document-level accumulators over a page count bounded by nothing but the file, so a plain
+/// `+=` can pass `u32::MAX` and come back small — an artifact reporting that it erased almost
+/// nothing while it erased four billion things. A14's whole content is that the number is honest.
+///
+/// The width stays `u32`: a saturated count is honest at the ceiling, and widening would move the
+/// ceiling rather than remove it. v2-S9's adversarial review reproduced this shape as an 85×
+/// under-declaration in `engine-office`; v2-S9.1 repairs the two accumulators here that the other
+/// six in this function already had right.
+fn declare(count: u32, more: u32) -> u32 {
+    count.saturating_add(more)
+}
+
+/// The same ceiling for a count that arrives as a `usize`.
+///
+/// An `as u32` cast on an input-driven count is worse than a plain `+=`, because it wraps in debug
+/// **and** release — so no test and no CI job can catch it, where `+=` at least panics in debug.
+fn declared_len(count: usize) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
 /// Resolve one run's structural address (v1-S3).
 ///
 /// The precedence is the point, so it is stated rather than left to fall out of the `if`s:
@@ -261,11 +284,14 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc.inner(), page_dict)?;
 
-        composite_fonts = composite_fonts.saturating_add(
-            fonts
-                .values()
-                .filter(|f| f.kind == crate::fonts::FontKind::Composite)
-                .count() as u32,
+        composite_fonts = declare(
+            composite_fonts,
+            declared_len(
+                fonts
+                    .values()
+                    .filter(|f| f.kind == crate::fonts::FontKind::Composite)
+                    .count(),
+            ),
         );
 
         for font in fonts.values() {
@@ -391,19 +417,23 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         if let Some(tree) = structure.as_ref() {
             for &(pg, mcid) in tree.keys() {
                 if pg == page_id && !runs.iter().any(|r| r.mcid == Some(mcid)) {
-                    unclaimed_tree_items += 1;
+                    unclaimed_tree_items = declare(unclaimed_tree_items, 1);
                 }
             }
         }
-        mcids_unbound += runs
-            .iter()
-            .filter(|r| {
-                matches!(
-                    r.structural,
-                    Some(engine_core::StructuralLocator::PdfMcid(_))
-                )
-            })
-            .count() as u32;
+        mcids_unbound = declare(
+            mcids_unbound,
+            declared_len(
+                runs.iter()
+                    .filter(|r| {
+                        matches!(
+                            r.structural,
+                            Some(engine_core::StructuralLocator::PdfMcid(_))
+                        )
+                    })
+                    .count(),
+            ),
+        );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
@@ -1231,5 +1261,32 @@ mod tests {
             "two rules that order runs differently must not share an id"
         );
         assert_eq!(engine_core::READING_ORDER_RULE_V0, "single-column-v1");
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// Two of this function's eight document-level accumulators were still on a plain `+=`, and
+    /// one of those also cast a `usize` count with `as u32` — which wraps in debug as well as
+    /// release, so neither a test nor a CI job could have caught it. Both now saturate, because a
+    /// count that comes back small is an artifact reporting that it erased almost nothing while it
+    /// erased four billion things.
+    #[test]
+    fn a_document_level_erasure_count_saturates_rather_than_wrapping() {
+        // `unclaimed_tree_items`: one per unanswered citation, folded across every page.
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = declare(folded, 1);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
+
+        // `mcids_unbound`: a per-page `usize` count folded in. `as u32` reported zero for exactly
+        // `u32::MAX + 1`; the ceiling is the honest answer.
+        let past = usize::try_from(u32::MAX).expect("64-bit") + 1;
+        assert_eq!(declared_len(past), u32::MAX);
+        assert_eq!(declare(u32::MAX - 1, declared_len(past)), u32::MAX);
     }
 }

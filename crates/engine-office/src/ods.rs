@@ -513,7 +513,7 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                         let skip = skips.pop().expect("checked above");
                         skip_counts_bare.pop();
                         if skip.held_text {
-                            regions_not_read += 1;
+                            regions_not_read = crate::declare(regions_not_read, 1);
                         }
                         closed_region = true;
                     }
@@ -535,8 +535,10 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                             // carries no `table:name` for that exact reason, so accepting the same
                             // gap here would be two answers to one question.
                             None => {
-                                text_outside_a_cell =
-                                    text_outside_a_cell.saturating_add(row.done.len() as u32);
+                                text_outside_a_cell = crate::declare(
+                                    text_outside_a_cell,
+                                    crate::declared_len(row.done.len()),
+                                );
                             }
                         }
                     }
@@ -545,7 +547,7 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                     {
                         let done = open_cells.pop().expect("checked above");
                         if done.foreign_text {
-                            foreign_text_not_read += 1;
+                            foreign_text_not_read = crate::declare(foreign_text_not_read, 1);
                         }
                         let mut blocks = done.blocks;
                         blocks.sort_by_key(|(order, _)| *order);
@@ -562,7 +564,7 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                                 // itself, and emitting it would put a phrase in the record at an
                                 // address no reader of the document can see.
                                 _ if element == Structure::CoveredCell => {
-                                    text_outside_a_cell += 1;
+                                    text_outside_a_cell = crate::declare(text_outside_a_cell, 1);
                                 }
                                 Some(row) => row.done.push(DoneCell {
                                     column: done.column,
@@ -575,7 +577,9 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                                 // has no address. Counted rather than dropped, for the reason the
                                 // block path beside it is: a phrase this reader did not place is
                                 // still a phrase it did not put in the record.
-                                None => text_outside_a_cell += 1,
+                                None => {
+                                    text_outside_a_cell = crate::declare(text_outside_a_cell, 1);
+                                }
                             }
                         }
                     }
@@ -587,12 +591,15 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                             skip.block_depth = skip.block_depth.saturating_sub(1);
                         } else if let Some(block) = open.pop() {
                             if block.foreign_text {
-                                foreign_text_not_read += 1;
+                                foreign_text_not_read = crate::declare(foreign_text_not_read, 1);
                             }
                             if !block.text.is_empty() {
                                 match open_cells.last_mut() {
                                     Some(cell) => cell.blocks.push((block.ordinal, block.text)),
-                                    None => text_outside_a_cell += 1,
+                                    None => {
+                                        text_outside_a_cell =
+                                            crate::declare(text_outside_a_cell, 1);
+                                    }
                                 }
                             }
                         }
@@ -1791,5 +1798,39 @@ mod tests {
             read_content(part.as_bytes()).unwrap(),
             read_content(part.as_bytes()).unwrap()
         );
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// This reader is the one that folded a *length* rather than a one, so it pins both halves of
+    /// the repair: the saturating fold, and the `usize` count that reaches it without an `as u32`
+    /// cast. A cast is the worse of the two, because it wraps in debug as well as release.
+    #[test]
+    fn an_ods_erasure_count_saturates_rather_than_wrapping() {
+        let sheets = read_raw(
+            r#"<table:table-row>
+                 <table:table-cell office:value-type="string"><text:p>A</text:p></table:table-cell>
+                 <table:table-cell office:value-type="string"><text:p>B</text:p></table:table-cell>
+               </table:table-row>"#,
+        );
+        assert_eq!(
+            sheets.text_outside_a_cell, 2,
+            "no table name, so no address"
+        );
+
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = crate::declare(folded, sheets.text_outside_a_cell);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
+
+        // The row-length path, where `as u32` would have reported zero for a row of exactly
+        // `u32::MAX + 1` cells rather than the ceiling.
+        let past = usize::try_from(u32::MAX).expect("64-bit") + 1;
+        assert_eq!(crate::declared_len(past), u32::MAX);
     }
 }

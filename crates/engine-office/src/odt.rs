@@ -545,10 +545,11 @@ pub fn check_content_declared(entries: &[ManifestEntry]) -> Result<(), EngineErr
 /// tells a caller there is more in the package, and the alternative is a list of prefixes that
 /// silently stops matching the first time a producer names something new.
 pub fn unread_entries(entry_names: &[String]) -> u32 {
-    entry_names
+    let matched = entry_names
         .iter()
         .filter(|name| !name.ends_with('/') && !PACKAGING_ENTRIES.contains(&name.as_str()))
-        .count() as u32
+        .count();
+    crate::declared_len(matched)
 }
 
 /// Read a `content.xml` into the blocks that carry text.
@@ -725,7 +726,7 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                     if depth + 1 == skip.from_depth {
                         let skip = skips.pop().expect("checked above");
                         if skip.held_text {
-                            regions_not_read += 1;
+                            regions_not_read = crate::declare(regions_not_read, 1);
                         }
                         closed_region = true;
                     }
@@ -740,7 +741,7 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                             skip.block_depth = skip.block_depth.saturating_sub(1);
                         } else if let Some(block) = open.pop() {
                             if block.foreign_text {
-                                foreign_text_not_read += 1;
+                                foreign_text_not_read = crate::declare(foreign_text_not_read, 1);
                             }
                             // A block with no characters — a spacer paragraph, an empty heading —
                             // is not a node, for the reason a `<w:r>` with no `<w:t>` is not:
@@ -1493,6 +1494,30 @@ mod tests {
             unread_entries(&names),
             4,
             "styles, meta, settings and one picture — the folder entry is not a file"
+        );
+    }
+
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// The shape v2-S9's review reproduced in EPUB at 85×, repaired here. Both of this reader's
+    /// counters are bounded only by the part's event count.
+    #[test]
+    fn an_odt_erasure_count_saturates_rather_than_wrapping() {
+        let content = read(
+            "<text:p>Cited here<text:note><text:note-citation>1</text:note-citation>\
+             <text:note-body><text:p>A source nobody read.</text:p></text:note-body>\
+             </text:note> and continued.</text:p>",
+        );
+        assert_eq!(content.regions_not_read, 1, "the note held text");
+
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = crate::declare(folded, content.regions_not_read);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
         );
     }
 }

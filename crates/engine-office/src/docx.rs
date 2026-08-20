@@ -71,14 +71,15 @@ pub struct Run {
 
 /// How many parts in this package carry text that this slice does not read.
 pub fn unread_text_parts(entry_names: &[String]) -> u32 {
-    entry_names
+    let matched = entry_names
         .iter()
         .filter(|name| {
             UNREAD_TEXT_PART_PREFIXES
                 .iter()
                 .any(|prefix| name.starts_with(prefix))
         })
-        .count() as u32
+        .count();
+    crate::declared_len(matched)
 }
 
 /// Read the runs of a `word/document.xml`.
