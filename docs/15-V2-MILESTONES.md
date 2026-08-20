@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0–S10 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0–S10.2 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -79,6 +79,8 @@ for the next roadmap row, and nothing in it closes v1.
 | **S9** | EPUB → representation: the spine, and the page a publisher named | S8 | **done — and §3's law argued rather than applied** |
 | **S9.1** | The erasure counters that could wrap — a **repair**, not a format | S9 | **done — and a site list is not a search** |
 | **S10** | CSV — **an argued refusal, not a reader** | S9.1 | **done — and the format nothing detects** |
+| **S10.1** | The seven claims v2-S9.1 and v2-S10 left false — a **doc repair**, no version | S10 | **done — and it left itself out of this table** |
+| **S10.2** | The docs that stopped describing the code — a **doc repair** at 0.29.1 | S10.1 | **done — and a site list is still not a search** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -2058,9 +2060,10 @@ Both are the owner's, in the shape decision #10 already shows. Neither is decide
 1. **The v2 gate's verb.** `docs/00-NORTH-STAR.md:93` and `docs/02-ROADMAP.md:20` both say a DOCX
    quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
    option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has
-   quietly re-read *ground* as **bind** — `:54` says *"the v2 gate is still DOCX + XLSX, and both
-   still **bind**"*, and the CHANGELOG's v2-S9 entry says it again — while `:149` flagged the
-   question as unsettled **at S1**: *"the gate sentence needs re-reading, or the gate needs (a)."*
+   quietly re-read *ground* as **bind** — this document's own status preamble says *"the v2 gate is
+   still DOCX + XLSX, and both still **bind**"*, and the CHANGELOG's v2-S9 entry says it again —
+   while **S1's open-questions table, the `gate wording` row**, flagged the question as unsettled
+   **at S1**: *"the gate sentence needs re-reading, or the gate needs (a)."*
    It was never settled by a decision-log entry. Amending it is the owner's.
 
 2. **"Embedded assets" is a real, undelivered v2 obligation.** It is in the roadmap row
@@ -2119,6 +2122,127 @@ escalated items above rather than *"S10 has not started"*.
         `irs-form-1040-2025` still 0 tables; fabrication still 0; the 0.489 chase still parked
 
 - **Depends on:** S9.
+
+---
+
+## S10.1 — the seven claims v2-S9.1 and v2-S10 left false — **done**, no version
+
+Doc-only, no version bump, commit `99c801d`. It repaired seven statements those two slices
+introduced or should have fixed: this document's status line still said *"S10 has not started"*,
+the slice table had no row for S9.1 at all, S10's "embedded assets" grep count was false the moment
+it was written, S10's own version tick claimed every literal site while `fuzz/Cargo.lock` still
+named `0.27.0`, `erasure_counters.rs` cited a file that did not exist at the release it cited, and
+`xlsx.rs` had been repaired without the saturation test its slice claimed for every repaired
+reader.
+
+**It recorded itself nowhere.** The rows above are added by S10.2, because S10.1's own finding —
+*"a shipped slice existed in the CHANGELOG and in git and nowhere in the milestones document that
+is supposed to be the v2 code-review map"* — was true of S10.1 the moment it landed. It fixed the
+pattern for S9.1 and reproduced it for itself, in git and in nothing else.
+
+## S10.2 — the docs that stopped describing the code — **done**, as 0.29.1
+
+**No behaviour change, no profile field, no reader.** A patch release on the precedent v2-S9.1 set
+at `0.28.1`: `parser_version` moves and the nine profile hashes move with it, because a build is a
+build.
+
+The slice was handed **ten** measured statements false at `99c801d`. It fixed sixteen sites, and
+the arithmetic is the point rather than the score: six were found by searching, and **one of the
+ten was itself wrong**.
+
+### The eleventh, and the method — because a site list is not a search
+
+That is S9.1's handoff, restated here because this slice was given exactly the shape that produced
+it: a numbered list. The target set was derived from the code first and the list checked against
+it second.
+
+| The sweep | What it is | What it found |
+| --- | --- | --- |
+| Every `file:NN` citation in `docs/` and `README.md`, re-resolved against the file it names | a mechanical resolve, not a read | **three rotted citations**, all the v2-S10 defect class |
+| Every number-word standing beside *readers*, *formats*, *profiles*, *crates*, *counters* | counted against the tree | **four** stale counts, one of them the correction below |
+| Every *"does not exist"*, *"has not started"*, *"is unstarted"* | checked against what shipped | **two** — the office-crate heading, and *"S8 is unstarted"* about a slice that is done |
+| Every shipped commit, checked for a row in this document | `git log` against the slice table | **S10.1 is in git and in nothing else** |
+
+**One of the ten was wrong, and the correction is the finding.** `PUBLIC-API.md` said the `xml`
+module is shared by *"all **six** readers"* and the brief said the truth is eight. It is **seven**.
+Eight is the format count, not the reader-of-XML count: `rtf` imports nothing from that module,
+because a `{\rtf` byte stream carries no XML. The note now says seven *and says why not eight*, so
+the next reader to count formats and reach for that number is stopped by the sentence itself.
+
+### The two decisions, not typos
+
+**1. The draft-schema worked examples — regenerated, under one rule for both files.**
+
+The brief offered "bring it current" or "freeze, and explain why its sibling is not". The
+measurement chose: both examples describe the **same source document** (`synthetic/simple-text`,
+`sha256:f2f6ab91…`), both carry a `representation_sha256`, and **the two digests disagreed with
+each other**. At most one could ever have been right; neither was. `html.draft.json` had had two of
+its three identity fields dragged forward release by release and the third left behind, so it
+described three different builds at once; `markdown.draft.json` was whole but sixteen releases
+stale.
+
+- **Freeze loses** because a frozen specimen must name the release that produced it, and neither
+  file could say which one that was — html's fields disagreed and markdown's `0.13.0` was accurate
+  only by neglect. A freeze rule would have had to invent the provenance it was meant to preserve.
+- **Regenerate wins** because both artifacts are reproducible in three commands from a fixture the
+  manifest already declares, and because it is the only option under which the word *example*
+  stays true. The rule and the commands are in `docs/draft-schemas/README.md`, where a reader of
+  either file will find them.
+
+No digest was hand-edited. Both `examples[0]` objects are now **byte-equal to what the CLI emits**,
+checked by comparing the parsed objects rather than by reading them — and every non-identity field
+in both was already exact, which is why this was a three-field repair and not a rewrite.
+
+**Known and owed, not fixed here:** nothing guards those identity blocks. The four guards in that
+README pin `schema_version`, `artifact_type` and the two rule ids — the fields a consumer branches
+on — and none covers `parser_version`, `profile_sha256` or `representation_sha256`. Adding one is a
+source change and this release has none. It is the shape that README's own table says a draft
+schema should have had from the slice that added it.
+
+**2. `ETHOS_FIXTURES` — the three harnesses now honour it, and this is a behaviour change.**
+
+`markdown_cli.rs`, `html_cli.rs` and `mcp_stdio.rs` hardcoded `repo_root().join("../ethos/fixtures")`
+and asserted the file exists. `fixtures/manifest.json` declares that root **and** an
+`ETHOS_FIXTURES` override, which `classify_cli.rs`, `diagnostics.rs`, `grounding.rs` and
+`library_surface.rs` have always read.
+
+The brief called this a behaviour choice and said to do it or record it. **Do it**, because the
+measurement moved it out of the cosmetic category: `.github/workflows/ci.yml` checks the verifier
+out at `ethos-oracle/` and points `ETHOS_FIXTURES` there, and `<workspace>/../ethos/fixtures` is
+not a path that exists on a runner. Those three files were green only where the verifier happens to
+be a **sibling checkout of this one**. Shown both ways rather than argued: with the corpus
+relocated and the override set, all 35 tests pass; with the override pointed at a path that does
+not exist, the repaired harness fails and the old one passed regardless — an override that could
+not be observed to work is not an override.
+
+**What this does not claim.** This repository has **no git remote**, so that workflow has never
+run. The finding is what the workflow *says* versus where those three files *look*, which is
+checkable from the tree; whether CI was ever red is not, and is not asserted.
+
+### What S10.2 may and may not say
+
+**It repairs the record. It does not advance v2.** No reader, no profile field, no schema version,
+no fixture, no CI job, and no format. Both of v2's open items are untouched and both are still the
+owner's: the gate sentence's verb, and the undelivered *embedded assets* obligation.
+
+- **Acceptance — all met:**
+  - [x] Each of the ten is fixed, and the one that was misstated is corrected **with its
+        correction argued** rather than silently adjusted
+  - [x] A search was run rather than a list worked through; the method is the table above and it
+        found **six more sites** plus a slice missing from this document
+  - [x] No behaviour change but one, named above and argued: three test harnesses resolve a
+        corpus root through the manifest instead of a hardcoded path
+  - [x] Every `file:NN` citation this slice would have written is a **section or symbol name**
+        instead, and the three it repaired were replaced with named anchors — the v2-S10 defect
+        class, which had shipped twice and was still live in two documents
+  - [x] Workspace **0.29.1** at every literal site including `fuzz/Cargo.lock`, which v2-S10.1
+        explicitly left; both SDK suites run by hand and pass
+  - [x] Nine profile hashes move on `parser_version` **alone** and stay mutually distinct
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `GATE_PERMILLE` still 489;
+        `irs-form-1040-2025` still 0 tables; fabrication still 0; the 0.489 chase still parked
+  - [x] No git tag
+
+- **Depends on:** S10.1.
 
 ---
 

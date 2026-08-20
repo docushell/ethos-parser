@@ -422,11 +422,12 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
             })
         }
     };
-    // **One question, not four ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
+    // **One question, not six ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
     // second would make a package containing both main parts resolve to whichever line came
     // first; `engine_office::read` decides on the package's own evidence and refuses the
     // ambiguous case by name, so the answer does not depend on the order of this file. These
-    // four `||`s only decide whether the office reader is the one to ask.
+    // six `||`s only decide whether the office reader is the one to ask, and the v2-S10 branch
+    // below them decides nothing about format at all — it is their negation.
     //
     // The fourth line is the ODF **family**, not one member of it (v2-S6). An OpenDocument package
     // declares its own type, so "this is OpenDocument" is knowable before "this is a kind we read"

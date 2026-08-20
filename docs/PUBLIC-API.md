@@ -163,7 +163,7 @@ wrote, and retyping them by hand is how a consumer silently stops matching.
 load-bearing rather than tidy — `project()` lives outside it and therefore cannot construct a
 `GroundedBox` from anything but a measurement state. See the crate docs.
 
-## `engine-office` — the OOXML readers, and OpenDocument text and spreadsheets
+## `engine-office` — the OOXML readers, the three OpenDocument readers, RTF and EPUB
 
 **New to this document at v2-S3, and the omission is worth recording.** The crate shipped at
 v2-S2 outside the freeze table, which by this document's own rule at the top made
@@ -211,10 +211,11 @@ produced a **plausible artifact for a format nobody decided to support** — whi
 `%PDF-` message v2-S6 fixed, since it does not look like a failure at all.
 
 **Internal, do not use:** `xml`, which holds the entity rule, the local-name helper, the
-namespace-resolved attribute matcher and the XML-reader plumbing all **six** readers share — the
-three ODF readers included, which between them reach every item in it except the one
-`attribute_value` calls internally —
-and `opc`, which holds the one rule that turns an
+namespace-resolved attribute matcher and the XML-reader plumbing the **seven** XML-backed readers
+share — the three ODF readers and `epub` included, which between them reach every item in it except
+the one `attribute_value` calls internally. **Seven and not eight:** `rtf` is the one reader that
+reaches none of it, because a `{\rtf` byte stream carries no XML for an XML reader to parse.
+And `opc`, which holds the one rule that turns an
 `r:id` into a part name. Private on purpose: it is one rule about *what counts as text*, and two callers is
 already the reason it exists — a third caller reaching it from outside the crate would make it a
 contract before anyone decided it should be one.

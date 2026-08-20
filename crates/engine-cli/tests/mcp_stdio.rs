@@ -41,8 +41,25 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The conformance corpus, resolved through `fixtures/manifest.json`.
+///
+/// **The manifest declares the root and the `ETHOS_FIXTURES` override; this harness used to
+/// hardcode `../ethos/fixtures` and ignore both** (v2-S10.2). That made it green only where the
+/// corpus happens to be a sibling checkout of this one — and CI is not such a place: the workflow
+/// checks the verifier out at `ethos-oracle/` and points `ETHOS_FIXTURES` there, so every
+/// `conformance` call here resolved to a path that does not exist. `classify_cli.rs`,
+/// `diagnostics.rs`, `grounding.rs` and `library_surface.rs` have always read the declaration.
 fn conformance(rel: &str) -> PathBuf {
-    let p = repo_root().join("../ethos/fixtures").join(rel);
+    let m: Value = serde_json::from_slice(
+        &std::fs::read(repo_root().join("fixtures/manifest.json")).expect("manifest"),
+    )
+    .expect("valid JSON");
+    let decl = &m["roots"]["conformance"];
+    let root = match decl["env"].as_str().and_then(|e| std::env::var(e).ok()) {
+        Some(v) => PathBuf::from(v),
+        None => repo_root().join(decl["default"].as_str().expect("default")),
+    };
+    let p = root.join(rel);
     assert!(p.is_file(), "fixture missing: {}", p.display());
     p
 }

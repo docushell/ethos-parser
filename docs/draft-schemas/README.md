@@ -84,3 +84,33 @@ None needs a validator; each is `serde_json` equality on the one field a reader 
 
 The pattern is the point: a schema without a guard drifts, and the drift is invisible to exactly
 the reader the file is for. A new draft schema gets one in the slice that adds it.
+
+## The worked examples are regenerated, not maintained — one rule for both projections
+
+**A worked example in this directory is the real artifact a named fixture produces at the release
+the example names.** Not a sketch of one, and never a hand-edited digest. Both projection schemas
+carry one, both describe the same document, and both are reproduced by three commands:
+
+```bash
+engine extract  "$ETHOS_FIXTURES/synthetic/simple-text/document.pdf" > repr.json
+engine markdown repr.json    # the whole `examples[0]` of markdown.draft.json
+engine html     repr.json    # the whole `examples[0]` of html.draft.json
+```
+
+`ETHOS_FIXTURES` defaults to the `conformance` root `fixtures/manifest.json` declares. The fixture
+is `synthetic/simple-text`, the M0 oracle fixture, chosen because it is the smallest document that
+still exercises a `source` segment, a `syntax` segment and a census that balances.
+
+**The rule exists because half of it was already being followed and the half that was not went
+unnoticed for sixteen releases** (v2-S10.2). `html.draft.json` had its `parser_version` and
+`profile_sha256` dragged forward release by release while its `representation_sha256` stayed where
+it was, so its three identity fields described three different builds; `markdown.draft.json` was
+left whole at `0.13.0`. The two files therefore published **two different digests for the same
+representation of the same source**, and at most one of them could ever have been right. Both are
+now regenerated together, and a release that moves `parser_version` moves all three fields in both
+files or the examples stop being artifacts.
+
+**Nothing enforces this.** The four guards in the table above pin `schema_version`, `artifact_type`
+and the two rule ids — the fields a consumer branches on — and no guard covers an identity block.
+That is a known gap, recorded in `docs/15-V2-MILESTONES.md` under v2-S10.2, and it is exactly the
+shape the table above says a draft schema should have had from the slice that added it.

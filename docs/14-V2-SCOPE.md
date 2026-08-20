@@ -14,8 +14,8 @@ owner's to settle (`15-V2-MILESTONES.md` S10):
 1. **The gate sentence's verb.** §2 below and `00-NORTH-STAR.md` both say a DOCX quote and an XLSX
    cell both **ground**. Grounding a DOCX is refused — decided at v2-S1 as option (b), pinned by a
    test, listed in `CAPABILITY.md` under **Cannot** — and every slice since has quietly re-read
-   *ground* as **bind**. `15-V2-MILESTONES.md:149` flagged it as unsettled at S1 and no
-   decision-log entry ever settled it.
+   *ground* as **bind**. `15-V2-MILESTONES.md`'s S1 open-questions table — the **gate wording**
+   row — flagged it as unsettled at S1, and no decision-log entry ever settled it.
 2. **"Embedded assets" is a real, undelivered obligation.** §2 restates it as v2's content and
    `02-ROADMAP.md`'s row names it. It was neither delivered nor descoped, and it is not merely
    unread but **uncounted**: `docx.rs`'s `UNREAD_TEXT_PART_PREFIXES` does not match
@@ -178,7 +178,7 @@ The assumption that every node has a page parent lives in **`engine-core`**. Tha
 but it is the sentence v2 has to revisit, and it is the finding §5 records. Pinned by
 `crates/engine-grounding/tests/page_less_source.rs`.
 
-### Where an office crate would live, and why it does not exist yet
+### Where the office crate lives, and why it did not exist until v2-S2
 
 `04-ARCHITECTURE.md` already named it and already refused to create it early:
 
@@ -196,9 +196,12 @@ call and is not hand-rolled: entities, namespaces, CDATA and encodings are where
 reader silently gets **text** wrong, and text is the evidence. Both halves are v1.2-S1's reasoning
 about an MCP framework, applied twice with opposite answers.
 
-**And nothing has arrived since.** XLSX, PPTX and ODT each added a reader and no dependency: no
-`zip`, no `zopfli`, no `calamine`, no ODF library and no LibreOffice. v2-S5 is the sharpest case,
-because the shortest path to an ODT is a converter and `06-STEAL-REFUSE.md` L30 is what refuses it.
+**And nothing has arrived since.** XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB each added a reader and
+**no dependency**: no `zip`, no `zopfli`, no `calamine`, no ODF library, no EPUB crate, no HTML5
+parser and no LibreOffice. v2-S5 is the sharpest case, because the shortest path to an ODT is a
+converter and `06-STEAL-REFUSE.md` L30 is what refuses it — and v2-S9 is the second sharpest, an
+EPUB being a container of XHTML that a general-purpose HTML5 parser would have read for the cost of
+a new dependency and a second definition of what counts as text.
 
 ## 5. The contract question, decided at S1
 

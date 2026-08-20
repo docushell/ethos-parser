@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.29.0, and v2's format row
+**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.29.1, and v2's format row
 is closed.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its table number is measured and **missed**: macro cell-slot F1 is **64‰**, fabrication is
@@ -10,7 +10,7 @@ open**. Its table number is measured and **missed**: macro cell-slot F1 is **64�
 **v1 is not done**, and v1.1 began because the owner asked for the next roadmap row rather than
 because the gate cleared.
 
-**What 0.29.0 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
+**What 0.29.1 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
 
 **v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
@@ -59,12 +59,13 @@ declared, with nowhere in the schema to declare them. The predicted blocker — 
 origin — **dissolved**: their space and this engine's visible box are the same box. The refusal is
 pinned by `engine-grounding/tests/liteparse_refusal.rs` so relaxing either schema fact reopens it.
 
-**v2 is office formats, and it reads four of them.** Its gate is *a DOCX quote and an
+**v2 is office formats, and it reads eight of them** — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and
+EPUB, with **CSV an argued refusal rather than a reader**. Its gate is *a DOCX quote and an
 XLSX cell both ground; no synthesised pages*, and the second clause is the whole hazard: a DOCX has
 no page, so a page on a Word citation is a measurement of the machine that printed it rather than of
 the document. `06-STEAL-REFUSE.md` **L30** already refuses the shortest path — LibreOffice → PDF —
 and `01-CONTRACT.md` §5.1 already says a rendered page is never substituted for a native address.
-The fourth format is where that costs something to say: an ODT's `content.xml` **contains** a
+**ODT**, the fourth of them, is where that costs something to say: its `content.xml` **contains** a
 `<text:soft-page-break/>`, so the page is in the file and is refused anyway, because it records the
 producing application's layout rather than anything this engine measured.
 [`14-V2-SCOPE.md`](14-V2-SCOPE.md) turns that into a checkable law and **poses, without answering**,
@@ -262,10 +263,14 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**Next: closing v1-S7.** The gate is measured and missed at 61‰, and seven investigations in S7b
-established that no repair to the *alignment* rule moves it — see
-[`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the one that was
-built and parked. S8 is unstarted.
+**What came after v0, and where it stands.** v1's table gate is measured and **missed at 64‰** —
+61‰ when first assessed at S7b, moved to 64‰ by the third detection rule **S8 shipped** — and seven
+investigations in S7b established that no repair to the *alignment* rule moves it. See
+[`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the research
+archive of `stroke-ruled-v1`, the rule that was built and parked at S7b and then defect-fixed and
+shipped at S8. **The > 0.489 chase is parked and v1-S7 is not closed**; parking is not a pass.
+v1.1, v1.2 and v2-S0 through S10 shipped on top of it — the status line at the top of this file is
+the current one, and this paragraph is the v0 → v1 hand-off it describes.
 
 ---
 
@@ -334,7 +339,7 @@ Then, as needed:
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
 | [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S10**, all done — eight formats read and **S10 (CSV) an argued refusal**. v2's format row is closed and v2 is **not** complete | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489, which is why the chase is parked | Before quoting any table-accuracy number |
-| [`CAPABILITY.md`](CAPABILITY.md) | What **0.29.0** can and cannot do, as two tables | When someone asks what this engine actually does today |
+| [`CAPABILITY.md`](CAPABILITY.md) | What **0.29.1** can and cannot do, as two tables | When someone asks what this engine actually does today |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | A stub. The two research files are **off-tree**; `06-STEAL-REFUSE.md` is the living steal / refuse record | Only to find out where the archive went |

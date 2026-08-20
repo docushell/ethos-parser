@@ -26,7 +26,7 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.29.0**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.29.1**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
 and v2 **not complete**. `engine extract` takes a `.docx`, an
 `.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same
@@ -59,7 +59,7 @@ Nine subcommands, one library, one document load:
 
 ```bash
 engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf|.docx|.xlsx|.pptx|.odt|.ods  # DocumentRepresentation v0 · 0 / 2
+engine extract         document.pdf|.docx|.xlsx|.pptx|.odt|.ods|.odp|.rtf|.epub  # DocumentRepresentation v0 · 0 / 2
 engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
 engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
 engine html            representation.json               # ethos.html.v1             · 0 / 2

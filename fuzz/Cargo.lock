@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "engine-core"
-version = "0.27.0"
+version = "0.29.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "engine-pdf"
-version = "0.27.0"
+version = "0.29.1"
 dependencies = [
  "engine-core",
  "lopdf",

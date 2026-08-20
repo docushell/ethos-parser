@@ -7,7 +7,113 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; its docs repaired at 0.29.1
+
+### v2-S10.2 — the docs that stopped describing the code, as 0.29.1
+
+**No behaviour changed and no profile field moved.** This is a patch release on the precedent
+v2-S9.1 set at `0.28.1`: `parser_version` moves, so the nine profile hashes move, because a build
+is a build.
+
+**Why it is a release and not a tidy-up.** This repository's entire value is that a reader can
+audit a decision from the tree alone. At `0.29.0` `docs/README.md` told that reader v2 *"reads four
+of them"* — wrong since **v2-S5**, five slices — and `docs/14-V2-SCOPE.md` headed a section *"why
+it does not exist yet"* about a crate that has existed since **v2-S2**. A sentence a reader can
+check and find false is the defect; the cosmetics are incidental.
+
+#### Fixed — sixteen sites, each measured at `99c801d` before it was touched
+
+| # | Site | Was | Is |
+| --- | --- | --- | --- |
+| 1 | `docs/README.md`, the v2 paragraph | *"reads **four** of them"* | **eight**, named, with CSV the argued refusal. Wrong since v2-S5 |
+| 2 | same paragraph | *"The fourth format…"* | **ODT** named, since the sentence above it now enumerates all eight |
+| 3 | `docs/README.md`, the **"Next:"** paragraph | *"missed at **61‰**"*, *"S8 is unstarted"*, *"the one that was built and parked"* | **64‰**; **S8 is done** and shipped that rule; and it is the v0 → v1 hand-off, not what is next |
+| 4 | `docs/PUBLIC-API.md`, the `engine-office` heading | *"the OOXML readers, and OpenDocument text and spreadsheets"* | names the three ODF readers, **RTF and EPUB** |
+| 5 | `docs/PUBLIC-API.md`, the `xml` note | *"all **six** readers share"* | **seven** — and says why not eight: `rtf` reaches none of it |
+| 6 | `docs/14-V2-SCOPE.md`, the office-crate heading | *"why it **does not exist yet**"* | *"why it did not exist until v2-S2"*, which its own body already said |
+| 7 | `docs/14-V2-SCOPE.md`, the no-new-dependency paragraph | *"XLSX, PPTX and ODT each added a reader"* | all **seven** since the crate landed, with the EPUB case named |
+| 8 | `docs/02-ROADMAP.md`, the document-pairs paragraph | *"`engine-office` reading **two** formats"* | **eight** |
+| 9 | `README.md`, the subcommand synopsis | `extract` accepted `.pdf` through `.ods` | `.odp`, `.rtf` and `.epub` too |
+| 10 | `crates/engine-cli/src/main.rs`, `run_extract`'s dispatch comment | *"these **four** `\|\|`s"* | **six**, and names the v2-S10 branch below them as their negation |
+| 11 | `docs/draft-schemas/markdown.draft.json` | `parser_version` `0.13.0` | regenerated |
+| 12 | `docs/draft-schemas/html.draft.json` | `representation_sha256` from a build its own `parser_version` disagreed with | regenerated |
+| 13 | `docs/15-V2-MILESTONES.md`, the S10 escalation | cited `:54` and `:149` | both had rotted by 1 and 3 lines; replaced with **named anchors** |
+| 14 | `docs/14-V2-SCOPE.md`, open question 1 | cited `15-V2-MILESTONES.md:149` | same rot, same repair |
+| 15 | `fuzz/Cargo.lock` | `engine-core` and `engine-pdf` at **0.27.0** | `0.29.1`. Stale since v2-S8 |
+| 16 | `Cargo.toml`'s release-history line | stopped at `v2-S10 as 0.29.0` | carries this release |
+
+**Two of these were decisions rather than typos, and both are argued where a reader will find
+them.**
+
+**The draft-schema examples (11 and 12) are regenerated, never hand-edited, under one rule for both
+files** — written down in `docs/draft-schemas/README.md`. The measurement that decided it: both
+examples describe the **same source document** (`synthetic/simple-text`, `sha256:f2f6ab91…`) and
+both carried a `representation_sha256`, and **the two digests disagreed with each other**. At most
+one could ever have been right; in fact neither was. `html.draft.json` had had its `parser_version`
+and `profile_sha256` dragged forward release by release while its representation digest stayed
+put — three identity fields describing three different builds — and `markdown.draft.json` was left
+whole at `0.13.0`, sixteen releases back. Both `examples[0]` objects are now **byte-equal to what
+the CLI emits**, verified by comparison rather than by inspection, and every other field in both
+was already exact.
+
+Freezing was considered and rejected: a frozen example still has to name the release that produced
+it, and neither file could say which one that was. **Nothing guards this** — the four guards in
+that README pin `schema_version`, `artifact_type` and the two rule ids, and none covers an identity
+block. Recorded as owed rather than fixed here, because a new guard is a source change and this
+release has none.
+
+#### Changed — one behaviour, and it is a test harness
+
+- **`crates/engine-cli/tests/{markdown_cli,html_cli,mcp_stdio}.rs` now resolve the conformance
+  corpus through `fixtures/manifest.json`**, honouring the `ETHOS_FIXTURES` override the manifest
+  declares — as `classify_cli.rs`, `diagnostics.rs`, `grounding.rs` and `library_surface.rs`
+  always have. All three hardcoded `repo_root().join("../ethos/fixtures")` and asserted the file
+  exists.
+
+  **This is not cosmetic and it is not a doc fix.** `.github/workflows/ci.yml` checks the verifier
+  out at `ethos-oracle/` and sets `ETHOS_FIXTURES` to point there; `<workspace>/../ethos/fixtures`
+  is not a path that exists on a runner. Those three files were green only where the verifier
+  happens to be a **sibling checkout of this one**, which is the maintainer's laptop and not much
+  else. Demonstrated both ways before and after: with the corpus relocated and `ETHOS_FIXTURES`
+  set, all 35 tests pass; with the override pointed at a path that does not exist, the repaired
+  harness **fails** and the old one passed regardless — which is the whole defect, an override
+  that could not be observed to work.
+
+- Workspace **0.29.0 → 0.29.1**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
+  thirty-fifth time and the fourth time in a patch release, to
+  `sha256:df66b039cc3cff2f49ff2627f4a5289a8ba507178be5085add0f18bd103ed220`
+
+#### The eleventh, and how it was looked for
+
+The slice was handed ten sites. **A site list is not a search** — v2-S9.1's handoff, and the reason
+it is repeated here. The target set was derived from the code instead: every `file:NN` citation in
+`docs/` and `README.md` re-resolved against the file it names, every number-word standing next to
+*readers*, *formats*, *profiles*, *crates* or *counters* counted against the tree, and every
+*"does not exist"* / *"has not started"* / *"is unstarted"* phrase checked against what shipped.
+
+That found **six more**, rows 2, 7, 8, 9, 13 and 14 above, and it corrected one of the ten it was
+given: the `xml` note undercounts at **six** but the true number is **seven**, not eight — `rtf`
+parses no XML and shares none of that module. It also found that the two rotted citations are the
+**same defect class v2-S10 shipped twice**, still uncorrected: `:149` was cited from two documents
+and the row it names is at 152.
+
+**`Cargo.lock` gains nothing** and `cargo tree` gains no crate. No reader, no profile field, no
+schema version, no fixture, and no CI job moved. **v2 is not complete**, and this release does not
+touch either of the two reasons.
+
+### v2-S10.1 — the seven claims v2-S9.1 and v2-S10 left false — no version
+
+Doc-only, commit `99c801d`, no version bump and no behaviour change. It repaired seven statements
+those two slices introduced or should have fixed: `15-V2-MILESTONES.md`'s status line still read
+*"S10 has not started"*, its slice table had no row for v2-S9.1, S10's *"embedded assets"* grep
+count was false the moment it was written, S10's version tick claimed every literal site while
+`fuzz/Cargo.lock` still named `0.27.0`, `erasure_counters.rs` cited a file that did not exist at
+the release it cited, and `xlsx.rs` had been repaired without the saturation test its slice claimed
+for every repaired reader.
+
+**Recorded here by v2-S10.2**, because S10.1 landed in git and in nothing else — the same defect it
+had just fixed for v2-S9.1.
 
 ### v2-S10 — CSV: the format nothing detects, as 0.29.0
 
