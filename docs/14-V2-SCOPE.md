@@ -3,11 +3,11 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads seven formats.** S0–S8 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF. **S9 (EPUB, CSV) has
+**v2 reads eight formats.** S0–S9 are done: this document, the grounding decision in §5,
+`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB. **S10 (CSV) has
 not started, and v2 is not complete.**
 
-§3's law has now been tested against all six shapes a "page" can take, and the last three are the
+§3's law has now been tested against all seven shapes a "page" can take, and the last four are the
 ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's
 is a print artefact. A slide is a real, discrete, countable thing the package contains — and is a
 **part**, so `pages` is empty and `PptxLocator` carries no slide number.
@@ -274,7 +274,10 @@ and the only one forbidden outright.
   and inherited the container, the manifest check and the whole allowlist, while RTF, EPUB and CSV
   inherit none of it — so ODP left the row and **S8 became RTF, EPUB, CSV**. S8 then measured that
   RTF inherits nothing at all — not the container, not the XML reader, not the allowlist, not the
-  shape of the locator — and left with **S9 as EPUB, CSV**.
+  shape of the locator — and left with **S9 as EPUB, CSV**. S9 then measured that EPUB inherits the
+  ZIP reader and the XML plumbing and almost nothing else, and left **S10 as CSV** — a format whose
+  cost is not a reader but a **detector**, because comma-separated text cannot be told from prose
+  without one.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

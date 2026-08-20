@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! `engine extract` reads an RTF, and the format with no container still binds (v2-S8).
+//! `engine extract` reads an EPUB, and the page a publisher named stays out (v2-S9).
 //!
-//! The seventh sibling of `office_cli.rs`, proving the same claim once more: **one subcommand, one
-//! artifact type, one serializer**. There is no `ethos.engine.rtf.v0` and no `engine extract-rtf`.
+//! The eighth sibling of `office_cli.rs`, proving the same claim once more: **one subcommand, one
+//! artifact type, one serializer**. There is no `ethos.engine.epub.v0` and no `engine extract-epub`.
 //!
-//! What is new is the dispatch. Every earlier line of that router asks a *container* a question,
-//! and before this slice an `.rtf` answered `false` to all of them and fell through to the PDF
-//! reader — to be refused for having no `%PDF-` header, which is the same wrong-cause defect
-//! v2-S5 recorded for an `.ods` and v2-S6 fixed for the ODF family.
+//! **The CLI's dispatch did not change for this slice**, and that is worth a test rather than a
+//! shrug: v2-S8 made the router's last line the *container* question, so every ZIP already reached
+//! `engine_office::read`. This file pins that an EPUB gets there, that it is still never told it is
+//! OpenDocument (v2-S6's pin, whose home moved here from `rtf_cli.rs`), and that a `.csv` still
+//! does not — because that message belongs to S10.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -37,7 +38,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn fixture() -> PathBuf {
-    repo_root().join("fixtures/office/rich-text-paragraphs/document.rtf")
+    repo_root().join("fixtures/office/book-spine/book.epub")
 }
 
 fn extract(path: &std::path::Path) -> (i32, Vec<u8>, String) {
@@ -60,36 +61,40 @@ fn extract(path: &std::path::Path) -> (i32, Vec<u8>, String) {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn extract_reads_an_rtf_into_the_same_artifact_type_a_pdf_produces() {
+fn extract_reads_an_epub_into_the_same_artifact_type_a_pdf_produces() {
     let (code, stdout, stderr) = extract(&fixture());
     assert_eq!(code, 0, "{stderr}");
 
     let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON on stdout");
     assert_eq!(
         artifact["artifact_type"], "ethos.engine.representation.v0",
-        "one artifact type — there is no `ethos.engine.rtf.v0`"
+        "one artifact type — there is no `ethos.engine.epub.v0`"
     );
     let payload = &artifact["representation"];
-    assert_eq!(payload["source"]["media_type"], "application/rtf");
+    assert_eq!(payload["source"]["media_type"], "application/epub+zip");
     assert_eq!(
         payload["pages"],
         json!([]),
-        "`\\page` is where the producer broke a page, not a page this engine measured"
+        "a `page-list` names the pages of a print edition this engine never measured"
     );
     assert_eq!(
         payload["tables"],
         json!([]),
-        "and `\\cell` is a terminator the file writes, not a grid a detector inferred"
+        "and a cell's text is read as the block it is, not as a grid a detector inferred"
+    );
+    assert_eq!(
+        payload["processing_run"]["reading_order_rule"],
+        "epub-spine-then-document-order-v1"
     );
     assert!(
-        payload["nodes"].as_array().expect("nodes").len() >= 6,
+        payload["nodes"].as_array().expect("nodes").len() >= 9,
         "and that is not vacuous"
     );
 }
 
-/// A known phrase arrives at the address the stream states, on the new locator.
+/// A known phrase arrives at the address the package states, on the new locator.
 #[test]
-fn a_known_paragraph_arrives_at_the_position_the_stream_states() {
+fn a_known_block_arrives_at_the_position_the_package_states() {
     let (_, stdout, _) = extract(&fixture());
     let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
     let nodes = artifact["representation"]["nodes"]
@@ -98,19 +103,48 @@ fn a_known_paragraph_arrives_at_the_position_the_stream_states() {
 
     let node = nodes
         .iter()
-        .find(|n| n["text"] == "Split by the producer.")
-        .expect("the phrase follows the fixture's own `\\page`");
-    let locator = &node["native_locator"]["rtf"];
-    assert_eq!(locator["paragraph"], json!(4));
-    assert!(
-        locator.get("page").is_none()
-            && locator.get("bbox").is_none()
-            && locator.get("part").is_none(),
-        "no page, no box, and no part invented for a format that has none: {locator:?}"
-    );
+        .find(|n| n["text"] == "The second spine item")
+        .expect("the phrase is a heading in the fixture's second spine document");
+    let locator = &node["native_locator"]["epub"];
     assert_eq!(
-        node["attributes"]["rtf_paragraph"]["terminator"], "paragraph",
-        "which control word ended it is a fact the stream states"
+        locator["part"], "OEBPS/aa-second.xhtml",
+        "the part is resolved from the manifest, relative to the package document's directory"
+    );
+    assert_eq!(locator["block"], json!(2));
+    assert!(
+        locator.get("page").is_none() && locator.get("bbox").is_none(),
+        "and it carries no page and no box: {locator:?}"
+    );
+    assert_eq!(node["attributes"]["epub_block"]["element"], "h1");
+    assert_eq!(node["attributes"]["epub_block"]["linear"], json!(true));
+}
+
+/// **The spine states the order, and the archive does not** — visible on the wire.
+#[test]
+fn the_nodes_arrive_in_spine_order_not_archive_order() {
+    let (_, stdout, _) = extract(&fixture());
+    let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
+    let mut seen: Vec<String> = Vec::new();
+    for node in artifact["representation"]["nodes"]
+        .as_array()
+        .expect("nodes")
+    {
+        let part = node["native_locator"]["epub"]["part"]
+            .as_str()
+            .expect("a part")
+            .to_string();
+        if seen.last() != Some(&part) {
+            seen.push(part);
+        }
+    }
+    assert_eq!(
+        seen,
+        vec![
+            "OEBPS/zz-first.xhtml".to_string(),
+            "OEBPS/aa-second.xhtml".to_string(),
+            "OEBPS/notes.xhtml".to_string()
+        ],
+        "the archive stores `aa-second` first and the spine lists `zz-first` first"
     );
 }
 
@@ -118,7 +152,7 @@ fn a_known_paragraph_arrives_at_the_position_the_stream_states() {
 #[test]
 fn dispatch_is_by_content_not_by_extension() {
     let dir = tempdir();
-    let renamed = dir.join("report.bin");
+    let renamed = dir.join("book.bin");
     std::fs::copy(fixture(), &renamed).expect("copy the fixture");
     let (code, stdout, stderr) = extract(&renamed);
     assert_eq!(
@@ -130,73 +164,80 @@ fn dispatch_is_by_content_not_by_extension() {
 }
 
 #[test]
-fn two_runs_over_one_stream_produce_identical_bytes() {
+fn two_runs_over_one_publication_produce_identical_bytes() {
     let (_, first, _) = extract(&fixture());
     let (_, second, _) = extract(&fixture());
     assert_eq!(first, second);
 }
 
 // -------------------------------------------------------------------------------------------
-// What is still not read, and how it fails
+// The pins this slice inherited, and the one format it did not implement
 // -------------------------------------------------------------------------------------------
 
-/// **A near miss is not claimed, and an OLE `.doc` least of all.**
+/// **An EPUB is never told it is OpenDocument**, now that it reads.
 ///
-/// `{\rtf` is the whole of detection, so the cases worth pinning are the ones that look close: a
-/// bare open brace, a different first control word, and the legacy `.doc` a caller is most likely
-/// to hand over by mistake — an OLE compound file, which begins `D0 CF 11 E0`.
+/// v2-S6 wrote `is_opendocument` to answer on the *declared type* rather than on the presence of a
+/// first, stored `mimetype` entry — precisely so this format would not arrive to be told it is
+/// something it is not. That pin lived in `rtf_cli.rs` until v2-S9 gave EPUB a reader; it lives
+/// here now, where the format it protects is.
 #[test]
-fn a_near_miss_is_refused_without_naming_a_pdf_header() {
+fn an_epub_reads_and_is_still_not_opendocument() {
+    let (code, stdout, stderr) = extract(&fixture());
+    assert_eq!(code, 0, "{stderr}");
+    let artifact: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
+    assert_eq!(
+        artifact["representation"]["source"]["media_type"], "application/epub+zip",
+        "it is read as what it declares, and what it declares is not OpenDocument"
+    );
+
+    // And an `.odg` — a genuine ODF sibling with no reader — still takes the ODF refusal.
     let dir = tempdir();
-    for (name, bytes) in [
-        ("brace.rtf", b"{ not rtf }".to_vec()),
-        ("other-word.rtf", br"{\ansi text}".to_vec()),
-        (
-            "legacy.doc",
-            vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0],
-        ),
-    ] {
-        let path = dir.join(name);
-        std::fs::write(&path, bytes).expect("write the file");
-        let (code, stdout, stderr) = extract(&path);
-        assert_eq!(code, 2, "{name} still fails closed: {stderr}");
-        assert!(stdout.is_empty(), "a refusal prints no artifact: {name}");
-        assert!(
-            !stderr.contains("Rich Text"),
-            "{name} was not claimed as RTF: {stderr}"
-        );
-    }
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// **CSV is still S10**, and it is not told it is something it is not.
-///
-/// **The EPUB half of this test moved to `epub_cli.rs` at v2-S9**, which reads it. What stays is
-/// the format nothing in this engine speaks: a `.csv` cannot be told from prose without a reader,
-/// so it takes the true-unknown-bytes path — recorded in `docs/15-V2-MILESTONES.md` S10 rather
-/// than guessed at here, because a detector that sniffed commas would claim every comma file.
-#[test]
-fn the_formats_this_slice_did_not_implement_are_still_refused() {
-    let dir = tempdir();
-
-    let csv = dir.join("rows.csv");
-    std::fs::write(&csv, b"a,b,c\n1,2,3\n").expect("write the file");
-    let (code, stdout, _) = extract(&csv);
-    assert_eq!(code, 2, "a CSV has no reader yet");
-    assert!(stdout.is_empty());
-
-    // And an `.odg` is still refused as OpenDocument, by name — untouched by this slice.
     let odg = dir.join("drawing.odg");
     std::fs::write(
         &odg,
         ocf_package("application/vnd.oasis.opendocument.graphics"),
     )
     .expect("write the package");
-    let (_, _, stderr) = extract(&odg);
-    assert!(stderr.contains("OpenDocument"), "{stderr}");
-    assert!(stderr.contains("graphics"), "{stderr}");
+    let (code, _, stderr) = extract(&odg);
+    assert_eq!(code, 2);
+    assert!(
+        stderr.contains("OpenDocument") && stderr.contains("graphics"),
+        "{stderr}"
+    );
     assert!(!stderr.contains("%PDF-"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
+/// **CSV is still S10**, and this slice did not sniff commas to change that.
+#[test]
+fn a_csv_still_does_not_extract() {
+    let dir = tempdir();
+    let csv = dir.join("rows.csv");
+    std::fs::write(&csv, b"a,b,c\n1,2,3\n").expect("write the file");
+    let (code, stdout, _) = extract(&csv);
+    assert_eq!(
+        code, 2,
+        "comma-separated text cannot be told from prose without a reader, and a detector that \
+         guessed would claim every comma file"
+    );
+    assert!(stdout.is_empty(), "a refusal prints no artifact");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A ZIP that is no format this engine reads still names the **container**, not a PDF header.
+#[test]
+fn an_unread_zip_is_still_refused_by_container_rather_than_as_a_missing_pdf() {
+    let dir = tempdir();
+    let path = dir.join("mystery.zip");
+    std::fs::write(&path, ocf_package("application/x-nothing-we-read")).expect("write");
+    let (code, stdout, stderr) = extract(&path);
+    assert_eq!(code, 2);
+    assert!(stdout.is_empty());
+    assert!(!stderr.contains("%PDF-"), "{stderr}");
+    assert!(
+        stderr.contains("application/epub+zip"),
+        "and the refusal now names EPUB among the formats it is not: {stderr}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -204,11 +245,13 @@ fn the_formats_this_slice_did_not_implement_are_still_refused() {
 // The grounding boundary, unmoved
 // -------------------------------------------------------------------------------------------
 
-/// **(b) still holds.** `ethos.grounding.v1` is PDF-only, and an RTF is refused by name.
+/// **(b) still holds.** `ethos.grounding.v1` is PDF-only, and an EPUB is refused by name.
 ///
-/// This passes with **no change to `engine-grounding`**.
+/// This passes with **no change to `engine-grounding`** — which is worth saying for this format
+/// above all the others, because an EPUB is the first one whose own file could have supplied the
+/// page the grounding schema requires.
 #[test]
-fn ground_refuses_a_page_less_stream_by_name() {
+fn ground_refuses_a_page_less_publication_by_name() {
     let dir = tempdir();
     let (_, stdout, _) = extract(&fixture());
     let path = dir.join("representation.json");
@@ -237,10 +280,10 @@ fn ground_refuses_a_page_less_stream_by_name() {
 // The handle law, over unmodified MCP
 // -------------------------------------------------------------------------------------------
 
-/// An RTF paragraph resolves through the same fingerprint-checked handle path a PDF run uses, and
-/// a forged id fails closed. `mcp.rs` is **unchanged** by this slice.
+/// An EPUB block resolves through the same fingerprint-checked handle path a PDF run uses, and a
+/// forged id fails closed. `mcp.rs` is **unchanged** by this slice.
 #[test]
-fn node_get_resolves_a_paragraph_and_fails_closed_on_a_forged_id() {
+fn node_get_resolves_a_block_and_fails_closed_on_a_forged_id() {
     let (_, stdout, _) = extract(&fixture());
     let representation: Value = serde_json::from_slice(&stdout).expect("canonical JSON");
 
@@ -266,12 +309,12 @@ fn node_get_resolves_a_paragraph_and_fails_closed_on_a_forged_id() {
     assert_eq!(ok["isError"], json!(false), "{ok:?}");
     assert_eq!(ok["structuredContent"]["id"], json!(minted));
 
-    let locator = &ok["structuredContent"]["native_locator"]["rtf"];
+    let locator = &ok["structuredContent"]["native_locator"]["epub"];
     assert_eq!(
-        locator["paragraph"],
-        json!(1),
-        "the address that came back is the stream's own: {locator:?}"
+        locator["part"], "OEBPS/zz-first.xhtml",
+        "the address that came back is the package's own: {locator:?}"
     );
+    assert_eq!(locator["block"], json!(2));
     assert!(
         locator.get("page").is_none() && locator.get("bbox").is_none(),
         "and it carries no page and no box: {locator:?}"
@@ -393,7 +436,7 @@ fn mcp_session(requests: &[Value]) -> Vec<Value> {
 /// A scratch directory beside the target dir, removed by each test that makes one.
 fn tempdir() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
-        "ethos-rtf-{}-{:?}",
+        "ethos-epub-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));

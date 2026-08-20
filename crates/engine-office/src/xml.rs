@@ -82,6 +82,73 @@ pub(crate) fn resolve_entity(name: &[u8], part: &str) -> Result<&'static str, En
     }
 }
 
+/// One of the five predefined entities, **or a numeric character reference** (v2-S9).
+///
+/// # Why this is a second function rather than a widening of the first
+///
+/// `quick-xml` delivers `&#233;` as a `GeneralRef` event named `#233`, so [`resolve_entity`] sees
+/// it and refuses it — a **named refusal of a well-formed document**, recorded at v2-S3 and left
+/// alone because no measurement then asked for more. XHTML asks. An EPUB content document is
+/// hand-authored XML with no DTD, so its authors reach for `&#160;` and `&#8217;` constantly, and
+/// a character reference needs no DTD to resolve: XML 1.0 §4.1 defines it as a scalar value
+/// written another way.
+///
+/// It is **not** folded into [`resolve_entity`], and the reason is the profile rather than taste.
+/// Six shipped readers name a `text_code_rule`, and a rule id has to move when the behaviour it
+/// names moves. Widening the shared function would change what a DOCX reader does with a document
+/// it currently refuses, which is a behaviour change in six profiles for a slice that measured one
+/// format. So the EPUB reader — whose rule id is new — resolves character references, the other
+/// six still refuse them, and unifying the two is a decision with six hash moves attached that
+/// `docs/15-V2-MILESTONES.md` S9 records rather than makes.
+///
+/// **Named entities are still the five.** `&nbsp;` is an HTML name, not an XML one, and an XML
+/// parser without the DTD cannot resolve it — refusing it is what the specification says to do.
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] for a name that is neither a predefined entity nor a character
+/// reference this reader can read, and for a reference that names no Unicode scalar — a
+/// surrogate, or a value above `U+10FFFF`.
+pub(crate) fn resolve_reference(
+    name: &[u8],
+    part: &str,
+) -> Result<std::borrow::Cow<'static, str>, EngineError> {
+    let Some(digits) = name.strip_prefix(b"#") else {
+        return Ok(std::borrow::Cow::Borrowed(resolve_entity(name, part)?));
+    };
+    let text = std::str::from_utf8(digits).unwrap_or("");
+    // **The digits, and only digits.** XML 1.0 §4.1 writes a character reference as `&#` followed
+    // by decimal digits or `&#x` followed by hexadecimal ones, with no sign — and Rust's integer
+    // parsers accept a leading `+`, so `&#+66;` would otherwise resolve to `B` and be spliced into
+    // the text as though the document had written it. That is the substitution this function's own
+    // refusal exists to prevent, so the shape is checked before the value is parsed.
+    let scalar = match text.strip_prefix(['x', 'X']) {
+        Some(hex) if !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()) => {
+            u32::from_str_radix(hex, 16).ok()
+        }
+        Some(_) => None,
+        None if !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()) => {
+            text.parse::<u32>().ok()
+        }
+        None => None,
+    };
+    // A surrogate and a value above the Unicode range both fail here, and both are refused by name
+    // rather than replaced: a reference this reader cannot resolve names a character, and
+    // substituting a different one would be a guess presented as the document's own text.
+    match scalar.and_then(char::from_u32) {
+        Some(character) => Ok(std::borrow::Cow::Owned(character.to_string())),
+        None => Err(EngineError::Malformed {
+            what: part.to_string(),
+            detail: format!(
+                "`&{};` names no Unicode scalar value. A character reference is how XML writes \
+                 a character it cannot spell literally, so one this reader cannot resolve \
+                 is a character of unknown identity rather than one it may choose.",
+                String::from_utf8_lossy(name)
+            ),
+        }),
+    }
+}
+
 /// Resolve entity references in a raw attribute value, under [`resolve_entity`]'s rule.
 ///
 /// `quick-xml` hands an attribute back with its entities **unresolved**, and its own unescaping
@@ -236,6 +303,44 @@ pub(crate) fn resolved_attribute(
         }
         if matches!(resolved, quick_xml::name::ResolveResult::Bound(ns) if ns.as_ref() == namespace)
         {
+            return Ok(Some(attribute_value(&attribute, part_name)?));
+        }
+    }
+    Ok(None)
+}
+
+/// One **unprefixed** attribute, matched on its local name (v2-S9).
+///
+/// The sibling of [`resolved_attribute`], and a genuinely different question rather than a
+/// convenience. XML Namespaces puts an unprefixed *element* in the default namespace and an
+/// unprefixed **attribute** in **no namespace at all** — so `href`, `idref`, `media-type` and
+/// `full-path` on an EPUB package document resolve to nothing, and asking
+/// [`resolved_attribute`] for them under the package namespace finds none of them. That is not a
+/// laxer match: it is the exact rule the specification states, and matching them under a namespace
+/// they do not have would silently read no attributes.
+///
+/// A namespace declaration is skipped before the match, for the reason `odt::spaces` skips one:
+/// `xmlns:href` has the local name `href`, and treating a binding as an attribute of the element
+/// would read a URI where a package path belongs.
+pub(crate) fn unprefixed_attribute(
+    reader: &quick_xml::NsReader<&[u8]>,
+    start: &quick_xml::events::BytesStart<'_>,
+    want: &[u8],
+    part_name: &str,
+) -> Result<Option<String>, EngineError> {
+    for attribute in start.attributes() {
+        let attribute = attribute.map_err(|e| EngineError::Malformed {
+            what: part_name.to_string(),
+            detail: format!("attribute will not parse: {e}"),
+        })?;
+        if attribute.key.as_ref().starts_with(b"xmlns") {
+            continue;
+        }
+        let (resolved, local) = reader.resolver().resolve_attribute(attribute.key);
+        if local.as_ref() != want {
+            continue;
+        }
+        if matches!(resolved, quick_xml::name::ResolveResult::Unbound) {
             return Ok(Some(attribute_value(&attribute, part_name)?));
         }
     }

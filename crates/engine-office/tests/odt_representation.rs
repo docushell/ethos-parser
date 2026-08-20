@@ -866,7 +866,7 @@ fn a_package_that_is_two_formats_is_refused_by_name() {
     assert!(text.contains("opendocument.text"), "{text}");
 }
 
-/// A ZIP with none of the four formats' evidence is refused, naming all four.
+/// A ZIP with none of the package formats' evidence is refused, naming every one it is not.
 #[test]
 fn a_zip_that_is_no_office_format_names_every_one_it_is_not() {
     let renamed = build_zip(&[("content.xml", "<office:document-content/>")]);
@@ -880,6 +880,7 @@ fn a_zip_that_is_no_office_format_names_every_one_it_is_not() {
         "ppt/presentation.xml",
         "mimetype",
         "application/vnd.oasis.opendocument.spreadsheet",
+        "application/epub+zip",
     ] {
         assert!(
             text.contains(evidence),

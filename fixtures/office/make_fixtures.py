@@ -1027,6 +1027,225 @@ RTF_UNREAD = (
     "}"
 )
 
+# ---------------------------------------------------------------------------------------
+# v2-S9 — EPUB
+#
+# OCF again, and a different family. The container work is v2-S5's — `mimetype` first and stored —
+# and everything above it is new: `META-INF/container.xml` names a package document, the package
+# document's manifest maps ids to hrefs, and its spine states the reading order. Five rules:
+#
+# 1. **The spine is the reading order, and the ZIP is not.** The archive stores `aa-second.xhtml`
+#    BEFORE `zz-first.xhtml`, and the spine lists `zz-first` first. A reader that took the XHTML
+#    entries in central-directory order — or sorted them by name — would put chapter two first.
+#    Both orderings are asserted from the package's own bytes, so the test cannot pass by accident.
+# 2. **The href is relative to the package document's directory.** Everything lives under `OEBPS/`
+#    and the manifest writes bare file names, so a reader that took the href verbatim finds nothing.
+# 3. **The page is nameable here and is not read.** The second package carries an EPUB 3 navigation
+#    document with a `page-list` — actual print page numbers, written down — so the test that
+#    `pages` is empty is a refusal rather than an absence.
+# 4. **`linear="no"` is read and labelled.** The clean package's third spine item is auxiliary
+#    content; dropping it would lose text the book contains, and reading it unlabelled would be a
+#    silent extra.
+# 5. **Every skipped class has a byte-level cousin** in the second package: a script, a style
+#    sheet, a `<nav>`, an inline SVG title, a MathML annotation, a non-XHTML spine item, an unread
+#    image, and a second rendition. Each is asserted ABSENT from `Node.text` by inflating THAT
+#    PACKAGE — never by grepping this generator.
+# ---------------------------------------------------------------------------------------
+
+XHTML_NS = "http://www.w3.org/1999/xhtml"
+OPF_NS = "http://www.idpf.org/2007/opf"
+OCF_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
+EPUB_NS = "http://www.idpf.org/2007/ops"
+SVG_NS = "http://www.w3.org/2000/svg"
+
+EPUB_MIMETYPE = "application/epub+zip"
+
+EPUB_CONTAINER = f"""<?xml version="1.0" encoding="UTF-8"?>
+<container xmlns="{OCF_NS}" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+"""
+
+# The spine lists `zz-first` before `aa-second`; `write()` stores them the other way round.
+EPUB_PACKAGE = f"""<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="{OPF_NS}" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">urn:uuid:0d3f0f4a-0000-4000-8000-000000000001</dc:identifier>
+    <dc:title>Rows &amp; Columns</dc:title>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="c1" href="zz-first.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c2" href="aa-second.xhtml" media-type="application/xhtml+xml"/>
+    <item id="note" href="notes.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+    <itemref idref="c2"/>
+    <itemref idref="note" linear="no"/>
+  </spine>
+</package>
+"""
+
+EPUB_CHAPTER_ONE = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="{XHTML_NS}">
+  <head><title>A title nobody reads as body text</title></head>
+  <body>
+    <h1>Evidence, not extraction.</h1>
+    <p>Rows &amp; columns bind to a block<br/>and never to a page.</p>
+    <p>A quote binds to the <em>displayed</em> text, caf&#233; included.</p>
+    <pre>  two leading spaces
+  and a second line</pre>
+    <table><tr><td>Left cell</td><td>Right cell</td></tr></table>
+  </body>
+</html>
+"""
+
+EPUB_CHAPTER_TWO = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="{XHTML_NS}">
+  <head><title>Chapter two</title></head>
+  <body>
+    <h1>The second spine item</h1>
+    <ul><li>First bullet</li><li>Second bullet</li></ul>
+  </body>
+</html>
+"""
+
+EPUB_NOTES = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="{XHTML_NS}">
+  <head><title>Notes</title></head>
+  <body>
+    <p>Auxiliary content the spine marks non-linear.</p>
+  </body>
+</html>
+"""
+
+# Only the entries the reader consumes, so the clean publication declares NO erasure.
+EPUB_PARTS = {
+    "mimetype": EPUB_MIMETYPE,
+    "META-INF/container.xml": EPUB_CONTAINER,
+    "OEBPS/content.opf": EPUB_PACKAGE,
+    # Stored in the OPPOSITE order to the spine, which is the whole point of this fixture.
+    "OEBPS/aa-second.xhtml": EPUB_CHAPTER_TWO,
+    "OEBPS/zz-first.xhtml": EPUB_CHAPTER_ONE,
+    "OEBPS/notes.xhtml": EPUB_NOTES,
+}
+
+
+# The publication that declares erasures, every kind. A second rendition, an unread image, an
+# unread `.ncx`, a non-XHTML spine item, and — inside the spine's own XHTML — a script, a style
+# sheet, a navigation document with a `page-list`, an inline SVG title and a MathML annotation.
+EPUB_CONTAINER_WITH_RENDITIONS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<container xmlns="{OCF_NS}" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="OEBPS/rendition2.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+"""
+
+EPUB_PACKAGE_WITH_UNREAD = f"""<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="{OPF_NS}" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">urn:uuid:0d3f0f4a-0000-4000-8000-000000000002</dc:identifier>
+    <dc:title>Erasures</dc:title>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="body" href="text/body.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cover" href="images/cover.svg" media-type="image/svg+xml"/>
+    <item id="pic" href="images/pic.png" media-type="image/png"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="style/book.css" media-type="text/css"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="nav"/>
+    <itemref idref="body"/>
+    <itemref idref="cover"/>
+  </spine>
+</package>
+"""
+
+# The navigation document: a table of contents AND a page-list naming the pages of a print
+# edition. The page-list is the construct docs/14-V2-SCOPE.md §3 forbids minting pages from, and
+# it is here so the test that `pages` is empty is not vacuous.
+EPUB_NAV = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="{XHTML_NS}" xmlns:epub="{EPUB_NS}">
+  <head><title>Navigation</title></head>
+  <body>
+    <nav epub:type="toc"><ol><li><a href="text/body.xhtml">TOC-ENTRY-TEXT</a></li></ol></nav>
+    <nav epub:type="page-list">
+      <ol>
+        <li><a href="text/body.xhtml#p17">PRINT-PAGE-17</a></li>
+        <li><a href="text/body.xhtml#p18">PRINT-PAGE-18</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>
+"""
+
+# `href="text/body.xhtml"` in `OEBPS/content.opf` is the entry `OEBPS/text/body.xhtml`, which is
+# what makes the relative-resolution rule testable.
+EPUB_BODY_WITH_UNREAD = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="{XHTML_NS}" xmlns:svg="{SVG_NS}" xmlns:m="http://www.w3.org/1998/Math/MathML">
+  <head><title>HEAD-TITLE-TEXT</title></head>
+  <body>
+    <p>Kept sentence.</p>
+    <script>var SCRIPT_SOURCE = 1;</script>
+    <style>.c {{ content: "STYLE-SHEET-RULE"; }}</style>
+    <p>Figure:<svg:svg><svg:title>SVG-TITLE-TEXT</svg:title></svg:svg></p>
+    <p>Formula:<m:math><m:annotation>MATHML-ANNOTATION</m:annotation></m:math></p>
+    <p><ruby>kanji<rt>RUBY-GUIDE</rt></ruby></p>
+    <template><p>TEMPLATE-CONTENT</p></template>
+    <p>Last kept sentence.</p>
+  </body>
+</html>
+"""
+
+EPUB_NCX = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap><navPoint id="n1"><navLabel><text>NCX-LABEL-TEXT</text></navLabel><content src="text/body.xhtml"/></navPoint></navMap>
+</ncx>
+"""
+
+EPUB_CSS = ".c { color: black; }\n"
+
+EPUB_COVER_SVG = f"""<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="{SVG_NS}" viewBox="0 0 10 10"><title>COVER-SVG-TITLE</title></svg>
+"""
+
+EPUB_SECOND_RENDITION = f"""<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="{OPF_NS}" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">urn:uuid:0d3f0f4a-0000-4000-8000-000000000003</dc:identifier>
+    <dc:title>SECOND-RENDITION-TITLE</dc:title>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest><item id="b" href="text/body.xhtml" media-type="application/xhtml+xml"/></manifest>
+  <spine><itemref idref="b"/></spine>
+</package>
+"""
+
+# A 1x1 PNG, authored here rather than sampled: the point is that a package entry holding
+# something this reader cannot read is COUNTED, and the smallest valid file makes that point.
+EPUB_PICTURE = ODT_PICTURE
+
+EPUB_WITH_UNREAD_PARTS = {
+    "mimetype": EPUB_MIMETYPE,
+    "META-INF/container.xml": EPUB_CONTAINER_WITH_RENDITIONS,
+    "OEBPS/content.opf": EPUB_PACKAGE_WITH_UNREAD,
+    "OEBPS/rendition2.opf": EPUB_SECOND_RENDITION,
+    "OEBPS/nav.xhtml": EPUB_NAV,
+    "OEBPS/text/body.xhtml": EPUB_BODY_WITH_UNREAD,
+    "OEBPS/images/cover.svg": EPUB_COVER_SVG,
+    "OEBPS/images/pic.png": EPUB_PICTURE,
+    "OEBPS/toc.ncx": EPUB_NCX,
+    "OEBPS/style/book.css": EPUB_CSS,
+}
+
 if __name__ == "__main__":
     write(HERE / "simple-paragraphs" / "document.docx", PARTS)
     write(HERE / "unread-parts" / "document.docx", WITH_UNREAD_PARTS)
@@ -1058,3 +1277,9 @@ if __name__ == "__main__":
     )
     write_stream(HERE / "rich-text-paragraphs" / "document.rtf", RTF_PLAIN)
     write_stream(HERE / "rich-text-unread-destinations" / "document.rtf", RTF_UNREAD)
+    write(HERE / "book-spine" / "book.epub", EPUB_PARTS, stored_first="mimetype")
+    write(
+        HERE / "book-unread-parts" / "book.epub",
+        EPUB_WITH_UNREAD_PARTS,
+        stored_first="mimetype",
+    )

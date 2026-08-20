@@ -270,6 +270,16 @@ const CORE: &[&str] = &[
     "RtfParagraphBreak",
     "RTF_READING_ORDER_RULE_V1",
     "RTF_TEXT_CODE_RULE_V1",
+    // v2-S9. The ninth format's address and its facts. The address names a **part**, so it takes
+    // the bijection half of the shape v2-S8 split apart — and the part comes from the package
+    // document's spine rather than from the archive's own ordering, which is `opc.rs`'s rule in
+    // EPUB's spelling. `linear` is on the attributes because a spine item marked non-linear is
+    // read: dropping it would lose text the book contains, and reading it unlabelled would be the
+    // silent extra v2-S7 named A14 inverted.
+    "EpubLocator",
+    "EpubBlockAttributes",
+    "EPUB_READING_ORDER_RULE_V1",
+    "EPUB_TEXT_CODE_RULE_V1",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -476,8 +486,14 @@ const OFFICE: &[&str] = &[
     // v2-S8. `is_rtf` is the simplest predicate in this crate and the only one that asks no
     // container question: the specification requires the file to begin `{\rtf`.
     "RTF_MEDIA_TYPE",
+    // v2-S9. `is_epub` asks the OCF question `is_odt` asks, against a different declared type —
+    // which is why `is_opendocument` was written to answer on the type rather than on the entry's
+    // presence, and why an EPUB is never told it is OpenDocument.
+    "EPUB_MEDIA_TYPE",
     "docx",
+    "epub",
     "is_docx",
+    "is_epub",
     "is_odp",
     "is_odt",
     "is_ods",

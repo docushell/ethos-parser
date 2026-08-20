@@ -227,6 +227,20 @@ pub enum NativeLocator {
     /// second obligation is *"absent, not invented"*, and a constant standing in for a part the
     /// format does not have is the small version of the page-sized box it forbids.
     Rtf(RtfLocator),
+    /// A block's address inside an EPUB spine document (v2-S9).
+    ///
+    /// **The format that might genuinely have had pages, and does not.** §3's law was never "no
+    /// page ever" — it is *no page this engine did not read from the file* — and this is the first
+    /// v2 format that could have satisfied the reading half. An EPUB 3 navigation document may
+    /// carry a `page-list` mapping locations to the page numbers of a print edition, and an EPUB 2
+    /// NCX may carry page targets. Neither is a page **this engine measured**: they are labels a
+    /// publisher wrote about somebody else's paper, with no width, no height and nothing to
+    /// validate a box against. So `pages` stays `[]` here too, and the label is not copied onto a
+    /// [`PageRecord`] under a different name.
+    ///
+    /// The address is the spine item's package path plus a position in that document. See
+    /// [`EpubLocator`] for why the path comes from the **spine** and not from the ZIP.
+    Epub(EpubLocator),
 }
 
 impl NativeLocator {
@@ -275,7 +289,14 @@ impl NativeLocator {
             | Self::Odt(_)
             | Self::Ods(_)
             | Self::Odp(_)
-            | Self::Rtf(_) => false,
+            //
+            // And an EPUB is the one that could have read a page from the file and still does not.
+            // A `page-list` in its navigation document names the pages of a PRINT edition, and an
+            // NCX page target does the same in EPUB 2's spelling. Both are a publisher's label
+            // about paper this engine never saw — no width, no height, nothing a box could be
+            // validated against — so they are not read as pagination and `pages` stays empty.
+            | Self::Rtf(_)
+            | Self::Epub(_) => false,
         }
     }
 
@@ -293,6 +314,7 @@ impl NativeLocator {
             // missing one — see [`Self::names_a_part`], which is the question `check_structure`
             // actually asks.
             Self::Rtf(_) => None,
+            Self::Epub(e) => Some(e.part.as_str()),
         }
     }
 
@@ -312,7 +334,11 @@ impl NativeLocator {
             | Self::Pptx(_)
             | Self::Odt(_)
             | Self::Ods(_)
-            | Self::Odp(_) => true,
+            | Self::Odp(_)
+            // An EPUB is a package with **many** parts — one per spine document — so it takes the
+            // bijection rather than v2-S8's one-container rule. v2-S9 is the first format to use
+            // both halves of the shape v2-S8 split apart.
+            | Self::Epub(_) => true,
         }
     }
 }
@@ -663,6 +689,55 @@ pub struct OdpLocator {
 pub struct RtfLocator {
     /// 1-based position of the paragraph in the stream's own order.
     pub paragraph: u32,
+}
+
+/// A block's address inside an EPUB spine document (v2-S9).
+///
+/// # The part comes from the spine, and that is the whole of the reading-order decision
+///
+/// An EPUB is a ZIP, and the shortcut it invites is the one v2-S3 walked into for a workbook:
+/// take the XHTML entries in the order the central directory lists them, or sorted by name. Both
+/// are wrong in **ordinary** files. A publication's reading order is stated in the package
+/// document's `<spine>`, as a list of `<itemref idref="…">` resolved through the `<manifest>` —
+/// and nothing requires a producer's file names to sort that way, or the archive to store them in
+/// it. Every such shortcut attaches the **right content to the wrong position**, which
+/// `docs/01-CONTRACT.md` §5.2 calls strictly worse than an absent address. `opc.rs` states the
+/// same rule for `r:id`, and this is that rule in EPUB's spelling.
+///
+/// [`Self::part`] is therefore the spine item's package path, resolved from the manifest `href`
+/// **relative to the package document's own directory** — an `href="chap01.xhtml"` in
+/// `OEBPS/content.opf` is the entry `OEBPS/chap01.xhtml`, and a reader that took the `href`
+/// verbatim would miss every EPUB that keeps its content in a subdirectory, which is nearly all
+/// of them.
+///
+/// # The block is a position, and `<span>` is not the atom
+///
+/// [`Self::block`] is 1-based within its spine document, counting the XHTML flow elements this
+/// reader names as blocks — the argument [`OdtLocator::paragraph`] makes about `<text:span>`,
+/// unchanged by the change of vocabulary: a `<span>` boundary falls wherever a word was styled,
+/// so *"The **important** part."* would become three nodes and the sentence a reader quotes would
+/// bind to none of them.
+///
+/// **The count advances through blocks this reader does not read.** A navigation document's `<ol>`
+/// and `<li>` take positions here even though their text never reaches a node, because the number
+/// promises a position in the document rather than a position in the subset this slice kept. A
+/// `<script>`, a `<style>` and the `<nav>` element itself take **no** position — none of them is a
+/// block — so a gap in this sequence is a passed-over *block*, not a passed-over region.
+///
+/// # No page, and this is the format that could have had one
+///
+/// See [`NativeLocator::Epub`]. `deny_unknown_fields` is what stops a `page` arriving later as a
+/// third field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpubLocator {
+    /// The package path of the spine document this block was read from, e.g. `OEBPS/chap01.xhtml`.
+    ///
+    /// The archive's own name for the entry, resolved from the manifest rather than guessed — not
+    /// a path on disk, not the `href` verbatim, and not a name taken from the ZIP's ordering.
+    pub part: String,
+    /// 1-based position of the block within that spine document, in its own document order.
+    pub block: u32,
 }
 
 /// A PDF node's native address: page plus character origin plus advance.
@@ -1046,6 +1121,14 @@ pub enum NodeAttributes {
     /// RTF has no counterpart for; reusing it would mean answering "was this a `<text:h>`" about a
     /// format with no such distinction.
     RtfParagraph(RtfParagraphAttributes),
+    /// An EPUB block's facts (v2-S9).
+    ///
+    /// **A ninth variant, and neither of its two fields fits an existing one.**
+    /// [`Self::OfficeParagraph`] carries ODF's two-block distinction, which XHTML does not have —
+    /// it has twenty-odd flow elements, and answering "was this a `<text:h>`" about one of them
+    /// would be a mapping this engine would then have to defend. [`Self::RtfParagraph`] carries
+    /// the control word that ended a paragraph, which an XHTML document does not state at all.
+    EpubBlock(EpubBlockAttributes),
 }
 
 impl NodeAttributes {
@@ -1088,6 +1171,10 @@ impl NodeAttributes {
             // And so is an RTF paragraph, for the reason the ODF one is: the locator already says
             // this is a paragraph-shaped address, and a `Paragraph` kind would restate it.
             Self::RtfParagraph(_) => NodeKind::TextRun,
+            // And so is an EPUB block. A `Heading` kind is the one this format would tempt
+            // somebody into, and `element` already carries the file's own word for it — v1-S3
+            // refused a `Paragraph` kind when the role path already said `P`, for that reason.
+            Self::EpubBlock(_) => NodeKind::TextRun,
         }
     }
 }
@@ -1671,6 +1758,37 @@ pub struct OfficeOdfShapeAttributes {
 pub struct RtfParagraphAttributes {
     /// Which control word ended this paragraph.
     pub terminator: RtfParagraphBreak,
+}
+
+/// An EPUB block's facts: what the document and its spine state about it (v2-S9).
+///
+/// Two fields, and both are read rather than inferred. Everything else a block could carry — a
+/// class, an `epub:type`, a computed heading level — resolves through a style sheet this slice
+/// does not read or through a vocabulary it would have to map, and a field nobody populated is
+/// worse than no field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EpubBlockAttributes {
+    /// The XHTML element's local name, verbatim: `p`, `h1`, `li`, `td`, `pre`, …
+    ///
+    /// **The file's own word for it, not a role this reader inferred.** A closed enum would need a
+    /// mapping from twenty-odd flow elements onto a smaller vocabulary, and every such mapping is
+    /// a claim this engine would then have to defend — `docs/14-V2-SCOPE.md` §9's second standing
+    /// rule forbids deriving a role, and naming the element is the honest alternative to deriving
+    /// one. Carried as a `String` for the reason [`TextRunAttributes::font_id`] is: it is a name
+    /// the document states.
+    ///
+    /// Always an XHTML element. A `<title>` inside an inline `<svg>` is a different vocabulary and
+    /// never reaches a node — see [`crate::NativeLocator::Epub`]'s reader.
+    pub element: String,
+    /// Whether the spine lists this document as part of the linear reading order.
+    ///
+    /// `<itemref linear="no">` marks auxiliary content — pop-up footnote targets, colophons, an
+    /// appendix a reading system reaches only from a link. It **is** read, because it is a
+    /// publication document the spine lists and skipping it would drop text the book contains;
+    /// carrying the flag is what keeps that from being a silent *extra*, which is the failure
+    /// v2-S7 named A14 inverted. A consumer that wants the main flow filters on this.
+    pub linear: bool,
 }
 
 /// The control word that ended an RTF paragraph (v2-S8).

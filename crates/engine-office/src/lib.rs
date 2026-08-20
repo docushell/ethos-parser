@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The office reader: OOXML documents, workbooks and presentations, and OpenDocument text.
+//! The office reader: OOXML, OpenDocument, Rich Text Format and EPUB.
 //!
 //! # The fifth crate, and why it exists now and not before
 //!
@@ -24,7 +24,7 @@
 //!
 //! # The one sentence
 //!
-//! **Neither format has a page, and nothing here invents one.** `docs/14-V2-SCOPE.md` §3, made
+//! **No format here has a page, and nothing here invents one.** `docs/14-V2-SCOPE.md` §3, made
 //! mechanical in three places:
 //!
 //! - `payload.pages` is **empty**. There is no A4 record, no "72 DPI" default, and no renderer in
@@ -47,35 +47,56 @@
 //! ordinals count per parent — so v2-S3 added nothing to `engine-core` and is simply the first
 //! artifact to use the shape with more than one part in it.
 //!
-//! # Not every container here is OOXML
+//! # Not every container here is OOXML, and one of them is not a container at all
 //!
-//! **v2-S5 adds OpenDocument text**, which shares this crate's ZIP reader and its XML plumbing and
+//! **v2-S5 adds OpenDocument**, which shares this crate's ZIP reader and its XML plumbing and
 //! nothing else. Its vocabulary is different (`text:p`, not `w:p`), its content part is named by
 //! the specification rather than by a relationship — so `opc.rs`'s whole reason for existing does
-//! not apply — and it is the only one of the four that **declares its own type**, in an
-//! uncompressed `mimetype` entry the package specification requires to come first.
+//! not apply — and it **declares its own type**, in an uncompressed `mimetype` entry the package
+//! specification requires to come first. v2-S6 and v2-S7 added its spreadsheet and presentation.
 //!
-//! It is also the format where refusing a page costs the most to say, because an ODT is the only
-//! one whose file contains an actual page break: `<text:soft-page-break/>` records where the
-//! producing application's layout fell. It is a measurement of that producer, not of the document,
-//! so it is read and discarded rather than turned into a `PageRecord` — see `odt.rs`.
+//! **v2-S8 adds Rich Text Format, which is not a package.** No ZIP, no parts, no manifest and no
+//! name the document has for itself — one brace-group byte stream, read by [`rtf`]. That is why
+//! `check_structure`'s page-less invariant grew a rule for a locator that names no part.
+//!
+//! **v2-S9 adds EPUB**, which is a package again and takes the container question in a third
+//! direction: OCF's `mimetype` entry is the one ODF uses, so the two are told apart by *what they
+//! declare* rather than by the shape of the declaration — and the reading order is stated in a
+//! package document's spine rather than by the archive. See [`epub`].
+//!
+//! # Every one of them says the word "page", and none of them supplies one
+//!
+//! Refusing a page costs progressively more as the list grows, which is the point of writing it
+//! down here. An ODT's `<text:soft-page-break/>` records where the producing application's layout
+//! fell. An ODP lists discrete `<draw:page>` elements with a master page's paper beside them, so a
+//! record needed no arithmetic at all. RTF writes `\page` outright. And an EPUB's navigation
+//! document may carry a `page-list` naming the pages of a **print edition** — the first time the
+//! file could satisfy §3's *"a page this engine read from the file"* on its own terms.
+//!
+//! All four are refused, and the last one needed the argument rather than the rule: a publisher's
+//! label about somebody else's paper has no width and no height, so nothing could ever be
+//! validated against it.
 //!
 //! # Detection is content-based
 //!
-//! Anydoc's **A4**. [`is_docx`], [`is_xlsx`] and [`is_pptx`] read the bytes: a ZIP
-//! local-file-header signature, and `word/document.xml`, `xl/workbook.xml` or
-//! `ppt/presentation.xml` in the package's own central directory. [`is_odt`] asks the ODF question
-//! instead — a first, stored `mimetype` entry declaring [`ODT_MEDIA_TYPE`] — which is what keeps
-//! an `.ods` and an `.odp` from being claimed by a reader that speaks neither. A `.docx` that is
-//! not OOXML is refused, and an OOXML document named `report.bin` is read, because an extension is
-//! a claim anybody can make and a magic number is one only the file can. [`read`] is the router,
-//! so a package claiming to be **more than one** is a named refusal rather than whichever check
-//! happens to run first.
+//! Anydoc's **A4**, asked three different ways because the formats are three different shapes.
+//! [`is_docx`], [`is_xlsx`] and [`is_pptx`] read a ZIP local-file-header signature and look for
+//! `word/document.xml`, `xl/workbook.xml` or `ppt/presentation.xml` in the package's own central
+//! directory. [`is_odt`], [`is_ods`], [`is_odp`] and [`is_epub`] read the **declared type** in a
+//! first, stored `mimetype` entry — the OCF rule ODF and EPUB share, which is exactly why
+//! [`is_opendocument`] answers on the type rather than on that entry's presence. [`is_rtf`] asks
+//! no container question at all: an `.rtf` begins `{\rtf` and has no package to open.
+//!
+//! A `.docx` that is not OOXML is refused, and an OOXML document named `report.bin` is read,
+//! because an extension is a claim anybody can make and a magic number is one only the file can.
+//! [`read`] is the router, so a package claiming to be **more than one** is a named refusal rather
+//! than whichever check happens to run first.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod docx;
+pub mod epub;
 pub mod odp;
 pub mod ods;
 pub mod odt;
@@ -88,12 +109,12 @@ pub mod zip;
 
 use engine_core::{
     ArtifactIdentity, Assurance, DerivationClass, DocumentRepresentation, DocxLocator, EngineError,
-    GeometryAbsence, GeometryPresence, IdAllocator, IdKind, Limitation, NativeLocator, Node,
-    NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdfCellTextSource, OdpLocator,
-    OdsLocator, OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes,
-    OfficeOdfShapeAttributes, OfficeParagraphAttributes, OfficeRunAttributes,
-    OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity, Profile,
-    RepresentationPayload, RtfLocator, RtfParagraphAttributes, Sha256Hex, SourceIdentity,
+    EpubBlockAttributes, EpubLocator, GeometryAbsence, GeometryPresence, IdAllocator, IdKind,
+    Limitation, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind,
+    OdfCellTextSource, OdpLocator, OdsLocator, OdtLocator, OfficeCellAttributes,
+    OfficeOdfCellAttributes, OfficeOdfShapeAttributes, OfficeParagraphAttributes,
+    OfficeRunAttributes, OfficeSlideRunAttributes, PptxLocator, ProcessingRun, ProcessorIdentity,
+    Profile, RepresentationPayload, RtfLocator, RtfParagraphAttributes, Sha256Hex, SourceIdentity,
     XlsxLocator, REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
 };
 
@@ -145,6 +166,17 @@ const ODP_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.presentat
 /// list, no manifest and no `mimetype` entry to consult — the bytes simply begin `{\rtf`. See
 /// [`rtf`].
 pub const RTF_MEDIA_TYPE: &str = rtf::RTF_MEDIA_TYPE;
+
+/// The media type an EPUB publication declares (v2-S9).
+///
+/// **Declared in the same place an OpenDocument type is, and in a different family.** OCF is where
+/// ODF's packaging came from, so an `.epub` writes its type into the same first, uncompressed
+/// `mimetype` entry — which is precisely why [`is_opendocument`] answers on the declared **type**
+/// rather than on that entry's presence. See [`epub`].
+pub const EPUB_MEDIA_TYPE: &str = epub::EPUB_MEDIA_TYPE;
+
+/// How [`read`]'s router names the evidence that a package is an EPUB publication.
+const EPUB_CLAIM: &str = "mimetype = application/epub+zip";
 
 /// The prefix every OpenDocument media type shares.
 ///
@@ -254,6 +286,19 @@ pub fn is_rtf(bytes: &[u8]) -> bool {
     rtf::is_rtf(bytes)
 }
 
+/// Whether these bytes are an EPUB publication, **read from the bytes** (v2-S9).
+///
+/// The OCF question [`is_odt`] asks, against a different declared type: a first, **stored** entry
+/// named `mimetype` whose content is exactly [`EPUB_MEDIA_TYPE`].
+///
+/// **The container rule is shared and the family is not**, which is the whole reason
+/// [`is_opendocument`] was written the way it was at v2-S6: answering on the entry's mere presence
+/// would have told an EPUB it is OpenDocument. It does not, and this predicate is what the router
+/// asks instead.
+pub fn is_epub(bytes: &[u8]) -> bool {
+    epub::is_epub(bytes)
+}
+
 /// Whether these bytes are **any** OpenDocument package — one this engine reads or one it does not.
 ///
 /// # Why this is a third question rather than an `||` of the other two
@@ -333,6 +378,7 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     .chain(odt::is_odt(bytes).then_some(ODT_CLAIM))
     .chain(ods::is_ods(bytes).then_some(ODS_CLAIM))
     .chain(odp::is_odp(bytes).then_some(ODP_CLAIM))
+    .chain(epub::is_epub(bytes).then_some(EPUB_CLAIM))
     .collect();
 
     // **An ODF package states what it is, and this engine reads two of the family.** A declared
@@ -374,6 +420,7 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         [ODT_CLAIM] => read_odt(bytes, &names),
         [ODS_CLAIM] => read_ods(bytes, &names),
         [ODP_CLAIM] => read_odp(bytes, &names),
+        [EPUB_CLAIM] => read_epub(bytes, &names),
         [] => Err(EngineError::MissingPart {
             // **The DOCX-shaped message is kept**, because it is the one a caller handing over a
             // renamed or corrupted `.docx` needs, and it is pinned by a test.
@@ -381,14 +428,16 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
                 "`{}` — this package is a ZIP but not a word-processing document, and it is \
                  neither a workbook (`{}`), a presentation (`{}`), an OpenDocument text document \
                  (`{}` declaring `{}`), an OpenDocument spreadsheet (declaring `{}`) nor an \
-                 OpenDocument presentation (declaring `{}`)",
+                 OpenDocument presentation (declaring `{}`) nor an EPUB publication (declaring \
+                 `{}`)",
                 docx::MAIN_PART,
                 xlsx::WORKBOOK_PART,
                 pptx::PRESENTATION_PART,
                 odt::MIMETYPE_ENTRY,
                 ODT_MEDIA_TYPE,
                 ODS_MEDIA_TYPE,
-                ODP_MEDIA_TYPE
+                ODP_MEDIA_TYPE,
+                EPUB_MEDIA_TYPE
             ),
         }),
         _ => Err(EngineError::Malformed {
@@ -1373,6 +1422,210 @@ fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         // writes `\cell` and `\row` outright. They are recorded as a paragraph's TERMINATOR, where
         // they are a fact the file states — a `TableRecord` is the PDF detector's finding about a
         // grid it inferred from ink, and `capabilities.tables` is false because no detector ran.
+        tables: Vec::new(),
+        assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
+    };
+
+    DocumentRepresentation::seal(payload, geometry)
+}
+
+/// Read an EPUB publication into a sealed representation (v2-S9).
+///
+/// # One part id per spine document, on the shape v2-S3 built
+///
+/// A publication is a package with **many** parts, so this is the workbook's shape rather than the
+/// stream's: one part id per spine document, ordinals contiguous within each, and the part-id ↔
+/// part-name bijection carrying an eighth format. v2-S8 split that check apart so a format with no
+/// parts could be checked on what it *can* claim; v2-S9 is the first artifact to use the other
+/// half of that split, and it needed nothing new.
+///
+/// **The order is the spine's**, resolved through the manifest — never the archive's. See [`epub`]
+/// for why taking the XHTML entries in central-directory order is the same defect v2-S3 measured
+/// for `sheet{n}.xml`.
+fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The same refusal `read_odt` opens with, and for the same reason: `zip::read_entry` takes the
+    // first entry of a duplicated name, so a second `container.xml` or a second chapter would be
+    // neither read nor counted and a consumer preferring the last would see a different book.
+    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+    sorted.sort_unstable();
+    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
+        return Err(EngineError::Malformed {
+            what: "epub publication".into(),
+            detail: format!(
+                "this publication lists `{}` more than once. Consumers disagree about which entry \
+                 of a duplicated name wins, so reading either would be this engine choosing which \
+                 of the file's own claims to believe — and the entry it did not read would leave \
+                 the record with nothing naming it.",
+                pair[0]
+            ),
+        });
+    }
+
+    let publication = epub::read(bytes)?;
+
+    let profile = Profile::epub_v0();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "epub profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+
+    let mut nodes = Vec::new();
+    let mut geometry = Vec::new();
+    for document in &publication.documents {
+        // One spine document, one part id — minted per document so the bijection holds in both
+        // directions, exactly as `read_xlsx` mints one per worksheet.
+        let part_id = alloc.next(IdKind::Part)?;
+        for (index, block) in document.blocks.iter().enumerate() {
+            let id = alloc.next(IdKind::Span)?;
+            geometry.push(NodeGeometry {
+                node: id.clone(),
+                // Nothing tried to measure and failed. An XHTML block has no ink box until a
+                // reading system chooses a viewport and a font, and choosing one is the rendering
+                // `docs/14-V2-SCOPE.md` §3 refuses.
+                presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
+            });
+            nodes.push(Node {
+                id,
+                kind: NodeKind::TextRun,
+                parent: part_id.clone(),
+                // Contiguous **within this spine document**, in the order it lists its blocks.
+                // **Not** the address: `EpubLocator::block` carries that, and the two differ the
+                // moment a `<script>` or a navigation list moves the block counter without
+                // minting a node.
+                ordinal: index as u32 + 1,
+                text: block.text.clone(),
+                native_locator: NativeLocator::Epub(EpubLocator {
+                    part: document.part.clone(),
+                    block: block.ordinal,
+                }),
+                // No style sheet is read, so no structural address is claimed — and an
+                // `epub:type` vocabulary would be a structure this reader did not verify.
+                structural_locator: None,
+                derivation: DerivationClass::Extracted,
+                attributes: NodeAttributes::EpubBlock(EpubBlockAttributes {
+                    element: block.element.clone(),
+                    linear: document.linear,
+                }),
+            });
+        }
+    }
+
+    let mut limitations = Vec::new();
+    if !nodes.is_empty() {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            "this format carries no geometry: an EPUB is reflowable, so where a block falls \
+             depends on the reading system's viewport and font rather than on anything the \
+             publication states, and a page-list names the pages of a print edition this engine \
+             never measured",
+        ));
+    }
+
+    let unread = epub::unread_entries(names, &publication.read_entries);
+    if unread > 0
+        || publication.regions_not_read > 0
+        || publication.foreign_text_not_read > 0
+        || publication.text_outside_a_block > 0
+        || publication.spine_items_not_read > 0
+        || publication.extra_renditions > 0
+    {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} entry(ies) of this publication were not read — style sheets, images, \
+                 fonts, audio, a cover, or an EPUB 2 `.ncx` whose table of contents the navigation \
+                 document already carries. "
+            ));
+        }
+        if publication.spine_items_not_read > 0 {
+            detail.push_str(&format!(
+                "{} spine item(s) declare a media type this slice does not read: it reads \
+                 `application/xhtml+xml` only, so an SVG document or a foreign item with a \
+                 fallback is counted rather than guessed at. ",
+                publication.spine_items_not_read
+            ));
+        }
+        if publication.extra_renditions > 0 {
+            detail.push_str(&format!(
+                "{} additional rendition(s) of this publication were not read — `META-INF/container.xml` \
+                 lists more than one package document, and the specification makes the **first** the \
+                 default rendition, which is the one this reader followed. ",
+                publication.extra_renditions
+            ));
+        }
+        if publication.regions_not_read > 0 {
+            detail.push_str(&format!(
+                "{} region(s) of the spine's documents hold characters this slice does not read — \
+                 a script, a style sheet, a `<template>`, a `<noscript>`, a ruby annotation, or a \
+                 `<nav>`. **A navigation document is the one to check first**: its `page-list` \
+                 names the pages of a print edition, and copying those onto this artifact's \
+                 `pages` would be a citation resolved against a rendering this engine never saw. ",
+                publication.regions_not_read
+            ));
+        }
+        if publication.foreign_text_not_read > 0 {
+            detail.push_str(&format!(
+                "{} block(s) contain characters outside the XHTML namespace — an inline SVG's \
+                 `<title>` or `<desc>`, a MathML `<annotation>`. Those are a different vocabulary \
+                 with different rules, so they are counted rather than read into the block they \
+                 sit inside. ",
+                publication.foreign_text_not_read
+            ));
+        }
+        if publication.text_outside_a_block > 0 {
+            detail.push_str(&format!(
+                "{} run(s) of characters reached no block, so there is no address this reader \
+                 could cite them at. ",
+                publication.text_outside_a_block
+            ));
+        }
+        detail.push_str(
+            "An element's attributes are never read as text either, so an image's `alt` is absent \
+             by the same rule. v2-S9 reads the spine's own XHTML blocks, and a phrase absent from \
+             this artifact may still be present in the publication",
+        );
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
+            detail,
+        ));
+    }
+
+    let payload = RepresentationPayload {
+        identity: ArtifactIdentity {
+            artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
+            schema_version: REPRESENTATION_SCHEMA_VERSION.into(),
+            parser_version: profile.parser_version.clone(),
+            profile_sha256,
+        },
+        source: SourceIdentity {
+            media_type: EPUB_MEDIA_TYPE.into(),
+            sha256: Sha256Hex::of_bytes(bytes),
+        },
+        processing_run: ProcessingRun {
+            processor: ProcessorIdentity {
+                name: "ethos-engine".into(),
+                version: profile.parser_version.clone(),
+                backend: format!("{} {}", profile.backend.name, profile.backend.version),
+            },
+            reading_order_rule: profile.reading_order_rule.clone(),
+        },
+        coordinate_system: profile.coordinate_system,
+        // **The first format this engine reads whose file may genuinely name pages**, and the
+        // vector is still empty. An EPUB 3 navigation document may carry a `page-list` mapping
+        // locations to the page numbers of a print edition, and an EPUB 2 NCX may carry page
+        // targets. §3's law is "no page this engine did not read from the file" rather than "no
+        // page ever", so this one had to be argued: a publisher's label about somebody else's
+        // paper has no width and no height, `check_structure` refuses a measured box on a
+        // page-less node because a rectangle nobody can check is a fabrication, and a page record
+        // nothing can be validated against is that same fabrication with the geometry left out.
+        pages: Vec::new(),
+        nodes,
+        // Not the `tables` vector either. XHTML has `<table>`, and a cell's text is read as the
+        // block it is; a `TableRecord` is the PDF detector's finding about a grid it inferred from
+        // ink, and `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };

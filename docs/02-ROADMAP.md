@@ -17,7 +17,7 @@ version numbers get invented — every delta from the research folds into a row 
 | **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Fabrication rate **0** · cross-check diagnostics emitted · an honest table number on the four-PDF set, measured at **64‰**. The **> 0.489** chase is **parked** — see below. **v1 is not complete** |
 | **v1.1** | Safe Markdown | Markdown + **Anchor Map** · HTML · hyphenation / dot-leaders / drop-caps as export-only cosmetics | A Markdown-quoted citation verifies end-to-end; coverage completeness asserted |
 | **v1.2** | Adoption | **MCP server** (first adapter) · Python + Node SDKs · LangChain tool · optional `liteparse → ethos.grounding.v1` adapter | Locators survive every adapter round-trip |
-| **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODT → ODS → ODP → RTF → **EPUB/CSV (S9)** · shared IR + one serializer · embedded assets | A DOCX quote and an XLSX cell both ground; **no synthesised pages** |
+| **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODT → ODS → ODP → RTF → EPUB → **CSV (S10)** · shared IR + one serializer · embedded assets | A DOCX quote and an XLSX cell both ground; **no synthesised pages** |
 | **v2.1** | OCR lane | PP-OCRv5/v6 ONNX in-process · LiteParse-compatible HTTP OCR contract · own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | OCR fingerprint provably incomparable with born-digital |
 | **v2.2** | Accessibility (**parallel lane**) | auto-tag → Tagged PDF | Only on a named accessibility requirement. Never on the critical path |
 | **v3** | Assist | propose-only VLM · dual-read → review · hybrid enrichments (formula, chart) as `Recognized` / `Proposed` | Byte-diff: assist on/off ⇒ identical grounded artifacts |
@@ -93,7 +93,7 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 64‰, a miss; the 0.489 chase is parked** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S8 done at 0.27.0; S9 (the rest) not started** |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S9 done at 0.28.0; S10 (CSV) not started** |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has

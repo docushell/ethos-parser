@@ -101,13 +101,13 @@ pub use markdown::{
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, DOCX_READING_ORDER_RULE_V1, DOCX_TEXT_CODE_RULE_V1,
-    FORM_ANNOTATION_RULE_V1, NOT_RUN, OBSERVATION_RULE_V1, ODP_READING_ORDER_RULE_V1,
-    ODP_TEXT_CODE_RULE_V1, ODS_READING_ORDER_RULE_V1, ODS_TEXT_CODE_RULE_V1,
-    ODT_READING_ORDER_RULE_V1, ODT_TEXT_CODE_RULE_V1, PPTX_READING_ORDER_RULE_V1,
-    PPTX_TEXT_CODE_RULE_V1, READING_ORDER_RULE_V0, READING_ORDER_RULE_V1,
-    RTF_READING_ORDER_RULE_V1, RTF_TEXT_CODE_RULE_V1, STRUCT_TREE_RULE_V1,
-    TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1, TABLE_DETECTION_V2,
-    TEXT_CODE_RULE_V1, XLSX_READING_ORDER_RULE_V1, XLSX_TEXT_CODE_RULE_V1,
+    EPUB_READING_ORDER_RULE_V1, EPUB_TEXT_CODE_RULE_V1, FORM_ANNOTATION_RULE_V1, NOT_RUN,
+    OBSERVATION_RULE_V1, ODP_READING_ORDER_RULE_V1, ODP_TEXT_CODE_RULE_V1,
+    ODS_READING_ORDER_RULE_V1, ODS_TEXT_CODE_RULE_V1, ODT_READING_ORDER_RULE_V1,
+    ODT_TEXT_CODE_RULE_V1, PPTX_READING_ORDER_RULE_V1, PPTX_TEXT_CODE_RULE_V1,
+    READING_ORDER_RULE_V0, READING_ORDER_RULE_V1, RTF_READING_ORDER_RULE_V1, RTF_TEXT_CODE_RULE_V1,
+    STRUCT_TREE_RULE_V1, TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_V1,
+    TABLE_DETECTION_V2, TEXT_CODE_RULE_V1, XLSX_READING_ORDER_RULE_V1, XLSX_TEXT_CODE_RULE_V1,
 };
 pub use tables::{
     CellSlot, CheckStatus, GeometricFault, LocatorCheck, SlotCover, SlotFault, TableCellPosition,
@@ -122,15 +122,16 @@ pub use verifier::{
 
 pub use representation::{
     AnnotationAttributes, AnnotationRect, CellTextSource, CellValueType, DocumentRepresentation,
-    DocxLocator, FieldValue, FormFieldAttributes, ImageAttributes, ImageMediaType, NativeLocator,
-    Node, NodeAttributes, NodeGeometry, NodeKind, OdfBlockKind, OdfCellTextSource, OdfValueType,
-    OdpLocator, OdsLocator, OdtLocator, OfficeCellAttributes, OfficeOdfCellAttributes,
-    OfficeOdfShapeAttributes, OfficeParagraphAttributes, OfficeRunAttributes,
-    OfficeSlideRunAttributes, PageRecord, PaintedRect, PdfArtifactLocator, PdfImageLocator,
-    PdfLocator, PdfObjectLocator, PdfTaggedLocator, PptxLocator, ProcessingRun, ProcessorIdentity,
-    RepresentationPayload, RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, SourceIdentity,
-    StructuralLocator, SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator,
-    REPRESENTATION_ARTIFACT_TYPE, REPRESENTATION_SCHEMA_VERSION,
+    DocxLocator, EpubBlockAttributes, EpubLocator, FieldValue, FormFieldAttributes,
+    ImageAttributes, ImageMediaType, NativeLocator, Node, NodeAttributes, NodeGeometry, NodeKind,
+    OdfBlockKind, OdfCellTextSource, OdfValueType, OdpLocator, OdsLocator, OdtLocator,
+    OfficeCellAttributes, OfficeOdfCellAttributes, OfficeOdfShapeAttributes,
+    OfficeParagraphAttributes, OfficeRunAttributes, OfficeSlideRunAttributes, PageRecord,
+    PaintedRect, PdfArtifactLocator, PdfImageLocator, PdfLocator, PdfObjectLocator,
+    PdfTaggedLocator, PptxLocator, ProcessingRun, ProcessorIdentity, RepresentationPayload,
+    RtfLocator, RtfParagraphAttributes, RtfParagraphBreak, SourceIdentity, StructuralLocator,
+    SynthesizedAt, TextFinding, TextRunAttributes, XlsxLocator, REPRESENTATION_ARTIFACT_TYPE,
+    REPRESENTATION_SCHEMA_VERSION,
 };
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.

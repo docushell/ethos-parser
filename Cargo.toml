@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, and v2-S8 as 0.27.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, and v2-S9 as 0.28.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -389,7 +389,56 @@ exclude = ["fuzz"]
 # S8 is RTF and is done; S9 parks EPUB and CSV. v2's gate is still a DOCX quote and an XLSX cell;
 # this is coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and the 0.489 chase
 # is STILL parked.
-version = "0.27.0"
+#
+# **0.28.0 is v2-S9: an EPUB BLOCK binds, and the page a publisher named stays out.** EPUB
+# publications enter the representation — OCF's `mimetype`, `META-INF/container.xml`, a package
+# document's manifest and spine, and the spine's XHTML blocks.
+#
+# THE FIRST FORMAT WHOSE FILE MAY GENUINELY NAME PAGES. `docs/14-V2-SCOPE.md` §3's law has always
+# been "no page THIS ENGINE DID NOT READ FROM THE FILE" rather than "no page ever", and every
+# format before this one failed the reading half by construction: a DOCX has no page until a
+# renderer picks one, a slide is a PART, an ODT's break is a word processor's arithmetic, a draw
+# page is structure, `\page` is a producer's mark. An EPUB 3 navigation document may carry a
+# `page-list` mapping locations to the page numbers of a PRINT edition, and an EPUB 2 NCX may carry
+# page targets — page identifiers, written down, readable. They are refused anyway, and the reason
+# had to be ARGUED rather than looked up: a publisher's label about somebody else's paper has no
+# width and no height, so nothing could ever be validated against it, and `check_structure` refuses
+# a measured box on a page-less node precisely because a rectangle nobody can check is a
+# fabrication. `pages` stays `[]` and the navigation document is a counted region.
+#
+# READING ORDER IS THE SPINE, AND THE ARCHIVE IS THE TRAP. An EPUB is a ZIP of documents, and
+# taking the XHTML entries in central-directory order — or sorted by name — is v2-S3's `sheet{n}`
+# defect in a new container. `EpubLocator { part, block }` takes its part from `<itemref idref>`
+# resolved through the manifest, with the `href` resolved relative to the package document's own
+# directory, and the fixture stores its chapters in the OPPOSITE order to prove it.
+#
+# HTML'S OWN DEFAULT DISPLAY, WHICH IS STRONGER THAN A LIST. `odt.rs` names its inline elements
+# because ODF has no default rendering to appeal to; XHTML does. A block is what HTML gives
+# `display: block`, and an XHTML element this reader has never heard of is INLINE — which is
+# HTML's own answer for a custom element. Anything outside the XHTML namespace is foreign and
+# counted, which is how an inline SVG's `<title>` and a MathML `<annotation>` stay out without a
+# list naming them.
+#
+# THE WHITESPACE ENGINE IS SHARED AND THE THREE PLACES IT IS NOT ARE WRITTEN DOWN: `<pre>` is
+# handled, a form feed is passed through rather than collapsed, and a line break between two CJK
+# characters becomes a space where CSS would remove it. The third is the widest gap this slice
+# knowingly leaves, and it is recorded rather than approximated — the correct rule needs a computed
+# `white-space` value and the scripts on both sides, and this reader reads no style sheet.
+#
+# NUMERIC CHARACTER REFERENCES RESOLVE, in a SECOND function rather than a widening of the shared
+# entity rule. `&#160;` is universal in hand-authored XHTML and needs no DTD; widening
+# `resolve_entity` would change what six shipped readers do with a document they currently refuse,
+# which is six profile hash moves for a slice that measured one format.
+#
+# NO NEW DEPENDENCY. The same hand-rolled ZIP over `flate2` and the same `quick-xml` — no `zip`
+# crate, no EPUB crate, no HTML5 parser: EPUB content documents are XML, and tag soup fails closed.
+# `Profile::epub_v0` has its own hash; nine profiles are mutually distinct; `capabilities.tables` is
+# FALSE because a `<td>`'s text is read as the block it is.
+#
+# S9 is EPUB and is done; S10 parks CSV. v2's gate is still a DOCX quote and an XLSX cell; this is
+# coverage beyond it, and v2 is NOT complete. v1 is STILL missed at 64‰ and the 0.489 chase is
+# STILL parked.
+version = "0.28.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -410,10 +459,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.27.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.27.0" }
-engine-office = { path = "crates/engine-office", version = "0.27.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.27.0" }
+engine-core = { path = "crates/engine-core", version = "0.28.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.28.0" }
+engine-office = { path = "crates/engine-office", version = "0.28.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.28.0" }
 
 [profile.release]
 strip = "symbols"

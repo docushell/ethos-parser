@@ -26,10 +26,10 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads seven of them at 0.27.0**, with **S9 (EPUB, CSV)** not
+**v2 is office formats and it reads eight of them at 0.28.0**, with **S10 (CSV)** not
 started and v2 **not complete**. `engine extract` takes a `.docx`, an
-`.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp` or an `.rtf` and emits the same record a PDF
-does — and **no page appears anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
+`.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same
+record a PDF does — and **no page appears anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
 with the column kept as the letters the file wrote. An ODT is the sharpest case, because its
 `content.xml` **contains an actual page break**: `<text:soft-page-break/>` records where the
 producing application's layout fell, so a `PageRecord` would need no arithmetic at all. It is read,
@@ -44,8 +44,12 @@ a `PageRecord` needed **no arithmetic at all**. It is refused anyway, because a 
 of the presentation's structure rather than a page this engine measured. **And an RTF says the
 word out loud** — `\page` is a page break and `\paperw` a paper width — while having no container
 at all: no parts, no manifest, no name for itself, so its address is one paragraph number and the
-page-less invariant grew a rule rather than the locator acquiring an invented part name. Each row
-began because the owner asked for it, not because the gate cleared.
+page-less invariant grew a rule rather than the locator acquiring an invented part name. **And an
+EPUB is where that law finally had to be argued rather than applied**: §3 has always said *no page
+this engine did not read from the file*, and a navigation document's `page-list` really does name
+the pages of a print edition. It is refused because a page record is a page with a **width and a
+height**, and a publisher's label about somebody else's paper has no geometry for anything to be
+validated against. Each row began because the owner asked for it, not because the gate cleared.
 
 Every line of `docs/03-V0-SCOPE.md` §5 is a named CI job, and the public API is a deliberate list
 rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)).

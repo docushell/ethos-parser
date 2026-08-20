@@ -7,7 +7,197 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads a seventh format, as 0.27.0
+## [Unreleased] — v2 reads an eighth format, as 0.28.0
+
+### v2-S9 — EPUB into the representation, and the page a publisher named
+
+**An EPUB block binds, and `pages` is still `[]`.** `engine extract` reads an `.epub` into the same
+`ethos.engine.representation.v0` the other eight formats produce. **S9 is EPUB and is done; S10
+parks CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still bind, and **v2 is not
+complete**.
+
+#### The first format where §3's law had to be argued rather than applied
+
+`14-V2-SCOPE.md` §3 has always read *"no page **this engine did not read from the file**"* rather
+than "no page ever", and until now the first clause carried it every time. A DOCX has no page until
+a renderer picks one. A workbook's page is a printer's. A slide is a **part**. An ODT's break is a
+word processor's arithmetic. A draw page is structure. RTF's `\page` is a producer's mark.
+
+**An EPUB 3 navigation document may carry a `page-list`** giving the page numbers of a **print
+edition**, and an EPUB 2 NCX may carry page targets. Those are page identifiers, written down,
+readable — nothing about them is a rendering this engine performed, so none of the six earlier
+arguments reaches them.
+
+The one that does is about what a `PageRecord` **is**: a page with a width and a height.
+`check_structure` refuses a measured box on a page-less node precisely because a rectangle nobody
+can check is the fabrication that law exists to prevent — and a publisher's label about somebody
+else's paper has no geometry at all. Nothing could ever be validated against it, and a consumer
+handed one as a page record would resolve a citation against a rendering this engine never saw. So
+`pages` is `[]`, the label is not copied in under another name, and `<nav>` is a counted region like
+any other. The fixture carries `PRINT-PAGE-17` in its own bytes, so the empty vector is a refusal.
+
+#### Reading order is the spine, and the archive is the trap
+
+`EpubLocator { part, block }`, `deny_unknown_fields`, and the test refuses `page`, `bbox`, `x`,
+`page_list_label` and `spine_index` by name.
+
+An EPUB is a ZIP of documents, and taking the XHTML entries in central-directory order — or sorted
+by name — is v2-S3's `sheet{n}.xml` defect in a new container. Reading order lives in the package
+document's `<spine>`, as `<itemref idref="…">` resolved through the `<manifest>`. `opc.rs` states
+that rule for OOXML's `r:id`; this is it in EPUB's spelling, and **the fixture proves it rather than
+asserting it**: `book-spine` stores `OEBPS/aa-second.xhtml` before `OEBPS/zz-first.xhtml` and lists
+them the other way round, so archive order and name order both disagree with the answer.
+
+A manifest `href` is resolved **relative to the package document's own directory**, and per-segment
+percent-decoded, because these are IRI references. An absolute, remote or `..`-escaping reference is
+refused rather than clamped.
+
+#### `names_a_part` is true, and this is the first slice to use both halves of v2-S8's split
+
+An EPUB is a package with **many** parts, so it takes the bijection `read_xlsx` has used since
+v2-S3: one part id per spine document, ordinals contiguous within each. v2-S8 split
+`check_page_less_shape` so a format with **no** parts could be checked on the one claim it can make;
+v2-S9 uses the other half, and needed nothing new in `engine-core`.
+
+#### HTML's own default display, which is stronger than a list
+
+`odt.rs` names the inline elements whose characters are the sentence and calls everything else
+foreign, because ODF has no default rendering to appeal to. XHTML does, so the rule here is read off
+the specification: an element in the XHTML namespace is a **block** when HTML gives it
+`display: block`, `list-item` or a table display; an XHTML element this reader has never heard of is
+**inline**, which is HTML's own answer for a custom element; and anything **outside** the XHTML
+namespace is **foreign** and counted. That last line keeps an inline `<svg><title>` and a MathML
+`<annotation>` out of the sentence through a namespace rule rather than a list.
+
+`script`, `style`, `template`, `noscript`, `nav` and ruby annotations are regions, skipped and
+counted. `<head>` is a region on `odt.rs`'s **strict** rule — every XHTML document carries a
+`<title>`, so counting it would declare an erasure on every document that has had nothing removed.
+
+**`linear="no"` is read and labelled.** A non-linear spine item is still a document the spine lists;
+dropping it would lose text the book contains, and reading it unlabelled would be the silent extra
+v2-S7 named A14 inverted.
+
+#### The whitespace engine is shared, and the three places it is not are written down
+
+XHTML's `white-space: normal` collapses the same four characters ODF does, so `odt.rs`'s block
+engine is **imported** rather than restated. Claiming the rules are identical would be a claim this
+engine has not checked, so the divergences are stated: `<pre>` is **handled**; a form feed is
+**passed through** rather than collapsed, because widening the shared rule would change what three
+shipped ODF readers do with it; and a line break between two CJK characters becomes a **space**
+where CSS would remove it — **the widest gap this slice knowingly leaves**, not approximated,
+because the correct rule needs a computed `white-space` value and the scripts on both sides.
+
+No style sheet is read at all, which is the general case those three are instances of.
+
+#### Numeric character references, and the six hashes that decided how
+
+v2-S3 measured that `quick-xml` delivers `&#233;` as a general reference named `#233`, so the shared
+entity rule refuses it — *"a named refusal of a valid document"*, recorded then and left alone
+because no measurement asked for more. **XHTML asks:** a content document is hand-authored XML with
+no DTD, and its authors reach for `&#160;` and `&#8217;` constantly.
+
+It is **not** folded into the shared function. Six shipped readers name a `text_code_rule`, and a
+rule id has to move when the behaviour it names moves — widening `resolve_entity` would change what
+a DOCX reader does with a document it currently refuses, which is six profile hash moves for a slice
+that measured one format. So `xml.rs` gained `resolve_reference`, the EPUB reader uses it, and
+unifying the two is a decision with six hash moves attached that `15-V2-MILESTONES.md` S9 records
+rather than makes. `&nbsp;` is still refused: it is an HTML name, not an XML one.
+
+#### Encryption, checked against the spine rather than against its own presence
+
+Nearly every real publication carrying `META-INF/encryption.xml` carries it to **obfuscate a font**,
+with its text in the clear. Refusing all of them would refuse readable books; ignoring the file would
+hand ciphertext to the XML reader, which reports malformed XML and names the wrong cause — v2-S6's
+`%PDF-` defect in a different shape. So the declaration is read and checked against the spine: a
+spine document named in it is a named refusal, and a font is a counted entry.
+
+#### Detection, and the pin this slice had to leave alone
+
+`is_epub` asks the OCF question `is_odt` asks, against a different declared type. **The container
+rule is shared and the family is not** — v2-S6 wrote `is_opendocument` to answer on the declared
+**type** rather than on that entry's presence, precisely so this row's EPUB would not arrive to be
+told it is OpenDocument. That pin held through S7 and S8 and holds here; the test that says so moved
+from `rtf_cli.rs` to `epub_cli.rs`, where the format it protects now lives.
+
+**The CLI's dispatch did not change.** v2-S8 made the router's last line the container question, so
+every ZIP already reached the office router; an EPUB simply resolves there now instead of being
+refused. Tested rather than assumed.
+
+#### Identity and limits
+
+`Profile::epub_v0` has its own hash; **nine profiles are now mutually distinct**.
+`capabilities.tables` is **false** even though XHTML has `<table>`: a `<td>`'s text is read as the
+block it is, and a `TableRecord` would say a detector ran. Every geometry row is
+`NotApplicableToKind` — an EPUB is reflowable, so where a block falls depends on a viewport and a
+font rather than on anything the publication states. The default PDF profile hash moves on
+`parser_version` **alone**, for the thirty-second time, to
+`sha256:8620b0fa728e47843d103d9707df90a846cdd63203d4808d52b1748fcddda7ed`.
+
+**No new dependency.** The same hand-rolled ZIP over `flate2` and the same `quick-xml` — no `zip`
+crate, no EPUB crate, and no HTML5 parser: EPUB content documents are XML, and tag soup fails closed.
+
+#### Added
+
+- `engine_core`: `NativeLocator::Epub`, `EpubLocator`, `NodeAttributes::EpubBlock`,
+  `EpubBlockAttributes`, `Profile::epub_v0`, `EPUB_READING_ORDER_RULE_V1`,
+  `EPUB_TEXT_CODE_RULE_V1`
+- `engine_office`: the `epub` module (`read`, `Block`, `SpineDocument`, `Publication`, `is_epub`,
+  `unread_entries`, `EPUB_MEDIA_TYPE`, `CONTAINER_PART`, `ENCRYPTION_PART`), plus `is_epub` and
+  `EPUB_MEDIA_TYPE` at the crate root
+- `fixtures/office/book-spine` and `fixtures/office/book-unread-parts`, with their generator
+
+#### Changed
+
+- Workspace **0.27.0 → 0.28.0**; both SDKs pinned to match
+- `xml` gained `resolve_reference` (character references, for XHTML only) and
+  `unprefixed_attribute` — XML puts an unprefixed **attribute** in no namespace at all, so asking
+  `resolved_attribute` for an OPF `href` found none of them
+- `engine_office::read`'s router claims an EPUB, and its no-format refusal now names it
+- The `engine-office` crate header, stale since v2-S6, names every format the crate reads
+- `rtf_cli.rs`'s "formats this slice did not implement" test hands the EPUB half to `epub_cli.rs`
+  and keeps CSV
+
+#### Fixed
+
+An adversarial review of this slice ran before it shipped. Six defects it found, each fixed and
+pinned:
+
+- **A panic, not a wrong answer.** The first percent-decoder indexed a reference segment as a
+  `&str` by byte offset, so a `%` followed by a multi-byte scalar sliced inside it and crashed —
+  reachable from any `href` in a crafted package document. A reader whose whole contract is a named
+  refusal must not have an input that takes the process down. It operates on bytes now.
+- **A wrapped erasure count, reproduced end to end.** `read` folded each document's A14 counts into
+  publication-wide `u32`s with a plain `+=`. A 31 MB publication of 82 documents was built and run:
+  it exited **0** and declared `51,032,704` passed-over runs against a true `4,346,000,000` — the
+  sum minus 2³², an 85× **under**-declaration presented as a complete read, which is precisely what
+  A14 exists to prevent. Saturating now, which over-declares at the ceiling.
+- **Two unbounded lists and two quadratic scans.** The manifest was uncapped and its duplicate-`id`
+  check was a linear scan of it, so a 28 MB package document cost hours of CPU before a word was
+  read; `encryption.xml` had the same shape and was re-scanned once per spine item. Both are capped
+  and both lookups are sets. The region stack was uncapped while the block stack beside it was
+  capped at 256.
+- **A silent drop the `strict` rule opened.** `<head>` and `<title>` count only characters inside
+  their own blocks, so the `<title>` every document carries is not an erasure on every document —
+  but the rule applied *anywhere*, so a `<title>` in the body was neither read nor counted. It is
+  strict only in the prologue now, before any block has opened.
+- **A signed character reference resolved.** Rust's integer parsers accept a leading `+`, so
+  `&#+66;` became `B` and was spliced in as though the document had written it. XML writes no sign
+  in a character reference; the shape is checked before the value is parsed.
+- **A vacuous test.** `the_declared_type_is_matched_exactly` compared two compile-time literals and
+  never called `is_epub`. Replaced with one that builds a package per near-miss — and the
+  replacement immediately caught a real prefix-vs-exact defect the old one could not see.
+
+#### What could not be measured, recorded
+
+**No corpus of real `.epub` files was available** — the fifth consecutive slice that has to say so,
+repeated rather than quietly inherited. Every rule is read off the OCF, EPUB Packages and XHTML
+specifications and pinned against publications this repository authors byte by byte, and every
+assertion about a fixture inflates that package's own entries. Three gaps are stated rather than
+closed: CJK segment breaks, character references inside attributes, and anything a style sheet would
+have changed.
+
+Unchanged and re-asserted: oracle 12 / 3, table gate **64‰**, `irs-form-1040-2025` at **0 tables**,
+fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S8 — RTF into the representation, and the address with no part
 

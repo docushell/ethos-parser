@@ -610,6 +610,34 @@ pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
 /// which is the failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value.
 pub const RTF_TEXT_CODE_RULE_V1: &str = "rtf-stated-characters-v1";
 
+/// v2-S9's EPUB reading order: **the spine**, then each document's own order.
+///
+/// **The first reading-order rule in this contract that decides something**, and that is the
+/// format's doing rather than a change of posture. Its six siblings say "the order the part lists
+/// them", because each of those formats has one part or names its parts in one place. An EPUB is a
+/// ZIP of documents, and the archive's own ordering is not the publication's: reading order lives
+/// in the package document's `<spine>`, as `<itemref idref="…">` resolved through the
+/// `<manifest>`. Following it is reading; sorting the XHTML entries by name, or taking them in
+/// central-directory order, is a guess that attaches the right content to the wrong position.
+///
+/// Within a document the rule is its five siblings' again: the order the file lists its blocks,
+/// with nothing sorted and nothing laid out.
+pub const EPUB_READING_ORDER_RULE_V1: &str = "epub-spine-then-document-order-v1";
+
+/// v2-S9's EPUB text rule: the block's own character data, under XHTML's whitespace rule.
+///
+/// The rule XHTML states for `white-space: normal` — a run of spaces, tabs, carriage returns and
+/// line feeds is one space, and one at either end of a block is not part of it — which is
+/// character-for-character the rule [`ODT_TEXT_CODE_RULE_V1`] already implements, so the engine is
+/// shared rather than restated. `<pre>` is the one divergence and it is read as the file writes
+/// it, because `white-space: pre` is the document saying those spaces are content.
+///
+/// **Nothing is styled and nothing is resolved.** A style sheet may hide a block, reorder it, or
+/// insert generated text through `::before`; none of that is read, so the text here is what the
+/// document *states* rather than what a reading system would display. `<br/>` is a line feed
+/// because the element states one.
+pub const EPUB_TEXT_CODE_RULE_V1: &str = "epub-xhtml-blocks-verbatim-v1";
+
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
 /// # A declared state, not an absent field
@@ -1328,6 +1356,61 @@ impl Profile {
         }
     }
 
+    /// The profile v2-S9's EPUB reader runs under.
+    ///
+    /// **Its own profile and its own hash**, for §5.1's reason, and this is the one where the hash
+    /// carries a claim the others do not have to make: an EPUB is the first input this engine
+    /// reads that could have supplied a page **from the file**. An EPUB 3 navigation document may
+    /// carry a `page-list` naming the pages of a print edition, and §3's law is *no page this
+    /// engine did not read from the file* rather than "no page ever" — so refusing it needed an
+    /// argument rather than a rule. The argument is that a publisher's label about somebody else's
+    /// paper has no width and no height, so nothing could be validated against it, and
+    /// `measured_ink_boxes: false` with `pages: []` is the mechanical record of that.
+    ///
+    /// `coordinate_system` carries the same inert `centipoint`/`top-left` pair the other seven
+    /// page-less profiles do; [`Self::docx_v0`]'s doc comment is the decision and the evidence, and
+    /// v2-S3 closed the question of a mode enum. `capabilities.tables` is **false** even though
+    /// XHTML has `<table>`: a cell's text is read as the block it is, and a
+    /// [`crate::tables::TableRecord`] would say a detector ran.
+    pub fn epub_v0() -> Self {
+        Self {
+            backend: BackendIdentity {
+                name: "engine-office".into(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Capabilities {
+                spans: true,
+                char_offsets: false,
+                tables: false,
+                measured_ink_boxes: false,
+                multi_column_reading_order: false,
+                structural_locators: false,
+                form_fields: false,
+                annotations: false,
+                images: false,
+                page_screenshots: false,
+                markdown: false,
+                html: false,
+            },
+            classify_sample_pages: 0,
+            table_detection: TableDetection {
+                ruled: NOT_RUN.into(),
+                unruled: NOT_RUN.into(),
+                stroke_ruled: NOT_RUN.into(),
+            },
+            reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
+            struct_tree_rule: NOT_RUN.into(),
+            markdown_rule: NOT_RUN.into(),
+            html_rule: NOT_RUN.into(),
+            form_annotation_rule: NOT_RUN.into(),
+            cmap_data_version: NOT_RUN.into(),
+            text_code_rule: EPUB_TEXT_CODE_RULE_V1.to_string(),
+            observation_rule: NOT_RUN.into(),
+            xref_repair: XrefRepair::NotRun,
+            ..Self::default()
+        }
+    }
+
     /// The canonical bytes this profile hashes over.
     ///
     /// # Errors
@@ -1624,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.27.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.28.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1874,11 +1957,28 @@ mod tests {
              seven formats now share that declaration and none of them emits a coordinate — and \
              its `capabilities.tables` is FALSE even though RTF writes `\\cell` and `\\row`, \
              because those are recorded as a paragraph's terminator rather than as a grid a \
-             detector inferred."
+             detector inferred.\n\n\
+             Moved a THIRTY-SECOND time at v2-S9 (0.28.0) on `parser_version` ALONE, and the \
+             format behind it is the first that could have supplied a page FROM THE FILE. \
+             `docs/14-V2-SCOPE.md` §3's law has always been \"no page this engine did not read \
+             from the file\" rather than \"no page ever\", and every format before this one \
+             failed the reading half: a DOCX has no page until a renderer picks one, a slide is a \
+             part, an ODT's break is a word processor's arithmetic, a draw page is structure, and \
+             `\\page` is a producer's mark. An EPUB 3 navigation document may carry a `page-list` \
+             naming the pages of a PRINT edition, and an EPUB 2 NCX may carry page targets — \
+             actual page identifiers, written down, readable. They are still refused, and the \
+             reason had to be argued rather than looked up: a publisher's label about somebody \
+             else's paper has no width and no height, so a box could never be validated against \
+             it, and `check_structure` refuses a measured box on a page-less node precisely \
+             because a rectangle nobody can check is the fabrication that law exists to prevent. \
+             `pages` stays empty. `Profile::epub_v0` carries the same inert `coordinate_system` \
+             the other seven page-less profiles do — eight formats now share that declaration and \
+             none of them emits a coordinate — and this profile's own bytes are untouched, for the \
+             reason they were at S5."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a9416ce96a7471d8a9cd951eda179978d737f1bfb1670faa151ad75ea734160d"
+            "sha256:8620b0fa728e47843d103d9707df90a846cdd63203d4808d52b1748fcddda7ed"
         );
     }
 

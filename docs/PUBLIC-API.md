@@ -45,10 +45,10 @@ the items re-exported at the crate root.
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
 | `html` | `to_html`, `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V2` |
 | `markdown` | `to_markdown`, `AnchorMap`, `Segment`, `SegmentKind`, `Coverage`, `DroppedBucket`, `StructuralErasure`, `MarkdownArtifact`, `MARKDOWN_ARTIFACT_TYPE`, `MARKDOWN_SCHEMA_VERSION`, `MARKDOWN_RULE_BLOCKS_V2`, `GFM_SPAN_SLOTS_UNREPRESENTABLE`, `GFM_ROW_ZERO_SEPARATOR`, `GFM_CELL_RUN_CLAIMED_TWICE`, `GFM_CELL_NOT_PLACED`, `GFM_TABLE_NOT_PROJECTED`, `GFM_LIST_ITEM_RUN_JOINS` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V1`, `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V1`, `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V1`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V1`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V1`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V1`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V1`, `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V1`, `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V1`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V1`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V1`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V1`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`, `EPUB_READING_ORDER_RULE_V1`, `EPUB_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
-| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `DocxLocator`, `XlsxLocator`, `PptxLocator`, `OdtLocator`, `OdsLocator`, `OdpLocator`, `RtfLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes`, `OfficeCellAttributes`, `OfficeSlideRunAttributes`, `OfficeParagraphAttributes`, `OdfBlockKind`, `OfficeOdfCellAttributes`, `OfficeOdfShapeAttributes`, `RtfParagraphAttributes`, `RtfParagraphBreak`, `OdfValueType`, `OdfCellTextSource`, `CellValueType`, `CellTextSource`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
+| `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `DocxLocator`, `XlsxLocator`, `PptxLocator`, `OdtLocator`, `OdsLocator`, `OdpLocator`, `RtfLocator`, `EpubLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes`, `OfficeCellAttributes`, `OfficeSlideRunAttributes`, `OfficeParagraphAttributes`, `OdfBlockKind`, `OfficeOdfCellAttributes`, `OfficeOdfShapeAttributes`, `RtfParagraphAttributes`, `RtfParagraphBreak`, `EpubBlockAttributes`, `OdfValueType`, `OdfCellTextSource`, `CellValueType`, `CellTextSource`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
 | `ids` | `NodeId`, `IdAllocator`, `IdKind`, `sort_ids` |
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
@@ -174,9 +174,9 @@ have let `is_xlsx` arrive unguarded.
 | Kind | Supported items |
 | --- | --- |
 | Entry point | `read` — dispatches on the package's own evidence, and refuses one claiming to be more than one format |
-| Detection | `is_docx`, `is_xlsx`, `is_pptx`, `is_odt`, `is_ods`, `is_odp`, `is_rtf` — **content, never extension** (Anydoc's **A4**) · `is_opendocument` — the ODF **family**, implemented or not |
-| Media types | `DOCX_MEDIA_TYPE`, `XLSX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE`, `ODT_MEDIA_TYPE`, `ODS_MEDIA_TYPE`, `ODP_MEDIA_TYPE`, `RTF_MEDIA_TYPE` |
-| Readers | `docx` (runs of `word/document.xml`), `xlsx` (sheets, shared strings, cells), `pptx` (slides, shapes, runs), `odt` (the manifest, and `content.xml`'s paragraphs), `ods` (`content.xml`'s tables, rows and cells), `odp` (`content.xml`'s draw pages, shapes and blocks), `rtf` (a brace-group control-word stream's paragraphs) |
+| Detection | `is_docx`, `is_xlsx`, `is_pptx`, `is_odt`, `is_ods`, `is_odp`, `is_rtf`, `is_epub` — **content, never extension** (Anydoc's **A4**) · `is_opendocument` — the ODF **family**, implemented or not |
+| Media types | `DOCX_MEDIA_TYPE`, `XLSX_MEDIA_TYPE`, `PPTX_MEDIA_TYPE`, `ODT_MEDIA_TYPE`, `ODS_MEDIA_TYPE`, `ODP_MEDIA_TYPE`, `RTF_MEDIA_TYPE`, `EPUB_MEDIA_TYPE` |
+| Readers | `docx` (runs of `word/document.xml`), `xlsx` (sheets, shared strings, cells), `pptx` (slides, shapes, runs), `odt` (the manifest, and `content.xml`'s paragraphs), `ods` (`content.xml`'s tables, rows and cells), `odp` (`content.xml`'s draw pages, shapes and blocks), `rtf` (a brace-group control-word stream's paragraphs), `epub` (the OCF container chain, a package document's spine, and its XHTML blocks) |
 | Container | `zip` — `looks_like_zip`, `entry_names`, `read_entry`, `first_entry` over the existing `flate2` |
 | Marker | `CRATE_NAME` |
 
@@ -192,6 +192,12 @@ package can answer about itself. The CLI dispatches on it, and the reason is a m
 only the narrow predicates, an `.odp` answered `false` to every one of them and fell through to the
 PDF reader, which refused it for having no `%PDF-` header. Fail-closed, and naming the wrong cause.
 `read` then refuses a declared ODF type it does not implement, by name.
+
+**`is_epub` asks the OCF question against a different declared type** (v2-S9), and that is the
+whole reason `is_opendocument` was written the way it was: an `.epub` writes `application/epub+zip`
+into the same first, stored `mimetype` entry an ODF package uses, so answering the family question
+on that entry's *presence* would tell an EPUB it is OpenDocument. It does not, and the test that
+says so has been in this suite since v2-S6.
 
 **`is_rtf` asks no container question at all** (v2-S8). Every predicate above it opens a package;
 an `.rtf` is a byte stream that begins `{\rtf`, and that is the whole of detection. A bare `{` is
