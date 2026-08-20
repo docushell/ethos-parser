@@ -147,7 +147,7 @@ adapter's business.
 | P19 | The `mcid` bridge from text run to tagged structure | pdf-inspector | v0 (capture) / v1 (use) |
 | A5 | The six-variant error taxonomy | Anydoc | v0 |
 | A4 | Content-based format detection | Anydoc | v0 |
-| **A11** | Mutation testing every fixture + `cargo-fuzz` per format | Anydoc | v0 |
+| **A11** | Mutation testing every fixture + `cargo-fuzz` per format | Anydoc | v0 — **fuzz lane covers PDF (v0-M7) and all eight office formats (v2-S12), through three targets; mutation lane covers the PDF manifest fixtures only and is OPEN for office.** See the note below |
 | P10 | Encoding-issue detection | pdf-inspector | v0.1 |
 | O13 | Tagged-PDF consumption | ODL | v1 |
 | O4 | XY-Cut reading order | ODL | v1 |
@@ -158,6 +158,20 @@ adapter's business.
 | L12/L13 | Forms and annotations as typed, **distinguishable** nodes | LiteParse | v1 |
 | L14 | DPI screenshots | LiteParse | v1 |
 | A2 | Shared IR → one serializer | Anydoc | v2 |
+
+**A11 has two halves and they are at different places.** Stated here because the row above cannot
+hold it and a half-discharged obligation read as a whole one is how a gap survives.
+
+| Half | PDF | Office |
+| --- | --- | --- |
+| **`cargo-fuzz`** | **covered** since v0-M7 — `open_and_classify` and `open_and_extract` | **covered at v2-S12** — `office_read`, on `engine_office::read`, the one entry point all eight formats share, seeded from `fixtures/office/` |
+| **Mutation testing every fixture** | **covered** — every fixture in `fixtures/manifest.json` damaged six ways, survivors pinned and triaged (v0-M7) | **OPEN.** No office fixture has been mutated. The office fixtures are not in `fixtures/manifest.json` at all, so the existing mutation harness does not reach them and would need a second corpus root to |
+
+*"`cargo-fuzz` **per format**"* is discharged by one target rather than eight, and that is a
+measured choice rather than a shortcut: `read` is the single entry point every format shares, so a
+corpus holding one valid package of each shape drives all eight through it. Eight harnesses would
+divide one corpus eight ways and explore each branch on a fraction of the budget. A format measured
+unreachable from that target is the argument for splitting one out; the module tree is not.
 | A1 | 14-format coverage | Anydoc | v2 |
 | **L9** | The open HTTP OCR contract, `confidence` dropped from what we act on | LiteParse | v2.1 |
 

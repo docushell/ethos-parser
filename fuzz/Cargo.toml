@@ -26,6 +26,7 @@ members = ["."]
 libfuzzer-sys = "0.4"
 engine-core = { path = "../crates/engine-core" }
 engine-pdf = { path = "../crates/engine-pdf" }
+engine-office = { path = "../crates/engine-office" }
 
 [[bin]]
 name = "open_and_classify"
@@ -37,6 +38,19 @@ bench = false
 [[bin]]
 name = "open_and_extract"
 path = "fuzz_targets/open_and_extract.rs"
+test = false
+doc = false
+bench = false
+
+# v2-S12. ONE target on the router rather than one per format, and the reason is libFuzzer's
+# coverage feedback rather than economy: `engine_office::read` is the single entry point all
+# eight formats share and the one the CLI calls, so a corpus seeded with a valid package of each
+# shape drives every reader through it. Eight harnesses would split that corpus eight ways and
+# explore each branch with a fraction of the budget. If a reader is ever measured unreachable
+# from here, that is the evidence for splitting it out — not the shape of the module tree.
+[[bin]]
+name = "office_read"
+path = "fuzz_targets/office_read.rs"
 test = false
 doc = false
 bench = false

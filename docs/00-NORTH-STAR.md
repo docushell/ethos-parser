@@ -119,7 +119,7 @@ For a coding agent starting fresh:
 7. **`06-STEAL-REFUSE.md`** — read before proposing a feature borrowed from another parser
 8. **`02-ROADMAP.md`** — only to check that a v1+ idea has a home and does not belong in v0
 
-What 0.30.0 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
+What 0.31.0 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
 these documents is **off-tree** and is not a second roadmap (`reference/README.md`);
 `06-STEAL-REFUSE.md` is the living steal / refuse record. Architecture depth for the older
 Ethos-in-DocuShell framing: `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` — **external, not

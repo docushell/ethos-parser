@@ -7,7 +7,84 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0
+
+### v2-S12 — the office readers get fuzzed, as 0.31.0
+
+**No reader changed, because the campaign found nothing to change.** This slice adds a fuzz target,
+runs it, and reports what it found.
+
+**The obligation, and how long it stood open.** `06-STEAL-REFUSE.md`'s **A11** — *mutation testing
+every fixture + `cargo-fuzz` **per format***, from Anydoc, due at **v0**. v2-S2 deferred the office
+half in one clause: *"a cargo-fuzz campaign — `A11`'s mutation lane for this format waits for a
+second one"*. The condition was met at v2-S3 and there are now **eight** formats;
+`fuzz/Cargo.toml` still depended on `engine-core` and `engine-pdf` alone, so **no office byte had
+ever been fuzzed**. Not hypothetical: v2-S9's first adversarial finding was a **panic** in the
+percent-decoder, reachable from any `href` in a crafted package document, and the review record
+says it survived to review *precisely because office code is unfuzzed*.
+
+#### Added
+
+- **`fuzz/fuzz_targets/office_read.rs`** on `engine_office::read` — the single entry point all
+  eight formats share and the one `engine extract` calls. `engine-office` joins `fuzz/Cargo.toml`.
+- **`fuzz/seed-corpus.sh office_read`** seeds from the **sixteen** packages in `fixtures/office/`,
+  one valid package of every shape this engine reads. Scripted, not copied. Seeding matters more
+  here than for the PDF targets: random bytes almost never open like a ZIP, so an unseeded office
+  campaign would spend its whole budget being refused at the first predicate.
+
+**One target rather than eight, and it was measured rather than assumed.** Every entry of the grown
+corpus was driven through the CLI and its `source.media_type` counted: **all eight readers produced
+successful artifacts** — RTF 267, ODP 18, PPTX 9, EPUB 8, XLSX 8, ODT 6, ODS 5, DOCX 4, plus 1,220
+fail-closed refusals, which are also under test. Eight harnesses would divide one corpus eight ways
+and explore each branch on a fraction of the budget. A format later measured *unreachable* from
+this target is the argument for splitting one out; the module tree is not.
+
+#### The campaign, and what it found
+
+Two runs to completion, under **AddressSanitizer** and **`-Cdebug-assertions`**, so an overflow
+that would wrap silently in release aborts instead.
+
+| | run 1 | run 2 | total |
+| --- | --- | --- | --- |
+| executions | 805,456 | 3,002,735 | **3,808,191** |
+| wall clock | 901 s | 2,401 s | **3,391 s ≈ 57 min** |
+| edge coverage | 8,148 | **8,985** | — |
+| corpus | 1,429 | **2,544** / 3.7 MB | from 16 seeds |
+| **crashes / timeouts / OOM** | **0** | **0** | **0** |
+
+**It found nothing, and that is a result rather than a pass.** `zip.rs`'s hand-rolled
+central-directory reader, `MAX_INFLATED_BYTES`, `epub.rs`'s percent-decoder and reference
+resolution, `MAX_BLOCK_NESTING`, RTF group depth, `MAX_TEXT_BYTES`, the `quick-xml` depth
+arithmetic and the eight shipping `expect("checked above")` claims all survived without a panic, an
+out-of-bounds, an overflow or a hang.
+
+**What it does not show**, said rather than left to inference: coverage is a **lower** bound on what
+is broken, never an upper one; nothing re-runs this, so a reader added tomorrow is unfuzzed exactly
+as these were for nine slices; and **A11's mutation half is still open for office** — no office
+fixture has been mutated, and they are not in `fixtures/manifest.json`, so the v0-M7 harness does
+not reach them. `A11`'s row now says which half is covered and which is not.
+
+#### CI: no job added, and the budget stated either way
+
+The fuzz crate builds in **~50 s** cold and the campaign sustains **~1,100 exec/s**, so a
+60-second smoke run per push costs about **two minutes** of job time and buys ~66,000 executions —
+under 2% of what this slice ran, against a corpus CI would rebuild from the sixteen seeds every
+time, since `corpus/` is deliberately not committed. A useful campaign wants a **persisted** corpus
+and a schedule, which is an infrastructure decision with a storage question attached and not this
+slice's to make.
+
+#### Changed
+
+- `fuzz/Cargo.lock` updated and committed; `quick-xml` and `flate2` resolve to the same versions
+  the workspace lock pins.
+- Workspace **0.30.0 → 0.31.0**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
+  thirty-seventh time, to
+  `sha256:32c94c9b0bf5daba4eb1330ac2bd6dde0bbd8890e88b3869ea4e9d02621c4175`
+
+**v2 is not complete.** The gate sentence's verb is restated for the owner at the end of `15`'s S12
+— both readings spelled out with what each costs — and is **not** settled here.
+
 
 ### v2-S11 — embedded assets, counted, as 0.30.0
 

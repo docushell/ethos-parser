@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, and v2-S11 as 0.30.0.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, v2-S11 as 0.30.0, and v2-S12 as 0.31.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -511,7 +511,33 @@ exclude = ["fuzz"]
 # checked against a build of the previous commit. The nine profile hashes move on `parser_version`
 # ALONE. **v2 is STILL NOT COMPLETE**: the gate sentence's verb is unsettled, and whether
 # "embedded assets" ever meant more than a count is the owner's, not this slice's.
-version = "0.30.0"
+#
+# **0.31.0 is v2-S12: THE OFFICE READERS GET FUZZED. No reader changed.** `06-STEAL-REFUSE.md`'s
+# A11 asks for mutation testing plus `cargo-fuzz` PER FORMAT, from Anydoc, due at v0. v2-S2
+# deferred the office half on the condition that a SECOND office format would reopen it. There
+# were EIGHT, and `fuzz/Cargo.toml` still depended on `engine-core` and `engine-pdf` only — no
+# office byte had ever been fuzzed. That is not hypothetical: v2-S9's first adversarial finding
+# was a PANIC in the percent-decoder, and the review record says it reached review precisely
+# because office code is unfuzzed.
+#
+# ONE TARGET on `engine_office::read`, the single entry point all eight formats share, seeded from
+# the sixteen packages in `fixtures/office/`. One rather than eight is MEASURED, not assumed: every
+# entry of the grown corpus was driven through the CLI, and all eight readers produced successful
+# artifacts from it. Eight harnesses would divide one corpus eight ways.
+#
+# THE CAMPAIGN RAN: 3,808,191 executions over 3,391 seconds (~57 minutes) across two runs, under
+# AddressSanitizer and debug assertions, reaching 8,985 edges and growing the corpus from 16 seeds
+# to 2,544 entries. IT FOUND NOTHING — no panic, no out-of-bounds, no overflow, no OOM, no hang.
+# That is a RESULT, not a pass: coverage is a lower bound on what is broken, never an upper one,
+# and nothing re-runs it. NO CI JOB WAS ADDED; the budget is stated in `15` either way.
+#
+# A11'S MUTATION HALF IS STILL OPEN for office and is named as open. No office fixture has been
+# mutated; they are not in `fixtures/manifest.json`, so the v0-M7 harness does not reach them.
+#
+# The nine profile hashes move on `parser_version` ALONE, because a build is a build. **v2 IS
+# STILL NOT COMPLETE** — the gate sentence's verb is restated for the owner at the end of S12,
+# with both readings and what each costs, and it is not settled here.
+version = "0.31.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -532,10 +558,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.30.0" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.30.0" }
-engine-office = { path = "crates/engine-office", version = "0.30.0" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.30.0" }
+engine-core = { path = "crates/engine-core", version = "0.31.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.31.0" }
+engine-office = { path = "crates/engine-office", version = "0.31.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.31.0" }
 
 [profile.release]
 strip = "symbols"

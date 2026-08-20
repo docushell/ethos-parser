@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0–S11 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0–S12 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -83,6 +83,7 @@ for the next roadmap row, and nothing in it closes v1.
 | **S10.1** | The seven claims v2-S9.1 and v2-S10 left false — a **doc repair**, no version | S10 | **done — and it left itself out of this table** |
 | **S10.2** | The docs that stopped describing the code — a **doc repair** at 0.29.1 | S10.1 | **done — and a site list is still not a search** |
 | **S11** | **Embedded assets, counted** — the last undelivered v2 content obligation | S10.2 | **done — and a second bucket rather than a wider one** |
+| **S12** | **The office readers get fuzzed** — `A11`'s deferred lane, six slices past its condition | S11 | **done — and the campaign found nothing, which is a result and not a pass** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -2362,6 +2363,143 @@ the gate-verb question, in the shape decision #10 already shows.
   - [x] No git tag
 
 - **Depends on:** S10.2.
+
+---
+
+## S12 — the office readers get fuzzed — **done**, as 0.31.0
+
+**The obligation and how long it stood open.** `06-STEAL-REFUSE.md`'s **A11** — *"Mutation testing
+every fixture + `cargo-fuzz` **per format**"*, from Anydoc, due at **v0**. v2-S2 deferred the office
+half in one clause, inside the same **Out:** bullet that deferred embedded assets: *"a cargo-fuzz
+campaign — `A11`'s mutation lane for this format waits for a second one"*. **The condition was met
+at v2-S3 and there are now eight.** `fuzz/Cargo.toml` depended on `engine-core` and `engine-pdf`
+only; no office byte had ever been fuzzed.
+
+**Not hypothetical.** v2-S9's first adversarial finding was a **panic** in the percent-decoder,
+reachable from any `href` in a crafted package document, and the review record says it survived to
+review *precisely because office code is unfuzzed*. A reader whose whole contract is a named
+refusal must not have an input that takes the process down.
+
+### One target, and the evidence that one is enough
+
+`office_read` drives `engine_office::read(&bytes)` — the single entry point all eight formats share
+and the one `engine extract` calls. The brief asked whether the router target plus a seeded corpus
+already reaches the eight readers, and to split **only if it can be shown it does not**. It was
+measured rather than assumed: every entry of the grown corpus was driven through the CLI and the
+resulting `source.media_type` counted.
+
+| Reader reached from the one target | successful artifacts |
+| --- | --- |
+| RTF | 267 |
+| ODP | 18 |
+| PPTX | 9 |
+| EPUB | 8 |
+| XLSX | 8 |
+| ODT | 6 |
+| ODS | 5 |
+| DOCX | 4 |
+| *(refused, fail-closed — also under test)* | *1220* |
+
+**All eight, so no split.** Eight harnesses would divide one corpus eight ways and explore each
+branch on a fraction of the budget, which is libFuzzer's coverage feedback working against itself.
+A format later measured **unreachable** from this target is the argument for splitting one out; the
+shape of the module tree is not.
+
+### The corpus is the fixtures, and the seeding is scripted
+
+`fuzz/seed-corpus.sh office_read` copies the **sixteen** packages in `fixtures/office/` — one valid
+package of every shape this engine reads, already committed, already engine-owned. That is the seed
+set A11 asks for and it was in the tree the whole time. Seeding matters more here than for the PDF
+targets: random bytes almost never open like a ZIP, so an unseeded office campaign would spend its
+entire budget being refused at the first predicate.
+
+`corpus/` stays generated state, as `fuzz/.gitignore` already says; `seeds/` is the committed part,
+and for this target the seeds are the fixtures.
+
+### The oracle
+
+**No panic. The type system supplies the rest.** `read` returns
+`Result<DocumentRepresentation, EngineError>`, so *"every failure is a named `EngineError`"* is not
+something the target can check — it is what the signature makes true. A `Malformed`, `Unsupported`,
+`MissingPart` or `ResourceLimit` is a **pass**, and almost everything a fuzzer produces should be
+one. A failure is an unwrap, an index panic, an arithmetic overflow, an allocation the resource
+limits should have refused, or a hang. The build carries `-Cdebug-assertions` and AddressSanitizer,
+so an overflow that would wrap silently in release aborts here.
+
+### The campaign, and what it found
+
+**Two runs, both to completion, on the same growing corpus.**
+
+| | run 1 | run 2 | total |
+| --- | --- | --- | --- |
+| **executions** | 805,456 | 3,002,735 | **3,808,191** |
+| **wall clock** | 901 s | 2,401 s | **3,391 s ≈ 57 min** |
+| **exec/s** | 893 | 1,250 | 1,123 average |
+| **edge coverage** | 8,148 | **8,985** | — |
+| **features** | 22,101 | **26,074** | — |
+| **corpus** | 1,429 | **2,544** entries / 3.7 MB | grown from 16 |
+| **crashes / timeouts / OOM** | **0** | **0** | **0** |
+
+**It found nothing, and that is a result rather than a pass.**
+
+What ~3.8 million executions against a corpus that reaches all eight readers **does** support:
+`zip.rs`'s hand-rolled central-directory reader, `MAX_INFLATED_BYTES`, the percent-decoder and
+reference resolution in `epub.rs`, `MAX_BLOCK_NESTING`, RTF group depth, `MAX_TEXT_BYTES`, the
+`quick-xml` depth arithmetic, and the eight shipping `expect("checked above")` claims — each a
+claim that a `last()` guard makes a `pop()` safe — all survived without a panic, an
+out-of-bounds, an overflow or a hang, under ASan and debug assertions.
+
+What it **does not** support, said plainly rather than left to inference:
+
+- **Coverage is not proof.** 8,985 edges is what this corpus reached in 57 minutes, not the
+  reachable set. A campaign is a lower bound on what is broken, never an upper one.
+- **It is a snapshot, not a gate.** Nothing re-runs it. A reader added tomorrow is unfuzzed until
+  someone runs this again, exactly as the office readers were for nine slices.
+- **The mutation half of A11 is still open**, and this slice does not touch it. No office fixture
+  has been mutated. The office fixtures are not in `fixtures/manifest.json`, so the v0-M7 mutation
+  harness does not reach them and would need a second corpus root. **Named as open in
+  `06-STEAL-REFUSE.md`, beside the half that is now closed.**
+
+### CI: no job added, and the budget stated either way
+
+**No fuzz target is added to CI's required jobs by this slice.** The measured budget, so the
+decision is the owner's rather than mine: the fuzz crate builds in **~50 s** from cold on this
+machine, and the campaign sustains **~1,100 exec/s**. A 60-second smoke run per push therefore
+costs roughly **two minutes** of job time and buys ~66,000 executions — under 2% of what this slice
+ran, and against a corpus CI would rebuild from the sixteen seeds every time, since `corpus/` is
+not committed. A useful campaign wants a **persisted** corpus and a schedule, not a per-push job;
+that is an infrastructure decision with a storage question attached, and it is not this slice's to
+make.
+
+### Restated for the owner, unchanged and unsettled
+
+**The v2 gate's verb.** `00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both say a
+DOCX quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
+option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has read
+*ground* as **bind**. S1's open-questions table flagged it as unsettled at S1, in the **gate
+wording** row, and no decision-log entry ever settled it. The two readings and what each costs:
+
+| Reading | What it means | What it costs |
+| --- | --- | --- |
+| **"ground" means `ethos.grounding.v1`** | v2's gate is **not met** and cannot be met without option (a) — an Ethos-side schema revision, owned elsewhere | v2 stays open on a dependency this repository does not control. The eight readers are complete and the gate is not |
+| **"ground" means "binds to an address the file states"** | v2's gate **is met**, and has been since v2-S3 | The gate sentence in two documents is reworded to say *bind*, and the word *ground* stops meaning two things in one repository |
+
+**Not settled here.** Amending either document is the owner's.
+
+- **Acceptance — all met:**
+  - [x] `fuzz/` builds with `engine-office` and one office target
+  - [x] Corpus seeded from `fixtures/office/` by `seed-corpus.sh`, scripted rather than copied
+  - [x] A campaign was **actually run** — 3,808,191 executions over 3,391 s, stated here and in
+        the CHANGELOG
+  - [x] **No crash was found**, so there is no crash to fix, no regression test to add and no
+        crashing input to commit. Said with the numbers rather than as a pass
+  - [x] `fuzz/Cargo.lock` updated and committed
+  - [x] **No fuzz job added to CI**, with the time budget stated above either way
+  - [x] `A11`'s row says what is covered and what is not, and the **mutation half is named open**
+  - [x] Workspace **0.31.0**; nine profile hashes move on `parser_version` alone
+  - [x] No git tag
+
+- **Depends on:** S11.
 
 ---
 
