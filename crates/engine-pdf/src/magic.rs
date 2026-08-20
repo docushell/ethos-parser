@@ -67,6 +67,41 @@ pub fn check_pdf_magic(bytes: &[u8]) -> Result<(), EngineError> {
     Ok(())
 }
 
+/// Whether these bytes were **aimed at this reader**, so that [`check_pdf_magic`]'s message is the
+/// right one for them (v2-S10).
+///
+/// This is not a detector and it decides nothing about what the bytes *are*. It answers one
+/// routing question: if the caller handed the PDF reader something, is a message about a PDF
+/// header the honest cause of the refusal, or is it the wrong cause?
+///
+/// True in exactly two cases:
+///
+/// 1. The bytes **start with** the header. Whatever follows may be broken, and
+///    [`check_pdf_magic`] and the reader behind it will say how.
+/// 2. The bytes are a **proper prefix** of the header, the empty file included. A PDF truncated in
+///    transit still aimed here, and *"file is 3 bytes, shorter than the 5-byte PDF header"* names
+///    its real cause. A zero-byte file is the sharpest case: nothing about it says PDF, and
+///    nothing about it says anything else either, so the reader the caller reached is the one that
+///    should answer.
+///
+/// False for everything else — a `.csv`, a letter, a log line, a PNG — and that is the whole point.
+/// Those bytes state **no** format, and telling them they are a broken PDF names a cause they never
+/// had. `engine extract` refuses them without opening a reader; see `docs/15-V2-MILESTONES.md` S10.
+///
+/// [`MAX_HEADER_OFFSET`] is still zero here: nothing is scanned for at any other offset.
+pub fn aims_at_the_pdf_reader(bytes: &[u8]) -> bool {
+    debug_assert_eq!(
+        MAX_HEADER_OFFSET, 0,
+        "header scanning is deliberately absent"
+    );
+
+    if bytes.len() >= PDF_MAGIC.len() {
+        bytes.starts_with(PDF_MAGIC)
+    } else {
+        PDF_MAGIC.starts_with(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +128,50 @@ mod tests {
                 e.code(),
                 "unsupported",
                 "{label} is a format gap, not a broken PDF"
+            );
+        }
+    }
+
+    /// **v2-S10.** The two questions are different, and the difference is the whole slice.
+    ///
+    /// `check_pdf_magic` answers *"is this a PDF"* and refuses everything that is not.
+    /// `aims_at_the_pdf_reader` answers *"is a message about a PDF header the honest cause"* — and
+    /// the truncated cases are exactly where the two part company: a three-byte `%PD` is not a PDF
+    /// and is still a caller's PDF, arriving short.
+    #[test]
+    fn a_truncated_header_still_aims_at_this_reader_and_nothing_else_does() {
+        for aimed in [&b""[..], b"%", b"%P", b"%PD", b"%PDF"] {
+            assert!(
+                aims_at_the_pdf_reader(aimed),
+                "{:?} is a proper prefix of the header",
+                String::from_utf8_lossy(aimed)
+            );
+            assert!(
+                check_pdf_magic(aimed).is_err(),
+                "and is still not a PDF, which is the other question"
+            );
+        }
+
+        assert!(aims_at_the_pdf_reader(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3"));
+        // Broken past the header is still aimed here — the reader behind this says how.
+        assert!(aims_at_the_pdf_reader(b"%PDF-"));
+
+        for elsewhere in [
+            &b"name,role\nAda,engineer\n"[..],
+            b"Dear Ada,\n\nPlease pick up milk, eggs, and bread.\n",
+            b"Prose with no punctuation of that kind at all\n",
+            b"PK\x03\x04",
+            b"\x89PNG\r\n\x1a\n",
+            b"{\\rtf1",
+            // One byte short of the header, and not a prefix of it.
+            b"%PDX",
+            // The header, but not at byte 0. `MAX_HEADER_OFFSET` is zero.
+            b"\n%PDF-1.7",
+        ] {
+            assert!(
+                !aims_at_the_pdf_reader(elsewhere),
+                "{:?} states no PDF header and was never aimed here",
+                String::from_utf8_lossy(elsewhere)
             );
         }
     }

@@ -454,6 +454,29 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         return emit_representation(engine_office::read(&head));
     }
 
+    // **v2-S10: the branch that was missing, and the last member of the shape S8 named.**
+    //
+    // Everything above is a signature the bytes state. What falls past all six is bytes that state
+    // **no format at all** — a `.csv`, a letter, a log line, a `.txt` — and until this slice they
+    // were handed to the PDF reader anyway, to be refused for having no `%PDF-` header. That was
+    // fail-closed and it named the **wrong cause**, exactly as an `.ods` did before v2-S6, an
+    // `.rtf` before v2-S8 and an `.epub` before the line above it. S8 fixed the *container* shape
+    // for its whole class rather than one more member; this is the class S8 left, and it is the
+    // last one there is: bytes carrying no signature, no container and no declaration.
+    //
+    // **This is not a seventh predicate and nothing new is sniffed.** It is the negation of the
+    // six above plus the one question the PDF reader already answers about itself. No comma is
+    // counted, no line is measured, no extension is read, and no signature is looked for past
+    // byte 0. Comma-separated text cannot be told from prose without a reader, and a detector that
+    // guessed would claim every comma file — so this engine refuses to name a format it did not
+    // measure rather than naming one it cannot. `docs/15-V2-MILESTONES.md` S10 argues it in full.
+    //
+    // A **truncated** PDF is deliberately not here: it aimed at the PDF reader, so the PDF
+    // reader's own message is the honest cause for it, down to the zero-byte case.
+    if !engine_pdf::aims_at_the_pdf_reader(&head) {
+        return fail(&no_format_stated());
+    }
+
     let profile = Profile::default();
 
     // Opened once, exactly as `classify` opens it. The same handle serves both stages
@@ -468,6 +491,36 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
         .and_then(|extract| engine_pdf::to_representation(&extract, &profile));
 
     emit_representation(result)
+}
+
+/// The refusal for bytes that state no format at all (v2-S10).
+///
+/// **It quotes nothing from the file, and that is the assertion rather than a style choice.** A
+/// `.csv` and a letter containing a shopping list produce byte-identical stderr here, which is a
+/// test in `no_format_cli.rs` — and it is a test only an implementation that sniffed nothing can
+/// pass. The moment this message differs between two such files, something measured one of them.
+///
+/// It names what was **looked for** rather than what the file might be. Naming a format would be
+/// an invented identifier (**A4**, and `docs/14-V2-SCOPE.md`'s standing rule 4): nobody measured
+/// this file to be a CSV, a log or a letter, and `SourceIdentity` has two fields and no room to
+/// record that a type was asserted rather than read — which is `docs/13-V12-MILESTONES.md`'s
+/// v1.2-S5 finding, that *an identity that can be asserted is an identity that can disagree with
+/// what it describes*.
+///
+/// `%PDF-` is absent from the text on purpose. These bytes never aimed at the PDF reader, so a
+/// missing PDF header is not their cause — that is the defect this branch exists to end.
+fn no_format_stated() -> EngineError {
+    EngineError::Unsupported {
+        what: "media type".into(),
+        detail: "these bytes state no format this engine reads. Three signatures were looked for \
+                 at byte 0 and none is present: a ZIP local file header, the container a DOCX, \
+                 XLSX, PPTX, ODT, ODS, ODP or EPUB arrives in; an RTF brace group; and a PDF \
+                 header. Nothing else was consulted — not the file's name, and no signature at any \
+                 other offset. A file this engine has no reader for is refused by name rather than \
+                 handed to a reader it never named, because a refusal that guesses a format is a \
+                 claim nobody measured. `docs/CAPABILITY.md` lists what is read and what is not."
+            .into(),
+    }
 }
 
 /// Print a sealed representation as canonical JSON, or map the failure to an exit code.

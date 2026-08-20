@@ -7,7 +7,129 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2 reads an eighth format, as 0.28.0
+## [Unreleased] — v2's format row is closed, as 0.29.0
+
+### v2-S10 — CSV: the format nothing detects, as 0.29.0
+
+**S10 ships no CSV reader.** It ships the **refusal**, argues it, and pins it in a test a later
+slice must delete on purpose. There is no `csv.rs`, no `Profile::csv_v0`, no `NativeLocator::Csv`,
+no tenth profile, and no format hint on any surface.
+
+#### The parse is not the problem. One field is
+
+A CSV parse of arbitrary text **fabricates nothing**. Every field's `text` would be bytes genuinely
+present in the stream, every record ordinal a true line count, and `pages: []` simply **true** —
+there is no geometry to invent and no page to invent. None of the failure modes this repository was
+built against is present: not **L30**'s invented pagination, not v1-S1's 662 cells the page never
+drew, not v1.2-S5's loose boxes sold as ink.
+
+**Exactly one thing would be false, and it is one field.** `SourceIdentity.media_type` would say
+`text/csv` about a file nobody measured to be one — an invented identifier, which standing rule 4
+forbids — and `SourceIdentity` is `deny_unknown_fields` with **two** fields and **no room to say
+"asserted"**.
+
+So a caller-supplied `--format csv` would not break **A4**'s *rule*. It would break A4's
+**guarantee**, with nowhere in the artifact to record that it had. That is
+`docs/13-V12-MILESTONES.md` word for word, written about a caller-supplied *version* at v1.2-S5,
+where it was decisive enough to refuse an entire integration: *an identity that can be asserted is
+an identity that can disagree with what it describes.*
+
+It settles the follow-on question too. If a caller asserted CSV and the bytes were not CSV, **the
+engine could not tell** — that is definitionally what "no detector" means — so a wrong assertion
+would always produce a **successful** artifact, and fail-closed is not reachable from inside that
+design.
+
+#### The last wrong-cause refusal, fixed for the shape
+
+At 0.28.1, `engine extract rows.csv` said *"expected a PDF header (%PDF-) at byte 0, found
+`name,`"*. Right exit code, **wrong cause** — a `.csv` is not a broken PDF, it is bytes that state
+**no format at all**, and PDF was merely the fallthrough that caught them. A prose `.txt` got the
+same message with different quoted bytes, which is how it is known to be a shape rather than a
+format.
+
+v2-S6 fixed this for an `.ods`, v2-S8 for an `.rtf` and then for the whole ZIP **shape** rather
+than one more member of it. **S10 owns the last one**: bytes carrying no signature, no container
+and no declaration. The router's six-term `||` gained **no seventh term** — what it gained is the
+branch that was missing.
+
+#### The argument, mechanized
+
+The refusal's honesty is not a sentence. It is one test:
+
+> **A `.csv` and a letter containing a shopping list receive byte-identical stderr.**
+
+That can only pass if nothing sniffed, and it is the assertion no detector-shaped implementation
+can satisfy. It is written from both directions: prose with no commas, prose **with** commas, a log
+line with a **uniform comma count** — the one property a naive CSV detector is usually built on —
+and the `.csv` itself.
+
+#### Two edges that did not move
+
+A **truncated PDF** — bytes that are a proper prefix of `%PDF-`, the zero-byte file included —
+keeps the PDF reader's own message, because it aimed there. A four-byte `%PDX` is not a prefix and
+takes the no-format branch. And **`engine classify` did not move with `engine extract`**: it never
+reaches the office router, so a `.csv` handed to it is still refused for having no `%PDF-` header.
+That is deliberate — `classify` **is** the PDF classifier — and it is now pinned by a test and
+written down in `docs/15-V2-MILESTONES.md` S10 rather than left to be discovered.
+
+#### Reopening preconditions, so this is a decision rather than a punt
+
+Either would reopen CSV. **Neither is met, neither is a day's work, and neither was started.**
+
+1. **`SourceIdentity` can record asserted-vs-measured** — a `REPRESENTATION_SCHEMA_VERSION` move,
+   and therefore a **contract slice with its own scope doc**, not a format slice.
+2. **Or a measured predicate with a measured false-positive rate** — a real corpus of prose and
+   real-world CSV in `fixtures/`, with the rate stated the way `docs/table-gate-v1.md` states 64‰.
+
+#### Two questions escalated to the owner, and not answered here
+
+1. **The v2 gate's verb.** `docs/00-NORTH-STAR.md` and `docs/02-ROADMAP.md` both say a DOCX quote
+   and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as option
+   (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot** — and every slice since has
+   quietly re-read *ground* as **bind**. `15-V2-MILESTONES.md:149` flagged it as unsettled at S1
+   and no decision-log entry ever settled it. Amending it is the owner's.
+2. **"Embedded assets" is a real, undelivered v2 obligation.** It is in the roadmap row and
+   restated as v2's content, and a repo-wide grep finds **three hits total**: no A-row in
+   `06-STEAL-REFUSE.md`, no `CAPABILITY.md` row, no scope section, no acceptance test. Neither
+   delivered nor descoped. And it is not merely unread but **uncounted** — `docx.rs`'s
+   `UNREAD_TEXT_PART_PREFIXES` does not match `word/media/`, so a DOCX with forty embedded images
+   declares **zero** unread parts for them, while EPUB's `unread_entries` counts every unread entry
+   including media. **Reported, not fixed here, and not descoped in passing.**
+
+#### Added
+
+- `engine_pdf::aims_at_the_pdf_reader` — **not a detector**. It decides nothing about what bytes
+  *are*; it answers whether a message about a PDF header is the honest cause for them, which is
+  true only when they start with the header or are a proper prefix of it. Frozen in
+  `docs/PUBLIC-API.md` under Format detection
+- `crates/engine-cli/tests/no_format_cli.rs` — the byte-identical-stderr proof, the truncated-PDF
+  edge, the exit contract, the `classify` divergence, and a source walker pinning that no shipping
+  source contains `is_csv`, `text/csv`, `.extension()`, `.file_name()` or `.file_stem()`. The
+  walker scans **whole files** and exempts the one real occurrence by name. Its first version
+  trimmed each file at the first `#[cfg(test)]`, which reads as equivalent and is not:
+  `engine-pdf/src/lib.rs` carries one at line 56, so the trim hid that crate's entire public
+  surface — including the export this slice added — and the guard passed because it read nothing
+
+#### Changed
+
+- `engine extract` refuses bytes that state no format by naming what was **looked for**, without
+  opening a reader that was never asked for. Exit stays **2**, `code()` stays `unsupported`, stdout
+  stays empty — only the **cause** moved
+- `crates/engine-cli/tests/epub_cli.rs` and `rtf_cli.rs` were **strengthened, not deleted**. Both
+  asserted only exit 2 and empty stdout, so both would have stayed green straight through the
+  message change they existed to notice — the vacuous-test trap v2-S9's review named. Both now
+  assert the message text
+- Workspace **0.28.1 → 0.29.0**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the thirty-fourth
+  time, to `sha256:7bb9dae6246c2f11b086c91e93002db8d48b7879de11b24547d166bc0b5b2301`
+
+**`Cargo.lock` gains nothing**, and `cargo tree` gains no crate. The `csv` crate was not evaluated
+on its merits because the branch that reaches it is the wrong one; for the record, its defaults
+violate three standing rules at once — lenient line-ending normalisation, flexible field counts,
+and header inference.
+
+**v2's format row is closed: eight formats read, one argued refusal, and every split was against a
+measurement.** v2 is **not** complete, for the two escalated reasons above.
 
 ### v2-S9.1 — the erasure counters that could wrap, as 0.28.1
 
@@ -56,7 +178,7 @@ slice's.
   are not slides or sheets, was on a plain `+=` in **both** `pptx.rs` and `xlsx.rs`. It reaches the
   artifact as a declared limitation, so it is an A14 count like any other; it was missed because
   this slice's own search was for names ending `_not_read`, and it does not end that way. **A site
-  list is not a search, and a search shaped like the list finds only what the list already knew.**
+  list is not a search, and a search shaped like the list finds what the list already knew.**
 - `engine-pdf`: `extract.rs`'s `unclaimed_tree_items` and `mcids_unbound`, the two of eight
   document-level accumulators still on `+=`. The other six already saturated
 - `engine-office`, `engine-pdf`: every `.count() as u32` feeding an erasure count
@@ -69,12 +191,12 @@ slice's.
   the per-reader tests cannot: a fold that is correct and a reader that stopped calling it would
   leave every one of them passing, and that is precisely how the S9 defect survived. It reads the
   source of all nine `engine-office` files plus `engine-pdf`'s `extract.rs`, and it recognises
-  every spelling of a wrapping accumulation rather than one — `x += 1`, `x  += 1` and `x = x + 1`
-  all wrap identically, and a guard that knew only the first would have called the other two clean.
-  `the_counter_list_is_complete` derives the counter names from the source rather than trusting the
-  list, because the list is what shipped short: deriving it is how `other_kinds` was found.
-  `the_test_region_skip_is_sound` asserts that skipping from each file's first `#[cfg(test)]`
-  really does skip only tests
+  every spelling of a wrapping accumulation rather than one — `x += 1`, `x  += 1` and
+  `x = x + 1` all wrap identically, and a guard that knew only the first would have called the
+  other two clean. `the_counter_list_is_complete` derives the counter names from the source rather
+  than trusting the list, because the list is what shipped short: it is how `other_kinds` was
+  found. `the_test_region_skip_is_sound` asserts that skipping from each file's first
+  `#[cfg(test)]` really does skip only tests
 
 #### Changed
 

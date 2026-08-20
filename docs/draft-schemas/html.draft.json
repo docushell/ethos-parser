@@ -207,8 +207,8 @@
     {
       "artifact_type": "ethos.html.v1",
       "schema_version": "1.0.0",
-      "parser_version": "0.28.1",
-      "profile_sha256": "sha256:8b64243d43920981e4441f7ac174a55189b19c97838f4aefd3a3dabeb113d825",
+      "parser_version": "0.29.0",
+      "profile_sha256": "sha256:7bb9dae6246c2f11b086c91e93002db8d48b7879de11b24547d166bc0b5b2301",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
       "representation_sha256": "sha256:d7c338e10281356dc619444f1599ec93bbdf84fe2a9a4b3bcbd35205b8aa3b5c",
       "html_rule": "html-blocks-v2",

@@ -3,9 +3,25 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats.** S0–S9 are done: this document, the grounding decision in §5,
-`engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB. **S10 (CSV) has
-not started, and v2 is not complete.**
+**v2 reads eight formats, and v2's format row is closed.** S0–S10 are done: this document, the
+grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF
+and EPUB, and **S10 (CSV) as an argued refusal rather than a reader**. Eight formats read, one
+argued refusal, and every split was against a measurement.
+
+**v2 is not complete**, for two reasons neither of which is a format, and both of which are the
+owner's to settle (`15-V2-MILESTONES.md` S10):
+
+1. **The gate sentence's verb.** §2 below and `00-NORTH-STAR.md` both say a DOCX quote and an XLSX
+   cell both **ground**. Grounding a DOCX is refused — decided at v2-S1 as option (b), pinned by a
+   test, listed in `CAPABILITY.md` under **Cannot** — and every slice since has quietly re-read
+   *ground* as **bind**. `15-V2-MILESTONES.md:149` flagged it as unsettled at S1 and no
+   decision-log entry ever settled it.
+2. **"Embedded assets" is a real, undelivered obligation.** §2 restates it as v2's content and
+   `02-ROADMAP.md`'s row names it. It was neither delivered nor descoped, and it is not merely
+   unread but **uncounted**: `docx.rs`'s `UNREAD_TEXT_PART_PREFIXES` does not match
+   `word/media/`, so a DOCX with forty embedded images declares **zero** unread parts for them,
+   while EPUB's `unread_entries` counts every unread entry including media. Reported at S10, not
+   fixed there and not descoped in passing.
 
 §3's law has now been tested against all seven shapes a "page" can take, and the last four are the
 ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's
@@ -277,7 +293,12 @@ and the only one forbidden outright.
   shape of the locator — and left with **S9 as EPUB, CSV**. S9 then measured that EPUB inherits the
   ZIP reader and the XML plumbing and almost nothing else, and left **S10 as CSV** — a format whose
   cost is not a reader but a **detector**, because comma-separated text cannot be told from prose
-  without one.
+  without one. **S10 then measured that the detector cannot be bought at any price this contract
+  can pay**, and shipped the refusal instead: the parse would fabricate nothing, but
+  `SourceIdentity.media_type` would claim a type nobody measured, and `SourceIdentity` has two
+  fields and no room to record that a type was asserted rather than read. That closes the row —
+  eight formats read, one argued refusal, and every split from S4 to S9 made against a
+  measurement.
 - **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are

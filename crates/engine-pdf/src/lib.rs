@@ -89,7 +89,7 @@ pub use classify::{
 };
 pub use document::Document;
 pub use extract::{extract, ExtractArtifact, EXTRACT_ARTIFACT_TYPE, EXTRACT_SCHEMA_VERSION};
-pub use magic::check_pdf_magic;
+pub use magic::{aims_at_the_pdf_reader, check_pdf_magic};
 pub use nodes::{ImageRecord, PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, TextRun};
 pub use overlay::{build_overlay, OVERLAY_ARTIFACT_TYPE};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};

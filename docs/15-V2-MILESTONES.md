@@ -75,7 +75,7 @@ for the next roadmap row, and nothing in it closes v1.
 | **S7** | ODP → representation: draw pages, shapes and blocks | S6 | **done — and the page that was free** |
 | **S8** | RTF → representation: a stream with no container | S7 | **done — and the address with no part** |
 | **S9** | EPUB → representation: the spine, and the page a publisher named | S8 | **done — and §3's law argued rather than applied** |
-| **S10** | CSV → representation | S9 | **not started** |
+| **S10** | CSV — **an argued refusal, not a reader** | S9 | **done — and the format nothing detects** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -1916,40 +1916,201 @@ Two fixtures: `book-spine` consumes every entry it contains and declares **no** 
 
 ---
 
-## S10 — CSV → representation — **not started**
+## S10 — CSV — **done, as an argued refusal.** No reader
 
-- **Goal:** CSV, on the terms the first nine established. **The last format in v2's row.**
+- **Goal, as reached:** the last format in v2's row, and the one this engine **does not read**.
+  S10 ships the **refusal**, argues it, and pins it in a test a later slice must delete on purpose.
 
-- **The row is one format now, and every split was against a measurement.** **A1** — Anydoc's
-  14-format coverage — is v2's horizon, not its checklist. Five measurements produced five splits:
-  a third OOXML format was cheap (S4); the first non-OOXML format was not (S5); ODF's container
-  transfers and its vocabulary does not (S6); ODP spent that measurement and paid for a new
-  structural vocabulary and a new class of silent drop (S7); RTF inherited **nothing** and cost a
-  new scanner plus a change to a core invariant (S8); and **S9 measured that EPUB inherited the
-  container and the XML plumbing and almost nothing else** — a new container chain, a new reading
-  order that is stated rather than implied, a new element vocabulary, and a character-reference
-  rule the shared one could not supply.
+- **The guess this section carried before the slice is overturned.** It read: *"Whoever
+  implements CSV owns that message, and owes an argument for whatever distinguishes a CSV from a
+  text file that happens to contain commas — **probably one the caller supplies rather than one
+  the bytes do**."* The caller-supplied detector is refused, and the reason is this repository's
+  own precedent rather than a new principle.
 
-- **The detector is the whole problem, and S8 handed it here.** A `.csv` has no magic number, no
-  container and no declaration. Comma-separated text cannot be told from prose without a reader,
-  and a detector that guessed would claim **every** comma file — a `.txt`, a log, a letter with a
-  list in it. So today a CSV falls past every predicate and is refused for having no `%PDF-`
-  header, which is the honest answer for bytes nothing recognises. v2-S8 fixed the wrong-cause
-  message for the ZIP *shape*; it deliberately did not invent one for this. **Whoever implements
-  CSV owns that message, and owes an argument for whatever distinguishes a CSV from a text file
-  that happens to contain commas** — probably one the caller supplies rather than one the bytes do.
+### The parse is not the problem. One field is
 
-- **A part-less locator is already a shape the contract has.** v2-S8 built
-  `NativeLocator::names_a_part` and `check_page_less_shape`'s fourth rule for RTF, and a `.csv` is
-  the second format that will need them: one stream, no parts. Neither is RTF-specific.
+A CSV parse of arbitrary text **fabricates nothing**. Every field's `text` would be bytes
+genuinely present in the stream; every record ordinal a true line count, not a rendering; and
+`pages: []` simply **true**, because there is no geometry to invent and no page to invent. None of
+the failure modes this repository was built against is present: not **L30**'s invented pagination,
+not v1-S1's 662 cells the page never drew, not v1.2-S5's loose boxes sold as ink.
 
-- **And §3 is settled for this one before it starts.** CSV genuinely has no pages, so the empty
-  vector is not a refusal here — it is simply true. The row's original note said EPUB *may* have
-  pages and CSV genuinely has none; **S9 answered the first half**, and a `page-list` was refused
-  because a label with no geometry is not a page. Nothing in that argument reaches CSV.
+**Exactly one thing would be false, and it is one field.**
+`SourceIdentity.media_type` (`crates/engine-core/src/representation.rs:83`) would say `text/csv`
+about a file nobody measured to be one. That is an **invented identifier**, which standing rule 4
+forbids — and `SourceIdentity` is `deny_unknown_fields` with **two** fields and **no room to say
+"asserted"** (`representation.rs:79-86`).
 
-- **Not required for v2's gate.** The gate names a DOCX quote and an XLSX cell, and both bind.
-  This row is coverage beyond it.
+So a caller-supplied `--format csv` does not break **A4**'s *rule*. It breaks A4's **guarantee**,
+and the artifact has nowhere to say so. That is not a new argument. It is
+`docs/13-V12-MILESTONES.md:550-555` word for word, written about a caller-supplied *version* at
+v1.2-S5, where it was decisive enough to refuse an entire integration:
+
+> an identity that can be asserted is an identity that can disagree with what it describes
+
+It also settles the follow-on question. *If the caller asserts CSV and the bytes are not CSV, what
+happens?* **The engine cannot tell.** That is definitionally what "no detector" means: there is no
+check that could fire, so a wrong assertion always produces a **successful** artifact, and
+fail-closed is not reachable from inside that design.
+
+**The naive reason is the wrong one and is recorded here so it is not re-derived.** A one-column
+parse of prose is not illegal because it fabricates content — it does not fabricate content. The
+illegal thing is the media-type claim. Getting this backwards sends the next reader at the parse
+instead of at `SourceIdentity`, and builds the wrong slice.
+
+### What the slice actually is: the last wrong-cause refusal, fixed for the shape
+
+Measured at `0.28.1`, before the change:
+
+```
+$ engine extract rows.csv
+engine: unsupported media type: expected a PDF header (%PDF-) at byte 0, found "name," [unsupported]
+exit 2
+```
+
+The exit code was right and the **cause was wrong**, in the exact way v2-S8 described when it fixed
+the ZIP shape. The sentence is in the router's own comment, at
+`crates/engine-cli/src/main.rs` (search for *"the third time"*; line numbers in that file moved
+when this slice added the branch below it):
+
+> This is the third time the same defect has been fixed for a different format, and it is fixed
+> here for the shape rather than for one more member of it.
+
+A `.csv` is not a broken PDF. It is bytes that state **no format at all**, and PDF was merely the
+fallthrough that happened to catch them. S8 fixed the *container* shape; **S10 owns the last one**:
+bytes carrying no signature, no container and no declaration. A prose `.txt` got the same message
+with different quoted bytes, which is how it is known to be a shape rather than a format.
+
+**The fix is a fallthrough refusal, not a CSV detector.**
+`crates/engine-cli/src/main.rs`'s router is a six-term `||` of `is_*` predicates, and anything
+answering false fell to the PDF reader. **No seventh term was added.** What was added is the branch
+that was missing: bytes that are neither office-shaped nor `%PDF-`-headed are refused by naming
+what was **looked for**, without being handed to a reader that was never asked for.
+
+`check_pdf_magic` (`crates/engine-pdf/src/magic.rs`) is **exactly as it was** — its message is
+correct for a caller who explicitly chose the PDF reader. `MAX_HEADER_OFFSET` is still `0` and its
+`debug_assert` is still there: **no signature is scanned for at any offset**.
+
+The one new export is `engine_pdf::aims_at_the_pdf_reader`, and it is not a detector. It decides
+nothing about what bytes *are*; it answers one routing question — *is a message about a PDF header
+the honest cause for these bytes* — and it is true in exactly two cases: the bytes start with the
+header, or they are a proper prefix of it. Frozen in `PUBLIC-API.md` under Format detection.
+
+### The two edges, tested rather than assumed
+
+1. **A truncated PDF keeps the PDF-specific message, down to the zero-byte file.** Bytes that are
+   a proper prefix of `%PDF-` **did** aim at this reader — a PDF cut short in transit is a PDF
+   whose length is the story — so *"file is 3 bytes, shorter than the 5-byte PDF header"* is its
+   honest cause. Displacing it would be the same wrong-cause defect pointing the other way. A
+   four-byte `%PDX` is **not** a prefix and takes the no-format branch.
+
+2. **`engine classify` did not move with `engine extract`, and the divergence is named here.**
+   `classify` never reaches the office router at all — it opens the file with the PDF reader
+   directly — so a `.csv` handed to it is still refused for having no `%PDF-` header. That was left
+   deliberately: `classify` **is** the PDF classifier, and a caller who ran it named the PDF reader
+   by naming the subcommand, which is the same argument that keeps the truncated-PDF message where
+   it is. The divergence is pinned by
+   `classify_still_answers_as_the_pdf_classifier_and_the_divergence_is_named` so it cannot change in
+   either direction without a note. **MCP's `extract` has the same shape and is likewise unmoved.**
+
+### The argument, mechanized
+
+The refusal's honesty is not a sentence. It is **one test**:
+
+> A `.csv` and a **letter containing a shopping list** receive **byte-identical stderr**.
+
+That can only pass if nothing sniffed, and it is the assertion no detector-shaped implementation
+can satisfy. It is written from both directions in
+`crates/engine-cli/tests/no_format_cli.rs`: prose with no commas, prose **with** commas, a log line
+with a **uniform comma count** — the one property a naive CSV detector is usually built on — and
+the `.csv` itself. Each drives the real binary over a real file's own bytes.
+
+The refusal names what was **looked for** — a ZIP local file header, an RTF brace group, a PDF
+header — and names **no format it did not measure**. `%PDF-` is absent from its text on purpose.
+
+**The two existing pins were strengthened rather than deleted.**
+`crates/engine-cli/tests/epub_cli.rs` and `crates/engine-cli/tests/rtf_cli.rs` both asserted only
+exit 2 and empty stdout and said nothing about stderr — so both would have stayed green straight
+through the message change they existed to notice. That is the trap v2-S9's review named as the
+vacuous test, and both now assert the message text.
+
+### The reopening preconditions, so a later slice inherits a decision rather than a mood
+
+A refusal without a stated reopening condition is a punt. There are exactly two, and **neither is
+met at HEAD, neither is a day's work, and neither was started**:
+
+1. **`SourceIdentity` can record asserted-vs-measured.** That is a `REPRESENTATION_SCHEMA_VERSION`
+   move — currently `"0.5.0"` at `crates/engine-core/src/representation.rs:72` — and therefore a
+   **contract slice with its own scope doc**, not a format slice.
+
+2. **Or a measured predicate with a measured false-positive rate**: a real corpus of prose and
+   real-world CSV in `fixtures/`, with the rate stated the way `docs/table-gate-v1.md` states 64‰.
+   A predicate whose error rate nobody measured is exactly the "detector that guessed" this slice
+   refused to write.
+
+### Two questions S10 escalates and does not answer
+
+Both are the owner's, in the shape decision #10 already shows. Neither is decided here.
+
+1. **The v2 gate's verb.** `docs/00-NORTH-STAR.md:93` and `docs/02-ROADMAP.md:20` both say a DOCX
+   quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
+   option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has
+   quietly re-read *ground* as **bind** — `:54` says *"the v2 gate is still DOCX + XLSX, and both
+   still **bind**"*, and the CHANGELOG's v2-S9 entry says it again — while `:149` flagged the
+   question as unsettled **at S1**: *"the gate sentence needs re-reading, or the gate needs (a)."*
+   It was never settled by a decision-log entry. Amending it is the owner's.
+
+2. **"Embedded assets" is a real, undelivered v2 obligation.** It is in the roadmap row
+   (`02-ROADMAP.md:20`) and restated as v2's content (`14-V2-SCOPE.md` §2, the "Anydoc-class
+   formats" sentence). A repo-wide grep finds
+   **three hits total** and nothing else: no A-row in `06-STEAL-REFUSE.md`, no `CAPABILITY.md` row
+   in either table, no scope section, no acceptance test. It was neither delivered nor descoped —
+   it fell out of the conversation after S2. And it is not merely unread but **uncounted**:
+   `crates/engine-office/src/docx.rs:51-57` limits `UNREAD_TEXT_PART_PREFIXES` to
+   header/footer/footnotes/endnotes/comments, so `word/media/image1.png` lands in **no A14 bucket
+   at all** — a DOCX with forty embedded images declares zero unread parts for them, while EPUB's
+   `unread_entries` (`epub.rs:348-353`) counts every unread entry **including media**. **Reported
+   here, not fixed here, and not descoped in passing.**
+
+### One observation the next slice inherits
+
+**No office reader has ever been fuzzed.** `fuzz/` targets only `engine-core` and `engine-pdf`.
+v2-S9's first adversarial finding was a percent-decoder **panic** that survived to review precisely
+because office code is unfuzzed. Not S10's job — S10 added no reader — and it is written down here
+so the next slice does not have to rediscover it.
+
+### What S10 may and may not say about v2
+
+**S10 closes v2's format row. It does not close v2.**
+
+> **v2's format row is closed: eight formats read, one argued refusal, and every split was against
+> a measurement.**
+
+`CAPABILITY.md`'s `**"v2 is complete"** | not yet` row **stays**, with its reason now naming the two
+escalated items above rather than *"S10 has not started"*.
+
+- **Acceptance — all met:**
+  - [x] A `.csv` and a **letter containing a shopping list** produce **byte-identical stderr**,
+        asserted in a test that reads each fixture's own bytes
+  - [x] Prose with no commas, prose with commas, and a uniform-comma log line are each refused in
+        those same words
+  - [x] The refusal names what was looked for and **does not** mention `%PDF-`
+  - [x] A **truncated PDF**, including the 0-byte case, keeps the PDF-specific message; `%PDX`
+        does not
+  - [x] `epub_cli.rs` and `rtf_cli.rs` now assert **stderr text**, and were strengthened rather
+        than deleted
+  - [x] Exit stays **2**, `code()` stays `unsupported`, stdout stays empty
+  - [x] No `is_csv`, no `text/csv`, no `.extension()`, `.file_name()` or `.file_stem()` in any
+        shipping source — pinned by a source walker, not by a grep in a commit message
+  - [x] `Cargo.lock` gains **no** crate. No `csv` crate: its defaults violate three standing rules
+        at once — lenient line-ending normalisation, flexible field counts, and header inference
+  - [x] Still **nine** profiles, still mutually distinct; no `Profile::csv_v0`; the PDF hash moved
+        on `parser_version` **alone**; `capabilities.tables` false
+  - [x] Workspace **0.29.0** across every literal site; both SDK suites run by hand and pass
+  - [x] `CAPABILITY.md` body **0.29.0**; the CSV row is a refusal with named reopening
+        preconditions; ODP and RTF **Cannot** rows intact
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `GATE_PERMILLE` still 489;
+        `irs-form-1040-2025` still 0 tables; fabrication still 0; the 0.489 chase still parked
 
 - **Depends on:** S9.
 

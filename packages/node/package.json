@@ -1,6 +1,6 @@
 {
   "name": "ethos-engine",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "description": "A thin Node surface over the ethos-engine CLI. Locators are minted by the engine, never composed by a caller.",
   "license": "Apache-2.0",
   "author": "ethos-engine maintainers",

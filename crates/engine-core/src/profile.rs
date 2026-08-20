@@ -1707,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.28.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.29.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -1985,11 +1985,28 @@ mod tests {
              `engine-pdf`'s eight document-level accumulators. `parser_version` is part of \
              identity precisely so that a build which counts differently is a different profile — \
              an artifact produced before this bump and one produced after can declare different \
-             numbers for the same bytes, and a consumer must be able to tell them apart."
+             numbers for the same bytes, and a consumer must be able to tell them apart.\n\n\
+             Moved a THIRTY-FOURTH time at v2-S10 (0.29.0) on `parser_version` ALONE, and it is \
+             the only thing that moved, because the slice added NO READER. There is no \
+             `Profile::csv_v0`; there are still NINE profiles and this is still the only one with \
+             a page. v2-S10 is a REFUSAL: bytes that state no format — no signature, no container, \
+             no declaration — are now refused by naming what was looked for, instead of being \
+             handed to this profile's reader and told they lack a `%PDF-` header. That message was \
+             fail-closed and named the WRONG CAUSE, which is the defect v2-S6 fixed for an `.ods`, \
+             v2-S8 for an `.rtf` and for the ZIP shape, and this slice for the last member of that \
+             shape.\n\n\
+             The reason there is no CSV reader is one field rather than the parse. A CSV parse of \
+             arbitrary text fabricates NOTHING — every field's text is bytes genuinely present, \
+             every record ordinal a true line count, and `pages` empty is simply true. What would \
+             be false is `SourceIdentity.media_type` naming a CSV media type for a file nobody \
+             measured to be one, and `SourceIdentity` is `deny_unknown_fields` with two fields and \
+             no room to record that a type was ASSERTED rather than READ. \
+             `docs/13-V12-MILESTONES.md` settled that at v1.2-S5: an identity that can be asserted \
+             is an identity that can disagree with what it describes."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8b64243d43920981e4441f7ac174a55189b19c97838f4aefd3a3dabeb113d825"
+            "sha256:7bb9dae6246c2f11b086c91e93002db8d48b7879de11b24547d166bc0b5b2301"
         );
     }
 

@@ -208,19 +208,37 @@ fn an_epub_reads_and_is_still_not_opendocument() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// **CSV is still S10**, and this slice did not sniff commas to change that.
+/// **CSV is still refused**, and this slice did not sniff commas to change that.
+///
+/// **Strengthened at v2-S10, not replaced.** As written at S9 this asserted exit 2 and empty
+/// stdout and said nothing about stderr — so when S10 moved the message from *"expected a PDF
+/// header"* to the no-format refusal, this test would have stayed green through the change it
+/// exists to notice. A guard that cannot fail is not a guard; the message is now part of it.
 #[test]
 fn a_csv_still_does_not_extract() {
     let dir = tempdir();
     let csv = dir.join("rows.csv");
     std::fs::write(&csv, b"a,b,c\n1,2,3\n").expect("write the file");
-    let (code, stdout, _) = extract(&csv);
+    let (code, stdout, stderr) = extract(&csv);
     assert_eq!(
         code, 2,
         "comma-separated text cannot be told from prose without a reader, and a detector that \
          guessed would claim every comma file"
     );
     assert!(stdout.is_empty(), "a refusal prints no artifact");
+    assert!(
+        stderr.contains("these bytes state no format this engine reads"),
+        "v2-S10: the cause is that the bytes state no format, not that a PDF header is missing — \
+         {stderr}"
+    );
+    assert!(
+        !stderr.contains("%PDF-"),
+        "a `.csv` never aimed at the PDF reader: {stderr}"
+    );
+    assert!(
+        !stderr.contains("CSV") && !stderr.contains("comma"),
+        "and the refusal names no format it did not measure: {stderr}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

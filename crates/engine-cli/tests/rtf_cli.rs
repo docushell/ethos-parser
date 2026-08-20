@@ -169,21 +169,34 @@ fn a_near_miss_is_refused_without_naming_a_pdf_header() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// **CSV is still S10**, and it is not told it is something it is not.
+/// **CSV is refused**, and it is not told it is something it is not.
 ///
 /// **The EPUB half of this test moved to `epub_cli.rs` at v2-S9**, which reads it. What stays is
 /// the format nothing in this engine speaks: a `.csv` cannot be told from prose without a reader,
-/// so it takes the true-unknown-bytes path — recorded in `docs/15-V2-MILESTONES.md` S10 rather
-/// than guessed at here, because a detector that sniffed commas would claim every comma file.
+/// so it takes the true-unknown-bytes path — argued in `docs/15-V2-MILESTONES.md` S10 rather than
+/// guessed at here, because a detector that sniffed commas would claim every comma file.
+///
+/// **Strengthened at v2-S10, not replaced.** The CSV half asserted exit 2 and empty stdout and
+/// nothing about stderr, so it would have stayed green straight through the message change it was
+/// written to notice — the same trap as `epub_cli.rs`'s. The `.odg` half beside it already
+/// asserted its message, which is what made the gap visible.
 #[test]
 fn the_formats_this_slice_did_not_implement_are_still_refused() {
     let dir = tempdir();
 
     let csv = dir.join("rows.csv");
     std::fs::write(&csv, b"a,b,c\n1,2,3\n").expect("write the file");
-    let (code, stdout, _) = extract(&csv);
+    let (code, stdout, stderr) = extract(&csv);
     assert_eq!(code, 2, "a CSV has no reader yet");
     assert!(stdout.is_empty());
+    assert!(
+        stderr.contains("these bytes state no format this engine reads"),
+        "v2-S10 gave the true-unknown-bytes path its own cause: {stderr}"
+    );
+    assert!(
+        !stderr.contains("%PDF-"),
+        "and it is no longer a missing PDF header: {stderr}"
+    );
 
     // And an `.odg` is still refused as OpenDocument, by name — untouched by this slice.
     let odg = dir.join("drawing.odg");

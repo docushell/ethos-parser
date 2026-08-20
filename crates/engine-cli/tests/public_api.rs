@@ -408,6 +408,12 @@ const PDF: &[&str] = &[
     "SynthesisReason",
     "SynthesizedChar",
     "TextRun",
+    // v2-S10. Two questions, and the difference is the slice: `check_pdf_magic` answers "is
+    // this a PDF" and refuses everything that is not, while `aims_at_the_pdf_reader` answers
+    // "is a message about a PDF header the honest cause for these bytes". A truncated PDF is
+    // where they part company, and `engine extract`'s fallthrough is the caller that needs the
+    // second one — bytes that state no format are refused without opening a reader at all.
+    "aims_at_the_pdf_reader",
     "check_pdf_magic",
     "classify",
     "exit",

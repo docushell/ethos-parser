@@ -135,7 +135,7 @@ Do not persist it as a record or feed it to a fingerprint — `docs/01-CONTRACT.
 | Stages | `classify`, `extract`, `to_representation`, `build_overlay` |
 | Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord` |
 | Reason vocabulary | `OcrNeedReason`, `LayoutComplexityReason` |
-| Format detection | `check_pdf_magic` |
+| Format detection | `check_pdf_magic` · `aims_at_the_pdf_reader` |
 | Modules | `exit` (`SIMPLE`, `NEEDS_ATTENTION`, `COULD_NOT_READ`, `exit_code`) · `limitations` (limitation-code constants and builders) |
 | Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `PROCESSOR_NAME`, `CRATE_NAME` |
 
