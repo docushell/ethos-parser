@@ -3,7 +3,8 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats.** S0–S9 are **done**; **S10 has not started**. `engine-office` is
+**v2 reads eight formats, and v2's format row is closed.** S0–S10 are **done** — eight formats
+read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
 engine *can* count would become a page, ODT is the one whose file **contains an actual page
@@ -52,7 +53,8 @@ one could not supply. CSV inherits none of that — it has no container and, wor
 which is the whole of what S10 has to argue.
 
 **The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS, ODP, RTF and EPUB are coverage
-beyond it. v2 is **not complete**: S10 has not started, and no slice here closes v1.
+beyond it. v2 is **not complete**, and the two reasons are named in S10 and are the **owner's**:
+the gate sentence's verb, and the undelivered *embedded assets* obligation. No slice here closes v1.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -75,7 +77,8 @@ for the next roadmap row, and nothing in it closes v1.
 | **S7** | ODP → representation: draw pages, shapes and blocks | S6 | **done — and the page that was free** |
 | **S8** | RTF → representation: a stream with no container | S7 | **done — and the address with no part** |
 | **S9** | EPUB → representation: the spine, and the page a publisher named | S8 | **done — and §3's law argued rather than applied** |
-| **S10** | CSV — **an argued refusal, not a reader** | S9 | **done — and the format nothing detects** |
+| **S9.1** | The erasure counters that could wrap — a **repair**, not a format | S9 | **done — and a site list is not a search** |
+| **S10** | CSV — **an argued refusal, not a reader** | S9.1 | **done — and the format nothing detects** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -2064,7 +2067,8 @@ Both are the owner's, in the shape decision #10 already shows. Neither is decide
    (`02-ROADMAP.md:20`) and restated as v2's content (`14-V2-SCOPE.md` §2, the "Anydoc-class
    formats" sentence). A repo-wide grep finds
    **three hits total** and nothing else: no A-row in `06-STEAL-REFUSE.md`, no `CAPABILITY.md` row
-   in either table, no scope section, no acceptance test. It was neither delivered nor descoped —
+   in either table, no scope section, no acceptance test. (That count was taken *before* this
+   slice; S10 adds the `CAPABILITY.md` row naming it, so a grep run after this slice finds four.) It was neither delivered nor descoped —
    it fell out of the conversation after S2. And it is not merely unread but **uncounted**:
    `crates/engine-office/src/docx.rs:51-57` limits `UNREAD_TEXT_PART_PREFIXES` to
    header/footer/footnotes/endnotes/comments, so `word/media/image1.png` lands in **no A14 bucket
@@ -2106,7 +2110,9 @@ escalated items above rather than *"S10 has not started"*.
         at once — lenient line-ending normalisation, flexible field counts, and header inference
   - [x] Still **nine** profiles, still mutually distinct; no `Profile::csv_v0`; the PDF hash moved
         on `parser_version` **alone**; `capabilities.tables` false
-  - [x] Workspace **0.29.0** across every literal site; both SDK suites run by hand and pass
+  - [x] Workspace **0.29.0** across every literal site **the release touches**; both SDK suites
+        run by hand and pass. `fuzz/Cargo.lock` is **not** among them and still names an older
+        version — it sits outside the workspace lock and no `--locked` job reads it
   - [x] `CAPABILITY.md` body **0.29.0**; the CSV row is a refusal with named reopening
         preconditions; ODP and RTF **Cannot** rows intact
   - [x] Oracle still 12 / 3; table gate still **64‰**; `GATE_PERMILLE` still 489;

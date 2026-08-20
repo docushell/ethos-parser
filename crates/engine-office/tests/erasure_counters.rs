@@ -79,12 +79,12 @@ const SATURATING: [&str; 2] = ["declare(", "saturating_add("];
 
 /// Where each file's shipping half ends.
 ///
-/// The skip is **asserted sound rather than assumed**, and that is not pedantry: the sibling guard
-/// in `engine-cli/tests/no_format_cli.rs` shipped with exactly this shape and was wrong, because
-/// `engine-pdf/src/lib.rs` carries a `#[cfg(test)]` at line 56 and the skip therefore hid that
-/// crate's whole public surface. For these nine files the shape holds — one `#[cfg(test)]`, at the
-/// end, introducing nothing but `mod tests` — and [`the_test_region_skip_is_sound`] fails the
-/// moment that stops being true.
+/// The skip is **asserted sound rather than assumed**, and that is not pedantry. This shape is
+/// wrong wherever a file's first `#[cfg(test)]` is not its last: `crates/engine-pdf/src/lib.rs`
+/// carries one well above its `pub use` block, so a scan that trimmed there would read that
+/// crate's module header and call the rest clean. For these nine the shape holds — one
+/// `#[cfg(test)]`, at the end, introducing nothing but `mod tests` — and
+/// [`the_test_region_skip_is_sound`] fails the moment that stops being true.
 fn shipping_half(source: &str) -> &str {
     source
         .split_once("#[cfg(test)]")

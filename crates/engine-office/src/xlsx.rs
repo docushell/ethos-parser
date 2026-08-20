@@ -1307,6 +1307,41 @@ mod tests {
         assert_eq!(others, 1, "declared, not silently dropped");
     }
 
+    /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
+    ///
+    /// `other_kinds` is this reader's A14 count — sheet-list entries that are not worksheets — and
+    /// it reaches the artifact as a declared limitation. It was the site v2-S9.1 first missed,
+    /// because that slice searched for names ending `_not_read` and this one does not end that
+    /// way. A site list is not a search.
+    #[test]
+    fn a_workbook_erasure_count_saturates_rather_than_wrapping() {
+        let sheets = vec![SheetRef {
+            name: "Chart".into(),
+            rel_id: "rId1".into(),
+        }];
+        let rels = vec![Relationship {
+            id: "rId1".into(),
+            kind: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chartsheet"
+                .into(),
+            target: "chartsheets/sheet1.xml".into(),
+            external: false,
+        }];
+        let (_, others) = resolve_sheets(&sheets, &rels).expect("resolves");
+        assert_eq!(others, 1, "the chartsheet is counted");
+
+        // A workbook's sheet list is bounded by nothing but its own `<sheets>` element, so the
+        // fold this count goes through must report the ceiling rather than a small number.
+        let mut folded = u32::MAX - 1;
+        for _ in 0..3 {
+            folded = crate::declare(folded, others);
+        }
+        assert_eq!(
+            folded,
+            u32::MAX,
+            "the ceiling, not the small number a wrap would report"
+        );
+    }
+
     #[test]
     fn a_sheet_name_keeps_the_entity_the_workbook_wrote() {
         let sheets = read_sheets(
