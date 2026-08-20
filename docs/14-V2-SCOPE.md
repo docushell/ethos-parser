@@ -16,12 +16,15 @@ owner's to settle (`15-V2-MILESTONES.md` S10):
    test, listed in `CAPABILITY.md` under **Cannot** — and every slice since has quietly re-read
    *ground* as **bind**. `15-V2-MILESTONES.md`'s S1 open-questions table — the **gate wording**
    row — flagged it as unsettled at S1, and no decision-log entry ever settled it.
-2. **"Embedded assets" is a real, undelivered obligation.** §2 restates it as v2's content and
-   `02-ROADMAP.md`'s row names it. It was neither delivered nor descoped, and it is not merely
-   unread but **uncounted**: `docx.rs`'s `UNREAD_TEXT_PART_PREFIXES` does not match
-   `word/media/`, so a DOCX with forty embedded images declares **zero** unread parts for them,
-   while EPUB's `unread_entries` counts every unread entry including media. Reported at S10, not
-   fixed there and not descoped in passing.
+2. **"Embedded assets" — counted at v2-S11, and the rest is the owner's.** §2 restates it as v2's
+   content and `02-ROADMAP.md`'s row names it. Until v2-S11 it was neither delivered nor descoped,
+   and not merely unread but **uncounted**: `docx.rs`'s `UNREAD_TEXT_PART_PREFIXES` did not match
+   `word/media/`, so a DOCX with forty embedded images declared **zero** unread parts for them,
+   while EPUB's `unread_entries` counts every unread entry including media. Reported at S10 and
+   **fixed at S11**, under a second code rather than a widened first one — `office-parts-not-read`'s
+   message says its parts *carry text*, and a PNG does not. What S11 does **not** settle is whether
+   the roadmap's word meant *counted* or *read*: no office asset is read, decoded or emitted as a
+   node, and `engine-pdf`'s `ImageRecord` has no office counterpart. That half is the owner's.
 
 §3's law has now been tested against all seven shapes a "page" can take, and the last four are the
 ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's

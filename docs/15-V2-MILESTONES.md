@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0–S10.2 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0–S11 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -54,7 +54,8 @@ which is the whole of what S10 has to argue.
 
 **The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS, ODP, RTF and EPUB are coverage
 beyond it. v2 is **not complete**, and the two reasons are named in S10 and are the **owner's**:
-the gate sentence's verb, and the undelivered *embedded assets* obligation. No slice here closes v1.
+the gate sentence's verb, and — since v2-S11 counted every embedded asset without reading one —
+whether *"embedded assets"* was ever asking for more than the count. No slice here closes v1.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -81,6 +82,7 @@ for the next roadmap row, and nothing in it closes v1.
 | **S10** | CSV — **an argued refusal, not a reader** | S9.1 | **done — and the format nothing detects** |
 | **S10.1** | The seven claims v2-S9.1 and v2-S10 left false — a **doc repair**, no version | S10 | **done — and it left itself out of this table** |
 | **S10.2** | The docs that stopped describing the code — a **doc repair** at 0.29.1 | S10.1 | **done — and a site list is still not a search** |
+| **S11** | **Embedded assets, counted** — the last undelivered v2 content obligation | S10.2 | **done — and a second bucket rather than a wider one** |
 
 **The order is deliberate.** S1 is a decision with no parser, ahead of the reader whose output
 depends on it — the shape v1.2-S0 used for the handle law, and for the same reason: *so the first
@@ -2243,6 +2245,123 @@ owner's: the gate sentence's verb, and the undelivered *embedded assets* obligat
   - [x] No git tag
 
 - **Depends on:** S10.1.
+
+---
+
+## S11 — embedded assets, counted — **done**, as 0.30.0
+
+**The measurement, first.** `02-ROADMAP.md`'s v2 row names v2's content as *"shared IR + one
+serializer · embedded assets"* and `14-V2-SCOPE.md` §2 restates it. v2-S2 listed embedded assets
+**Out** for that slice and no later slice picked them up, so they were neither delivered nor
+descoped — they fell out of the conversation after S2 and stayed out for nine slices.
+
+**That alone would be an omission. What made it a defect is A14.** *If something is removed, the
+artifact says so and says how much.* Five readers of eight had counted their media since the slice
+that added each of them:
+
+| Reader | Counted media before this slice? | How |
+| --- | --- | --- |
+| ODT / ODS / ODP | **yes** | `odt::unread_entries` counts every non-packaging entry, and the limitation prose already said *"pictures or an embedded object"* |
+| EPUB | **yes** | `epub::unread_entries` counts every entry not read |
+| RTF | **yes** | `\pict` is a destination, counted in `destinations_not_read` |
+| **DOCX / XLSX / PPTX** | **NO** | `unread_text_parts` is prefix-matched to header/footer/footnotes/endnotes/comments, charts/drawings/comments/pivotCache, and notes/masters/layouts/charts/diagrams. `word/media/image1.png` matched **nothing** |
+
+So a DOCX with forty embedded images declared **zero** parts not read for them. Not under-counted —
+**uncounted**, in no bucket at all.
+
+### It was also unexercised, so step one was a fixture and a failing test
+
+**None of the three OOXML fixtures contained a single media entry.** The blindness could not have
+been noticed by anything in the suite, which is the more interesting half of the finding: a gap that
+no fixture reaches is a gap no amount of test-running reports.
+
+So the fixtures gained media **before** any reader changed — `make_fixtures.py` authors them, and
+the counts are deliberately three different numbers (DOCX **2**, XLSX **1**, PPTX **3**) so a reader
+returning another reader's count is caught by the number alone. `crates/engine-office/tests/embedded_assets.rs`
+then asserted the declared count against the un-fixed readers and **four of its six tests failed**,
+each on the same fact: the count did not move. The two that passed are the two asserting the *text*
+bucket was unchanged, which is the baseline the fix had to preserve.
+
+**A correction to the brief's own measurement.** It named `fixtures/office/sheet-unread-parts` as
+the XLSX fixture. That fixture is an **`.ods`**; the XLSX one is `workbook-unread-parts`. Media was
+added to the three OOXML fixtures, which are `unread-parts`, `workbook-unread-parts` and
+`deck-unread-parts`.
+
+### The decision: a second bucket, and why the other two lose
+
+`OFFICE_PARTS_NOT_READ` was the only office bucket, and its OOXML message reads *"N part(s) of this
+package **carry text** and were not read — headers, footers, footnotes, endnotes or comments"*.
+
+**(a) A second bucket — CHOSEN.** A new code, `office-embedded-parts-not-read`, counted per OOXML
+reader beside the text count. Costs one constant, one function per reader, three limitation sites
+and a doc row.
+
+- It is **the only option under which both messages stay true of every file they fire on**. That is
+  not a tidiness argument: a caller reads *"parts carry text and were not read"* and goes looking
+  for words. Told that about a PNG, they look for words that are not there and cannot be.
+- It answers **A14's *how much*, per kind**. Forty images and forty unread headers are different
+  facts with different remedies, and one number cannot say both. A caller who can tell them apart
+  knows whether re-reading the document could ever surface the missing thing.
+- It matches what ODF already tells a caller **in prose** — *"pictures or an embedded object"* —
+  so the crate now says the same thing everywhere, in a machine-readable place in three readers and
+  in prose in the other five.
+
+**(b) Rescope the existing bucket** to "parts not read", drop *"carry text"*, count both kinds in
+one number. Cheaper by one constant. **It loses on the same ground v2-S9.1 was held to**: a
+counter's *meaning* changing in place, under a name that did not move. Every artifact ever produced
+carries `office-parts-not-read` meaning *text parts*; after (b) the same code on the same package
+would mean something else, with nothing on the wire to say which. And it **costs a caller the
+ability to tell forty images from forty unread headers** — permanently, because the two are
+summed and cannot be separated afterwards.
+
+**(c) Descope embedded assets from v2**, with a `CAPABILITY.md` **Cannot** row. **It loses because
+the argument it needs cannot be made.** (c) requires arguing that a media part is not an erasure —
+and ODF, EPUB and RTF all count theirs, so the repository would be asserting that the same fact
+about the same package is an erasure in five readers and not in three. It would also have required
+striking *"embedded assets"* from `02-ROADMAP.md`'s v2 row in the same commit, which is an
+owner-facing change. Not taken, and the roadmap row is untouched.
+
+### What this slice is not, stated rather than implied
+
+- **No asset byte is read, decoded, hashed or emitted.** `ImageRecord` stays in
+  `engine-pdf/src/nodes.rs`; `engine-core` learns nothing about images.
+- **No node for a media part.** A `word/media/image1.png` has no text, no address a citation could
+  land on and no geometry. A node for one would be a node nobody can cite.
+- **`pages` stays `[]`.** Nothing here touches §3.
+- **No new detection.** A media part is identified by **where the package puts it**, which the
+  package itself states — never by sniffing its bytes and never by its extension (**A4**). An
+  extensionless entry under `word/media/` is counted; a `.png` somewhere else is not.
+- **`xl/drawings/` stays in the text bucket.** A drawing part is XML that positions a picture and
+  carries its title and description; the picture is `xl/media/`. Two erasures, two places, and the
+  package is the one that separates them.
+
+### The half this does not discharge, and it is the owner's
+
+The roadmap says *"embedded assets"* and this slice makes them **counted**. It does not make them
+**read**. Whether that row was ever asking for more than a count is not this repository's to decide,
+and the shape of the question is concrete rather than philosophical: `engine-pdf` emits an
+`ImageRecord` for a PDF image, and no office reader emits anything comparable. Restated at S12 with
+the gate-verb question, in the shape decision #10 already shows.
+
+- **Acceptance — all met:**
+  - [x] The three OOXML fixtures gained media parts, authored by `make_fixtures.py`, and a test
+        **asserted the pre-fix count and watched it fail to move** before any reader changed
+  - [x] Both limitation messages are true of every file that triggers them; a test asserts no
+        message says *"carry text"* about an embedded asset
+  - [x] ODF, EPUB and RTF are unchanged — verified by building the previous commit in an isolated
+        worktree and comparing **whole artifacts** at the same `parser_version`: all ten of their
+        fixtures byte-identical, which is stronger than the counts
+  - [x] One test per OOXML reader that a package with media declares it, and one that a package
+        without media declares **nothing** — the code absent rather than present reading zero
+  - [x] The three fixtures with **no** media — `simple-paragraphs`, `workbook-cells`,
+        `deck-slides` — are byte-identical, because the media fixtures derive their content-types
+        part rather than widening the shared one
+  - [x] Workspace **0.30.0**; all nine profile hashes move on `parser_version` alone and stay
+        mutually distinct; both SDK suites run by hand and pass
+  - [x] Oracle still 12 / 3; table gate still **64‰**; `GATE_PERMILLE` still 489; fabrication 0
+  - [x] No git tag
+
+- **Depends on:** S10.2.
 
 ---
 

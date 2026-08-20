@@ -7,7 +7,87 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; its docs repaired at 0.29.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0
+
+### v2-S11 — embedded assets, counted, as 0.30.0
+
+**The last undelivered v2 content obligation, and it was an A14 violation rather than a missing
+feature.** `02-ROADMAP.md`'s v2 row names *embedded assets* as v2 content. v2-S2 listed them **Out**
+for that slice and nine slices passed without anyone picking them up — neither delivered nor
+descoped.
+
+They were not merely unread. **In three readers of eight they were uncounted.** `word/media/`,
+`xl/media/` and `ppt/media/` matched no A14 bucket at all, so a DOCX with forty embedded images
+declared **zero** parts not read for them — while ODT, ODS, ODP, RTF and EPUB had counted theirs
+since the slice that added each reader. A14 is *if something is removed, the artifact says so and
+says how much*, and for three formats it said nothing.
+
+#### The gap was also unexercised, so the fixtures came first
+
+**None of the three OOXML fixtures held a single media entry**, so nothing in the suite could have
+noticed. That is the more interesting half: a gap no fixture reaches is a gap no amount of
+test-running reports.
+
+`fixtures/office/make_fixtures.py` now authors media into `unread-parts` (**2**),
+`workbook-unread-parts` (**1**) and `deck-unread-parts` (**3**) — three different numbers on
+purpose, so a reader returning another reader's count is caught by the number alone.
+`crates/engine-office/tests/embedded_assets.rs` then asserted the declared count against the
+**un-fixed** readers: **four of its six tests failed**, each on the same fact, that the count did
+not move. The two that passed assert the *text* bucket is unchanged, which is the baseline the fix
+had to preserve.
+
+The three fixtures with no media — `simple-paragraphs`, `workbook-cells`, `deck-slides` — are
+**byte-identical**, because the media fixtures derive a content-types part rather than widening the
+shared constant.
+
+#### Added
+
+- **`assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ`** — `office-embedded-parts-not-read`. A
+  **second** office bucket, not a wider first one.
+
+  `office-parts-not-read`'s message says its parts *"carry text"*. A PNG carries none, so adding
+  `word/media/` to that prefix list would have made a shipped sentence false about every package it
+  fires on — a counter's **meaning** changing in place under a name that did not move, which is
+  what v2-S9.1 was explicitly forbidden from doing. Both messages are now true of every file that
+  triggers them, and a test asserts that neither says *"carry text"* about an asset.
+
+  It also answers A14's *how much* **per kind**. Forty images and forty unread headers are
+  different facts with different remedies; one number cannot say both, and once summed they cannot
+  be separated again.
+
+- **`docx::unread_embedded_parts`, `xlsx::unread_embedded_parts`, `pptx::unread_embedded_parts`**,
+  folding through `declared_len` like every other A14 count in the crate.
+
+#### Not in this slice, stated rather than implied
+
+- **No asset byte is read, decoded, hashed or emitted.** `ImageRecord` stays in `engine-pdf`;
+  `engine-core` learns nothing about images.
+- **No node for a media part** — it has no text, no address a citation could bind to and no
+  geometry, so a node for one would be a node nobody can cite.
+- **No new detection.** A media part is identified by **where the package puts it**, which the
+  package itself states — never by sniffing bytes and never by an extension (**A4**). An
+  extensionless entry under `word/media/` is counted; a `.png` elsewhere is not.
+- **`xl/drawings/` stays in the text bucket**: a drawing part is XML that positions a picture and
+  carries its title. The picture is `xl/media/`. Two erasures, and the package separates them.
+- **`pages` stays `[]`**, `REPRESENTATION_SCHEMA_VERSION` stays `0.5.0`, no locator moved, and
+  `Cargo.lock` gains nothing.
+
+#### Unchanged, and checked rather than asserted
+
+ODF, EPUB and RTF counts are unchanged — verified by building the previous commit in an **isolated
+worktree** and comparing **whole artifacts** at the same `parser_version`: all ten of those
+fixtures byte-identical, which is stronger than comparing the counts. On the three OOXML fixtures
+the only difference old-to-new is the added limitation and the fingerprint that follows it.
+
+- Workspace **0.29.1 → 0.30.0**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the thirty-sixth
+  time, to `sha256:fda6a4b157569fc0d3ae5ba597a7599338fee7e96c8715fa5f95c2ce57dd3a90`
+
+**v2 is not complete.** S11 discharges the A14 half of the embedded-assets obligation and names the
+other half rather than deciding it: no office asset is *read*, `engine-pdf`'s `ImageRecord` has no
+office counterpart, and whether the roadmap's word meant *counted* or *read* is the owner's. The
+gate sentence's verb is still unsettled.
+
 
 ### v2-S10.2 — the docs that stopped describing the code, as 0.29.1
 

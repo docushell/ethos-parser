@@ -149,6 +149,36 @@ pub struct SlideContent {
     pub alternatives_not_read: u32,
 }
 
+/// Parts that hold an **embedded asset** and that no slice reads, matched by prefix.
+///
+/// A presentation carries more of these than any other OOXML format, and `ppt/media/` is where
+/// every one of them lands — the picture behind a slide, the audio on a transition, the video a
+/// deck plays. `ppt/embeddings/` holds an embedded workbook or document.
+///
+/// **Prefix, and the package's own layout, is the whole of the identification** (Anydoc's **A4**).
+/// No byte is sniffed and no extension is read: OOXML *states* where a package puts these, the
+/// same way it states that a slide is `ppt/slides/slide1.xml`. An `.png` sitting somewhere else is
+/// not counted here, and a media part with no extension at all still is.
+const EMBEDDED_PART_PREFIXES: [&str; 2] = ["ppt/media/", "ppt/embeddings/"];
+
+/// How many parts of this package hold an embedded asset that this engine does not read.
+///
+/// Separate from [`unread_text_parts`] because the two answer different questions and their
+/// limitation messages make different claims — see
+/// `engine_core::assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ`. Nothing here reads, decodes or
+/// hashes a byte of the asset: the count is the claim.
+pub fn unread_embedded_parts(entry_names: &[String]) -> u32 {
+    let matched = entry_names
+        .iter()
+        .filter(|name| {
+            EMBEDDED_PART_PREFIXES
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+        })
+        .count();
+    crate::declared_len(matched)
+}
+
 /// How many parts in this package carry text that this slice does not read.
 pub fn unread_text_parts(entry_names: &[String]) -> u32 {
     let matched = entry_names

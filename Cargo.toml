@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, and its documentation repair as 0.29.1.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, and v2-S11 as 0.30.0.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -483,7 +483,35 @@ exclude = ["fuzz"]
 # The nine profile hashes move on `parser_version` ALONE. Nothing this release corrected was a
 # behaviour; every one of them was a sentence a reader could check against the tree and find
 # false, which in a repository whose whole claim is auditability is the defect, not the cosmetics.
-version = "0.29.1"
+#
+# **0.30.0 is v2-S11: EMBEDDED ASSETS, COUNTED. Not read.** The last undelivered v2 content
+# obligation — `02-ROADMAP.md`'s v2 row names it, v2-S2 listed it Out for that slice, and nine
+# slices passed without anyone picking it up. It was not merely unread. In THREE READERS OF EIGHT
+# it was UNCOUNTED: `word/media/`, `xl/media/` and `ppt/media/` matched no A14 bucket at all, so a
+# DOCX with forty embedded images declared ZERO parts not read for them, while ODT, ODS, ODP, RTF
+# and EPUB had counted theirs since the slice that added each reader. That is an A14 violation —
+# if something is removed, the artifact says so and says HOW MUCH.
+#
+# A SECOND BUCKET, NOT A WIDER ONE. `office-parts-not-read`'s message says its parts CARRY TEXT.
+# A PNG carries none, so folding media into that count would have made a shipped sentence false
+# about every package it fires on — a counter's MEANING changing in place under a name that did
+# not move, which is exactly what v2-S9.1 was forbidden from doing. `office-embedded-parts-not-read`
+# is the second code, and both messages are now true of every file that triggers them.
+#
+# NO BYTE IS READ. Nothing is decoded, measured, hashed or emitted, and no node is created: an
+# embedded asset has no text, no address a citation could bind to and no geometry. A media part is
+# identified by WHERE THE PACKAGE PUTS IT, which the package itself states — never by sniffing
+# bytes and never by an extension (A4). `pages` stays empty and no locator moved.
+#
+# THE GAP WAS ALSO UNEXERCISED: none of the three OOXML fixtures held a single media entry, so
+# nothing in the suite could have noticed. The fixtures gained media FIRST, and the new test
+# asserted the count against the un-fixed readers and failed four ways before anything was fixed.
+#
+# ODF, EPUB and RTF are unchanged — whole artifacts byte-identical at the same `parser_version`,
+# checked against a build of the previous commit. The nine profile hashes move on `parser_version`
+# ALONE. **v2 is STILL NOT COMPLETE**: the gate sentence's verb is unsettled, and whether
+# "embedded assets" ever meant more than a count is the owner's, not this slice's.
+version = "0.30.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -504,10 +532,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.29.1" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.29.1" }
-engine-office = { path = "crates/engine-office", version = "0.29.1" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.29.1" }
+engine-core = { path = "crates/engine-core", version = "0.30.0" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.30.0" }
+engine-office = { path = "crates/engine-office", version = "0.30.0" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.30.0" }
 
 [profile.release]
 strip = "symbols"

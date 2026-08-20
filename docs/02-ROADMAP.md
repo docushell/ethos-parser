@@ -93,7 +93,7 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 64‰, a miss; the 0.489 chase is parked** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S10 done at 0.29.1; S10 is CSV as an argued refusal, not a reader. v2's format row is closed; v2 is not complete** |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0–S11 done at 0.30.0; S10 is CSV as an argued refusal, not a reader. v2's format row is closed; v2 is not complete** |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has

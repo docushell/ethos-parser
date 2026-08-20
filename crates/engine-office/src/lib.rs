@@ -558,6 +558,24 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         ));
     }
 
+    // **v2-S11: the second bucket, and why it is a second one.** The message above says its parts
+    // "carry text". An embedded asset carries none, so it cannot be counted there without making
+    // that sentence false about every package it fires on. Two counts, two claims, both true —
+    // and A14 asks how much *per kind*, which one number cannot answer for two kinds.
+    let embedded = docx::unread_embedded_parts(names);
+    if embedded > 0 {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ,
+            format!(
+                "{embedded} part(s) of this package hold an embedded asset that was not read — \
+                 a picture or an embedded object, under `word/media/` or `word/embeddings/`. Nothing about them is decoded, measured or \
+                 fingerprinted, and no node is emitted for one: an embedded asset has no text, no \
+                 address a citation could bind to, and no geometry this engine measured. The \
+                 count is what this artifact does not contain"
+            ),
+        ));
+    }
+
     let payload = RepresentationPayload {
         identity: ArtifactIdentity {
             artifact_type: REPRESENTATION_ARTIFACT_TYPE.into(),
@@ -719,6 +737,24 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         limitations.push(Limitation::document(
             engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
             detail,
+        ));
+    }
+
+    // **v2-S11: the second bucket, and why it is a second one.** The message above says its parts
+    // "carry text". An embedded asset carries none, so it cannot be counted there without making
+    // that sentence false about every package it fires on. Two counts, two claims, both true —
+    // and A14 asks how much *per kind*, which one number cannot answer for two kinds.
+    let embedded = xlsx::unread_embedded_parts(names);
+    if embedded > 0 {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ,
+            format!(
+                "{embedded} part(s) of this package hold an embedded asset that was not read — \
+                 a picture or an embedded object, under `xl/media/` or `xl/embeddings/`. Nothing about them is decoded, measured or \
+                 fingerprinted, and no node is emitted for one: an embedded asset has no text, no \
+                 address a citation could bind to, and no geometry this engine measured. The \
+                 count is what this artifact does not contain"
+            ),
         ));
     }
 
@@ -1787,6 +1823,24 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         limitations.push(Limitation::document(
             engine_core::assurance::codes::OFFICE_PARTS_NOT_READ,
             detail,
+        ));
+    }
+
+    // **v2-S11: the second bucket, and why it is a second one.** The message above says its parts
+    // "carry text". An embedded asset carries none, so it cannot be counted there without making
+    // that sentence false about every package it fires on. Two counts, two claims, both true —
+    // and A14 asks how much *per kind*, which one number cannot answer for two kinds.
+    let embedded = pptx::unread_embedded_parts(names);
+    if embedded > 0 {
+        limitations.push(Limitation::document(
+            engine_core::assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ,
+            format!(
+                "{embedded} part(s) of this package hold an embedded asset that was not read — \
+                 a picture, an audio or video clip, or an embedded object, under `ppt/media/` or `ppt/embeddings/`. Nothing about them is decoded, measured or \
+                 fingerprinted, and no node is emitted for one: an embedded asset has no text, no \
+                 address a citation could bind to, and no geometry this engine measured. The \
+                 count is what this artifact does not contain"
+            ),
         ));
     }
 

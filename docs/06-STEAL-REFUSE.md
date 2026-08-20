@@ -129,7 +129,7 @@ adapter's business.
 | O5 | The table **detector** (the model is fine) | v1 | ODL's row/col + spans model is the best in open source. Its deterministic detection scores 0.489 on their corpus — a comparator, not this engine's floor |
 | O8 | Markdown **only** with the Anchor Map | v1.1 | Rule 8 prefers no projection at all |
 | P20 | xref repair-or-refuse | v0.1 | `lopdf` refuses 19-byte entries (spec requires 20); PDFium repairs. Refusing is correct; the rate is a **declared limitation** |
-| A14 | Declared erasure | v2 | If something is removed, the artifact says so and says how much |
+| A14 | Declared erasure | v2 | If something is removed, the artifact says so and says how much. **Per kind, since v2-S11**: an embedded asset is counted under its own code rather than folded into the text-part count, because one number cannot honestly answer *how much* for two kinds of erasure |
 
 ### TAKE — build it as the source does
 

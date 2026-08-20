@@ -31,6 +31,15 @@ import zipfile
 HERE = pathlib.Path(__file__).parent
 FIXED_DATE = (2026, 1, 1, 0, 0, 0)
 
+# A 1x1 PNG, authored here rather than sampled. Every fixture that needs an embedded asset uses
+# this one: the point is never the image, it is that a package entry holding something no reader
+# reads is COUNTED, and the smallest valid file makes that point without adding a licence to check.
+PICTURE = bytes.fromhex(
+    "89504e470d0a1a0a0000000d494844520000000100000001080600000"
+    "01f15c4890000000a49444154789c6300010000050001"
+    "0d0a2db40000000049454e44ae426082"
+)
+
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -70,6 +79,19 @@ PARTS = {
     "_rels/.rels": RELS,
     "word/document.xml": DOCUMENT,
 }
+
+
+# v2-S11. A package that stores a `.png` must declare the extension's content type; a package
+# without one must not gain the declaration, or every clean fixture's `source.sha256` moves and
+# takes a golden with it. So the media fixtures get a DERIVED content-types part rather than a
+# widened shared one.
+def with_png(content_types: str) -> str:
+    return content_types.replace(
+        '<Default Extension="xml" ContentType="application/xml"/>',
+        '<Default Extension="xml" ContentType="application/xml"/>\n'
+        '  <Default Extension="png" ContentType="image/png"/>',
+        1,
+    )
 
 
 def write(path: pathlib.Path, parts: dict, stored_first=None) -> None:
@@ -124,12 +146,23 @@ BODY_ONLY = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 """
 
 WITH_UNREAD_PARTS = {
-    "[Content_Types].xml": CONTENT_TYPES,
+    "[Content_Types].xml": with_png(CONTENT_TYPES),
     "_rels/.rels": RELS,
     "word/document.xml": BODY_ONLY,
     "word/header1.xml": HEADER,
     "word/footer1.xml": FOOTER,
     "word/footnotes.xml": FOOTNOTES,
+    # v2-S11. TWO embedded assets, and two rather than one on purpose: a count of 1 is the count
+    # a reader gets from a great many mistakes, and 2 is not. They carry NO TEXT, which is why
+    # they cannot go in the same bucket as the three parts above — the message on that bucket says
+    # its parts "carry text", and a PNG does not.
+    #
+    # Nothing in `word/document.xml` references them. That is deliberate and it is also ordinary:
+    # a word processor leaves orphaned media in a package all the time. The count answers "what is
+    # in this package that this reader did not read", and an entry's referencedness does not change
+    # the answer.
+    "word/media/image1.png": PICTURE,
+    "word/media/image2.png": PICTURE,
 }
 
 
@@ -278,7 +311,7 @@ ONE_CELL = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 """
 
 WORKBOOK_WITH_UNREAD_PARTS = {
-    "[Content_Types].xml": WORKBOOK_CONTENT_TYPES,
+    "[Content_Types].xml": with_png(WORKBOOK_CONTENT_TYPES),
     "_rels/.rels": WORKBOOK_RELS,
     "xl/workbook.xml": ONE_SHEET_ONLY,
     "xl/_rels/workbook.xml.rels": ONE_SHEET_RELS,
@@ -286,6 +319,11 @@ WORKBOOK_WITH_UNREAD_PARTS = {
     "xl/charts/chart1.xml": CHART,
     "xl/drawings/drawing1.xml": DRAWING,
     "xl/comments1.xml": COMMENTS,
+    # v2-S11. ONE embedded asset, a different number from the DOCX fixture's two and the deck's
+    # three, so a reader that returned another reader's count would be caught by the number alone.
+    # `xl/drawings/` above is the drawing XML that POSITIONS a picture and carries text; this is
+    # the picture. They are two different erasures and the package puts them in two places.
+    "xl/media/image1.png": PICTURE,
 }
 
 
@@ -445,7 +483,7 @@ ONE_SLIDE_RELS = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 """
 
 DECK_WITH_UNREAD_PARTS = {
-    "[Content_Types].xml": DECK_CONTENT_TYPES,
+    "[Content_Types].xml": with_png(DECK_CONTENT_TYPES),
     "_rels/.rels": DECK_RELS,
     "ppt/presentation.xml": ONE_SLIDE_ONLY,
     "ppt/_rels/presentation.xml.rels": ONE_SLIDE_RELS,
@@ -453,6 +491,11 @@ DECK_WITH_UNREAD_PARTS = {
     "ppt/notesSlides/notesSlide1.xml": NOTES_SLIDE,
     "ppt/slideLayouts/slideLayout1.xml": SLIDE_LAYOUT,
     "ppt/slideMasters/slideMaster1.xml": SLIDE_MASTER,
+    # v2-S11. THREE embedded assets — a presentation is the format that carries the most of them,
+    # and three is a third distinct number across the three OOXML fixtures.
+    "ppt/media/image1.png": PICTURE,
+    "ppt/media/image2.png": PICTURE,
+    "ppt/media/image3.png": PICTURE,
 }
 
 
@@ -585,11 +628,7 @@ ODT_MANIFEST_WITH_PARTS = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 # A 1x1 PNG, authored here rather than sampled: the point is that a package entry holding
 # something this reader cannot read is COUNTED, and the smallest valid file makes that point.
-ODT_PICTURE = bytes.fromhex(
-    "89504e470d0a1a0a0000000d494844520000000100000001080600000"
-    "01f15c4890000000a49444154789c6300010000050001"
-    "0d0a2db40000000049454e44ae426082"
-)
+ODT_PICTURE = PICTURE
 
 ODT_WITH_UNREAD_PARTS = {
     "mimetype": ODT_MIMETYPE,

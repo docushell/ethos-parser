@@ -126,6 +126,36 @@ pub struct Cell {
     pub text_source: CellTextSource,
 }
 
+/// Parts that hold an **embedded asset** and that no slice reads, matched by prefix.
+///
+/// `xl/drawings/` is already in the text list above and stays there: a drawing part is XML that
+/// positions a picture and carries its title and description. The picture itself is `xl/media/`,
+/// and the two are different erasures because the package puts them in different places.
+///
+/// **Prefix, and the package's own layout, is the whole of the identification** (Anydoc's **A4**).
+/// No byte is sniffed and no extension is read: OOXML *states* where a package puts these, the
+/// same way it states that a worksheet is `xl/worksheets/sheet1.xml`. An `.png` sitting somewhere else is
+/// not counted here, and a media part with no extension at all still is.
+const EMBEDDED_PART_PREFIXES: [&str; 2] = ["xl/media/", "xl/embeddings/"];
+
+/// How many parts of this package hold an embedded asset that this engine does not read.
+///
+/// Separate from [`unread_text_parts`] because the two answer different questions and their
+/// limitation messages make different claims — see
+/// `engine_core::assurance::codes::OFFICE_EMBEDDED_PARTS_NOT_READ`. Nothing here reads, decodes or
+/// hashes a byte of the asset: the count is the claim.
+pub fn unread_embedded_parts(entry_names: &[String]) -> u32 {
+    let matched = entry_names
+        .iter()
+        .filter(|name| {
+            EMBEDDED_PART_PREFIXES
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+        })
+        .count();
+    crate::declared_len(matched)
+}
+
 /// How many parts in this package carry text that this slice does not read.
 pub fn unread_text_parts(entry_names: &[String]) -> u32 {
     let matched = entry_names

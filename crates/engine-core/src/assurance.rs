@@ -78,6 +78,31 @@ pub mod codes {
     /// let a caller conclude a phrase is absent from a document that contains it — so the parts
     /// are counted and named, and the count is the honest measure of what this artifact is not.
     pub const OFFICE_PARTS_NOT_READ: &str = "office-parts-not-read";
+    /// Parts of an office package that carry an **embedded asset** and were not read (v2-S11).
+    ///
+    /// **A second bucket rather than a wider first one, and the reason is the sentence above.**
+    /// [`OFFICE_PARTS_NOT_READ`]'s message says its parts *carry text* and names the kinds —
+    /// headers, footers, footnotes, charts, speaker notes. A PNG carries none. Folding
+    /// `word/media/image1.png` into that count would have left a shipped sentence false about
+    /// every file it fired on, which is a counter's **meaning** changing in place under a name
+    /// that did not move — the one thing v2-S9.1 was forbidden from doing when it repaired the
+    /// arithmetic behind these numbers.
+    ///
+    /// The two counts answer two questions a caller asks for different reasons. *"Words are
+    /// missing from this artifact and here is roughly where"* sends a reader to a header. *"This
+    /// package carries things that are not words at all"* tells a reader that no amount of
+    /// re-reading the text will surface them, because there is no text to surface — the honest
+    /// answer to **A14**'s *how much*, per kind. Forty images and forty unread headers are
+    /// different facts, and one number cannot say both.
+    ///
+    /// **Not a node, and no bytes.** Nothing here is read, decoded, hashed or emitted. A media
+    /// part has no text, no address a citation could land on and no geometry, so a node for one
+    /// would be a node nobody can cite. The count is the whole of what this engine claims.
+    ///
+    /// ODT, ODS, ODP and EPUB do not use this code and their numbers are unchanged: their buckets
+    /// already count **every** entry the reader did not consume, media included, and their prose
+    /// already says so. This code exists because the three OOXML readers ask the narrower question.
+    pub const OFFICE_EMBEDDED_PARTS_NOT_READ: &str = "office-embedded-parts-not-read";
     /// A table edge the document never drew is **not supplied**, so a grid can come back short.
     ///
     /// The leftover after v1-S8, and the third code to hold this position. Each replaced its

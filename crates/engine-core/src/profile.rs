@@ -1707,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.29.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.30.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2010,11 +2010,21 @@ mod tests {
              because a build is a build. Every statement it corrected was a measured claim about \
              this tree that had stopped being true — the oldest since v2-S5, five slices — and a \
              repository whose whole value is that a decision can be audited from the tree alone \
-             cannot let a reader check a sentence and find it false."
+             cannot let a reader check a sentence and find it false.\n\n\
+             Moved a THIRTY-SIXTH time at v2-S11 (0.30.0) on `parser_version` ALONE. No field on \
+             any profile moved and this profile's own bytes are otherwise untouched — an embedded \
+             asset is not a capability and `capabilities.images` still means what it meant. What \
+             changed is that the three OOXML readers stopped being BLIND to a kind of erasure the \
+             other five already counted: `word/media/`, `xl/media/` and `ppt/media/` matched no \
+             A14 bucket at all, so a DOCX with forty embedded images declared ZERO parts not read \
+             for them. A second code — `office-embedded-parts-not-read` — counts them, rather \
+             than widening the first, whose shipped message says its parts CARRY TEXT and would \
+             have become false about every file it fires on. `parser_version` is part of identity \
+             precisely so that a build which declares differently is a different profile."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:df66b039cc3cff2f49ff2627f4a5289a8ba507178be5085add0f18bd103ed220"
+            "sha256:fda6a4b157569fc0d3ae5ba597a7599338fee7e96c8715fa5f95c2ce57dd3a90"
         );
     }
 
