@@ -20,7 +20,7 @@ use crate::geom::QRect;
 
 /// How a node came to exist.
 ///
-/// This is the axis that lets OCR (v2.1) and assist (v3) be added later without laundering
+/// This is the axis that lets OCR (v4) and assist (v3) be added later without laundering
 /// their output into born-digital certainty. v0 produces `Extracted` and `Computed` only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -30,7 +30,7 @@ pub enum DerivationClass {
     /// Derived deterministically from `Extracted` values by a versioned rule. Reading order,
     /// line grouping, ink boxes computed from font metrics.
     Computed,
-    /// Produced by a recognition engine over pixels. **v2.1.** Runs under its own profile and
+    /// Produced by a recognition engine over pixels. **v4.** Runs under its own profile and
     /// may author nodes only where the deterministic reader found no text layer at all.
     Recognized,
     /// Suggested by a model. **v3.** Never citable, never evidence, never overwrites anything.
@@ -68,7 +68,7 @@ impl DerivationClass {
     /// Only checking rule 1 would let `Proposed` overwrite `Computed`, `Recognized`, or another
     /// `Proposed` — which is how a model's output quietly becomes the record.
     ///
-    /// What this function deliberately does **not** encode: the v2.1 constraint that `Recognized`
+    /// What this function deliberately does **not** encode: the v4 constraint that `Recognized`
     /// may author only on canvases where the deterministic reader found no text layer at all.
     /// That is a property of *where* a node is placed, not of which classes may replace which, and
     /// inventing a class-pair rule for it here would be a rule the contract does not state.

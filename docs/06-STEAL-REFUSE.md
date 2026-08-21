@@ -182,7 +182,7 @@ corpus holding one valid package of each shape drives all eight through it. Eigh
 divide one corpus eight ways and explore each branch on a fraction of the budget. A format measured
 unreachable from that target is the argument for splitting one out; the module tree is not.
 | A1 | 14-format coverage | Anydoc | v2 |
-| **L9** | The open HTTP OCR contract, `confidence` dropped from what we act on | LiteParse | v2.1 |
+| **L9** | The open HTTP OCR contract, `confidence` dropped from what we act on | LiteParse | v4 |
 
 ### DEFER — right idea, named version, no work before it
 

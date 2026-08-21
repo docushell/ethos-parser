@@ -40,7 +40,7 @@ Not "not yet done." Out — a PR adding one of these to v0 is rejected on scope,
 | --- | --- | --- |
 | **Tables** | v1 | The hardest quality item. Rebuild with the locator cross-check as its test, against a 0.489 floor — **as v0 saw it. The 0.489 chase was parked 2026-08-19** (`00-NORTH-STAR.md` #10); the cross-check and fabrication 0 still bind |
 | **Markdown / HTML as evidence** | v1.1 | Workbench rule 8 — a projection between what is ranked and what is cited is where a locator dies silently. Ships with the Anchor Map or not at all |
-| **OCR, in any form** | v2.1 | v0 ships classification and honest refusal, not recognition |
+| **OCR, in any form** | v4 | v0 ships classification and honest refusal, not recognition |
 | **Assist / VLM / agents** | v3 | `Proposed` only, and rule 7 (drafting path ≠ verifying representation) needs machinery v0 does not have |
 | **Office formats** | v2 | Anydoc-native, never a LibreOffice→PDF bridge |
 | **A second PDF backend** | undecided | One backend, one set of quirks, one declared limitation set |

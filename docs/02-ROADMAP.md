@@ -18,9 +18,9 @@ version numbers get invented — every delta from the research folds into a row 
 | **v1.1** | Safe Markdown | Markdown + **Anchor Map** · HTML · hyphenation / dot-leaders / drop-caps as export-only cosmetics | A Markdown-quoted citation verifies end-to-end; coverage completeness asserted |
 | **v1.2** | Adoption | **MCP server** (first adapter) · Python + Node SDKs · LangChain tool · optional `liteparse → ethos.grounding.v1` adapter | Locators survive every adapter round-trip |
 | **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODT → ODS → ODP → RTF → EPUB → **CSV (S10)** · shared IR + one serializer · embedded assets | A DOCX quote and an XLSX cell both ground; **no synthesised pages** |
-| **v2.1** | OCR lane | PP-OCRv5/v6 ONNX in-process · LiteParse-compatible HTTP OCR contract · own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | OCR fingerprint provably incomparable with born-digital |
-| **v2.2** | Accessibility (**parallel lane**) | auto-tag → Tagged PDF | Only on a named accessibility requirement. Never on the critical path |
+| **v2.2** | Accessibility | auto-tag → Tagged PDF | Tagged output round-trips: a tag this engine writes is one it can read back and ground against. **Reordered ahead of assist and OCR by the owner, 2026-08-21** — see decision #15. The old condition — *"only on a named accessibility requirement, never on the critical path"* — is **withdrawn**; this is the next sequential row after v2 |
 | **v3** | Assist | propose-only VLM · dual-read → review · hybrid enrichments (formula, chart) as `Recognized` / `Proposed` | Byte-diff: assist on/off ⇒ identical grounded artifacts |
+| **v4** | OCR lane | PP-OCRv5/v6 ONNX in-process · LiteParse-compatible HTTP OCR contract · own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | OCR fingerprint provably incomparable with born-digital |
 
 ### The two gates worth memorising
 
@@ -54,9 +54,9 @@ those rows became.
 | **v1.1** | unchanged | — |
 | **v1.2** | unchanged | — |
 | **v2** | Anydoc-native office parsers, **explicitly not** a LibreOffice→PDF bridge | memo §18.10 Q4 |
-| **v2.1** | The LiteParse HTTP OCR contract (`POST /ocr`, multipart `file`+`language`, `{results:[{text, bbox, polygon?}]}`) **alongside** the in-process PP-OCR lane, with `confidence` dropped from the contract acted on | memo §18.8, checklist L9 |
 | **v2.2** | unchanged | — |
 | **v3** | unchanged | — |
+| **v4** | The LiteParse HTTP OCR contract (`POST /ocr`, multipart `file`+`language`, `{results:[{text, bbox, polygon?}]}`) **alongside** the in-process PP-OCR lane, with `confidence` dropped from the contract acted on | memo §18.8, checklist L9 |
 
 ---
 
@@ -67,7 +67,7 @@ forced decision in `00-NORTH-STAR.md` §2.
 
 | Item | Why not |
 | --- | --- |
-| PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* (v1) improves grounding; tag *generation* (v2.2, gated) does not |
+| PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* (v1) improves grounding; tag *generation* (v2.2) does not — which is why v2.2 writes tags and stops there rather than growing into a studio |
 | Chart descriptions **as evidence** | A description is `Proposed`. It can exist and can never be cited |
 | `--sanitize` or any mode that rewrites the evidence | The artifact is the record |
 | A public confidence float, at any version | Workbench rule 9. See `01-CONTRACT.md` §9 |
@@ -98,5 +98,5 @@ forced decision in `00-NORTH-STAR.md` §2.
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has
 `engine-office` reading eight formats under them. Nothing past
-v2 has an implementation document, and v2.1, v2.2 and v3 should not get one until v2's gate is in
+v2 has an implementation document, and v2.2, v3 and v4 should not get one until v2's gate is in
 sight.

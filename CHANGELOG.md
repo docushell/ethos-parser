@@ -7,7 +7,46 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2
+
+### v2-S13.2 — the roadmap reordered, as 0.32.2
+
+**An owner decision, recorded. No code changed and no reader moved.**
+
+The ladder after v2 was **v2.1 (OCR) → v2.2 (accessibility) → v3 (assist)**. It is now
+**v2.2 (accessibility) → v3 (assist) → v4 (OCR)**.
+
+#### Changed
+
+- **OCR moves last, and is renumbered v2.1 → v4** rather than merely resequenced. Resequencing
+  alone would have shipped a build numbered `2.1` after one numbered `3.0`, and in this repository
+  that is not cosmetic: `parser_version` sits inside `profile_sha256`, and a later build carrying a
+  lower number defeats the one job that field has. **`v2.1` is now a gap.** Nothing ever shipped
+  under it — zero CHANGELOG references — so no artifact and no reader is affected.
+- **Accessibility (v2.2) becomes the next sequential row after v2**, and its condition is
+  withdrawn. It read *"Only on a named accessibility requirement. Never on the critical path."* That gate
+  and being next are incompatible, so the gate is replaced with one that can actually be met:
+  **tagged output round-trips — a tag this engine writes is one it can read back and ground
+  against.**
+- **Decision #15** in `00-NORTH-STAR.md` records the reorder, the renumbering argument, and the
+  two v4 blockers that remain unpaid: `deny.toml` denies the HTTP surface by name and says the OCR
+  lane needs its own ADR, and ONNX would be the largest runtime dependency in the tree.
+- Twenty-three `v2.1` references renumbered across eleven documents, `deny.toml`, and three rustdoc
+  comments in `crates/engine-core/src/derivation.rs`. That last is why this is a version bump at
+  all: the rustdoc is compiled, so the tree that produced an artifact changed.
+- `docs/CAPABILITY.md` corrected from *"two owner questions"* to **three** — v2-S13 added the
+  CRC-32 question and did not update this row.
+
+#### Changed — version
+
+- Workspace **0.32.1 → 0.32.2**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, to
+  `sha256:c5ac3e261b9ed8bf58b56c07c9c79489a6b85b2df29307ff0bf6674577545d2e`
+  (was `sha256:c0c57728abc50f0ffcc6c3d5b4ef5bf3b985e4f082d180686fd9dbc4d6226aea`)
+- Both projection worked examples regenerated and verified against freshly generated artifacts.
+
+**v2 is not complete.** All three owner questions stand, restated unchanged.
+
 
 ### v2-S13.1 — the guards that check nothing, as 0.32.1
 

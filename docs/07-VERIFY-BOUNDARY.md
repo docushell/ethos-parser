@@ -25,7 +25,7 @@ Recorded here verbatim, identically to `00-NORTH-STAR.md` §2. These are settled
 | 8 | **Classify:** LiteParse-shaped reason codes on two orthogonal axes (OCR-need vs layout-hard); boolean derived from reasons; no confidence float; three exit codes (simple / needs-attention / could-not-read). |
 | 9 | **OSS stance:** ODL = tables/tags/XY-Cut (later); Anydoc = office IR + error taxonomy + mutation/fuzz (later); pdf-inspector = reference-only (rects/encoding/single-load/mcid ideas); LiteParse = classify/OCR-contract/forms/vectors/screenshots/`trailing_space_generated` ideas — not a dependency for grounded PDF. |
 | 10 | **v1 table gate (document only):** the bar was ODL-local ~0.489 deterministic, never hybrid ~0.9×. **Amended by the owner, 2026-08-19: the chase is parked.** 64‰ is this engine on four tagged PDFs this repository owns; 0.489 is a published ODL-local score on *their* corpus — same unit, different exam. 0.489 is **not** a shipping precondition for v2 and gates no slice. The number stays on the record, the method stays in `table-gate-v1.md`, **fabrication 0 still binds**, and **v1 is not complete**. The chase resumes if and when this repository has a labelled set it owns and chooses to resume it. |
-| 11 | **OCR (document only):** none in v0; PP-OCR ONNX deterministic lane + LiteParse-style HTTP contract at v2.1; confidence diagnostic only, never filter; Tesseract never default; VLM/`Proposed` at v3. |
+| 11 | **OCR (document only):** none in v0; PP-OCR ONNX deterministic lane + LiteParse-style HTTP contract at v4; confidence diagnostic only, never filter; Tesseract never default; VLM/`Proposed` at v3. |
 | 12 | **Optional agents:** allowed later as assist emitting `Proposed` only; never overwrite `Extracted`; never same processor identity for draft + evidence (Workbench rule 7). Out of v0. |
 | 13 | **LibreOffice→PDF office bridge:** forbidden (invents pagination). |
 | 14 | **No AGPL.** PDFium caller-provided or explicitly ADR'd later; v0 prefers clean-room `lopdf` + vendored CMap data (not wrapping pdf-inspector). |
@@ -228,7 +228,7 @@ contaminates everything upstream of it.
 | --- | --- | --- | --- | --- |
 | Deterministic reader | `Extracted` | base | Text, origins, font identity, `mcid` | — |
 | Deterministic rules | `Computed` | base (rule version pinned) | Reading order, line grouping, ink boxes | Overwrite `Extracted` |
-| **OCR (v2.1)** | `Recognized` | **own** (`ethos-ocr-v1`) | Nodes **only on canvases where the deterministic reader found no text layer at all** | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
+| **OCR (v4)** | `Recognized` | **own** (`ethos-ocr-v1`) | Nodes **only on canvases where the deterministic reader found no text layer at all** | Overwrite `Extracted`. Merge into the native stream. Filter on confidence |
 | **VLM / assist (v3)** | **`Proposed`** | own | Suggestions | Be citable. Be evidence. Overwrite anything |
 
 **Four rules that make this safe:**

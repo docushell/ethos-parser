@@ -248,7 +248,7 @@ fn no_confidence_anywhere_in_engine_core_code() {
         hits.is_empty(),
         "`confidence` appears in engine-core code, which docs/01-CONTRACT.md §9 forbids:\n  {}\n\n\
          Prose in comments is fine. A field, variant, parameter, or constant is not — not even \
-         \"diagnostic only\". The v2.1 OCR lane may record processor-reported uncertainty, and \
+         \"diagnostic only\". The v4 OCR lane may record processor-reported uncertainty, and \
          when it does it goes on a recognition type under its own profile, never on these.",
         hits.join("\n  ")
     );

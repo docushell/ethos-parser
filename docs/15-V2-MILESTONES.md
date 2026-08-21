@@ -3195,6 +3195,87 @@ and does not answer it.**
 
 ---
 
+## S13.2 — the roadmap reordered — **done**, as 0.32.2
+
+**An owner decision, recorded rather than argued.** This slice changes no code, no reader and no
+behaviour. It moves rows in a table and renumbers one of them, and it needs a version because three
+of the twenty-three references it moves are rustdoc in `crates/engine-core/src/derivation.rs`.
+
+### What changed
+
+The ladder after v2 was **v2.1 (OCR) → v2.2 (accessibility) → v3 (assist)**. It is now
+**v2.2 (accessibility) → v3 (assist) → v4 (OCR)**.
+
+### Why OCR was renumbered rather than only resequenced
+
+The owner asked for the order **v2, v2.2, v3, v2.1**. Taken literally that ships a build numbered
+`2.1` after one numbered `3.0`, and this repository cannot afford that. `parser_version` is inside
+`profile_sha256`, and `01-CONTRACT.md` calls profile-as-identity *"the load-bearing idea"*. A version
+number whose ordering does not match build order stops being able to answer *which build produced
+this artifact* — which is the entire reason the field exists.
+
+So the sequence is exactly what was asked for and the label moved with it: **OCR is v4.**
+
+**`v2.1` is now a gap in the ladder, and that is fine.** Nothing ever shipped under it — the
+CHANGELOG has zero references — so no artifact carries it and no reader has to be told anything. A
+gap is monotonic; an out-of-order number is not.
+
+### Accessibility's gate had to be replaced, not just moved
+
+`v2.2` read: *"Only on a named accessibility requirement. Never on the critical path."* That is a
+**conditional parallel lane**, and a conditional parallel lane cannot also be the mandatory next
+row. The two are incompatible, and moving the row without touching the gate would have left the
+table contradicting itself.
+
+The owner withdrew the condition. The gate is replaced with one that can actually be met and
+actually be failed: **tagged output round-trips — a tag this engine writes is one it can read back
+and ground against.** That is the accessibility analogue of every other gate in the table: a
+property with a test behind it, not a business precondition.
+
+### What this slice deliberately did not do
+
+**It did not plan v4.** `02-ROADMAP.md`'s own policy stands: a version gets a scope document and a
+milestones document before it gets code, and nothing past v2 gets that pair until v2's gate is in
+sight. Moving OCR later does not make it planned, and this slice writes no `16-` document.
+
+**It did not pay v4's two blockers**, which are unchanged and now recorded in decision #15:
+
+| Blocker | State |
+| --- | --- |
+| `deny.toml` denies `reqwest`, `hyper` and `hyper-util` by name, and its header says the OCR lane *"will need a reviewed exception with its own ADR; it does not get one in advance"* | The ADR does not exist |
+| ONNX runtime would be the largest runtime dependency in a tree that has no `zip` crate, no EPUB crate and no HTML5 parser | No exception written |
+
+Moving OCR to last makes both **less** urgent, not resolved.
+
+### Restated for the owner, unchanged and unsettled
+
+All three questions stand. **1.** The v2 gate's verb — `ground` meaning `ethos.grounding.v1`, or
+meaning *binds to an address the file states*. **2.** Embedded assets: counted, or read. **3.** New
+at v2-S13 — whether `zip.rs` should verify the CRC-32 it currently ignores, since a corrupted part
+that still inflates to its declared length is read as though intact. Full statements and costs at
+the end of S13.
+
+`docs/CAPABILITY.md` said *"two owner questions"* and now says three; v2-S13 added the third and did
+not update that row.
+
+- **Acceptance — all met:**
+  - [x] Ladder order is v2 → v2.2 → v3 → v4 in `02-ROADMAP.md` and in `00-NORTH-STAR.md`'s gate
+        table, and the two tables agree
+  - [x] Every `v2.1` reference renumbered — twenty-three across eleven documents, `deny.toml` and
+        three rustdoc comments. **Zero left in the tree**, and the CHANGELOG untouched because it
+        is a historical record
+  - [x] Accessibility's gate replaced with a testable one, and the withdrawal recorded rather than
+        silently dropped
+  - [x] **Decision #15** records the reorder, the renumbering argument and the two unpaid blockers
+  - [x] **No behaviour change.** No non-comment line moved in any shipping `src` file
+  - [x] Workspace **0.32.2**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both SDK suites run by hand and pass
+  - [x] No git tag
+
+- **Depends on:** S13.1.
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

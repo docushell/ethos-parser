@@ -208,13 +208,13 @@ Everything else is what not to do.
 
 ## 6. How later lanes plug in without contaminating v0
 
-The point of the type system chosen in `01-CONTRACT.md` is that v2.1 and v3 need **no new
+The point of the type system chosen in `01-CONTRACT.md` is that v4 and v3 need **no new
 mechanism**, only new values.
 
 | Lane | Plugs in as | v0 impact |
 | --- | --- | --- |
-| **OCR (v2.1)** | A node source that authors `Recognized` nodes **only on canvases where the deterministic reader found no text layer at all**, under its own profile (`ethos-ocr-v1`) | None. `DerivationClass` already exists; `profile_sha256` already isolates. No v0 type changes |
-| **HTTP OCR (v2.1)** | An implementation of the same node-source trait, behind `POST /ocr` (LiteParse's contract, `confidence` accepted as a diagnostic and never filtered on) | None |
+| **OCR (v4)** | A node source that authors `Recognized` nodes **only on canvases where the deterministic reader found no text layer at all**, under its own profile (`ethos-ocr-v1`) | None. `DerivationClass` already exists; `profile_sha256` already isolates. No v0 type changes |
+| **HTTP OCR (v4)** | An implementation of the same node-source trait, behind `POST /ocr` (LiteParse's contract, `confidence` accepted as a diagnostic and never filtered on) | None |
 | **Assist / VLM (v3)** | Authors `Proposed` nodes only. Never overwrites. Never citable | None |
 | **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection behaviour | None — provided `engine-grounding` never learned about pages |
 | **Second backend** | A trait seam modelled on Ethos's `EthosPdfBackend` 3-method shape, with backend identity in the profile | Design the seam in v0; implement one side |

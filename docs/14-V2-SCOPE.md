@@ -305,7 +305,7 @@ and the only one forbidden outright.
   fields and no room to record that a type was asserted rather than read. That closes the row —
   eight formats read, one argued refusal, and every split from S4 to S9 made against a
   measurement.
-- **Not OCR, auto-tagging, or assist.** v2.1, v2.2 and v3 have their own rows and their own gates.
+- **Not auto-tagging, assist, or OCR.** v2.2, v3 and v4 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
   no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are
   producer identity and undeclared loose boxes — **not** the coordinate hazard everyone predicted —

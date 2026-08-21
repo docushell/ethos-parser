@@ -31,7 +31,7 @@ otherwise. **Parking is not a pass. v1 is not complete**, the number stays measu
 
 | Out of v1 | Lands at | Why not now |
 | --- | --- | --- |
-| OCR, in any form | v2.1 | Unchanged from v0. Recognition is a different profile and a different trust ladder |
+| OCR, in any form | v4 | Unchanged from v0. Recognition is a different profile and a different trust ladder |
 | Office formats | v2 | Anydoc-native, never a LibreOffice→PDF bridge |
 | Assist / VLM / agents | v3 | `Proposed` only, and rule 7 still holds |
 | MCP server, Python / Node SDKs | v1.2 | The locator-handle discipline must settle before the first tool exists |

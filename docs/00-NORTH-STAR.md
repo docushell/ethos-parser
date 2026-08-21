@@ -34,10 +34,11 @@ decision from the owner, recorded here first.
 | 8 | **Classify:** LiteParse-shaped reason codes on two orthogonal axes (OCR-need vs layout-hard); boolean derived from reasons; no confidence float; three exit codes (simple / needs-attention / could-not-read). |
 | 9 | **OSS stance:** ODL = tables/tags/XY-Cut (later); Anydoc = office IR + error taxonomy + mutation/fuzz (later); pdf-inspector = reference-only (rects/encoding/single-load/mcid ideas); LiteParse = classify/OCR-contract/forms/vectors/screenshots/`trailing_space_generated` ideas — not a dependency for grounded PDF. |
 | 10 | **v1 table gate (document only):** the bar was ODL-local ~0.489 deterministic, never hybrid ~0.9×. **Amended by the owner, 2026-08-19: the chase is parked.** 64‰ is this engine on four tagged PDFs this repository owns; 0.489 is a published ODL-local score on *their* corpus — same unit, different exam. 0.489 is **not** a shipping precondition for v2 and gates no slice. The number stays on the record, the method stays in `table-gate-v1.md`, **fabrication 0 still binds**, and **v1 is not complete**. The chase resumes if and when this repository has a labelled set it owns and chooses to resume it. |
-| 11 | **OCR (document only):** none in v0; PP-OCR ONNX deterministic lane + LiteParse-style HTTP contract at v2.1; confidence diagnostic only, never filter; Tesseract never default; VLM/`Proposed` at v3. |
+| 11 | **OCR (document only):** none in v0; PP-OCR ONNX deterministic lane + LiteParse-style HTTP contract at v4; confidence diagnostic only, never filter; Tesseract never default; VLM/`Proposed` at v3. |
 | 12 | **Optional agents:** allowed later as assist emitting `Proposed` only; never overwrite `Extracted`; never same processor identity for draft + evidence (Workbench rule 7). Out of v0. |
 | 13 | **LibreOffice→PDF office bridge:** forbidden (invents pagination). |
 | 14 | **No AGPL.** PDFium caller-provided or explicitly ADR'd later; v0 prefers clean-room `lopdf` + vendored CMap data (not wrapping pdf-inspector). |
+| 15 | **Roadmap order, amended by the owner 2026-08-21:** the ladder after v2 is **v2.2 (accessibility) → v3 (assist) → v4 (OCR)**. OCR was v2.1 and is now **v4** — moved last, not descoped, and renumbered rather than merely resequenced because `parser_version` is inside `profile_sha256` and a later build carrying a lower number defeats the one job that field has. **v2.1 is now a gap and nothing ever shipped under it.** Accessibility's condition — *"only on a named accessibility requirement, never on the critical path"* — is **withdrawn**; it is a sequential row. The two v4 blockers are unchanged and remain unpaid: `deny.toml` denies the HTTP surface by name and says the OCR lane needs its own ADR, and ONNX would be the largest runtime dependency in the tree. |
 
 ## 3. Trust ladder — who owns what
 
@@ -91,9 +92,9 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures, an
 | **v1.1** | A Markdown-quoted citation verifies end-to-end | Safe Markdown, only with the Anchor Map |
 | **v1.2** | Locators survive every adapter round-trip | Adoption: MCP server, Python + Node SDKs, LangChain tool |
 | **v2** | A DOCX quote and an XLSX cell both ground; no synthesised pages | Anydoc-class office formats through one shared IR |
-| **v2.1** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR lane under its own profile |
-| **v2.2** | Only on a named accessibility requirement | Auto-tagging — a parallel lane, never on the critical path |
+| **v2.2** | Tagged output round-trips: a tag this engine writes is one it can read back and ground against | Auto-tagging — the next sequential row after v2 (decision #15) |
 | **v3** | Byte-diff: assist on/off ⇒ identical grounded artifacts | Propose-only VLM assist |
+| **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR lane under its own profile |
 
 Detail lives in `02-ROADMAP.md`. **Only v0 is specified for implementation** (`03-V0-SCOPE.md`,
 `05-MILESTONES.md`). Everything past v0.1 is one line and stays one line until v0 ships.
@@ -119,7 +120,7 @@ For a coding agent starting fresh:
 7. **`06-STEAL-REFUSE.md`** — read before proposing a feature borrowed from another parser
 8. **`02-ROADMAP.md`** — only to check that a v1+ idea has a home and does not belong in v0
 
-What 0.32.1 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
+What 0.32.2 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
 these documents is **off-tree** and is not a second roadmap (`reference/README.md`);
 `06-STEAL-REFUSE.md` is the living steal / refuse record. Architecture depth for the older
 Ethos-in-DocuShell framing: `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` — **external, not

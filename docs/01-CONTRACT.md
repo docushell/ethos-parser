@@ -231,7 +231,7 @@ without laundering into born-digital certainty.
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
 | **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, ink boxes from font metrics | The rule's version is part of the profile |
-| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v2.1. Own profile. **May author nodes only on canvases where the deterministic reader found no text layer at all** |
+| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4. Own profile. **May author nodes only on canvases where the deterministic reader found no text layer at all** |
 | **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence. Never overwrites another class |
 
 Four hard rules:
@@ -249,7 +249,7 @@ Four hard rules:
 4. **Different classes mean different profiles.** An OCR run has a different `profile_sha256`, so its
    output is non-comparable with a born-digital parse *by contract*, with no new machinery.
 
-Rules 1 and 2 are the whole of `DerivationClass::may_be_overwritten_by`. The v2.1 constraint that
+Rules 1 and 2 are the whole of `DerivationClass::may_be_overwritten_by`. The v4 constraint that
 `Recognized` may author **only** where the deterministic reader found no text layer is deliberately
 *not* encoded there: it governs where a node may be placed, not which classes may replace which, and
 inventing a class-pair rule for it would be a rule this contract does not state.
@@ -426,7 +426,7 @@ no uncertainty emits an absent field, never an implied `1.0`.
 
 **ethos-engine v0 has no uncertainty to report.** Every node is `Extracted` by a deterministic
 reader; there is no recognition step. So the field is **absent**, which the spec explicitly permits,
-and §9's prohibition stands unqualified for v0 through v2. When the OCR lane lands at v2.1, it may
+and §9's prohibition stands unqualified for v0 through v2. When the OCR lane lands at v4, it may
 populate span-level uncertainty as a **diagnostic** — accepted if a server sends it, recorded, and
 **never filtered on**. LiteParse drops text below 0.3 and again below 0.1, silently, in two different
 places (checklist L23). That is the bug not to inherit.

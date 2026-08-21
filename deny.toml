@@ -2,7 +2,7 @@
 #
 # Discipline copied from Ethos, with one deliberate difference: Ethos denies network crates as
 # "no network in base". ethos-engine denies them outright at v0 — nothing in the happy path
-# reaches the network (docs/04-ARCHITECTURE.md §5). The v2.1 HTTP OCR lane will need a reviewed
+# reaches the network (docs/04-ARCHITECTURE.md §5). The v4 HTTP OCR lane will need a reviewed
 # exception with its own ADR; it does not get one in advance.
 #
 # Exceptions require an ADR before merge.
