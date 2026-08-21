@@ -26,7 +26,7 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.32.3**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.32.4**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
 and v2 **not complete**. `engine extract` takes a `.docx`, an
 `.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same

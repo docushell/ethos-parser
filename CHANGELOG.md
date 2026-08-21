@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the statements that stopped being true at 0.32.3; the roadmap reordered at 0.32.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the roadmap reordered at 0.32.2
 
 ### v2-S13.2 — the roadmap reordered, as 0.32.2
 
@@ -41,11 +41,65 @@ The ladder after v2 was **v2.1 (OCR) → v2.2 (accessibility) → v3 (assist)**.
 
 - Workspace **0.32.1 → 0.32.2**; both SDKs pinned to match. Still **nine** profiles, still mutually
   distinct. The default PDF profile hash moves on `parser_version` **alone**, to
-  `sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5`
+  `sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f`
   (was `sha256:c0c57728abc50f0ffcc6c3d5b4ef5bf3b985e4f082d180686fd9dbc4d6226aea`)
 - Both projection worked examples regenerated and verified against freshly generated artifacts.
 
 **v2 is not complete.** All three owner questions stand, restated unchanged.
+
+
+### v2-S13.4 — the gate's verb, and what "embedded assets" meant, as 0.32.4
+
+**The owner settled two of the three standing questions on 2026-08-21.** No code changed. This
+slice writes the decisions into `00-NORTH-STAR.md`'s forced-decision table as **#16** and **#17**
+and rewords the sentences that carried them — because a question answered and not written down is
+one the next slice re-escalates, which is what happened to the gate's verb from v2-S1 to here.
+
+#### #16 — *ground* means **bind**
+
+`00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both said *"A DOCX quote and an XLSX
+cell both **ground**"*. Read literally that means emit `ethos.grounding.v1`, which a DOCX cannot:
+`source.media_type` is a `const` of `application/pdf`, every element requires a `page`, every page
+requires integer geometry. v2-S1 decided option (b) — the schema stays PDF-only — and every slice
+since read *ground* as **bind** without anything saying so.
+
+**The gate's own second half forbids what the literal reading requires.** Grounding needs pages;
+*"no synthesised pages"* is the same sentence. Read literally the gate contradicts itself. Read as
+**bind** it is met, and has been since v2-S3.
+
+Both sentences now say *bind* — each quote resolves to an address the file itself states — so
+`ground` means one thing in this repository. Option (a), widening the verifier's schema, stays
+**blocked on an Ethos-side revision owned elsewhere** rather than refused.
+
+#### #17 — "embedded assets" means **counted**
+
+v2-S11 made every reader declare how many entries it passed over that hold a picture, an audio or
+video clip, or an embedded object, which closed the **A14** violation. **That satisfies v2.**
+Reading an office asset is explicitly *not* v2: `engine-pdf` emits an `ImageRecord` for a PDF image
+because a PDF image has a page and a coordinate system to be addressed in, and an office image has
+neither — so a node for one is a `REPRESENTATION_SCHEMA_VERSION` question, not a reader change. It
+gets its own row rather than sitting implied inside v2's.
+
+#### What remains
+
+**`zip.rs`'s CRC-32, and it is not a gate condition.** A part's declared length is checked and its
+CRC-32 is not; on four of fourteen packages a byte flipped inside the main part still inflates to
+the declared length and the extracted text comes out byte-identical, the artifact differing only in
+`source.sha256`. That is a robustness finding this repository can answer — but in a slice that owns
+it and **measures the false-refusal rate first**, because real archives written by careless tools
+do carry wrong CRCs and this repository has no corpus to say how often.
+
+#### Changed
+
+- Workspace **0.32.3 → 0.32.4**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the forty-third
+  time, to
+  `sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f`
+  (was `sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5`)
+- `docs/CAPABILITY.md`'s **"v2 is complete"** row now reads **gate met**, and names the CRC-32
+  question as **not** a gate condition.
+- **No past slice section was rewritten.** S1, S10, S11, S12.1, S13, S13.1, S13.2 and S13.3 restate
+  the questions as they stood when each shipped, and they stood that way.
 
 
 ### v2-S13.3 — the statements that stopped being true, as 0.32.3
@@ -138,7 +192,7 @@ has since v1-S3.
 - Workspace **0.32.2 → 0.32.3**; both SDKs pinned to match. Still **nine** profiles, still mutually
   distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
   forty-second time, to
-  `sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5`
+  `sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f`
   (was `sha256:c5ac3e261b9ed8bf58b56c07c9c79489a6b85b2df29307ff0bf6674577545d2e`)
 - `profile.rs`'s hash-move history also records the **forty-first** move, at 0.32.2, which that
   slice did not record.

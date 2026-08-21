@@ -10,14 +10,21 @@ counted at S11, both A11 lanes closed at S12 and S13, and the guard and prose re
 S13.3. (This said *"S0–S10"* until v2-S13.3, three slices after S11 shipped.) Eight formats read, one
 argued refusal, and every split was against a measurement.
 
-**v2 is not complete**, for two reasons neither of which is a format, and both of which are the
-owner's to settle (`15-V2-MILESTONES.md` S10):
+**Both of the reasons this section carried are settled by the owner (2026-08-21), and neither was
+a format.** `00-NORTH-STAR.md` decisions **#16** and **#17** record them, and v2-S13.4 in
+`15-V2-MILESTONES.md` argues them. **One question remains and it is not a gate condition** — whether
+`zip.rs` should verify the CRC-32 it currently ignores, raised at v2-S13 and answerable in this
+repository by a slice that owns it, with a measurement.
+
+The two as they stood, kept because the reasoning is the record:
 
 1. **The gate sentence's verb.** §2 below and `00-NORTH-STAR.md` both say a DOCX quote and an XLSX
    cell both **ground**. Grounding a DOCX is refused — decided at v2-S1 as option (b), pinned by a
    test, listed in `CAPABILITY.md` under **Cannot** — and every slice since has quietly re-read
    *ground* as **bind**. `15-V2-MILESTONES.md`'s S1 open-questions table — the **gate wording**
-   row — flagged it as unsettled at S1, and no decision-log entry ever settled it.
+   row — flagged it as unsettled at S1, and no decision-log entry settled it until **#16**, which
+   reads *ground* as **bind**: the gate's own second half, *"no synthesised pages"*, forbids what
+   the literal reading requires, so read literally the sentence contradicts itself.
 2. **"Embedded assets" — counted at v2-S11, and the rest is the owner's.** §2 restates it as v2's
    content and `02-ROADMAP.md`'s row names it. Until v2-S11 it was neither delivered nor descoped,
    and not merely unread but **uncounted**: `docx.rs`'s `UNREAD_TEXT_PART_PREFIXES` did not match
@@ -26,7 +33,10 @@ owner's to settle (`15-V2-MILESTONES.md` S10):
    **fixed at S11**, under a second code rather than a widened first one — `office-parts-not-read`'s
    message says its parts *carry text*, and a PNG does not. What S11 does **not** settle is whether
    the roadmap's word meant *counted* or *read*: no office asset is read, decoded or emitted as a
-   node, and `engine-pdf`'s `ImageRecord` has no office counterpart. That half is the owner's.
+   node, and `engine-pdf`'s `ImageRecord` has no office counterpart. **Settled by #17: counted
+   satisfies v2.** Reading an office asset is a contract change rather than a reader change — an
+   office image has no page and no coordinate system — and it gets its own row rather than sitting
+   implied inside v2's.
 
 §3's law has now been tested against all seven shapes a "page" can take, and the last four are the
 ones that cost something to refuse. A DOCX has none until a renderer invents one. A spreadsheet's

@@ -207,10 +207,10 @@
     {
       "artifact_type": "ethos.html.v1",
       "schema_version": "1.0.0",
-      "parser_version": "0.32.3",
-      "profile_sha256": "sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5",
+      "parser_version": "0.32.4",
+      "profile_sha256": "sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
-      "representation_sha256": "sha256:01923a264e990e534f1d6cf747cfabe7e48dd33d3cc52537f8c439230a495f2d",
+      "representation_sha256": "sha256:26169be4e8a47993daeed2cf9515f6af22ceccce8e06a54882e99d4a4b0d2f0e",
       "html_rule": "html-blocks-v2",
       "html": "<p>Hello Ethos</p>\n",
       "anchor_map": {

@@ -39,6 +39,8 @@ decision from the owner, recorded here first.
 | 13 | **LibreOffice→PDF office bridge:** forbidden (invents pagination). |
 | 14 | **No AGPL.** PDFium caller-provided or explicitly ADR'd later; v0 prefers clean-room `lopdf` + vendored CMap data (not wrapping pdf-inspector). |
 | 15 | **Roadmap order, amended by the owner 2026-08-21:** the ladder after v2 is **v2.2 (accessibility) → v3 (assist) → v4 (OCR)**. OCR was v2.1 and is now **v4** — moved last, not descoped, and renumbered rather than merely resequenced because `parser_version` is inside `profile_sha256` and a later build carrying a lower number defeats the one job that field has. **v2.1 is now a gap and nothing ever shipped under it.** Accessibility's condition — *"only on a named accessibility requirement, never on the critical path"* — is **withdrawn**; it is a sequential row. The two v4 blockers are unchanged and remain unpaid: `deny.toml` denies the HTTP surface by name and says the OCR lane needs its own ADR, and ONNX would be the largest runtime dependency in the tree. |
+| 16 | **The v2 gate's verb, settled by the owner 2026-08-21: *ground* means *bind*.** The gate reads "a DOCX quote and an XLSX cell both **bind**" — each resolves to an address the file itself states, which is what the eight readers emit and have since v2-S3. It does **not** mean emitting `ethos.grounding.v1`, which a DOCX cannot: `source.media_type` is a `const` of `application/pdf`, every element requires a `page`, and every page requires integer geometry. The decisive argument is that the gate's own second half forbids what the literal reading requires — grounding needs pages, and *"no synthesised pages"* is the same sentence. Read literally the gate contradicts itself; read as *bind* it is met. Option (a), widening the verifier's schema, stays **blocked on an Ethos-side revision owned elsewhere** rather than refused, and `ground` now means one thing in this repository. |
+| 17 | **"Embedded assets", settled by the owner 2026-08-21: counted satisfies v2.** Every reader declares how many entries it passed over that hold a picture, an audio or video clip, or an embedded object — which is what **A14** requires and what v2-S11 shipped. **Reading** an office asset is explicitly *not* v2: an office image has no page and no coordinate system, so an `ImageRecord`-shaped node would need a different address model, and that is a contract change rather than a reader change. It gets its own row when someone asks for it, rather than sitting implied inside v2's. |
 
 ## 3. Trust ladder — who owns what
 
@@ -91,7 +93,7 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures, an
 | **v1** | Fabrication rate **0** and an honest table number on the four-PDF set it owns — measured at **64‰**. The **> 0.489** chase is **parked** (decision #10). **Not complete** | The DocuShell replacement gate — tables, full element vocabulary, tagged PDF, forms, vectors |
 | **v1.1** | A Markdown-quoted citation verifies end-to-end | Safe Markdown, only with the Anchor Map |
 | **v1.2** | Locators survive every adapter round-trip | Adoption: MCP server, Python + Node SDKs, LangChain tool |
-| **v2** | A DOCX quote and an XLSX cell both ground; no synthesised pages | Anydoc-class office formats through one shared IR |
+| **v2** | A DOCX quote and an XLSX cell both **bind** — each resolves to an address the file itself states; no synthesised pages (decision #16) | Anydoc-class office formats through one shared IR |
 | **v2.2** | Tagged output round-trips: a tag this engine writes is one it can read back and ground against | Auto-tagging — the next sequential row after v2 (decision #15) |
 | **v3** | Byte-diff: assist on/off ⇒ identical grounded artifacts | Propose-only VLM assist |
 | **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR lane under its own profile |
@@ -120,7 +122,7 @@ For a coding agent starting fresh:
 7. **`06-STEAL-REFUSE.md`** — read before proposing a feature borrowed from another parser
 8. **`02-ROADMAP.md`** — only to check that a v1+ idea has a home and does not belong in v0
 
-What 0.32.3 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
+What 0.32.4 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
 these documents is **off-tree** and is not a second roadmap (`reference/README.md`);
 `06-STEAL-REFUSE.md` is the living steal / refuse record. Architecture depth for the older
 Ethos-in-DocuShell framing: `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` — **external, not

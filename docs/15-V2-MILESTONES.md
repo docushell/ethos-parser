@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S13.3 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0 through S13.4 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -52,10 +52,12 @@ else: a new container chain (`container.xml` → a package document), a reading 
 one could not supply. CSV inherits none of that — it has no container and, worse, **no detector**,
 which is the whole of what S10 has to argue.
 
-**The v2 gate is still DOCX + XLSX, and both still bind.** ODT, ODS, ODP, RTF and EPUB are coverage
-beyond it. v2 is **not complete**, and the two reasons are named in S10 and are the **owner's**:
-the gate sentence's verb, and — since v2-S11 counted every embedded asset without reading one —
-whether *"embedded assets"* was ever asking for more than the count. No slice here closes v1.
+**The v2 gate is DOCX + XLSX, and both bind — which is now what the gate says.** ODT, ODS, ODP,
+RTF and EPUB are coverage beyond it. The owner settled both of the questions this paragraph used to
+carry on 2026-08-21, as `00-NORTH-STAR.md` decisions **#16** (*ground* means **bind**) and **#17**
+(embedded assets **counted** satisfies v2); v2-S13.4 argues both. **One question remains, and it is
+not a gate condition**: whether `zip.rs` should verify the CRC-32 it ignores. No slice here closes
+v1.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -3372,6 +3374,95 @@ this slice's. Named, and stopped.
         that did run found fifteen.
 
 - **Depends on:** S13.1.
+
+---
+
+## S13.4 — the gate's verb, and what "embedded assets" meant — **done**, as 0.32.4
+
+**The owner settled two of the three standing questions on 2026-08-21.** This slice records the
+decisions and rewords the sentences that carried them. No behaviour changed; no code changed at
+all beyond the version literal's home in `Cargo.toml`.
+
+Both are now `00-NORTH-STAR.md` forced decisions — **#16** and **#17** — beside **#15**, the
+roadmap reorder the owner amended the same day. A question answered in a chat and not written into
+the decision table is a question that gets re-escalated by the next slice, which is exactly what
+happened to the gate's verb from v2-S1 to here.
+
+### #16 — *ground* means **bind**
+
+`00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both read *"A DOCX quote and an XLSX
+cell both **ground**"*. Read literally, *ground* means emit `ethos.grounding.v1`, and a DOCX cannot:
+`source.media_type` is a `const` of `application/pdf`, every element requires a `page`, every page
+requires integer geometry. That was decided at v2-S1 as option (b) — the schema stays PDF-only —
+and every slice since has read *ground* as **bind** without anything saying so.
+
+**The decisive argument is that the gate's own second half forbids what the literal reading
+requires.** Grounding needs pages. *"No synthesised pages"* is the same sentence. Read literally,
+the gate contradicts itself; read as *bind*, it is met, and has been since v2-S3.
+
+So the gate now reads **bind**: each quote resolves to an address the file itself states — a
+paragraph id, a cell reference — which is what the eight readers emit. `ground` stops meaning two
+things in one repository.
+
+**What this does not do.** Option (a) — widening `ethos.grounding.v1` so an office quote can be
+grounded in the literal sense — is **blocked on an Ethos-side revision owned elsewhere**, exactly
+as `07-VERIFY-BOUNDARY.md` requires. It is not refused, and #16 does not refuse it. If a consumer
+ever needs to verify a citation *into* a DOCX, that is the lane, and it is not this repository's to
+open.
+
+### #17 — "embedded assets" means **counted**
+
+`02-ROADMAP.md`'s v2 row lists *"embedded assets"* among v2's content and never said what handling
+them meant. v2-S11 made every reader **count** what it passes over — how many entries hold a
+picture, an audio or video clip, or an embedded object — under `office-embedded-parts-not-read`,
+which closed the **A14** violation. No office asset is *read*.
+
+**Counted satisfies v2.** The honesty obligation is what A14 states and it is discharged: nothing is
+silently dropped, and the count is per kind rather than folded into the text-part number.
+
+**Reading one is explicitly not v2**, and the reason is the same wall #16 describes. `engine-pdf`
+emits an `ImageRecord` for a PDF image — an id, a locator, attributes — and a PDF image has a page
+and a coordinate system to be addressed in. An office image has neither. An `ImageRecord`-shaped
+node for a DOCX picture would need a different address model, which is a **contract** change and a
+`REPRESENTATION_SCHEMA_VERSION` question, not a reader change. It gets its own row when someone asks
+for it, rather than sitting implied inside v2's and quietly making v2 incomplete.
+
+### What remains, and it is not a gate condition
+
+**Question 3 stands: should `zip.rs` verify CRC-32?** Raised at S13 and unchanged. `zip.rs` checks a
+part's declared **length** and never its **CRC-32**. On four of fourteen packages a byte flipped
+inside the main part's compressed data leaves a stream `miniz_oxide` still inflates — zlib refuses
+the same bytes — to exactly the declared length, with a NUL where the invalid back-reference was.
+The corruption lands in a namespace URI the OOXML readers match by suffix, so the extracted text
+comes out **byte-identical to the original's**; the artifact differs in exactly one field,
+`source.sha256`.
+
+**This is a robustness finding, not a condition v2's gate ever stated.** It is this repository's to
+answer rather than DocuShell's, and the owner's stated preference is to verify — but only in a slice
+that owns it and **measures the false-refusal rate first**, across the office corpus and whatever
+real-world archives can be gathered. Real archives written by careless tools do carry wrong CRCs,
+and this repository has no corpus to say how often. Zero would make it a one-line change; anything
+else is the decision. **This slice does not answer it**, and folding a reader change into a
+decisions slice is exactly the shape both S12.1 and S13.1 exist to prevent.
+
+- **Acceptance — all met:**
+  - [x] Both decisions written into `00-NORTH-STAR.md`'s forced-decision table as **#16** and
+        **#17**, beside #15, so neither can be re-escalated by a later slice reading a stale
+        sentence
+  - [x] The gate sentence reworded in **both** places that carry it — `00-NORTH-STAR.md`'s version
+        table and `02-ROADMAP.md`'s v2 row — so `ground` means one thing
+  - [x] `14-V2-SCOPE.md` and this file's header updated from *"two reasons, both the owner's"* to
+        the settled state, with the original reasoning kept because it is the record
+  - [x] `CAPABILITY.md`'s **"v2 is complete"** row states the gate is met and names the one open
+        question as **not** a gate condition
+  - [x] **Past slice sections are not rewritten.** S1, S10, S11, S12.1, S13, S13.1, S13.2 and S13.3
+        restate the questions as they stood when each shipped, and they stood that way
+  - [x] **No behaviour change.** No `crates/*/src` line moved at all
+  - [x] Workspace **0.32.4**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct
+  - [x] No git tag
+
+- **Depends on:** S13.3.
 
 ---
 
