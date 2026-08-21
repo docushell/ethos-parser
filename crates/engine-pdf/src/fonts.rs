@@ -57,7 +57,11 @@ pub enum WidthSource {
     /// is reported as unknown rather than guessed. Origins remain exact — they come from the
     /// content stream, not from the font.
     Absent {
-        /// Why, for the artifact's `not_decoded` list.
+        /// Why, as the `detail` of the document-scoped `font-widths-absent` limitation.
+        ///
+        /// This said *"for the artifact's `not_decoded` list"* until v2-S13.3. That list was M3's
+        /// and M4 absorbed it into `assurance.limitations`; the string still travels, under a
+        /// name that still exists.
         reason: String,
     },
 }
@@ -648,8 +652,17 @@ mod tests {
     /// say in how a string is divided.
     ///
     /// The test was not wrong about the code; it was wrong about the rule, and it held the wrong
-    /// rule in place for six slices while 2 827 font instances across the three real corpus
-    /// documents were read two bytes at a time.
+    /// rule in place for six slices while **2 827 font instances** were read two bytes at a time:
+    /// 2 426 in `nist-sp-800-53r5`, 303 in `nist-sp-800-63b` and 98 in `cfpb-home-loan-toolkit`,
+    /// with none in `irs-form-1040-2025` and none across the conformance synthetics.
+    ///
+    /// The figure is v1-S6.1's own measurement and it stands. What did not was the phrase
+    /// *"across the three real corpus documents"*, repaired at v2-S13.3: **four** real documents
+    /// were measured, the fourth contributing zero, and the three `fixtures/manifest.json`
+    /// declares as the `benchmark` corpus are a *different* three — `cfpb-home-loan-toolkit`,
+    /// which supplied 98 of these, is not among them, so read against the manifest's trio the
+    /// number would have been 2 729. Naming the documents costs a line and cannot drift; a
+    /// count of a set nobody can identify already had.
     #[test]
     fn a_simple_font_splits_one_byte_per_code_whatever_its_tounicode_says() {
         let mut f = font_with(

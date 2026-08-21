@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.32.2, and v2's format row
+**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.32.3, and v2's format row
 is closed.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its table number is measured and **missed**: macro cell-slot F1 is **64‰**, fabrication is
@@ -10,7 +10,7 @@ open**. Its table number is measured and **missed**: macro cell-slot F1 is **64�
 **v1 is not done**, and v1.1 began because the owner asked for the next roadmap row rather than
 because the gate cleared.
 
-**What 0.32.2 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
+**What 0.32.3 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
 
 **v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
@@ -249,7 +249,8 @@ one**.
 
 M7 added no capability. It closed v0 instead:
 
-- **`03-V0-SCOPE.md` §5 is CI.** Fifteen criteria, sixteen named jobs — the fuzz line names two — and
+- **`03-V0-SCOPE.md` §5 is CI.** Fifteen criteria, **seventeen** named jobs — the fuzz-and-mutation
+  line names three — and
   `v0_exit_criteria.rs` fails if a box is ticked against a job nobody wrote — or if a `--skip`
   reappears anywhere in the workflow.
 - **The public API is a list**, not whatever happened to be `pub`. See
@@ -276,7 +277,7 @@ the current one, and this paragraph is the v0 → v1 hand-off it describes.
 
 ## If you are a coding agent, read this first
 
-1. Read `00-NORTH-STAR.md` — what the product is, and the fourteen decisions that are already made
+1. Read `00-NORTH-STAR.md` — what the product is, and the fifteen decisions that are already made
 2. Read `01-CONTRACT.md` — the artifact shape. Frozen before implementation, deliberately
 3. Read `03-V0-SCOPE.md` — what is in and out of the first release
 4. Read `05-MILESTONES.md` — the ordered work with acceptance tests
@@ -322,7 +323,7 @@ Then, as needed:
 
 | Doc | What it settles | Read it when |
 | --- | --- | --- |
-| [`00-NORTH-STAR.md`](00-NORTH-STAR.md) | Product definition · the 14 forced decisions · trust-ladder ownership · relationship to the Ethos repo · anti-goals | First. Always |
+| [`00-NORTH-STAR.md`](00-NORTH-STAR.md) | Product definition · the 15 forced decisions · trust-ladder ownership · relationship to the Ethos repo · anti-goals | First. Always |
 | [`01-CONTRACT.md`](01-CONTRACT.md) | Artifact identity · coordinate declaration · c14n and integer quanta · locators and typed absence · derivation classes · capabilities · fail-closed · no confidence · the `ethos.grounding.v1` mapping | Before writing any type that gets serialized |
 | [`02-ROADMAP.md`](02-ROADMAP.md) | v0 → v3 in one line each · folded research deltas · what is deliberately not scheduled | When an idea might belong to a later version |
 | [`03-V0-SCOPE.md`](03-V0-SCOPE.md) | v0 in/out · the happy path · exit codes · fixtures · exit criteria · performance posture · risks | Before opening any PR |
@@ -339,7 +340,7 @@ Then, as needed:
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
 | [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S13**, all done — eight formats read and **S10 (CSV) an argued refusal**. v2's format row is closed and v2 is **not** complete | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489, which is why the chase is parked | Before quoting any table-accuracy number |
-| [`CAPABILITY.md`](CAPABILITY.md) | What **0.32.2** can and cannot do, as two tables | When someone asks what this engine actually does today |
+| [`CAPABILITY.md`](CAPABILITY.md) | What **0.32.3** can and cannot do, as two tables | When someone asks what this engine actually does today |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | A stub. The two research files are **off-tree**; `06-STEAL-REFUSE.md` is the living steal / refuse record | Only to find out where the archive went |
@@ -427,9 +428,11 @@ Grep for `TODO(` to find them. Currently:
   hierarchy, so nothing exists for an offset to index into. **M5 built the record and left it
   false**: without line grouping an element and a span are the same object, so an offset would
   always be `0..len`. It flips at **v1** with grouping, with a test.
-  `capabilities.structural_locators` stays `false` because an `mcid` captured from `BDC` is not a
-  structural address — no role path, and an absent id is not evidence the document is untagged.
-  Full structural addressing is v1. Both moved `profile_sha256`, which is the mechanism working.
+  `capabilities.structural_locators` was `false` at v0 for the same shape of reason — an `mcid`
+  captured from `BDC` is not a structural address, having no role path, and an absent id is not
+  evidence the document is untagged. **It flipped to `true` at v1-S3**, when full structural
+  addressing landed; this bullet said it *"stays `false`"* until v2-S13.3, which is a v0 sentence
+  left in a list nobody re-read. Both flips moved `profile_sha256`, which is the mechanism working.
 - **Adobe predefined CMaps, Core-14 AFM widths and the full Adobe Glyph List are not vendored.**
   Each makes the engine fail closed with a named error, and each is declared on the wire. See
   [`vendor/README.md`](../vendor/README.md) for the reasoning and what would change if they land.

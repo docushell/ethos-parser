@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0–S12 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0 through S13.3 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -2664,6 +2664,10 @@ What is left, by file, so the next slice inherits a search result rather than a 
 | `crates/engine-pdf/tests/capabilities.rs` | 1 | *"Every source line of the workspace's integration tests"* |
 | `docs/PUBLIC-API.md`, `NOTICE`, `docs/table-gate-v1.md` | 3 | *"four subcommands"*, a `not_decoded` list that M4 removed, and a manifest-as-single-source claim |
 
+> **Status at v2-S13.3: all twenty-eight are closed.** The twelve guards were repaired at S13.1 and
+> the sixteen prose statements at S13.3, which also found five more `not_decoded` sites and fifteen
+> further mismatches the list never named.
+>
 > **Status at v2-S13.1: twelve of the twenty-eight are closed.** The twelve that were **guards**
 > rather than prose are repaired in S13.1 below, because a test that overclaims is a hole and not a
 > typo — and the `docs/table-gate-v1.md` entry turned out to be a latent gate hole rather than the
@@ -3271,6 +3275,101 @@ not update that row.
   - [x] Workspace **0.32.2**; nine profile hashes move on `parser_version` alone and stay mutually
         distinct; both SDK suites run by hand and pass
   - [x] No git tag
+
+- **Depends on:** S13.1.
+
+---
+
+## S13.3 — the statements that stopped being true — **done**, as 0.32.3
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2, v2-S12.1 and v2-S13.1 set.** No behaviour
+changed. Every `crates/*/src` edit is a comment or sits inside `#[cfg(test)]`.
+
+**This is the prose half of S12.1's fifty-two.** S12.1 confirmed fifty-two false statements,
+repaired twenty-four and named twenty-eight. S13.1 took the twelve that were guards, because a test
+that overclaims is a hole rather than a typo. These are the sixteen that are prose — plus what a
+derived sweep found on top of them, because a handed list is not a search.
+
+### The `vendor/` cluster, and it had to be one decision
+
+`vendor/` holds **one** tracked file, `vendor/README.md`. Where the encoding data actually lives had
+to be settled before any sentence about it could be reworded, and `vendor/README.md` had the answer
+the whole time: the tables are `const fn` builders inside `crates/engine-pdf/src/encoding.rs`, baked
+into `.rodata`, *"because a separate file would be the same bytes with a parser in front."*
+`encoding.rs` itself claimed they were *"written out as data under `vendor/encodings/`"*, and the
+doc on `WIN_ANSI` said the same in fewer words. `docs/04-ARCHITECTURE.md`'s tree drew
+`vendor/cmaps/ # 168 Adobe .bcmap + NOTICE` for files that never landed.
+
+**`not_decoded` was five sites, not the one the brief named.** M4 absorbed that list into
+`assurance.limitations`; `NOTICE`, `vendor/README.md`, `encoding.rs`, `fonts.rs` and
+`profile.rs`'s `CMAP_DATA_VERSION` all still named it.
+
+**Two errors this slice introduced and an adversarial pass caught**, recorded because a repair that
+introduces a new false statement is worse than the one it fixed:
+
+1. A first draft said the CMap limitation rides on *"every artifact this build produces"*. It does
+   not — `engine-office` builds its limitation lists fresh and never calls `backend_limitations()`.
+   Every **PDF** artifact, classify and extract alike.
+2. A first draft of `vendor/README.md` said two of its three gaps fail closed. **One does.** A
+   predefined CMap is refused; a Core-14 font with no `/Widths` is read and reports `advance: null`;
+   an unrecognised `/Differences` name **drops that run** and is counted into
+   `broken-font-encoding`. That last one changed at **v0.1** and this file's own table row had said
+   *"is refused"* ever since.
+
+### One of the sixteen was misstated in the brief
+
+`NativeLocator::Rtf`'s *"the invariant grew a third case"* is **true** and is left verbatim. It
+counts the parenting invariant's three cases — paginated, page-less naming a part, page-less naming
+none — and `part()`'s Rtf arm and `names_a_part`'s doc say the same thing in the same words. RTF is
+the *seventh* page-less variant, but the sentence makes no ordinal claim about variants. This is the
+third consecutive slice whose handed list contained one site that did not survive checking, which is
+why the list is checked against the code rather than the other way round.
+
+### The sweep, and what it found beyond the brief
+
+**1,789 candidate lines examined; 15 confirmed mismatches.** The method was the one v2-S10.2
+recorded and v2-S13.1 repeated: derive the target set from the code, then check the handed list
+against it. Two of the three planned sweeps did not run — the session hit its usage limit — so the
+sweep coverage here is **one of three**, and that is stated rather than rounded off.
+
+What it found that the brief did not name: `CAPABILITY.md` claiming *"no office fixture has been
+mutated"* one slice after v2-S13 mutated all sixteen, directly contradicting `06-STEAL-REFUSE.md`'s
+A11 row; `docs/README.md`'s *"fourteen decisions"* in two places against `00-NORTH-STAR.md`'s
+fifteen, and *"sixteen named jobs"* against §5's seventeen; `06-STEAL-REFUSE.md`'s *"four kinds are
+new"* against the harness's five — the kind it collapsed away being the byte-flip that produced
+v2-S13's CRC-32 finding; `README.md`'s *"S4 (HTML) is not started"* when it shipped at 0.14.0 and
+*"S1 through S7b"* when S8 is done; and `Capabilities::V0`'s doc describing `structural_locators` as
+narrowed to `false` three lines above a literal that has read `true` since v1-S3.
+
+### P9 — a finding for the owner, not a repair
+
+`docs/06-STEAL-REFUSE.md`'s TAKE table carries `| P9 | Vendored CMap tables | pdf-inspector | v0 |`.
+The column is **Target**, so the row is not a claim of completion — but v0 is frozen and complete,
+and the CMaps were **deliberately not carried**, argued at length in `vendor/README.md`. **Nothing
+anywhere records that deferral**: no note on the row, nothing in `05-MILESTONES.md` M3,
+`03-V0-SCOPE.md` or `CAPABILITY.md`. **A11**'s row in the same table carries a long annotation, so
+the table can hold that kind of note and P9's does not.
+
+Whether a v0-target obligation consciously not met leaves v0's gate met is the **owner's** call, not
+this slice's. Named, and stopped.
+
+- **Acceptance — all met:**
+  - [x] The sixteen repaired or explicitly declined, each verified against the code — **one
+        declined**, `NativeLocator::Rtf`, because it is true
+  - [x] The `vendor/` cluster resolved as **one** decision, with the encoding data's real location
+        established first
+  - [x] An independent site set derived and the difference reported in both directions: **five**
+        `not_decoded` sites where the brief named one, and **fifteen** sweep findings on top
+  - [x] **No behaviour change**; every `src` edit a comment or inside `#[cfg(test)]`
+  - [x] S12.1's deferred list updated to say what is closed
+  - [x] Workspace **0.32.3**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both projection examples regenerated and **verified** against real artifacts
+  - [x] No git tag
+
+- **Not met, and stated rather than rounded off:**
+  - [ ] **Two of three planned sweeps did not run**, on a usage limit. A `crates/*/src` comment
+        sweep and a cross-reference-rot sweep are unrun, and neither is a formality: the one sweep
+        that did run found fifteen.
 
 - **Depends on:** S13.1.
 

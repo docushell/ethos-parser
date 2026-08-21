@@ -32,6 +32,15 @@
 //! | [`diagnostics`] | Volatile observations, quarantined off the artifact and off by default |
 //! | [`verifier`] | Spawning a verifier and relaying its bytes — **never** reading them |
 //! | [`tables`] | Table occupancy: `CellSlot`, spans, and the structural half of the cross-check |
+//! | [`representation`] | [`DocumentRepresentation`] itself: nodes, locators, the page-parent invariant and `check_structure` |
+//! | [`markdown`] | The Markdown projection and its Anchor Map (v1.1-S1) |
+//! | [`html`] | The HTML projection, on the same anchor discipline (v1.1-S4) |
+//!
+//! **Three rows were missing until v2-S13.3**, and one of them was
+//! [`representation`] — the module that owns the type this whole crate exists to define. A table
+//! headed *"what lives here"* that omits the centre of the crate misleads exactly the reader it is
+//! written for. The count is fourteen modules and fourteen rows now; the check is `ls
+//! crates/engine-core/src`, which is what caught it.
 //!
 //! # Boundary
 //!

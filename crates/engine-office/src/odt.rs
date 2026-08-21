@@ -139,7 +139,7 @@ use crate::xml::{
 
 /// The three OpenDocument namespaces this reader resolves element names in.
 ///
-/// # Why this reader resolves namespaces when its three siblings do not
+/// # Why this reader resolves namespaces when the three OOXML readers do not
 ///
 /// `xml.rs`'s [`local_name`] matches by suffix and states the tradeoff for doing so: *"the failure
 /// mode is a refusal to find content rather than wrong content."* That argument is sound for the
@@ -179,7 +179,14 @@ pub(crate) const NS_DRAW: &[u8] = b"urn:oasis:names:tc:opendocument:xmlns:drawin
 /// block and the text is [`Self::InlineText`]. Anything else is [`Self::Foreign`] — its characters
 /// are not the block's, and they are **counted** (**A14**) rather than spliced or dropped. That is
 /// what the module header always claimed ("the character data at *its own level*") and what
-/// [`crate::xml`]'s three sibling readers get for free by gating on `<w:t>`, `<t>` and `<a:t>`.
+/// [`crate::xml`]'s three OOXML readers get for free by gating on `<w:t>`, `<t>` and `<a:t>`.
+///
+/// **Three siblings, not seven, and the distinction is the point.** This reader has seven siblings
+/// now — `docx`, `xlsx`, `pptx`, `ods`, `odp`, `rtf` and `epub` — and they do not divide evenly.
+/// The three OOXML readers match element names by suffix; `ods`, `odp` and `epub` resolve
+/// namespaces exactly as this one does, because ODF and XHTML pose the same problem; and `rtf`
+/// parses no XML at all. The heading said "its three siblings" when ODT was the fourth format and
+/// three was the whole set, and it kept saying it through four more formats until v2-S13.3.
 /// ODF has no such element, so the gate has to be built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Element {
@@ -1247,7 +1254,7 @@ mod tests {
 
     /// **A foreign element does not move an address.** ODF §3.17 permits foreign elements in mixed
     /// content, so namespace blindness here would be a wrong locator rather than missing content —
-    /// which is why this reader resolves names where its three siblings match by suffix.
+    /// which is why this reader resolves names where the three OOXML readers match by suffix.
     #[test]
     fn a_foreign_element_with_a_block_name_neither_counts_nor_emits() {
         let content = read(

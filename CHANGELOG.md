@@ -7,7 +7,7 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the statements that stopped being true at 0.32.3; the roadmap reordered at 0.32.2
 
 ### v2-S13.2 — the roadmap reordered, as 0.32.2
 
@@ -41,11 +41,111 @@ The ladder after v2 was **v2.1 (OCR) → v2.2 (accessibility) → v3 (assist)**.
 
 - Workspace **0.32.1 → 0.32.2**; both SDKs pinned to match. Still **nine** profiles, still mutually
   distinct. The default PDF profile hash moves on `parser_version` **alone**, to
-  `sha256:c5ac3e261b9ed8bf58b56c07c9c79489a6b85b2df29307ff0bf6674577545d2e`
+  `sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5`
   (was `sha256:c0c57728abc50f0ffcc6c3d5b4ef5bf3b985e4f082d180686fd9dbc4d6226aea`)
 - Both projection worked examples regenerated and verified against freshly generated artifacts.
 
 **v2 is not complete.** All three owner questions stand, restated unchanged.
+
+
+### v2-S13.3 — the statements that stopped being true, as 0.32.3
+
+**No behaviour changed.** Every `crates/*/src` edit is a comment or sits inside `#[cfg(test)]`.
+This is the prose half of the fifty-two false statements v2-S12.1 confirmed and had no room to
+repair — S12.1's own deferred list named twenty-eight, v2-S13.1 took the twelve that were guards,
+and these are the sixteen that are prose, plus what a derived sweep found on top of them.
+
+#### The `vendor/` cluster, resolved as one decision
+
+`vendor/` holds **one** tracked file, `vendor/README.md`. Four places said otherwise, and the
+location question had to be settled before any of them could be reworded:
+
+- `crates/engine-pdf/src/encoding.rs` said the encoding tables live *"as data under
+  `vendor/encodings/`"*, and the doc on `WIN_ANSI` said *"Loaded from `vendor/encodings/`"*. **They
+  are `const fn` builders in that same file**, which the compiler evaluates into `.rodata` —
+  `vendor/README.md` has said so correctly the whole time, and says why: a 256-entry table in a
+  separate file is the same bytes with a parser in front. One decision, both sentences.
+- `docs/04-ARCHITECTURE.md`'s workspace tree drew `vendor/cmaps/ # 168 Adobe .bcmap + NOTICE`.
+  Those files never landed; `vendor/README.md` calls it *"a deviation from the milestone text"*.
+
+**`not_decoded` turned out to be five sites, not one.** M4 absorbed that list into
+`assurance.limitations` and no artifact has carried the field since; `NOTICE`, `vendor/README.md`,
+`encoding.rs`, `fonts.rs`'s `WidthSource::Absent` and `profile.rs`'s `CMAP_DATA_VERSION` all still
+named it. The brief named `NOTICE`.
+
+**And an adversarial pass caught a claim this slice introduced**: the first draft said the CMap
+limitation rides on *"every artifact this build produces"*. It does not — `engine-office` never
+calls `backend_limitations()`, so it is every **PDF** artifact, classify and extract alike.
+
+#### The rest of the sixteen
+
+- **`docs/04-ARCHITECTURE.md`** — the tree was missing `engine-office` entirely, four slices after
+  it joined; the `engine-office` row named **four** formats where the crate reads **eight**; §4
+  said *"exactly one"* engine-owned fixture where the manifest counts **37**, and *"two roots"*
+  where it declares **three**; and the *"Four crates, not six"* heading had been five since v2-S2.
+- **§2 and `docs/PUBLIC-API.md` both said "four subcommands"** where `enum Command` has **nine** —
+  two documents agreeing with each other and neither agreeing with the binary. §2 is left at four
+  and now says so: it is v0's record, and its heading scopes it. `PUBLIC-API.md` is not scoped and
+  now names all nine. **Its thin-shell mapping table covers four of the nine**, which is a real gap
+  rather than a count — `verify`, `overlay`, `markdown`, `html` and `mcp` have their library
+  equivalence stated nowhere — and that is named rather than papered over.
+- **`crates/engine-core/src/lib.rs`** — the `# What lives here` table listed **11** of the crate's
+  **14** modules. One of the three missing was `representation`, the module that owns the type the
+  crate exists to define.
+- **`verifier.rs`** — *"the other four subcommands"*, twice, where the complement of `verify` is
+  eight.
+- **`profile.rs`** — `EPUB_READING_ORDER_RULE_V1` claimed *"six siblings"* and *"five siblings'"* in
+  the same doc. Seven, both times, and both were wrong the day they were written: RTF's rule
+  shipped at v2-S8 and ODP's at v2-S7.
+- **`representation.rs`** — *"the sharpest of the four"* and *"the sharpest of the six"* sit twelve
+  lines apart in one match arm that now covers **eight** page-less variants. Both were true once,
+  at v2-S5 and v2-S7. The ordinals are gone rather than renumbered: a number that must be revised
+  every time a format lands is an obligation nothing enforces.
+- **`odt.rs`** — *"its three siblings"* meant the three OOXML readers and still does, but ODT has
+  **seven** siblings now and they do not divide evenly: three match by suffix, three (`ods`, `odp`,
+  `epub`) resolve namespaces exactly as ODT does, and `rtf` parses no XML at all.
+- **`opc.rs`** — the heading said *"One rule, three formats"* while the paragraph two lines below
+  said *"both formats"*. **Two**, and `docx.rs` names `opc` nowhere: a DOCX has no part that lists
+  things without naming them, which is why the trap could not have been found in v2-S2.
+- **`xml.rs`** — *"Six shipped readers name a `text_code_rule`"*. **Nine profiles** name one; the
+  six is the set of readers that reach an entity through this function, and every later "six" in
+  that paragraph counts that correct set and stands.
+- **`fonts.rs`** — the 2,827 font-instance figure is v1-S6.1's own measurement and stands; *"across
+  the three real corpus documents"* did not. **Four** were measured, one contributing zero, and the
+  three the manifest declares as the benchmark corpus are a **different** three.
+
+**One of the sixteen was misstated in the brief and is left unchanged.**
+`NativeLocator::Rtf`'s *"the invariant grew a third case"* is **true**: it counts the parenting
+invariant's three cases — paginated, page-less naming a part, page-less naming none — and two
+adjacent doc comments say the same thing in the same words. RTF is the seventh page-less variant,
+but the sentence makes no such claim.
+
+#### What a derived sweep found on top of the sixteen
+
+**1,789 candidate lines examined, 15 mismatches confirmed.** The ones repaired here:
+`docs/CAPABILITY.md` said *"no office fixture has been mutated"* one slice after v2-S13 mutated all
+sixteen, contradicting `06-STEAL-REFUSE.md`'s own A11 row; `docs/README.md` said **fourteen** forced
+decisions in two places where `00-NORTH-STAR.md` numbers **fifteen**, and *"sixteen named jobs"*
+where §5 names **seventeen**; `06-STEAL-REFUSE.md` counted **four** container-only mutation kinds
+where the harness has **five** — and the one it collapsed away is the byte-flip that produced
+v2-S13's CRC-32 finding; `README.md` said **S4 (HTML) is not started** when it shipped at 0.14.0,
+and *"S1 through S7b"* when S8 is done; and `profile.rs`'s `Capabilities::V0` comment described
+`structural_locators` as narrowed to `false` three lines above a literal reading `true`, which it
+has since v1-S3.
+
+#### Changed
+
+- Workspace **0.32.2 → 0.32.3**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
+  forty-second time, to
+  `sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5`
+  (was `sha256:c5ac3e261b9ed8bf58b56c07c9c79489a6b85b2df29307ff0bf6674577545d2e`)
+- `profile.rs`'s hash-move history also records the **forty-first** move, at 0.32.2, which that
+  slice did not record.
+- Both projection worked examples regenerated and **verified equal to freshly generated
+  artifacts** rather than hand-edited.
+
+**v2 is not complete.** Three owner questions stand, unchanged and unsettled here.
 
 
 ### v2-S13.1 — the guards that check nothing, as 0.32.1

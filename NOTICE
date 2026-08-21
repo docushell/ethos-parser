@@ -25,7 +25,12 @@ here, and that is a declared decision rather than an oversight: nothing in the
 conformance corpus exercises them, and committing binary data that no test
 touches means shipping data nobody has verified. A document naming a predefined
 CMap is REFUSED with a named error rather than decoded approximately, and the
-gap is declared in every extract artifact's `not_decoded` list.
+gap is declared as the limitation code `predefined-cmaps-not-vendored` inside
+`assurance.limitations`, on every PDF artifact this engine emits — classify and extract
+alike, since both take their list from `backend_limitations()`. This paragraph named an
+extract artifact's `not_decoded` list until v2-S13.3; that was M3's spelling, M4 absorbed
+the list into the L1 gate, and no artifact has carried the field since. The office readers
+do not carry this code at all, and correctly: it names what a PDF backend could not decode.
 
 When those files land — with a fixture that proves they work — they belong under
 vendor/cmaps/ with the Adobe BSD 3-Clause licence text reproduced there and this

@@ -171,9 +171,13 @@ hold it and a half-discharged obligation read as a whole one is how a gap surviv
 PDF is a byte stream; an office document is mostly a container. Five of the PDF kinds carry over
 with their mechanics rewritten around the ZIP, one — `unknown-operator` — reduces to nothing for a
 package and is dropped rather than faked, and RTF keeps it under its own name because its stream is
-plaintext. Four kinds are new because a container has hazards a byte stream does not: a truncated
-central directory, a byte flipped inside a compressed entry, a forged second end-of-central-directory
-record, and an overwritten `mimetype` body. Every pair a kind cannot apply to is **pinned and
+plaintext. **Five** kinds are new because a container has hazards a byte stream does not: a
+truncated central directory, a byte flipped inside the **first** deflated entry, a byte flipped
+inside the **main part**, a forged second end-of-central-directory record, and an overwritten
+`mimetype` body. The two byte-flips are separate kinds rather than one because they damage
+different things — the first entry a reader meets, and the part that carries the document's text —
+and it is the second that produced v2-S13's CRC-32 finding. This sentence counted four by
+collapsing them until v2-S13.3. Every pair a kind cannot apply to is **pinned and
 counted**, so a mutation that quietly stops applying is a red test rather than lost coverage.
 
 *"`cargo-fuzz` **per format**"* is discharged by one target rather than eight, and that is a

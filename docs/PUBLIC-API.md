@@ -223,8 +223,14 @@ contract before anyone decided it should be one.
 ## `engine-cli` — the binary
 
 **Exports nothing.** `engine` is a `[[bin]]`; there is no library target and no supported
-`engine_cli::` path. The CLI's four subcommands, their flags and their exit codes are a *product*
-contract described in `docs/04-ARCHITECTURE.md` §2, not a Rust one.
+`engine_cli::` path. The CLI's **nine** subcommands, their flags and their exit codes are a
+*product* contract, not a Rust one: `classify`, `extract`, `ground` and `grounding-check` from v0,
+then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4) and `mcp` (v1.2-S1).
+`docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so; `enum Command` in
+`crates/engine-cli/src/main.rs` is the list that cannot go stale.
+
+This said *"four subcommands"* and pointed at §2, which also said four — two documents agreeing
+with each other and neither agreeing with the binary. Repaired at v2-S13.3.
 
 ---
 
@@ -233,6 +239,15 @@ contract described in `docs/04-ARCHITECTURE.md` §2, not a Rust one.
 `docs/03-V0-SCOPE.md` §1 item 19 and `docs/04-ARCHITECTURE.md` §2 both require that the CLI be a
 thin shell — that **every subcommand behaviour be reachable through the library**. This table is
 that mapping, and the right-hand column is what a caller writes instead of spawning a process.
+
+**It maps four of the nine, and that gap is the finding rather than the table's shape.** The rule
+binds every subcommand; the rows here cover only v0's four, so `verify`, `overlay`, `markdown`,
+`html` and `mcp` have their thin-shell mapping stated nowhere. Each *is* thin — `engine verify`
+relays through `engine_core::verifier`, `markdown` and `html` through `engine_core`'s projections,
+`overlay` through `engine_pdf`, and `mcp` is the shell around all of them — but "is" and "is
+written down where a caller can check it" are different claims, and this document exists to make
+the second one. Filling in the five rows needs the library-only and CLI-equals-library proofs named
+per row, the way the four below name theirs, and that is a slice rather than a sentence.
 
 | Subcommand | Library call | Library-only proof | CLI-equals-library proof |
 | --- | --- | --- | --- |

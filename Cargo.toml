@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, v2-S11 as 0.30.0, v2-S12 as 0.31.0, its guard repair as 0.31.1, v2-S13 as 0.32.0, its guard repair as 0.32.1, and the roadmap reorder as 0.32.2.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, v2-S11 as 0.30.0, v2-S12 as 0.31.0, its guard repair as 0.31.1, v2-S13 as 0.32.0, its guard repair as 0.32.1, the roadmap reorder as 0.32.2, and its prose repair as 0.32.3.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -554,7 +554,7 @@ exclude = ["fuzz"]
 # it DECLINED to repair named there too rather than left for someone to rediscover. The office
 # MUTATION half of A11 is still open and this slice does not touch it. **v2 IS STILL NOT
 # COMPLETE**; both escalated questions are restated unchanged.
-version = "0.32.2"
+version = "0.32.3"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -575,10 +575,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.32.2" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.32.2" }
-engine-office = { path = "crates/engine-office", version = "0.32.2" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.32.2" }
+engine-core = { path = "crates/engine-core", version = "0.32.3" }
+engine-pdf = { path = "crates/engine-pdf", version = "0.32.3" }
+engine-office = { path = "crates/engine-office", version = "0.32.3" }
+engine-grounding = { path = "crates/engine-grounding", version = "0.32.3" }
 
 [profile.release]
 strip = "symbols"

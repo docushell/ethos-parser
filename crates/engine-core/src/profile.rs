@@ -220,8 +220,13 @@ pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 /// `StandardEncoding`, and a glyph-name subset — held in `engine-pdf`'s `encoding` module.
 ///
 /// The Adobe predefined CJK CMaps are **not** carried, so a document naming one is refused
-/// rather than decoded approximately. That is a declared limitation, recorded in every extract
-/// artifact's `not_decoded` list and in `vendor/README.md`. When those files land this string
+/// rather than decoded approximately. That is a declared limitation: it travels as the code
+/// `predefined-cmaps-not-vendored` in `assurance.limitations`, and it is argued in
+/// `vendor/README.md`. The list was called `not_decoded` at M3 and M4 absorbed it into the L1
+/// gate, so the old name named nothing from M4 until this sentence was repaired at v2-S13.3.
+/// Being profile-scoped it rides on **classify and extract alike**, not only on an extract —
+/// and on PDF artifacts only, because the office readers build their limitation lists fresh and
+/// have no PDF backend to declare anything about. When those files land this string
 /// changes, which moves `profile_sha256` — artifacts from before and after are then correctly
 /// non-comparable, because they really were produced by different decoders.
 pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
@@ -456,11 +461,17 @@ pub struct Capabilities {
 impl Capabilities {
     /// What v0 actually claims.
     ///
-    /// Note how much is `false`. Two of these were `true` in the M1 sketch and are `false` here
-    /// because M4 asked for the proof and the proof did not exist: `char_offsets` has no
-    /// hierarchy to index into until grouping lands, and `structural_locators` would be claiming a full
+    /// Two of these were `true` in the M1 sketch and were narrowed to `false` at M4, because M4
+    /// asked for the proof and the proof did not exist: `char_offsets` had no hierarchy to index
+    /// into until grouping landed, and `structural_locators` would have been claiming a full
     /// structural address on the strength of a best-effort `mcid`. Narrowing a declaration when
     /// the evidence does not support it is the mechanism working, not a regression.
+    ///
+    /// **`structural_locators` has been `true` since v1-S3**, when the tagged-structure tree
+    /// landed and the address stopped being best-effort. `char_offsets` is still `false`. This
+    /// comment opened *"Note how much is `false`"* and described both as narrowed, three lines
+    /// above a literal that had said `structural_locators: true` since v1-S3 — repaired at
+    /// v2-S13.3.
     pub const V0: Self = Self {
         spans: true,
         char_offsets: false,
@@ -613,15 +624,21 @@ pub const RTF_TEXT_CODE_RULE_V1: &str = "rtf-stated-characters-v1";
 /// v2-S9's EPUB reading order: **the spine**, then each document's own order.
 ///
 /// **The first reading-order rule in this contract that decides something**, and that is the
-/// format's doing rather than a change of posture. Its six siblings say "the order the part lists
-/// them", because each of those formats has one part or names its parts in one place. An EPUB is a
+/// format's doing rather than a change of posture. Its **seven** siblings say "the order the part
+/// lists them" — DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF — because each of those formats has one
+/// part, names its parts in one place, or is a single stream. An EPUB is a
 /// ZIP of documents, and the archive's own ordering is not the publication's: reading order lives
 /// in the package document's `<spine>`, as `<itemref idref="…">` resolved through the
 /// `<manifest>`. Following it is reading; sorting the XHTML entries by name, or taking them in
 /// central-directory order, is a guess that attaches the right content to the wrong position.
 ///
-/// Within a document the rule is its five siblings' again: the order the file lists its blocks,
+/// Within a document the rule is its seven siblings' again: the order the file lists its blocks,
 /// with nothing sorted and nothing laid out.
+///
+/// **Both numbers were wrong from v2-S9 to v2-S13.3**, and they were wrong when written rather
+/// than overtaken: RTF's rule shipped at v2-S8 and ODP's at v2-S7, so seven sibling rule ids
+/// already existed the day this constant was added. They also disagreed with each other by two,
+/// which is the tell — a count nobody could check against anything, written twice.
 pub const EPUB_READING_ORDER_RULE_V1: &str = "epub-spine-then-document-order-v1";
 
 /// v2-S9's EPUB text rule: the block's own character data, under XHTML's whitespace rule.
@@ -1791,7 +1808,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.3","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2134,11 +2151,16 @@ mod tests {
              since v1-S2, and seventeen guard sites whose names promised more than their bodies \
              held \
              — including EIGHT fields on this very struct that the list below never mutated \
-             while the comment above it said an uncovered knob was impossible."
+             while the comment above it said an uncovered knob was impossible.\n\n\
+             Moved a FORTY-FIRST time at v2-S13.3 (0.32.2), the roadmap reorder, which did not \
+             record the move here. Moved a FORTY-SECOND time at v2-S13.3 (0.32.3), on \
+             `parser_version` ALONE again: the prose half of the fifty-two statements v2-S12.1 \
+             confirmed, plus the ones a 1,789-candidate sweep found on top of them. No shipping \
+             line moved in either."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:c5ac3e261b9ed8bf58b56c07c9c79489a6b85b2df29307ff0bf6674577545d2e"
+            "sha256:b03c9078e6d49e37d4fcc47366df41bf188552b00b942964a2bd4501ba2233b5"
         );
     }
 

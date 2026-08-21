@@ -33,7 +33,7 @@
 //! The third format, the same trap: `<p:sldId id="2147310021" r:id="rId2"/>` carries an id and a
 //! relationship id and **no path**. Only `ppt/_rels/presentation.xml.rels` says which part an
 //! `r:id` means, and it is resolved rather than guessed — see `opc.rs`, which holds that rule for
-//! all three readers. Measured in a real 55-slide deck: `rId13` binds `slides/slide12.xml`, so
+//! this reader and `xlsx.rs`. Measured in a real 55-slide deck: `rId13` binds `slides/slide12.xml`, so
 //! even the relationship *numbering* does not track the part numbering.
 //!
 //! # What a slide's text is addressed by

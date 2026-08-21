@@ -14,7 +14,7 @@
 
 //! Open Packaging Conventions: how an `r:id` becomes a part name (v2-S4).
 //!
-//! # One rule, three formats
+//! # One rule, two formats
 //!
 //! Every OOXML format hides the same trap, and v2-S3 walked into it first: **the part that lists
 //! things does not name their parts.** `xl/workbook.xml` gives each sheet a name and an `r:id`
@@ -30,6 +30,17 @@
 //! S3 wrote this rule inside `xlsx.rs`. S4 needed it verbatim, and this crate has already learned
 //! what a second copy of a rule costs — three of the nine defects S3's own review found were two
 //! copies disagreeing. So it moved here rather than being copied, unchanged.
+//!
+//! # Two formats, not three, and DOCX is the one that does not need it
+//!
+//! This heading said *"three formats"* from v2-S4 to v2-S13.3 while the paragraph two lines above
+//! it said *"the shortcut **both** formats invite"* — the body was right and the heading was not.
+//! Exactly two readers use this module: `xlsx.rs` and `pptx.rs`. **`docx.rs` names `opc` nowhere
+//! at all**, and that is the trap's own doing rather than an inconsistency: a workbook and a
+//! presentation each have a part that *lists* things without naming their parts, so an `r:id` has
+//! to be resolved. A DOCX has no such list. Its main part is `word/document.xml`, reached through
+//! the package's own `_rels/.rels`, and there is nothing to resolve per item because there are no
+//! items — which is why the trap S3 walked into first could not have been found in S2.
 
 use engine_core::EngineError;
 use quick_xml::events::{BytesStart, Event};

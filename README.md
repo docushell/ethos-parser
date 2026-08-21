@@ -26,7 +26,7 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.32.2**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.32.3**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
 and v2 **not complete**. `engine extract` takes a `.docx`, an
 `.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same
@@ -201,7 +201,7 @@ oracle test compares its answer against the Ethos CLI's on every fixture that re
 - **What this build can and cannot do:** [`docs/CAPABILITY.md`](docs/CAPABILITY.md)
 - **The frozen surface:** [`docs/PUBLIC-API.md`](docs/PUBLIC-API.md)
 - **v1 is in progress**, one slice at a time
-  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S7b are done, and S7's gate is measured and missed**: ruled
+  ([`docs/09-V1-MILESTONES.md`](docs/09-V1-MILESTONES.md)). **S1 through S8 are done, and S7's gate is measured and missed**: ruled
   tables from vector paths, `CellSlot` occupancy and the locator cross-check (S1); unruled tables
   inferred from text alignment under their own rule id, with every table naming the rule that
   found it (S2); and the document's own tagged-structure tree, read and bound to text by
@@ -233,7 +233,7 @@ Asking the other question found a real defect and fixed it. The ruled detector r
   names the two strings that *are* citable and the removed hyphen sits in a counted bucket.
   Two clauses of that rule were found by measuring: without a baseline test it welded
   `non-` + `escr` into `nonescr` on a real corpus document, and without a furniture test it welded
-  a running head onto body text. **S4 (HTML) is not started.**
+  a running head onto body text. **S4 (HTML) shipped at 0.14.0**, under the same four laws.
 
 ## Building
 
@@ -292,7 +292,7 @@ reviewer sees *which* criterion is green, not just that nothing failed:
 | `v0-c14n` · `v0-locators` · `v0-l1-gate` | integers only, a locator on every node, capabilities and limitations on the wire |
 | `v0-exit-codes` · `v0-fail-closed` | three distinguishable codes; unknown operator, magic and quantum each refused by name |
 | `v0-classify-bound` | 492 pages at N=8 still scans 8 |
-| `v0-fixture-mutation` · `v0-fuzz-smoke` | every fixture damaged six ways; `cargo-fuzz` on the PDF entry point |
+| `v0-fixture-mutation` · `v0-fuzz-smoke` · `v0-office-mutation` | every PDF fixture damaged six ways and every office package twelve; `cargo-fuzz` on the PDF entry points and the office router |
 | `deny-policy-is-enforced` | `cargo deny`, plus a probe that proves the AGPL rule actually fires |
 
 v0.1's own gates live in a separate `v01-gates` matrix, so v0's map does not move to accommodate

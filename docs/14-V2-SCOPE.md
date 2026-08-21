@@ -3,9 +3,11 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0–S10 are done: this document, the
-grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF
-and EPUB, and **S10 (CSV) as an argued refusal rather than a reader**. Eight formats read, one
+**v2 reads eight formats, and v2's format row is closed.** S0 through S13.3 are done: this
+document, the grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
+ODS, ODP, RTF and EPUB, **S10 (CSV) as an argued refusal rather than a reader**, embedded assets
+counted at S11, both A11 lanes closed at S12 and S13, and the guard and prose repairs at S13.1 and
+S13.3. (This said *"S0–S10"* until v2-S13.3, three slices after S11 shipped.) Eight formats read, one
 argued refusal, and every split was against a measurement.
 
 **v2 is not complete**, for two reasons neither of which is a format, and both of which are the

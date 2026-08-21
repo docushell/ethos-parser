@@ -16,18 +16,32 @@
 //!
 //! # What is vendored, and what is not
 //!
-//! **Vendored here:** `WinAnsiEncoding` (Windows-1252) and the ASCII range of
-//! `StandardEncoding`, plus a small glyph-name table for `/Differences`. These are written out
-//! as data under `vendor/encodings/` and loaded at compile time, so the build never touches the
+//! **Vendored here, and *here* means this file.** `WinAnsiEncoding` (Windows-1252) and the ASCII
+//! range of `StandardEncoding`, plus a small glyph-name table for `/Differences`, are `const fn`
+//! builders a few hundred lines below — `build_win_ansi` and `build_standard` — which the
+//! compiler evaluates into `.rodata`. Nothing is read from disk and the build never touches the
 //! network.
 //!
-//! **Not vendored:** the Adobe predefined CJK CMaps (`UniJIS-UCS2-H` and its ~167 siblings) and
-//! the full Adobe Glyph List. A document that needs one is **refused** with a named error rather
-//! than decoded approximately — `docs/01-CONTRACT.md` §8. Approximate text is worse than no text
-//! here, because a citation can be verified against it and appear to hold.
+//! There is no `vendor/encodings/` directory, and there never has been. This paragraph said the
+//! tables were *"written out as data under `vendor/encodings/`"* until v2-S13.3, and the doc on
+//! `WIN_ANSI` said the same thing in fewer words. `vendor/README.md` has been right about it the
+//! whole time and says why: a 256-entry lookup table in a separate file is the same bytes with a
+//! parser in front. `vendor/` holds one tracked file, that README.
 //!
-//! This is a declared limitation, not an oversight. It is recorded in the extract artifact's
-//! `not_decoded` list so a consumer sees the gap rather than inferring its absence.
+//! **Not vendored:** the Adobe predefined CJK CMaps (`UniJIS-UCS2-H` and its ~167 siblings) and
+//! the full Adobe Glyph List. Neither is decoded approximately — `docs/01-CONTRACT.md` §8, because
+//! approximate text is worse than no text here: a citation can be verified against it and appear
+//! to hold. What that costs a document differs by which one it needs, and this paragraph said
+//! *"refused with a named error"* of both until v2-S13.3. A document naming a predefined CMap is
+//! genuinely **refused**. A `/Differences` name outside the subset drops **that run** and is
+//! counted into `broken-font-encoding`; only a document that decodes nothing is refused outright,
+//! which is v0.1's decision that failing a whole document over one glyph was more than the
+//! evidence required.
+//!
+//! This is a declared limitation, not an oversight. It reaches a consumer as the limitation code
+//! `predefined-cmaps-not-vendored` in `assurance.limitations`, so the gap is stated rather than
+//! inferred from an absence. It used to say `not_decoded`, which was the M3 spelling: M4 absorbed
+//! that list into the L1 gate and no artifact has carried the field since.
 //!
 //! # Precedence
 //!
@@ -129,7 +143,7 @@ impl SimpleEncoding {
     }
 }
 
-/// `WinAnsiEncoding` — Windows-1252. Loaded from `vendor/encodings/`.
+/// `WinAnsiEncoding` — Windows-1252, built at compile time by `build_win_ansi` in this file.
 static WIN_ANSI: &[Option<&'static str>; 256] = &build_win_ansi();
 
 /// `StandardEncoding`, ASCII range only.

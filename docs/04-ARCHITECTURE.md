@@ -13,18 +13,27 @@ ethos-engine/
 ├── Cargo.toml              # workspace, MSRV 1.88, resolver 2
 ├── rust-toolchain.toml     # channel = "1.88.0"
 ├── deny.toml               # permissive-only licences, no network crates
-├── NOTICE                  # reserved for the vendored Adobe CMaps
+├── NOTICE                  # reserved for the Adobe CMaps, which never landed
 ├── crates/
 │   ├── engine-core/        # representation types, c14n, quanta, ids, capabilities, profile
-│   ├── engine-pdf/         # lopdf + vendored CMaps: classify, text runs, font metrics
+│   ├── engine-pdf/         # lopdf: classify, text runs, font metrics, Annex D encodings
+│   ├── engine-office/      # eight office formats, from v2-S2's DOCX to v2-S9's EPUB
 │   ├── engine-grounding/   # representation → ethos.grounding.v1 + the validator
 │   └── engine-cli/
-│       ├── src/            # classify | extract | ground | grounding-check
+│       ├── src/            # nine subcommands; §2 below lists the v0 four
 │       └── tests/oracle.rs # byte-identical agreement with `ethos grounding check`
-├── vendor/cmaps/           # 168 Adobe .bcmap + NOTICE
-├── fixtures/               # manifest referencing the Ethos conformance corpus (read-only)
+├── vendor/README.md        # what is carried, and what deliberately is not
+├── fixtures/               # manifest referencing three corpus roots (read-only)
 └── docs/                   # this tree
 ```
+
+**This tree was four crates, a `vendor/cmaps/` and four subcommands until v2-S13.3**, and every one
+of those was false. `engine-office` joined the workspace at v2-S2 and was never drawn here.
+`vendor/cmaps/ # 168 Adobe .bcmap + NOTICE` described files that were never obtained: `vendor/`
+holds one tracked file, and `vendor/README.md` calls their absence *"a deviation from the milestone
+text"* and argues it. `engine-pdf`'s comment said *"lopdf + vendored CMaps"* for the same reason —
+what it actually carries is the PDF 32000-1 Annex D encoding tables, written out in
+`crates/engine-pdf/src/encoding.rs` as `const fn` builders the compiler bakes into `.rodata`.
 
 **The oracle test lives with the CLI, not at the workspace root.** Memo §16.12 sketches
 `tests/oracle.rs` at the root, but cargo only builds integration tests for *packages*, and this is a
@@ -33,8 +42,11 @@ failure for a harness whose job is to fail loudly. `crates/engine-cli/tests/` is
 belongs on the merits: the oracle drives the CLI and compares against another CLI. Ethos does the
 same (`crates/ethos-cli/tests/verify.rs`).
 
-**Four crates, not six — DECIDED (2026-08-12).** Memo §16.12 says "six crates, deliberately small"
-and then lists four; the tree it lists is right and the prose is a slip. `core` owns everything the
+**Four crates, not six — DECIDED (2026-08-12), and five since v2-S2.** Memo §16.12 says "six
+crates, deliberately small" and then lists four; the tree it lists is right and the prose is a slip.
+The decision that stands is the *reason* rather than the number: a crate exists when a boundary
+needs enforcing, which is why `engine-office` was added at v2-S2 rather than a `docx` module going
+into `engine-pdf`. The heading counted four until v2-S13.3. `core` owns everything the
 contract defines, `pdf` owns everything one format needs, `grounding` owns the projection and its
 validator, `cli` owns argument parsing and exit codes.
 
@@ -52,7 +64,7 @@ and still refused on the same rule.
 | --- | --- | --- |
 | `engine-core` | nothing in this workspace | Any PDF concept. No `lopdf`, no operator, no page-tree type. **And no OOXML concept**: no zip, no XML reader, no part name it parses (v2-S2) |
 | `engine-pdf` | `engine-core` | Any grounding or verification concept. **Any office concept** — a DOCX reader in here is what the fifth crate exists to prevent |
-| `engine-office` | `engine-core` | Any PDF concept, any grounding concept. It reads OOXML packages — documents (v2-S2), workbooks (v2-S3) and presentations (v2-S4) — **and OpenDocument text (v2-S5), which shares the ZIP reader and the XML plumbing and nothing else** — and emits the shared representation |
+| `engine-office` | `engine-core` | Any PDF concept, any grounding concept. It reads **eight formats** and emits the shared representation: the OOXML packages — documents (v2-S2), workbooks (v2-S3), presentations (v2-S4) — the OpenDocument family — text (v2-S5), spreadsheets (v2-S6), presentations (v2-S7) — **RTF (v2-S8), which is a byte stream and not a package at all**, and **EPUB (v2-S9), a ZIP of documents whose order lives in a spine rather than in the archive**. The seven packages share the ZIP reader and the XML plumbing and nothing else |
 | `engine-grounding` | `engine-core` | Any **format** concept — it projects the *representation*, never a document |
 | `engine-cli` | all four | Any logic. It parses arguments, calls the library, maps errors to exit codes |
 
@@ -80,8 +92,20 @@ have kept the letter of the old wording while leaving the projection free to mat
 
 ## 2. CLI surface — v0
 
-Four subcommands. **The CLI is a thin shell over the library** so the two cannot diverge; every
-subcommand is a library call plus argument parsing plus an exit-code mapping.
+**Four subcommands at v0. Nine now, and this table is v0's record rather than today's surface.**
+The four below are what v0 froze and they are left at four deliberately: rewriting them would erase
+what v0 committed to, and this section's own heading scopes it. What arrived afterwards, each
+argued in the scope document of the version that added it: `verify` at v0.1, `overlay` at v1-S6,
+`markdown` at v1.1-S1, `html` at v1.1-S4 and `mcp` at v1.2-S1. `enum Command` in
+`crates/engine-cli/src/main.rs` is the list that cannot go stale.
+
+Until v2-S13.3 this sentence read simply *"Four subcommands"*, and `docs/PUBLIC-API.md` pointed
+here for *"the CLI's four subcommands"* — so two documents agreed with each other and neither
+agreed with the binary.
+
+**The CLI is a thin shell over the library** so the two cannot diverge; every subcommand is a
+library call plus argument parsing plus an exit-code mapping, and that rule binds all nine rather
+than the four tabulated here.
 
 | Command | Input | Output | Exit codes |
 | --- | --- | --- | --- |
@@ -138,17 +162,26 @@ stable.
 manifest that references them by path and `sha256`; it does not copy them and it never modifies them.
 Copying invites drift; a hash-pinned manifest makes a fixture change a visible event in this repo.
 
-**Two roots, each independently overridable.** `conformance` (`ETHOS_FIXTURES`, default
+**Three roots, each independently overridable.** (*Two* until v2-S13.3, which was true when
+`engine` did not exist as a root and has not been since M3.) `conformance` (`ETHOS_FIXTURES`, default
 `../ethos/fixtures`) holds the 15 the M6 criterion counts. `benchmark` (`ETHOS_BENCH_CORPUS`,
 default `../ethos/benchmarks/gate-zero/corpus`) holds the large real-world PDFs M2's acceptance
-names — the 492-page bounded-cost A/B document is not in `fixtures/` and never was. Separate roots
-keep benchmark documents from inflating the 15.
+names — the 492-page bounded-cost A/B document is not in `fixtures/` and never was. And `engine`
+(`ETHOS_ENGINE_FIXTURES`, default `fixtures/engine`) holds what this repository authors itself,
+described below. Separate roots keep benchmark and engine-owned documents from inflating the 15.
 
 **One exception, and it is enumerated rather than open.** Where the Ethos corpus has no fixture for a
 behaviour this engine must test, the engine authors its own under CC0, stores it here, and marks it
-`owner: "engine"` in the manifest. Today that is exactly one: the **absent-font-metrics** fixture that
-exercises the geometry-omission path at M5. Adding a second engine-owned fixture needs the same
-justification — the Ethos corpus genuinely cannot cover it — not merely convenience.
+`owner: "engine"` in the manifest. **Today that is thirty-seven**, and the manifest's own
+`counts.engine_owned` is where the number lives so this paragraph cannot drift from it again.
+
+This sentence said *"exactly one: the **absent-font-metrics** fixture"* from M5 until v2-S13.3, and
+it was true for exactly as long as M5 lasted. The exception is still enumerated rather than open —
+every one of the thirty-seven carries `owner: "engine"` and a `notes` field saying which behaviour
+the Ethos corpus could not cover — but "exactly one" had become the kind of number a reader trusts
+and then finds thirty-six counterexamples to. `docs/03-V0-SCOPE.md` §4 was repaired the same way at
+v2-S12.1, which is how this one was found. Adding a thirty-eighth needs the same justification —
+the Ethos corpus genuinely cannot cover it — not merely convenience.
 
 **The oracle is `ethos grounding check`.** For v0, the engine's `grounding-check` is a
 reimplementation of the **JSON Schema validator only** — never the verifier — and it has a

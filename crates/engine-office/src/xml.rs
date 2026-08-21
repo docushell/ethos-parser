@@ -94,7 +94,16 @@ pub(crate) fn resolve_entity(name: &[u8], part: &str) -> Result<&'static str, En
 /// written another way.
 ///
 /// It is **not** folded into [`resolve_entity`], and the reason is the profile rather than taste.
-/// Six shipped readers name a `text_code_rule`, and a rule id has to move when the behaviour it
+/// **Nine shipped profiles name a `text_code_rule`** — the PDF default and one for each of the
+/// eight office readers — and **six of those readers reach an XML entity through this function**:
+/// `docx`, `xlsx`, `pptx`, `odt`, `ods` and `odp`. `rtf` names a rule and parses no XML; the PDF
+/// profile names one and none of this applies to it.
+///
+/// This sentence said *"six shipped readers name a `text_code_rule`"* from v2-S9 to v2-S13.3. The
+/// six was right and its subject was not: it counts the readers this function would change, not
+/// the rule ids that exist, and eight rule ids already existed when it was written. Every later
+/// "six" in this paragraph — six profiles changed, the other six refuse them, six hash moves —
+/// counts the same correct set and stands. A rule id has to move when the behaviour it
 /// names moves. Widening the shared function would change what a DOCX reader does with a document
 /// it currently refuses, which is a behaviour change in six profiles for a slice that measured one
 /// format. So the EPUB reader — whose rule id is new — resolves character references, the other

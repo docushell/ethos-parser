@@ -254,6 +254,14 @@ impl NativeLocator {
     pub fn is_paginated(&self) -> bool {
         match self {
             Self::Pdf(_) | Self::PdfObject(_) | Self::PdfImage(_) => true,
+            // **Eight page-less variants, and each has its own reason.** The arm below carried
+            // running ordinals — "the sharpest of the four", then "the sharpest of the six" a
+            // dozen lines under it — which were true at v2-S5 and v2-S7 and had been wrong ever
+            // since, in opposite directions at the same time. They are gone rather than
+            // renumbered: an ordinal that has to be revised every time a format lands is a
+            // maintenance obligation nothing enforces, and the ordering the comments actually
+            // want is "each case is sharper than the last", which does not need a denominator.
+            //
             // A workbook has print layout, not pages. Where a page break falls depends on the
             // printer, the paper and a "fit to page" setting, none of which is in the file —
             // which is why `docs/06-STEAL-REFUSE.md` L30 is a refusal rather than a fallback.
@@ -261,7 +269,7 @@ impl NativeLocator {
             // parts. `p:sldSz` states a slide's size, but a size is not a page and this engine
             // measured nothing against it.
             //
-            // And an OpenDocument text document is the sharpest of the four, because its
+            // And an OpenDocument text document is the sharpest case so far, because its
             // `content.xml` literally contains `<text:soft-page-break/>`: a position the
             // *producing application* computed from its own font stack and paper size and wrote
             // down. It is a record of somebody else's rendering, which is the thing L30 refuses
@@ -272,7 +280,7 @@ impl NativeLocator {
             // cell, and both are the producing application's print arithmetic rather than a page
             // this engine measured.
             //
-            // And an OpenDocument presentation is the sharpest of the six, because it needs no
+            // And an OpenDocument presentation is sharper still, because it needs no
             // arithmetic at all: `<draw:page>` elements are discrete, listed and ordered, and a
             // master page states `fo:page-width` beside them. A `PageRecord` was available for
             // free and is still refused — a draw page is a part of the presentation's structure,
