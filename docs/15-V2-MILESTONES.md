@@ -2759,6 +2759,242 @@ asking for more than a count is not this repository's to decide.
 
 ---
 
+## S13 — A11's other half — **done**, as 0.32.0
+
+**The obligation, and it was due at v0.** `06-STEAL-REFUSE.md`'s **A11** — *"Mutation testing every
+fixture + `cargo-fuzz` per format"*, from Anydoc. v2-S12 closed the fuzz half for office and wrote
+the mutation half into A11's own row as **OPEN**: *"No office fixture has been mutated."* Sixteen
+packages, eight formats, never damaged and never asked what they would do about it. This closes it.
+
+`crates/engine-office/tests/robustness.rs` mutates every package in `fixtures/office/` **twelve**
+ways — **148 mutants across sixteen fixtures, and not one of them panicked.**
+
+### The decision: a second harness, and why a second manifest root loses
+
+**Option (a), a second harness enumerating `fixtures/office/` directly, is what shipped.** The
+expected answer, and the brief was right that it was — but not for the reason the brief offered.
+The cost it named was *"a second implementation of the damage kinds"*, and that cost turned out to
+be nearly zero, because **the damage kinds could not have been shared anyway**. Only five of the
+PDF harness's six mean anything to a container, one means nothing at all, and four new ones exist
+only because a ZIP has hazards a byte stream does not. Sharing code across those two sets would
+have been sharing a name, not a mechanism.
+
+**Option (b), an `office` root in `fixtures/manifest.json` with `robustness.rs` taught to skip
+non-PDF roots, loses on something sharper than duplication.** `all_fixtures()` in the PDF harness
+walks **every entry of every root** and hands each to `Document::open_bytes`. Sixteen ZIP and RTF
+files added to that array are refused as `malformed` for having no `%PDF-` header — and **every
+assertion in that file still passes**: nothing panics, no artifact binds to the wrong digest, and
+an emptied survivor set matches zero survivors. The result is a suite that reports coverage of
+sixteen office packages while proving nothing about any of them. *A green suite that mutated the
+wrong corpus is worse than no suite*, because the reported coverage is now false and nobody is
+looking.
+
+It also edits a v0 harness and a v0-frozen manifest, and the manifest's own tripwire —
+`all_fixtures()` asserts the array length equals `conformance_ethos_owned + benchmark +
+engine_owned` — has no office term, so the sum would have silently stopped covering the corpus it
+was written to guard.
+
+**The oracle hazard, checked rather than assumed.** The brief was right to flag it and right to
+demand proof. `ETHOS_OWNED_FIXTURE_COUNT` (**15**) and `ORACLE_AGREED_COUNT` (**12**) both live in
+`crates/engine-cli/tests/oracle.rs`, and every gate that uses them selects with
+`f["owner"] == "ethos"` — **never by root**. Owner and root correlate perfectly today, which is
+exactly why someone could add a root, believe the count is root-scoped, and be wrong in a way that
+surfaces later. Option (a) touches no manifest, so the risk is nil by construction;
+`adding_this_harness_did_not_touch_the_fixture_manifest_or_the_oracle_count` asserts it anyway —
+three roots, fifteen `ethos`-owned entries, and zero manifest paths that are not `.pdf`.
+
+### What a mutant means for a package, written down
+
+The brief asked what each damage kind should do to a container rather than a byte stream. The
+answers, measured:
+
+| Kind | Applies to | What happens |
+| --- | --- | --- |
+| `empty` | all 16 | Refused at `read`'s first guard: neither `{\rtf` nor something that opens like a ZIP |
+| `truncate-16` | all 16 | Sixteen bytes is a *partial local header*, so `looks_like_zip` still answers **true** and the refusal has to come from `find_eocd`. Sharper than the PDF version, which dies at detection |
+| `central-directory-truncated` | 14 packages | The offset comes from the archive's own EOCD, so the cut lands exactly where the directory begins on every package. Refused: *"no end-of-central-directory record"* |
+| `flip-tail-byte` | all 16 | Lands inside the central directory on every package. **Survives on 7, refuses on 9, and which one is decided entirely by the field it hits** — see below |
+| `first-deflated-part-byte-flipped` | 14 packages | The compressed-entry case, aimed at whatever part is physically first |
+| `main-part-byte-flipped` | 14 packages | The compressed-entry case aimed at a part the reader must read. **This is where the finding is** |
+| `header-overwritten` | all 16 | A4 in office spelling: clobbering `PK\x03\x04` or `{\rtf` leaves nothing to recognise |
+| `junk-after-eof` | all 16 | **Survives on all sixteen, by two different mechanisms** |
+| `second-eocd-appended` | 14 packages | No PDF analogue. `find_eocd` takes the **last** `PK\x05\x06` and never validates the comment-length field, so a forged trailing record relocates the whole directory read. Refused as `missing_part` — a package listing zero entries lists no main part |
+| `mimetype-body-overwritten` | 8 OCF packages | The only mutant that reaches an ODF/EPUB package's self-declaration, which is the evidence `is_opendocument` and `is_epub` read |
+| `rtf-version-bumped` | 2 RTF | `\rtf1` → `\rtf9`. The only route to `unsupported_version`: overwriting the magic instead kills `is_rtf` first and the router refuses before the gate is reached |
+| `rtf-control-word-mangled` | 2 RTF | `\par` → `\pzr`. **The only mutant in the set that produces a wrong-but-plausible artifact rather than a refusal** |
+
+**`unknown-operator` is absent, and that is a result rather than an omission.** The PDF kind
+substitutes a same-length token into a plaintext content stream so `/Length` stays honest. Every
+XML part in every package here is deflated; the only stored entry anywhere is `mimetype`. A
+same-length substitution into compressed bytes cannot reach an XML reader — it fails on inflation
+or on the length check, which `main-part-byte-flipped` already covers under a name that describes
+what actually happens. Doing it honestly means inflate, substitute, re-deflate, and rewrite the CRC
+and both size fields, which is **authoring a fixture rather than damaging one**. RTF keeps the kind
+under its own name because its stream is plaintext and the substitution is trivial.
+
+**Over-declared rather than silently skipped.** Every pair a kind cannot apply to is pinned in
+`EXPECTED_INAPPLICABLE` — 44 of them — and asserted **exactly**, not as a floor. The five container
+kinds are inapplicable to the two RTF streams and the two RTF kinds to the fourteen packages;
+`mimetype-body-overwritten` is inapplicable to the six OOXML packages, because an OOXML package
+does not declare its own type. That is the honest form of the brief's observation that the six PDF
+kinds might reduce for RTF: **they reduce to seven, and RTF gains two of its own in exchange.**
+
+### The finding, and it is the reason to have built this
+
+**`zip.rs` verifies a part's declared length and never its CRC-32.**
+
+`main-part-byte-flipped` flips one byte inside the compressed data of `word/document.xml`,
+`xl/workbook.xml`, `ppt/presentation.xml`, `content.xml` or `META-INF/container.xml`. Ten of the
+fourteen packages refuse, which is the expected outcome. **Four do not**, and the chain is worth
+stating in full because every link is load-bearing:
+
+1. The flipped byte leaves a deflate stream that `miniz_oxide` still inflates — zlib refuses the
+   same bytes outright with *"invalid distance too far back"*; the permissiveness belongs to the
+   backend, not to the format.
+2. It inflates to **exactly** the declared uncompressed size, substituting a NUL where the invalid
+   back-reference was. `zip.rs`'s only integrity check is `out.len() != uncompressed_size`, so it
+   passes.
+3. The central directory carries a CRC-32 for that entry. **Nothing reads it.**
+4. The corrupted XML reaches the reader. The damage lands in a namespace URI, and the OOXML readers
+   match namespaces by suffix, so it parses.
+5. The extracted text comes out **byte-identical to the original's**.
+
+The artifact is distinguishable from one built from the undamaged package by exactly one field:
+`source.sha256`, which binds to the mutant. **That is the designed safety property working, with
+nothing behind it.**
+
+**This slice does not change a reader over it, and the reason is not squeamishness.** The contract
+the harness asserts holds: the mutant was read, and the artifact bound to the bytes it actually
+read, so nothing downstream can mistake it for the original. What is uncomfortable is narrower —
+a *corrupted* part was read as though intact, with no declared erasure, in an engine whose thesis
+is that a gap is never presented as a success.
+
+**Escalated rather than settled**, because it is a reader change with a cost and a measurement
+attached:
+
+| Option | What it costs |
+| --- | --- |
+| **Verify CRC-32 in `zip::read_entry`** | A checksum pass over every inflated part on every read. `flate2` already exposes `Crc`, so no new dependency. It would move four of this harness's pinned survivors into refusals, and would refuse some real-world archives whose writers got the CRC wrong — which is a compatibility question this repository has no corpus to answer |
+| **Leave it, and rely on `source.sha256`** | What ships today. A consumer comparing digests always sees a different document, which it is. A consumer *not* comparing digests sees a plausible artifact for a corrupted file |
+
+**Not settled here.** It is a change to a hand-rolled v0-era reader that ~3.8 million fuzz
+executions have already hammered, and it deserves its own slice with its own measurement rather
+than a rider on a test slice.
+
+### Survivors are pinned in five classes, each explained
+
+36 survivors, and none of the classes is the PDF harness's — which is the strongest evidence that
+the second harness was the right call:
+
+1. **`junk-after-eof`, all sixteen, two mechanisms under one name.** On packages, `find_eocd` scans
+   backward and every directory offset is absolute, so appended bytes sit outside everything the
+   archive declares. On the two RTF streams it is not that at all: **RTF has no end-of-file
+   marker**, `rtf::read` runs to `stream.len()`, and the appended bytes become document text.
+2. **`rtf-control-word-mangled`, both RTF streams.** Swallowed by the reader's `other =>` arm, so
+   two paragraphs merge and every later ordinal shifts. Correct — RTF readers are required to skip
+   words they do not know — and pinned with its own test that the node count actually falls.
+3. **`flip-tail-byte`, seven.** Survives exactly when the byte lands on a field nothing reads:
+   external attributes, a CRC nobody verifies, a modification date, the uncompressed size of
+   `meta.xml`, or the comment-length of the **last** directory entry. Refuses on a name (non-UTF-8,
+   so `entry_names` refuses by name), a local-header offset, a name length, or the size of a part
+   that *is* read.
+4. **`first-deflated-part-byte-flipped`, seven.** Six are one fact: for OOXML the first deflated
+   entry is `[Content_Types].xml`, and **no reader in this crate reads it** — its only appearance
+   in `crates/engine-office/src` is inside a `docx.rs` unit test's list of names.
+5. **`main-part-byte-flipped`, four.** The finding above.
+
+### Two tests that exist because the fixtures corrected an assumption
+
+**The harness was wrong twice and the corpus said so, which is the right way round.**
+
+`appending_junk_to_an_rtf_stream_becomes_document_text` first asserted *"exactly one more node"* on
+both RTF fixtures. True of `rich-text-paragraphs`, which ends `\row }` so the appended bytes open a
+new paragraph. **False of `rich-text-unread-destinations`**, which ends `are both read.}` with no
+trailing break, so the appended bytes are absorbed into the final paragraph: the node count holds
+and the last node's text grows. The test now asserts the property that is actually true — the junk
+becomes document text, by one shape or the other — and names both.
+
+`an_unrecognised_rtf_control_word_is_swallowed_and_merges_two_paragraphs` was worse: it searched for
+`\par` as a substring and matched the **`\pard`** that opens every paragraph in both fixtures.
+Mangling `\pard` changes nothing a reader can see, because it only resets properties that were
+already default — so the mutation applied, counted, survived, and proved nothing. RTF delimits a
+control word by the first non-letter, so `find_control_word` now requires that delimiter. **This is
+the same trap `crates/engine-pdf/tests/robustness.rs` records for `find_operator`**, where a
+space-delimited search for ` Tj ` silently missed every fixture writing `(text) Tj\n`. Two harnesses,
+two corpora, the same mistake — which suggests it is a property of mutation harnesses rather than
+of either format.
+
+### The corpus is the manifest, because office has no manifest
+
+`all_fixtures()` reads `fixtures/office/` rather than a list in the file — the lesson of v2-S11's
+three OOXML fixtures with no media part and of v2-S12.1's uncompiled fuzz target. The skip list is
+`fuzz/seed-corpus.sh`'s, deliberately: that script already enumerates this corpus to seed
+`office_read`, and two enumerators of one directory that disagree is how a fuzz corpus and a
+mutation corpus drift apart without anyone noticing. `__pycache__` is the one that matters and it
+is not hypothetical — it is gitignored, present locally, absent from a fresh CI checkout, and a
+walk that did not skip it would mutate a different number of files in the two places.
+
+There is no manifest `counts` field to cross-check against, so the harness cross-checks the
+directory against itself: **sixteen fixtures, two of each of the eight formats**, asserted. A format
+down to one fixture is a format whose second shape stopped being tested.
+
+### CI
+
+`v0-office-mutation`, a **top-level job rather than a fifteenth matrix entry**, and that is forced
+rather than chosen: `the_v01_gates_exist` asserts the `v0-exit-criteria` matrix is exactly fourteen
+entries, and v0 is frozen. §5's mutation criterion now names three jobs instead of two, which keeps
+the criteria count at fifteen and makes `every_named_job_exists_in_the_workflow` assert this block
+exists. All nine guards in `v0_exit_criteria.rs` were run against the new job rather than reasoned
+about.
+
+No corpus checkout: `fixtures/office/` is engine-owned and committed here, so this is the cheapest
+job in the workflow.
+
+### Restated for the owner, unchanged and unsettled
+
+Both questions below are the **owner's**, both were escalated at S11 and S12, and neither is
+settled here. The CRC-32 question above is **new and separate** — it belongs to this repository and
+is a reader change, not a gate wording.
+
+**1. The v2 gate's verb.** `00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both say a
+DOCX quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
+option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has read
+*ground* as **bind**.
+
+| Reading | What it means | What it costs |
+| --- | --- | --- |
+| **"ground" means `ethos.grounding.v1`** | v2's gate is **not met** and cannot be met without option (a) — an Ethos-side schema revision, owned elsewhere | v2 stays open on a dependency this repository does not control. The eight readers are complete and the gate is not |
+| **"ground" means "binds to an address the file states"** | v2's gate **is met**, and has been since v2-S3 | The gate sentence in two documents is reworded to say *bind*, and the word *ground* stops meaning two things in one repository |
+
+**2. Embedded assets: counted, or read?** v2-S11 made every reader **count** what it does not read,
+which closed the **A14** violation. No office asset is **read**. `engine-pdf` emits an `ImageRecord`
+for a PDF image; no office reader emits anything comparable. Whether `02-ROADMAP.md`'s v2 row was
+asking for more than a count is not this repository's to decide.
+
+- **Acceptance — all met:**
+  - [x] All **16** fixtures in `fixtures/office/` are mutated, and the list is derived from the
+        directory rather than hardcoded — with the count and the two-per-format shape asserted,
+        since office has no manifest `counts` to check against
+  - [x] Both permitted outcomes asserted, including that a **read** mutant binds to the **mutant's**
+        `source.sha256` — with a floor, so a corpus where nothing parses cannot make that test
+        vacuous
+  - [x] **36 survivors pinned**, in five classes, each explained by mechanism rather than by name
+  - [x] **No panic**, on any of 148 mutants
+  - [x] `ETHOS_OWNED_FIXTURE_COUNT` still **15**; oracle still **12 / 3**; asserted by a test in the
+        new harness, not assumed
+  - [x] CI job `v0-office-mutation` exists, is named by `docs/03-V0-SCOPE.md` §5 and §5.1, and all
+        nine `v0_exit_criteria.rs` guards pass against it
+  - [x] **A11's row updated again** — the mutation half is now closed for office, and the note says
+        which kinds transferred and which did not
+  - [x] The option chosen is argued above and the other is refuted with the mechanism that kills it
+  - [x] Workspace **0.32.0**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both SDK suites run by hand and pass
+  - [x] No git tag
+
+- **Depends on:** S12.1.
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**Version in this file, not in its name:** these two tables describe **0.31.1**. When the workspace
+**Version in this file, not in its name:** these two tables describe **0.32.0**. When the workspace
 version moves, this page moves with it or it is wrong.
 
 This is the honest inventory, for the question *"what does ethos-engine actually do today?"* It is
@@ -44,7 +44,7 @@ Some of these are *not yet*; some are **refusals** that no version reverses. The
 | Claim | Kind | Why |
 | --- | --- | --- |
 | **"v1 is complete"** | not yet | S7 is open. The table number is measured and missed at 64‰, and the **> 0.489 chase is parked, which is not a pass** (`00-NORTH-STAR.md` #10) |
-| **"v2 is complete"** | not yet | S0–S12.1 are done and **v2's format row is closed** — eight formats read, one argued refusal, every split against a measurement. **v2-S11 discharged half of the embedded-assets obligation and named the other half**: every reader now *counts* what it does not read, so the **A14** violation is gone, but no office asset is *read*, and whether the roadmap's *"embedded assets"* means counted or read is not this repository's to decide. What remains is therefore **two owner questions, neither a format** (`15-V2-MILESTONES.md` S11): the gate sentence's verb, which says a DOCX quote **grounds** while grounding a DOCX is refused and every slice since S1 has read it as **binds**; and whether an office media part should become a node the way `engine-pdf`'s `ImageRecord` does for a PDF |
+| **"v2 is complete"** | not yet | S0–S13 are done and **v2's format row is closed** — eight formats read, one argued refusal, every split against a measurement. **v2-S11 discharged half of the embedded-assets obligation and named the other half**: every reader now *counts* what it does not read, so the **A14** violation is gone, but no office asset is *read*, and whether the roadmap's *"embedded assets"* means counted or read is not this repository's to decide. What remains is therefore **two owner questions, neither a format** (`15-V2-MILESTONES.md` S11): the gate sentence's verb, which says a DOCX quote **grounds** while grounding a DOCX is refused and every slice since S1 has read it as **binds**; and whether an office media part should become a node the way `engine-pdf`'s `ImageRecord` does for a PDF |
 | **Beating 0.489, or quoting it as this engine's score** | **refusal** | 0.489 is a published ODL-local score on **their** corpus; 64‰ is this engine on **four tagged PDFs this repository owns**. Same unit, different exam. It is never published as ours, and it is no longer chased |
 | **OCR, or a scan read as `Extracted`** | not yet — **v2.1**, under its own profile | Recognition is a different derivation class and a different trust ladder. An OCR fingerprint must be provably incomparable with a born-digital parse before the lane exists |
 | **Wrapping LiteParse, OpenDataLoader, Anydoc or pdf-inspector as the grounded PDF core** | **refusal** | Reference-only, and their ideas are taken rather than their code (`06-STEAL-REFUSE.md`). The measured LiteParse adapter was **refused** and is pinned by a test |

@@ -147,7 +147,7 @@ adapter's business.
 | P19 | The `mcid` bridge from text run to tagged structure | pdf-inspector | v0 (capture) / v1 (use) |
 | A5 | The six-variant error taxonomy | Anydoc | v0 |
 | A4 | Content-based format detection | Anydoc | v0 |
-| **A11** | Mutation testing every fixture + `cargo-fuzz` per format | Anydoc | v0 — **fuzz lane covers PDF (v0-M7) and all eight office formats (v2-S12), through three targets; mutation lane covers the PDF manifest fixtures only and is OPEN for office.** See the note below |
+| **A11** | Mutation testing every fixture + `cargo-fuzz` per format | Anydoc | v0 — **both lanes now cover both corpora. Fuzz: PDF (v0-M7) and all eight office formats (v2-S12), through three targets. Mutation: the 55 PDF manifest fixtures (v0-M7) and the 16 office packages (v2-S13), through two harnesses.** See the note below |
 | P10 | Encoding-issue detection | pdf-inspector | v0.1 |
 | O13 | Tagged-PDF consumption | ODL | v1 |
 | O4 | XY-Cut reading order | ODL | v1 |
@@ -165,7 +165,16 @@ hold it and a half-discharged obligation read as a whole one is how a gap surviv
 | Half | PDF | Office |
 | --- | --- | --- |
 | **`cargo-fuzz`** | **covered** since v0-M7 — `open_and_classify` and `open_and_extract` | **covered at v2-S12** — `office_read`, on `engine_office::read`, the one entry point all eight formats share, seeded from `fixtures/office/` |
-| **Mutation testing every fixture** | **covered** — every fixture in `fixtures/manifest.json` damaged six ways, survivors pinned and triaged (v0-M7) | **OPEN.** No office fixture has been mutated. The office fixtures are not in `fixtures/manifest.json` at all, so the existing mutation harness does not reach them and would need a second corpus root to |
+| **Mutation testing every fixture** | **covered** — every fixture in `fixtures/manifest.json` damaged six ways, survivors pinned and triaged (v0-M7) | **covered at v2-S13** — every package in `fixtures/office/` damaged **twelve** ways, 148 mutants, survivors pinned and triaged in five classes, run by CI job `v0-office-mutation`. A **second harness** in `crates/engine-office/tests/robustness.rs` rather than a second root in the manifest: that file's `all_fixtures()` feeds every entry of every root to `Document::open_bytes`, so office entries would have been refused as non-PDF while every assertion still passed |
+
+**The mutation half is not the same six kinds, and that is the result rather than a shortcut.** A
+PDF is a byte stream; an office document is mostly a container. Five of the PDF kinds carry over
+with their mechanics rewritten around the ZIP, one — `unknown-operator` — reduces to nothing for a
+package and is dropped rather than faked, and RTF keeps it under its own name because its stream is
+plaintext. Four kinds are new because a container has hazards a byte stream does not: a truncated
+central directory, a byte flipped inside a compressed entry, a forged second end-of-central-directory
+record, and an overwritten `mimetype` body. Every pair a kind cannot apply to is **pinned and
+counted**, so a mutation that quietly stops applying is a red test rather than lost coverage.
 
 *"`cargo-fuzz` **per format**"* is discharged by one target rather than eight, and that is a
 measured choice rather than a shortcut: `read` is the single entry point every format shares, so a

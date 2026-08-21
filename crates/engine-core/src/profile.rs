@@ -1707,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.31.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2033,11 +2033,19 @@ mod tests {
              repaired statements that had stopped being true. v2-S9.1 and v2-S10.2 set the \
              precedent and it holds for the same reason: a reader holding an artifact cannot see \
              which comments were right, only which build produced it, and two builds that differ \
-             must not answer to one version."
+             must not answer to one version.\n\n\
+             Moved a THIRTY-NINTH time at v2-S13 (0.32.0) on `parser_version` ALONE. The slice \
+             closed `A11`'s MUTATION lane for office — every package in `fixtures/office/` damaged \
+             twelve ways, 148 mutants, no panic — and changed NO READER, because the two permitted \
+             outcomes held on every one of them. It did find that `zip.rs` verifies a part's \
+             declared LENGTH and never its CRC-32, so a corrupted compressed part that still \
+             inflates to the right size is read as though intact; that is stated for the owner in \
+             `15`'s S13 rather than fixed here, because the artifact still binds to the bytes it \
+             actually read and changing a hand-rolled reader deserves its own measurement."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b7e3005c88a94dcedb0df4beccb44ff52d1a470225da2d22dae9d7aecccf7853"
+            "sha256:49540b22949c1b8cb4423a6e6c302b7ade501a27ddc7b142685bb2ee39bbb268"
         );
     }
 

@@ -582,6 +582,45 @@ jobs:
           path: fuzz/artifacts/
           if-no-files-found: ignore
 
+  # -----------------------------------------------------------------------------------------
+  # §5: mutation tests cover every fixture — the office half (v2-S13)
+  # -----------------------------------------------------------------------------------------
+  #
+  # `v0-fixture-mutation` covers every fixture in `fixtures/manifest.json`, all 55 of which are
+  # PDFs. The sixteen office packages are in no manifest, so that job cannot reach them; this is
+  # `A11`'s mutation lane for the other eight formats.
+  #
+  # **A top-level job rather than a fifteenth entry in the `v0-exit-criteria` matrix, and that is
+  # forced rather than chosen.** `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that matrix
+  # is exactly fourteen entries — §5 is fifteen criteria across fourteen jobs because the fuzz and
+  # mutation criterion names two — and v0 is frozen, so that number does not move for v2 work. §5's
+  # mutation line names this job as a third, which keeps the criteria count at fifteen and lets
+  # `every_named_job_exists_in_the_workflow` assert this block exists.
+  #
+  # No corpus checkout: `fixtures/office/` is engine-owned and committed here, unlike the Ethos
+  # conformance corpus. Nothing to clone, so this is the cheapest job in the file.
+  v0-office-mutation:
+    name: v0-office-mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: v0-exit-criteria
+
+      # --nocapture so the coverage report reaches the log, for the same reason
+      # `v0-fixture-mutation` carries it: a mutation job that printed only "ok" would be
+      # indistinguishable from one covering three files. The report names every fixture, the
+      # mutations each took, and every pair that could not be built.
+      - name: Mutate every office fixture
+        run: cargo test -p engine-office --test robustness --locked -- --nocapture
+
   # Forced decision #14 ("no AGPL") is only real if it is tested. A policy nobody proves is a
   # policy that has already drifted.
   #

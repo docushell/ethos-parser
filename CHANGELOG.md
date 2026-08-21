@@ -7,7 +7,87 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0
+
+### v2-S13 — A11's other half, as 0.32.0
+
+**No reader changed.** This slice adds the mutation harness office never had, runs it, and reports
+what it found.
+
+**The obligation was due at v0.** `06-STEAL-REFUSE.md`'s **A11** — *mutation testing every fixture
++ `cargo-fuzz` per format*, from Anydoc. v2-S12 closed the fuzz half for office and wrote the
+mutation half into A11's own row as **OPEN**: no office fixture had ever been mutated. Sixteen
+packages across eight formats, never damaged and never asked what they would do about it.
+
+#### Added
+
+- **`crates/engine-office/tests/robustness.rs`** — every package in `fixtures/office/` damaged
+  **twelve** ways. **148 mutants across sixteen fixtures, and not one panicked.** Two permitted
+  outcomes, asserted: a named `EngineError` from the six-code taxonomy, or an artifact binding to
+  the **mutant's** `source.sha256`. **36 survivors pinned** in five explained classes and **44
+  inapplicable pairs pinned exactly**, because a silent skip is indistinguishable from coverage.
+- **CI job `v0-office-mutation`**, named by `docs/03-V0-SCOPE.md` §5's mutation criterion as a
+  third job beside `v0-fuzz-smoke` and `v0-fixture-mutation`. A top-level job rather than a
+  fifteenth matrix entry, and that is forced: `the_v01_gates_exist` asserts the `v0-exit-criteria`
+  matrix is exactly fourteen entries and v0 is frozen.
+
+#### A second harness, not a second manifest root
+
+The office fixtures are in no manifest, so the v0-M7 harness cannot reach them. Adding an `office`
+root would have been worse than duplicating code: `all_fixtures()` there walks **every entry of
+every root** and hands each to `Document::open_bytes`, so sixteen ZIP and RTF files would be
+refused as non-PDF while **every assertion still passed** — a suite reporting coverage of sixteen
+packages while proving nothing about any of them. It would also edit a v0-frozen manifest whose
+`counts` tripwire has no office term.
+
+The duplication it avoids turned out to be nearly nothing: only five of the six PDF damage kinds
+mean anything to a container, one means nothing at all, and four new kinds exist because a ZIP has
+hazards a byte stream does not.
+
+**The oracle is untouched, and asserted rather than assumed.** `ETHOS_OWNED_FIXTURE_COUNT` (15) and
+`ORACLE_AGREED_COUNT` (12) select by `owner == "ethos"`, never by root. Still **12 / 3**.
+
+#### The finding: `zip.rs` checks a part's declared length and never its CRC-32
+
+`main-part-byte-flipped` flips one byte inside the compressed data of the part each format must
+read. Ten of fourteen packages refuse. **Four do not**, and every link in the chain matters: the
+flipped byte leaves a stream `miniz_oxide` still inflates (zlib refuses it outright), to *exactly*
+the declared length, substituting a NUL where the invalid back-reference was; `zip.rs`'s only
+integrity check is that length; the directory's CRC-32 is **never read**; the corruption lands in a
+namespace URI, which the OOXML readers match by suffix — so the extracted text comes out
+**byte-identical to the original's**.
+
+The artifact differs from one built from the undamaged package in exactly one field:
+`source.sha256`, which binds to the mutant. **That is the designed safety property working with
+nothing behind it.** The contract holds, so no reader changed here; whether a hand-rolled ZIP
+reader in a fail-closed engine should verify CRC-32 is stated for the owner in `15`'s S13 with what
+each option costs.
+
+#### Two assumptions the fixtures corrected
+
+The harness was wrong twice and the corpus said so, which is the right way round. It first asserted
+that appending junk to an RTF stream adds exactly one node — true of `rich-text-paragraphs`, which
+ends `\row }`; false of `rich-text-unread-destinations`, which has no trailing break, so the junk
+is absorbed into the final paragraph instead. And its unknown-control-word mutation searched for
+`\par` as a substring and matched the **`\pard`** that opens every paragraph, mangling something no
+reader can see — the same trap `engine-pdf`'s harness records for a space-delimited ` Tj `.
+
+#### Changed
+
+- Workspace **0.31.1 → 0.32.0**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
+  thirty-ninth time, to
+  `sha256:49540b22949c1b8cb4423a6e6c302b7ade501a27ddc7b142685bb2ee39bbb268`
+  (was `sha256:b7e3005c88a94dcedb0df4beccb44ff52d1a470225da2d22dae9d7aecccf7853`)
+- **`A11`'s row and its two-halves note updated**: both lanes now cover both corpora, and the note
+  says which damage kinds transferred to a container and which could not.
+- Both projection worked examples regenerated together and verified against freshly generated
+  artifacts.
+
+**v2 is not complete.** Both owner questions — the gate sentence's verb, and whether *"embedded
+assets"* ever meant more than a count — are restated unchanged at the end of `15`'s S13 and are
+**not** settled here.
+
 
 ### v2-S12.1 — the guards that were never there, as 0.31.1
 

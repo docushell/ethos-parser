@@ -201,7 +201,7 @@ cannot tell you the classification bound still holds, only that nothing failed.
       deterministic error
       — CI job `v0-fail-closed`
 - [x] `cargo-fuzz` target exists and runs clean on the corpus; mutation tests cover every fixture
-      — CI jobs `v0-fuzz-smoke` and `v0-fixture-mutation`
+      — CI jobs `v0-fuzz-smoke`, `v0-fixture-mutation` and `v0-office-mutation`
 - [x] `cargo deny` green: no AGPL, no network crates
       — CI job `deny-policy-is-enforced`
 - [x] No verification code, type, or field exists anywhere in the tree
@@ -228,6 +228,7 @@ cheapest honest form of two of these.
 | `v0-classify-bound` | `the_sampler_is_bounded_on_a_492_page_document` + the counter and flat-cost tests, `--exact --test-threads=1` |
 | `v0-fail-closed` | unknown operator (three tests), unknown magic, and the c14n float refusals |
 | `v0-fixture-mutation` | the whole `engine-pdf --test robustness` target, `--nocapture` so the coverage report reaches the log |
+| `v0-office-mutation` | the whole `engine-office --test robustness` target, `--nocapture` for the same reason. The sixteen office packages are in no manifest, so `v0-fixture-mutation` cannot reach them (v2-S13) |
 | `v0-fuzz-smoke` | `cargo fuzz build` on **all three** targets, then 60s each with `-timeout=10` on the two PDF ones. `office_read` is built and not run — v2-S12 measured a per-push office campaign and declined it, and v2-S12.1 added the build because nothing else compiles it |
 | `deny-policy-is-enforced` | `cargo deny check licenses`, then the AGPL probe requiring exit 4 |
 | `v0-no-verify` | `ci/forbidden-tokens.sh verification` |
