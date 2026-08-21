@@ -105,6 +105,39 @@ fn workflow() -> String {
     read(".github/workflows/ci.yml")
 }
 
+/// The workspace's member crate names, from `Cargo.toml`'s `members` array.
+///
+/// Parsed rather than listed, for the reason `no_job_filter_selects_zero_tests` gives: a list of
+/// crates written into a test goes stale the moment a crate is added, and the failure is silent
+/// because a scanner that misses a crate still finds plenty to scan. `crates/engine-office` was
+/// missing from that list for twelve slices.
+///
+/// Deliberately a small string parser rather than `cargo metadata`: this file already reads
+/// `ci.yml` and `03-V0-SCOPE.md` as text, the array is four lines of TOML, and shelling out to
+/// cargo from inside a cargo test is a cost and a dependency for no extra truth.
+fn workspace_members() -> Vec<String> {
+    let manifest = read("Cargo.toml");
+    let Some(at) = manifest.find("\n[workspace]\n") else {
+        panic!("Cargo.toml has no `[workspace]` table");
+    };
+    let rest = &manifest[at..];
+    let Some(open) = rest.find("members = [") else {
+        panic!("the `[workspace]` table declares no `members`");
+    };
+    let body = &rest[open..];
+    let Some(close) = body.find(']') else {
+        panic!("`members` is unterminated");
+    };
+
+    body[..close]
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter_map(|p| p.rsplit('/').next())
+        .map(str::to_string)
+        .collect()
+}
+
 // -------------------------------------------------------------------------------------------
 // The assertions
 // -------------------------------------------------------------------------------------------
@@ -188,14 +221,24 @@ fn every_named_job_exists_in_the_workflow() {
 fn no_job_filter_selects_zero_tests() {
     // Every test function name in the workspace: `#[test]` fns in `tests/`, and unit tests in
     // `src/`, since jobs filter across both.
+    //
+    // **The crate list is read from `Cargo.toml`'s `members`, not written here.** It used to be
+    // written here, and it said four crates while the workspace had five: `engine-office` joined
+    // at v2-S1 and this list did not. The consequence was a false *negative* in a guard —
+    // a job filtering on an office test name would have been reported as matching no test at all,
+    // because the scanner could not see the crate rather than because the test was missing. A
+    // guard that cannot see a fifth of the workspace is a guard whose own comment is untrue.
     let mut fn_names = String::new();
     let mut walk_dirs: Vec<PathBuf> = Vec::new();
-    for crate_name in [
-        "engine-core",
-        "engine-pdf",
-        "engine-grounding",
-        "engine-cli",
-    ] {
+    let members = workspace_members();
+    assert!(
+        members.len() >= 5,
+        "found {} workspace member(s) in Cargo.toml: {members:?}. The parser is broken, not the \
+         workspace — this test scans what it finds, so finding nothing would make it pass \
+         having read nothing.",
+        members.len()
+    );
+    for crate_name in &members {
         walk_dirs.push(repo_root().join(format!("crates/{crate_name}/src")));
         walk_dirs.push(repo_root().join(format!("crates/{crate_name}/tests")));
     }
@@ -400,26 +443,101 @@ fn no_ci_job_skips_a_test() {
     );
 }
 
-/// **The fuzz scaffolding exists**, so `v0-fuzz-smoke` has something to run.
+/// **The fuzz scaffolding exists and something compiles it**, so `v0-fuzz-smoke` has something
+/// to run and no target can rot outside every gate.
 ///
 /// The fuzz job cannot run here — `cargo-fuzz` needs nightly and a sanitizer — so this asserts
 /// the parts that would make it fail for a boring reason: a missing target, a missing seed, an
 /// unexecutable seeding script.
+///
+/// # The target list is read from the directory, and that is the repair v2-S12.1 exists for
+///
+/// It used to be `["open_and_classify", "open_and_extract"]`, written here by hand. v2-S12 added
+/// a third target and did not grow the list — and because `Cargo.toml` excludes `fuzz/` from the
+/// workspace, `cargo build --workspace` never compiled it either. `office_read` sat in the tree
+/// for a whole slice with **nothing anywhere compiling it**: it could have stopped building
+/// against the engine API and every job would have stayed green. That is the same shape as
+/// `fuzz/Cargo.lock` sitting two slices stale — a thing outside every gate, found by a human
+/// reading rather than by a test.
+///
+/// So the directory is the list. A fourth target is picked up without anyone remembering this
+/// file, and the count below is the tripwire that makes adding one a decision rather than an
+/// accident.
+///
+/// # Each target is asserted to drive *its own* entry point
+///
+/// Not one entry point for all three. `office_read` drives `engine_office::read`, and asserting
+/// `Document::open_bytes` across the board would either fail here or push a lie into the target
+/// to make it pass — which is the failure this test is supposed to catch, arriving through the
+/// test.
 #[test]
 fn the_fuzz_target_and_seed_corpus_are_present() {
     let root = repo_root();
+    let dir = root.join("fuzz/fuzz_targets");
 
-    for target in ["open_and_classify", "open_and_extract"] {
-        let p = root.join(format!("fuzz/fuzz_targets/{target}.rs"));
-        assert!(p.is_file(), "fuzz target missing: {}", p.display());
+    let mut targets: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{} unreadable: {e}", dir.display()))
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .collect();
+    targets.sort();
+
+    assert_eq!(
+        targets.len(),
+        3,
+        "found {} fuzz target(s) in {}: {targets:?}. Three is the number this repository has \
+         argued for — two on the PDF entry points (v0-M7) and one on the office router \
+         (v2-S12). A fourth is a decision: it needs an entry point named below and a \
+         `cargo fuzz build` line in `v0-fuzz-smoke`, and this line is what makes someone say so.",
+        targets.len(),
+        dir.display()
+    );
+
+    let wf = workflow();
+    let fuzz_manifest = read("fuzz/Cargo.toml");
+
+    for target in &targets {
+        let p = dir.join(format!("{target}.rs"));
         let src = std::fs::read_to_string(&p).expect("readable");
         assert!(
             src.contains("fuzz_target!"),
             "{target} is not a libFuzzer target"
         );
+
+        // The engine entry point this target is for. `office_read` reads packages through the
+        // office router; everything else drives the PDF one, which is the stricter default and
+        // the one `docs/03-V0-SCOPE.md` §5 names.
+        let entry = if target == "office_read" {
+            "engine_office::read"
+        } else {
+            "Document::open_bytes"
+        };
         assert!(
-            src.contains("Document::open_bytes"),
-            "{target} must drive the PDF entry point (docs/03-V0-SCOPE.md §5)"
+            src.contains(entry),
+            "{target} must drive `{entry}` (docs/03-V0-SCOPE.md §5); it does not"
+        );
+
+        // `cargo fuzz` builds what `fuzz/Cargo.toml` declares as a `[[bin]]`, so a target file
+        // with no entry is a file cargo never looks at.
+        assert!(
+            fuzz_manifest.contains(&format!("name = \"{target}\"")),
+            "`fuzz/fuzz_targets/{target}.rs` exists but `fuzz/Cargo.toml` declares no \
+             `[[bin]] name = \"{target}\"`, so nothing builds it"
+        );
+
+        // **The load-bearing one.** `Cargo.toml` excludes `fuzz/` from the workspace on purpose,
+        // so `cargo build --workspace` will never compile a fuzz target. The workflow naming it
+        // is the only thing that does.
+        assert!(
+            wf.contains(&format!("cargo fuzz build {target}")),
+            "no CI job builds `{target}`. `cargo build --workspace` excludes `fuzz/`, so a \
+             target the workflow does not name is compiled by nothing at all — it can stop \
+             building against the engine API and every job stays green. Add \
+             `cargo fuzz build {target}` to `v0-fuzz-smoke`'s \"Build the fuzz targets\" step. \
+             Building is not running: a target may be built without being given a time budget, \
+             and `office_read` is."
         );
     }
 

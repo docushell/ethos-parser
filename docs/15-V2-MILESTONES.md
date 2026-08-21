@@ -2430,11 +2430,19 @@ so an overflow that would wrap silently in release aborts here.
 
 **Two runs, both to completion, on the same growing corpus.**
 
+**The `exec/s` row is a rate under stated conditions, not a property of the engine, and this table
+did not say so until v2-S12.1 added this paragraph.** Both runs were measured while
+`cargo test --workspace` and other builds shared the machine. S12.1 re-measured on an idle host and
+got **887 exec/s** on a 652-entry corpus — within one percent of run 1, and well under run 2 — so
+load is not the dominant term; corpus size and composition are. The execution counts, the coverage
+figures and the zero-crash result are unaffected: those are facts about what ran. See S12.1 for the
+full comparison and for the one number this correction moves.
+
 | | run 1 | run 2 | total |
 | --- | --- | --- | --- |
 | **executions** | 805,456 | 3,002,735 | **3,808,191** |
 | **wall clock** | 901 s | 2,401 s | **3,391 s ≈ 57 min** |
-| **exec/s** | 893 | 1,250 | 1,123 average |
+| **exec/s** *(machine shared)* | 893 | 1,250 | 1,123 average |
 | **edge coverage** | 8,148 | **8,985** | — |
 | **features** | 22,101 | **26,074** | — |
 | **corpus** | 1,429 | **2,544** entries / 3.7 MB | grown from 16 |
@@ -2471,6 +2479,20 @@ not committed. A useful campaign wants a **persisted** corpus and a schedule, no
 that is an infrastructure decision with a storage question attached, and it is not this slice's to
 make.
 
+> **Corrected at v2-S12.1: the executions figure above is roughly double the real one.** The
+> paragraph applies the *warm-corpus* rate to a *cold* corpus while saying in the same breath that
+> CI rebuilds from the sixteen seeds every time — and those two halves disagree. Measured under
+> exactly CI's conditions — fresh corpus from the seeds, 60 seconds, idle machine — the figure is
+> **35,048 executions at 574 exec/s**, not ~66,000. The old number stays here because a published
+> measurement that changes has to show its own history. **The decision is unchanged and the
+> correction strengthens it**: 35,000 executions per push is a weaker case for a per-push campaign
+> than 66,000 was.
+>
+> **v2-S12.1 did add a `cargo fuzz build office_read` step**, and that is not a reversal of this
+> paragraph. The budget argument above is about *running* the target. Nothing in the repository
+> was *building* it — `cargo build --workspace` excludes `fuzz/` — so the target could have
+> stopped compiling with every job still green.
+
 ### Restated for the owner, unchanged and unsettled
 
 **The v2 gate's verb.** `00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both say a
@@ -2500,6 +2522,240 @@ wording** row, and no decision-log entry ever settled it. The two readings and w
   - [x] No git tag
 
 - **Depends on:** S11.
+
+---
+
+## S12.1 — the guards that were never there — **done**, as 0.31.1
+
+**A patch release on the precedent v2-S9.1 and v2-S10.2 set.** No behaviour changed, no profile
+field moved, and the nine hashes moved anyway on `parser_version` alone, for the reason those two
+slices give: a build is a build, and the version is the only field that can tell a reader which one
+produced the artifact in their hand.
+
+### The defect, and it was v2-S12's own
+
+`fuzz/fuzz_targets/office_read.rs` existed and **nothing compiled it.**
+
+Three things had to be true at once, and they were:
+
+- `Cargo.toml` excludes `fuzz/` from the workspace on purpose — `libfuzzer-sys` is a nightly-only
+  sanitizer shim and has no business in the dependency graph of a shipped library — so
+  `cargo build --workspace` never touches a fuzz target.
+- CI's `v0-fuzz-smoke` built `open_and_classify` and `open_and_extract`, by name.
+- `crates/engine-cli/tests/v0_exit_criteria.rs`'s `the_fuzz_target_and_seed_corpus_are_present`
+  iterated the same two names, hardcoded, and asserted each contained `Document::open_bytes`.
+
+So `office_read` could have stopped compiling against the engine API and **every job would have
+stayed green.** That is the same shape as `fuzz/Cargo.lock` sitting at `0.27.0` for two slices: a
+thing outside every gate, drifting quietly, found by a human reading rather than by a test.
+
+### The fix is the build, not the run
+
+**v2-S12's budget decision stands and this slice does not reopen it.** No fuzz *run* step was
+added. What was added is `cargo fuzz build office_read`, one line inside the step that already
+builds the other two, on a job that already installs nightly and `cargo-fuzz`. It buys the only
+thing that was missing: proof the target compiles.
+
+The guard changed shape rather than gaining an entry. It now reads the target list **from
+`fuzz/fuzz_targets/`**, because a list written by hand is precisely what let the third target land
+unguarded, and for each target it asserts three things:
+
+| Assertion | What it catches |
+| --- | --- |
+| the file uses `fuzz_target!` | a target that is not a libFuzzer harness |
+| the file drives **its own** entry point | `office_read` drives `engine_office::read`; the PDF targets drive `Document::open_bytes`. Asserting one entry point across all three would either fail or push a lie into the target to make it pass |
+| **some CI job names `cargo fuzz build <target>`** | the actual defect. Nothing else in the repository compiles a fuzz target |
+
+The count is pinned at three, so a fourth target is a decision someone has to make here rather than
+one that happens by itself.
+
+**Verified by breaking it.** With the new line removed from `ci.yml`, the test fails and names the
+target, the cause and the repair; with it restored, it passes. A guard that has never been observed
+to fail is a guard nobody has checked.
+
+`docs/03-V0-SCOPE.md` §5.1's `v0-fuzz-smoke` row said *"`cargo fuzz build` on both targets"*. It
+says three now, and says which one is built without being run and why.
+
+### The measured statements, and the method — because a site list is not a search
+
+The brief named four. The method was the one v2-S10.2 recorded: **derive the target set from the
+code, then check the handed list against it.** Seven read-only sweeps ran over
+`crates/*/src` comments, over `docs/` and the top-level markdown, and over every `#[test]` in the
+workspace; each candidate was then re-checked by an independent pass whose default answer was
+*refuted*, which threw three of the fifty-five out. **Fifty-two survived.** The four in the brief
+were all real. One of them was understated, and four more sites in
+`crates/engine-pdf/tests/robustness.rs` were found outside the sweeps by reading it as v2-S13's
+contract. **Twenty-four are repaired here. Twenty-eight are not, and are named below.**
+
+**What this slice repaired:**
+
+| Site | Was | Is |
+| --- | --- | --- |
+| `engine-office/src/lib.rs`, `read`'s dispatch comment | *"With **four** formats a chain of `if`s…"* | seven, and the neighbouring sentence now says entries **four through seven** share the `mimetype` kind rather than only the fourth |
+| `engine-office/src/lib.rs`, `read`'s RTF pre-check | *"The **six** formats below are packages"* | seven |
+| `engine-office/src/lib.rs`, `read`'s ODF media-type guard | *"this engine reads **two** of the family"* | three — the `if` three lines below it already named ODT, ODS **and** ODP |
+| `engine-office/src/lib.rs`, `is_opendocument` | *"a **third** question rather than an `||` of the other two"*, and *"an `.odp` answers `false` to every predicate here"* | the `||` has grown to three and `is_odp` now answers `true`; the argument is restated around the ODF formats this engine does **not** implement, where it is still exactly right |
+| `engine-office/src/lib.rs`, `ODT_MEDIA_TYPE` and `ODT_CLAIM` | *"the only one of the **four**"*, *"the other **three** entries"* | four of eight media types are self-declared; ODS, ODP and EPUB do the same |
+| `engine-office/src/lib.rs`, `read_pptx` | *"three formats now instead of one"* | three at v2-S4, seven by v2-S12 |
+| `engine-core/src/lib.rs`, crate docs | *"# **Three** rules this crate enforces in the type system"*, over a list of four | four. Wrong since M4 |
+| `engine-core/src/representation.rs`, `every_profile_is_distinct_from_every_other` | the name said *every*; the body checked **four** of nine | nine, with the count asserted. See below |
+| `engine-cli/tests/v0_exit_criteria.rs`, `no_job_filter_selects_zero_tests` | *"Every test function name in the workspace"*, over a hardcoded list of **four** crates | read from `Cargo.toml`'s `members`. See below |
+| `engine-pdf/tests/robustness.rs`, `EXPECTED_SURVIVORS` triage | *"`flip-tail-byte` on **four** documents"*, *"the other **eleven**"* | nine and forty-six. Measured, not estimated |
+| `engine-pdf/tests/robustness.rs`, `run_mutant` | *"the **twenty** small fixtures"* | fifty-two |
+| `engine-pdf/tests/robustness.rs`, the injection floor | `checked >= 12`, arguing *"the floor sits just below"* forty-four | `>= 40`. See below |
+| `docs/03-V0-SCOPE.md` §4 | *"**one** engine-authored CC0 fixture… the only fixture this repo owns"* | thirty-seven |
+| `docs/03-V0-SCOPE.md` §5.1, `v0-artifact-identity` | three test names | four — `artifact_identity_round_trips_through_c14n` was missing, and the job runs it |
+| `fixtures/README.md` | *"the 15 conformance entries are `ethos`; **33** are"* | thirty-seven, which is what the manifest's own `counts` says |
+| `.github/workflows/ci.yml`, the mutation job comment | *"**23** fixtures"* | the number is gone. The harness derives it and prints it; a number in a comment is a number nothing checks, and this one said 23 while the corpus reached 55 underneath it |
+| `fuzz/seed-corpus.sh` | *"the **five** CC0 fixtures this repo owns"* | thirty-seven |
+
+**Two of those are guards rather than prose, and they were failing at their own job.**
+
+`no_job_filter_selects_zero_tests` exists to catch the quietest failure this scheme has: a CI filter
+naming a renamed test, so the job prints `ok. 0 passed` and goes green having checked nothing. It
+scanned four crates and `engine-office` joined the workspace at v2-S1, so for twelve slices the
+scanner could not see a fifth of the tree. The consequence is a false *negative* — a job filtering
+on an office test would have been reported as matching nothing, because the scanner was blind
+rather than because the test was gone. It reads `Cargo.toml`'s `members` now, and asserts it found
+at least five, because a scanner that finds nothing passes.
+
+`an_injected_unknown_operator_stops_the_parse` carried the floor `checked >= 12` and a sentence
+explaining that *"the floor sits just below"* the real number, so a fixture becoming unreadable
+would be caught rather than quietly shrinking coverage. Fourteen fixtures took the injection at M7.
+**Forty-four take it now.** The corpus tripled underneath a floor that did not move, so three
+quarters of it could have stopped extracting with the test still green. A floor far below the real
+number has stopped being a floor.
+
+`every_profile_is_distinct_from_every_other` is the third, and the interesting one, because
+**nothing was unverified**: the nine-way property is proven by
+`the_epub_profile_is_its_own_and_all_nine_are_distinct` in
+`crates/engine-office/tests/epub_representation.rs`. The damage a name that overclaims does is to
+the next reader — someone adding a tenth profile reads *every*, sees green, and never learns the
+array is a list a human has to remember to grow. Every constructor is `pub` and lives in
+`engine-core`, so the short list was never anything but the order they were written in.
+
+### What this slice did **not** repair, named rather than left to be rediscovered
+
+**Twenty-eight confirmed false statements remain.** They are not deferred because they are
+acceptable; they are deferred because repairing this many is a slice, and this repository already
+has the precedent for that being its own slice twice over — S10.1 (*"the seven claims v2-S9.1 and
+v2-S10 left false"*) and S10.2 (*"the docs that stopped describing the code"*). Bundling thirty-five
+prose repairs into a patch release whose job is a CI step would make the diff unreadable and the
+argument unreviewable.
+
+The line drawn: **this slice repaired every confirmed false statement in the files it had to open
+anyway**, plus `crates/engine-pdf/tests/robustness.rs`, because v2-S13 builds a second harness from
+that file's argument and a wrong count in a contract propagates into the thing built from it.
+
+What is left, by file, so the next slice inherits a search result rather than a mood:
+
+| File | Confirmed | Shape |
+| --- | --- | --- |
+| `docs/04-ARCHITECTURE.md` | 5 | *"Two roots"* (three), *"Four subcommands"* (nine), the vendored-CMap file count, *"exactly one"* engine fixture (37), the `engine-office` row naming four formats (eight) |
+| `crates/engine-core/src/profile.rs` | 3 | *"Its six siblings"*, an exhaustiveness-gate comment, and `the_profile_names_every_table_rule_and_any_one_moves_the_hash` |
+| `crates/engine-core/src/representation.rs` | 2 | the `NativeLocator::Rtf` ordinal, and *"the sharpest of the four"* against *"the sharpest of the six"* a few lines down |
+| `crates/engine-pdf/tests/extraction.rs` | 2 | two source scans that assert an empty offender list with no floor on what they read |
+| `crates/engine-office/src/{odt,opc,xml}.rs` | 3 | *"its three siblings"* (seven), *"One rule, three formats"* (two), and a `text_code_rule` count |
+| `crates/engine-core/src/{lib,verifier,assurance}.rs` | 3 | the module table's row count, *"the other four subcommands"* (eight), and an assertion message |
+| `crates/engine-pdf/src/{fonts,limitations}.rs` | 2 | a corpus size and a code-array length |
+| `crates/engine-cli/{src/mcp.rs,tests/oracle.rs}` | 2 | a tool-count loop with no floor, and *"the four-crate wiring"* |
+| `crates/engine-core/tests/contract_invariants.rs` | 1 | *"Every public type canonicalizes"* over a hand-listed sample |
+| `crates/engine-office/tests/erasure_counters.rs` | 1 | `PDF_COUNTERS` and the *"every count"* claim above it |
+| `crates/engine-pdf/tests/capabilities.rs` | 1 | *"Every source line of the workspace's integration tests"* |
+| `docs/PUBLIC-API.md`, `NOTICE`, `docs/table-gate-v1.md` | 3 | *"four subcommands"*, a `not_decoded` list that M4 removed, and a manifest-as-single-source claim |
+
+**One of those is more than prose and should be read first.** `no_job_filter_selects_zero_tests`
+only inspects `run:` lines whose command begins `cargo test`. The `v1s1-gates` and
+`v1s7-table-gate` matrices quote their commands — `run: "cargo test …"` — so the command begins
+with a double quote and the whole line is skipped. Every filter token in those two matrices
+(`content::tests`, `tables::`, `ruled_grid`, `accuracy::` and the rest) is unchecked by the guard
+that exists to check exactly that. Repairing it is not a one-word fix: the scanner matches bare
+`fn` names, and `content::tests` is a module path, so making it see those lines would fail on
+tokens that are correct. That is a real piece of design and it is not a patch release's.
+
+### The campaign rate, restated with its conditions — and one number corrected
+
+The brief offered two honest options: state the method beside the recorded numbers, or re-run both
+campaigns clean and replace the table. **Option (a), and the third measurement is why.**
+
+S12's table records 893 exec/s, 1,250 exec/s and a 1,123 average, taken while `cargo test
+--workspace` and other builds shared the machine. The record did not say so, and this slice adds
+that clause. What it does **not** do is call the recorded rate a floor, because two idle
+re-measurements on the same host say otherwise:
+
+| Run | Corpus at start | Wall | Executions | exec/s | Edges | Crashes |
+| --- | --- | --- | --- | --- | --- | --- |
+| S12 run 1 — *machine shared* | 16 seeds | 901 s | 805,456 | 893 | 8,148 | 0 |
+| S12 run 2 — *machine shared* | 1,429 | 2,401 s | 3,002,735 | 1,250 | 8,985 | 0 |
+| **S12.1 A — idle, warm corpus** | 652 | 121 s | 107,328 | **887** | 7,662 | **0** |
+| **S12.1 B — idle, cold, as CI would run it** | 16 seeds | 61 s | 35,048 | **574** | 7,126 | **0** |
+
+An idle machine on a mid-sized corpus sustains 887 — within one percent of run 1, and well under
+run 2. **Load is not the dominant term; the corpus is.** The rate is a property of a particular run
+against a particular corpus, not of the engine, and stating it without those conditions is what made
+it read like a constant. The execution counts and the zero-crash result are untouched by any of
+this — those are facts about what ran.
+
+**The correction.** S12's CI-budget paragraph extrapolated from ~1,100 exec/s to *"~66,000
+executions"* for a 60-second smoke run, while saying in the same breath that CI would rebuild the
+corpus from the sixteen seeds every time. Those two halves disagree: the warm rate does not apply
+to a cold corpus. Measured under exactly CI's conditions — fresh corpus from the sixteen seeds, 60
+seconds, idle machine — the real figure is **35,048 executions at 574 exec/s**, roughly half what
+was published.
+
+**The decision is unchanged, and moves further in the same direction.** 35,000 executions per push
+is a weaker case for a per-push office campaign than 66,000 was, not a stronger one. A useful
+campaign still wants a persisted corpus and a schedule, which is still an infrastructure decision
+with a storage question attached, and still not this slice's to make. The old number stays visible
+here and in the CHANGELOG rather than being overwritten, because a published measurement that
+changes has to show its own history.
+
+**The build cost, also re-measured:** `cargo fuzz build office_read` after touching the target
+recompiles in **11 s** on this host, against the ~50 s S12 records for a cold build of the whole
+fuzz crate. Either figure is small next to a job that already installs nightly and `cargo-fuzz`,
+which is what makes the build worth adding where the run is not.
+
+### Restated for the owner, unchanged and unsettled
+
+Both questions below are the **owner's**, both were escalated at S11 and S12, and neither is
+settled here. They are restated because a slice that touches this file restates them.
+
+**1. The v2 gate's verb.** `00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both say a
+DOCX quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
+option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has read
+*ground* as **bind**.
+
+| Reading | What it means | What it costs |
+| --- | --- | --- |
+| **"ground" means `ethos.grounding.v1`** | v2's gate is **not met** and cannot be met without option (a) — an Ethos-side schema revision, owned elsewhere | v2 stays open on a dependency this repository does not control. The eight readers are complete and the gate is not |
+| **"ground" means "binds to an address the file states"** | v2's gate **is met**, and has been since v2-S3 | The gate sentence in two documents is reworded to say *bind*, and the word *ground* stops meaning two things in one repository |
+
+**2. Embedded assets: counted, or read?** v2-S11 made every reader **count** what it does not read,
+which closed the **A14** violation. No office asset is **read**. `engine-pdf` emits an `ImageRecord`
+for a PDF image; no office reader emits anything comparable. Whether `02-ROADMAP.md`'s v2 row was
+asking for more than a count is not this repository's to decide.
+
+- **Acceptance — all met:**
+  - [x] `office_read` is built by `v0-fuzz-smoke` and covered by
+        `the_fuzz_target_and_seed_corpus_are_present`, which asserts `engine_office::read` for it
+        rather than the PDF entry point
+  - [x] The target list is read from the directory; the guard asserts, per target, that a CI job
+        names it. **Verified by removing the CI line and watching the test go red**
+  - [x] **No fuzz run step added.** v2-S12's budget decision is untouched
+  - [x] The four named statements repaired; a fifth searched for and **fifty-two confirmed** by
+        the sweeps plus four more found by hand in the mutation harness. **Twenty-four repaired
+        here; twenty-eight named above** with the reason they are not
+  - [x] The campaign rate carries its conditions, the CI extrapolation is corrected from ~66,000 to
+        a measured 35,048, and the old numbers stay visible
+  - [x] **No behaviour change.** The diff is docs, comments, CI YAML, three test files, one crate
+        doc heading and the version literals
+  - [x] Workspace **0.31.1**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both SDK suites run by hand and pass
+  - [x] Oracle still 12 / 3; `ETHOS_OWNED_FIXTURE_COUNT` still 15; table gate still **64‰**;
+        `GATE_PERMILLE` still 489
+  - [x] No git tag
+
+- **Depends on:** S12.
 
 ---
 

@@ -4,7 +4,7 @@
 # Two sources, and the split is deliberate:
 #
 #   fuzz/seeds/            hand-authored degenerate and minimal inputs, committed here
-#   fixtures/engine/       the five CC0 fixtures this repo owns, already committed
+#   fixtures/engine/       the CC0 PDF fixtures this repo owns, already committed (37 at v2-S12.1)
 #
 # The Ethos conformance corpus is NOT seeded from. `docs/04-ARCHITECTURE.md` §4 makes those
 # fixtures read-only and referenced by hash, never copied into this tree, and a fuzz corpus is a

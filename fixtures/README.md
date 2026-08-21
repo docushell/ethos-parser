@@ -47,7 +47,7 @@ Two entries are worth knowing before you debug against them:
 
 ## Engine-owned fixtures
 
-The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **33** are
+The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **37** are
 `engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
 corpus genuinely cannot cover. The manifest's `counts.engine_owned` is the number a test checks;
 this table names the ones whose reason for existing is not obvious from the fixture itself.

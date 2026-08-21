@@ -2949,7 +2949,18 @@ mod tests {
         }
     }
 
-    /// All four profiles are mutually distinct, so no two formats' artifacts compare equal.
+    /// **Every** profile is mutually distinct, so no two formats' artifacts compare equal.
+    ///
+    /// The array used to hold four — `pdf`, `docx`, `xlsx`, `pptx` — while nine profiles existed,
+    /// and the name still said *every*. The nine-way property was covered, by
+    /// `the_epub_profile_is_its_own_and_all_nine_are_distinct` in
+    /// `crates/engine-office/tests/epub_representation.rs`, so nothing went unverified; what went
+    /// wrong is subtler and is the trap v2-S9's review named. A test whose name overclaims makes
+    /// a reader stop looking: the next person to add a tenth profile reads *every* here, sees a
+    /// green tick, and never learns that the array is a list someone has to remember to grow.
+    ///
+    /// Every constructor is `pub` and lives in this crate, so there was never a reason for the
+    /// short list beyond the order they were written in.
     #[test]
     fn every_profile_is_distinct_from_every_other() {
         let profiles = [
@@ -2957,7 +2968,21 @@ mod tests {
             ("docx", Profile::docx_v0()),
             ("xlsx", Profile::xlsx_v0()),
             ("pptx", Profile::pptx_v0()),
+            ("odt", Profile::odt_v0()),
+            ("ods", Profile::ods_v0()),
+            ("odp", Profile::odp_v0()),
+            ("rtf", Profile::rtf_v0()),
+            ("epub", Profile::epub_v0()),
         ];
+
+        // The count, asserted rather than assumed. A tenth profile that nobody added here would
+        // otherwise leave this test still passing and still claiming *every*.
+        assert_eq!(
+            profiles.len(),
+            9,
+            "nine profiles ship: the default PDF one and eight `*_v0()` constructors. If a \
+             format was added, it belongs in this array — the name of this test is a promise."
+        );
         for (i, (left_name, left)) in profiles.iter().enumerate() {
             for (right_name, right) in profiles.iter().skip(i + 1) {
                 assert_ne!(

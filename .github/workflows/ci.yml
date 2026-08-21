@@ -258,9 +258,12 @@ jobs:
             corpus: true
             oracle: false
             rust: true
-            # --nocapture so the coverage report reaches the log: 23 fixtures, the mutants each
-            # took, and the pairs that could not be built. A mutation job that printed only
-            # "ok" would be indistinguishable from one covering three files.
+            # --nocapture so the coverage report reaches the log: every fixture the manifest
+            # declares, the mutants each took, and the pairs that could not be built. A mutation
+            # job that printed only "ok" would be indistinguishable from one covering three
+            # files. The count is deliberately not repeated here — the harness derives it from
+            # `fixtures/manifest.json` and prints it, and a number in this comment is a number
+            # nothing checks. It said 23 for long enough that the corpus reached 55 underneath it.
             run: cargo test -p engine-pdf --test robustness --locked -- --nocapture
 
           - id: v0-no-verify
@@ -513,9 +516,10 @@ jobs:
   # job — the workspace MSRV stays 1.88 and every other job compiles with it.
   #
   # A short budget on purpose. This is a gate against panics on inputs shaped like the corpus,
-  # not a fuzzing campaign: 60s per target catches a crash a refactor introduced, and finding
-  # the deep bugs is a job for a long-running fuzzer outside PR latency. `-timeout=10` fails an
-  # input that hangs rather than letting the job burn its wall clock on one pathological file.
+  # not a fuzzing campaign: 60s per *running* target catches a crash a refactor introduced, and
+  # finding the deep bugs is a job for a long-running fuzzer outside PR latency. `-timeout=10`
+  # fails an input that hangs rather than letting the job burn its wall clock on one pathological
+  # file. Three targets are built here and two are run; the step below says why.
   #
   # `fuzz/` is excluded from the workspace, so this compiles a separate crate against the same
   # engine sources and `cargo deny check` never sees `libfuzzer-sys`.
@@ -537,13 +541,23 @@ jobs:
         with:
           tool: cargo-fuzz
 
-      # Build both targets first: a target that no longer compiles against the engine API is the
+      # Build every target first: a target that no longer compiles against the engine API is the
       # most likely way this rots, and it is worth failing on that before spending any budget.
+      #
+      # **`office_read` is built and not run, and the asymmetry is deliberate.** v2-S12 measured
+      # the cost of a per-push office campaign and declined it — a 60-second run buys ~66,000
+      # executions against a corpus CI rebuilds from the sixteen seeds every time, which is under
+      # 2% of that slice's campaign. That decision stands. But *building* costs ~50 s on a job
+      # that already installs nightly and `cargo-fuzz`, and it buys the one thing that was
+      # missing: `cargo build --workspace` excludes `fuzz/`, so before v2-S12.1 nothing in the
+      # repository compiled `office_read` at all. It could have stopped building and every job
+      # would have stayed green.
       - name: Build the fuzz targets
         working-directory: fuzz
         run: |
           cargo fuzz build open_and_classify
           cargo fuzz build open_and_extract
+          cargo fuzz build office_read
 
       - name: Seed the corpora
         run: |

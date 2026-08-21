@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.31.0, and v2's format row
+**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.31.1, and v2's format row
 is closed.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its table number is measured and **missed**: macro cell-slot F1 is **64‰**, fabrication is
@@ -10,7 +10,7 @@ open**. Its table number is measured and **missed**: macro cell-slot F1 is **64�
 **v1 is not done**, and v1.1 began because the owner asked for the next roadmap row rather than
 because the gate cleared.
 
-**What 0.31.0 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
+**What 0.31.1 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
 
 **v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
@@ -249,7 +249,7 @@ one**.
 
 M7 added no capability. It closed v0 instead:
 
-- **`03-V0-SCOPE.md` §5 is CI.** Fifteen criteria, fifteen named jobs, and
+- **`03-V0-SCOPE.md` §5 is CI.** Fifteen criteria, sixteen named jobs — the fuzz line names two — and
   `v0_exit_criteria.rs` fails if a box is ticked against a job nobody wrote — or if a `--skip`
   reappears anywhere in the workflow.
 - **The public API is a list**, not whatever happened to be `pub`. See
@@ -285,7 +285,7 @@ the current one, and this paragraph is the v0 → v1 hand-off it describes.
    representation, the projection, or the checker — and do not widen the public API without
    editing [`PUBLIC-API.md`](PUBLIC-API.md) and the freeze test in the same commit. For v1 work
    read [`08-V1-SCOPE.md`](08-V1-SCOPE.md) and [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md)
-   first: v1 is **seven slices**, S1–S7b are done, S7 is still open, and the > 0.489 gate belonged
+   first: v1 is **thirteen slices** (S0, S1–S6, S6.1, S6.2, S7a, S7b, S8, and S7 out of order); S1–S6, S7a, S7b and S8 are done, S7 is still open, and the > 0.489 gate belonged
    to S7 alone before the chase was **parked** — no slice is measured against it now
 
    One thing M7 inspected and deliberately left alone: the `ethos` binary in the sibling tree is
@@ -337,9 +337,9 @@ Then, as needed:
 | [`12-V12-SCOPE.md`](12-V12-SCOPE.md) | **v1.2 adoption**: what it is, what it is not, and the handle law | Before any adapter |
 | [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) | **v1.2-S0–S5**, all done — S5 **refused** | Every v1.2 PR. This is the v1.2 code-review map |
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
-| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S10**, all done — eight formats read and **S10 (CSV) an argued refusal**. v2's format row is closed and v2 is **not** complete | Every v2 PR. This is the v2 code-review map |
+| [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S12.1**, all done — eight formats read and **S10 (CSV) an argued refusal**. v2's format row is closed and v2 is **not** complete | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489, which is why the chase is parked | Before quoting any table-accuracy number |
-| [`CAPABILITY.md`](CAPABILITY.md) | What **0.31.0** can and cannot do, as two tables | When someone asks what this engine actually does today |
+| [`CAPABILITY.md`](CAPABILITY.md) | What **0.31.1** can and cannot do, as two tables | When someone asks what this engine actually does today |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | A stub. The two research files are **off-tree**; `06-STEAL-REFUSE.md` is the living steal / refuse record | Only to find out where the archive went |

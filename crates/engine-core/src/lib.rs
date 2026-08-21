@@ -42,7 +42,7 @@
 //! **No verification concept appears either.** No claim, no verdict, no `grounded`, no
 //! `evidence_tier` (`docs/07-VERIFY-BOUNDARY.md`).
 //!
-//! # Three rules this crate enforces in the type system
+//! # Four rules this crate enforces in the type system
 //!
 //! 1. **Floats do not exist in canonical output.** [`c14n::c14n_bytes`] rejects any non-integer
 //!    number, at any depth. Geometry arrives pre-quantized as `i64`.

@@ -162,7 +162,8 @@ pub const PPTX_MEDIA_TYPE: &str =
 
 /// The media type an OpenDocument text document declares (v2-S5).
 ///
-/// **The only one of the four the package states about itself.** An OOXML package's type is
+/// **The first of the eight media types the package states about itself, and one of four.** ODS,
+/// ODP and EPUB do the same; DOCX, XLSX, PPTX and RTF do not. An OOXML package's type is
 /// inferred from which main part its central directory lists; an ODF package writes it into an
 /// uncompressed `mimetype` entry that the specification requires to come first, so this is read
 /// rather than deduced. See [`odt::declared_media_type`].
@@ -170,9 +171,10 @@ pub const ODT_MEDIA_TYPE: &str = odt::ODT_MEDIA_TYPE;
 
 /// How [`read`]'s router names the evidence that a package is an OpenDocument text document.
 ///
-/// The other three entries in that list are part names, because that is what identifies an OOXML
-/// package. This one is a sentence, because an ODF package identifies itself and the honest thing
-/// to put in an "this package claims to be N kinds of document" message is the claim it made.
+/// Three entries in that list are part names, because that is what identifies an OOXML package.
+/// This one — and the ODS, ODP and EPUB claims beside it — is a sentence, because a package that
+/// follows the OCF rule identifies itself, and the honest thing to put in a "this package claims
+/// to be N kinds of document" message is the claim it made.
 const ODT_CLAIM: &str = "mimetype = application/vnd.oasis.opendocument.text";
 
 /// The media type an OpenDocument spreadsheet declares (v2-S6).
@@ -328,16 +330,20 @@ pub fn is_epub(bytes: &[u8]) -> bool {
 
 /// Whether these bytes are **any** OpenDocument package — one this engine reads or one it does not.
 ///
-/// # Why this is a third question rather than an `||` of the other two
+/// # Why this is its own question rather than an `||` of the exact-type ones
 ///
 /// A caller dispatching on format needs to know *"is the office reader the one to ask"* before it
 /// knows *"is this a kind the office reader implements"*, and only an ODF package can answer the
 /// first about itself: it writes its type into a first, uncompressed `mimetype` entry.
 ///
-/// Without this, an `.odp` answers `false` to every predicate here and falls through to the PDF
-/// reader, which refuses it for having no `%PDF-` header. That is fail-closed and it names the
-/// wrong cause — `docs/15-V2-MILESTONES.md` S5 recorded it as the one defect S5 deferred to S6, and
-/// this is the half of the fix that lives outside [`read`].
+/// The `||` this replaces has grown — it was [`is_odt`]` || `[`is_ods`] when this was written at
+/// v2-S6, and [`is_odp`] joined at v2-S7 — and growing is the point. An `||` of the exact-type
+/// predicates answers `false` for every ODF format this engine does **not** implement, so a
+/// drawing (`.odg`) would fall through to the PDF reader and be refused for having no `%PDF-`
+/// header: fail-closed, and naming the wrong cause. `docs/15-V2-MILESTONES.md` S5 recorded that
+/// as the one defect S5 deferred to S6, and this is the half of the fix that lives outside
+/// [`read`]. A prefix question stays right as the exact-type list changes; an `||` of it would
+/// have to be edited every time, and would be wrong in the window before someone remembered.
 ///
 /// # The declared type is checked, because the container rule is not ODF's alone
 ///
@@ -366,11 +372,12 @@ pub fn is_opendocument(bytes: &[u8]) -> bool {
 /// `01-CONTRACT.md` §8 — a document read as far as it went is a shorter document that still looks
 /// whole.
 pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
-    // **Asked before the container question, because RTF has no container** (v2-S8). The six
-    // formats below are packages and are told apart by what their central directory lists; an
-    // `.rtf` is a brace-group byte stream that begins `{\rtf`. The two evidences cannot collide —
-    // a ZIP begins `PK\x03\x04` — so this is one `if` rather than a fifth entry in the `claimed`
-    // list, and the ambiguity that list exists to refuse is not reachable here.
+    // **Asked before the container question, because RTF has no container** (v2-S8). The seven
+    // formats below are packages, told apart by what their central directory lists or by what a
+    // first, stored `mimetype` entry declares; an `.rtf` is a brace-group byte stream that begins
+    // `{\rtf`. The two evidences cannot collide — a ZIP begins `PK\x03\x04` — so this is one `if`
+    // rather than an eighth entry in the `claimed` list, and the ambiguity that list exists to
+    // refuse is not reachable here.
     if rtf::is_rtf(bytes) {
         return read_rtf(bytes);
     }
@@ -385,16 +392,19 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     }
     let names = zip::entry_names(bytes)?;
 
-    // **Counted, not asked in order.** With four formats a chain of `if`s would make the answer
+    // **Counted, not asked in order.** With seven formats a chain of `if`s would make the answer
     // depend on which line ran first for a package claiming to be two of them; collecting the
     // evidence a package actually carries makes the ambiguous case impossible to reach by
-    // accident and names it instead.
+    // accident and names it instead. The argument was written when there were four and only got
+    // stronger — every format added since is one more `if` whose position would have mattered.
     //
-    // The fourth entry is a different *kind* of evidence and that is the format's doing, not a
-    // shortcut: OOXML packages are told apart by which main part they list, while an ODF package
-    // declares its own type in a first, uncompressed `mimetype` entry. A package carrying both
-    // kinds of evidence is exactly the ambiguity this shape exists to refuse — an ODF `mimetype`
-    // wrapped around `word/document.xml` is a file claiming to be two documents.
+    // The fourth entry is where the *kind* of evidence changes, and entries four through seven
+    // all share the new kind. That is the container rule's doing, not a shortcut: the three OOXML
+    // packages are told apart by which main part they list, while ODT, ODS, ODP and EPUB declare
+    // their own type in a first, uncompressed `mimetype` entry — the OCF rule, which ODF and EPUB
+    // both follow. A package carrying both kinds of evidence is exactly the ambiguity this shape
+    // exists to refuse — an ODF `mimetype` wrapped around `word/document.xml` is a file claiming
+    // to be two documents.
     let claimed: Vec<&str> = [
         docx::MAIN_PART,
         xlsx::WORKBOOK_PART,
@@ -408,7 +418,7 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
     .chain(epub::is_epub(bytes).then_some(EPUB_CLAIM))
     .collect();
 
-    // **An ODF package states what it is, and this engine reads two of the family.** A declared
+    // **An ODF package states what it is, and this engine reads three of the family.** A declared
     // type it does not implement is refused here, by name, rather than left to fall past the
     // office branch — where the PDF reader would refuse it for having no `%PDF-` header and name a
     // cause that is not the one. Checked before the match rather than inside its `[]` arm, so a
@@ -1702,7 +1712,8 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 ///
 /// A slide is a part, so the shape v2-S3 built for one-part-per-sheet serves unchanged: a part id
 /// per slide, ordinals contiguous within each, and the part-id ↔ part-name bijection carrying
-/// three formats now instead of one. `pages` stays empty — see `pptx.rs` for why a slide's size
+/// three formats at v2-S4 instead of one, and seven by v2-S12. `pages` stays empty — see
+/// `pptx.rs` for why a slide's size
 /// and its position in the deck are both things this engine will not turn into a `PageRecord`.
 fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
     let presentation = zip::read_entry(bytes, pptx::PRESENTATION_PART)?;

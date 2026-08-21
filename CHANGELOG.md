@@ -7,7 +7,106 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1
+
+### v2-S12.1 — the guards that were never there, as 0.31.1
+
+**No code changed.** This slice adds a CI step, changes the shape of one guard, and repairs
+statements that had stopped being true.
+
+**The defect was v2-S12's own.** `fuzz/fuzz_targets/office_read.rs` existed and **nothing compiled
+it.** `Cargo.toml` excludes `fuzz/` from the workspace on purpose, so `cargo build --workspace`
+never touches a fuzz target; CI's `v0-fuzz-smoke` built `open_and_classify` and `open_and_extract`
+by name; and `v0_exit_criteria.rs`'s `the_fuzz_target_and_seed_corpus_are_present` iterated the
+same two names, hardcoded. The office target could have stopped compiling against the engine API
+and **every job would have stayed green** — the same shape as `fuzz/Cargo.lock` sitting two slices
+stale, a thing outside every gate, found by reading rather than by a test.
+
+#### Added
+
+- **`cargo fuzz build office_read`** in `v0-fuzz-smoke`'s existing "Build the fuzz targets" step.
+  **No run step.** v2-S12 measured a per-push office campaign and declined it; that decision stands
+  and is not reopened here. Building is what was missing, and it costs a step on a job that already
+  installs nightly and `cargo-fuzz`.
+
+#### Changed
+
+- **`the_fuzz_target_and_seed_corpus_are_present` reads the target list from
+  `fuzz/fuzz_targets/`** instead of a hardcoded pair, and asserts per target that it uses
+  `fuzz_target!`, that it drives **its own** entry point — `engine_office::read` for the office
+  target, `Document::open_bytes` for the PDF ones — that `fuzz/Cargo.toml` declares it as a
+  `[[bin]]`, and that **some CI job names `cargo fuzz build` for it**. The count is pinned at three
+  so a fourth target is a decision rather than an accident. Verified by removing the CI line and
+  watching the test go red.
+- **`no_job_filter_selects_zero_tests` can see the whole workspace.** It scanned four crates while
+  the workspace had five; `engine-office` joined at v2-S1 and the list did not. A job filtering on
+  an office test name would have been reported as matching no test at all — a false negative in the
+  guard that exists to catch filters matching nothing. The crate list is now parsed from
+  `Cargo.toml`'s `members`, with a floor asserting it found at least five.
+- **`every_profile_is_distinct_from_every_other` now checks nine profiles**, not four. Nothing was
+  unverified — `the_epub_profile_is_its_own_and_all_nine_are_distinct` covers the nine-way property
+  — but a test whose name overclaims makes the next reader stop looking.
+- **`an_injected_unknown_operator_stops_the_parse`'s floor moves from 12 to 40.** Fourteen fixtures
+  took the injection at M7 and forty-four take it now; the corpus tripled underneath a floor that
+  did not move, so three quarters of it could have stopped extracting with the test still green.
+
+#### The campaign rate, restated with its conditions
+
+S12 recorded 893 and 1,250 exec/s and a 1,123 average. Those were measured **while
+`cargo test --workspace` and other builds shared the machine**, and the record did not say so.
+Two idle re-measurements on the same host:
+
+| Run | Corpus at start | Wall | Executions | exec/s | Edges | Crashes |
+| --- | --- | --- | --- | --- | --- | --- |
+| S12 run 1 — *machine shared* | 16 seeds | 901 s | 805,456 | 893 | 8,148 | 0 |
+| S12 run 2 — *machine shared* | 1,429 | 2,401 s | 3,002,735 | 1,250 | 8,985 | 0 |
+| **S12.1 A — idle, warm** | 652 | 121 s | 107,328 | **887** | 7,662 | **0** |
+| **S12.1 B — idle, cold, as CI would run it** | 16 seeds | 61 s | 35,048 | **574** | 7,126 | **0** |
+
+An idle machine sustains 887 — within one percent of run 1 and well under run 2. **Load is not the
+dominant term; the corpus is.** The rate is a property of a run, not of the engine.
+
+**One published number is corrected.** S12's CI-budget paragraph extrapolated ~1,100 exec/s into
+*"~66,000 executions"* for a 60-second smoke run, while saying in the same breath that CI rebuilds
+the corpus from the sixteen seeds every time. Measured under exactly those conditions the figure is
+**35,048 executions at 574 exec/s** — roughly half. The old number stays visible in `15` and here,
+because a published measurement that changes has to show its own history. **The decision is
+unchanged and the correction strengthens it**: 35,000 per push argues less for a per-push campaign
+than 66,000 did.
+
+#### The statements repaired, and the ones not
+
+The brief named four. The method was v2-S10.2's: derive the target set from the code, then check
+the handed list against it. **Fifty-two false statements were confirmed** — each found by a sweep
+and then re-checked by an independent pass that defaulted to *refuted* — plus four more found by
+hand in `crates/engine-pdf/tests/robustness.rs`. **Twenty-four are repaired here.** Among them:
+*"With four formats"* where the list has seven; *"this engine reads two of the family"* where the
+`if` below it names three; *"# Three rules"* over a list of four, wrong since M4; *"23 fixtures"*
+in the mutation job's comment where the manifest declares 55; *"flip-tail-byte on four documents"*
+where nine survive and forty-six refuse; *"the only fixture this repo owns"* where there are 37.
+
+**Twenty-eight are not repaired, and `15`'s S12.1 names every one by file and symbol.** Not because
+they are acceptable — because repairing this many is a slice, and this repository has the precedent
+twice: v2-S10.1 and v2-S10.2 were exactly that. The line drawn here is that this slice repaired
+every confirmed false statement **in the files it had to open anyway**, plus the mutation harness,
+whose argument v2-S13 builds a second harness from.
+
+#### Changed — version
+
+- Workspace **0.31.0 → 0.31.1**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the
+  thirty-eighth time, to
+  `sha256:b7e3005c88a94dcedb0df4beccb44ff52d1a470225da2d22dae9d7aecccf7853`
+  (was `sha256:32c94c9b0bf5daba4eb1330ac2bd6dde0bbd8890e88b3869ea4e9d02621c4175`)
+- Both projection worked examples regenerated together, as
+  `docs/draft-schemas/README.md` requires: `parser_version`, `profile_sha256` and
+  `representation_sha256` all move, and the examples were compared against freshly generated
+  artifacts rather than hand-edited.
+
+**v2 is not complete.** Both owner questions — the gate sentence's verb, and whether *"embedded
+assets"* ever meant more than a count — are restated unchanged at the end of `15`'s S12.1 and are
+**not** settled here. **A11's mutation half is still open for office**; this slice does not touch it.
+
 
 ### v2-S12 — the office readers get fuzzed, as 0.31.0
 

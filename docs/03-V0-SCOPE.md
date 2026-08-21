@@ -134,10 +134,13 @@ exit-code-0 case). None is in `fixtures/` — they live at `ethos/benchmarks/gat
 the manifest resolves them through a `benchmark` root (`ETHOS_BENCH_CORPUS`). They are hash-pinned
 like everything else and **do not count toward the 15**.
 
-Plus **one engine-authored CC0 fixture**, added at M5: a PDF with unusable font metrics, exercising
-the geometry-omission path. It is the only fixture this repo owns, because the Ethos corpus has none
-for that case. **The 15-fixture oracle criterion is unchanged** — it is the Ethos conformance corpus,
-and the engine-owned fixture is an additional test asset, not part of that count.
+Plus **37 engine-authored CC0 fixtures**, the first added at M5: a PDF with unusable font metrics,
+exercising the geometry-omission path. Each exists because the Ethos corpus has no case for it, and
+the set has grown with every slice that needed one — the count here is the manifest's
+`counts.engine_owned`, which `crates/engine-pdf/tests/robustness.rs` asserts against the array
+length. **The 15-fixture oracle criterion is unchanged** — it is the Ethos conformance corpus, and
+engine-owned fixtures are additional test assets, never part of that count. The manifest says so in
+the `engine` root's own note: *"Never counted toward the 15-fixture oracle criterion."*
 
 Two of these are known-hostile and both are load-bearing:
 
@@ -215,7 +218,7 @@ cheapest honest form of two of these.
 | `v0-happy-path` | `oracle_agrees_on_all_ethos_owned_fixtures`, `refused_fixtures_fail_closed_rather_than_producing_an_artifact`, `manifest_declares_fifteen_ethos_owned_fixtures` |
 | `v0-double-run` | every `*byte_identical*` test, plus the two diagnostics and library-level double-run tests |
 | `v0-oracle` | the whole `engine-cli --test oracle` target, against a built `ethos` binary |
-| `v0-artifact-identity` | `the_artifact_carries_a_full_identity_envelope` (×2), `the_default_profile_is_pinned`, `the_profile_schema_example_is_the_real_profile` |
+| `v0-artifact-identity` | `the_artifact_carries_a_full_identity_envelope` (×2), `the_default_profile_is_pinned`, `artifact_identity_round_trips_through_c14n`, `the_profile_schema_example_is_the_real_profile` |
 | `v0-coordinates` | `every_geometry_bearing_artifact_declares_its_coordinate_system` and the profile/schema literals |
 | `v0-no-confidence` | `ci/forbidden-tokens.sh confidence` |
 | `v0-c14n` | `engine-core`'s c14n, float-rejection and quantize suites |
@@ -225,7 +228,7 @@ cheapest honest form of two of these.
 | `v0-classify-bound` | `the_sampler_is_bounded_on_a_492_page_document` + the counter and flat-cost tests, `--exact --test-threads=1` |
 | `v0-fail-closed` | unknown operator (three tests), unknown magic, and the c14n float refusals |
 | `v0-fixture-mutation` | the whole `engine-pdf --test robustness` target, `--nocapture` so the coverage report reaches the log |
-| `v0-fuzz-smoke` | `cargo fuzz build` on both targets, then 60s each with `-timeout=10` |
+| `v0-fuzz-smoke` | `cargo fuzz build` on **all three** targets, then 60s each with `-timeout=10` on the two PDF ones. `office_read` is built and not run — v2-S12 measured a per-push office campaign and declined it, and v2-S12.1 added the build because nothing else compiles it |
 | `deny-policy-is-enforced` | `cargo deny check licenses`, then the AGPL probe requiring exit 4 |
 | `v0-no-verify` | `ci/forbidden-tokens.sh verification` |
 

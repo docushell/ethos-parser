@@ -305,8 +305,8 @@ struct Read {
 ///
 /// `extract`/`to_representation` run only where the caller asks, because a 492-page benchmark
 /// document is minutes of debug-build extraction per mutant and adds no robustness signal the
-/// twenty small fixtures do not already give. Which fixtures get the shallow pass is reported,
-/// never silent.
+/// other **fifty-two** small fixtures do not already give. Exactly three fixtures take the
+/// shallow pass — the `benchmark` root — and which they are is reported, never silent.
 fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
     let profile = Profile::default();
     let doc = Document::open_bytes(bytes, &profile)?;
@@ -346,13 +346,16 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 ///   holds and is asserted separately: the artifact binds to the *mutant's* digest, so a consumer
 ///   comparing hashes sees a different document, which it is.
 ///
-/// - **`flip-tail-byte` on four documents.** Inspected during triage rather than assumed. On
+/// - **`flip-tail-byte` on nine documents.** Inspected during triage rather than assumed. On
 ///   `synthetic/two-lines` the flipped byte is the `t` of `/Root` in the trailer; on
 ///   `synthetic/two-columns` it is the `R` of `1 0 R`. `lopdf` recovers by scanning for the
 ///   catalog instead of trusting the damaged trailer reference, so a genuinely readable document
-///   is read. The other eleven fixtures where this mutation lands on an xref digit or a length
-///   **do** fail closed, which is what makes this a backend-recovery observation rather than a
-///   hole: the same mutation refuses far more often than it survives.
+///   is read. The other **forty-six** fixtures, where this mutation lands on an xref digit or a
+///   length, **do** fail closed — and that ratio is what makes this a backend-recovery
+///   observation rather than a hole: the same mutation refuses five times more often than it
+///   survives. (Four and eleven at M7, when the corpus was fifteen documents. The class did not
+///   change as the corpus grew; only the counts did, and this sentence did not grow with them
+///   until v2-S12.1.)
 ///
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
@@ -630,11 +633,15 @@ fn an_injected_unknown_operator_stops_the_parse() {
 
     println!("operator injection exercised on {checked} fixture(s)");
     assert!(
-        checked >= 12,
+        checked >= 40,
         "only {checked} fixture(s) exercised the operator injection; the mutation is not \
-         reaching real documents. Fourteen plaintext fixtures extract and take the injection at \
-         M7; the floor sits just below, so a fixture becoming unreadable is caught here rather \
-         than quietly shrinking the coverage this test claims."
+         reaching real documents. Forty-four plaintext fixtures extract and take the injection \
+         at v2-S12.1; the floor sits just below, so a fixture becoming unreadable is caught here \
+         rather than quietly shrinking the coverage this test claims.\n\n\
+         The floor said 12 from M7, when fourteen fixtures took the injection. The corpus tripled \
+         underneath it and the floor did not move, so by v2-S12.1 three quarters of the corpus \
+         could have stopped extracting with this test still green — a floor far below the real \
+         number is a floor that has stopped being one."
     );
 }
 

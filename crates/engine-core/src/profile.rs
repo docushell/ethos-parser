@@ -1707,7 +1707,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.31.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.31.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2027,11 +2027,17 @@ mod tests {
              and deferred at v2-S2 on the condition that a SECOND office format would reopen it; \
              there were eight. This profile does not move because the engine now behaves \
              differently. It moves because a build is a build, and the version is the only field \
-             that can say WHICH build a reader is holding."
+             that can say WHICH build a reader is holding.\n\n\
+             Moved a THIRTY-EIGHTH time at v2-S12.1 (0.31.1) on `parser_version` ALONE, and this \
+             one changed no code at all — it added the CI step that compiles `office_read`, and \
+             repaired statements that had stopped being true. v2-S9.1 and v2-S10.2 set the \
+             precedent and it holds for the same reason: a reader holding an artifact cannot see \
+             which comments were right, only which build produced it, and two builds that differ \
+             must not answer to one version."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:32c94c9b0bf5daba4eb1330ac2bd6dde0bbd8890e88b3869ea4e9d02621c4175"
+            "sha256:b7e3005c88a94dcedb0df4beccb44ff52d1a470225da2d22dae9d7aecccf7853"
         );
     }
 
