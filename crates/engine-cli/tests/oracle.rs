@@ -194,13 +194,58 @@ fn resolve_ethos_binary_from(explicit: Option<String>) -> Result<PathBuf, String
 /// Every workspace crate links and is reachable from the CLI.
 ///
 /// Trivial by design — it exists so the `CRATE_NAME` constants have the use their doc comments
-/// claim, and so the four-crate wiring is asserted rather than assumed. At M1 the contract types
-/// replace this and the constants go away.
+/// claim, and so the wiring is asserted rather than assumed.
+///
+/// # It named four and asserted three, against a workspace of five
+///
+/// `engine-office` joined the workspace at v2-S1 and was never added, so the name said *every*
+/// over three of the four crates that export a `CRATE_NAME` — and the doc said *four-crate*
+/// while `Cargo.toml` listed five members. Both are repaired, and the count is now checked
+/// against `Cargo.toml` rather than restated here, because restating it is what went stale.
+///
+/// **Four, not five, and the difference is not an omission.** `engine-cli` is the crate this
+/// test lives in; it is a binary with no library target and exports no `CRATE_NAME` to assert.
+/// So the assertion is that every workspace member *other than this one* is linked and names
+/// itself, which is a property that survives a sixth crate being added — the sixth would trip
+/// the count below rather than slipping past a list nobody remembered to grow.
 #[test]
 fn every_workspace_crate_links() {
     assert_eq!(engine_core::CRATE_NAME, "engine-core");
     assert_eq!(engine_pdf::CRATE_NAME, "engine-pdf");
+    assert_eq!(engine_office::CRATE_NAME, "engine-office");
     assert_eq!(engine_grounding::CRATE_NAME, "engine-grounding");
+
+    // Derived, not restated. A sixth member fails here and names itself.
+    let manifest = std::fs::read_to_string(repo_root().join("Cargo.toml")).expect("Cargo.toml");
+    let members = manifest
+        .split_once("members = [")
+        .expect("the `[workspace]` table declares no `members`")
+        .1;
+    let members = &members[..members.find(']').expect("`members` is unterminated")];
+    let listed: Vec<&str> = members
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter_map(|p| p.rsplit('/').next())
+        .collect();
+    assert_eq!(
+        listed.len(),
+        5,
+        "Cargo.toml lists {} workspace member(s): {listed:?}. Four of them export a          `CRATE_NAME` this test asserts, and the fifth is `engine-cli`, which is this test's own          binary crate. A new member needs a line above, or a sentence saying why it has none.",
+        listed.len()
+    );
+    for expected in [
+        "engine-core",
+        "engine-pdf",
+        "engine-office",
+        "engine-grounding",
+        "engine-cli",
+    ] {
+        assert!(
+            listed.contains(&expected),
+            "`{expected}` is asserted here but is no longer a workspace member: {listed:?}"
+        );
+    }
 }
 
 /// The manifest describes the corpus the M6 criterion counts.

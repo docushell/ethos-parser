@@ -408,7 +408,7 @@ jobs:
 
           - id: v1s1-ruled-tables
             gate: "ruled grids, CellSlot occupancy, merged spans, and fabrication 0"
-            run: "cargo test --workspace --locked -- tables:: ruled_grid cell_enclosing_no_text every_cell_text_is_built_only_from_extracted_runs no_ruling_lines"
+            run: "cargo test --workspace --locked -- tables:: ruled_grid cell_enclosing_no_text every_cell_text_is_built_only_from_extracted_runs implies_no_grid"
 
           - id: v1s1-cross-check
             gate: "geometric vs structural derivations compared, and disagreement reported"

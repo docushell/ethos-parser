@@ -48,12 +48,31 @@ const ERASURE_COUNTERS: [&str; 11] = [
     "other_kinds",
 ];
 
-/// Every file that holds one, including the three the S9.1 site list did not name: `epub.rs`,
-/// repaired at v2-S9 and pinned here so it stays repaired, and `docx.rs` and `xlsx.rs`, whose
-/// entry-name counts carried the cast half of the same defect.
-const READERS: [&str; 9] = [
-    "lib.rs", "pptx.rs", "odt.rs", "ods.rs", "odp.rs", "rtf.rs", "epub.rs", "docx.rs", "xlsx.rs",
-];
+/// Every `.rs` file in `engine-office/src`, read from the directory.
+///
+/// It was a nine-name array — `lib.rs`, the seven readers and `epub.rs` — which is a list exactly
+/// as complete as whoever last edited it remembered to be, and this file's whole argument is that
+/// such a list is what let v2-S9's defect survive. Three files were outside it (`opc.rs`,
+/// `xml.rs`, `zip.rs`); none declares a counter today, and nothing would have noticed if one
+/// began to. The directory is the list now, for the same reason
+/// `the_fuzz_target_and_seed_corpus_are_present` reads `fuzz/fuzz_targets/` rather than naming
+/// its three targets.
+fn readers() -> Vec<String> {
+    let mut out: Vec<String> = std::fs::read_dir(src_dir())
+        .expect("engine-office/src is readable")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".rs"))
+        .collect();
+    out.sort();
+    assert!(
+        out.len() >= 12,
+        "found {} source file(s) in engine-office/src: {out:?}. Twelve is the number at \
+         v2-S13.1; a scan that finds nothing declares nothing and passes.",
+        out.len()
+    );
+    out
+}
 
 /// `engine-pdf`'s document-level accumulators live in one file, and v2-S9.1 repaired two of them.
 ///
@@ -101,8 +120,8 @@ fn normalise(line: &str) -> String {
 
 #[test]
 fn the_test_region_skip_is_sound() {
-    for file in READERS {
-        let source = std::fs::read_to_string(src_dir().join(file)).expect("readable source");
+    for file in readers() {
+        let source = std::fs::read_to_string(src_dir().join(&file)).expect("readable source");
         let after = match source.split_once("#[cfg(test)]") {
             Some((_, after)) => after,
             None => continue,
@@ -153,8 +172,8 @@ fn the_test_region_skip_is_sound() {
 #[test]
 fn the_counter_list_is_complete() {
     let mut derived: Vec<String> = Vec::new();
-    for file in READERS {
-        let source = std::fs::read_to_string(src_dir().join(file)).expect("readable source");
+    for file in readers() {
+        let source = std::fs::read_to_string(src_dir().join(&file)).expect("readable source");
         for line in source.lines() {
             let line = normalise(line);
             let Some(rest) = line.strip_prefix("let mut ") else {
@@ -176,15 +195,50 @@ fn the_counter_list_is_complete() {
         "the counters this crate actually declares and the ones this file watches have diverged. \
          A counter missing from ERASURE_COUNTERS is a counter nothing guards."
     );
+
+    // **And the same for the PDF half, which had no completeness check at all.** `PDF_COUNTERS`
+    // was a hand-list of eight against `engine-pdf/src/extract.rs`, derived by nobody, and the
+    // argument above — that a list is exactly as complete as whoever last edited it remembered
+    // to be — applies to it word for word. The two crates spell a counter differently
+    // (`let mut n = 0u32` in the office readers, `let mut n: u32 = 0` in the PDF extractor), so
+    // the derivation reads both forms rather than assuming one house style.
+    let pdf_source = std::fs::read_to_string(src_dir().join(PDF_EXTRACT)).expect("readable source");
+    let mut pdf_derived: Vec<String> = Vec::new();
+    for line in pdf_source.lines() {
+        let line = normalise(line);
+        let Some(rest) = line.strip_prefix("let mut ") else {
+            continue;
+        };
+        let Some((name, tail)) = rest.split_once(" = ") else {
+            continue;
+        };
+        let (name, tail) = match name.split_once(": u32") {
+            Some((n, _)) => (n, "0"),
+            None => (name, tail),
+        };
+        if (tail.starts_with("0u32") || tail == "0") && !pdf_derived.iter().any(|d| d == name) {
+            pdf_derived.push(name.to_string());
+        }
+    }
+    pdf_derived.sort();
+    let mut pdf_listed: Vec<String> = PDF_COUNTERS.iter().map(|c| c.to_string()).collect();
+    pdf_listed.sort();
+    assert_eq!(
+        pdf_derived, pdf_listed,
+        "the document-level accumulators `engine-pdf/src/extract.rs` declares and the ones \
+         `PDF_COUNTERS` watches have diverged. This file scans that crate because its own tests \
+         do not, so a counter missing here is a counter nothing guards at all."
+    );
 }
 
 #[test]
 fn no_erasure_counter_reaches_its_total_by_an_operation_that_can_wrap() {
     let mut accumulations = 0usize;
-    let office = READERS.iter().map(|f| (*f, &ERASURE_COUNTERS[..]));
+    let files = readers();
+    let office = files.iter().map(|f| (f.as_str(), &ERASURE_COUNTERS[..]));
     let pdf = std::iter::once((PDF_EXTRACT, &PDF_COUNTERS[..]));
     for (file, counters) in office.chain(pdf) {
-        let path = src_dir().join(file);
+        let path = src_dir().join(&file);
         let source = std::fs::read_to_string(&path).expect("readable source");
         for (number, raw) in source.lines().enumerate() {
             let line = normalise(raw);
@@ -236,8 +290,8 @@ fn no_erasure_counter_reaches_its_total_by_an_operation_that_can_wrap() {
 #[test]
 fn no_erasure_counter_is_narrowed_by_an_unchecked_cast() {
     let mut scanned = 0usize;
-    for file in READERS {
-        let path = src_dir().join(file);
+    for file in readers() {
+        let path = src_dir().join(&file);
         let source = std::fs::read_to_string(&path).expect("readable source");
         for (number, raw) in shipping_half(&source).lines().enumerate() {
             let line = normalise(raw);

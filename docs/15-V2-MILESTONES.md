@@ -2664,6 +2664,13 @@ What is left, by file, so the next slice inherits a search result rather than a 
 | `crates/engine-pdf/tests/capabilities.rs` | 1 | *"Every source line of the workspace's integration tests"* |
 | `docs/PUBLIC-API.md`, `NOTICE`, `docs/table-gate-v1.md` | 3 | *"four subcommands"*, a `not_decoded` list that M4 removed, and a manifest-as-single-source claim |
 
+> **Status at v2-S13.1: twelve of the twenty-eight are closed.** The twelve that were **guards**
+> rather than prose are repaired in S13.1 below, because a test that overclaims is a hole and not a
+> typo — and the `docs/table-gate-v1.md` entry turned out to be a latent gate hole rather than the
+> prose this table filed it as. **Sixteen remain, all prose**, and they are S13.2's. This note
+> exists because a deferred list that stays stale after being acted on is the defect it was written
+> to prevent.
+
 **One of those is more than prose and should be read first.** `no_job_filter_selects_zero_tests`
 only inspects `run:` lines whose command begins `cargo test`. The `v1s1-gates` and
 `v1s7-table-gate` matrices quote their commands — `run: "cargo test …"` — so the command begins
@@ -2992,6 +2999,199 @@ asking for more than a count is not this repository's to decide.
   - [x] No git tag
 
 - **Depends on:** S12.1.
+
+---
+
+## S13.1 — the guards that check nothing — **done**, as 0.32.1
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2 and v2-S12.1 set.** No behaviour changed, no
+profile field moved, and the nine hashes moved anyway on `parser_version` alone, for the reason
+those slices give: a build is a build.
+
+**The no-behaviour claim is proven rather than asserted, and it is stronger than the usual one.**
+`parser_version` is `env!("CARGO_PKG_VERSION")`, so the version literal lives in `Cargo.toml` and
+**not one non-comment line in any `crates/*/src` file moved** — every src edit is a comment or sits
+inside `#[cfg(test)]`. Every non-comment line outside `mod tests { … }` was extracted from all
+thirty `crates/*/src/**.rs` files at `HEAD` and at the working tree and diffed — **19,249 lines,
+identical** — using the same scope `ci/forbidden-tokens.sh` uses. The extractor was checked by
+injecting a `pub const` into `profile.rs` and watching the diff report it, because a proof that
+cannot fail proves nothing.
+
+### The defect, and it was the same shape as S12.1's
+
+`crates/engine-cli/tests/v0_exit_criteria.rs`'s `no_job_filter_selects_zero_tests` exists to catch
+the quietest failure this scheme has, and **it could not see five of the workflow's twenty-two
+`cargo test` commands.** The parser required `cmd.starts_with("cargo test")`; the `v1s1-gates` and
+`v1s7-table-gate` matrices quote their commands, so the command began with `"` and the line was
+discarded before a token was read. **Forty-five of sixty filter tokens were checked. Fifteen were
+not.**
+
+The quoting is not incidental. Three of those five commands filter on a **module path** —
+`content::tests`, `tables::`, `accuracy::` — and the scan collected bare `fn` names, which a module
+path can never occur inside. The matrix whose style quotes its `run:` is the matrix whose filters
+the scan could not have matched anyway. Both halves of the defect arrived in the same place.
+
+### One of the fifteen was dead, and had been for twenty-two commits
+
+`no_ruling_lines` matched no test in the workspace. It was **correct when written**: `5662f24`
+(v1-S1) added the CI line and `fn a_page_with_no_ruling_lines_reports_an_empty_table_list` in the
+same commit. `174e27f` (v1-S2) renamed that test to
+`a_page_that_implies_no_grid_reports_an_empty_table_list` and did not touch `ci.yml` — the commit's
+thirty-file stat list does not include it. libtest silently ignores a filter matching nothing.
+
+**Renamed to `implies_no_grid`, not exempted.** Measured: the five tokens selected 26 distinct
+tests and the first four selected the same 26, so the dead one selected nothing; the rename takes
+the job to **27**, restoring the "looked, found none" negative behind that entry's own `gate:`
+label of *"fabrication 0"*. The property was never unproven — `ci.yml:122`'s unfiltered
+`cargo test --workspace` runs it every build. What was false is the named gate's claim to check it.
+
+**One correction to the brief that ordered this slice:** the token sits in `v1s1-gates`, matrix id
+`v1s1-ruled-tables`. The job actually named `v1s7-table-gate` runs `accuracy::` and carries no
+`ruling` token at all.
+
+### The repair is a rule, not a number
+
+Stripping the quotes is one line, and one line is what leaves the next variant to be found by a
+human. The guard now asserts **every non-comment line mentioning `cargo test` was parsed as a
+command** — which does not depend on predicting the shape, whether that is single quotes, a leading
+`env FOO=bar`, or a YAML block scalar.
+
+And the haystack is no longer bare `fn` names. `workspace_test_paths` reconstructs the string
+libtest itself filters on: module path joined to function name, for every `#[test]` in the
+workspace. **1,213 names, asserted equal to the count of `#[test]` attributes in the tree**, with a
+floor beneath the equality because an equality holds trivially at zero. This is strictly *tighter*
+as well as wider — a token naming a private helper used to read as live while selecting nothing.
+
+**Verified by breaking it, twice.** With `no_ruling_lines` restored the guard names it and fails;
+with the quote-stripping removed it names all five commands and fails.
+
+**A module-path rule, not an exemption list.** The alternative was a second exemption array beside
+`NAME_READING_EXEMPTIONS`, and that file's own doctrine — a stale exemption is a hole nobody is
+watching — argues against adding one to paper over a parser that could not read module paths. It
+did not need one: modelling what libtest matches makes all three module-path filters resolve
+against modules that exist.
+
+### The twelve, all confirmed, and five more found
+
+Every guard among S12.1's twenty-eight deferred statements was re-derived from the code and
+adversarially re-verified by an independent pass whose default answer was *refuted*. **None was
+refuted.** Repaired here:
+
+| Site | Was | Is |
+| --- | --- | --- |
+| `engine-core/src/profile.rs`, `every_profile_field_is_hash_sensitive` | the comment claimed the destructuring made a silently uncovered knob impossible; the pattern had **34 leaves and 24 mutations covering 23** | eight more mutated and **demonstrated** to move the digest; three named as unmutatable (one legal value each); count pinned at 32 |
+| `engine-core/src/profile.rs`, `the_profile_names_every_table_rule_and_any_one_moves_the_hash` | *any one* over three rules, **two** moved | `stroke_ruled` moved too, all three pairwise digests distinct |
+| `engine-core/src/assurance.rs`, `every_false_capability_declares_a_limitation` | **eleven** of twelve capability codes named | twelve. The omission was `html`, added at v1.1-S4 |
+| `engine-pdf/src/limitations.rs`, `PDF_CODES` | seven entries covering **five** of the module's seven `pub const` spellings | nine, and the list is cross-checked against spellings read back out of the source |
+| `engine-office/tests/erasure_counters.rs` | `READERS` a nine-name array against twelve files; **`PDF_COUNTERS` checked by nothing** | the directory is the list; the eight PDF accumulators are derived and compared |
+| `engine-cli/tests/oracle.rs`, `every_workspace_crate_links` | doc said *four-crate*, workspace has five, body asserted **three** | four, with the member count read from `Cargo.toml` and `engine-cli` named as this test's own binary crate |
+| `engine-cli/src/mcp.rs` | two per-tool properties over a list with **no floor** | three tools and four arguments asserted |
+| `engine-pdf/tests/capabilities.rs`, `test_sources` | *"every integration test in the workspace"* over a hardcoded two crates; floor `> 1000` bytes against a real 660,013 | five crates from `Cargo.toml`'s `members` — 24 files to **40** — with a crate-count equality and real floors |
+| `engine-pdf/tests/extraction.rs`, the two source scans | offenders accumulated, emptiness asserted, **no floor whatever** | 28 files / 16,201 lines and 4,267 lines asserted; the six named extract modules asserted to still resolve |
+| `engine-pdf/tests/extraction.rs`, `the_conformance_corpus_keeps_every_box_it_had` | name said the corpus, body listed five | renamed `five_conformance_documents_keep_every_box_they_had`; the five are not widenable, and each is asserted to have produced runs so `all()` cannot hold vacuously |
+| `engine-core/tests/contract_invariants.rs`, `public_type_samples` | four tests said *every public type* over **17 values / 15 types** against 188 frozen exports | the number is stated, the universal claim attributed to `floats_appear_only_inside_quantize`, and a new test pins the sample and asserts every sampled type exists |
+| `docs/table-gate-v1.md` §Corpus | *"All four … are hash-pinned in `fixtures/manifest.json`"* | **three of four** — see below |
+
+**#12 was a latent gate hole, not prose, so it stayed in this slice.**
+`cfpb-home-loan-toolkit.pdf` has **no manifest entry at all**; the four entries whose notes name it
+are engine-owned fixtures *derived* from it. The `benchmark` root holds three where the table names
+four, so the document carrying the largest single share of the 64‰ gate number is pinned by
+nothing, and the corpus could change underneath the score with every test green.
+
+**Pinned rather than closed**, by `the_gate_corpus_is_pinned_except_the_one_document_that_is_not`,
+which asserts exactly which three are pinned and which one is not. Adding the fourth entry moves
+`fixtures/manifest.json`'s `counts`, which drive `crates/engine-pdf/tests/robustness.rs` off its
+pinned **55 fixtures and 318 mutants** and move `EXPECTED_SURVIVORS` with them. That is a corpus
+decision with a measurement attached, and it is not a patch release's. The day it is made, that
+test fails and brings whoever makes it back to the paragraph.
+
+### A thirteenth was searched for, and five were found
+
+**The method, so that "five" is a result rather than a mood.** Three independent read-only sweeps,
+over **324, 284 and 170** candidates: one enumerating every `#[test]` whose name makes a universal
+claim, one for the accumulate-offenders-and-assert-empty shape, one for hardcoded arrays that could
+be derived. Each candidate was then re-checked by a pass whose default answer was *refuted*. All
+five are repaired here rather than named for a later slice, because naming them is what S12.1 had
+to do and this slice exists because that was expensive.
+
+- **`engine-pdf/src/thresholds.rs`, `the_garbled_reason_is_never_constructed`** — the same floorless
+  shape as the two in `extraction.rs`, plus a two-name exemption list nothing asserted still
+  resolved.
+- **`engine-core/tests/contract_invariants.rs`** — five contract invariants all funnel through one
+  walk of `engine-core/src` and **not one recorded how much it read.** Thirty-seven banned needles
+  return an empty hit list on a scan that read nothing exactly as on a scan that read everything.
+  The file guards its *matchers* three ways and guarded its *corpus* not at all. The floor sits in
+  the shared helper, so a sixth invariant inherits it.
+- **`engine-pdf/tests/robustness.rs`, `a_surviving_mutant_never_claims_to_be_the_original`** — the
+  digest comparison runs only for a mutant that parses, and nothing counted them. Sixty survive and
+  `EXPECTED_SURVIVORS` pins which, so the count is now asserted equal to it. **The office harness
+  written from this file at S13 already carries this floor**; it was never back-ported. Two
+  harnesses, one guard — the same asymmetry S13 recorded for `\par`/`\pard`, arriving from the
+  other direction.
+- **`engine-pdf/tests/extraction.rs`, `every_run_carries_a_native_locator`** — a CI-named gate
+  (`v0-locators`) that skips a fixture twice, silently, and floors on `total > 10` where `total`
+  counts **runs**. One small document produces more than ten, so fifty-four of the fifty-five could
+  have stopped extracting with the gate green. Now floors on fixtures that extracted: **44 of 55**.
+- **`engine-cli/tests/public_api.rs`, `FROZEN`** — the per-crate diff is derived; the *set of
+  crates* was a four-name array. At `ac148cf` (v2-S2, 0.21.0) it had three entries while
+  `engine-office/src/lib.rs` already exported six items: **that crate's public surface was unfrozen
+  and undocumented for a whole release and no test failed.** The set is now derived from
+  `Cargo.toml`'s members filtered to those with a `src/lib.rs`.
+
+### Restated for the owner, unchanged and unsettled
+
+**Three** questions stand between this repository and *"v2 is complete"*. All three are the
+**owner's**, and none is settled here. They are restated because a slice that touches this file
+restates them.
+
+**1. The v2 gate's verb.** `00-NORTH-STAR.md`'s gate table and `02-ROADMAP.md`'s v2 row both say a
+DOCX quote and an XLSX cell both **ground**. Grounding a DOCX is **refused** — decided at v2-S1 as
+option (b), pinned by a test, listed in `CAPABILITY.md` under **Cannot**. Every slice since has read
+*ground* as **bind**.
+
+| Reading | What it means | What it costs |
+| --- | --- | --- |
+| **"ground" means `ethos.grounding.v1`** | v2's gate is **not met** and cannot be met without option (a) — an Ethos-side schema revision, owned elsewhere | v2 stays open on a dependency this repository does not control. The eight readers are complete and the gate is not |
+| **"ground" means "binds to an address the file states"** | v2's gate **is met**, and has been since v2-S3 | The gate sentence in two documents is reworded to say *bind*, and the word *ground* stops meaning two things in one repository |
+
+**2. Embedded assets: counted, or read?** v2-S11 made every reader **count** what it does not read,
+which closed the **A14** violation. No office asset is **read**. `engine-pdf` emits an `ImageRecord`
+for a PDF image; no office reader emits anything comparable. Whether `02-ROADMAP.md`'s v2 row was
+asking for more than a count is not this repository's to decide.
+
+**3. Should `zip.rs` verify CRC-32?** Raised at S13 and unchanged here.
+`crates/engine-office/src/zip.rs` checks a part's **declared length** and never its **CRC-32**. On
+four of fourteen packages, a byte flipped inside the main part's compressed data leaves a stream
+`miniz_oxide` still inflates — zlib refuses the same bytes — to exactly the declared length, with a
+NUL where the invalid back-reference was. The corruption lands in a namespace URI the OOXML readers
+match by suffix, so the extracted text comes out **byte-identical to the original's**; the artifact
+differs in exactly one field, `source.sha256`. Unlike the other two, this one is **this
+repository's** to answer rather than DocuShell's — but only by a slice that owns it, with a
+measurement, and never as a rider on a test or docs slice. **This slice is a docs-and-tests slice
+and does not answer it.**
+
+- **Acceptance — all met:**
+  - [x] `no_job_filter_selects_zero_tests` inspects **all twenty-two** `cargo test` commands,
+        quoted or not; the token count is floored at 55 against a real 60, one command below the
+        total; and every line mentioning `cargo test` must parse, so the hole cannot reopen in an
+        unpredicted shape
+  - [x] `no_ruling_lines` **resolved by rename**, with the orphaning commit identified. Not
+        exempted
+  - [x] Module-path filters handled by a **rule** — reconstructing the libtest name — argued
+        against the `NAME_READING_EXEMPTIONS` precedent rather than around it
+  - [x] The twelve verified against the code and repaired; **#12 confirmed a latent gate hole**
+        and pinned rather than papered over
+  - [x] A thirteenth searched for by three sweeps over 324/284/170 candidates; **five found and
+        all five repaired**
+  - [x] **No behaviour change**, proven mechanically over 19,249 shipping lines, with the proof
+        itself checked by injection
+  - [x] Workspace **0.32.1**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both SDK suites run by hand and pass
+  - [x] Oracle still 12 / 3; `ETHOS_OWNED_FIXTURE_COUNT` still 15; table gate still **64‰**;
+        `GATE_PERMILLE` still 489
+  - [x] No git tag
+
+- **Depends on:** S13.
 
 ---
 

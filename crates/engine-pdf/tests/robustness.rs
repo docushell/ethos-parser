@@ -508,6 +508,7 @@ fn no_mutant_panics_and_every_refusal_is_named() {
 #[test]
 fn a_surviving_mutant_never_claims_to_be_the_original() {
     let mut offenders = Vec::new();
+    let mut compared = 0usize;
 
     for fixture in all_fixtures() {
         let original_digest = format!("sha256:{}", engine_core::sha256_hex_bytes(&fixture.bytes));
@@ -523,6 +524,7 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
                 catch_unwind(AssertUnwindSafe(|| run_mutant(&mutant, deep)))
             {
                 let label = format!("{}/{}", fixture.id, mutation.name());
+                compared += 1;
                 if bound_sha256 == original_digest {
                     offenders.push(format!("{label}: bound to the ORIGINAL digest"));
                 } else if bound_sha256 != mutant_digest {
@@ -533,6 +535,24 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
             }
         }
     }
+
+    // **The comparison only happens for a mutant that parses**, so an empty offender list says
+    // nothing on its own: a corpus that went missing, a `run_mutant` that started erroring, or a
+    // reader turned fail-closed everywhere would each drive this loop zero times and print `ok`.
+    // Sixty mutants survive at v2-S13.1 and [`EXPECTED_SURVIVORS`] pins exactly which, so the
+    // count is available and there is no reason to leave it unasserted.
+    //
+    // The office harness in `crates/engine-office/tests/robustness.rs` was written from this
+    // file at v2-S13 and carries this floor. It was not back-ported here, which is why the twin
+    // built from the argument ended up holding a guard the original does not — the same shape as
+    // v2-S13's `\par`/`\pard` note, arriving from the other direction.
+    assert_eq!(
+        compared,
+        EXPECTED_SURVIVORS.len(),
+        "{compared} surviving mutant(s) reached the digest comparison; \
+         `EXPECTED_SURVIVORS` pins {}. This test proves nothing about a mutant it never ran.",
+        EXPECTED_SURVIVORS.len()
+    );
 
     assert!(
         offenders.is_empty(),

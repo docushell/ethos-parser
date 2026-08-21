@@ -1458,11 +1458,47 @@ mod tests {
         p.profile_sha256().unwrap().to_string()
     }
 
-    /// Every field on `Profile` must change the hash when it changes.
+    /// Every field on `Profile` that is mutated below changes the hash when it changes.
     ///
-    /// The destructuring binding below is the enforcement mechanism: adding a field to
-    /// `Profile` without adding a case here is a **compile error**, not a silently uncovered
-    /// knob. A knob that does not move the hash is a silent-drift bug waiting to happen.
+    /// # What the destructuring enforces, and what it does not
+    ///
+    /// The binding below is a **compile-time gate on the type**: adding a field to `Profile`,
+    /// `Capabilities`, `CoordinateSystem`, `BackendIdentity` or `TableDetection` fails to compile
+    /// here until someone writes it into the pattern. That is real, and it is the reason a new
+    /// field cannot land without a human reading this test.
+    ///
+    /// It does **not** enforce that the field is then mutated. Adding `new_field: _,` to the
+    /// pattern satisfies the compiler and leaves the knob untested, and this comment used to
+    /// claim otherwise — *"adding a field to `Profile` without adding a case here is a compile
+    /// error, not a silently uncovered knob."* At v2-S13.0 the pattern had thirty-four leaves and
+    /// the list below had twenty-four mutations covering twenty-three of them, so **eleven knobs
+    /// were uncovered** while the sentence said none could be.
+    ///
+    /// # The eight that were repairable, and the three that are not
+    ///
+    /// Eight are now mutated here: `capabilities.images`, `capabilities.page_screenshots`,
+    /// `capabilities.markdown`, `capabilities.html`, `text_code_rule`, `observation_rule`,
+    /// `markdown_rule` and `html_rule`. Each moves the digest, none collides, and each was
+    /// demonstrated rather than argued — which matters, because the argument available before
+    /// was that [`the_default_profile_is_pinned`] pins the whole canonical JSON and every field
+    /// appears in it by name. That proves each field *reaches* the hashed bytes. It is a
+    /// different statement from "changing it changes the digest", and the gap between the two is
+    /// exactly the kind a reader should not have to reconstruct.
+    ///
+    /// Three cannot be mutated at all, because their types have exactly one legal value:
+    /// `coordinate_system`'s `unit` and `origin`, and `raster_dpi`, whose `RasterDpi` enum has
+    /// the single variant `NotEmitted`. For those, "is it hashed?" is the only question
+    /// available, and the assertions at the end of the neighbouring test answer it by finding
+    /// each on the wire. A second `origin` or a second `RasterDpi` variant makes them mutable,
+    /// and the pinned count below is what brings someone back here to do it.
+    ///
+    /// # What this test adds over the pin
+    ///
+    /// Per field: that a *changed* value moves the digest, that the mutation is not a no-op, and
+    /// that no two mutations collide. The name is still narrower than it reads — thirty-one of
+    /// thirty-four leaves — and saying so is the same repair v2-S12.1 made to
+    /// `every_profile_is_distinct_from_every_other`, which checked four of nine while its name
+    /// said every.
     #[test]
     fn every_profile_field_is_hash_sensitive() {
         let base = Profile::default();
@@ -1654,7 +1690,55 @@ mod tests {
                 "cmap_data_version",
                 Box::new(|p: &mut Profile| p.cmap_data_version = "adobe-2026-01".into()),
             ),
+            // The eight the pattern named and this list did not. Each is a knob that changes what
+            // an artifact contains, and until v2-S13.1 nothing anywhere demonstrated that moving
+            // it moves the digest — the pin in `the_default_profile_is_pinned` shows each field
+            // reaches the canonical bytes, which is a different statement from this one.
+            (
+                "capabilities.images",
+                Box::new(|p: &mut Profile| p.capabilities.images = false),
+            ),
+            (
+                "capabilities.page_screenshots",
+                Box::new(|p: &mut Profile| p.capabilities.page_screenshots = true),
+            ),
+            (
+                "capabilities.markdown",
+                Box::new(|p: &mut Profile| p.capabilities.markdown = false),
+            ),
+            (
+                "capabilities.html",
+                Box::new(|p: &mut Profile| p.capabilities.html = false),
+            ),
+            (
+                "text_code_rule",
+                Box::new(|p: &mut Profile| p.text_code_rule = "other-codes-v9".into()),
+            ),
+            (
+                "observation_rule",
+                Box::new(|p: &mut Profile| p.observation_rule = "other-observations-v9".into()),
+            ),
+            (
+                "markdown_rule",
+                Box::new(|p: &mut Profile| p.markdown_rule = "other-markdown-v9".into()),
+            ),
+            (
+                "html_rule",
+                Box::new(|p: &mut Profile| p.html_rule = "other-html-v9".into()),
+            ),
         ];
+
+        // Pinned, so shrinking the list is a decision someone makes here rather than a line that
+        // quietly disappears. Thirty-two mutations cover thirty-one of the pattern's thirty-four
+        // leaves — `page_budget` takes two, for its mode and its value — and the three that are
+        // not covered are named in this test's doc comment, each because its type has exactly one
+        // legal value and cannot be mutated at all.
+        assert_eq!(
+            mutations.len(),
+            32,
+            "{} single-field mutation(s); thirty-two is the number at v2-S13.1",
+            mutations.len()
+        );
 
         let mut seen = std::collections::BTreeSet::new();
         seen.insert(base_hash.clone());
@@ -1707,7 +1791,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2041,11 +2125,20 @@ mod tests {
              declared LENGTH and never its CRC-32, so a corrupted compressed part that still \
              inflates to the right size is read as though intact; that is stated for the owner in \
              `15`'s S13 rather than fixed here, because the artifact still binds to the bytes it \
-             actually read and changing a hand-rolled reader deserves its own measurement."
+             actually read and changing a hand-rolled reader deserves its own measurement.\n\n\
+             Moved a FORTIETH time at v2-S13.1 (0.32.1) on `parser_version` ALONE, and this one \
+             changed no shipping line at all — every edit under `crates/*/src` is a comment or \
+             sits inside `#[cfg(test)]`, proven by diffing the 19,249 non-comment lines outside \
+             `mod tests` at HEAD against the working tree. It repaired the guards that checked \
+             nothing: a CI filter parser blind to five quoted commands, one filter token dead \
+             since v1-S2, and seventeen guard sites whose names promised more than their bodies \
+             held \
+             — including EIGHT fields on this very struct that the list below never mutated \
+             while the comment above it said an uncovered knob was impossible."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:49540b22949c1b8cb4423a6e6c302b7ade501a27ddc7b142685bb2ee39bbb268"
+            "sha256:c0c57728abc50f0ffcc6c3d5b4ef5bf3b985e4f082d180686fd9dbc4d6226aea"
         );
     }
 
@@ -2094,8 +2187,22 @@ mod tests {
              different tables from one that did not"
         );
 
-        // And the two knobs are not each other: moving one must not produce the other's digest.
+        // The third, and it was missing. v1-S8 added `stroke_ruled`, added it to the three
+        // assertions above, and did not add it here — so from v1-S8 to v2-S13.1 the name said
+        // *any one* over two of the three rules, and the one left out was the one just added.
+        let mut stroke_moved = base.clone();
+        stroke_moved.table_detection.stroke_ruled = "stroke-ruled-v2".into();
+        assert_ne!(
+            hash(&base),
+            hash(&stroke_moved),
+            "and so is the stroke-ruled one — a run that read the page's ruling lines emitted \
+             tables a run that did not could not have"
+        );
+
+        // And no knob is another: moving one must not produce a second one's digest.
         assert_ne!(hash(&ruled_moved), hash(&unruled_moved));
+        assert_ne!(hash(&ruled_moved), hash(&stroke_moved));
+        assert_ne!(hash(&unruled_moved), hash(&stroke_moved));
     }
 
     /// An unknown rule id fails closed rather than deserializing with the key dropped.

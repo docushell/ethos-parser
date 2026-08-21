@@ -46,8 +46,24 @@ well this engine reproduces its own test cases.
 | `nist-sp-800-53r5.pdf` | 492 | 26 | 6 937 |
 | **total** | **602** | **57** | **7 704** |
 
-Their sha256 digests are in `fixtures/manifest.json`, which is the single place they are recorded;
-restating them here would create a second copy to drift.
+**Three of the four** have their sha256 digest in `fixtures/manifest.json`, which is the single
+place a digest is recorded; restating them here would create a second copy to drift.
+
+`cfpb-home-loan-toolkit.pdf` **is not in the manifest at all.** The four entries whose notes name
+it — `background-panel-not-a-grid`, `simple-font-two-byte-tounicode`, `stroke-ruled-worksheet` and
+`stroke-ruled-columns-not-drawn` — are engine-owned fixtures derived from it, not the document
+itself, and the `benchmark` root holds three entries where this table names four. So the document
+carrying the largest single share of the gate number is pinned by nothing, and the corpus could
+change underneath the score with every test still green. This sentence claimed otherwise until
+v2-S13.1.
+
+**The gap is pinned rather than closed**, by
+`the_gate_corpus_is_pinned_except_the_one_document_that_is_not` in `crates/engine-pdf/src/accuracy.rs`,
+which asserts exactly which three are pinned and which one is not. Adding the fourth manifest entry
+is a corpus decision with a measurement attached — `fixtures/manifest.json`'s `counts` drive
+`crates/engine-pdf/tests/robustness.rs`, so a fourth `benchmark` entry moves the mutation corpus off
+its pinned 55 fixtures and 318 mutants — and that is not a patch release's to make. The day it is
+made, that test fails and brings whoever makes it back to this paragraph.
 
 ## Ground truth
 

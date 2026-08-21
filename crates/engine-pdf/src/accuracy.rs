@@ -555,6 +555,82 @@ mod tests {
         "nist-sp-800-53r5.pdf",
     ];
 
+    /// Which of the gate corpus is hash-pinned in `fixtures/manifest.json`, and which is not.
+    ///
+    /// `docs/table-gate-v1.md` §Corpus said *"Their sha256 digests are in `fixtures/manifest.json`,
+    /// which is the single place they are recorded"* of all four. **Three of the four.**
+    /// `cfpb-home-loan-toolkit.pdf` has no manifest entry at all — the four entries whose notes
+    /// mention it are engine-owned fixtures derived from it, which are different files — so the
+    /// document contributing the largest share of the 64‰ gate number is pinned by nothing. The
+    /// corpus could change underneath the score and no test would notice.
+    ///
+    /// # Why this pins the gap instead of closing it
+    ///
+    /// Adding the entry is not a patch release's to make. `fixtures/manifest.json`'s `counts`
+    /// feed `crates/engine-pdf/tests/robustness.rs`, which asserts the fixture array and the
+    /// counts agree and then mutates every fixture: a fourth `benchmark` entry moves the corpus
+    /// from fifty-five to fifty-six, moves the mutant count off its pinned 318, and moves
+    /// `EXPECTED_SURVIVORS` and `EXPECTED_INAPPLICABLE` with it. That is a corpus decision with a
+    /// measurement attached, and it is not this slice's.
+    ///
+    /// So the current state is asserted exactly. Pinning `cfpb-home-loan-toolkit.pdf` later fails
+    /// this test, which is the point: the day the gap closes, the sentence in
+    /// `docs/table-gate-v1.md` has to close with it.
+    #[test]
+    fn the_gate_corpus_is_pinned_except_the_one_document_that_is_not() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("manifest dir has two ancestors")
+            .to_path_buf();
+        let m: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root.join("fixtures/manifest.json")).expect("manifest readable"),
+        )
+        .expect("manifest is valid JSON");
+
+        let fixtures = m["fixtures"].as_array().expect("fixtures");
+        assert!(
+            fixtures.len() >= 50,
+            "the manifest lists {} fixture(s); a short read makes every check below vacuous",
+            fixtures.len()
+        );
+
+        let mut pinned = Vec::new();
+        let mut unpinned = Vec::new();
+        for doc in CORPUS {
+            let entry = fixtures.iter().find(|f| {
+                f["root"] == "benchmark"
+                    && f["path"].as_str().is_some_and(|p| p == doc)
+                    && f["sha256"]
+                        .as_str()
+                        .is_some_and(|h| h.starts_with("sha256:"))
+            });
+            if entry.is_some() {
+                pinned.push(doc);
+            } else {
+                unpinned.push(doc);
+            }
+        }
+
+        assert_eq!(
+            pinned,
+            vec![
+                "irs-form-1040-2025.pdf",
+                "nist-sp-800-63b.pdf",
+                "nist-sp-800-53r5.pdf",
+            ],
+            "the pinned half of the gate corpus moved"
+        );
+        assert_eq!(
+            unpinned,
+            vec!["cfpb-home-loan-toolkit.pdf"],
+            "the unpinned half of the gate corpus moved. If `cfpb-home-loan-toolkit.pdf` is now \
+             in `fixtures/manifest.json`, that is the gap closing and it is good news — update \
+             this assertion and `docs/table-gate-v1.md` §Corpus, which describes the split, and \
+             check what a fourth `benchmark` entry did to the mutation harness's pinned counts."
+        );
+    }
+
     fn measure() -> (Vec<(String, Score)>, Score) {
         let profile = Profile::default();
         let mut rows = Vec::new();

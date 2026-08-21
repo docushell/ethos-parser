@@ -558,18 +558,53 @@ mod tests {
     use engine_core::LimitationScope;
 
     /// Every code this module emits, in one place, so a rename is a visible event.
-    const PDF_CODES: [&str; 7] = [
+    const PDF_CODES: [&str; 9] = [
         CLASSIFY_SAMPLE_BOUND,
         BACKEND_XREF_STRICT_20_BYTE,
         PREDEFINED_CMAPS_NOT_VENDORED,
         FORM_XOBJECT_TEXT_NOT_DESCENDED,
         FONT_WIDTHS_ABSENT,
+        // Two this module declares that the list did not carry. `every_code_is_stable_kebab_case`
+        // said *every code* over five of the seven `pub const` spellings in this file, and the
+        // two it omitted are wire spellings a caller matches on exactly like the other five.
+        XREF_ENTRY_PADDED,
+        BROKEN_FONT_ENCODING,
+        // Derived rather than declared: `undetected_reason_code` builds these from a reason name,
+        // and `the_undetected_reason_codes_are_pinned` below pins both spellings.
         "garbled-reason-not-detected",
         "multi-column-reason-not-detected",
     ];
 
     #[test]
     fn every_code_is_stable_kebab_case() {
+        // **Derived first, so the name can say *every*.** `PDF_CODES` is a hand-list, and a
+        // hand-list is exactly as complete as whoever last edited it remembered to be: it
+        // carried five of this module's seven `pub const` spellings, and `xref-entry-padded`
+        // and `broken-font-encoding` were checked by nothing. Reading them back out of the
+        // source is what makes the eighth const someone adds a decision rather than an omission.
+        let this_file = include_str!("limitations.rs");
+        let declared: Vec<&str> = this_file
+            .lines()
+            .filter_map(|l| l.strip_prefix("pub const "))
+            .filter_map(|l| l.split_once(": &str = \""))
+            .filter_map(|(_, v)| v.split_once('"'))
+            .map(|(v, _)| v)
+            .collect();
+        assert_eq!(
+            declared.len(),
+            7,
+            "this module declares {} `pub const` code(s): {declared:?}. Seven is the number at \
+             v2-S13.1; a new one belongs in `PDF_CODES` too.",
+            declared.len()
+        );
+        for code in &declared {
+            assert!(
+                PDF_CODES.contains(code),
+                "`{code}` is declared here and absent from `PDF_CODES`, so nothing checks its \
+                 spelling — which is the whole job of this test"
+            );
+        }
+
         for code in PDF_CODES {
             assert!(
                 !code.is_empty()

@@ -7,7 +7,199 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1
+
+### v2-S13.1 — the guards that check nothing, as 0.32.1
+
+**No behaviour changed, and this time not even the version literal.** `parser_version` is
+`env!("CARGO_PKG_VERSION")`, so the version lives in `Cargo.toml` and **not one non-comment line in
+any `crates/*/src` file moved** — every src edit is a comment or sits inside `#[cfg(test)]`. Proven
+mechanically rather than asserted: every non-comment line outside `mod tests { … }` was extracted
+from all thirty `crates/*/src/**.rs` files at `HEAD` and at the working tree and diffed —
+**19,249 lines, identical.** The extractor was itself checked by injecting a `pub const` into
+`profile.rs` and watching the diff report it, because a proof that cannot fail proves nothing.
+
+#### The defect, and it was the same shape as v2-S12.1's
+
+`crates/engine-cli/tests/v0_exit_criteria.rs`'s `no_job_filter_selects_zero_tests` exists to catch
+the quietest failure this repository's CI scheme has: a job filtering on a renamed test, printing
+`ok. 0 passed`, and going green having checked nothing. **It could not see five of the workflow's
+twenty-two `cargo test` commands.**
+
+The parser took `line.trim().strip_prefix("run: ")` and required `cmd.starts_with("cargo test")`.
+The `v1s1-gates` and `v1s7-table-gate` matrices quote their commands — `run: "cargo test …"` — so
+the command began with a double quote and the line was discarded before a single token was read.
+**Forty-five of the sixty filter tokens were checked; fifteen were not.**
+
+The quoting is not incidental, and that is the part worth keeping. Three of those five commands
+filter on a **module path** — `content::tests`, `tables::`, `accuracy::` — and the scan collected
+bare `fn` names, which a module path can never occur inside. The matrix whose style quotes its
+`run:` is the matrix whose filters the scan could not have matched anyway. Both halves arrived in
+the same place.
+
+#### One of the fifteen was dead, and it had been for twenty-two commits
+
+`no_ruling_lines` matched **no test in the workspace.** It was correct when written: `5662f24`
+(v1-S1) added the CI line and `fn a_page_with_no_ruling_lines_reports_an_empty_table_list` in the
+same commit. `174e27f` (v1-S2) renamed that test to
+`a_page_that_implies_no_grid_reports_an_empty_table_list` and **did not touch `ci.yml`** — the
+commit's thirty-file stat list does not include it. libtest ignores a filter that matches nothing,
+so the job stayed green.
+
+**Resolved by renaming the filter to `implies_no_grid`, not by exempting it.** Measured: the five
+tokens selected 26 distinct tests and the first four selected the same 26, so the dead token
+selected nothing; the rename takes the job from 26 to **27**, restoring
+`a_page_that_implies_no_grid_reports_an_empty_table_list` — the "looked, found none" negative
+behind that entry's own `gate:` label of *"fabrication 0"*. The property was never unproven: the
+unfiltered `cargo test --workspace` at `ci.yml:122` runs it every build. What was false is the
+named gate's claim to check it.
+
+**One correction to the brief that ordered this work:** the token is in `v1s1-gates`, matrix id
+`v1s1-ruled-tables`. The job actually named `v1s7-table-gate` runs `accuracy::` and contains no
+`ruling` token at all.
+
+#### The repair is a rule, not a number
+
+Stripping the quotes is one line, and one line is what would leave the next variant to be found by
+a human again. So the guard now asserts that **every non-comment line mentioning `cargo test` was
+parsed as a command**, which does not depend on anyone predicting the shape — single quotes, a
+leading `env FOO=bar`, a YAML block scalar.
+
+And the haystack is no longer bare `fn` names. `workspace_test_paths` reconstructs the string
+libtest itself filters on — module path joined to function name — for every `#[test]` in the
+workspace. A file under `src/` is a module named after its stem except `lib.rs`/`main.rs`; a file
+under `tests/` is its own crate root and contributes no prefix; an inline `mod name {` enters a
+module and a `mod name;` declaration does not. **1,213 names, asserted equal to the number of
+`#[test]` attributes in the tree**, with a floor beneath that equality because it holds trivially
+at zero.
+
+This is strictly tighter as well as wider: a token naming a private helper used to read as live
+while selecting nothing, and now cannot.
+
+**Verified by breaking it, twice.** With `no_ruling_lines` restored the guard names it and fails.
+With the quote-stripping removed it names all five commands and fails. A guard nobody has watched
+fail is a guard nobody has checked.
+
+#### The twelve, all confirmed against the code, plus five more
+
+Every one of `docs/15-V2-MILESTONES.md` S13's twenty-eight deferred statements that was a guard
+rather than prose was re-derived from the source and adversarially re-verified. **None was refuted.**
+Repaired:
+
+- **`crates/engine-core/src/profile.rs`, `every_profile_field_is_hash_sensitive`** — the comment
+  said the destructuring made a silently uncovered knob impossible. It does not: it gates the
+  *pattern*, not the mutation list. The pattern had **34 leaves and 24 mutations covering 23 of
+  them**. Eight are now mutated — `capabilities.images`, `page_screenshots`, `markdown`, `html`,
+  `text_code_rule`, `observation_rule`, `markdown_rule`, `html_rule` — each demonstrated to move
+  the digest rather than argued from the pin. Three cannot be mutated at all, their types having
+  one legal value, and are named as such. The count is pinned at **32**.
+- **`crates/engine-core/src/profile.rs`, `the_profile_names_every_table_rule_and_any_one_moves_the_hash`**
+  — *any one* over three rules, and only two were moved. `stroke_ruled`, added at v1-S8, was the
+  one left out. Now moved, with all three pairwise digests asserted distinct.
+- **`crates/engine-core/src/assurance.rs`, `every_false_capability_declares_a_limitation`** — the
+  loop named **eleven of the twelve** capability codes. The omission was `html`, added at v1.1-S4,
+  which the count assertion's own message names as the reason the total is thirteen.
+- **`crates/engine-pdf/src/limitations.rs`, `PDF_CODES`** — seven entries covering **five** of this
+  module's seven `pub const` spellings. `xref-entry-padded` and `broken-font-encoding` were checked
+  by nothing. Both added, and the list is now cross-checked against the spellings read back out of
+  the source.
+- **`crates/engine-office/tests/erasure_counters.rs`** — `READERS` was a nine-name array against a
+  twelve-file directory; it now reads the directory, for the reason
+  `the_fuzz_target_and_seed_corpus_are_present` reads `fuzz/fuzz_targets/`. And **`PDF_COUNTERS`
+  had no completeness check at all**; the eight accumulators in `engine-pdf/src/extract.rs` are now
+  derived and compared, reading both `let mut n = 0u32` and `let mut n: u32 = 0`.
+- **`crates/engine-cli/tests/oracle.rs`, `every_workspace_crate_links`** — the doc said *"the
+  four-crate wiring"*, the workspace has five members, and the body asserted **three**.
+  `engine-office` joined at v2-S1 and was never added. Now four — the four that export a
+  `CRATE_NAME` — with the member count read from `Cargo.toml` and the fifth, `engine-cli`, named as
+  this test's own binary crate rather than an omission.
+- **`crates/engine-cli/src/mcp.rs`** — two per-tool properties iterated the advertised tool list
+  with no floor, so an empty list satisfied both. Three tools and four arguments, asserted.
+- **`crates/engine-pdf/tests/capabilities.rs`, `test_sources`** — *"Every source line of the
+  workspace's integration tests"* over a hardcoded `["engine-pdf", "engine-cli"]`, grown one crate
+  at a time after each failure. `engine-core`, `engine-office` and `engine-grounding` were
+  invisible: a capability whose proof landed in any of them would have read as having no proof. The
+  crate list now comes from `Cargo.toml`'s `members` — **24 files to 40** — and the anti-vacuity
+  floor, which sat at `> 1000` bytes against a real 660,013, is now a crate-count equality plus a
+  file and byte floor.
+- **`crates/engine-pdf/tests/extraction.rs`** — `no_source_line_derives_a_box_from_the_font_size`
+  and `no_confidence_in_the_extract_source_modules` each accumulated offenders and asserted the
+  list empty with **no floor whatever**. Both now assert what they read (28 files / 16,201 lines;
+  4,267 lines), and the second asserts its six named modules all still resolve, on the
+  `NAME_READING_EXEMPTIONS` precedent.
+- **`crates/engine-pdf/tests/extraction.rs`, `the_conformance_corpus_keeps_every_box_it_had`** —
+  the name said the corpus and the body listed five documents. The five are not a widenable
+  sample: the property holds only of documents with no whitespace-only run. **Renamed
+  `five_conformance_documents_keep_every_box_they_had`**, count pinned, and each document asserted
+  to have produced runs so `all()` cannot hold vacuously.
+- **`crates/engine-core/tests/contract_invariants.rs`, `public_type_samples`** — four tests said
+  *every public type* over **17 values covering 15 types**, against 188 frozen crate-root exports.
+  It cannot stop being a sample — the property is about a serialized value, and most exports have
+  none — so the number is now stated, the universal claim is attributed to
+  `floats_appear_only_inside_quantize` which holds it structurally for all types, and a new test
+  pins the sample size and asserts every sampled type still exists.
+- **`docs/table-gate-v1.md` §Corpus** — this one is a latent gate hole, not prose. It said all four
+  gate documents' digests are in `fixtures/manifest.json`. **Three of the four.**
+  `cfpb-home-loan-toolkit.pdf` has no manifest entry at all; the four entries whose notes name it
+  are engine-owned fixtures derived from it. The `benchmark` root holds three where the table names
+  four, so the document carrying the largest single share of the 64‰ gate number is pinned by
+  nothing. **Pinned rather than closed**, by
+  `the_gate_corpus_is_pinned_except_the_one_document_that_is_not`, which asserts exactly which
+  three are pinned and which one is not — because adding the fourth entry moves
+  `fixtures/manifest.json`'s `counts`, which drive the mutation harness off its pinned 55 fixtures
+  and 318 mutants. That is a corpus decision with a measurement attached, and it is not a patch
+  release's.
+
+**A thirteenth was searched for and five were found**, by three independent read-only sweeps over
+324, 284 and 170 candidates — one enumerating every universally-named `#[test]`, one for the
+accumulate-offenders-and-assert-empty shape, one for hardcoded arrays that could be derived. All
+five are repaired here:
+
+- **`crates/engine-pdf/src/thresholds.rs`, `the_garbled_reason_is_never_constructed`** — the same
+  floorless shape as the two in `extraction.rs`, plus a two-name exemption list nothing asserted
+  still resolved.
+- **`crates/engine-core/tests/contract_invariants.rs`** — five contract invariants
+  (`no_confidence_anywhere_in_engine_core_code`, `no_other_quality_summary_vocabulary_leaks_in`,
+  `no_pdf_type_or_import_in_engine_core`, `no_verification_concept_in_engine_core`,
+  `floats_appear_only_inside_quantize`) all funnel through one walk of `engine-core/src`, and
+  **not one of them recorded how much it read.** Thirty-seven banned needles return an empty hit
+  list on a scan that read nothing exactly as on a scan that read everything. The file guards its
+  *matchers* three ways and guarded its *corpus* not at all. The floor is in the shared helper, so
+  a sixth invariant inherits it.
+- **`crates/engine-pdf/tests/robustness.rs`, `a_surviving_mutant_never_claims_to_be_the_original`**
+  — the digest comparison runs only for a mutant that parses, and nothing counted them. A corpus
+  that went missing would print `ok` having compared nothing. Sixty survive and
+  `EXPECTED_SURVIVORS` pins exactly which, so the count is asserted equal to it. **The office
+  harness written from this file at v2-S13 already carries this floor**; it was never back-ported.
+- **`crates/engine-pdf/tests/extraction.rs`, `every_run_carries_a_native_locator`** — a CI-named
+  gate (`v0-locators`) that skips a fixture twice, silently, and floors on `total > 10` where
+  `total` counts **runs**. One small document produces more than ten, so fifty-four of the
+  fifty-five could have stopped extracting with the gate green. Now floors on fixtures that
+  extracted: **44 of 55**.
+- **`crates/engine-cli/tests/public_api.rs`, `FROZEN`** — the per-crate diff is derived, the *set
+  of crates* was a four-name array, and a library crate absent from it has its whole public surface
+  unchecked. That is not hypothetical: at `ac148cf` (v2-S2, 0.21.0) the array had three entries
+  while `engine-office/src/lib.rs` already exported six items. **Its public surface was unfrozen
+  and undocumented for a whole release and no test failed.** The set is now derived from
+  `Cargo.toml`'s members filtered to those with a `src/lib.rs`.
+
+#### Changed
+
+- Workspace **0.32.0 → 0.32.1**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, for the fortieth
+  time, to
+  `sha256:c0c57728abc50f0ffcc6c3d5b4ef5bf3b985e4f082d180686fd9dbc4d6226aea`
+  (was `sha256:49540b22949c1b8cb4423a6e6c302b7ade501a27ddc7b142685bb2ee39bbb268`)
+- **`.github/workflows/ci.yml`** — one filter token, `no_ruling_lines` → `implies_no_grid`. That is
+  the whole workflow diff.
+- **`docs/15-V2-MILESTONES.md`** — S12.1's deferred list now says which twelve of its twenty-eight
+  are closed and that sixteen remain, because a deferred list that stays stale after being acted on
+  is the defect it was written to prevent.
+
+**v2 is not complete.** **Three** owner questions are restated unchanged at the end of `15`'s
+S13.1 — the gate sentence's verb, whether *"embedded assets"* ever meant more than a count, and
+whether `zip.rs` should verify CRC-32. None is settled here.
+
 
 ### v2-S13 — A11's other half, as 0.32.0
 

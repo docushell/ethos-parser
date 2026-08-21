@@ -258,36 +258,91 @@ fn proof_table() -> Vec<Proof> {
 
 /// Every source line of the workspace's integration tests, for locating a named proof.
 ///
-/// **Both `engine-pdf/tests` and `engine-cli/tests`**, and the second one was added at v1.1-S1
-/// rather than by preference. Every capability up to then was about reading a PDF, so its proof
-/// necessarily lived beside the parser and scanning one directory was enough. `capabilities.markdown`
-/// is not: the projection lives in `engine-core` — `engine-pdf` deliberately does not learn
-/// Markdown (`docs/04-ARCHITECTURE.md` §1) — and its proof is an end-to-end run of `extract`,
-/// `ground`, `markdown` and `verify` against the pinned Ethos CLI, which can only be driven from
-/// the CLI crate's tests.
+/// **Every workspace member's `tests/` directory**, read from `Cargo.toml`'s `members`.
 ///
-/// Widening the scan is the honest fix. The alternative was a thinner proof placed here to satisfy
-/// the search, which would have made the guard pass while the capability's real evidence sat
-/// somewhere the guard could not see.
+/// It scanned one directory at M4, because every capability up to then was about reading a PDF
+/// and its proof necessarily lived beside the parser. `capabilities.markdown` was not: the
+/// projection lives in `engine-core` — `engine-pdf` deliberately does not learn Markdown
+/// (`docs/04-ARCHITECTURE.md` §1) — and its proof is an end-to-end run of `extract`, `ground`,
+/// `markdown` and `verify` against the pinned Ethos CLI, which can only be driven from the CLI
+/// crate's tests. So v1.1-S1 added a second entry to a hardcoded pair.
+///
+/// Widening the scan was the honest fix then and it is the honest fix now; what was wrong was
+/// widening it **one crate at a time, after each failure**, while this sentence claimed the scan
+/// already covered the workspace. Three members — `engine-core`, `engine-office` and
+/// `engine-grounding` — were never in the pair, so a capability whose proof landed in any of them
+/// would have been reported as having no proof at all. The alternative to widening was always a
+/// thinner proof placed here to satisfy the search, which would make the guard pass while the
+/// capability's real evidence sat somewhere the guard could not see.
 fn test_sources() -> String {
     let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .expect("workspace root")
         .to_path_buf();
+
+    // **The crate list is read from `Cargo.toml`'s `members`, not written here.** It was
+    // `["engine-pdf", "engine-cli"]`, added one crate at a time as a proof turned up somewhere
+    // the scan could not see — which is a list that grows only after a failure, and the doc above
+    // meanwhile said *every* integration test in the workspace. `engine-core`, `engine-office`
+    // and `engine-grounding` were all invisible. The same repair, for the same reason, as
+    // `no_job_filter_selects_zero_tests` in `crates/engine-cli/tests/v0_exit_criteria.rs`.
+    let manifest =
+        std::fs::read_to_string(workspace.join("Cargo.toml")).expect("Cargo.toml is readable");
+    let members = manifest
+        .split_once("members = [")
+        .expect("the `[workspace]` table declares no `members`")
+        .1;
+    let members = &members[..members.find(']').expect("`members` is unterminated")];
+    let members: Vec<&str> = members
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter_map(|p| p.rsplit('/').next())
+        .collect();
+
     let mut all = String::new();
-    for crate_name in ["engine-pdf", "engine-cli"] {
+    let mut files = 0usize;
+    let mut scanned_crates = 0usize;
+    for crate_name in &members {
         let dir = workspace.join("crates").join(crate_name).join("tests");
-        for entry in std::fs::read_dir(&dir).expect("tests/ is readable") {
+        let entries = std::fs::read_dir(&dir).unwrap_or_else(|e| {
+            panic!(
+                "{} unreadable: {e}\nEvery workspace member has integration tests, and a member \
+                 that stops having them is a decision this scan should not absorb in silence.",
+                dir.display()
+            )
+        });
+        scanned_crates += 1;
+        for entry in entries {
             let path = entry.expect("dir entry").path();
             if path.extension().is_some_and(|e| e == "rs") {
                 all.push_str(&std::fs::read_to_string(&path).expect("readable"));
+                files += 1;
             }
         }
     }
+
+    // **Three floors, because the old one had stopped being a floor.** `all.len() > 1000` sat
+    // against a real 660,000 — six hundred times below the number it was guarding, so it would
+    // have passed with every crate but one silently missing. The crate count is the load-bearing
+    // one: it is an equality against `Cargo.toml`, so a sixth member cannot be quietly unscanned.
+    assert_eq!(
+        scanned_crates,
+        members.len(),
+        "scanned {scanned_crates} of {} workspace member(s); a proof living in an unscanned \
+         crate reads as a proof that does not exist",
+        members.len()
+    );
     assert!(
-        all.len() > 1000,
-        "the test-source scan found almost nothing, so the proof check would pass vacuously"
+        files >= 35,
+        "only {files} integration test file(s) scanned; forty is the number at v2-S13.1 and this \
+         floor sits below the smallest crate, so this says the walk stopped working"
+    );
+    assert!(
+        all.len() > 500_000,
+        "the test-source scan found only {} bytes, so the proof check would pass vacuously",
+        all.len()
     );
     all
 }

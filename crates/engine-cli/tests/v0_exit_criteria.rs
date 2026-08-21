@@ -138,6 +138,174 @@ fn workspace_members() -> Vec<String> {
         .collect()
 }
 
+/// Every name libtest can select, one per line, for every crate in the workspace.
+///
+/// A test's libtest name is its **module path joined to its function name** —
+/// `content::tests::a_clip_path_is_not_a_ruling_line` for a unit test inside `content.rs`'s
+/// `mod tests`, and plain `a_page_that_implies_no_grid_reports_an_empty_table_list` for one at the
+/// top of an integration test file, because that file is its own crate root. Filters match on that
+/// whole string, so that whole string is what this collects.
+///
+/// # Why bare `fn` names were not it
+///
+/// This scan used to collect every `fn` name it saw, which made two classes of filter
+/// unrepresentable:
+///
+/// - A **module-path filter** can never occur inside a bare function name. `content::tests`,
+///   `tables::` and `accuracy::` are three such filters in `.github/workflows/ci.yml` today, and
+///   all three would have been reported dead the moment the guard could see them.
+/// - A bare name matched whether or not it belonged to a `#[test]`, so a filter naming a private
+///   helper read as live while selecting nothing — the exact failure this file exists to catch.
+///
+/// Reconstructing the libtest name fixes both, and it is not an approximation of what libtest
+/// does: it is the string libtest prints and filters on.
+///
+/// # The rules, each exact rather than approximate
+///
+/// A file under `src/` is a module named after its stem, except `lib.rs` and `main.rs`, which are
+/// the crate root and contribute no prefix. A file under `tests/` **is** a crate root, so it
+/// contributes no prefix either — libtest does not prefix an integration test with its file name.
+/// An inline `mod name {` enters a module; a `mod name;` **declaration** does not, because it
+/// points at another file this walk reaches on its own, and treating it as an entry would
+/// misattribute every test below it in the same file.
+///
+/// Inline modules are tracked one level deep, which is the whole depth this workspace uses: every
+/// `mod name {` under `crates/*/src` and `crates/*/tests` sits at column zero. Should one ever be
+/// nested, its tests are attributed without the outer prefix, and the failure mode is a filter
+/// reported dead that is not — loud, and not the silence this file exists to break.
+///
+/// # Two assertions, because one of them is circular on its own
+///
+/// The reconstructed count is asserted equal to the number of `#[test]` attributes seen, so a
+/// parser that quietly stopped understanding a file fails here rather than passing with a shorter
+/// haystack. That equality holds trivially at zero, so the floor below it is what makes it mean
+/// something: a scan that read nothing would satisfy the equality and report every token dead.
+fn workspace_test_paths() -> String {
+    // **The crate list is read from `Cargo.toml`'s `members`, not written here.** It used to be
+    // written here, and it said four crates while the workspace had five: `engine-office` joined
+    // at v2-S1 and this list did not. The consequence was a false *negative* in a guard — a job
+    // filtering on an office test name would have been reported as matching no test at all,
+    // because the scanner could not see the crate rather than because the test was missing. A
+    // guard that cannot see a fifth of the workspace is a guard whose own comment is untrue.
+    let members = workspace_members();
+    assert!(
+        members.len() >= 5,
+        "found {} workspace member(s) in Cargo.toml: {members:?}. The parser is broken, not the \
+         workspace — this test scans what it finds, so finding nothing would make it pass \
+         having read nothing.",
+        members.len()
+    );
+
+    let mut out = String::new();
+    let mut attributes = 0usize;
+    for crate_name in &members {
+        for (sub, in_src) in [("src", true), ("tests", false)] {
+            let dir = repo_root().join(format!("crates/{crate_name}/{sub}"));
+            collect_test_paths(&dir, in_src, &mut out, &mut attributes);
+        }
+    }
+
+    let found = out.lines().count();
+    assert!(
+        found > 1000,
+        "the test-name scan reconstructed only {found} libtest name(s); it is broken, not the \
+         workflow. This floor is what stops the equality below passing on an empty scan."
+    );
+    assert_eq!(
+        found, attributes,
+        "the scan reconstructed {found} libtest name(s) from {attributes} `#[test]` \
+         attribute(s). Every attribute must yield exactly one name; a gap means the parser \
+         stopped understanding a file and the haystack is quietly short."
+    );
+
+    out
+}
+
+/// Walk one directory, appending `module::path::function` for every `#[test]` found.
+fn collect_test_paths(
+    dir: &std::path::Path,
+    in_src: bool,
+    out: &mut String,
+    attributes: &mut usize,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_test_paths(&path, in_src, out, attributes);
+            continue;
+        }
+        if !path.extension().is_some_and(|e| e == "rs") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let base = if in_src && stem != "lib" && stem != "main" {
+            stem
+        } else {
+            String::new()
+        };
+
+        let src = std::fs::read_to_string(&path).expect("readable source");
+        let mut module = base.clone();
+        let mut pending = false;
+        for line in src.lines() {
+            let t = line.trim_start();
+            if t.starts_with("#[test]") {
+                pending = true;
+                *attributes += 1;
+                continue;
+            }
+            if let Some(name) = inline_module_name(t) {
+                module = if base.is_empty() {
+                    name
+                } else {
+                    format!("{base}::{name}")
+                };
+                continue;
+            }
+            if let Some(rest) = t.strip_prefix("fn ") {
+                if pending {
+                    if !module.is_empty() {
+                        out.push_str(&module);
+                        out.push_str("::");
+                    }
+                    out.push_str(rest.split(['(', '<']).next().unwrap_or(""));
+                    out.push('\n');
+                }
+                pending = false;
+            }
+        }
+    }
+}
+
+/// The name in `mod name {`, or `None`.
+///
+/// A `mod name;` declaration returns `None` on purpose: it points at another file, which the walk
+/// above reaches on its own, and entering it here would misattribute every test below it.
+fn inline_module_name(line: &str) -> Option<String> {
+    let rest = line
+        .strip_prefix("pub(crate) ")
+        .or_else(|| line.strip_prefix("pub "))
+        .unwrap_or(line)
+        .strip_prefix("mod ")?;
+    let name: String = rest
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if name.is_empty() {
+        return None;
+    }
+    rest[name.len()..]
+        .trim_start()
+        .starts_with('{')
+        .then_some(name)
+}
+
 // -------------------------------------------------------------------------------------------
 // The assertions
 // -------------------------------------------------------------------------------------------
@@ -213,74 +381,60 @@ fn every_named_job_exists_in_the_workflow() {
 /// Every criterion would still be ticked, every job would still exist, and the gate would be
 /// hollow.
 ///
-/// So every filter token in every matrix `run` must appear inside some test function's name.
-/// Substring filters are fine and intended — `v0-c14n` filters on `c14n`, `float` and `quantize`
-/// — so the check is that the token occurs within an `fn` name somewhere, which is exactly what
-/// libtest matches on.
+/// So every filter token in every `cargo test` command in the workflow must occur inside some
+/// name libtest can select. Substring filters are fine and intended — `v0-c14n` filters on
+/// `c14n`, `float` and `quantize` — so the check is that the token occurs within a test's libtest
+/// name, which is exactly what libtest matches on. [`workspace_test_paths`] argues what that name
+/// is and why reconstructing it beats collecting bare `fn` names.
+///
+/// # The quoting hole this test was blind to for twelve slices
+///
+/// The parser required the command to begin `cargo test`. The `v1s1-gates` and `v1s7-table-gate`
+/// matrices **quote** their commands — `run: "cargo test …"` — so the command began with a double
+/// quote and the whole line was skipped before a single token was read. Five commands and fifteen
+/// of the sixty filter tokens were invisible to the guard that exists to check exactly them, and
+/// one of the fifteen was dead: `no_ruling_lines`, orphaned by v1-S2's rename of
+/// `a_page_with_no_ruling_lines_reports_an_empty_table_list` and unnoticed for twenty-two commits.
+///
+/// The quoting is not incidental, which is the part worth keeping in mind. Three of those five
+/// commands filter on a module path — `content::tests`, `tables::`, `accuracy::` — and a matrix
+/// entry whose style quotes its `run:` is the same entry whose filters this scan could not have
+/// matched anyway. The two halves of the defect arrived together.
+///
+/// # Why the repair is a rule and not a number
+///
+/// Stripping the quotes is one line, and one line is exactly what would leave the next variant —
+/// single quotes, a leading `env FOO=bar`, a YAML block scalar — to be found by a human again.
+/// So the assertion below is that **every line mentioning `cargo test` was parsed as a command**.
+/// That does not rot, because it does not depend on anyone predicting the shape.
 #[test]
 fn no_job_filter_selects_zero_tests() {
-    // Every test function name in the workspace: `#[test]` fns in `tests/`, and unit tests in
-    // `src/`, since jobs filter across both.
-    //
-    // **The crate list is read from `Cargo.toml`'s `members`, not written here.** It used to be
-    // written here, and it said four crates while the workspace had five: `engine-office` joined
-    // at v2-S1 and this list did not. The consequence was a false *negative* in a guard —
-    // a job filtering on an office test name would have been reported as matching no test at all,
-    // because the scanner could not see the crate rather than because the test was missing. A
-    // guard that cannot see a fifth of the workspace is a guard whose own comment is untrue.
-    let mut fn_names = String::new();
-    let mut walk_dirs: Vec<PathBuf> = Vec::new();
-    let members = workspace_members();
-    assert!(
-        members.len() >= 5,
-        "found {} workspace member(s) in Cargo.toml: {members:?}. The parser is broken, not the \
-         workspace — this test scans what it finds, so finding nothing would make it pass \
-         having read nothing.",
-        members.len()
-    );
-    for crate_name in &members {
-        walk_dirs.push(repo_root().join(format!("crates/{crate_name}/src")));
-        walk_dirs.push(repo_root().join(format!("crates/{crate_name}/tests")));
-    }
-
-    fn collect(dir: &std::path::Path, out: &mut String) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect(&path, out);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                let src = std::fs::read_to_string(&path).expect("readable source");
-                for line in src.lines() {
-                    if let Some(rest) = line.trim_start().strip_prefix("fn ") {
-                        out.push_str(rest.split(['(', '<']).next().unwrap_or(""));
-                        out.push('\n');
-                    }
-                }
-            }
-        }
-    }
-    for dir in &walk_dirs {
-        collect(dir, &mut fn_names);
-    }
-    assert!(
-        fn_names.len() > 2000,
-        "the test-name scan found almost nothing ({} bytes); it is broken, not the workflow",
-        fn_names.len()
-    );
+    let test_paths = workspace_test_paths();
 
     let mut dead = Vec::new();
     let mut checked = 0usize;
+    let mut commands = 0usize;
+    let mut unparsed: Vec<&str> = Vec::new();
 
-    for line in workflow().lines() {
-        let Some(cmd) = line.trim().strip_prefix("run: ") else {
-            continue;
-        };
-        if !cmd.starts_with("cargo test") {
+    let wf = workflow();
+    for line in wf.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
             continue;
         }
+        let parsed = trimmed
+            .strip_prefix("run: ")
+            .map(|c| c.trim_matches(|q| q == '"' || q == '\''))
+            .filter(|c| c.starts_with("cargo test"));
+
+        let Some(cmd) = parsed else {
+            if trimmed.contains("cargo test") {
+                unparsed.push(trimmed);
+            }
+            continue;
+        };
+        commands += 1;
+
         let Some((_, tail)) = cmd.split_once(" -- ") else {
             continue;
         };
@@ -290,19 +444,45 @@ fn no_job_filter_selects_zero_tests() {
                 continue;
             }
             checked += 1;
-            if !fn_names.contains(token) {
+            if !test_paths.contains(token) {
                 dead.push(token.to_string());
             }
         }
     }
 
     assert!(
-        checked >= 30,
-        "only {checked} filter token(s) found across the workflow; the matrix is not being read"
+        unparsed.is_empty(),
+        "{} workflow line(s) run `cargo test` in a form this parser does not read, so every \
+         filter on them is unchecked:\n  {}\n\n\
+         This is how the guard went blind for twelve slices: two matrices quoted their commands \
+         and every token in them was skipped in silence. Teach the parser the new shape rather \
+         than letting the line stay invisible.",
+        unparsed.len(),
+        unparsed.join("\n  ")
     );
+
+    assert!(
+        commands >= 20,
+        "only {commands} `cargo test` command(s) found in the workflow; twenty-two is the number \
+         at v2-S13.1, so this means the matrices stopped being read"
+    );
+
+    // **The floor sits one command below the real total, and that is the whole argument for the
+    // number.** Sixty tokens are checked at v2-S13.1 across twenty-two commands, and the largest
+    // single command carries six, so losing any one job's filters entirely drops the count to
+    // fifty-four and trips this. A floor far below the real number has stopped being a floor:
+    // `an_injected_unknown_operator_stops_the_parse` carried `>= 12` against a real forty-four
+    // while its corpus tripled underneath it, and v2-S12.1 is why that is written down here.
+    assert!(
+        checked >= 55,
+        "only {checked} filter token(s) checked across the workflow; sixty is the number at \
+         v2-S13.1 and the floor sits one command below it, so this says a job's filters stopped \
+         being read rather than that a job was retired"
+    );
+
     assert!(
         dead.is_empty(),
-        "{} CI filter token(s) match no test function: {dead:?}\n\n\
+        "{} CI filter token(s) match no test libtest can select: {dead:?}\n\n\
          A filter that selects nothing makes its job report `ok. 0 passed` — green, and having \
          checked nothing. Rename the filter with the test, or delete it.",
         dead.len()

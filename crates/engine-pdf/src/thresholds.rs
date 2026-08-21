@@ -183,6 +183,12 @@ mod tests {
     fn the_garbled_reason_is_never_constructed() {
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut hits = Vec::new();
+        let mut files = 0usize;
+        let mut lines = 0usize;
+        let mut skipped = Vec::new();
+
+        // reasons.rs declares the variant; thresholds.rs documents why it is unreachable.
+        const DECLARING_MODULES: [&str; 2] = ["reasons.rs", "thresholds.rs"];
 
         for entry in std::fs::read_dir(&src_dir).expect("src is readable") {
             let path = entry.expect("dir entry").path();
@@ -191,13 +197,15 @@ mod tests {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            // reasons.rs declares the variant; thresholds.rs documents why it is unreachable.
-            if name == "reasons.rs" || name == "thresholds.rs" {
+            if DECLARING_MODULES.contains(&name.as_str()) {
+                skipped.push(name);
                 continue;
             }
             if path.extension().is_some_and(|e| e == "rs") {
+                files += 1;
                 let src = std::fs::read_to_string(&path).expect("readable");
                 for (n, line) in src.lines().enumerate() {
+                    lines += 1;
                     if line.trim_start().starts_with("//") {
                         continue; // prose about the trap is expected and welcome
                     }
@@ -207,6 +215,33 @@ mod tests {
                 }
             }
         }
+
+        // **A guard that reads nothing passes**, and this one asserted an empty hit list and
+        // nothing else. A `src/` reorganised into subdirectories — which `read_dir` does not
+        // descend into — or a walk that stopped working would have reported clean while reading
+        // no source at all. The floors sit just below the real numbers at v2-S13.1: twenty-six
+        // files and 15,762 lines once the two declaring modules are set aside.
+        //
+        // The two exemptions are asserted to still resolve, for the reason
+        // `crates/engine-cli/tests/no_format_cli.rs` gives about `NAME_READING_EXEMPTIONS`: a
+        // stale exemption is a hole nobody is watching, and a module renamed out from under this
+        // list would silently rejoin the scan or silently leave it.
+        skipped.sort();
+        let mut expected: Vec<String> =
+            DECLARING_MODULES.iter().map(|m| (*m).to_string()).collect();
+        expected.sort();
+        assert_eq!(
+            skipped, expected,
+            "the modules exempted from this scan and the modules that exist have diverged"
+        );
+        assert!(
+            files >= 24,
+            "only {files} source file(s) scanned; the walk is broken, not the source"
+        );
+        assert!(
+            lines >= 14_000,
+            "only {lines} source line(s) scanned; the walk is broken, not the source"
+        );
 
         assert!(
             hits.is_empty(),

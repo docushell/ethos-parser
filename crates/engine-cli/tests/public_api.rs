@@ -524,6 +524,55 @@ const FROZEN: [(&str, &[&str]); 4] = [
     ("engine-office", OFFICE),
 ];
 
+/// **Every library crate in the workspace is frozen**, and the set is derived rather than typed.
+///
+/// The per-crate check below is genuinely derived — [`crate_exports`] scans the crate root and
+/// diffs both directions — but the *set of crates* was this four-name array, and a library crate
+/// missing from it is invisible to both consumers: its exports are neither frozen nor required to
+/// appear in `docs/PUBLIC-API.md`, and the suite stays green.
+///
+/// That is not hypothetical. At v2-S2 (`ac148cf`, 0.21.0) this array had three entries while
+/// `crates/engine-office/src/lib.rs` already exported six items. **`engine-office`'s public
+/// surface was unfrozen and undocumented for an entire release** and no test failed; the array
+/// grew to four one slice later at v2-S3. The match has been maintenance luck, and this is what
+/// replaces the luck with a rule.
+#[test]
+fn every_library_crate_in_the_workspace_is_frozen() {
+    let manifest = std::fs::read_to_string(repo_root().join("Cargo.toml")).expect("Cargo.toml");
+    let members = manifest
+        .split_once("members = [")
+        .expect("the `[workspace]` table declares no `members`")
+        .1;
+    let members = &members[..members.find(']').expect("`members` is unterminated")];
+    let members: Vec<&str> = members
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter_map(|p| p.rsplit('/').next())
+        .collect();
+    assert!(
+        members.len() >= 5,
+        "Cargo.toml lists {} workspace member(s): {members:?}",
+        members.len()
+    );
+
+    // A crate with a `src/lib.rs` has a public surface. `engine-cli` has only `main.rs`, and
+    // `the_cli_has_no_library_target` is what holds that.
+    let with_lib: BTreeSet<&str> = members
+        .iter()
+        .copied()
+        .filter(|m| repo_root().join(format!("crates/{m}/src/lib.rs")).is_file())
+        .collect();
+    let frozen: BTreeSet<&str> = FROZEN.iter().map(|(name, _)| *name).collect();
+
+    assert_eq!(
+        with_lib, frozen,
+        "the workspace's library crates and the frozen set have diverged. A library crate absent \
+         from `FROZEN` has its whole public surface unchecked — neither pinned here nor required \
+         in docs/PUBLIC-API.md — and nothing else in the suite notices."
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // The tests
 // -------------------------------------------------------------------------------------------

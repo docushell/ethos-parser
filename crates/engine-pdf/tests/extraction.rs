@@ -241,11 +241,15 @@ fn measured_metrics_produce_a_box_that_is_not_the_font_size() {
 fn no_source_line_derives_a_box_from_the_font_size() {
     let src_dir = repo_root().join("crates/engine-pdf/src");
     let mut offenders = Vec::new();
+    let mut files = 0usize;
+    let mut lines = 0usize;
     for entry in std::fs::read_dir(&src_dir).expect("src readable") {
         let path = entry.expect("entry").path();
         if path.extension().is_some_and(|e| e == "rs") {
+            files += 1;
             let src = std::fs::read_to_string(&path).expect("readable");
             for (n, line) in src.lines().enumerate() {
+                lines += 1;
                 if line.trim_start().starts_with("//") {
                     continue;
                 }
@@ -258,6 +262,20 @@ fn no_source_line_derives_a_box_from_the_font_size() {
             }
         }
     }
+    // **A guard that reads nothing passes.** This asserted an empty offender list and nothing
+    // else, so a renamed directory, a `src/` reorganised into subdirectories `read_dir` does not
+    // descend into, or a walk that simply stopped working would all have come out green while
+    // reading no source at all. The floors are what make the empty list mean something; both sit
+    // just below the real numbers at v2-S13.1, twenty-eight files and 16,201 lines.
+    assert!(
+        files >= 25,
+        "only {files} source file(s) scanned in {}; the walk is broken, not the source",
+        src_dir.display()
+    );
+    assert!(
+        lines >= 14_000,
+        "only {lines} source line(s) scanned; the walk is broken, not the source"
+    );
     assert!(
         offenders.is_empty(),
         "a box dimension is derived from the font size: {offenders:?}"
@@ -540,15 +558,22 @@ fn extraction_is_byte_identical_across_runs() {
 #[test]
 fn every_run_carries_a_native_locator() {
     let mut total = 0;
+    let mut extracted = 0usize;
+    let mut fixtures = 0usize;
     for f in manifest()["fixtures"].as_array().expect("fixtures") {
+        fixtures += 1;
         let path = path_in(f["root"].as_str().unwrap(), f["path"].as_str().unwrap());
         let profile = Profile::default();
+        // Two deliberate skips: the corpus contains documents this profile refuses to open and
+        // documents it opens but cannot extract, and both are correct outcomes rather than
+        // failures. What was missing is any record of how many got through — see the floor below.
         let Ok(doc) = Document::open(&path, &profile) else {
             continue;
         };
         let Ok(a) = engine_pdf::extract(&doc, &profile) else {
             continue;
         };
+        extracted += 1;
         for r in a.runs() {
             assert!(r.locator.page >= 1, "page numbers are 1-based");
             assert!(
@@ -559,6 +584,23 @@ fn every_run_carries_a_native_locator() {
             total += 1;
         }
     }
+
+    // **The old floor counted the wrong thing.** `total > 10` counts *runs*, and one small
+    // fixture produces more than ten of them — so fifty-four of the fifty-five could have stopped
+    // opening or stopped extracting and this gate, which `.github/workflows/ci.yml`'s
+    // `v0-locators` names and `docs/03-V0-SCOPE.md` §5 cites, would have stayed green on the
+    // strength of one document. The quantity that matters is how many fixtures reached the
+    // assertions, and forty-four do at v2-S13.1 — the same forty-four
+    // `an_injected_unknown_operator_stops_the_parse` counts in `tests/robustness.rs`.
+    assert!(
+        fixtures >= 50,
+        "the manifest listed only {fixtures} fixture(s); fifty-five is the number at v2-S13.1"
+    );
+    assert!(
+        extracted >= 40,
+        "only {extracted} of {fixtures} fixture(s) opened and extracted; forty-four is the number \
+         at v2-S13.1, and a corpus that quietly stopped extracting is what this floor exists for"
+    );
     assert!(total > 10, "expected runs across the corpus, got {total}");
 }
 
@@ -630,7 +672,23 @@ fn no_confidence_in_any_extract_artifact() {
 #[test]
 fn no_confidence_in_the_extract_source_modules() {
     let src_dir = repo_root().join("crates/engine-pdf/src");
+    // Named rather than derived, because the rule is about the extract path specifically and not
+    // about the crate. That makes the list a liability of its own: a module renamed out from
+    // under it is a module this stops checking, in silence and with no offender to report. So
+    // every name is asserted to still resolve, the same way `NAME_READING_EXEMPTIONS` in
+    // `crates/engine-cli/tests/no_format_cli.rs` asserts every exemption still matches something.
+    const EXTRACT_MODULES: [&str; 6] = [
+        "extract.rs",
+        "nodes.rs",
+        "content.rs",
+        "fonts.rs",
+        "metrics.rs",
+        "text_state.rs",
+    ];
+
     let mut hits = Vec::new();
+    let mut seen = Vec::new();
+    let mut lines = 0usize;
     for entry in std::fs::read_dir(&src_dir).expect("src readable") {
         let path = entry.expect("entry").path();
         let name = path
@@ -638,14 +696,13 @@ fn no_confidence_in_the_extract_source_modules() {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        if !matches!(
-            name.as_str(),
-            "extract.rs" | "nodes.rs" | "content.rs" | "fonts.rs" | "metrics.rs" | "text_state.rs"
-        ) {
+        if !EXTRACT_MODULES.contains(&name.as_str()) {
             continue;
         }
+        seen.push(name.clone());
         let src = std::fs::read_to_string(&path).expect("readable");
         for (n, line) in src.lines().enumerate() {
+            lines += 1;
             if line.trim_start().starts_with("//") {
                 continue;
             }
@@ -654,6 +711,21 @@ fn no_confidence_in_the_extract_source_modules() {
             }
         }
     }
+
+    seen.sort();
+    let mut expected: Vec<String> = EXTRACT_MODULES.iter().map(|m| (*m).to_string()).collect();
+    expected.sort();
+    assert_eq!(
+        seen, expected,
+        "the extract path this rule covers and the files that exist have diverged. A module \
+         named here and missing from `crates/engine-pdf/src` is a module nothing scans, and an \
+         empty hit list says exactly as much about it as a clean one would."
+    );
+    assert!(
+        lines >= 3_800,
+        "only {lines} line(s) scanned across the extract modules; 4,267 is the number at \
+         v2-S13.1, so this says the files were found and not read"
+    );
     assert!(hits.is_empty(), "`confidence` in extract code: {hits:?}");
 }
 
@@ -3086,9 +3158,24 @@ fn the_documents_that_could_not_be_read_can_be_read() {
     }
 }
 
-/// The conformance corpus's geometry is untouched, which is how a targeted repair proves itself.
+/// Five conformance documents keep the geometry they had, which is how a targeted repair proves
+/// itself.
+///
+/// The name said *the conformance corpus* over a hand-picked five of the fifteen, and the
+/// five are not a sample that could be widened to the rest: the property below holds only of
+/// documents with no whitespace-only run, and the corpus contains documents that have one.
+/// Naming the five is the honest version of the same guard.
 #[test]
-fn the_conformance_corpus_keeps_every_box_it_had() {
+fn five_conformance_documents_keep_every_box_they_had() {
+    // **Five named documents, not the corpus.** The name says *the conformance corpus* and this
+    // is a hand-picked five of it, which is not an oversight to widen: the property asserted
+    // below — that no run resolves to `NoInkToMeasure` — is true only of documents that contain
+    // no whitespace-only run, and the corpus does contain such documents. Running it over
+    // everything would fail on the corpus being what it is. So the list stays, and what changes
+    // is that it is now counted rather than merely written, and every entry is asserted to have
+    // produced runs: a fixture that stopped extracting would otherwise satisfy `.all()`
+    // vacuously and take its share of the guarantee with it.
+    let mut checked = 0usize;
     for name in [
         "synthetic/simple-text/document.pdf",
         "synthetic/two-lines/document.pdf",
@@ -3097,12 +3184,23 @@ fn the_conformance_corpus_keeps_every_box_it_had() {
         "synthetic/table-regular-grid/document.pdf",
     ] {
         let a = extract_ok(conformance(name));
+        let runs = runs(&a);
         assert!(
-            runs(&a).iter().all(|r| !matches!(
+            !runs.is_empty(),
+            "{name} produced no runs at all, so `all()` below holds vacuously and this document \
+             has quietly dropped out of the guarantee"
+        );
+        assert!(
+            runs.iter().all(|r| !matches!(
                 r.geometry,
                 engine_core::GeometryPresence::Absent(engine_core::GeometryAbsence::NoInkToMeasure)
             )),
             "{name} has no whitespace-only run, so nothing in it may change"
         );
+        checked += 1;
     }
+    assert_eq!(
+        checked, 5,
+        "five conformance documents carry this guarantee; {checked} were checked"
+    );
 }

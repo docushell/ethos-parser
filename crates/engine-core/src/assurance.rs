@@ -1331,6 +1331,12 @@ mod tests {
             codes::IMAGES_NOT_EMITTED,
             codes::PAGE_RASTER_NOT_EMITTED,
             codes::MARKDOWN_NOT_PROJECTED,
+            // v1.1-S4 added `html` as the twelfth capability and grew the count assertion below
+            // from twelve to thirteen, but not this list. For four slices the name said *every*
+            // false capability over eleven of the twelve, and the one it omitted was the newest —
+            // which is the one a reader is least able to assume was checked. The count caught a
+            // missing limitation; it could not catch the wrong code being emitted for `html`.
+            codes::HTML_NOT_PROJECTED,
         ] {
             assert!(
                 declared.iter().any(|l| l.code == code),

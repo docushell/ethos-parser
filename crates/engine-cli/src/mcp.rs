@@ -429,7 +429,16 @@ mod tests {
     #[test]
     fn no_tool_argument_names_a_coordinate() {
         let tools = tools();
-        for tool in tools.as_array().expect("tools") {
+        let tools = tools.as_array().expect("tools");
+        // Same floor, same reason: the banned-name loop below never runs if the list is empty.
+        assert_eq!(
+            tools.len(),
+            3,
+            "{} tool(s) advertised, not three",
+            tools.len()
+        );
+        let mut properties_checked = 0usize;
+        for tool in tools {
             let schema = &tool["inputSchema"]["properties"];
             let names: Vec<&str> = schema
                 .as_object()
@@ -447,12 +456,32 @@ mod tests {
                     tool["name"]
                 );
             }
+            properties_checked += names.len();
         }
+        // And a tool advertising no properties at all would satisfy the loop above while
+        // accepting anything the caller sent.
+        assert!(
+            properties_checked >= 4,
+            "only {properties_checked} argument(s) across all tools; the schemas are empty, so \
+             nothing above was actually checked"
+        );
     }
 
     #[test]
     fn every_tool_refuses_unknown_arguments() {
-        for tool in tools().as_array().expect("tools") {
+        let tools = tools();
+        let tools = tools.as_array().expect("tools");
+        // A per-tool property asserted over an empty list is a test that passes having checked
+        // nothing — the shape v2-S13.1 went looking for. Three tools are advertised: `extract`,
+        // `ground` and `node_get`. A fourth is a decision, and it arrives through this line.
+        assert_eq!(
+            tools.len(),
+            3,
+            "{} tool(s) advertised; three is the number this server has argued for, and the \
+             per-tool assertions below check nothing at all if the list is short",
+            tools.len()
+        );
+        for tool in tools {
             assert_eq!(
                 tool["inputSchema"]["additionalProperties"],
                 json!(false),

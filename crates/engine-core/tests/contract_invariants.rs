@@ -19,6 +19,7 @@
 //! letting one float through "just for the ink box", returning `Option<QRect>` because it is
 //! simpler. Prose in a doc does not stop that. A failing test does.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use engine_core::{
@@ -35,6 +36,50 @@ use serde_json::Value;
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+}
+
+/// Every `.rs` file of `engine-core`, with the corpus asserted rather than assumed.
+///
+/// # Why the floor is here and not in each of the five guards
+///
+/// `no_confidence_anywhere_in_engine_core_code`, `no_other_quality_summary_vocabulary_leaks_in`,
+/// `no_pdf_type_or_import_in_engine_core`, `no_verification_concept_in_engine_core` and
+/// `floats_appear_only_inside_quantize` all reduce to this walk plus `assert!(hits.is_empty())`,
+/// and **not one of them recorded how much it read.** `read_dir(...).unwrap_or_else(panic)`
+/// catches a `src/` that vanished; it does not catch a `src/` that shrank, or modules moved under
+/// a path the recursion stops reaching. Thirty-seven banned needles return an empty hit list on a
+/// scan that read nothing exactly as they do on a scan that read everything, and five contract
+/// invariants — the ones this file's header calls *"easiest to break with good intentions"* —
+/// would all have printed `ok`.
+///
+/// This file already guards its *matchers*: `the_comment_stripper_actually_strips`,
+/// `the_pdf_type_guard_matches_exactly_and_still_catches`, `the_float_exemption_does_not_cover_qrect`.
+/// Nothing guarded its *corpus*. Putting the floor in the one function all five share is what
+/// makes a sixth guard inherit it without anyone remembering to.
+///
+/// The numbers are just below the real ones at v2-S13.1: fifteen files and 14,787 lines.
+fn engine_core_sources() -> Vec<PathBuf> {
+    let files = rust_sources(&src_dir());
+    let lines: usize = files
+        .iter()
+        .map(|p| {
+            std::fs::read_to_string(p)
+                .expect("readable source")
+                .lines()
+                .count()
+        })
+        .sum();
+    assert!(
+        files.len() >= 12,
+        "the engine-core source walk found {} file(s); fifteen is the number at v2-S13.1. A \
+         guard that reads nothing passes, so this is asserted before any of them run.",
+        files.len()
+    );
+    assert!(
+        lines >= 12_000,
+        "the engine-core source walk found {lines} line(s); 14,787 is the number at v2-S13.1"
+    );
+    files
 }
 
 fn rust_sources(dir: &Path) -> Vec<PathBuf> {
@@ -123,7 +168,7 @@ fn token_hits(needle: &str) -> Vec<String> {
         c.is_alphanumeric() || c == '_'
     }
     let mut hits = Vec::new();
-    for path in rust_sources(&src_dir()) {
+    for path in engine_core_sources() {
         let src = std::fs::read_to_string(&path).expect("readable source");
         for (n, line) in strip_comments(&src).lines().enumerate() {
             let mut from = 0;
@@ -150,7 +195,7 @@ fn token_hits(needle: &str) -> Vec<String> {
 fn code_hits(needle: &str) -> Vec<String> {
     let needle = needle.to_ascii_lowercase();
     let mut hits = Vec::new();
-    for path in rust_sources(&src_dir()) {
+    for path in engine_core_sources() {
         let src = std::fs::read_to_string(&path).expect("readable source");
         for (n, line) in strip_comments(&src).lines().enumerate() {
             if line.to_ascii_lowercase().contains(&needle) {
@@ -488,6 +533,27 @@ fn no_verification_concept_in_engine_core() {
 const DIGEST: &str = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
 
 /// One representative value of every public artifact-ish type, as JSON.
+/// A constructed sample of the public types that reach an artifact — **not every public type.**
+///
+/// # The number, because the four tests below say *every*
+///
+/// Seventeen values over fifteen distinct types, against **188** frozen crate-root exports of
+/// `engine-core` (`crates/engine-cli/tests/public_api.rs`'s `CORE`) and 111 `pub struct`/`pub
+/// enum` declarations in its sources. It is a sample and it cannot stop being one: the property
+/// under test is about a *serialized value*, and most of those exports are functions, consts,
+/// traits and error types that have no artifact-bearing value to construct. Deriving this list
+/// is not available; what is available is saying the number out loud.
+///
+/// # What proves the universal claim, since this does not
+///
+/// [`floats_appear_only_inside_quantize`] scans every source line of `engine-core` and holds the
+/// structural half for **all** types, not a sample: no float type exists outside `quantize`, so
+/// no public type can carry one. The four tests below are the behavioural half — that the
+/// canonicalizer really does refuse what the structure forbids — and a spot-check is the right
+/// instrument for that. Nothing here is unverified; what was wrong is that four names said
+/// *every* over fifteen, which is the damage v2-S12.1 recorded for
+/// `every_profile_is_distinct_from_every_other`: the next reader adds a type, sees green, and
+/// never learns the list is one a human has to remember to grow.
 fn public_type_samples() -> Vec<(&'static str, Value)> {
     let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
     vec![
@@ -607,7 +673,56 @@ fn public_type_samples() -> Vec<(&'static str, Value)> {
     ]
 }
 
-/// Every public type canonicalizes — which means none of them contains a float.
+/// The sample, pinned and cross-checked against the types that actually exist.
+///
+/// Two failures this catches that the four tests below cannot: a sample silently deleted, and a
+/// type renamed out from under its entry — after which the entry names nothing, the value it
+/// builds is still canonicalized, and the reader believes a type is covered that no longer goes
+/// by that name.
+#[test]
+fn the_public_type_sample_names_types_that_exist() {
+    let samples = public_type_samples();
+    assert_eq!(
+        samples.len(),
+        17,
+        "{} sample(s); seventeen is the number at v2-S13.1, over fifteen distinct types",
+        samples.len()
+    );
+
+    let mut sources = String::new();
+    for path in engine_core_sources() {
+        sources.push_str(&std::fs::read_to_string(&path).expect("readable source"));
+    }
+    assert!(
+        sources.len() > 100_000,
+        "the source scan read only {} bytes, so the check below would pass having read nothing",
+        sources.len()
+    );
+
+    let mut distinct: BTreeSet<&str> = BTreeSet::new();
+    for (name, _) in &samples {
+        // `GeometryPresence::Measured` samples one variant of a type; the type is the part that
+        // has to exist.
+        let base = name.split("::").next().unwrap_or(name);
+        distinct.insert(base);
+        assert!(
+            sources.contains(&format!("pub struct {base}"))
+                || sources.contains(&format!("pub enum {base}")),
+            "the sample names `{base}`, which `engine-core` no longer declares. A renamed type              leaves its entry building a value nobody can trace back to it."
+        );
+    }
+    assert_eq!(
+        distinct.len(),
+        15,
+        "{} distinct type(s) sampled; fifteen is the number at v2-S13.1",
+        distinct.len()
+    );
+}
+
+/// Every **sampled** public type canonicalizes — which means none of them contains a float.
+///
+/// *Every* type is held by [`floats_appear_only_inside_quantize`], structurally. This is the
+/// behavioural half over the sample [`public_type_samples`] describes.
 #[test]
 fn every_public_type_survives_canonicalization() {
     for (name, value) in public_type_samples() {
@@ -620,7 +735,7 @@ fn every_public_type_survives_canonicalization() {
     }
 }
 
-/// Serialize → canonicalize → parse → identical value, for every public type.
+/// Serialize → canonicalize → parse → identical value, for every **sampled** public type.
 #[test]
 fn every_public_type_round_trips_through_c14n() {
     for (name, value) in public_type_samples() {
@@ -635,7 +750,7 @@ fn every_public_type_round_trips_through_c14n() {
     }
 }
 
-/// Canonical output for every public type is byte-stable across repeated runs.
+/// Canonical output for every **sampled** public type is byte-stable across repeated runs.
 #[test]
 fn public_type_canonical_bytes_are_stable() {
     let first: Vec<Vec<u8>> = public_type_samples()
@@ -649,7 +764,12 @@ fn public_type_canonical_bytes_are_stable() {
     assert_eq!(first, second);
 }
 
-/// No canonical output of a public type contains a decimal point.
+/// No canonical output of a **sampled** public type contains a decimal point.
+///
+/// The name is `no_public_type_emits_a_decimal_number` and stays that way: it is a filter token in
+/// the `v0-c14n` CI job. What it does not say on its own is that the sample is fifteen types, so
+/// [`public_type_samples`] says it, and [`floats_appear_only_inside_quantize`] holds the claim the
+/// name reads like.
 ///
 /// A blunt instrument, and that is the point: it catches a float that arrives as a string too.
 #[test]

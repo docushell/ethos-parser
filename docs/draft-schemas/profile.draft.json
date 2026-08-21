@@ -374,7 +374,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.32.0",
+      "parser_version": "0.32.1",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"
