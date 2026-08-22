@@ -99,7 +99,7 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 64‰, a miss; the 0.489 chase is parked** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0 through S13.5 done, at 0.32.5**: the mutation lane at 0.32.0, guards at 0.32.1, the roadmap reorder at 0.32.2, prose at 0.32.3, the owner's two gate decisions at 0.32.4 and the two unrun sweeps at 0.32.5. S10 is CSV as an argued refusal, not a reader. **v2's format row is closed and the gate is MET** (decisions #16, #17); one question stands — `zip.rs`'s CRC-32 — and it is not a gate condition |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0 through S14 done, at 0.33.0**: the mutation lane at 0.32.0, guards at 0.32.1, the roadmap reorder at 0.32.2, prose at 0.32.3, the owner's two gate decisions at 0.32.4, the two unrun sweeps at 0.32.5 and the CRC-32 answer at 0.33.0. S10 is CSV as an argued refusal, not a reader. **v2's format row is closed and the gate is MET** (decisions #16, #17); the last question — `zip.rs`'s CRC-32 — was answered at **S14, as 0.33.0**, measured before it shipped |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has

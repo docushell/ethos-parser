@@ -7,7 +7,94 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0
+
+### v2-S14 — the CRC-32 question, answered, as 0.33.0
+
+**A minor bump, because a reader changed.** A package 0.32.5 read and this build refuses is a
+different answer to the same bytes. The no-behaviour-change proof the patch slices run does not
+apply — and the same extractor that showed an empty diff at 0.32.5 reports **48 changed lines**
+here, which is that proof demonstrating it can fail.
+
+**This was the last open question**, raised at v2-S13 and restated unchanged at S13.1 through S13.5.
+
+#### The measurement came first, and it decided the shape
+
+`zip.rs` verified a part's declared **length** and never its **CRC-32**, so a byte flipped inside a
+deflated part could leave a stream `miniz_oxide` still inflated to exactly the declared size — zlib
+refuses the same bytes — and the corruption reached the XML reader. It landed in a namespace URI the
+OOXML readers match by suffix, so the extracted text came out **byte-identical to the original's**,
+with `source.sha256` the only field distinguishing the artifacts.
+
+The correctness case was never in doubt. **The compatibility risk was the whole question**, because
+archives written by careless tools do carry wrong CRCs and refusing one is a regression dressed as a
+hardening. So the check was written to **report rather than refuse** and run first:
+
+- `fixtures/office/` — 14 ZIP containers, 87 entries, **0 mismatches**
+- 26 real-world office documents gathered off this machine — 2,283 entries, **0 mismatches**
+- **40 valid packages, 2,370 entries, zero false refusals**
+
+Zero was the condition the owner set, so the refusal shipped.
+
+**The corpus's narrowness is stated rather than buried**: reading each central directory's `made-by`
+field, **24 of the 26 come from one producer family** (Microsoft Office), which is the population
+*least* likely to contain a careless writer. No ODT/ODS/ODP/EPUB was found outside the repository at
+all, so those container families rest on four in-tree fixtures each.
+
+**Measured with the engine's own inflate, which is not a detail** — a zlib-based mirror gives the
+same zero, but the finding is that `miniz_oxide` accepts streams zlib refuses, so zlib could not see
+the cases at issue. The instrument was negative-controlled by flipping one bit of a stored CRC and
+confirming it reported that entry while the intact copy stayed clean.
+
+#### Changed
+
+- **`zip::read_entry` verifies the CRC-32** the central directory records, using `flate2::Crc` —
+  already in the graph, so **no new dependency and no `zip` crate in either lock**.
+- **The error is named**: `Malformed { what: "ooxml part checksum" }`, distinct from the
+  `"ooxml package"` a truncation or length disagreement answers to, so a caller writing policy can
+  tell the causes apart. It reuses the six-variant taxonomy; no seventh variant was added.
+- **Two tests pin it**, both confirmed able to fail by collapsing the `what` to the generic name:
+  one damages the *declared* CRC across all fourteen ZIP fixtures with a floor on how many were
+  reached, and one asserts a length failure and a checksum failure do not share a name.
+
+#### Fixed — a regression this slice introduced and its own suite caught
+
+The first version verified in **both** kinds of caller: the readers, which produce evidence, and
+`odt::declared_media_type`, which answers *what kind of document is this*. That made a real `.ods`
+with one bit flipped in its `mimetype` entry's declared CRC come back as *"missing required part:
+`word/document.xml` … neither a workbook … nor an OpenDocument spreadsheet"* — fail-closed naming
+the **wrong cause** about a document that plainly is a spreadsheet, which is the defect v2-S6, S8
+and S10 each fixed once already.
+
+The paths are split: `read_entry_for_detection` skips the checksum and has **one** caller, reading
+`mimetype`. Nothing the checksum protected is skipped — the container requires that entry to be
+**stored**, `first_entry` has already confirmed it is, and for stored bytes the content is the
+check. The CRC earns its place on a deflated part, which is the case the finding was about. A
+corrupt package still refuses, on the part that carries the evidence, under the true cause.
+
+#### Changed — the mutation harness
+
+**Survivors fall 36 → 31.** The `main-part-byte-flipped` class — the one the harness was built to
+produce — is **empty**, and class 4 lost the single member whose damaged part was actually read.
+
+**Five moved, where the finding as first stated named four.** The fifth was already described in the
+harness's own class-4 paragraph as *"class 5 arriving early"* and simply not counted there. The
+emptied class stays pinned rather than deleted, so a mutant reappearing in it reads as a regression
+in the CRC check rather than as a new discovery.
+
+#### Changed — version
+
+- Workspace **0.32.5 → 0.33.0**, a **minor** because a reader changed; both SDKs pinned to match.
+  Still **nine** profiles, still mutually distinct. The default PDF profile hash moves to
+  `sha256:a998da77efda64112fc8cee76f5360c77c0f4a74f4726a6d2d15541934318d95`
+  (was `sha256:ee49c816edb6d2b777cb734ba8213af8df77d53791b40d40dafdb1481b0351bd`)
+- Both projection schemas regenerated and all three identity fields verified against freshly
+  generated artifacts.
+
+**v2's gate is met and no question stands.** `docs/06-STEAL-REFUSE.md`'s **P9** is restated
+unchanged: whether a v0-target obligation consciously not met leaves v0's gate met is the owner's
+call, not a slice's.
+
 
 ### v2-S13.5 — the two sweeps that never ran, as 0.32.5
 

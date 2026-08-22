@@ -1825,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.5","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.33.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2186,11 +2186,20 @@ mod tests {
              `07-VERIFY-BOUNDARY.md` claimed to hold this repository's forced decisions \
              *verbatim, identically* while holding FOURTEEN of SEVENTEEN — missing exactly the \
              three the owner amended on 2026-08-21, which v2-S13.4 wrote into the other copy so \
-             that no later slice would re-escalate them from a stale sentence."
+             that no later slice would re-escalate them from a stale sentence.\n\n\
+             Moved a FORTY-FIFTH time at v2-S14 (0.33.0), and this one is NOT `parser_version` \
+             alone in spirit even though it is in fields: a READER CHANGED. `zip.rs` now verifies \
+             the CRC-32 the central directory carries for each part and refuses a mismatch, where \
+             every build before this one checked the declared LENGTH and nothing else. A MINOR \
+             bump rather than a patch, because a package that 0.32.5 read and this build refuses \
+             is a different answer to the same bytes — which is exactly what a version has to be \
+             able to say. It shipped on a measurement: ZERO false refusals across 40 valid \
+             packages and 2,370 entries. The office mutation harness recorded the change as \
+             survivors falling 36 to 31, emptying the `main-part-byte-flipped` class outright."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ee49c816edb6d2b777cb734ba8213af8df77d53791b40d40dafdb1481b0351bd"
+            "sha256:a998da77efda64112fc8cee76f5360c77c0f4a74f4726a6d2d15541934318d95"
         );
     }
 

@@ -3,11 +3,11 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S13.5 are done: this
+**v2 reads eight formats, and v2's format row is closed.** S0 through S14 are done: this
 document, the grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
 ODS, ODP, RTF and EPUB, **S10 (CSV) as an argued refusal rather than a reader**, embedded assets
 counted at S11, both A11 lanes closed at S12 and S13, the guard and prose repairs at S13.1 and
-S13.3, the owner's two gate decisions at S13.4, and the two unrun sweeps at S13.5. (This said
+S13.3, the owner's two gate decisions at S13.4, the two unrun sweeps at S13.5, and the CRC-32 answer at S14. (This said
 *"S0–S10"* until v2-S13.3, three slices after S11 shipped, and *"S0 through S13.3"* until v2-S13.5,
 one slice after S13.4 shipped. The same sentence has now drifted twice, and `CAPABILITY.md`'s row
 was right both times — a status line in a scope document and a status row in a capability document
@@ -17,9 +17,10 @@ repaired.) Eight formats read, one argued refusal, and every split was against a
 
 **Both of the reasons this section carried are settled by the owner (2026-08-21), and neither was
 a format.** `00-NORTH-STAR.md` decisions **#16** and **#17** record them, and v2-S13.4 in
-`15-V2-MILESTONES.md` argues them. **One question remains and it is not a gate condition** — whether
-`zip.rs` should verify the CRC-32 it currently ignores, raised at v2-S13 and answerable in this
-repository by a slice that owns it, with a measurement.
+`15-V2-MILESTONES.md` argues them. **The last question is answered.** Whether `zip.rs` should verify
+the CRC-32 it ignored was raised at v2-S13 and settled at **v2-S14 (0.33.0)** by the slice that
+owned it: measured first at **zero** false refusals over 40 valid packages and 2,370 entries, then
+shipped as a named refusal. **Nothing stands.**
 
 The two as they stood, kept because the reasoning is the record:
 

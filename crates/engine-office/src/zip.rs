@@ -28,10 +28,30 @@
 //! # Everything here fails closed
 //!
 //! A truncated archive, a bad signature, a Zip64 record, an entry compressed with anything but
-//! store or deflate, or a size that disagrees with what inflate produced: each is a named error,
-//! never a shorter string. `docs/01-CONTRACT.md` §8, and the reason is the one v0 gives for
-//! refusing an unknown content-stream operator — text that silently goes missing is undetectable
-//! downstream.
+//! store or deflate, a size that disagrees with what inflate produced, **or a part whose CRC-32
+//! disagrees with the one its own directory records**: each is a named error, never a shorter
+//! string. `docs/01-CONTRACT.md` §8, and the reason is the one v0 gives for refusing an unknown
+//! content-stream operator — text that silently goes missing is undetectable downstream.
+//!
+//! # Two integrity checks, and why the second one took a measurement
+//!
+//! The length check was the only one until **v2-S14 (0.33.0)**. v2-S13's mutation harness measured
+//! what it misses: on four of fourteen packages a byte flipped inside the main part's compressed
+//! data left a stream `miniz_oxide` still inflated to exactly the declared length, so the damage
+//! reached the XML reader and the extracted text came out byte-identical to the original's.
+//!
+//! Adding the CRC check was never in doubt as a correctness matter; the risk was compatibility,
+//! because archives written by careless tools really do carry wrong CRCs and refusing one would be
+//! a regression dressed as a hardening. So the false-refusal rate was measured first — **zero
+//! across 40 valid packages and 2,370 entries**, the sixteen in `fixtures/office/` plus 26
+//! real-world office documents — and the refusal shipped on that number.
+//!
+//! **One narrow exemption, and it is stated rather than implied.** [`read_entry_for_detection`]
+//! does not verify, and it has exactly one caller: `odt::declared_media_type`, reading `mimetype`
+//! to decide which reader a package belongs to. Refusing a *routing* question on an integrity
+//! failure makes the engine answer a different question wrongly — measured, it turned a corrupt
+//! `.ods` into *"not an OpenDocument spreadsheet"*. That function's own documentation carries the
+//! argument and the evidence. Every other call site verifies.
 
 use std::io::Read;
 
@@ -139,7 +159,56 @@ pub fn first_entry(archive: &[u8]) -> Result<Option<(String, bool)>, EngineError
 
 /// Read one entry by name, or a named error saying which of the ways it could fail happened.
 pub fn read_entry(archive: &[u8], want: &str) -> Result<Vec<u8>, EngineError> {
-    let mut found: Option<(u16, u32, u32)> = None;
+    read_entry_inner(archive, want, ChecksumCheck::Verify)
+}
+
+/// Whether [`read_entry_inner`] compares the CRC-32 the central directory records.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChecksumCheck {
+    /// The reading path: a part this engine will speak for must match its own checksum.
+    Verify,
+    /// The DETECTION path, and the distinction is not a loophole — see [`read_entry_for_detection`].
+    Skip,
+}
+
+/// Read an entry for a **routing** decision, without the checksum check.
+///
+/// # Why detection does not verify, when reading does
+///
+/// Detection asks *what kind of document is this*; reading asks *what does it say*. Refusing a
+/// routing question on an integrity failure does not make the engine safer — it makes it answer a
+/// different question wrongly. Measured, on a real `.ods` with one bit flipped in its `mimetype`
+/// entry's stored CRC: with detection verifying, `declared_media_type` returns `None`, the package
+/// falls past every office branch, and the CLI refuses it with
+///
+/// > missing required part: `word/document.xml` — this package is a ZIP but not a word-processing
+/// > document, and it is neither a workbook … nor an OpenDocument spreadsheet
+///
+/// which is **fail-closed naming the wrong cause** about a document that plainly *is* an
+/// OpenDocument spreadsheet. That is the defect v2-S6 fixed for an `.ods`, v2-S8 for an `.rtf` and
+/// for the ZIP shape, and v2-S10 for the last member of that shape; re-introducing it as the price
+/// of a checksum would trade a silent corruption for a loud lie.
+///
+/// **Nothing is skipped that the checksum was protecting.** The one caller is
+/// `odt::declared_media_type`, reading `mimetype` — which the OpenDocument container requires to be
+/// **stored**, uncompressed, and which [`first_entry`] has already confirmed is stored before this
+/// is reached. For stored bytes the content *is* the check: damage changes the media-type string
+/// itself, and a string that no longer matches a known type fails detection on its own terms. The
+/// CRC earns its place on a **deflated** part, where a damaged stream can still inflate to exactly
+/// the declared length — which is the case v2-S13 found and v2-S14 exists to close.
+///
+/// A corrupt package therefore still refuses; it refuses on the part that carries the evidence,
+/// under `Malformed { what: "ooxml part checksum" }`, which is the true cause.
+pub(crate) fn read_entry_for_detection(archive: &[u8], want: &str) -> Result<Vec<u8>, EngineError> {
+    read_entry_inner(archive, want, ChecksumCheck::Skip)
+}
+
+fn read_entry_inner(
+    archive: &[u8],
+    want: &str,
+    checksum: ChecksumCheck,
+) -> Result<Vec<u8>, EngineError> {
+    let mut found: Option<(u16, u32, u32, u32)> = None;
     walk_central_directory(archive, |name, header| {
         if name != want {
             return Ok(std::ops::ControlFlow::Continue(()));
@@ -148,7 +217,7 @@ pub fn read_entry(archive: &[u8], want: &str) -> Result<Vec<u8>, EngineError> {
         Ok(std::ops::ControlFlow::Break(()))
     })?;
 
-    let Some((method, compressed_size, uncompressed_size)) = found else {
+    let Some((method, declared_crc, compressed_size, uncompressed_size)) = found else {
         return Err(EngineError::MissingPart {
             part: format!("`{want}` is not an entry of this package"),
         });
@@ -197,8 +266,42 @@ pub fn read_entry(archive: &[u8], want: &str) -> Result<Vec<u8>, EngineError> {
             out.len()
         )));
     }
+
+    // **The CRC-32 check, v2-S14.** The length check above was the only integrity check this
+    // reader made until 0.33.0, and v2-S13's mutation harness measured what it misses: a byte
+    // flipped inside a deflated part can leave a stream `miniz_oxide` still inflates to EXACTLY
+    // the declared length, substituting a NUL where the invalid back-reference was. zlib refuses
+    // the same bytes outright — the permissiveness is the backend's, not the format's — and the
+    // damage landed in a namespace URI the OOXML readers match by suffix, so the extracted text
+    // came out byte-identical to the original's. The directory carried a CRC-32 for that entry
+    // the whole time and nothing read it.
+    //
+    // **Measured before it shipped**, because refusing a valid archive is a regression dressed as
+    // a hardening: 40 valid packages and 2,370 entries — the 16 in `fixtures/office/` plus 26
+    // real-world `.docx`/`.xlsx`/`.pptx` gathered off a developer machine — produced **zero**
+    // mismatches. Zero was the condition the owner set for shipping the refusal.
+    let mut crc = flate2::Crc::new();
+    crc.update(&out);
+    let computed = crc.sum();
+    if checksum == ChecksumCheck::Verify && computed != declared_crc {
+        return Err(EngineError::Malformed {
+            // A DISTINCT `what` from `malformed()`'s "ooxml package", because a checksum failure
+            // is a different cause from a truncation or a bad signature and a caller writing
+            // policy has to tell them apart without parsing prose.
+            what: "ooxml part checksum".into(),
+            detail: format!(
+                "`{want}` inflated to its declared {uncompressed_size} byte(s) but its CRC-32 is \
+                 {computed:#010x} where the central directory records {declared_crc:#010x}. The \
+                 part is corrupt in a way the length cannot see, which is exactly the case this \
+                 check exists for: a damaged deflate stream that still produces the right number \
+                 of bytes reaches the XML reader as though it were intact, and the text it yields \
+                 can be indistinguishable from the original's."
+            ),
+        });
+    }
     Ok(out)
 }
+
 
 fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineError> {
     if declared as u64 > MAX_INFLATED_BYTES {
@@ -240,7 +343,7 @@ fn found_local_offset(archive: &[u8], want: &str) -> Result<usize, EngineError> 
 
 fn walk_central_directory<F>(archive: &[u8], mut visit: F) -> Result<(), EngineError>
 where
-    F: FnMut(&str, (u16, u32, u32)) -> Result<std::ops::ControlFlow<()>, EngineError>,
+    F: FnMut(&str, (u16, u32, u32, u32)) -> Result<std::ops::ControlFlow<()>, EngineError>,
 {
     walk_central_directory_full(archive, |name, header, _| visit(name, header))
 }
@@ -248,7 +351,7 @@ where
 /// Walk the central directory, handing each entry's name, sizes and local-header offset to `visit`.
 fn walk_central_directory_full<F>(archive: &[u8], mut visit: F) -> Result<(), EngineError>
 where
-    F: FnMut(&str, (u16, u32, u32), usize) -> Result<std::ops::ControlFlow<()>, EngineError>,
+    F: FnMut(&str, (u16, u32, u32, u32), usize) -> Result<std::ops::ControlFlow<()>, EngineError>,
 {
     let eocd = find_eocd(archive)?;
     let entries = u16_at(&archive[eocd..], 10)? as usize;
@@ -274,6 +377,8 @@ where
             )));
         }
         let method = u16_at(header, 10)?;
+        // The CRC-32 the archive's own index records for this entry's UNCOMPRESSED bytes.
+        let crc = u32_at(header, 16)?;
         let compressed = u32_at(header, 20)?;
         let uncompressed = u32_at(header, 24)?;
         let name_len = u16_at(header, 28)? as usize;
@@ -304,7 +409,7 @@ where
 
         if visit(
             name,
-            (method, compressed, uncompressed),
+            (method, crc, compressed, uncompressed),
             local_offset as usize,
         )?
         .is_break()

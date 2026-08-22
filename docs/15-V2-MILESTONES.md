@@ -55,9 +55,9 @@ which is the whole of what S10 has to argue.
 **The v2 gate is DOCX + XLSX, and both bind — which is now what the gate says.** ODT, ODS, ODP,
 RTF and EPUB are coverage beyond it. The owner settled both of the questions this paragraph used to
 carry on 2026-08-21, as `00-NORTH-STAR.md` decisions **#16** (*ground* means **bind**) and **#17**
-(embedded assets **counted** satisfies v2); v2-S13.4 argues both. **One question remains, and it is
-not a gate condition**: whether `zip.rs` should verify the CRC-32 it ignores. No slice here closes
-v1.
+(embedded assets **counted** satisfies v2); v2-S13.4 argues both. **The last question is answered:**
+`zip.rs` verifies the CRC-32 it used to ignore, shipped at **v2-S14 (0.33.0)** on a measured
+false-refusal rate of **zero**. No slice here closes v1.
 
 **v2-S13.5 ran the two sweeps v2-S13.3 recorded as unrun**, closing this file's only unmet
 acceptance box. It found that `07-VERIFY-BOUNDARY.md` had been claiming to hold this repository's
@@ -3673,6 +3673,146 @@ and it is no less one when it is mine.
         equality check are both real unguarded seams.
 
 - **Depends on:** S13.4.
+
+---
+
+## S14 — the CRC-32 question, answered — **done**, as 0.33.0
+
+**A minor bump, because a reader changed.** A package that 0.32.5 read and this build refuses is a
+different answer to the same bytes, and that is exactly what a version has to be able to say. The
+no-behaviour-change proof the patch slices run does **not** apply here, and the same extractor that
+showed an empty diff at v2-S13.5 reports **48 changed lines** at this one — which is the proof
+demonstrating it can fail.
+
+**This was the last open question**, raised at v2-S13 by the office mutation harness and restated
+unchanged at S13.1 through S13.5.
+
+### The measurement came first, and it decided the shape
+
+The finding was never in doubt as a correctness matter. **The compatibility risk was the whole
+question**: archives written by careless tools really do carry wrong CRCs, and refusing one would be
+a regression dressed as a hardening. So the check was written to **report rather than refuse**, run
+across every package this tree can reach, and only then wired into the reading path.
+
+| Corpus | Packages | Entries checked | Mismatches |
+| --- | --- | --- | --- |
+| `fixtures/office/` | 14 ZIP containers (+2 RTF, which have none) | 87 | **0** |
+| Real-world, gathered off this machine | 26 | 2,283 | **0** |
+| **Total valid** | **40** | **2,370** | **0** |
+
+**Zero was the owner's stated condition for shipping the refusal**, so it shipped.
+
+**Where the 26 came from, because a rate without its corpus is a mood.** `~/Downloads` (8),
+`~/Desktop/Home/Interior` (6), `~/Desktop/Stuff/Node-Tests` (8), `~/Desktop/Stuff/Docs` (2), a
+DocuShell sample (1), `~/Desktop` (1) — 14 `.docx`, 11 `.pptx`, 1 `.xlsx`.
+
+**And the condition that limits the number, stated rather than buried.** Reading the `made-by`
+field of each central directory: **24 of the 26 come from one producer family** (MS-DOS/FAT,
+zip-spec 4.5 — Microsoft Office), one Unix at 6.3 and one at 2.3. A corpus dominated by Office
+output is the corpus *least* likely to contain a careless writer, which is precisely the population
+the risk is about. **No ODT/ODS/ODP/EPUB was found outside the repository at all**, so those two
+container families rest on four in-tree fixtures each. Zero is the honest measured number; its
+narrowness is the honest caveat.
+
+Nine Office `~$` lock files were found and excluded with a reason: they are OLE2 compound files with
+no end-of-central-directory record, already refused at the container stage, and never reach a CRC.
+The fuzz seed corpus was excluded too — it is a corpus of deliberately damaged inputs, so a mismatch
+there is the intended content rather than a false refusal.
+
+**The instrument was negative-controlled**, because a measurement that cannot detect a mismatch
+measures nothing: flipping one bit of a stored CRC in a fixture made it report that entry with its
+declared and computed values, while the intact copy stayed clean.
+
+**It was measured with the engine's own inflate, and that is not a detail.** A Python mirror using
+zlib gives the same zero — but the finding this exists for is that `miniz_oxide` accepts streams
+zlib refuses, so a zlib-based measurement could not see the very cases at issue.
+
+### What shipped
+
+`zip::read_entry` computes the CRC-32 of the inflated bytes with `flate2::Crc` — already in the
+graph, so **no new dependency and no `zip` crate in either lock** — and compares it against the one
+the central directory records.
+
+**The error is named.** `Malformed { what: "ooxml part checksum" }`, distinct from the
+`"ooxml package"` that a truncation, a bad signature or a length disagreement answers to. A caller
+writing policy has to tell a corrupt part from a mis-declared one without parsing prose. It reuses
+the six-variant taxonomy; no seventh variant was added.
+
+**Two tests pin that**, and both were confirmed able to fail by collapsing the `what` back to the
+generic name and watching them go red:
+
+- `a_part_whose_checksum_disagrees_with_its_bytes_is_refused_under_its_own_name` damages the
+  **declared CRC** rather than the data — so every other check still passes — across all fourteen
+  ZIP fixtures, with a floor asserting fourteen were reached.
+- `a_length_failure_and_a_checksum_failure_do_not_share_a_name` is the pair, and it is the point:
+  without it, `read_entry` could name every integrity failure the same thing and the first test
+  would still pass while telling a caller nothing.
+
+### Detection does not verify, and finding that out cost a regression
+
+**The first version of this slice broke routing, and the suite caught it.** `read_entry` is called
+from two kinds of place: the readers, which produce evidence, and `odt::declared_media_type`, which
+answers *what kind of document is this*. Verifying in both meant a real `.ods` with one bit flipped
+in its `mimetype` entry's **declared** CRC was refused as:
+
+> missing required part: `word/document.xml` — this package is a ZIP but not a word-processing
+> document, and it is neither a workbook … nor an OpenDocument spreadsheet
+
+**Fail-closed, naming the wrong cause**, about a document that plainly *is* an OpenDocument
+spreadsheet. That is the exact defect v2-S6 fixed for an `.ods`, v2-S8 for an `.rtf` and for the ZIP
+shape, and v2-S10 for the last member of that shape. Trading a silent corruption for a loud lie is
+not a hardening.
+
+So the two paths were split. `read_entry_for_detection` skips the checksum and has **one** caller,
+reading `mimetype`; every other one of the twenty-odd call sites is a reader and verifies.
+
+**Nothing is skipped that the checksum was protecting.** The OpenDocument container requires
+`mimetype` to be **stored**, and `first_entry` has already confirmed it is stored before this is
+reached. For stored bytes the content *is* the check — damage changes the media-type string, and a
+string matching no known type fails detection on its own terms. The CRC earns its place on a
+**deflated** part, where a damaged stream can still inflate to exactly the declared length, which is
+the case v2-S13 found. A corrupt package still refuses; it refuses on the part carrying the
+evidence, under the true cause.
+
+**This was measured, not reasoned**: the corrupt `.ods` was built, run through the CLI before and
+after the split, and the before-message quoted above is verbatim from that run.
+
+### Five survivors moved, where the finding as stated named four
+
+The office mutation harness recorded it: **36 → 31**.
+
+- **Class 5, `main-part-byte-flipped`, is now EMPTY.** All four — `deck-slides`, `unread-parts`,
+  `workbook-cells`, `workbook-unread-parts` — refuse. This is the class the harness was built to
+  produce.
+- **Class 4 lost one**: `presentation-pages/first-deflated-part-byte-flipped`, whose first deflated
+  entry is `META-INF/manifest.xml` — a part that **is** read.
+
+**The fifth was already in the prose and not in the count.** Class 4's own paragraph had described
+that entry as *"class 5 arriving early: its first deflated entry is `META-INF/manifest.xml`, which
+is read, and the corrupted stream still inflated to its declared length."* A handed list said four;
+the harness's own argument said five. This is the sixth consecutive slice in which a handed list
+disagreed with the code, and the code won.
+
+**The emptied class is pinned rather than deleted**, so a mutant reappearing in it reads as a
+regression in the CRC check rather than as a new discovery — the same reason `EXPECTED_INAPPLICABLE`
+pins what cannot be built.
+
+- **Acceptance — all met:**
+  - [x] The false-refusal rate **measured before any refusal shipped**, on a named corpus with its
+        provenance and its narrowness both stated — **0 across 40 packages and 2,370 entries**
+  - [x] A **named** error, `Malformed { what: "ooxml part checksum" }`, reusing the six-variant
+        taxonomy and distinct from a length failure — pinned by two tests, both negative-controlled
+  - [x] The mutation harness's pinned survivors and count updated **36 → 31**, the emptied class
+        explained, and class 4's paragraph corrected to six
+  - [x] `docs/06-STEAL-REFUSE.md`'s **A11** note and `docs/CAPABILITY.md` both repaired in this
+        commit; **P9 restated unchanged**, because it is the owner's call and not this slice's
+  - [x] `zip.rs` gains **no dependency**; `Cargo.lock` and `fuzz/Cargo.lock` gain no `zip` crate
+  - [x] Workspace **0.33.0** — a minor, and the reason is written down. Nine profile hashes move
+        and stay mutually distinct; both projection schemas regenerated and all three identity
+        fields verified against freshly generated artifacts
+  - [x] Full gate suite green. No git tag
+
+- **Depends on:** S13.5.
 
 ---
 

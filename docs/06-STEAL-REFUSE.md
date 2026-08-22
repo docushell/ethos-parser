@@ -180,6 +180,19 @@ and it is the second that produced v2-S13's CRC-32 finding. This sentence counte
 collapsing them until v2-S13.3. Every pair a kind cannot apply to is **pinned and
 counted**, so a mutation that quietly stops applying is a red test rather than lost coverage.
 
+**v2-S14 answered the finding, and the harness recorded the answer as five survivors leaving.**
+`zip.rs` verified a part's declared length and never its CRC-32, so a corrupted part that still
+inflated to the right size was read as though intact. It now compares the CRC the central directory
+carries and refuses a mismatch under its own name, `Malformed { what: "ooxml part checksum" }` —
+distinct from a length or signature failure so a caller can switch on the cause. The refusal
+shipped only after the **false-refusal rate was measured at zero** over 40 valid packages and 2,370
+entries, because refusing a valid archive would be a regression dressed as a hardening.
+
+**Survivors fell 36 → 31.** The `main-part-byte-flipped` class — the one this harness was built to
+produce — is now **empty**, and the single `first-deflated-part-byte-flipped` survivor whose damaged
+part was actually read left with it. **Five, where the finding as first stated named four**: the
+fifth was already described in the harness's own class-4 paragraph and simply not counted there.
+
 *"`cargo-fuzz` **per format**"* is discharged by one target rather than eight, and that is a
 measured choice rather than a shortcut: `read` is the single entry point every format shares, so a
 corpus holding one valid package of each shape drives all eight through it. Eight harnesses would

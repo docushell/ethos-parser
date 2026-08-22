@@ -391,7 +391,7 @@ pub fn declared_media_type(bytes: &[u8]) -> Option<String> {
     }
     match crate::zip::first_entry(bytes) {
         Ok(Some((name, stored))) if name == MIMETYPE_ENTRY && stored => {
-            let raw = crate::zip::read_entry(bytes, MIMETYPE_ENTRY).ok()?;
+            let raw = crate::zip::read_entry_for_detection(bytes, MIMETYPE_ENTRY).ok()?;
             // Trimmed, because the entry is a bare media type with no XML around it and a writer
             // that appended a newline still declared the same type. Nothing else is repaired.
             Some(std::str::from_utf8(&raw).ok()?.trim().to_string())

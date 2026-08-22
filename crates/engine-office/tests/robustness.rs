@@ -678,9 +678,15 @@ fn run_mutant(bytes: &[u8]) -> Result<Read, EngineError> {
 /// that stopped firing, and this suite makes that a red test rather than a quiet drift.
 ///
 /// **Every entry is explained, because an unexplained pinned survivor is a tolerated failure.**
-/// Thirty-six survivors fall into five classes, and not one of them is the PDF harness's — which
-/// is the strongest argument that a second harness was the right call rather than a second corpus
-/// root pointed at the first.
+/// **Thirty-one** survivors fall into five classes — one of which is now empty — and not one of
+/// them is the PDF harness's, which is the strongest argument that a second harness was the right
+/// call rather than a second corpus root pointed at the first.
+///
+/// **It was thirty-six until v2-S14.** The CRC-32 check moved five into refusals: all four of
+/// class 5, which is the class this harness was built to produce and is now empty, and the one
+/// member of class 4 that class 4's own paragraph had already identified as a class-5 case
+/// arriving early. **Five, where the finding as first stated named four** — the fifth was in the
+/// prose and not in the count.
 ///
 /// 1. **`junk-after-eof`, on all sixteen — one name, two mechanisms.** On the fourteen packages,
 ///    `zip::find_eocd` scans backward for the last `PK\x05\x06` in the tail window and every
@@ -709,43 +715,51 @@ fn run_mutant(bytes: &[u8]) -> Result<Read, EngineError> {
 ///    The nine that refuse land on an entry name (non-UTF-8, so `entry_names` refuses by name), a
 ///    local-header offset, a name length, or the uncompressed size of a part that *is* read.
 ///
-/// 4. **`first-deflated-part-byte-flipped` on seven, six of which are one fact.** For the six
-///    OOXML packages the first deflated entry is `[Content_Types].xml`, and **no reader in this
-///    crate reads it** — its only appearance in `crates/engine-office/src` is inside a `docx.rs`
-///    unit test's list of names. Damaging a part nobody opens is invisible, and correctly so.
-///    `presentation-pages` is the seventh and is class 5 arriving early: its first deflated entry
-///    is `META-INF/manifest.xml`, which *is* read, and the corrupted stream still inflated to its
-///    declared length.
+/// 4. **`first-deflated-part-byte-flipped` on six, and the six are one fact.** For all six OOXML
+///    packages the first deflated entry is `[Content_Types].xml`, and **no reader in this crate
+///    reads it** — its only appearance in `crates/engine-office/src` is inside a `docx.rs` unit
+///    test's list of names. Damaging a part nobody opens is invisible, and correctly so.
 ///
-/// 5. **`main-part-byte-flipped` on four, and this is the finding this harness exists to have
-///    produced.** Ten of the fourteen packages refuse, which is the expected outcome. On the other
-///    four — `deck-slides`, `unread-parts`, `workbook-cells`, `workbook-unread-parts` — the
-///    flipped byte leaves a deflate stream that `miniz_oxide` still inflates to **exactly** the
-///    declared length, substituting a NUL where an invalid back-reference was. (zlib refuses the
-///    same bytes outright; the permissiveness is the backend's, not the format's.) `zip.rs`
-///    compares that length and **never verifies the CRC-32** the directory carries, so the
-///    corruption reaches the XML reader. It lands in a namespace URI, which the OOXML readers
-///    match by suffix, so the extracted text comes out **byte-identical to the original's**.
+///    **This was seven until v2-S14.** `presentation-pages` was the seventh, and this paragraph
+///    already named it as *"class 5 arriving early: its first deflated entry is
+///    `META-INF/manifest.xml`, which is read, and the corrupted stream still inflated to its
+///    declared length."* The CRC-32 check refuses it for exactly the reason it emptied class 5, so
+///    it left with them. The class is now one fact rather than one fact and an exception.
 ///
-///    The artifact is distinguishable from one built from the undamaged package by exactly one
-///    field: `source.sha256`. That is the designed safety property working, with nothing behind
-///    it. Whether a hand-rolled ZIP reader in a fail-closed engine should verify CRC-32 is a real
-///    question and it is **not** answered here — `docs/15-V2-MILESTONES.md` S13 states it for the
-///    owner, with what a fix would cost.
+/// 5. **`main-part-byte-flipped` — the class this harness existed to produce, and it is now
+///    EMPTY.** All fourteen packages refuse.
+///
+///    It held four until v2-S14. On `deck-slides`, `unread-parts`, `workbook-cells` and
+///    `workbook-unread-parts` the flipped byte left a deflate stream that `miniz_oxide` still
+///    inflated to **exactly** the declared length, substituting a NUL where an invalid
+///    back-reference was — zlib refuses the same bytes, so the permissiveness was the backend's
+///    rather than the format's. `zip.rs` compared that length and **never verified the CRC-32**
+///    the directory carries, so the corruption reached the XML reader, landed in a namespace URI
+///    the OOXML readers match by suffix, and the extracted text came out **byte-identical to the
+///    original's**. The artifact differed from an undamaged one in exactly one field —
+///    `source.sha256` — which was the designed safety property working with nothing behind it.
+///
+///    **v2-S14 put something behind it.** `zip::read_entry` now compares the computed CRC-32
+///    against the directory's and refuses a mismatch as `Malformed { what: "ooxml part checksum" }`
+///    — a distinct `what` from a length or signature failure, so a caller writing policy can tell
+///    the causes apart. The refusal shipped only after the false-refusal rate was measured at
+///    **zero** across 40 valid packages and 2,370 entries.
+///
+///    **An emptied class is still pinned, deliberately.** It is named here rather than deleted so
+///    that a mutant reappearing in it is read as a regression in the CRC check rather than as a
+///    new discovery — the same reason `EXPECTED_INAPPLICABLE` pins what cannot be built.
 ///
 /// An entry appearing here that is not one of those five classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 36] = [
+const EXPECTED_SURVIVORS: [&str; 31] = [
     "book-spine/junk-after-eof",
     "book-unread-parts/junk-after-eof",
     "deck-slides/first-deflated-part-byte-flipped",
     "deck-slides/junk-after-eof",
-    "deck-slides/main-part-byte-flipped",
     "deck-unread-parts/first-deflated-part-byte-flipped",
     "deck-unread-parts/flip-tail-byte",
     "deck-unread-parts/junk-after-eof",
-    "presentation-pages/first-deflated-part-byte-flipped",
     "presentation-pages/junk-after-eof",
     "presentation-unread-parts/flip-tail-byte",
     "presentation-unread-parts/junk-after-eof",
@@ -764,15 +778,12 @@ const EXPECTED_SURVIVORS: [&str; 36] = [
     "text-unread-parts/junk-after-eof",
     "unread-parts/first-deflated-part-byte-flipped",
     "unread-parts/junk-after-eof",
-    "unread-parts/main-part-byte-flipped",
     "workbook-cells/first-deflated-part-byte-flipped",
     "workbook-cells/flip-tail-byte",
     "workbook-cells/junk-after-eof",
-    "workbook-cells/main-part-byte-flipped",
     "workbook-unread-parts/first-deflated-part-byte-flipped",
     "workbook-unread-parts/flip-tail-byte",
     "workbook-unread-parts/junk-after-eof",
-    "workbook-unread-parts/main-part-byte-flipped",
 ];
 
 /// Mutation/fixture pairs that cannot be built, and why.
@@ -1273,4 +1284,140 @@ fn adding_this_harness_did_not_touch_the_fixture_manifest_or_the_oracle_count() 
         "{office_paths} manifest entry/entries do not end in `.pdf`. Every entry in that file is \
          read by `crates/engine-pdf/tests/robustness.rs` through `Document::open_bytes`."
     );
+}
+
+// -------------------------------------------------------------------------------------------
+// v2-S14 — the CRC-32 check, and that its cause is tellable from the others
+// -------------------------------------------------------------------------------------------
+
+/// A part whose stored CRC-32 does not match its bytes is refused **under its own name**.
+///
+/// The mutation harness above proves the check fires — five mutants moved out of
+/// [`EXPECTED_SURVIVORS`] when it landed. It does **not** prove the refusal is
+/// *distinguishable*, and that is the half a caller writing policy depends on: "this archive is
+/// truncated" and "this part's checksum is wrong" are different facts about a document and a
+/// consumer must not have to parse prose to tell them apart.
+///
+/// So this damages the DECLARED CRC rather than the data — the bytes stay intact and every other
+/// check in `read_entry` still passes — and asserts the `what` that comes back.
+#[test]
+fn a_part_whose_checksum_disagrees_with_its_bytes_is_refused_under_its_own_name() {
+    let mut checked = 0usize;
+
+    for fixture in all_fixtures() {
+        if !fixture.is_zip() {
+            continue; // the two RTF streams have no container and no CRC to disagree with
+        }
+        let bytes = fixture.bytes.clone();
+        let names = engine_office::zip::entry_names(&bytes).expect("readable directory");
+        let first = names.first().expect("a package has entries").clone();
+
+        // Locate the first central-directory header and flip one bit of its CRC-32 field, at
+        // offset 16. Nothing else moves: the data, both sizes and every offset stay correct.
+        let eocd = bytes
+            .windows(4)
+            .rposition(|w| w == [b'P', b'K', 5, 6])
+            .expect("an EOCD");
+        let dir_off = u32::from_le_bytes([
+            bytes[eocd + 16],
+            bytes[eocd + 17],
+            bytes[eocd + 18],
+            bytes[eocd + 19],
+        ]) as usize;
+        assert_eq!(
+            &bytes[dir_off..dir_off + 4],
+            b"PK\x01\x02",
+            "{}: the EOCD does not point at a central header",
+            fixture.id
+        );
+
+        let mut damaged = bytes.clone();
+        damaged[dir_off + 16] ^= 0x01;
+
+        let err = engine_office::zip::read_entry(&damaged, &first)
+            .expect_err("a part whose declared CRC does not match its bytes must be refused");
+
+        match &err {
+            engine_core::EngineError::Malformed { what, detail } => {
+                assert_eq!(
+                    what, "ooxml part checksum",
+                    "{}: a checksum failure must name itself, not borrow the container's `what` \
+                     — a caller switching on the cause cannot tell a corrupt part from a \
+                     truncated archive if both say `ooxml package`",
+                    fixture.id
+                );
+                assert!(
+                    detail.contains("CRC-32"),
+                    "{}: the detail must say which check failed, got: {detail}",
+                    fixture.id
+                );
+            }
+            other => panic!("{}: expected Malformed, got {other:?}", fixture.id),
+        }
+
+        // The undamaged package still reads, so the assertion above is about the CRC and not
+        // about some unrelated breakage this edit introduced.
+        engine_office::zip::read_entry(&bytes, &first)
+            .expect("the undamaged package must still read");
+
+        checked += 1;
+    }
+
+    // A floor, because a loop that checked nothing would pass. Fourteen of the sixteen fixtures
+    // are ZIP containers; the two RTF streams are skipped above and have no CRC.
+    assert_eq!(
+        checked, 14,
+        "every ZIP-container fixture must have been checked; a shrinking corpus makes this \
+         vacuous rather than false"
+    );
+}
+
+/// A length failure and a checksum failure are **different** named causes.
+///
+/// The pair is the point. Without this, `read_entry` could name every integrity failure
+/// `ooxml part checksum` and the test above would still pass while telling a caller nothing.
+#[test]
+fn a_length_failure_and_a_checksum_failure_do_not_share_a_name() {
+    let bytes = all_fixtures()
+        .into_iter()
+        .find(|f| f.id == "simple-paragraphs")
+        .expect("the simple-paragraphs fixture")
+        .bytes;
+    let names = engine_office::zip::entry_names(&bytes).expect("readable directory");
+    let first = names.first().expect("entries").clone();
+
+    let eocd = bytes
+        .windows(4)
+        .rposition(|w| w == [b'P', b'K', 5, 6])
+        .expect("an EOCD");
+    let dir_off = u32::from_le_bytes([
+        bytes[eocd + 16],
+        bytes[eocd + 17],
+        bytes[eocd + 18],
+        bytes[eocd + 19],
+    ]) as usize;
+
+    // (a) CRC damaged, sizes intact.
+    let mut crc_bad = bytes.clone();
+    crc_bad[dir_off + 16] ^= 0x01;
+    let crc_what = match engine_office::zip::read_entry(&crc_bad, &first) {
+        Err(engine_core::EngineError::Malformed { what, .. }) => what,
+        other => panic!("expected a Malformed refusal, got {other:?}"),
+    };
+
+    // (b) Declared uncompressed size damaged, at offset 24 of the same header.
+    let mut len_bad = bytes.clone();
+    len_bad[dir_off + 24] ^= 0x01;
+    let len_what = match engine_office::zip::read_entry(&len_bad, &first) {
+        Err(engine_core::EngineError::Malformed { what, .. }) => what,
+        other => panic!("expected a Malformed refusal, got {other:?}"),
+    };
+
+    assert_ne!(
+        crc_what, len_what,
+        "a checksum failure and a length failure must not answer to one name: a caller writing \
+         policy on `what` would be unable to distinguish a corrupt part from a mis-declared one"
+    );
+    assert_eq!(crc_what, "ooxml part checksum");
+    assert_eq!(len_what, "ooxml package");
 }
