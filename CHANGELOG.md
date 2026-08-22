@@ -92,8 +92,32 @@ emitted string and agreeing with this slice's own arithmetic (19,553 preserved v
 blanking at `524ea69`, against the 19,249 published there). The defect is in the reimplementation
 written for v2-S14.1 and reused here. **The remedy is to fix the extractor, not to run two variants
 on every future slice.** v2-S14.1's conclusion survives: re-run over `2363225` → `7591f02` with
-string contents preserved, the diff is still empty at **19,585 → 19,585**. The claim was right and
-the instrument was weaker than the sentence asserting it; both halves are stated.
+string contents preserved, the diff is still empty. The claim was right and the instrument was
+weaker than the sentence asserting it; both halves are stated.
+
+**Corrected a second time, and the 304-line residue above does not survive either.** S13.5's author
+measured their own share of it at **six** lines — phantom strings opened by the byte literal
+`b'"'` in `c14n.rs`, where their published extractor is the correct one — so the residue was never
+between their extractor and the record, but between theirs and this slice's. Chased on this side by
+their diagnostic (*diff the two variants' output, not their counts*), **both variants used at
+v2-S14.1 and v2-S15 turn out defective in opposite directions**: the blanking one excludes test
+code correctly but cannot see a wire string, and the preserving one sees wire strings but
+re-counted braces on text still containing string literals, so a `{` inside a string broke the
+`mod tests` matching and **186 `assert` lines and 78 `#[test]` attributes leaked in**. `19,553` sat
+above the published figure because it was inflated by test code, not because it saw more of the
+tree.
+
+The repair is one extractor with two line-aligned renderings of a single pass — a *skeleton* with
+literals blanked for brace matching and `mod tests` detection, a *display* with literal contents
+preserved for the diff. Negative-controlled on four axes, including the one both earlier variants
+failed: a word injected into an emitted wire string is reported. Re-measured, **both conclusions
+hold**: v2-S14.1 **0 changed lines**, v2-S15 **4**, at 18,232 / 18,264 / 18,264 / 18,264 across
+0.32.5 → 0.34.0.
+
+**And the absolute count was never the measurement.** It is an artifact of one implementation's
+choices about blank lines, braces and module boundaries; quoting it as a property of the tree — as
+S13.5, S14, S14.1 and S15 all did — is what invited the chase. The invariant is the diff under one
+instrument, and it has been stable across every variant able to see the construct at issue.
 
 #### Changed — version
 

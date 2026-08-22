@@ -4215,8 +4215,56 @@ S13.1 (a floor counting runs where it needed fixtures), and here.
 > **v2-S14.1's conclusion survives the correction.** Its proof was run with the blanking variant,
 > so it could not have detected a string-literal change — a weaker instrument than its record
 > claimed. Re-run over the same two commits with string contents preserved, `2363225` → `7591f02`
-> gives **0 changed lines, 19,585 → 19,585**. The claim was right; the instrument was weaker than
-> the sentence asserting it, and both halves of that are stated.
+> gives **0 changed lines**. The claim was right; the instrument was weaker than the sentence
+> asserting it, and both halves of that are stated.
+
+> **Corrected a second time, and the 304-line residue above does not survive either.** v2-S13.5's
+> author chased their own share of it and measured **19,255** for a carried-string probe against
+> the **19,249** they published — a disagreement of **six**, all phantom strings opened by the byte
+> literal `b'"'` in `c14n.rs`, where the published extractor is the correct one. So the residue was
+> never between their extractor and the record; it was between theirs and **mine**. Chasing it on
+> this side, by their diagnostic — *diff the two variants' output, not their counts* — found
+> something worse:
+>
+> **Both variants used in v2-S14.1 and v2-S15 were defective, in opposite directions.**
+>
+> | Variant | Test exclusion | Wire strings |
+> | --- | --- | --- |
+> | Blanking (S14.1's `17,728`) | correct | **blind** — a literal's contents are replaced |
+> | Preserving (S15's `19,553`) | **broken** — leaked 186 `assert` lines and 78 `#[test]` attributes | visible |
+> | **Sound** (below) | correct | visible |
+>
+> The preserving variant re-counted braces on text that still contained string literals, so a `{`
+> or `}` **inside a string** broke the `mod tests` brace matching and test code leaked into the
+> count. That is why `19,553` sat *above* the published figure: it was inflated by test code, not
+> by a better view of the tree. Two defects, each hidden by the other's absence, and the second one
+> only surfaced because the first was corrected — which is the argument for chasing a residue
+> rather than rounding it off.
+>
+> **The repair is one extractor with two line-aligned renderings of the same pass**: a *skeleton*
+> with literals blanked, used for brace matching and `mod tests` detection, and a *display* with
+> literal contents preserved, used for the diff. Blanking strings makes the proof blind; preserving
+> them without a separate skeleton makes it leak. Neither rendering alone is sufficient, which is
+> the whole finding.
+>
+> **Negative-controlled on four axes**, including the one both earlier variants failed: an injected
+> `pub const` is **reported**; a `//` comment is **ignored**; a line inside `mod tests` is
+> **ignored**; and a word injected into an **emitted wire string** is **reported**. It also has no
+> per-line reset, so a multi-line string containing `//` survives intact rather than truncating.
+>
+> **Re-measured, and both conclusions hold.** `0.32.5` **18,232** · `0.33.0` **18,264** · `0.33.1`
+> **18,264** · `0.34.0` **18,264**. **v2-S14.1: 0 changed lines. v2-S15: 4 changed lines**, the two
+> wire strings and nothing else — the same answers, now from an instrument that could have given a
+> different one.
+>
+> **What the residue actually is, stated rather than closed.** Against S13.5's **19,249** the sound
+> extractor reads **18,232** — a difference of **1,017** between two independent reimplementations
+> of the same rule, not a doubt about either result. **And the lesson is that the absolute count
+> was never the measurement.** It is an artifact of one implementation's choices about blank lines,
+> braces and module boundaries, and quoting it as though it were a property of the tree — which
+> S13.5, S14, S14.1 and S15 all did — invited exactly this chase. The invariant is the **diff under
+> one instrument**, and that has been stable across every variant able to see the construct at
+> issue.
 
 Re-run with string **contents** preserved and everything else identical, the same extractor reports
 **4 changed lines** — the two wire strings, one line on each side of the diff, and nothing else:
