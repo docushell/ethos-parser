@@ -86,7 +86,7 @@ __all__ = [
 #: Tracks the workspace version, and `tests/test_cli_surface.py` asserts it against
 #: `Cargo.toml`. An SDK claiming a version the engine does not is the same class of lie
 #: `parser_version` exists to prevent.
-__version__ = "0.34.0"
+__version__ = "0.34.1"
 
 #: The ``artifact_type`` ``engine extract`` stamps on a representation.
 REPRESENTATION_ARTIFACT_TYPE = "ethos.engine.representation.v0"

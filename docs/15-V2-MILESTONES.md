@@ -3705,6 +3705,17 @@ no-behaviour-change proof the patch slices run does **not** apply here, and the 
 showed an empty diff at v2-S13.5 reports **48 changed lines** at this one — which is the proof
 demonstrating it can fail.
 
+> **Corrected after this slice shipped: the number is 44, and the conclusion is unchanged.**
+> Re-measured with the instrument v2-S16 committed — `ci/code-lines.py`, which reproduces
+> **19,249** at `524ea69` and **19,281** here — `524ea69` → `2363225` is **44** changed lines: 6
+> removed, 38 added, net **+32**, which is exactly the movement between those two counts. The diff
+> is coherent and is entirely this slice's own CRC-32 work, in eight hunks, with nothing spurious
+> in it. **Where the other four lines came from is not recoverable**, and the reason is the finding
+> rather than an aside: this section published a **count** and not a **diff**, so there is nothing
+> to compare against an extractor that no longer exists. The proof this paragraph makes — that the
+> instrument moves when the tree does — stands at 44 exactly as it stood at 48.
+
+
 **This was the last open question**, raised at v2-S13 by the office mutation harness and restated
 unchanged at S13.1 through S13.5.
 
@@ -4331,6 +4342,208 @@ reconciliation that lands past its target has not reconciled.
         quoted. Both SDK suites by hand: **72** Node, **91** Python. No git tag
 
 - **Depends on:** S14.1.
+
+---
+
+## S16 — the instrument four slices rebuilt wrong — **done**, as 0.34.1
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2, v2-S12.1, v2-S13.1, v2-S13.3, v2-S13.5 and
+v2-S14.1 set.** No behaviour changed, and this time in the strongest form the phrase has: **no
+production line was edited at all.** The only change to a Rust file anywhere is `profile.rs`'s
+pinned digest and its version ledger, and both sit inside `mod tests` — so the corpus this slice's
+own proof compares is byte-for-byte the corpus at `HEAD`.
+
+**Nothing here reopens v2.** `CAPABILITY.md`'s row still reads *"gate met; no question open"*, and
+it is unedited apart from the version its header names. This slice pays down debt the last four
+slices created.
+
+### Why an extractor is a deliverable
+
+Every patch slice since v2-S9.1 has an acceptance box reading *"no behaviour change, proven
+mechanically"*. The proof is one instrument: every non-comment line outside `mod tests { … }` from
+every `crates/*/src/**.rs`, taken at `HEAD` and in the working tree and diffed. **It had never been
+committed.** Each slice rebuilt it, and by S15 the record held four different absolute counts for
+one rule:
+
+| Slice | Published | What its extractor did |
+| --- | --- | --- |
+| v2-S13.1, v2-S13.5 | **19,249** | per-line comment strip, anchored `^mod tests \{`, char-literal aware — **correct** |
+| v2-S14 | 48 changed lines | same lineage — and **44** under the committed instrument, corrected in place in S14's section above |
+| v2-S14.1 | **17,728** | blanked string literals — **blind to any wire-string change** |
+| v2-S15 | **19,553** | preserved strings but matched braces on text containing them — leaked test code; its own correction records 186 `assert` lines and 78 `#[test]` attributes |
+| v2-S15's corrections | **19,249 / 19,281** | skeleton + display, anchored matcher — correct |
+
+**Three of four wrong, each in a way the others could not see.** That is the existence case, and it
+is not a hypothetical: v2-S14.1's acceptance box says *"proven mechanically"* over an instrument
+that could not have seen a changed wire string, and v2-S15's said the same over one that was
+counting test code.
+
+### The design, and why neither rendering alone is sufficient
+
+**One pass over each file, producing two strings of identical length.**
+
+- a **skeleton**, with the *contents* of every string, raw-string, byte-string and character
+  literal replaced by spaces. It is what finds `//`, what finds `mod tests {`, and what finds the
+  `}` that closes it.
+- a **display**, the source unchanged. It is what the corpus emits, so a change *inside* a literal
+  is visible.
+
+Blanking the literals makes the proof blind; preserving them without a separate skeleton makes it
+leak. **Both halves are load-bearing and the control proves each separately** — which is the one
+thing four hand-rolled versions never established about themselves.
+
+Two details are worth naming because they are where the earlier versions actually failed. Literal
+state is carried **across line boundaries**, so a multi-line string containing `//` is not
+truncated at it — there is no per-line reset. And a `'` opens a character literal only if it
+closes; otherwise it is a lifetime, which is what once opened six phantom string literals from the
+byte literal `b'"'` in `c14n.rs`.
+
+### The module rule is the repository's own, not a second opinion
+
+`ci/forbidden-tokens.sh` line 82 is `/^mod tests \{/` — anchored at column 0, no `pub(crate)`
+alternative — and its skip resumes at the matching `^}` rather than running to end of file. The
+script matches that rule exactly and its header says so, naming
+`crates/engine-core/src/markdown.rs` as the **one** file in the tree that writes
+`pub(crate) mod tests {` against fifty-two that write `mod tests {`. A second definition of "test
+module" in one repository is precisely the drift a shared rule exists to prevent, and the choice is
+worth 1,017 lines — all of them in that single file.
+
+The direction-of-safety argument points the same way and survives if the guard ever changes:
+including a test module errs toward **reporting**, and `forbidden-tokens.sh` makes that argument
+for its own exclusions in as many words — *"a false alarm is cheap next to a missed one."*
+
+### Where it lives, and what it deliberately is not
+
+**`ci/`, not `crates/`.** `ci/forbidden-tokens.sh` is the precedent: a scanner that reads
+`crates/*/src` and is run by hand or by a named job, not a crate. `fixtures/*/make_fixtures.py` is
+the precedent for Python in-tree, and Python is the right language for a literal-aware tokenizer —
+an `awk` state machine over raw strings, byte literals and lifetimes is exactly the kind of thing
+that has already been got wrong three times.
+
+**It is not a new CI job.** v2-S12's budget decision stands and this slice does not open it. Adding
+the script without wiring a job is the minimum that solves the problem: the next slice runs it by
+hand, as every slice already does, but runs *the same one*.
+
+### The control, and where it lives
+
+**Seven axes, each observed failing under a deliberate break before it was trusted.** The first
+four are the axes every earlier slice controlled and then threw away with the script; the last
+three exist because *"neither rendering alone is sufficient"* has to be a checked claim rather than
+a sentence.
+
+| Break | Axes that went red |
+| --- | --- |
+| Emit the skeleton rather than the display — **v2-S14.1's defect** | the wire-string axis; the multi-line `//` axis |
+| Match the module rule on the display rather than the skeleton — **v2-S15's defect** | the `mod tests`-in-a-string axis; the column-zero `}` axis; the test-exclusion axis; the multi-line `//` axis |
+| Reset the literal state at every line boundary — the per-line lineage | the same four |
+| Never skip `mod tests` | the test-exclusion axis; the column-zero `}` axis |
+| Drop the `//` strip | the comment axis |
+| Emit nothing — *a corpus that reads nothing passes* | the `pub const` axis; the wire-string axis; the `mod tests`-in-a-string axis; the multi-line `//` axis |
+
+**The control runs on every invocation, not behind a flag**, and that is the answer to *"where does
+a shell script's test live"*. The two options were a `#[test]` in `crates/engine-cli/tests/` that
+shells out, and a self-test mode run by hand. **Neither was taken as offered.** A `cargo test`
+home would make the control run at a *different time* from the instrument — it would tell you the
+extractor was sound at some point, not that it was sound when the proof was taken — and it would
+make `python3` a hard dependency of a Rust suite that has never needed one. A hand-run self-test
+mode runs only when someone remembers, which is the objection the standing rule *prefer a guard
+that runs to a guard that exists* is aimed at. Running the control **as part of every measurement**
+answers both: the guard runs, and it runs on the run whose soundness the proof depends on.
+
+**The cost is stated rather than hidden.** The gate suite does not report a break in this file.
+The next person to take a measurement does, before they get a number.
+
+### The precondition nobody had asserted — measured, and one of the two is false
+
+S15's record names two preconditions of *"proven mechanically"* and fixes neither, and both were
+measured here rather than assumed.
+
+| Precondition | Measured | Verdict |
+| --- | --- | --- |
+| No multi-line string literal outside a test module contains `//` | **0** | true today |
+| No string literal outside `mod tests` contains a brace | **527** | **false** — every `format!` placeholder is one |
+
+**The second does not survive, and 527 is not a near miss.** It was never true; what was true is
+the narrower property the *anchored* rule actually needs — that no line beginning at column zero
+with `}` or `mod tests {` lies inside a literal — and that measures **0** today.
+
+**Neither is asserted, and the reason is the same for both: this instrument does not depend on
+either.** The skeleton blanks braces inside literals and the pass carries literal state across
+lines, so both preconditions are **discharged by construction**. Asserting a property the proof
+does not rest on would forbid legal Rust and fail on innocent code, and asserting one that is
+already false 527 times over would be worse than saying nothing. Two of the seven control axes
+exist to prove the independence instead — *prefer a failing test that reproduces the gap to a fix
+that asserts it is gone*, applied to a precondition.
+
+**The one precondition the instrument does have, it checks.** A `/* */` block comment in code
+context is refused by name, exactly as `ci/forbidden-tokens.sh` refuses it and for the same reason:
+`//`-stripping is only safe while no block comment can hide a line inside one.
+
+### Found beyond the brief, reported and not repaired
+
+Running the lint half of the gate turned up two things that are **red at `HEAD`** and were red
+before this slice touched anything. Both are named here and left, because repairing either is an
+edit this slice's own scope forbids.
+
+| Where | What | Why it is left |
+| --- | --- | --- |
+| `crates/engine-office/src/zip.rs` (a doubled blank line before `fn inflate`, since v2-S14) and `crates/engine-pdf/src/extract.rs` (`fn a_table_beside_a_column(\n)`, since v2-S14.1) | `cargo fmt --all --check` fails on the pinned 1.88.0 toolchain | Both are `crates/*/src` edits, which is **out of PR 1** by its own acceptance |
+| `crates/engine-cli/tests/v0_exit_criteria.rs`, `crates/engine-office/tests/erasure_counters.rs:241`, `crates/engine-office/tests/robustness.rs` | three `clippy` warnings, which CI's `-D warnings` would fail | All three are in `crates/*/tests/`, and **a sweep of that directory is out of scope** for v2-S17 as well as this slice |
+
+**No claim is made about CI**, red or green: this repository has no remote and its workflow has
+never run. The measurement is local, on the toolchain `rust-toolchain.toml` pins, and it says only
+that two commands in `ci.yml` do not currently succeed on this tree.
+
+**"Full gate suite green" continues to mean the test suite**, which is what every slice since
+v2-S9.1 has meant by it and what this one measured: 49 suites, 1,226 passed, 0 failed. Saying which
+is the point.
+
+### Reproduction, which is the acceptance
+
+| Commit | Version | Corpus | Recorded |
+| --- | --- | --- | --- |
+| `524ea69` | 0.32.5 | **19,249** | 19,249 at v2-S13.1 and v2-S13.5 |
+| `2363225` | 0.33.0 | **19,281** | 19,281 |
+| `7591f02` | 0.33.1 | **19,281** | 19,281 |
+| `438223d` | 0.34.0 | **19,281** | 19,281 |
+
+And the diffs, which are what the numbers are for: **v2-S14.1 is 0 changed lines**, and **v2-S15 is
+4** — the two wire strings, one line on each side, matching the excerpt S15 recorded verbatim.
+`524ea69` → `2363225` is **44** rather than the 48 that section published, corrected in place
+there.
+
+**And it reproduces the other lineage's figures too, which is what closes the 1,017.** Swapping
+only the module matcher for the loose `^(pub\(crate\) )?mod tests \{` and changing nothing else
+gives **18,232** at `524ea69` and **18,264** at `0.33.0`, `0.33.1` and `0.34.0` — the four figures
+S15's correction recorded for that variant. The gap is **1,017 at both commits**, and diffing the
+two outputs rather than their counts puts every one of those lines in
+`crates/engine-core/src/markdown.rs` and in no other file. One instrument, both matchers, and the
+disagreement is one file and one keyword exactly as S15 said.
+
+**The absolute count is still not the measurement.** It is an implementation artifact, and the
+script's own header says so. What this slice buys is not a better number; it is that there is now
+**one** instrument to disagree with rather than four to reconcile.
+
+- **Acceptance — all met:**
+  - [x] The extractor committed as `ci/code-lines.py`, with the skeleton/display split and a
+        header comment arguing why neither rendering alone is sufficient
+  - [x] `mod tests` detection matches `ci/forbidden-tokens.sh`'s anchored rule, and says so in the
+        file, naming `markdown.rs` as the one file that differs and the 1,017 lines at stake
+  - [x] Reproduces **19,249** at `524ea69` and **19,281** at `HEAD`, on the first measurement, and
+        every intermediate figure and both recorded diffs besides
+  - [x] Negative-controlled on **seven** axes — the four required and three more that make the
+        design's own claim checkable — **each observed to fail** under a deliberate break and then
+        restored. The control lives in the tree and runs on every invocation
+  - [x] Both named preconditions measured: **0** and **527**. Neither asserted, with the reason
+        argued rather than assumed; the one the instrument does have is checked and refused
+  - [x] **No behaviour change** — **19,281 lines at `HEAD`, diff empty**, proven with the
+        committed instrument. The one `crates/*/src` edit is inside `mod tests`
+  - [x] Workspace **0.34.1**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both projection schemas regenerated and verified **equal to freshly generated
+        artifacts**, all three identity fields
+  - [x] Full gate suite green. Both SDK suites by hand. No git tag
+
+- **Depends on:** S15.
 
 ---
 

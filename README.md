@@ -26,7 +26,7 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.34.0**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.34.1**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
 and **v2's format row closed and its gate met**. This said *"and v2 **not complete**"* from
 **v2-S6** until v2-S14.1, and stopped being true at **v2-S13.4 (0.32.4)**, when the owner settled

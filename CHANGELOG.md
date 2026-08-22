@@ -7,7 +7,93 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1
+
+### v2-S16 — the instrument four slices rebuilt wrong, as 0.34.1
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2, v2-S12.1, v2-S13.1, v2-S13.3, v2-S13.5 and
+v2-S14.1 set.** No behaviour changed. The only edit under `crates/*/src` is `profile.rs`'s pinned
+digest and its version ledger, and both sit inside `mod tests`.
+
+Every patch slice since v2-S9.1 carries an acceptance box reading *"no behaviour change, proven
+mechanically"*. The proof is one extractor — every non-comment line outside `mod tests { … }` from
+every `crates/*/src/**.rs`, at `HEAD` and in the working tree, diffed. **That extractor had never
+been committed.** Four slices rebuilt it by hand and **three of the four were wrong**, each in a
+way the others could not see, and the record was left carrying four different absolute counts for
+one rule. An instrument nobody can reproduce is an instrument nobody has checked.
+
+#### Added — `ci/code-lines.py`, the instrument itself
+
+`ci/` rather than `crates/`, because `ci/forbidden-tokens.sh` is the precedent: a scanner that
+reads `crates/*/src` and is run by hand or by a named job, not a crate. **No CI job is added** —
+v2-S12's budget decision stands, and the next slice runs the script by hand exactly as every slice
+already ran its own. The difference is that it now runs *the same one*.
+
+**One pass, two line-aligned renderings, and neither alone is sufficient.** A **skeleton** blanks
+the contents of every string, raw-string, byte-string and character literal and is used to find
+`//`, `mod tests {` and the `}` that closes it; a **display** keeps the source unchanged and is
+what the corpus emits. v2-S14.1's extractor emitted the skeleton and was **blind to every wire
+string** — it reported an empty diff for a slice that changed two emitted messages. v2-S15's
+emitted the display but matched braces on it too, so a `{` inside a string broke the `mod tests`
+boundary and test code leaked into the corpus — S15's correction records 186 `assert` lines and 78
+`#[test]` attributes reaching it, a figure taken on its word here because reproducing it would mean
+building a fifth extractor. Each defect was invisible until the other was corrected.
+
+**The test-module rule is the repository's own.** `ci/forbidden-tokens.sh` line 82 is
+`/^mod tests \{/` — anchored at column 0, with no `pub(crate)` alternative — and its skip resumes
+at the matching `^}` rather than running to end of file. This script matches that rule exactly and
+says so in its header, because a second definition of "test module" in one repository is the drift
+a shared rule exists to prevent. `crates/engine-core/src/markdown.rs` is the **one** file writing
+`pub(crate) mod tests {`; fifty-two write `mod tests {`, and the difference between an anchored
+matcher and a loose one is 1,017 lines, all in that single file.
+
+**It reproduces every figure the record published.** 19,249 at `524ea69`, 19,281 at `2363225`,
+`7591f02` and `438223d`, an empty diff across v2-S14.1, and across v2-S15 exactly four changed
+lines — the two wire strings, verbatim.
+
+#### Added — a negative control that lives in the tree, and runs whenever the instrument does
+
+Every earlier slice negative-controlled its extractor in a transcript and threw the control away
+with the script. This one ships in the same file, in the same language, and runs on **every**
+invocation rather than under a flag, because the run whose soundness matters is the run being used.
+**Seven axes**, each observed failing under a deliberate break before it was trusted: a `pub const`
+outside `mod tests` is reported; a `//` comment is ignored; a line inside `mod tests` is ignored;
+a word injected into an **emitted wire string** is reported; `mod tests {` inside a string literal
+does not start the skip; a column-zero `}` inside a string literal does not end it; and a `//`
+inside a multi-line string does not truncate the line.
+
+The cost is stated rather than hidden: the control has no `cargo test` home, so a break in the
+script is not reported by the gate suite. It is reported the next time anyone runs the instrument.
+
+#### Measured — the two preconditions the record named, and one of them is false
+
+*"Proven mechanically"* carries preconditions that nothing asserted. Both were measured rather than
+assumed. **No multi-line string literal outside a test module contains `//`: zero.** **A string
+literal outside `mod tests` containing a brace: 527** — every `format!` placeholder is one, so the
+claim that this holds today does not survive contact with the tree. Neither is asserted, and the
+reason is the same for both: this instrument does not depend on either. The skeleton blanks braces
+inside literals and the pass carries literal state across line boundaries, so both preconditions
+are **discharged by construction**, and two of the seven control axes exist to prove it rather than
+to assert it. The one precondition the instrument genuinely has — no `/* */` block comment in
+`crates/*/src` — it checks and refuses, the same construct `ci/forbidden-tokens.sh` refuses for the
+same reason.
+
+#### Reported and not repaired — two lint gates red before this slice
+
+`cargo fmt --all --check` fails on the pinned toolchain at two sites in `crates/*/src` — a doubled
+blank line in `zip.rs` since v2-S14, and `fn a_table_beside_a_column(\n)` in `extract.rs` since
+v2-S14.1 — and `clippy` emits three warnings, all in `crates/*/tests/`, which CI's `-D warnings`
+would fail. Both were red at `HEAD` before anything here changed, and repairing either is an edit
+this slice's scope forbids. **No claim is made about CI**: this repository has no remote and its
+workflow has never run.
+
+#### Corrected — v2-S14's `48 changed lines` is 44
+
+Re-measured with the committed instrument, `524ea69` → `2363225` is **44** changed lines: 6 removed
+and 38 added, net +32, which is exactly 19,249 → 19,281. The diff itself is coherent and is
+v2-S14's own CRC-32 work in eight hunks and nothing else. The 4-line disagreement cannot be
+resolved from the record, because S14 published a count and not a diff — which is the whole reason
+this repository's standing rule is now to quote the diff.
 
 ### v2-S15 — the `neither detector` cluster, as 0.34.0
 
