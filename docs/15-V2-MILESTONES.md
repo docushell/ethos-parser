@@ -4257,14 +4257,34 @@ S13.1 (a floor counting runs where it needed fixtures), and here.
 > wire strings and nothing else — the same answers, now from an instrument that could have given a
 > different one.
 >
-> **What the residue actually is, stated rather than closed.** Against S13.5's **19,249** the sound
-> extractor reads **18,232** — a difference of **1,017** between two independent reimplementations
-> of the same rule, not a doubt about either result. **And the lesson is that the absolute count
-> was never the measurement.** It is an artifact of one implementation's choices about blank lines,
-> braces and module boundaries, and quoting it as though it were a property of the tree — which
-> S13.5, S14, S14.1 and S15 all did — invited exactly this chase. The invariant is the **diff under
-> one instrument**, and that has been stable across every variant able to see the construct at
-> issue.
+> **And the 1,017 is closed too: one file, one keyword.** It is not two reimplementations drifting.
+> `crates/engine-core/src/markdown.rs` declares `pub(crate) mod tests {` and is the **only** file
+> that does — 52 say `mod tests {`, one does not. A loose matcher excludes that module and an
+> anchored one does not, and the difference is **1,017 lines, all in that single file and nothing
+> else**.
+>
+> **Which matcher is right is decidable, and not from the count.** `ci/forbidden-tokens.sh` line 82
+> is the repository's own scanner and it is anchored — `/^mod tests \{/`, with no `pub(crate)`
+> alternative — so this tree already treats `markdown.rs`'s test module as scannable rather than
+> excluded, and v2-S13.1 and v2-S13.5 both recorded **19,249** under that rule. Matched against the
+> guard, the sound extractor reproduces **19,249 exactly** at `524ea69`. The direction-of-safety
+> argument points the same way and is the one that survives if the guard ever changes: including a
+> test module errs toward **reporting**, and `forbidden-tokens.sh` makes that argument for its own
+> exclusions in as many words — *"a false alarm is cheap next to a missed one"*. The anchored
+> matcher is adopted here; the loose one cost visibility into 1,017 lines and erred the wrong way.
+>
+> **Restated under the guard's rule:** `0.32.5` **19,249** · `0.33.0` **19,281** · `0.33.1`
+> **19,281** · `0.34.0` **19,281**.
+>
+> **And here is the point of all of it, demonstrated rather than asserted.** Both conclusions are
+> **invariant under the choice**: v2-S14.1 is **0 changed lines** and v2-S15 is **4 — the same four
+> lines** — under the loose matcher and under the anchored one alike. A **1,017-line** disagreement
+> in the absolute count moves neither result. **The absolute count was never the measurement.** It
+> is an artifact of one implementation's choices about blank lines, braces and module boundaries,
+> and quoting it as though it were a property of the tree — which S13.5, S14, S14.1 and S15 all did
+> — is what invited every chase in this sequence: a 304 that was a leak, a 1,017 that was one
+> keyword, and six phantom lines from a byte literal. The invariant is the **diff under one
+> instrument held fixed across both sides**, and it has never moved.
 
 Re-run with string **contents** preserved and everything else identical, the same extractor reports
 **4 changed lines** — the two wire strings, one line on each side of the diff, and nothing else:

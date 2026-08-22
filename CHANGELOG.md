@@ -114,10 +114,22 @@ failed: a word injected into an emitted wire string is reported. Re-measured, **
 hold**: v2-S14.1 **0 changed lines**, v2-S15 **4**, at 18,232 / 18,264 / 18,264 / 18,264 across
 0.32.5 → 0.34.0.
 
-**And the absolute count was never the measurement.** It is an artifact of one implementation's
-choices about blank lines, braces and module boundaries; quoting it as a property of the tree — as
-S13.5, S14, S14.1 and S15 all did — is what invited the chase. The invariant is the diff under one
-instrument, and it has been stable across every variant able to see the construct at issue.
+**The 1,017 is closed too: one file, one keyword.** `crates/engine-core/src/markdown.rs` declares
+`pub(crate) mod tests {` and is the only file that does — 52 say `mod tests {`. A loose matcher
+excludes that module, an anchored one does not, and the difference is 1,017 lines all in that one
+file. Which is right is decidable and not from the count: `ci/forbidden-tokens.sh` line 82 is
+anchored, `/^mod tests \{/`, so this tree already treats that module as scannable, and matching the
+guard reproduces **19,249 exactly** at `524ea69`. Including a test module also errs toward
+**reporting**, which is the direction `forbidden-tokens.sh` argues for its own exclusions. The
+anchored matcher is adopted: **19,249 / 19,281 / 19,281 / 19,281** across 0.32.5 → 0.34.0.
+
+**And the absolute count was never the measurement — demonstrated, not asserted.** Both conclusions
+are invariant under the choice: v2-S14.1 is **0** changed lines and v2-S15 is **4, the same four**,
+under either matcher. A 1,017-line disagreement in the count moves neither result. Quoting that
+count as a property of the tree — as S13.5, S14, S14.1 and S15 all did — is what invited every
+chase here: a 304 that was a leak, a 1,017 that was one keyword, six phantom lines from a byte
+literal. The invariant is the diff under one instrument held fixed across both sides, and it has
+never moved.
 
 #### Changed — version
 
