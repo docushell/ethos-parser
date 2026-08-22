@@ -3571,6 +3571,22 @@ result rather than assumed: `docs/README.md` has it struck through, `draft-schem
 carries a heading saying both are gone, `classification.draft.json` says *"which no longer exists
 on the wire"*, and `05-MILESTONES.md`'s is M2's own record. Two code sites, zero doc sites.
 
+> **That last sentence was false, and v2-S14.1 found it.** `classification.draft.json` carried
+> **two** stale sites — `$comment`s ending *"— see not_detected."* and *"See not_detected."* — in
+> the very file this paragraph cites as evidence the documentation side was clean. Repaired at
+> **0.33.1**. It was two code sites and **two** doc sites.
+>
+> **How it was missed, because the method matters more than the miss.** The check was
+> `grep -n 'not_detected' <file> | cut -c1-160`. That listed all three lines and truncated each at
+> 160 characters — and both stale references sit at the **end** of long JSON lines. Line 91's head
+> was read, found correct, and generalised to the file: **a completeness claim made from a
+> truncated view.** It is the same shape as the single-line grep that could not see `extract.rs`'s
+> wrapped *"neither / detector"*, which this same slice did catch and wrote up two sections below.
+> One truncation was caught and the other was not, in one sweep.
+>
+> **The rule that follows**: never assert *zero* from output that was cut, wrapped or headed. If a
+> claim is about a whole file, the check has to read the whole line.
+
 ### Deferred whole, with the list named, because half a repair is worse
 
 **The `neither detector` cluster — fifteen sites.** With three detectors since v1-S8, *"neither"*
