@@ -31,6 +31,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use engine_core::diagnostics::Stage;
 use serde_json::Value;
 
 // -------------------------------------------------------------------------------------------
@@ -126,15 +127,64 @@ const DIAGNOSTICS_CLASS_KEYS: [&str; 16] = [
     "timestamp",
 ];
 
-/// The four subcommands, with an input each and the stage name the envelope must report.
+/// One covered `Stage`, with an input that reaches it and the stage name the envelope must report.
+///
+/// **A stage is not a subcommand**, and `Stage`'s own doc comment says so: nine subcommands map
+/// onto five stages, because `markdown`, `html` and `overlay` report under the phase whose work
+/// they project from, and `mcp` has no stage at all. Counting subcommands here was wrong twice
+/// over — wrong population, wrong number — and v2-S17 replaced the count with a derivation.
 struct Case {
     stage: &'static str,
     args: Vec<String>,
 }
 
-/// Build one case per subcommand, materializing the intermediate files `ground` and
+/// Every `Stage` this file's walk is expected to reach, **derived from the enum** rather than
+/// counted by hand.
+///
+/// The hardcoded `4` this replaced was a floor set one below its own population, and its message
+/// said so out loud — *"all four subcommands must be covered"* — while `Stage` had five variants
+/// and the CLI had nine subcommands. A guard that reads the wrong thing also passes.
+///
+/// **`Stage::Verify` is outside the walk, and that is not a gap presented as a success.** `engine
+/// verify` writes the verifier's bytes and composes nothing of its own, so there is no
+/// engine-owned artifact here to walk;
+/// `verify_relay.rs::a_grounded_claim_relays_the_verifier_bytes_verbatim` asserts that its stdout
+/// is **byte-identical** to `ethos verify`'s, which is strictly stronger than *"no
+/// diagnostics-class key appears in it"* — a byte-identical relay cannot have injected anything
+/// at all. Walking those keys here would be asserting a property of the pinned Ethos binary and
+/// reporting it as evidence about this engine.
+///
+/// **The match is exhaustive on purpose**, and it is the part a hardcoded number could never do:
+/// a sixth `Stage` stops this file compiling until somebody decides which side of the line it
+/// falls on. `EVERY_STAGE` is the one hand-written list, and the match is what forces a revisit
+/// of it.
+const EVERY_STAGE: [Stage; 5] = [
+    Stage::Classify,
+    Stage::Extract,
+    Stage::Ground,
+    Stage::GroundingCheck,
+    Stage::Verify,
+];
+
+fn walked_here(stage: Stage) -> bool {
+    match stage {
+        Stage::Classify | Stage::Extract | Stage::Ground | Stage::GroundingCheck => true,
+        Stage::Verify => false,
+    }
+}
+
+fn stages_this_file_walks() -> Vec<&'static str> {
+    EVERY_STAGE
+        .iter()
+        .copied()
+        .filter(|stage| walked_here(*stage))
+        .map(|stage| stage.as_str())
+        .collect()
+}
+
+/// Build one case per covered stage, materializing the intermediate files `ground` and
 /// `grounding-check` consume.
-fn all_four_stages(dir: &Path) -> Vec<Case> {
+fn covered_stages(dir: &Path) -> Vec<Case> {
     let pdf = engine_fx("measured-ink-box");
 
     let repr = engine(&["extract", pdf.to_str().unwrap()]);
@@ -193,7 +243,7 @@ fn as_args(c: &Case) -> Vec<&str> {
 #[test]
 fn a_default_run_writes_nothing_to_stderr() {
     let dir = scratch("default");
-    for case in all_four_stages(&dir) {
+    for case in covered_stages(&dir) {
         let out = engine(&as_args(&case));
         assert!(
             out.stderr.is_empty(),
@@ -213,7 +263,7 @@ fn a_default_run_writes_nothing_to_stderr() {
 #[test]
 fn the_flag_adds_one_stderr_line_and_changes_no_stdout_byte() {
     let dir = scratch("additive");
-    for case in all_four_stages(&dir) {
+    for case in covered_stages(&dir) {
         let plain = engine(&as_args(&case));
 
         let mut with = as_args(&case);
@@ -305,7 +355,7 @@ fn a_failing_run_still_reports_its_diagnostics() {
 #[test]
 fn two_runs_with_diagnostics_still_produce_identical_artifacts() {
     let dir = scratch("double");
-    for case in all_four_stages(&dir) {
+    for case in covered_stages(&dir) {
         let mut with = as_args(&case);
         with.push("--diagnostics");
 
@@ -368,9 +418,9 @@ fn diagnostics_do_not_reach_a_fingerprint() {
 #[test]
 fn no_diagnostics_field_name_appears_in_any_artifact() {
     let dir = scratch("keys");
-    let mut checked = 0usize;
+    let mut walked: Vec<&'static str> = Vec::new();
 
-    for case in all_four_stages(&dir) {
+    for case in covered_stages(&dir) {
         let out = engine(&as_args(&case));
         let artifact: Value = serde_json::from_slice(&out.stdout)
             .unwrap_or_else(|e| panic!("`{}` stdout is not JSON: {e}", case.stage));
@@ -388,10 +438,16 @@ fn no_diagnostics_field_name_appears_in_any_artifact() {
                 case.stage
             );
         }
-        checked += 1;
+        walked.push(case.stage);
     }
 
-    assert_eq!(checked, 4, "all four subcommands must be covered");
+    assert_eq!(
+        walked,
+        stages_this_file_walks(),
+        "the walk must reach every `Stage` this file covers, and only those. The expected list is \
+         derived from the `Stage` enum rather than counted, so a new variant fails to compile \
+         here rather than passing silently against a stale number."
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -370,10 +370,22 @@ fn an_ungrounded_claim_without_the_gate_still_writes_its_report() {
 // 4. The library reaches it, and the shim stays a shim
 // -------------------------------------------------------------------------------------------
 
-/// **Reachable through the library**, like the other four subcommands.
+/// **Reachable through the library**, as the thin-shell rule requires of every subcommand.
 ///
 /// `docs/PUBLIC-API.md`'s thin-shell mapping: what the binary does, an embedding caller can do
-/// without a process boundary of its own.
+/// without a process boundary of its own. That table carries **no row for `verify`** — it names
+/// `verify` among the subcommands whose mapping is stated nowhere — so this test is the
+/// library-only proof the missing row would cite.
+///
+/// **No ordinal, on v2-S15's rule.** This said *"like the other four subcommands"* until v2-S17,
+/// and it was wrong under either reading: there are **nine** subcommands, so not four others, and
+/// `verify` is not among the four the table does map, so it could not have been naming those
+/// either. Raising the count to eight would have been a new false statement rather than a repair:
+/// `mcp` is a server loop rather than a document pass, `engine-cli` publishes no library target,
+/// and `PUBLIC-API.md` records its mapping as stated nowhere too. Whether `mcp` is *reachable* in
+/// the sense this sentence claims is exactly the question that document defers, and a count
+/// asserted here would answer it by accident. A form with no count in it cannot be re-rotted by a
+/// tenth subcommand.
 #[test]
 fn the_relay_is_reachable_from_the_library() {
     use engine_core::verifier::{relay, RelayRequest, VerifierBinary};

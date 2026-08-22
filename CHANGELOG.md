@@ -7,7 +7,80 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2
+
+### v2-S17 — the two guards outside `src`, as 0.34.2
+
+**A patch release.** No behaviour changed, and no line of `crates/*/src` changed at all — the only
+Rust edits are in `crates/engine-cli/tests/`, plus `profile.rs`'s pinned digest and version ledger
+inside `mod tests`. Both sweeps at v2-S13.5 declared `crates/*/tests/` out of scope, found two real
+defects there in passing, and recorded them for a later slice. This is that slice, and it is those
+two sites and no others.
+
+#### Fixed — `diagnostics.rs`'s floor was set one below its own population
+
+`assert_eq!(checked, 4, "all four subcommands must be covered")` was wrong twice over. **`Stage`
+has five variants**, so a floor of four leaves `Stage::Verify` unwalked while the message says it
+must be covered; and the population is not subcommands at all — there are **nine** of those, and
+`Stage`'s own doc comment records that they map onto five stages because `markdown`, `html` and
+`overlay` report under the phase they project from and `mcp` has no stage. That is exactly the
+shape v2-S13.1 exists for: **a guard that reads the wrong thing also passes.**
+
+**The floor is now derived from `Stage` and asserts which stages were walked, not how many.** The
+expected list comes from the enum through an **exhaustive match**, so a sixth variant stops the
+file compiling until somebody decides which side of the line it falls on — which a hardcoded `4`
+could never do. Asserting the names rather than a count also means a break says *which* stage went
+missing instead of `3 != 4`.
+
+The harness and its doc comment moved with it: `all_four_stages` is `covered_stages`, and `Case`
+now says a stage is not a subcommand and why the counts differ. Repairing the assertion alone would
+have left the file's own comments asserting the number the assertion had just stopped claiming —
+the split v2-S15 argued against when it moved the `neither detector` cluster whole.
+
+**`Stage::Verify` stays outside the walk, and that is not a gap presented as a success.** Three
+options were weighed and two refused. **Covering it** was refused because there is nothing
+engine-owned to walk: `engine verify` writes the verifier's bytes verbatim and composes nothing, so
+the walk would be asserting a property of the pinned Ethos binary and reporting it as evidence
+about this engine — and
+`verify_relay.rs::a_grounded_claim_relays_the_verifier_bytes_verbatim` already asserts that stdout
+is **byte-identical** to `ethos verify`'s, which is strictly stronger: a byte-identical relay cannot
+have injected anything at all. **Covering it behind a skip** was refused twice over — `oracle.rs`
+says *"nothing here skips"* and `verify_relay.rs` opens with *"absence is loud"*, and a skipped test
+that reads as green is the defect standing rule 5 names. **Deriving the floor and narrowing the
+message** is what shipped. *Prefer a derived floor to a hardcoded one* wins over *a gap is never
+presented as a success* here because, once the property is asserted where it actually lives, there
+is no gap to present — only a boundary, now stated in the file rather than implied by a number.
+
+Because `Stage::Verify` is not covered, **no new process dependency was taken**: `diagnostics.rs`
+still spawns only `engine`, and `oracle.rs`'s resolver did not need to be reused.
+
+#### Fixed — `verify_relay.rs` said "the other four subcommands"
+
+There are **nine**, and the naive repair is a new false statement rather than a fix. `verify` is
+not one of the four subcommands `docs/PUBLIC-API.md`'s thin-shell mapping actually maps — that
+document names `verify` among the five whose mapping is *stated nowhere* — so "the other four"
+could not have been naming those either. Raising it to eight would assert library reachability for
+`mcp`, which is a server loop rather than a document pass, whose crate publishes no library target,
+and whose mapping `PUBLIC-API.md` defers in the same sentence.
+
+**The replacement carries no ordinal**, on the rule v2-S15 settled: the sentence now states the
+thin-shell requirement, names this test as the library-only proof the missing row would cite, and
+cannot be re-rotted by a tenth subcommand.
+
+#### Reported and not repaired — a third site, left where it was found
+
+`crates/engine-cli/Cargo.toml`'s package `description` reads *"ethos-engine command line: classify
+| extract | ground | grounding-check"* — v0's four, of nine. Found while re-resolving the first
+site. **A slice that widens its own scope is how the last four each ended up rebuilding an
+extractor**, so it is named here and left.
+
+#### Verified — each repaired guard watched failing
+
+Three breaks, each reverted: dropping the `ground` case from the harness made the assertion name
+the missing stage rather than report an arithmetic mismatch; claiming `Stage::Verify` is walked
+made it name `verify` as expected and unreached; and adding a sixth `Stage` variant to
+`engine-core` stopped `diagnostics.rs` compiling with `non-exhaustive patterns: Stage::Probe not
+covered`, which is the derived half of the floor doing the thing the hardcoded number could not.
 
 ### v2-S16 — the instrument four slices rebuilt wrong, as 0.34.1
 

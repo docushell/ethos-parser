@@ -207,10 +207,10 @@
     {
       "artifact_type": "ethos.markdown.v1",
       "schema_version": "1.1.0",
-      "parser_version": "0.34.1",
-      "profile_sha256": "sha256:211d4aa091a20a40a3e152381f7249cdda38f44aa04471a6777229dcb1c0738b",
+      "parser_version": "0.34.2",
+      "profile_sha256": "sha256:decea59086412ff6195347cad676ab8035b90c529d9ff7a4bc8c81e4822e7f61",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
-      "representation_sha256": "sha256:b97998f5ff5d66748a10515396283fdfe6391175f802e88750c28d21382f87e6",
+      "representation_sha256": "sha256:5e5ea6ba819a41ae09552c8b9fc398a76ca3b8c6391ae29fd600daa3a8709d72",
       "markdown_rule": "markdown-blocks-v2",
       "markdown": "Hello Ethos\n",
       "anchor_map": {

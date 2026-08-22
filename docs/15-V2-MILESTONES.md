@@ -4547,6 +4547,144 @@ script's own header says so. What this slice buys is not a better number; it is 
 
 ---
 
+## S17 — the two guards outside `src` — **done**, as 0.34.2
+
+**A patch release.** No behaviour changed, and **no line of `crates/*/src` changed at all**: the
+only Rust edits are in `crates/engine-cli/tests/`, plus `profile.rs`'s pinned digest and version
+ledger, both inside `mod tests`. Proven with **v2-S16's committed extractor** rather than a
+hand-rolled one — **19,281 lines at `HEAD`, diff empty** — which is the first time that sentence
+has been written about an instrument anybody else can run.
+
+**Nothing here reopens v2.** Both sites were named at v2-S13.5, restated at S14.1, and deferred
+twice because both sweeps declared `crates/*/tests/` out of scope.
+
+### The interesting one: a guard passing while covering four fifths of its subject
+
+`diagnostics.rs`'s `no_diagnostics_field_name_appears_in_any_artifact` ended with
+`assert_eq!(checked, 4, "all four subcommands must be covered")`. It was wrong on both halves.
+
+| The assertion said | The tree says |
+| --- | --- |
+| four | **`Stage` has five variants** — `Classify`, `Extract`, `Ground`, `GroundingCheck`, `Verify` |
+| subcommands | **a stage is not a subcommand.** There are **nine** subcommands, and `Stage`'s own doc comment records that they map onto five stages: `markdown`, `html` and `overlay` report under the phase they project from, and `mcp` has no stage at all |
+
+**A floor set one below its own population is the shape v2-S13.1 exists for** — *a guard that reads
+the wrong thing also passes* — and this one announced the gap in its own message while passing.
+
+### Three options, one taken, two refused by name
+
+**Taken — derive the floor from `Stage`, and assert which stages were walked rather than how
+many.** The expected list is built from the enum and filtered through an **exhaustive match**, so a
+sixth `Stage` variant stops the file compiling until somebody decides which side of the line it
+falls on. That is the part a hardcoded `4` could never do, and it is the whole content of *prefer a
+derived floor to a hardcoded one*. Asserting the stage **names** rather than a count is a second
+gain that came free: a break now says which stage went missing instead of `3 != 4`.
+
+**Refused — cover `Stage::Verify`.** Not on cost, which was the reason S13.5 deferred it, but on
+substance: **there is nothing engine-owned to walk.** `engine verify` writes the verifier's bytes
+verbatim and composes nothing of its own, so a key walk over that stdout asserts a property of the
+**pinned Ethos binary** and reports it as evidence about this engine. Worse, it would be a weaker
+assertion than the one already made:
+`verify_relay.rs::a_grounded_claim_relays_the_verifier_bytes_verbatim` asserts stdout is
+**byte-identical** to `ethos verify`'s, and a byte-identical relay cannot have injected anything at
+all. The property is covered; it is covered elsewhere; and it is covered more strongly.
+
+**Refused — cover it behind the oracle's skip.** Refused twice by this repository's own words.
+`oracle.rs`'s header: *"Nothing here skips. An absent oracle binary, a missing corpus, or a hash
+mismatch is a failure, never a quiet pass."* `verify_relay.rs`'s: *"Absence is loud."* And standing
+rule 5: *a gap is never presented as a success*. A skipped test that reads as green is the defect,
+not the remedy.
+
+**Which rule wins, and why.** *Prefer a derived floor to a hardcoded one* wins over *a gap is never
+presented as a success* — but only because the second rule is not actually engaged. It forbids
+**presenting a gap as a success**, and once the property is asserted where it genuinely lives there
+is no gap to present, only a boundary. The repair states that boundary in the file, with the test
+that carries the property named, rather than leaving it implied by a number. Had `Stage::Verify`
+been genuinely unasserted anywhere, this call would have gone the other way and taken the process
+dependency.
+
+**So no new dependency was taken.** `diagnostics.rs` still spawns only `engine`, and
+`oracle.rs`'s resolver did not need to be reused. It was read first, because the option that would
+have used it had to be refused on its merits rather than on the inconvenience of the thing it
+needed.
+
+### The cluster moved as one, on S15's precedent
+
+Repairing only the assertion would have left `all_four_stages` and `Case`'s doc comment asserting
+the number the assertion had just stopped claiming — a **new** inconsistency inside one file, which
+is exactly the reason v2-S15 moved the `neither detector` cluster whole rather than repairing its
+comments. `all_four_stages` is now `covered_stages`, and `Case`'s comment says a stage is not a
+subcommand and why the counts differ.
+
+### The prose one, where the handed repair was wrong
+
+`verify_relay.rs` said *"**Reachable through the library**, like the other four subcommands."* The
+brief carried the repair as *nine subcommands, so eight others*. **That repair is a new false
+statement**, and checking it rather than applying it is the finding.
+
+1. **`verify` is not among the four `docs/PUBLIC-API.md` maps.** That table has four rows —
+   `classify`, `extract`, `ground`, `grounding-check` — and the document says in as many words that
+   `verify`, `overlay`, `markdown`, `html` and `mcp` *"have their thin-shell mapping stated
+   nowhere"*. So the sentence could not have been naming those four either; it is wrong under the
+   charitable reading as well as the plain one.
+2. **Eight would assert something about `mcp` that this repository deliberately has not settled.**
+   `mcp` is a server loop rather than a document pass — `Stage`'s doc comment says so, and it is
+   the one subcommand with no stage — `engine-cli` publishes no library target, and
+   `PUBLIC-API.md` defers its mapping in the same sentence it defers `verify`'s. A count asserted
+   in a test comment would answer that by accident.
+
+**The replacement carries no ordinal**, on the rule v2-S15 settled: it states the thin-shell
+requirement, names this test as the library-only proof the missing row would cite, and cannot be
+re-rotted by a tenth subcommand.
+
+**The pattern the handoff names held again: a handed finding disagreed with the code, and the code
+won.** Stated without an ordinal, on the same rule as the wording v2-S15 chose — a running count is
+the one thing in this record that has never survived a slice.
+
+### One found beyond the two sites, reported and left
+
+`crates/engine-cli/Cargo.toml`'s package `description` reads *"ethos-engine command line: classify
+| extract | ground | grounding-check"* — v0's four, of nine. It was found while re-resolving the
+first site by symbol. **A slice that widens its own scope is how the last four each ended up
+rebuilding an extractor**, so it is named here and left for whoever owns the next sweep.
+
+The two lint gates v2-S16 reported red at `HEAD` are still red and still out of scope: two
+`cargo fmt` sites under `crates/*/src`, and three `clippy` warnings under `crates/*/tests/` — the
+directory this slice is explicitly forbidden to sweep.
+
+### Each repaired guard watched failing
+
+| Break | What the guard said |
+| --- | --- |
+| Drop the `ground` case from `covered_stages` | `["classify", "extract", "grounding-check"]` against the derived `["classify", "extract", "ground", "grounding-check"]` — it **names the missing stage**, where `assert_eq!(checked, 4)` could only have said `3 != 4` |
+| Flip `Stage::Verify` to walked in the match | `verify` appears in the expected list and not in the walked one, so claiming coverage this file does not have fails immediately |
+| Add a sixth `Stage` variant in `engine-core` | `error[E0004]: non-exhaustive patterns: Stage::Probe not covered`, at `diagnostics.rs` — the derived half refusing to compile, which is the thing a hardcoded number could not do |
+
+All three were reverted, and `engine-core/src/diagnostics.rs` is byte-identical to `HEAD`.
+
+- **Acceptance — all met:**
+  - [x] Both sites re-resolved **by symbol** — `the_relay_is_reachable_from_the_library` and
+        `no_diagnostics_field_name_appears_in_any_artifact` — and repaired
+  - [x] The `diagnostics.rs` floor **derived** from `Stage` through an exhaustive match, asserting
+        which stages were walked rather than how many; the other two options named with the reason
+        each was refused
+  - [x] `Stage::Verify` is **not** covered, so `oracle.rs`'s resolver was **not** needed and **no
+        new process dependency** was taken. The reason is substantive, not economic, and the test
+        that does carry the property is named in the file
+  - [x] Each repaired guard **observed to fail** under a deliberate break — three of them — and
+        restored
+  - [x] **No behaviour change**, proven with **v2-S16's committed extractor**: 19,281 lines at
+        `HEAD`, diff empty. No `crates/*/src` line changed at all
+  - [x] Workspace **0.34.2**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both projection schemas regenerated and verified **equal to freshly generated
+        artifacts**
+  - [x] One third site found and **left**, named above. Full gate suite green. Both SDK suites by
+        hand. No git tag
+
+- **Depends on:** S16.
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

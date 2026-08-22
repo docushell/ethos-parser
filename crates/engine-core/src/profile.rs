@@ -1825,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.34.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.34.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2224,11 +2224,23 @@ mod tests {
              every emitted wire string, one leaking test code through a brace inside a string \
              literal, and the record left carrying four different absolute counts for one rule. \
              No line of `crates/*/src` outside `mod tests` changed, proven with the committed \
-             instrument: an empty diff over 19,281 lines."
+             instrument: an empty diff over 19,281 lines.\n\n\
+             Moved a FORTY-NINTH time at v2-S17 (0.34.2), on `parser_version` alone. Two guards \
+             outside `crates/*/src`, both named at v2-S13.5 and deferred twice. \
+             `verify_relay.rs` said the relay is reachable through the library `like the other \
+             four subcommands` when there are NINE, and `diagnostics.rs` asserted a floor of FOUR \
+             against an enum with FIVE variants while its own message said all of them had to be \
+             covered — a guard set one below its population, which is the shape v2-S13.1 exists \
+             for. The floor is now DERIVED from `Stage` and asserts WHICH stages were walked \
+             rather than how many, so a sixth variant stops the file compiling. `Stage::Verify` \
+             stays outside the walk and the exclusion is argued rather than hidden: `engine \
+             verify` forwards the verifier bytes and composes nothing, and `verify_relay.rs` \
+             already asserts that stdout byte-identically, which is stronger than the key walk. \
+             No line of `crates/*/src` changed at all."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:211d4aa091a20a40a3e152381f7249cdda38f44aa04471a6777229dcb1c0738b"
+            "sha256:decea59086412ff6195347cad676ab8035b90c529d9ff7a4bc8c81e4822e7f61"
         );
     }
 
