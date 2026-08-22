@@ -1289,6 +1289,207 @@ mod tests {
     /// release, so neither a test nor a CI job could have caught it. Both now saturate, because a
     /// count that comes back small is an artifact reporting that it erased almost nothing while it
     /// erased four billion things.
+    /// The page `reorder_page`'s own doc comment argues about: a table beside a column of text,
+    /// with the table's runs **interleaved** in the content stream so the remap is not a no-op.
+    ///
+    /// Interleaved deliberately. A page whose table runs are already contiguous would let a
+    /// remap that did nothing still produce the right answer, and a guard that passes without the
+    /// code under it is the defect this repository keeps finding.
+    fn a_table_beside_a_column(
+    ) -> (Vec<TextRun>, Vec<crate::tables::DetectedTable>, Vec<usize>) {
+        use crate::tables::{QuantRect, RunOrigin};
+
+        // Origin, text, in content-stream order. Two runs share cell (0,0), because a cell with
+        // one run cannot tell a preserved concatenation from a lucky one.
+        //
+        // The grid is `grid_2x2()`'s: four 100pt cells spanning 0..20_000 centipoints on both
+        // axes. The loose runs sit at x = 40_000, which is a gutter's width clear of the table's
+        // right edge, so the rule really does cut this page into two columns.
+        const PAGE: [(i64, i64, &str); 7] = [
+            (40_000, 2_000, "R1"),   // loose, right column
+            (2_000, 2_000, "He"),    // cell (0,0), first half
+            (40_000, 12_000, "R2"),  // loose, right column
+            (12_000, 2_000, "b"),    // cell (0,1)
+            (5_000, 2_000, "llo"),   // cell (0,0), second half
+            (2_000, 12_000, "c"),    // cell (1,0)
+            (12_000, 12_000, "d"),   // cell (1,1)
+        ];
+
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().expect("hashes"));
+        let grid: Vec<QuantRect> = [(0, 0), (100, 0), (0, 100), (100, 100)]
+            .iter()
+            .map(|&(x, y)| {
+                let q = i64::from(QUANTUM_PER_POINT);
+                QuantRect {
+                    x0: x * q,
+                    y0: y * q,
+                    x1: (x + 100) * q,
+                    y1: (y + 100) * q,
+                }
+            })
+            .collect();
+
+        // The detector builds the cells, so `text` and `run_indices` are its output and not this
+        // test's opinion of what they should be. That is what the comment claims survives.
+        let origins: Vec<RunOrigin<'_>> = PAGE
+            .iter()
+            .map(|&(x, y, text)| RunOrigin { x, y, text })
+            .collect();
+        let tables = crate::tables::detect_ruled(1, &grid, &origins, &mut alloc)
+            .expect("a well-formed grid detects")
+            .0;
+        assert_eq!(tables.len(), 1, "the fixture must produce exactly one table");
+
+        let runs: Vec<TextRun> = PAGE
+            .iter()
+            .map(|&(x, y, text)| TextRun {
+                id: alloc.next(IdKind::Span).expect("ids"),
+                text: text.to_string(),
+                char_codes: text.chars().map(|c| c as u32).collect(),
+                scalar_code_mismatch: false,
+                synthesized: Vec::new(),
+                font_id: "F1".into(),
+                font_size: 1_200,
+                locator: PdfLocator {
+                    page: 1,
+                    origin_x: x,
+                    origin_y: y,
+                    advance: None,
+                },
+                geometry: engine_core::GeometryPresence::Absent(
+                    engine_core::GeometryAbsence::NotReportedByReader,
+                ),
+                mcid: None,
+                structural: None,
+                derivation: DerivationClass::Extracted,
+                findings: Vec::new(),
+            })
+            .collect();
+
+        let geometry: Vec<crate::reading_order::RunGeometry> = runs
+            .iter()
+            .map(|r| crate::reading_order::RunGeometry {
+                x: r.locator.origin_x,
+                y: r.locator.origin_y,
+                advance: r.locator.advance,
+            })
+            .collect();
+        let boxes: Vec<QuantRect> = tables.iter().map(|t| t.rect).collect();
+        let order = crate::reading_order::order(&geometry, &boxes);
+
+        (runs, tables, order)
+    }
+
+    /// **The property `reorder_page`'s comment argues and nothing asserted until v2-S14.1.**
+    ///
+    /// The comment claims a table's runs stay one atom across the reorder, so a cell's remapped
+    /// indices stay ascending and *still concatenate to the `text` the detector built*. It named
+    /// `cell_text_survives_the_reordering` as the proof from v1-S5 until v2-S13.5 found that no
+    /// such test had ever been written: `git log --all -S` on the identifier returned the single
+    /// commit that wrote the sentence.
+    ///
+    /// This asserts the claim itself rather than something adjacent to it. The tests that already
+    /// existed cover cell-text **composition** before any reorder
+    /// (`tables::tests::every_cell_text_is_a_concatenation_of_assigned_runs` and its siblings) and
+    /// run **order** after one (`one_added_line_does_not_reorder_the_page`,
+    /// `ordinals_and_ids_follow_the_reading_order_on_a_reordered_page`). Neither reads a cell's
+    /// text on a page that moved, which is the one failure here that no artifact would show — a
+    /// cell claiming text it does not contain.
+    #[test]
+    fn cell_text_survives_the_reordering() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+
+        // The floor, because a reorder that never happened proves nothing: `reorder_page` returns
+        // early on the identity permutation, and every assertion below would then pass against a
+        // page nothing touched.
+        assert_ne!(
+            order,
+            (0..runs.len()).collect::<Vec<_>>(),
+            "the fixture must actually reorder, or this guard reads nothing"
+        );
+
+        let before: Vec<(Vec<usize>, String)> = tables[0]
+            .cells
+            .iter()
+            .map(|c| (c.run_indices.clone(), c.text.clone()))
+            .collect();
+        assert!(
+            before.iter().any(|(idx, _)| idx.len() > 1),
+            "at least one cell must hold two runs, or concatenation is untested"
+        );
+        assert!(
+            before.iter().any(|(idx, _)| !idx.is_empty()),
+            "a table whose cells hold no runs would assert nothing about text"
+        );
+
+        reorder_page(&mut runs, &mut tables, &order);
+
+        for (cell, (was, text)) in tables[0].cells.iter().zip(&before) {
+            assert_eq!(&cell.text, text, "the reorder must not rewrite cell text");
+            assert!(
+                cell.run_indices.windows(2).all(|w| w[0] < w[1]),
+                "a cell's remapped indices must stay strictly ascending: {:?} was {was:?}",
+                cell.run_indices
+            );
+            let rebuilt: String = cell
+                .run_indices
+                .iter()
+                .map(|&i| runs[i].text.as_str())
+                .collect();
+            assert_eq!(
+                &rebuilt, text,
+                "cell text must still be the runs it addresses, after the page moved: \
+                 indices {:?} were {was:?}",
+                cell.run_indices
+            );
+        }
+    }
+
+    /// The atom argument the claim rests on, asserted separately from its consequence.
+    ///
+    /// A cell's text could survive by luck on a page whose table happened not to move. This says
+    /// the table's runs really are contiguous in the new order and really do keep their relative
+    /// sequence — the premise — so a future change that breaks the premise is reported here
+    /// rather than only wherever it first happens to alter a string.
+    #[test]
+    fn a_tables_runs_are_contiguous_after_the_reorder() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+        let claimed: Vec<usize> = {
+            let mut v: Vec<usize> = tables[0]
+                .cells
+                .iter()
+                .flat_map(|c| c.run_indices.iter().copied())
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert!(claimed.len() >= 2, "the premise needs more than one run");
+
+        reorder_page(&mut runs, &mut tables, &order);
+
+        let mut after: Vec<usize> = tables[0]
+            .cells
+            .iter()
+            .flat_map(|c| c.run_indices.iter().copied())
+            .collect();
+        after.sort_unstable();
+        assert_eq!(
+            after.len(),
+            claimed.len(),
+            "no run may be lost or duplicated by the remap"
+        );
+        let (lo, hi) = (after[0], after[after.len() - 1]);
+        assert_eq!(
+            hi - lo + 1,
+            after.len(),
+            "the table's runs must occupy one unbroken span of the new order: {after:?}"
+        );
+        assert!(
+            after.windows(2).all(|w| w[0] < w[1]),
+            "and each exactly once: {after:?}"
+        );
+    }
+
     #[test]
     fn a_document_level_erasure_count_saturates_rather_than_wrapping() {
         // `unclaimed_tree_items`: one per unanswered citation, folded across every page.

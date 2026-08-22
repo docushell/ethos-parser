@@ -26,9 +26,13 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.33.0**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.33.1**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
-and v2 **not complete**. `engine extract` takes a `.docx`, an
+and **v2's format row closed and its gate met**. This said *"and v2 **not complete**"* from
+**v2-S6** until v2-S14.1, and stopped being true at **v2-S13.4 (0.32.4)**, when the owner settled
+the two questions that stood between this repository and the gate as `00-NORTH-STAR.md` decisions
+**#16** and **#17**; `docs/CAPABILITY.md` has said so since. **v1 is still not complete** — that is
+the sentence below, and it is a different claim. `engine extract` takes a `.docx`, an
 `.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same
 record a PDF does — and **no page appears anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
 with the column kept as the letters the file wrote. An ODT is the sharpest case, because its

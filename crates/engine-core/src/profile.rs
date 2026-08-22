@@ -1825,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.33.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.33.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2195,11 +2195,19 @@ mod tests {
              is a different answer to the same bytes — which is exactly what a version has to be \
              able to say. It shipped on a measurement: ZERO false refusals across 40 valid \
              packages and 2,370 entries. The office mutation harness recorded the change as \
-             survivors falling 36 to 31, emptying the `main-part-byte-flipped` class outright."
+             survivors falling 36 to 31, emptying the `main-part-byte-flipped` class outright.\n\n\
+             Moved a FORTY-SIXTH time at v2-S14.1 (0.33.1), on `parser_version` alone. That slice \
+             wrote the two guards v2-S13.5 found named in doc comments and never written — \
+             `cell_text_survives_the_reordering` and the assertion that this enum's serde \
+             spelling and `engine_pdf::xref::XREF_REPAIR_V1` are the same string — and repaired \
+             the `four words` cluster at its four live sites, leaving the two that sit in frozen \
+             history named rather than rewritten. No \
+             behaviour changed: the extractor that proved it reports an empty diff over 17,728 \
+             non-comment lines outside `mod tests`."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a998da77efda64112fc8cee76f5360c77c0f4a74f4726a6d2d15541934318d95"
+            "sha256:a8636a4ee6e7d428904c5df88cddce68d83baba535313abc0ccd3a0e87ded401"
         );
     }
 

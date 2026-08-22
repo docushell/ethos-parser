@@ -7,7 +7,91 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1
+
+### v2-S14.1 — the guards that were never written, as 0.33.1
+
+**A patch, on the precedent v2-S9.1, v2-S10.2, v2-S12.1, v2-S13.1, v2-S13.3 and v2-S13.5 set.** No
+behaviour changed. Every `crates/*/src` edit outside `mod tests` is a comment, and the extractor
+that proved it reports an **empty diff over 17,728 non-comment lines**.
+
+**This closes two of v2-S13.5's three unmet boxes.** The third — the `neither detector` cluster —
+is deliberately not here: two of its fifteen sites are emitted wire strings, so it moves artifact
+bytes and a patch release must not.
+
+#### Added — the two guards S13.5 named and could not write
+
+A reader who meets a named test stops looking, which is what made this the most consequential of
+S13.5's findings. Both comments cited proofs that had never existed.
+
+- `extract::tests::cell_text_survives_the_reordering` — after the multi-column reorder, every
+  cell's remapped `run_indices` still concatenate to the `text` the detector built, and stay
+  strictly ascending. The fixture **interleaves** the table's runs with a second column's so the
+  remap is not the identity, gives one cell **two** runs so a preserved concatenation cannot be
+  confused with a lucky one, takes its cells from `detect_ruled` rather than from the test's
+  opinion, and asserts a **floor** that the permutation is not the identity — `reorder_page`
+  returns early on the identity, and every assertion after it would then be reading nothing.
+- `extract::tests::a_tables_runs_are_contiguous_after_the_reorder` — the premise the first rests
+  on, asserted separately, because cell text survives trivially on a page whose table did not move.
+- `xref::tests::the_repair_id_is_spelled_the_same_in_the_profile_and_in_this_module` —
+  `XrefRepair::Pad19To20V1`'s serde spelling **is** `engine_pdf::xref::XREF_REPAIR_V1`, asserted in
+  **both directions**, because one direction alone would pass if a second variant took the same
+  rename. It lives in `engine-pdf` because importing `engine-pdf` from `engine-core` would be a
+  dependency cycle, exactly as S13.5 argued.
+
+**Each was broken on purpose and watched go red**, then restored: giving `XREF_REPAIR_V1` the
+`pad19-to20-v1` spelling that `rename_all = "kebab-case"` would derive; dropping the cell-index
+remap; and using the permutation where its **inverse** belongs.
+
+#### Fixed — the `four words` cluster, four of six
+
+`06-STEAL-REFUSE.md`'s quoted phrase is *"It invents pagination."* — **three** words, and `git
+log -S` shows it never changed, so this was miscounted once and copied five times rather than
+rotted. Repaired in `Cargo.toml`, `representation.rs`, `odp.rs` and `14-V2-SCOPE.md`.
+
+**Two are left, and named.** The occurrence in this file sits inside the shipped `v2-S7` entry, and
+the one in `15-V2-MILESTONES.md` sits inside **S7's** section, which v2-S13.4's acceptance forbids
+rewriting. The honest caveat is that this cluster was wrong at birth rather than rotted, so the
+usual defence of a frozen section does not apply to it; the rule still governs, and naming them is
+what keeps the next sweep from re-finding them.
+
+**`L30` is a row id, not a line number** — checked before editing. Line 30 is blank; the TAKE/REFUSE
+table's `L30` row is at line 58. All six citations were correct.
+
+#### Fixed — a claim of S13.5's that did not survive re-checking
+
+S13.5 reported *"Two code sites, zero doc sites"* for `not_detected`. **There are two doc sites**,
+both in `docs/draft-schemas/classification.draft.json` — the file S13.5 cited as evidence the doc
+side was clean. Two `$comment`s ended with *"see not_detected"*, sending a reader to a list with no
+key anywhere in that schema, absorbed into `assurance.limitations` at **M4**. Both now name the
+profile-scope limitations that carry those reasons, `garbled-reason-not-detected` and
+`multi-column-reason-not-detected`, each checked to exist in `limitations.rs` first.
+
+That is seven consecutive slices in which a recorded finding disagreed with the code, and the code
+won.
+
+#### Fixed — `README.md` said v2 was not complete, and had since v2-S6
+
+The repository's front door carried *"and v2 **not complete**"* from **v2-S6 (0.25.0)**. It stopped
+being true at **v2-S13.4 (0.32.4)**, when the owner settled #16 and #17 and the gate was declared
+met, while `CAPABILITY.md`, `14-V2-SCOPE.md` and `15-V2-MILESTONES.md` all said the format row was
+closed. Neither of S13.5's sweeps could have reached it — one read `crates/*/src` comments, the
+other read `README.md` only for backticked spans — so a status sentence with no backtick in it fell
+between them. Repaired and dated, and paired with the claim it is easiest to confuse it with:
+**v1 is still not complete**.
+
+#### Changed — version
+
+- Workspace **0.33.0 → 0.33.1**, a **patch**; both SDKs pinned to match. Still **nine** profiles,
+  still mutually distinct. The default PDF profile hash moves on `parser_version` alone, to
+  `sha256:a8636a4ee6e7d428904c5df88cddce68d83baba535313abc0ccd3a0e87ded401`
+  (was `sha256:a998da77efda64112fc8cee76f5360c77c0f4a74f4726a6d2d15541934318d95`)
+- Both projection schemas regenerated and verified **equal to freshly generated artifacts**, not
+  hand-edited.
+
+**v2's gate is met and no question stands.** `docs/06-STEAL-REFUSE.md`'s **P9**, v1-S7's parked
+0.489 chase and the absence of a v2.2 scope document are all restated unchanged: each is the
+owner's call, not a slice's.
 
 ### v2-S14 — the CRC-32 question, answered, as 0.33.0
 

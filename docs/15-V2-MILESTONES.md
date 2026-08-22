@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S13.4 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0 through S14.1 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -63,7 +63,11 @@ false-refusal rate of **zero**. No slice here closes v1.
 acceptance box. It found that `07-VERIFY-BOUNDARY.md` had been claiming to hold this repository's
 forced decisions *verbatim, identically* while holding fourteen of seventeen — missing exactly #15,
 #16 and #17. Two clusters are named and deferred there rather than half-repaired, and two comments
-were found naming tests that have never existed.
+were found naming tests that have never existed. **v2-S14.1 wrote those two guards** (0.33.1),
+repaired the `four words` cluster at every live site, and re-checked S13.5's findings against the
+code — where one of them, *"zero doc sites"* for `not_detected`, did not survive. The
+`neither detector` cluster still stands, because two of its fifteen sites are emitted wire strings
+and a patch release must not move artifact bytes.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -3813,6 +3817,243 @@ pins what cannot be built.
   - [x] Full gate suite green. No git tag
 
 - **Depends on:** S13.5.
+
+---
+
+## S14.1 — the guards that were never written — **done**, as 0.33.1
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2, v2-S12.1, v2-S13.1, v2-S13.3 and v2-S13.5
+set.** No behaviour changed. Every `crates/*/src` edit outside `mod tests` is a comment.
+
+**This closes two of S13.5's three unmet acceptance boxes** — the missing guards and the
+`four words` cluster — and re-runs the verification that a usage limit cut short. The third box,
+the `neither detector` cluster, is deliberately not this slice's: it moves artifact bytes, and a
+patch release must not.
+
+### Two comments named a proof; now the proof exists
+
+A reader who meets a named test stops looking, which is what made this the most consequential
+finding of S13.5 and why it is the first thing repaired here. Both guards were **watched failing**
+before they were trusted — a guard nobody has seen fail is a guard nobody has checked.
+
+| Guard | Where | What it asserts |
+| --- | --- | --- |
+| `cell_text_survives_the_reordering` | `extract.rs`, beside `reorder_page` | After the page moves, every cell's remapped `run_indices` still concatenate to the `text` the detector built, and stay strictly ascending |
+| `a_tables_runs_are_contiguous_after_the_reorder` | same | The **premise** that claim rests on: the table's runs occupy one unbroken span of the new order, each exactly once |
+| `the_repair_id_is_spelled_the_same_in_the_profile_and_in_this_module` | `xref.rs` | `XrefRepair::Pad19To20V1`'s serde spelling **is** `engine_pdf::xref::XREF_REPAIR_V1`, in both directions |
+
+**The first guard asserts the claim rather than something adjacent to it, and that distinction is
+the whole point.** `reorder_page`'s comment argues that a table's runs are one atom, so a cell's
+remapped indices stay ascending *and still concatenate to the text the detector built*. What
+already existed covered cell-text **composition** before any reorder
+(`every_cell_text_is_a_concatenation_of_assigned_runs` and its two siblings) and run **order**
+after one (`one_added_line_does_not_reorder_the_page`,
+`ordinals_and_ids_follow_the_reading_order_on_a_reordered_page`). Neither reads a cell's text on a
+page that moved, which is the one failure here that no artifact would show — a cell claiming text
+it does not contain.
+
+**The fixture is built so a lazy implementation cannot pass it.** The table's runs are
+**interleaved** with a second column's in content-stream order, so the remap is not the identity;
+one cell holds **two** runs, because a single-run cell cannot tell a preserved concatenation from a
+lucky one; the cells and their text come from `detect_ruled` rather than from this test's opinion
+of what they should be; and the test asserts a **floor** — that the permutation is not the identity
+— because `reorder_page` returns early on the identity and every assertion after it would then be
+reading nothing.
+
+**The second guard exists because the first could pass by luck.** Cell text survives trivially on a
+page whose table did not move. Asserting the atom property separately means a future change that
+breaks the premise is reported where the premise lives, rather than wherever it first happens to
+alter a string.
+
+**The third is the sharper one, and S13.5 was right that it could not live in `engine-core`.**
+`engine-pdf` depends on `engine-core`, so importing back would be a dependency cycle; the check
+belongs on the `engine-pdf` side, where `xref.rs` already publishes one of the two spellings. It
+asserts **both directions** — the variant serializes to the published id, and the published id
+deserializes to that variant — because one direction alone would pass if a second variant were
+given the same rename. `the_default_profile_is_pinned` pins the serde spelling inside the canonical
+JSON and never reads the const, which is exactly why changing the const alone failed nothing.
+
+### Each guard was broken on purpose, and each went red
+
+| Break | Guards that failed |
+| --- | --- |
+| `XREF_REPAIR_V1` takes `pad19-to20-v1` — the spelling `rename_all = "kebab-case"` would derive, and the reason the rename is explicit | the xref guard, reporting both strings |
+| The cell-index remap is dropped, so cells address the slots the runs used to occupy | both reorder guards |
+| The remap uses the permutation where its **inverse** belongs — `order[*i]` for `position[*i]`, which is the classic form of this bug | both reorder guards, `"cR2"` where `"Hello"` was expected |
+
+### The `four words` cluster — four repaired, two left, and the citation was not the defect
+
+`06-STEAL-REFUSE.md`'s quoted phrase is *"It invents pagination."* — **three** words. Six sentences
+called it four. `git log -S` shows the phrase never changed, so this never rotted: it was
+miscounted once and copied five times, which is a different class from every finding in S13.5's
+repair table and is why that slice named it rather than folding it in.
+
+**`L30` is a row id, not a line number.** Line 30 of `06-STEAL-REFUSE.md` is blank; the TAKE/REFUSE
+table's `L30` row is at line 58. Every one of the six citations is therefore *correct*, and reads
+the way this repository's standing preference asks — a symbol name rather than a `:NN` that rots.
+Checked before editing, because a repair aimed at the wrong half of a sentence is worse than none.
+
+| Site | Repaired? |
+| --- | --- |
+| `Cargo.toml`'s v2-S7 commentary | yes |
+| `crates/engine-core/src/representation.rs`, `Locator::Odp` | yes |
+| `crates/engine-office/src/odp.rs`'s module header | yes |
+| `docs/14-V2-SCOPE.md` | yes |
+| `CHANGELOG.md`, inside the shipped `v2-S7` entry | **left** |
+| `docs/15-V2-MILESTONES.md`, inside **S7's** section | **left** |
+
+**Both exclusions are argued rather than convenient.** `CHANGELOG.md` is append-only history and
+was an excluded scope in both of S13.5's sweeps. `15-V2-MILESTONES.md`'s S7 section is a past slice
+section, and **v2-S13.4's acceptance forbids rewriting one** — the same rule that made S13.5 leave
+the rotted `00-NORTH-STAR.md:93` citation inside S10's section, named rather than repaired. The
+honest caveat is that this cluster is *wrong at birth* rather than rotted, so the usual defence of
+a frozen section — that it records a state which was true when written — does not apply to it. The
+rule still governs, and naming the two here is the form that keeps the next sweep from re-finding
+them.
+
+**The ordinal is kept rather than removed**, which is the opposite of what the `neither detector`
+cluster needs and for a stated reason: the quoted phrase lives in a frozen decision table and
+cannot gain a fourth word, so this count cannot rot the way a detector count can. Three is simply
+the right number.
+
+### The verification S13.5 could not finish
+
+S13.5 put 65 candidates to three adversarial lenses, reached 40, and **hand-measured the other 25**
+on a usage limit — weaker than three independent refutation attempts, and recorded as unmet. Which
+25 those were is not recoverable from the record, so the population re-checked here is the whole of
+what S13.5 wrote down: every row of its repair table, both of its declared false positives, every
+item it left alone deliberately, and its three self-corrections. A list that cannot be
+reconstructed is a list you re-derive, which is the rule v2-S10.2 recorded.
+
+Every claim below was reproduced from the code rather than taken on the record's word, and the
+method's limit is stated rather than glossed: this is **direct re-measurement against the source**,
+one pass, defaulting to refuted — not S13.5's design of three independent agents each instructed to
+refute. It is stronger than the hand-measurement it replaces, because every number here was
+recomputed from the tree rather than read back from the sentence that asserted it, and it is
+weaker than three adversarial lenses. Saying which is the point.
+
+| Claim | Measured | Verdict |
+| --- | --- | --- |
+| Decision tables held *verbatim, identically* | **17 of 17**, byte-identical both ways | holds |
+| Nine subcommands | `Command` has 9 variants | holds |
+| Five `Stage` variants | `Classify`, `Extract`, `Ground`, `GroundingCheck`, `Verify` | holds |
+| `not_detected` is off the wire | no occurrence anywhere in `engine-core` | holds |
+| Three detection rules; **three** places a table is built | `tables.rs:482`, `unruled.rs:418`, `stroke_ruled.rs:500` | holds |
+| The multi-column limitation left the default arm | `MULTI_COLUMN_READING_ORDER` is in the `else`; `READING_ORDER_GEOMETRIC_ONLY` replaced it | holds |
+| Four page-less rules; **nine** media types | 4 numbered rules; PDF + eight office types | holds |
+| Four arms partner a `true` capability | confirmed in `assurance.rs` | holds |
+| **Four readers, seven call sites** for `new_ns_reader` | `odt`, `odp`, `ods` one each; `epub` four | holds |
+| Inflate bounded by `MAX_INFLATED_BYTES + 1` | `zip.rs:321` | holds |
+| `00-NORTH-STAR.md` carries **v4**; **five** scope documents | 9 ladder rows through v4; `03`, `08`, `10`, `12`, `14` | holds |
+| **Three** `GeometryAbsence` siblings, **four** variants | 4 variants, so 3 siblings | holds |
+| `0.32.2` is **v2-S13.2** | profile.rs's ledger now says so | holds |
+| **False positive:** `ods.rs`'s *"twelve element names"* | `odt::classify` allows **17**; 5 are Regions and Frames; **12** are the sentence | S13.5 was right not to repair it |
+| **False positive:** `03-V0-SCOPE.md`'s fixture table | manifest: 9 synthetic + 5 failure + 1 foreign = **15** = `counts.conformance_ethos_owned` | S13.5 was right not to repair it |
+| Left alone: `00-NORTH-STAR.md:93` has rotted | line 93 is now **v1's** row; the v2 gate is line 96 | holds |
+| Left alone: two defects in `crates/*/tests/` | `verify_relay.rs:373` says *"the other four subcommands"*; `diagnostics.rs:394` asserts `checked == 4` against **five** `Stage` variants | both still live, still out of scope |
+| Self-correction: `contract_invariants.rs` bans PDF **libraries** | the ban list is `lopdf`, `pdfium`, `ttf-parser`, `pdf-rs`, `printpdf` | holds |
+
+### One did not survive, and it is in the file S13.5 cited as its own evidence
+
+**S13.5 reported *"Two code sites, zero doc sites"* for `not_detected`. There are two doc sites.**
+
+`docs/draft-schemas/classification.draft.json` carries three mentions, not one. The
+`assurance` comment is correct and is the one S13.5 quoted — *"which no longer exists on the
+wire"*. The other two end a `$comment` with **"see not_detected."** and **"See not_detected."**,
+sending a reader to a list that has no key anywhere in that schema and was absorbed into
+`assurance.limitations` at **M4**. That is the identical defect S13.5 repaired in `reasons.rs`,
+sitting in a current-facing draft schema — and in the very file it cited as proof the doc side was
+clean.
+
+Both now name the profile-scope limitations that carry those reasons —
+`garbled-reason-not-detected` and `multi-column-reason-not-detected` — and both ids were checked to
+exist in `limitations.rs` before the sentence was written, because a repair that introduces a new
+false statement is worse than the one it fixed.
+
+**That makes seven consecutive slices in which a handed or recorded finding disagreed with the
+code, and the code won.**
+
+### And one found beyond the brief, in the file a reader meets first
+
+`README.md` has said **v2 *not complete*** since **v2-S6 (0.25.0)**. It stopped being true at
+**v2-S13.4 (0.32.4)**, when the owner settled #16 and #17 and the gate was declared met — nine
+slices ago — while `CAPABILITY.md`, `14-V2-SCOPE.md` and this file all said the format row was
+closed. **Neither of S13.5's sweeps could have caught it**: Sweep A read `crates/*/src` comments,
+and Sweep B read `README.md` only for **backticked spans**, resolving identifiers and paths. A
+status sentence with no backtick in it fell between them, which is a method note rather than an
+excuse — a sweep scoped by *token shape* has a blind spot shaped like ordinary prose.
+
+Repaired, dated, and paired with the sentence it is most easily confused with: **v1 is still not
+complete**, and that is a different claim about a different version.
+
+### The proof of no behaviour change, and what its number is not
+
+Every non-comment line outside `mod tests { … }`, from every `crates/*/src/**.rs`, at `HEAD` and in
+the working tree: **17,728 lines, diff empty.** The extractor is a string-aware scanner, so
+`"http://x"` is not a comment and a brace inside a string is not a brace.
+
+**It is negative-controlled**, because an extractor that cannot detect a change measures nothing: a
+`pub const` injected outside `mod tests` was **reported**, a `//` comment was **ignored**, and a
+line injected inside `mod tests` was **ignored**.
+
+**17,728 is not comparable to S13.5's 19,249.** That is a different extractor, not a different
+tree: this one re-measures `524ea69` — S13.5's own commit — at **17,701**, so the 1,548-line gap is
+the instrument. What the proof needs is one instrument applied to both sides, and the number that
+carries meaning here is the **empty diff**, with 17,701 → 17,728 across S14 as the evidence the
+instrument moves when the tree does.
+
+### Restated for the owner, unchanged and unsettled
+
+Three items stand, and none is a slice's to settle. They are restated because this slice touched
+`00-NORTH-STAR.md` and `README.md`, and a question answered in conversation but not written into
+the decision table is one the next slice re-escalates from a stale sentence.
+
+**1. v1-S7's parked chase.** `09-V1-MILESTONES.md` S7: *"measured and MISSED: 64‰ — the chase is
+parked, the slice is not closed."* `00-NORTH-STAR.md`'s v1 row says **"Not complete."** v2 is
+complete and v1 is not, and the next roadmap row — **v2.2, accessibility** — has the gate *"a tag
+this engine writes is one it can read back and ground against"*, where **tag quality inherits table
+quality**. Tagging tables that are 64‰ correct produces tags that are 64‰ correct. This wants a
+**decision** rather than a measurement: either un-park the chase with a target, or convert 64‰ into
+v1's accepted number and write it into `00-NORTH-STAR.md` §2 as **decision #18**, the way #16 and
+#17 settled v2's gate questions on 2026-08-21.
+
+**2. v2.2 or v3, and the fact the roadmap row does not carry.** **This engine writes nothing.**
+The only `write_*` functions in the tree are JSON canonicalization; every subcommand reads and
+declares. **v2.2 means emitting a modified PDF** — not a new format but a new posture, and it
+collides with the stance that an engine which only reads cannot fabricate. **v3 (assist) needs no
+such thing**: its gate is a containment property, *"assist on/off ⇒ identical grounded
+artifacts"*, and `derivation.rs` already models `Recognized`/`Proposed` and `may_be_overwritten_by`;
+it needs a VLM, and `deny.toml` denies the HTTP surface by name and says the lane needs its own ADR.
+**There is no v2.2 scope document.** v0, v1, v1.1, v1.2 and v2 each have one (`03`, `08`, `10`,
+`12`, `14`). v2.2 begins by writing `16-V22-SCOPE.md`, and the first thing that document must argue
+is **whether this engine may write a document at all.**
+
+**3. P9 — vendored CMap tables.** `06-STEAL-REFUSE.md`'s TAKE table carries
+`| P9 | Vendored CMap tables | pdf-inspector | v0 |`. The column is **Target**, not status, but v0
+is frozen and complete and the CMaps were **deliberately not carried**, argued in
+`vendor/README.md` with one refused by name. **Nothing records that deferral**: no note on the row,
+nothing in `05-MILESTONES.md` M3, while **A11**'s row in the same table carries a long annotation.
+Named at v2-S13.3, restated at S13.4, S13.5 and S14, and still the owner's.
+
+- **Acceptance — all met:**
+  - [x] Both missing guards written, **each observed to fail** under a deliberate break and then
+        restored — three breaks, and the two reorder guards went red under two of them
+  - [x] The `XREF_REPAIR_V1` guard asserts the two spellings **agree**, in both directions, rather
+        than that each exists
+  - [x] The `four words` cluster repaired at every live site; the two historical occurrences named,
+        with the rule that governs each. `L30` verified to be a **row id**, so the citation itself
+        was never the defect
+  - [x] S13.5's recorded findings re-checked against the code rather than against the record —
+        **one did not survive**, and it is named above with its repair
+  - [x] One defect found **beyond the brief** and repaired: `README.md` had said v2 was not
+        complete since v2-S6, nine slices after #16 and #17 settled the gate
+  - [x] **No behaviour change**, proven mechanically and negative-controlled
+  - [x] Workspace **0.33.1**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; both projection schemas regenerated and verified **equal to freshly generated
+        artifacts**, not hand-edited
+  - [x] Full gate suite green. Both SDK suites run by hand. No git tag
+
+- **Depends on:** S14.
 
 ---
 

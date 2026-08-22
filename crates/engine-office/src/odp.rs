@@ -27,8 +27,11 @@
 //! here with **no arithmetic**, off two facts the file writes down — the first time that has been
 //! true in this engine's history.
 //!
-//! It is refused, and the reason is `docs/06-STEAL-REFUSE.md` L30's own four words rather than a
-//! paraphrase: *"It invents pagination."* L30 refuses the LibreOffice bridge because a page it
+//! It is refused, and the reason is `docs/06-STEAL-REFUSE.md` L30's own three words rather than a
+//! paraphrase: *"It invents pagination."* **This said four from v2-S7 until v2-S14.1**, and it was
+//! wrong when written rather than rotted — `git log -S` shows the quoted phrase never changed, and
+//! the miscount was copied to five other files before anybody counted. L30 refuses the LibreOffice
+//! bridge because a page it
 //! produced is a rendering rather than a fact about the document, and a `<draw:page>` fails the
 //! same test from the other direction — it is a **part of the presentation's structure**, and the
 //! number a consumer would read off it is a page index this engine never verified. `pages` stays

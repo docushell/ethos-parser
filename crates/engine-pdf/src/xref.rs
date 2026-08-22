@@ -483,6 +483,41 @@ mod tests {
         );
     }
 
+    /// The repair id is spelled twice, and this is what keeps the two spellings the same.
+    ///
+    /// `engine-core` names the mode with an explicit `#[serde(rename = "pad-19-to-20-v1")]`
+    /// because `rename_all = "kebab-case"` would derive `pad19-to20-v1`, which is not what
+    /// [`XREF_REPAIR_V1`] publishes. Two spellings of one repair is exactly the drift a versioned
+    /// id exists to prevent, and until v2-S14.1 nothing compared them: `the_default_profile_is_
+    /// pinned` pins the serde spelling inside the canonical JSON and never reads this const, so
+    /// changing this const alone failed nothing.
+    ///
+    /// The check lives here rather than in `engine-core` because `engine-pdf` depends on
+    /// `engine-core` and importing back would be a dependency cycle. Both directions are asserted:
+    /// the variant must serialize to this string, and this string must deserialize to the variant.
+    /// One direction alone would pass if a second variant were given the same rename.
+    #[test]
+    fn the_repair_id_is_spelled_the_same_in_the_profile_and_in_this_module() {
+        let emitted = serde_json::to_value(engine_core::XrefRepair::Pad19To20V1)
+            .expect("an adjacently tagged unit variant serializes");
+        assert_eq!(
+            emitted["mode"].as_str(),
+            Some(XREF_REPAIR_V1),
+            "`Profile::xref_repair` puts this string on the wire; it must be the id this module \
+             publishes, or an artifact names a repair no reader can look up"
+        );
+
+        let parsed: engine_core::XrefRepair =
+            serde_json::from_value(serde_json::json!({ "mode": XREF_REPAIR_V1 }))
+                .expect("the published id must name a mode `engine-core` understands");
+        assert_eq!(
+            parsed,
+            engine_core::XrefRepair::Pad19To20V1,
+            "the id must round-trip to the variant that performs this repair, not merely to some \
+             variant that happens to accept the string"
+        );
+    }
+
     #[test]
     fn every_refusal_has_a_stable_name() {
         for r in [

@@ -104,7 +104,7 @@
         "vector-text",
         "annotation-text"
       ],
-      "$comment": "`sparse-text` requires short text ALONGSIDE imagery. Short text on its own is a short page, not a sparse one — LiteParse uses text_length < 20 unconditionally and compounds it with a vowel-frequency garble heuristic that strips items from the tally first, so an acronym-dense page (a NIST control table of AC-2/SC-7) can be reported as no-text when its text extracted perfectly (memo §18.3). Neither the vowel heuristic nor the unconditional length test exists here. `garbled` is never emitted by this profile — see not_detected."
+      "$comment": "`sparse-text` requires short text ALONGSIDE imagery. Short text on its own is a short page, not a sparse one — LiteParse uses text_length < 20 unconditionally and compounds it with a vowel-frequency garble heuristic that strips items from the tally first, so an acronym-dense page (a NIST control table of AC-2/SC-7) can be reported as no-text when its text extracted perfectly (memo §18.3). Neither the vowel heuristic nor the unconditional length test exists here. `garbled` is never emitted by this profile. This said — see not_detected until v2-S14.1, which sent a reader to a list M4 absorbed and this schema's own `assurance` comment says no longer exists on the wire; the reason it names is carried by the profile-scope limitation `garbled-reason-not-detected` in `assurance.limitations`."
     },
     "layout_complexity_reason": {
       "title": "Layout-hard axis",
@@ -114,7 +114,7 @@
         "table-likely",
         "dense-graphics"
       ],
-      "$comment": "Orthogonal to the OCR-need axis: none of these implies OCR. A dense financial table in crisp born-digital text needs no OCR at all. `multi-column` is never emitted by this profile — v0 has no stable rule, and pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page. See not_detected."
+      "$comment": "Orthogonal to the OCR-need axis: none of these implies OCR. A dense financial table in crisp born-digital text needs no OCR at all. `multi-column` is never emitted by this profile — v0 has no stable rule, and pdf-inspector's flips on a single line of text (min_lines < 15), so a one-line edit reorders a whole page. This said See not_detected until v2-S14.1, for the same reason and with the same repair: the reason is carried by the profile-scope limitation `multi-column-reason-not-detected` in `assurance.limitations`."
     },
     "page_classification": {
       "type": "object",

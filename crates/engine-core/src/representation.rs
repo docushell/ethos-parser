@@ -223,7 +223,7 @@ pub enum NativeLocator {
     /// [`PageRecord`] could be minted without this engine measuring anything, which is exactly why
     /// it is refused: a draw page is **a part of the presentation's structure**, and putting its
     /// position on the wire as a page would hand a consumer a page index this engine never
-    /// verified. `docs/06-STEAL-REFUSE.md` L30 states the reason in four words — *"It invents
+    /// verified. `docs/06-STEAL-REFUSE.md` L30 states the reason in three words — *"It invents
     /// pagination"* — so [`OdpLocator::draw_page`] is a position among elements the file lists,
     /// spelled as the element ODF actually writes.
     Odp(OdpLocator),
