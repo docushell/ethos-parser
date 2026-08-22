@@ -77,16 +77,23 @@ reach, exactly one of the two wire strings changes any artifact's bytes.
 This is a behaviour change, so the no-behaviour-change proof does not apply. Run anyway, it reports
 **0 changed lines** — for a slice that provably changes artifact bytes.
 
-**That is a defect in the instrument and is reported as one.** The extractor replaces every string
-literal with a placeholder so that `"http://x"` is not read as a comment, which makes a change
-*inside* a string literal invisible — exactly where a wire string lives. A proof that reads the
-wrong thing passes, which is the shape found at v2-S13 (`\par` matching `\pard`) and v2-S13.1.
+**That is a defect in the extractor this slice ran, and is reported as one.** It replaces every
+string literal with a placeholder so `"http://x"` is not read as a comment, which makes a change
+*inside* a literal invisible — exactly where a wire string lives. A proof that reads the wrong
+thing passes, which is the shape found at v2-S13 (`\par` matching `\pard`) and v2-S13.1.
 
 The same extractor with string **contents** preserved reports **4 changed lines**: the two wire
-strings, one line on each side, and nothing else. That variant also reports **19,553** at S13.5's
-own commit against the 19,249 it published — 304 **above**, where the blinded variant was 1,548
-below. String-blinding is therefore the bulk of the instrument gap v2-S14.1 could not explain, and
-it over-corrects: a 304-line residue runs the other way and is not yet identified.
+strings, one line on each side, and nothing else.
+
+**Corrected after this entry shipped.** This first read *"a defect in the instrument"* and cited
+the extractor v2-S14 used, implying the blind spot belonged to v2-S13.5's documented method. It
+does not — **S13.5's extractor preserves string contents**, shown by its author against a real
+emitted string and agreeing with this slice's own arithmetic (19,553 preserved versus 17,701
+blanking at `524ea69`, against the 19,249 published there). The defect is in the reimplementation
+written for v2-S14.1 and reused here. **The remedy is to fix the extractor, not to run two variants
+on every future slice.** v2-S14.1's conclusion survives: re-run over `2363225` → `7591f02` with
+string contents preserved, the diff is still empty at **19,585 → 19,585**. The claim was right and
+the instrument was weaker than the sentence asserting it; both halves are stated.
 
 #### Changed — version
 

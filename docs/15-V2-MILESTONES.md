@@ -4194,12 +4194,29 @@ S14 reported **48 changed lines** where S13.5 reported an empty diff, and called
 demonstrating it can fail. Run here, the same extractor reports **zero changed lines** — for a
 slice that provably changes artifact bytes.
 
-**That is a defect in the instrument, and it is reported rather than presented as a pass.** The
-extractor is string-aware precisely so `"http://x"` is not read as a comment, and it replaces every
-string literal with a placeholder token. A change *inside* a string literal is therefore invisible
-to it — which is exactly where a wire string lives. **A proof that reads the wrong thing passes**,
-and this repository has now found that shape at S13 (`\par` matching `\pard`), at S13.1 (a floor
-counting runs where it needed fixtures), and here.
+**That is a defect in the extractor this slice ran, and it is reported rather than presented as a
+pass.** It is string-aware precisely so `"http://x"` is not read as a comment, and it went one step
+too far: it replaces every string literal with a placeholder token, so a change *inside* a literal
+is invisible to it — which is exactly where a wire string lives. **A proof that reads the wrong
+thing passes**, and this repository has now found that shape at S13 (`\par` matching `\pard`), at
+S13.1 (a floor counting runs where it needed fixtures), and here.
+
+> **Corrected after this slice shipped, and the correction narrows the finding.** The paragraph
+> above first read *"a defect in the instrument"* and cited **the same extractor** S14 used, which
+> implied the blind spot belonged to the method v2-S13.5 documented. It does not. **S13.5's
+> extractor preserves string contents** and is not blind to a wire-string change — its author
+> demonstrated it by flipping a real emitted string and watching the diff name it verbatim, and
+> this slice's own arithmetic independently agrees: at `524ea69`, a string-preserving extractor
+> gives **19,553** against the **19,249** published there, where the blanking variant gives
+> **17,701**. The defect is in the reimplementation written for v2-S14.1 and reused here, not in
+> the proof S13.5 designed. **The remedy is to fix the extractor, not to run two variants on every
+> future slice**, and the note below is written that way so it is not inherited as ceremony.
+>
+> **v2-S14.1's conclusion survives the correction.** Its proof was run with the blanking variant,
+> so it could not have detected a string-literal change — a weaker instrument than its record
+> claimed. Re-run over the same two commits with string contents preserved, `2363225` → `7591f02`
+> gives **0 changed lines, 19,585 → 19,585**. The claim was right; the instrument was weaker than
+> the sentence asserting it, and both halves of that are stated.
 
 Re-run with string **contents** preserved and everything else identical, the same extractor reports
 **4 changed lines** — the two wire strings, one line on each side of the diff, and nothing else:
@@ -4211,13 +4228,15 @@ Re-run with string **contents** preserved and everything else identical, the sam
 + limitations.rs  "This document's structure tree describes a `/Table` on page(s) {} that NO table \
 ```
 
-**And that variant partly explains a number S14.1 could not.** S14.1 reported 17,728 lines
-against S13.5's 19,249 and said the 1,548-line gap was the instrument rather than the tree. With
-string contents preserved, the same extractor reports **19,553** at S13.5's own commit — which is
-**304 above** the 19,249 published there, where the blinded variant was 1,548 below. So
-string-blinding is the bulk of the instrument difference and it **over**-corrects: a residue of 304
-lines runs the other way and is not yet identified. Stated in that direction rather than rounded
-into agreement, because a reconciliation that lands past its target has not reconciled.
+**And that variant identifies most of a number S14.1 could not explain.** S14.1 reported 17,728
+lines against S13.5's 19,249 and said the 1,548-line gap was the instrument rather than the tree.
+It was, and this names which part: string-blanking. With string contents preserved the same
+reimplementation reports **19,553** at S13.5's own commit — **304 above** the 19,249 published
+there, where the blanking variant was 1,548 below. So string-blanking is the bulk of it and
+correcting for it **over**-shoots: a residue of 304 lines runs the other way and is still
+unidentified, which is a remaining difference between two reimplementations and not a doubt about
+either result. Stated in that direction rather than rounded into agreement, because a
+reconciliation that lands past its target has not reconciled.
 
 - **Acceptance — all met:**
   - [x] All fifteen sites repaired **together**, comments and wire strings, so no new inconsistency
@@ -4234,8 +4253,10 @@ into agreement, because a reconciliation that lands past its target has not reco
   - [x] Both projection worked examples regenerated and **verified equal to freshly generated
         artifacts**, all three identity fields
   - [x] The no-behaviour-change proof run anyway and its number reported — **0**, with the reason
-        it is 0 named as a blind spot in the instrument, and **4** from the same extractor with
-        string contents preserved
+        it is 0 named as a defect in **this slice's extractor** rather than in the method, and
+        **4** once string contents are preserved. Corrected in place above after v2-S13.5's author
+        showed their extractor is not blind to a wire-string change; v2-S14.1's empty diff
+        re-verified with the sound variant and still empty
   - [x] Workspace **0.34.0** — minor, because an artifact this build emits differs from one 0.33.1
         emitted for the same bytes. Nine profile hashes move and stay mutually distinct
   - [x] Full gate suite green — **49 suites, 1,226 passed, 0 failed**, measured rather than
