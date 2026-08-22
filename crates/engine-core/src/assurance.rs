@@ -523,9 +523,14 @@ impl Capabilities {
             ));
         }
         if tables {
-            // **A limitation partnering a TRUE capability.** Every other arm here declares what a
-            // `false` capability does not do; this one declares the scope of what a `true` one
-            // does.
+            // **A limitation partnering a TRUE capability**, and not the only one. This said
+            // "every other arm here declares what a `false` capability does not do" until
+            // v2-S13.5, and that stopped being true at **v1-S5**, three slices before this
+            // sentence was rewritten at v1-S8: `multi_column_reading_order` (v1-S5) and `images`
+            // (v1-S6) already partnered TRUE capabilities, and `markdown` (v1.1-S2) joined them.
+            // Four arms do it, and the other three number themselves in the order they were
+            // WRITTEN — which is why `images` below says "the third" and reads correctly.
+            // The distinction this draws is still real: MOST arms fire on a `false` capability.
             //
             // v1-S1 declared `unruled-tables-not-detected` here. v1-S2 shipped the alignment rule
             // and replaced it with `stroke-ruled-tables-not-detected`. **v1-S8 ships

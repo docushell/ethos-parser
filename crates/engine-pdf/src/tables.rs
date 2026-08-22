@@ -176,10 +176,14 @@ pub struct DetectedTable {
     pub tagged_check: Option<engine_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `engine_core::TABLE_DETECTION_V2` or
-    /// `engine_core::TABLE_DETECTION_UNRULED_V1`. Set from those constants at the two places a
-    /// table is built, never spelled out here — a rule id written twice is a rule id that can
-    /// drift, which is the whole reason it is a pinned constant.
+    /// Exactly one of `engine_core::TABLE_DETECTION_V2`, `engine_core::TABLE_DETECTION_UNRULED_V1`
+    /// or `engine_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
+    /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
+    /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
+    /// whole reason it is a pinned constant.
+    ///
+    /// This said *"one of two"* at *"the two places"* from v1-S2 until v2-S13.5, and stopped being
+    /// true at **v1-S8**, which added the third id and the third build site in one commit.
     pub rule: String,
 }
 

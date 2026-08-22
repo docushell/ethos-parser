@@ -7,7 +7,81 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the roadmap reordered at 0.32.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5
+
+### v2-S13.5 — the two sweeps that never ran, as 0.32.5
+
+**A patch release. No behaviour changed — every `crates/*/src` edit is a comment**, proven by
+diffing the **19,249** non-comment lines outside `mod tests` at HEAD against the working tree.
+
+v2-S13.3 planned three read-only sweeps and ran one; a usage limit killed the other two, and it
+recorded them as unmet rather than rounding them off. This runs both. **12,805 candidate comment
+lines** and **1,372 backticked identifiers** examined — so "nothing found" is a result and not a
+mood.
+
+#### Fixed
+
+- **`docs/07-VERIFY-BOUNDARY.md` claimed to hold this repository's forced decisions *"verbatim,
+  identically"* while holding fourteen of seventeen.** The missing three are exactly #15, #16 and
+  #17 — the ones the owner amended on 2026-08-21. v2-S13.4 wrote #16 and #17 into the other copy
+  *"so neither can be re-escalated by a later slice reading a stale sentence"*, and left this copy
+  short in the same commit. Rows 1–14 were byte-identical, so nothing contradicted anything; the
+  copy was simply incomplete, which is what a second copy of a table does. Restored, not reworded.
+- **Two comments named tests that have never existed.** `extract.rs` cited
+  `cell_text_survives_the_reordering` as *"the proof over real fixtures"*, and `profile.rs` said a
+  test asserted `pad-19-to-20-v1` equals `engine_pdf::xref::XREF_REPAIR_V1`. `git log --all -S`
+  returns one commit for each — the one that wrote the comment. Both are real unguarded seams; the
+  statements are repaired and the missing guards are **named, not written**.
+- **`reasons.rs` sent readers to the artifact's `not_detected` list in two places.** M4 absorbed
+  that list into `assurance.limitations`. This is the twin of the `not_decoded` cluster v2-S13.3
+  swept — missed because that sweep searched the other word. Every *documentation* site was already
+  correct, checked in both directions.
+- **`main.rs` said "Four subcommands"** (nine), **`diagnostics.rs` "the four apart"** (five `Stage`
+  variants since v0.1), **`representation.rs` "Three rules"** above a list of four, and its
+  `media_type` *"Always `application/pdf`"* when eight office types are written into that field.
+- **The `stroke-ruled-v1` cluster**, stale since **v1-S8**: `TableRecord::detection_rule` documented
+  as one of two values when three are reachable, `engine-pdf` naming *"the two places a table is
+  built"* when there are three, and a limitation described as *"declared since v1-S1"* that v1-S8
+  retired and a test now asserts is **absent**.
+- **`zip.rs`'s inflate bound never matched the line below it** — `.take(MAX_INFLATED_BYTES + 1)` is
+  a fixed 256 MiB ceiling, not *"the declared size plus one byte"*. `with_capacity(declared)` is a
+  hint, not a bound.
+- `00-NORTH-STAR.md`'s ladder heading said **v0 → v3** above a table carrying **v4**; it and
+  `02-ROADMAP.md` both said *"Only v0 is specified for implementation"* with five scope documents in
+  the tree; `01-CONTRACT.md` counted `GeometryAbsence`'s variants as two-plus-one when v1-S6.2 made
+  it four; `02-ROADMAP.md` and `14-V2-SCOPE.md` carried slice lists ending before S13.4.
+
+#### Named, not repaired — because half a repair is worse than none
+
+- **The `neither detector` cluster, fifteen sites.** With three detectors since v1-S8 the word is
+  wrong; what it states is **true**. Two of the fifteen are **emitted wire strings**, so repairing
+  them changes artifact bytes. Fixing only the comments would leave the wire and the comments
+  disagreeing — a *new* inconsistency. Deferred whole with its list, on v2-S12.1's precedent. The
+  code is correct: `tables::detect` consults all three rules.
+- **The `four words` cluster, six sites.** `06-STEAL-REFUSE.md` L30's phrase is three words. `git
+  log -S` shows it never changed, so this never rotted — it was miscounted once and copied five
+  times. A different class, and named as one.
+
+#### Changed — version
+
+- Workspace **0.32.4 → 0.32.5**; both SDKs pinned to match. Still **nine** profiles, still mutually
+  distinct. The default PDF profile hash moves on `parser_version` **alone**, to
+  `sha256:ee49c816edb6d2b777cb734ba8213af8df77d53791b40d40dafdb1481b0351bd`
+  (was `sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f`)
+- Both projection schemas regenerated and **all three** identity fields — `parser_version`,
+  `profile_sha256` **and** `representation_sha256` — verified against freshly generated artifacts.
+
+#### Not met, and stated
+
+- **The adversarial verification did not finish.** 25 of 65 candidates never reached a verifier, on
+  a usage limit — the same failure that left S13.3's sweeps unrun. Those were hand-measured
+  instead, which is weaker than three independent refutation attempts.
+- **The verification harness had a defect of its own**, recorded in `15`'s S13.5: its prompt
+  inherited S13.3's narrower framing, so several refutations read *"accurate but out of class"*.
+  Those were reclassified rather than discarded.
+
+**v2's gate is met and one question stands** — `zip.rs`'s CRC-32 — and it is not a gate condition.
+
 
 ### v2-S13.2 — the roadmap reordered, as 0.32.2
 

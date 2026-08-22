@@ -61,8 +61,15 @@ pub const DIAGNOSTICS_VERSION: &str = "0";
 
 /// Which subcommand produced an observation.
 ///
-/// One variant per v0 subcommand, so a caller collecting diagnostics from a pipeline can tell
-/// the four apart without parsing a command line.
+/// **Five variants, not the four this said until v2-S13.5**, so a caller collecting diagnostics
+/// from a pipeline can tell them apart without parsing a command line. Four are v0's subcommands;
+/// `Verify` arrived with the shell-out at v0.1 and the sentence was not moved with it.
+///
+/// **A stage is not a subcommand and the counts differ on purpose.** Nine subcommands map onto
+/// these five: `markdown`, `html` and `overlay` report under the stage whose work they project
+/// from — `Ground`, `Ground` and `Extract` — because a caller reading `stage` wants to know which
+/// phase produced the observation, not which flag was typed. `mcp` is the one subcommand with no
+/// stage at all: it is a server loop rather than a document pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {

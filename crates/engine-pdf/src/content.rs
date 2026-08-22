@@ -131,7 +131,12 @@ pub struct PathRect {
 /// A `re` or a four-point closed path encloses an area: it is the author saying *this box is
 /// here*. A two-point `m`/`l` stroked with `S` is a **line**: the author saying *this edge is
 /// here*. `ruled-rects-v1` was built on the first and produces nothing from the second, which is
-/// the `stroke-ruled-tables-not-detected` limitation the engine has declared since v1-S1.
+/// the `stroke-ruled-tables-not-detected` limitation the engine declared from v1-S1 to v1-S7b.
+///
+/// **It is retired.** v1-S8 shipped `stroke-ruled-v1` and removed the code rather than rewording
+/// it, on the rule `assurance.rs` states — a stale limitation is worse than a missing one because
+/// a reader acts on it — and `extraction.rs` now asserts its ABSENCE. This sentence said "has
+/// declared since v1-S1" until v2-S13.5, written in the very commit that retired it.
 ///
 /// Measured, that limitation costs `cfpb-home-loan-toolkit` 103 of its 159 gold cells: its page 13
 /// draws an 8 × 4 loan worksheet as 32 horizontal rules and nothing else. Collapsing a segment

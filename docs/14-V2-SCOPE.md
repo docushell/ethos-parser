@@ -3,12 +3,17 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S13.3 are done: this
+**v2 reads eight formats, and v2's format row is closed.** S0 through S13.5 are done: this
 document, the grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
 ODS, ODP, RTF and EPUB, **S10 (CSV) as an argued refusal rather than a reader**, embedded assets
-counted at S11, both A11 lanes closed at S12 and S13, and the guard and prose repairs at S13.1 and
-S13.3. (This said *"S0–S10"* until v2-S13.3, three slices after S11 shipped.) Eight formats read, one
-argued refusal, and every split was against a measurement.
+counted at S11, both A11 lanes closed at S12 and S13, the guard and prose repairs at S13.1 and
+S13.3, the owner's two gate decisions at S13.4, and the two unrun sweeps at S13.5. (This said
+*"S0–S10"* until v2-S13.3, three slices after S11 shipped, and *"S0 through S13.3"* until v2-S13.5,
+one slice after S13.4 shipped. The same sentence has now drifted twice, and `CAPABILITY.md`'s row
+was right both times — a status line in a scope document and a status row in a capability document
+are two copies of one fact, and the copy nobody is looking at is the one that goes stale. That is
+the same shape as `07-VERIFY-BOUNDARY.md`'s short decision table, which v2-S13.5 also
+repaired.) Eight formats read, one argued refusal, and every split was against a measurement.
 
 **Both of the reasons this section carried are settled by the owner (2026-08-21), and neither was
 a format.** `00-NORTH-STAR.md` decisions **#16** and **#17** record them, and v2-S13.4 in

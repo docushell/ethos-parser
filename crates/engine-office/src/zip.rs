@@ -208,8 +208,12 @@ fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineEr
         });
     }
     let mut out = Vec::with_capacity(declared);
-    // Bounded by the declared size plus one byte: if the stream produces more than it promised,
-    // the length check in the caller fires instead of the allocation growing without limit.
+    // Bounded by `MAX_INFLATED_BYTES + 1`, not by the declared size — this comment said "the
+    // declared size plus one byte" until v2-S13.5 and never matched the line below it.
+    // `with_capacity(declared)` is a capacity HINT, not a ceiling. So a part declaring a few bytes
+    // that inflates to 200 MiB is held to the 256 MiB cap rather than to its own declaration, and
+    // the caller's length check is what refuses it afterwards. The one extra byte is what makes a
+    // stream that overruns the cap detectable instead of silently truncated at it.
     flate2::read::DeflateDecoder::new(data)
         .take(MAX_INFLATED_BYTES + 1)
         .read_to_end(&mut out)

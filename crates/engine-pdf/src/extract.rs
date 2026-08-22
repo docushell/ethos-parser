@@ -68,8 +68,15 @@ pub struct ExtractArtifact {
     ///
     /// **The L1 gate** (`docs/01-CONTRACT.md` §7). Absorbs what M3 emitted as `not_decoded`:
     /// absent font widths and undescended form XObjects are now limitations in
-    /// `assurance.limitations`, alongside the capability-derived ones — including the explicit
-    /// multi-column reading-order limitation that `synthetic/two-columns` exists to pin.
+    /// `assurance.limitations`, alongside the capability-derived ones.
+    ///
+    /// This sentence ended *"— including the explicit multi-column reading-order limitation that
+    /// `synthetic/two-columns` exists to pin"* until v2-S13.5, and stopped being true at
+    /// **v1-S5**. That slice shipped the reading-order rule, so `multi-column-reading-order` — the
+    /// code that said a multi-column document is read in the WRONG ORDER — left the default
+    /// profile's arm entirely rather than being reworded; `READING_ORDER_GEOMETRIC_ONLY` is the
+    /// narrower claim that replaced it. The old code still fires, but only for a profile that
+    /// turns the capability OFF, which is a different and still-true statement.
     pub assurance: Assurance,
 }
 
@@ -834,7 +841,19 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 ///
 /// A table's runs are contiguous in the new order and keep their relative sequence (they are one
 /// atom), so a cell's remapped indices stay ascending and still concatenate to the `text` the
-/// detector built. `cell_text_survives_the_reordering` is the proof over real fixtures.
+/// detector built.
+///
+/// **There is no test asserting exactly that, and this comment claimed one from v1-S5 until
+/// v2-S13.5.** It named `cell_text_survives_the_reordering`, which has never existed: `git log
+/// --all -S` on that identifier returns the single commit that wrote this sentence, and a test
+/// added then removed would show two. What does exist covers cell-text *composition* rather than
+/// its survival across the reorder — `tables::tests::every_cell_text_is_a_concatenation_of_assigned_runs`,
+/// `unruled::tests::cell_text_is_exactly_the_runs_assigned_to_it` and
+/// `extraction.rs`'s `every_cell_text_is_built_only_from_extracted_runs` — and the reordering
+/// tests beside them (`one_added_line_does_not_reorder_the_page`,
+/// `ordinals_and_ids_follow_the_reading_order_on_a_reordered_page`) assert order, not cell text.
+/// The property is argued above and **unpinned**; naming the gap is the honest form until a slice
+/// writes the test, and `docs/15-V2-MILESTONES.md` S13.5 records it.
 fn reorder_page(
     runs: &mut Vec<TextRun>,
     tables: &mut [crate::tables::DetectedTable],

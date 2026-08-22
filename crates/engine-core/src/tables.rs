@@ -323,15 +323,21 @@ pub struct TableRecord {
     /// Always `Computed`: the ruling lines and the text are Extracted, and the grid, the indices,
     /// the spans and the concatenation are an inference over them (`docs/01-CONTRACT.md` §6).
     pub derivation: crate::derivation::DerivationClass,
-    /// **Which rule found this table** — `ruled-rects-v2` or `unruled-align-v1` (v1-S2, S7b).
+    /// **Which rule found this table** — `ruled-rects-v2`, `unruled-align-v1` or
+    /// `stroke-ruled-v1` (v1-S2, S7b, S8).
     ///
-    /// Per table, not per document, because one document can carry both kinds and the difference
-    /// matters to a consumer:
+    /// This named **two** from v1-S7b until v2-S13.5. `stroke-ruled-v1` shipped at v1-S8 and is
+    /// written into this field by `engine-pdf`'s third build site, so a consumer matching on the
+    /// two listed values has had a third reachable since **0.10.0**.
+    ///
+    /// Per table, not per document, because one document can carry all three kinds and the
+    /// difference matters to a consumer:
     ///
     /// | Value | What the document did | What the engine did |
     /// | --- | --- | --- |
     /// | `ruled-rects-v2` | painted the grid | read it |
     /// | `unruled-align-v1` | placed text in columns | inferred it |
+    /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells |
     ///
     /// `derivation` is `Computed` either way — both are inferences over Extracted evidence — so
     /// it cannot carry this distinction, and the profile cannot either: it says which rules *ran*,

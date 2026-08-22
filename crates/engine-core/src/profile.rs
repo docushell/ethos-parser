@@ -120,8 +120,15 @@ pub const TEXT_CODE_RULE_V1: &str = "declared-font-codes-v1";
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
 /// Named here rather than in `engine-pdf` because the profile is `engine-core`'s and a rule id is
-/// data. The rule itself — the lattice tolerance, what counts as a grid — lives with the detector,
-/// and a test asserts the two strings agree so they cannot drift into naming different things.
+/// data. The rule itself — the lattice tolerance, what counts as a grid — lives with the detector.
+///
+/// **There are not two strings to keep in agreement, and this said a test asserted there were
+/// until v2-S13.5.** `engine-pdf` does not restate the id: `tables.rs` says so in as many words
+/// — *"the rule id lives in `engine_core::TABLE_DETECTION_V2` and is NOT restated here"* — and
+/// builds its tables with `rule: engine_core::TABLE_DETECTION_V2.to_string()`. One constant, read
+/// from one place, so the drift this described is structurally impossible rather than guarded.
+/// Contrast [`crate::profile::XrefRepair::Pad19To20V1`], where the id genuinely **is** spelled
+/// twice and nothing checks it.
 ///
 /// **The unruled half is not in this rule.** A table implied by alignment is a different
 /// derivation under a different id ([`TABLE_DETECTION_UNRULED_V1`]), and rolling it into this one
@@ -761,7 +768,17 @@ pub enum XrefRepair {
     /// Renamed explicitly rather than derived: `rename_all = "kebab-case"` turns `Pad19To20V1`
     /// into `pad19-to20-v1`, which is not the id the repair publishes as
     /// `engine_pdf::xref::XREF_REPAIR_V1`. Two spellings of one repair is exactly the drift a
-    /// versioned id exists to prevent, and a test asserts the two strings are equal.
+    /// versioned id exists to prevent.
+    ///
+    /// **No test asserts the two strings are equal, and this said one did from v0.1 until
+    /// v2-S13.5.** `git log --all -S'XREF_REPAIR_V1'` returns the single commit that introduced
+    /// both the const and this sentence. `the_default_profile_is_pinned` pins the serde spelling
+    /// inside the canonical JSON and never reads `engine_pdf`'s const. The assertion cannot live
+    /// in this crate at all: `engine-pdf` depends on `engine-core`, so importing it back would be
+    /// a dependency cycle — which is why the check belongs on the `engine-pdf` side, where
+    /// `xref.rs` already has both strings in scope. It is a real unguarded seam: changing
+    /// `XREF_REPAIR_V1` alone fails nothing today. Recorded in `docs/15-V2-MILESTONES.md` S13.5
+    /// rather than papered over.
     #[serde(rename = "pad-19-to-20-v1")]
     Pad19To20V1,
     /// The format has no cross-reference table, so no repair policy applies (v2-S2).
@@ -1808,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.4","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.32.5","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2152,7 +2169,7 @@ mod tests {
              held \
              — including EIGHT fields on this very struct that the list below never mutated \
              while the comment above it said an uncovered knob was impossible.\n\n\
-             Moved a FORTY-FIRST time at v2-S13.3 (0.32.2), the roadmap reorder, which did not \
+             Moved a FORTY-FIRST time at v2-S13.2 (0.32.2), the roadmap reorder, which did not \
              record the move here. Moved a FORTY-SECOND time at v2-S13.3 (0.32.3), on \
              `parser_version` ALONE again: the prose half of the fifty-two statements v2-S12.1 \
              confirmed, plus the ones a 1,789-candidate sweep found on top of them. No shipping \
@@ -2160,11 +2177,20 @@ mod tests {
              Moved a FORTY-THIRD time at v2-S13.4 (0.32.4), on `parser_version` ALONE, and this \
              one changed no source line at all: the owner settled the v2 gate's verb as BIND and \
              embedded assets as COUNTED, and the slice is those two decisions written into \
-             `00-NORTH-STAR.md` and the sentences that carried them reworded."
+             `00-NORTH-STAR.md` and the sentences that carried them reworded.\n\n\
+             Moved a FORTY-FOURTH time at v2-S13.5 (0.32.5), on `parser_version` ALONE, and every \
+             `crates/*/src` edit is a comment — proven by diffing the 19,249 non-comment lines \
+             outside `mod tests` at HEAD against the working tree. It ran the two sweeps v2-S13.3 \
+             recorded as UNRUN on a usage limit: 12,805 candidate comment lines and 1,372 \
+             backticked identifiers examined. The finding that justifies the slice is that \
+             `07-VERIFY-BOUNDARY.md` claimed to hold this repository's forced decisions \
+             *verbatim, identically* while holding FOURTEEN of SEVENTEEN — missing exactly the \
+             three the owner amended on 2026-08-21, which v2-S13.4 wrote into the other copy so \
+             that no later slice would re-escalate them from a stale sentence."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:9f694e842a74f765b7c074816a5aee366819e8532fce0455b4b8f7577747490f"
+            "sha256:ee49c816edb6d2b777cb734ba8213af8df77d53791b40d40dafdb1481b0351bd"
         );
     }
 

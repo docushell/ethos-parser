@@ -84,7 +84,7 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures, an
 
 ## 5. What "done" means
 
-### The whole engine, v0 → v3
+### The whole engine, v0 → v4
 
 | Ver | Done when | One-line intent |
 | --- | --- | --- |
@@ -98,8 +98,13 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures, an
 | **v3** | Byte-diff: assist on/off ⇒ identical grounded artifacts | Propose-only VLM assist |
 | **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR lane under its own profile |
 
-Detail lives in `02-ROADMAP.md`. **Only v0 is specified for implementation** (`03-V0-SCOPE.md`,
-`05-MILESTONES.md`). Everything past v0.1 is one line and stays one line until v0 ships.
+Detail lives in `02-ROADMAP.md`. **Five versions are specified for implementation**, each with a
+scope document and a milestones document: v0 (`03-V0-SCOPE.md`, `05-MILESTONES.md`), v1 (`08`,
+`09`), v1.1 (`10`, `11`), v1.2 (`12`, `13`) and v2 (`14`, `15`). This paragraph said *"Only v0 is
+specified for implementation … everything past v0.1 is one line and stays one line until v0
+ships"* from the bootstrap commit until v2-S13.5. v0 shipped at **0.1.0**, and the condition it
+set was met five scope documents ago. **v2.2, v3 and v4 are still one line each**, which is what
+the sentence was protecting and remains true.
 
 ### v0, specifically
 
@@ -122,7 +127,7 @@ For a coding agent starting fresh:
 7. **`06-STEAL-REFUSE.md`** — read before proposing a feature borrowed from another parser
 8. **`02-ROADMAP.md`** — only to check that a v1+ idea has a home and does not belong in v0
 
-What 0.32.4 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
+What 0.32.5 can and cannot do, on one page: `CAPABILITY.md`. The research archive that produced
 these documents is **off-tree** and is not a second roadmap (`reference/README.md`);
 `06-STEAL-REFUSE.md` is the living steal / refuse record. Architecture depth for the older
 Ethos-in-DocuShell framing: `~/Desktop/Stuff/repo/ethos-docushell-parser-plan.md` — **external, not

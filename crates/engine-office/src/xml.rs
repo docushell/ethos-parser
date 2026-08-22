@@ -206,13 +206,21 @@ pub(crate) fn new_reader<'a>(
     Ok(reader)
 }
 
-/// A reader that **resolves namespace prefixes**, for the one format that needs it.
+/// A reader that **resolves namespace prefixes**, for the four formats that need it.
 ///
 /// The three OOXML readers match element names by suffix, and `local_name`'s own documentation
 /// states why that is an acceptable trade there: the match only ever selects content, so the
 /// failure mode is finding nothing rather than finding the wrong thing. `odt.rs` re-argues it,
 /// because in that reader the same match feeds a **locator ordinal** and a **skip decision** —
 /// where the failure mode is a wrong address and a mis-named gap. See `odt::classify`.
+///
+/// **This said "the one format that needs it" from v2-S5 until v2-S13.5**, when ODT was the only
+/// caller. It stopped being true one slice later, at **v2-S6**, and twice more after that:
+/// `ods.rs` at v2-S6, `odp.rs` at v2-S7 and `epub.rs` at v2-S9. **Four readers, seven call
+/// sites** — the three ODF readers take one each because they share `odt::classify`'s allowlist,
+/// and EPUB takes four because `container.xml`, the package document, the encryption declaration
+/// and each spine document are all addressed by namespace rather than by suffix. The reason the
+/// function exists is unchanged; only the count moved.
 pub(crate) fn new_ns_reader<'a>(
     part: &'a [u8],
     part_name: &str,

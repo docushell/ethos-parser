@@ -13,6 +13,15 @@ visible before it is written.
 
 Recorded here verbatim, identically to `00-NORTH-STAR.md` §2. These are settled.
 
+**This table held fourteen of the seventeen until v2-S13.5**, and the claim above it was false by
+exactly the three the owner amended on 2026-08-21: **#15** (the roadmap reorder, v2-S13.2) and
+**#16** and **#17** (the gate's verb and embedded assets, v2-S13.4). Rows 1–14 were byte-identical
+throughout, so nothing here contradicted anything — the copy was simply short, which is the failure
+mode a second copy of a table has. v2-S13.4 wrote #16 and #17 into the decision table *"so neither
+can be re-escalated by a later slice reading a stale sentence"*, and left this copy stale in the
+same commit. The three rows are restored rather than the sentence weakened, because the sentence is
+the point of the section.
+
 | # | Decision |
 | --- | --- |
 | 1 | **Product:** ethos-engine = DocuShell's open high-performance parser / evidence emitter. Citation verification (L3) is a separate verifier product ("Ethos" / Ethos-next). Together they answer: did this AI claim actually come from this document? |
@@ -29,6 +38,9 @@ Recorded here verbatim, identically to `00-NORTH-STAR.md` §2. These are settled
 | 12 | **Optional agents:** allowed later as assist emitting `Proposed` only; never overwrite `Extracted`; never same processor identity for draft + evidence (Workbench rule 7). Out of v0. |
 | 13 | **LibreOffice→PDF office bridge:** forbidden (invents pagination). |
 | 14 | **No AGPL.** PDFium caller-provided or explicitly ADR'd later; v0 prefers clean-room `lopdf` + vendored CMap data (not wrapping pdf-inspector). |
+| 15 | **Roadmap order, amended by the owner 2026-08-21:** the ladder after v2 is **v2.2 (accessibility) → v3 (assist) → v4 (OCR)**. OCR was v2.1 and is now **v4** — moved last, not descoped, and renumbered rather than merely resequenced because `parser_version` is inside `profile_sha256` and a later build carrying a lower number defeats the one job that field has. **v2.1 is now a gap and nothing ever shipped under it.** Accessibility's condition — *"only on a named accessibility requirement, never on the critical path"* — is **withdrawn**; it is a sequential row. The two v4 blockers are unchanged and remain unpaid: `deny.toml` denies the HTTP surface by name and says the OCR lane needs its own ADR, and ONNX would be the largest runtime dependency in the tree. |
+| 16 | **The v2 gate's verb, settled by the owner 2026-08-21: *ground* means *bind*.** The gate reads "a DOCX quote and an XLSX cell both **bind**" — each resolves to an address the file itself states, which is what the eight readers emit and have since v2-S3. It does **not** mean emitting `ethos.grounding.v1`, which a DOCX cannot: `source.media_type` is a `const` of `application/pdf`, every element requires a `page`, and every page requires integer geometry. The decisive argument is that the gate's own second half forbids what the literal reading requires — grounding needs pages, and *"no synthesised pages"* is the same sentence. Read literally the gate contradicts itself; read as *bind* it is met. Option (a), widening the verifier's schema, stays **blocked on an Ethos-side revision owned elsewhere** rather than refused, and `ground` now means one thing in this repository. |
+| 17 | **"Embedded assets", settled by the owner 2026-08-21: counted satisfies v2.** Every reader declares how many entries it passed over that hold a picture, an audio or video clip, or an embedded object — which is what **A14** requires and what v2-S11 shipped. **Reading** an office asset is explicitly *not* v2: an office image has no page and no coordinate system, so an `ImageRecord`-shaped node would need a different address model, and that is a contract change rather than a reader change. It gets its own row when someone asks for it, rather than sitting implied inside v2's. |
 
 ---
 

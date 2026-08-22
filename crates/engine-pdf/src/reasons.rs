@@ -51,8 +51,14 @@ pub enum OcrNeedReason {
     EmbeddedImages,
     /// Extracted text appears to be mojibake.
     ///
-    /// **Never emitted by this profile.** Declared in the artifact's `not_detected` list. See
+    /// **Never emitted by this profile.** Declared in `assurance.limitations`. See
     /// `crate::thresholds` for the measured reason.
+    ///
+    /// This said *"the artifact's `not_detected` list"* from M2 to v2-S13.5. That list was M2's
+    /// spelling and **M4 absorbed it** — `crate::limitations` says so in its own header, and
+    /// `every_not_detected_entry_became_a_limitation` pins that nothing M2 declared was dropped in
+    /// the move. It is the same defect v2-S13.3 repaired across five `not_decoded` sites, on the
+    /// sibling list nobody swept.
     Garbled,
     /// Substantial vector drawing with no text — glyphs may have been converted to curves.
     VectorText,
@@ -99,7 +105,8 @@ pub enum LayoutComplexityReason {
     ///
     /// **Never emitted by this profile.** v0 has no stable multi-column rule — pdf-inspector's
     /// flips on a single line of text (`min_lines < 15`), so a one-line edit reorders the page.
-    /// Declared in the artifact's `not_detected` list.
+    /// Declared in `assurance.limitations`, for the reason [`Self::Garbled`] gives — this said
+    /// `not_detected` too, and M4 absorbed that list.
     MultiColumn,
     /// Ruling lines suggest tabular content.
     TableLikely,

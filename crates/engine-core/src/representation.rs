@@ -79,7 +79,17 @@ pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.5.0";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceIdentity {
-    /// Always `application/pdf` at v0.
+    /// The source's media type. **`application/pdf` at v0, and one of nine since v2-S2.**
+    ///
+    /// This read *"Always `application/pdf` at v0"* until v2-S13.5, which was true of v0 and had
+    /// stopped describing the field: `engine-office` writes eight more into it — the OOXML three,
+    /// the ODF three, `application/rtf` and `application/epub+zip`. A caller must not treat this
+    /// as a constant.
+    ///
+    /// **Not to be confused with `engine_grounding::Source::media_type`**, which IS pinned to
+    /// `application/pdf` by the `ethos.grounding.v1` schema and is correctly documented as such.
+    /// Decision **#16** turns on that distinction: a DOCX cannot be *grounded* because the
+    /// verifier's field is a const, and it can still *bind* because this one is not.
     pub media_type: String,
     /// Digest of the exact source bytes.
     pub sha256: Sha256Hex,
@@ -2080,7 +2090,9 @@ impl DocumentRepresentation {
 
     /// The shape a page-less document has to have, checked once before the node walk (v2-S2).
     ///
-    /// Three rules, and each one closes a way of faking a page:
+    /// Four rules, and each one closes a way of faking a page. This said **three** from v2-S2
+    /// until v2-S13.5; rule 4 arrived with RTF at v2-S8 and was numbered into the list without
+    /// the count above it moving:
     ///
     /// 1. **`pages` is empty.** `docs/14-V2-SCOPE.md` §3: a non-empty `pages` on a document whose
     ///    nodes have no page is the defect the law exists to catch — an A4 record minted so the

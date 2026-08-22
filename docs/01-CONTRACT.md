@@ -177,9 +177,13 @@ format profile defines that rendering as authoritative. No such profile exists i
 A missing box is a **type**, never a sentinel and never a substitute.
 
 - Where font metrics are unavailable, emit `GeometryPresence::Absent(NotReportedByReader)` **and**
-  declare the capability limit (§7). Two sibling variants exist — `NotApplicableToKind` and
-  `CapabilityNotEnabled` — and only `NotReportedByReader` counts toward the limitation, because a
-  node kind that never has geometry is not a gap in what the engine could do.
+  declare the capability limit (§7). **Three** sibling variants exist — `NotApplicableToKind`,
+  `NoInkToMeasure` and `CapabilityNotEnabled` — and only `NotReportedByReader` counts toward the
+  limitation, because a node kind that never has geometry is not a gap in what the engine could do.
+  (This said *"Two sibling variants"* from M1 until v2-S13.5. `NoInkToMeasure` arrived at
+  **v1-S6.2** — a node that draws no ink has nothing to measure, which is a third answer and not
+  the same as being unable to measure — and `derivation.rs` calls it *"the variant this type's own
+  documentation promised and did not have"*. This is that documentation.)
 
   **`TODO(re-read DocumentRepresentation v0 field list)` — re-read, still open, and now precise.**
   The companion settles the locator names (`NativeLocator` required, `StructuralLocator` where the
@@ -189,8 +193,9 @@ A missing box is a **type**, never a sentinel and never a substitute.
   geometry is absent; its model is "optional field, omitted".
 
   So this is a real divergence, not a missing lookup. Typed absence carries strictly more
-  information than an omitted field, and it projects down to one cleanly (all three variants
-  serialize to "no geometry" on the DocuShell wire). v0 keeps the richer type and does not invent a
+  information than an omitted field, and it projects down to one cleanly (all **four** variants
+  serialize to "no geometry" on the DocuShell wire — three until v1-S6.2 added `NoInkToMeasure`,
+  and this said three until v2-S13.5). v0 keeps the richer type and does not invent a
   competing *field name*. Pending DocuShell review — tracked in `docs/README.md`.
 - **Never `height = font_size`.** pdf-inspector's `TextItem.height` is literally the same variable as
   `font_size` (checklist P5). A font-size-derived box is closer to invented than measured, and

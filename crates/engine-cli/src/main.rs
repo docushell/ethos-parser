@@ -14,8 +14,15 @@
 
 //! `engine` — the ethos-engine command line.
 //!
-//! Four subcommands, all implemented as of v0: `classify`, `extract`, `ground`,
-//! `grounding-check`. The CLI is a **thin shell** over the library so the two cannot diverge: it
+//! **Four subcommands at v0. Nine now**, and this paragraph said four until v2-S13.5. The v0 four
+//! are `classify`, `extract`, `ground` and `grounding-check`; `verify` arrived at v0.1, `markdown`
+//! at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1 and `overlay` with the image work. The `Command`
+//! enum below is the list that cannot go stale, and `crates/engine-core/src/verifier.rs` has said
+//! *"the other eight subcommands"* since v0.1 — two files in one workspace disagreeing about a
+//! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
+//! this one was missed by.
+//!
+//! The CLI is a **thin shell** over the library so the two cannot diverge: it
 //! parses arguments, opens the document once, calls the library, prints canonical bytes, and maps
 //! the result to an exit code. No classification, extraction, projection or validation logic lives
 //! here, and `docs/PUBLIC-API.md` names the library entry point behind each subcommand.

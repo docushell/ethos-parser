@@ -59,6 +59,12 @@ carry on 2026-08-21, as `00-NORTH-STAR.md` decisions **#16** (*ground* means **b
 not a gate condition**: whether `zip.rs` should verify the CRC-32 it ignores. No slice here closes
 v1.
 
+**v2-S13.5 ran the two sweeps v2-S13.3 recorded as unrun**, closing this file's only unmet
+acceptance box. It found that `07-VERIFY-BOUNDARY.md` had been claiming to hold this repository's
+forced decisions *verbatim, identically* while holding fourteen of seventeen — missing exactly #15,
+#16 and #17. Two clusters are named and deferred there rather than half-repaired, and two comments
+were found naming tests that have never existed.
+
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
 0.489 is a published ODL-local score on *their* corpus, same unit and a different exam
@@ -3373,6 +3379,11 @@ this slice's. Named, and stopped.
         sweep and a cross-reference-rot sweep are unrun, and neither is a formality: the one sweep
         that did run found fifteen.
 
+    > **Closed at v2-S13.5 (0.32.5).** Both ran. 12,805 candidate comment lines and 1,372
+    > backticked identifiers examined; the prior held. The finding that justified the slice was
+    > `07-VERIFY-BOUNDARY.md` claiming to hold the forced decisions *verbatim, identically* while
+    > holding fourteen of seventeen — missing the three the owner had just settled.
+
 - **Depends on:** S13.1.
 
 ---
@@ -3463,6 +3474,205 @@ decisions slice is exactly the shape both S12.1 and S13.1 exist to prevent.
   - [x] No git tag
 
 - **Depends on:** S13.3.
+
+---
+
+## S13.5 — the two sweeps that never ran — **done**, as 0.32.5
+
+**A patch release, on the precedent v2-S9.1, v2-S10.2, v2-S12.1, v2-S13.1 and v2-S13.3 set.** No
+behaviour changed. Every `crates/*/src` edit is a comment.
+
+**This closes S13.3's one unmet acceptance box.** That slice planned three read-only sweeps and ran
+one; a usage limit killed the other two, and it recorded them as unrun rather than rounding them
+off. The one that ran examined 1,789 candidate lines and found fifteen. That was the prior, and it
+held.
+
+### The method, and the numbers, because "nothing found" has to be a result
+
+Both sweeps derived their target set from the code first and checked the handed list against it,
+which is the rule v2-S10.2 recorded and every slice since has repeated.
+
+| Sweep | Derived population | Examined | Confirmed |
+| --- | --- | --- | --- |
+| **A** — `crates/*/src` comments | 14,637 comment lines, of which 5,631 carry a count word or digit; 785 backticked path mentions across 181 distinct paths | **12,805 candidate lines** across 59 files | see below |
+| **B** — cross-reference rot | 11,782 backticked spans in `docs/**`, `NOTICE`, `README.md`, `vendor/README.md` and `crates/*/src` comments; 1,372 distinct identifier-shaped tokens; 217 distinct repo paths | **1,372 identifiers resolved by `git grep -w`, 217 paths by existence** | 18 unresolved, all adjudicated |
+
+**Sweep B's identifier lane found no rot at all.** All 18 unresolved identifiers are correct:
+deliberate absences (`csv_v0`, `--format`), other projects' symbols named to explain a refusal
+(`FPDFText_GetCharOrigin`, `EthosPdfBackend`, `is_likely_garbled`), forbidden vocabulary quoted in
+order to ban it, and — the one that would have been a false positive — `cached_formula_result` and
+`formula_source`, which are **serde-generated**: `CellTextSource` carries
+`rename_all = "snake_case"`, so the documented wire spelling appears in no source file and is
+exactly right.
+
+**Both exclusions were honoured.** `CHANGELOG.md` and `docs/attic/` are append-only history and
+were not audited.
+
+### What was repaired, and when each stopped being true
+
+Every one is dated by `git log -S` or `git blame` against the commit that falsified it, because
+this repository's register requires saying *when* — not just *what*.
+
+| Site | Said | Is | Stopped being true at |
+| --- | --- | --- | --- |
+| `docs/07-VERIFY-BOUNDARY.md` §1 | decisions recorded *"verbatim, identically"* | **14 of 17 rows** | #15 at S13.2, #16/#17 at **S13.4** |
+| `crates/engine-cli/src/main.rs` | *"Four subcommands"* | **nine** | each of the five that followed v0 |
+| `crates/engine-core/src/diagnostics.rs` | *"tell the four apart"* | **five** `Stage` variants | `Verify`, **v0.1** |
+| `crates/engine-pdf/src/reasons.rs` ×2 | *"the artifact's `not_detected` list"* | absorbed into `assurance.limitations` | **M4** |
+| `crates/engine-core/src/tables.rs` | `detection_rule` is one of **two** | **three** | `stroke-ruled-v1`, **v1-S8** |
+| `crates/engine-pdf/src/tables.rs` | *"the two places a table is built"* | **three** | **v1-S8** |
+| `crates/engine-pdf/src/content.rs` | limitation *"declared since v1-S1"* | retired; a test asserts its **absence** | **v1-S8** |
+| `crates/engine-pdf/src/extract.rs` | the multi-column limitation rides on every artifact | left the default arm | **v1-S5** |
+| `crates/engine-core/src/representation.rs` | *"Three rules"* | **four** are listed beneath it | rule 4, **v2-S8** |
+| `crates/engine-core/src/representation.rs` | `media_type` *"Always `application/pdf`"* | **nine** types | **v2-S2** |
+| `crates/engine-core/src/assurance.rs` | *"Every other arm"* declares a `false` capability | **four** arms partner a `true` one | **v1-S5** |
+| `crates/engine-office/src/xml.rs` | *"the one format that needs it"* | **four readers, seven call sites** | **v2-S6**, again at S7 and S9 |
+| `crates/engine-office/src/zip.rs` | inflate *"bounded by the declared size plus one byte"* | bounded by `MAX_INFLATED_BYTES + 1` | never matched the line below it |
+| `docs/00-NORTH-STAR.md` | *"The whole engine, v0 → v3"* | the table beneath carries **v4** | **S13.2** |
+| `docs/00-NORTH-STAR.md`, `docs/02-ROADMAP.md` | *"Only v0 is specified"* | **five** scope documents | v1's, four scope documents ago |
+| `docs/01-CONTRACT.md` ×2 | *"Two sibling variants"* / *"all three"* | **three** / **four** | `NoInkToMeasure`, **v1-S6.2** |
+| `docs/02-ROADMAP.md`, `docs/14-V2-SCOPE.md` | slice lists ending at S13/S13.3 | through **S13.4** | one and three slices earlier |
+| `crates/engine-core/src/profile.rs` | *"FORTY-FIRST … at v2-S13.3 (0.32.2)"* | 0.32.2 is **v2-S13.2** | written wrong |
+
+### Two comments named a test that has never existed
+
+The most consequential finding, because a reader trusts a named proof and stops looking.
+
+- `crates/engine-pdf/src/extract.rs` cited **`cell_text_survives_the_reordering`** as *"the proof
+  over real fixtures"*. `git log --all -S` on that identifier returns **one** commit — the one that
+  wrote the sentence. A test added and later removed would return two. It was never written, and
+  nothing else covers the property: the three real cell-text tests assert **composition**, and the
+  reordering tests beside them assert **order**.
+- `crates/engine-core/src/profile.rs` said *"a test asserts the two strings are equal"* of the
+  serde spelling `pad-19-to-20-v1` against `engine_pdf::xref::XREF_REPAIR_V1`. Also one commit.
+  The id genuinely **is** spelled twice and changing one alone fails nothing. The assertion cannot
+  live in `engine-core` — `engine-pdf` depends on it, so importing back is a cycle — which is why
+  it belongs on the `engine-pdf` side and is recorded here rather than papered over.
+
+**The neighbouring claim in the same file was the opposite defect and is repaired the other way.**
+`TABLE_DETECTION_V2` also said a test kept "the two strings" in agreement; there is only **one**
+string — `engine-pdf` reads the constant rather than restating it — so the drift is structurally
+impossible and the guard was never needed.
+
+### `not_detected` — S13.3's sweep, on the word it did not search
+
+v2-S13.3 chased **`not_decoded`** and found five sites where its brief named one. Nobody swept the
+sibling list. `reasons.rs` still sent a reader to *"the artifact's `not_detected` list"* in two
+places, and M4 absorbed that list into `assurance.limitations` —
+`every_not_detected_entry_became_a_limitation` pins that nothing was dropped in the move.
+
+**Every documentation site was already correct**, checked in both directions and reported as a
+result rather than assumed: `docs/README.md` has it struck through, `draft-schemas/README.md`
+carries a heading saying both are gone, `classification.draft.json` says *"which no longer exists
+on the wire"*, and `05-MILESTONES.md`'s is M2's own record. Two code sites, zero doc sites.
+
+### Deferred whole, with the list named, because half a repair is worse
+
+**The `neither detector` cluster — fifteen sites.** With three detectors since v1-S8, *"neither"*
+is arithmetically wrong; the substance it states is **true** — no detector reads `/TH`. Two of the
+fifteen are **emitted wire strings** (`assurance.rs`'s `MARKDOWN_TABLE_SPANS_FLATTENED` and
+`limitations.rs`'s `TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE`), so repairing them changes artifact bytes
+and is a behaviour change this slice forbids. Repairing only the comments would leave the wire
+saying *neither* and the comments saying *none of the three* — a **new** inconsistency, which is
+worse than the one it fixed. So the whole cluster is deferred with its list, on v2-S12.1's
+precedent: `assurance.rs:337,501`, `html.rs:30,500,809`, `markdown.rs:160`, `extract.rs`'s
+tagged-vs-geometric pairing comment,
+`limitations.rs:398`, `html_cli.rs:347`, `html.draft.json:52,185`, `markdown.draft.json:185`,
+`11-V11-MILESTONES.md:238,516`, `README.md:117`.
+
+**The code is correct.** `tables::detect` takes `&stroke_rules` and returns all three rules'
+output, so the *behaviour* consults every detector. This is prose only.
+
+**A single-line grep misses two of the fifteen.** `extract.rs` wraps "neither" and "detector" onto
+different lines. The scan that found them is multi-line, and that is a method note for the next
+slice: `git grep` cannot see a claim that spans a line break.
+
+**The `four words` cluster — six sites.** `06-STEAL-REFUSE.md` L30's quoted phrase is *"It invents
+pagination."*, which is **three** words. `git log -S` shows the phrase never changed, so this never
+rotted — it was miscounted once and copied five times, into `Cargo.toml`,
+`representation.rs:216`, `odp.rs:30`, `14-V2-SCOPE.md:56`, `15-V2-MILESTONES.md:1294` and the
+CHANGELOG. A different class from everything above, and named rather than repaired here.
+
+### Left alone deliberately, and named so the next slice does not re-find them
+
+- **`docs/15-V2-MILESTONES.md`'s citation of `docs/00-NORTH-STAR.md:93`** has rotted — the v2 gate
+  row is now line 96, and line 93 was the v2 row at `a7b0e4b` and `64a5f52`. It sits inside
+  **S10's** section, and v2-S13.4's acceptance forbids rewriting past slice sections. Left, and the
+  standing preference for a symbol name over `:NN` is why.
+- **The "three questions" sentences** at S13.1, S13.2 and S13.4 are historical and correct as they
+  stood. Live prose is right everywhere: `14-V2-SCOPE.md`, this file's header and `CAPABILITY.md`
+  all say **one**.
+- **`docs/05-MILESTONES.md`'s M-era counts** — *"the four empty crates"*, *"the four subcommands
+  finalized"*. Its header declares it *"the historical record and the acceptance list each
+  milestone was actually held to"*. `04-ARCHITECTURE.md` was repaired at S13.3 because it is
+  current-facing; this one is explicitly not. A consistent line, argued rather than assumed.
+- **`crates/*/tests/`** is outside both sweeps' declared scope. Two real defects were found there
+  in passing and are recorded for a later slice: `verify_relay.rs` says *"the other four
+  subcommands"* (eight), and `diagnostics.rs` asserts *"all four subcommands must be covered"* when
+  `Stage` has **five** variants — `Stage::Verify` is uncovered, and covering it would add a built
+  `ethos` binary as a dependency of a test that currently needs none.
+- **`CHANGELOG.md`** is an excluded scope. Its `[Unreleased]` heading lists 0.32.2 after 0.32.3 and
+  0.32.4, and the `v2-S13.2` section sits above both.
+
+### Two false positives, caught by measurement rather than by reading
+
+Reported because the brief is right that a false positive costs a reviewer more than a miss.
+
+1. **`ods.rs`'s *"which twelve element names are the sentence"* is exactly right.** `odt::classify`
+   allows 17 names; **twelve** of them are sentence text. The other five are Regions and Frames —
+   passed over, not spoken. Repairing 12 → 17 would have replaced a correct number with a wrong one.
+2. **`03-V0-SCOPE.md`'s fixture table is correct.** Its Count column means manifest-listed
+   conformance fixtures, and the manifest holds exactly one foreign entry; 9 + 5 + 1 = 15 =
+   `counts.conformance_ethos_owned`. The directory holding ten files is not what the table counts.
+
+### The verification, and what it did not reach
+
+Every candidate was put to three adversarial agents — deliberate-absence, historical, and
+re-measurement — each instructed to **refute** and to default to refuted when uncertain.
+
+**65 candidates → 40 reached a verifier → 27 survived every lens, 13 were refuted.** **25 were
+never verified**: a usage limit killed 77 of 212 agents mid-phase. Those 25 were instead
+**re-measured by hand**, with each verbatim quote checked at its cited line and each claim dated
+against the commit that falsified it; nothing was repaired on an agent's word alone.
+
+**The verification harness had a defect of its own, and it is recorded rather than hidden.** Its
+prompt inherited v2-S13.3's framing — *"statements that have stopped being true"* — which is
+narrower than this slice's charter. Several refutations therefore read *"the measurement is accurate
+but the finding is out of class"*, which is not a factual refutation. Those were reclassified as
+wrong-at-birth rather than discarded, which is why the `four words` cluster is named above instead
+of deleted. A check that passes for the wrong reason is the defect this repository keeps finding,
+and it is no less one when it is mine.
+
+- **Acceptance — met:**
+  - [x] **Both sweeps ran to completion**, with the method and the candidate count recorded —
+        **12,805 comment lines** and **1,372 identifiers**, so "nothing found" is a result
+  - [x] Every finding carries a verbatim quote, a measured real value, and the commit at which it
+        stopped being true
+  - [x] Every correction re-verified against the code, **including three of my own**: a claim that
+        `contract_invariants.rs` forbids the `engine-pdf` import (it bans PDF *libraries*; the real
+        reason is a dependency cycle), a call-site count of five (**seven**), and an ordinal that
+        imposed source order on a file that numbers its arms chronologically — that last one
+        reverted a repair to a sentence that was already correct
+  - [x] Historical sentences left alone and **named**, above
+  - [x] **No behaviour change**, proven mechanically: **19,249** non-comment lines outside
+        `mod tests` at `HEAD` and in the working tree, diff empty. The extractor was negative-
+        controlled by injecting a `pub const` (reported), a `//` comment (ignored) and a line
+        inside `mod tests` (ignored)
+  - [x] Workspace **0.32.5**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct
+  - [x] No git tag
+
+- **Not met, and stated rather than rounded off:**
+  - [ ] **The adversarial verification did not finish.** 25 of 65 candidates never reached a
+        verifier, on a usage limit — the same failure that left S13.3's sweeps unrun. They were
+        hand-measured instead, which is weaker than three independent refutation attempts.
+  - [ ] The **`neither detector`** (15 sites) and **`four words`** (6 sites) clusters are named and
+        unrepaired. Neither is a formality; both need a slice that may change artifact bytes.
+  - [ ] **Two comments named tests that do not exist.** The statements are repaired; the missing
+        guards are not written. `cell_text_survives_the_reordering` and the `XREF_REPAIR_V1`
+        equality check are both real unguarded seams.
+
+- **Depends on:** S13.4.
 
 ---
 
