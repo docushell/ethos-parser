@@ -157,7 +157,7 @@ pub const GFM_SPAN_SLOTS_UNREPRESENTABLE: &str = "gfm-span-slots-unrepresentable
 /// every renderer draws row 0 as a header because of it. So projecting *any* table asserts
 /// something about row 0.
 ///
-/// **The representation carries no header declaration at all** — neither detector reads `/TH`,
+/// **The representation carries no header declaration at all** — no detector reads `/TH`,
 /// and [`crate::TaggedGridCheck`] compares grids rather than cell types — so this fires for every
 /// table that becomes GFM. It is written as a condition rather than a constant because the day a
 /// slice carries `/TH` through, the count drops on documents that declare one, and nothing here

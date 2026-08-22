@@ -344,7 +344,7 @@ fn the_two_projections_disagree_about_the_merge_and_say_so() {
     );
     assert!(
         !html.contains("<th"),
-        "no header is invented: neither detector reads `/TH`"
+        "no header is invented: no detector reads `/TH`"
     );
 
     let code_of = |a: &Value, code: &str| -> u64 {

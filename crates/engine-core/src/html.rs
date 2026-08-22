@@ -27,7 +27,7 @@
 //!
 //! It also never invents a header. GFM's delimiter row makes row 0 a header on every renderer
 //! there is, whatever the document said; HTML has no such requirement, so **every cell is a
-//! `<td>`** and there is no `<th>` in this file at all. Neither detector reads `/TH`, so a `<th>`
+//! `<td>`** and there is no `<th>` in this file at all. No detector reads `/TH`, so a `<th>`
 //! here would be this exporter deciding what the document meant.
 //!
 //! # Which erasures this artifact declares, and which two it does not
@@ -497,7 +497,7 @@ fn emit_table(e: &mut Emit, plan: &TablePlan) {
                 SlotRole::Empty => (1, 1),
             };
 
-            // **Always `<td>`, never `<th>`.** Neither detector reads `/TH` and the representation
+            // **Always `<td>`, never `<th>`.** No detector reads `/TH` and the representation
             // carries no header declaration, so a `<th>` would be this exporter deciding what the
             // document meant. GFM had no such choice — its delimiter row makes row 0 a header on
             // every renderer — which is why `gfm-row-zero-separator-v1` exists there and no
@@ -806,7 +806,7 @@ mod tests {
         assert_tiles(&a);
     }
 
-    /// **Never `<th>`.** Neither detector reads `/TH`, so a header row would be invented — which
+    /// **Never `<th>`.** No detector reads `/TH`, so a header row would be invented — which
     /// is exactly what GFM forces and `gfm-row-zero-separator-v1` had to disclose.
     #[test]
     fn no_header_row_is_synthesized() {

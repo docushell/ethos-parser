@@ -519,7 +519,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         let mut tables = detected.tables;
 
         // v1-S3: the document's own tags, compared against what the detectors found. The two
-        // derivations meet here and nowhere else — the tree walk never saw a box, and neither
+        // derivations meet here and nowhere else — the tree walk never saw a box, and no
         // detector ever saw a structure type.
         //
         // Paired by position: the nth `/Table` the tree describes on this page against the nth

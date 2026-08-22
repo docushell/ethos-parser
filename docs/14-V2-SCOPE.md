@@ -3,12 +3,13 @@
 **Status:** scope authority for v2 · **Slice detail:** `15-V2-MILESTONES.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S14.1 are done: this
+**v2 reads eight formats, and v2's format row is closed.** S0 through S15 are done: this
 document, the grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
 ODS, ODP, RTF and EPUB, **S10 (CSV) as an argued refusal rather than a reader**, embedded assets
 counted at S11, both A11 lanes closed at S12 and S13, the guard and prose repairs at S13.1 and
 S13.3, the owner's two gate decisions at S13.4, the two unrun sweeps at S13.5, the CRC-32
-answer at S14, and the guards those sweeps named at S14.1. (This said
+answer at S14, the guards those sweeps named at S14.1, and the `neither detector` cluster
+at S15. (This said
 *"S0–S10"* until v2-S13.3, three slices after S11 shipped, and *"S0 through S13.3"* until v2-S13.5,
 one slice after S13.4 shipped. The same sentence has now drifted twice, and `CAPABILITY.md`'s row
 was right both times — a status line in a scope document and a status row in a capability document

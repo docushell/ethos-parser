@@ -3,7 +3,7 @@
 **Status:** implementation authority for v2 · **Scope document:** `14-V2-SCOPE.md`
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
-**v2 reads eight formats, and v2's format row is closed.** S0 through S14.1 are **done** — eight formats
+**v2 reads eight formats, and v2's format row is closed.** S0 through S15 are **done** — eight formats
 read and **S10 (CSV) an argued refusal rather than a reader**. `engine-office` is
 the fifth crate, DOCX is the format that stopped it being speculative, XLSX is the one that made the
 page-less invariant carry more than one part, PPTX is the one that tested whether a part this
@@ -65,9 +65,10 @@ forced decisions *verbatim, identically* while holding fourteen of seventeen —
 #16 and #17. Two clusters are named and deferred there rather than half-repaired, and two comments
 were found naming tests that have never existed. **v2-S14.1 wrote those two guards** (0.33.1),
 repaired the `four words` cluster at every live site, and re-checked S13.5's findings against the
-code — where one of them, *"zero doc sites"* for `not_detected`, did not survive. The
-`neither detector` cluster still stands, because two of its fifteen sites are emitted wire strings
-and a patch release must not move artifact bytes.
+code — where one of them, *"zero doc sites"* for `not_detected`, did not survive. **v2-S15 moved
+the `neither detector` cluster** (0.34.0), all fifteen sites together because two are emitted wire
+strings, which is why it is a minor and not a patch: an artifact this build emits differs from one
+0.33.1 emitted for the same bytes.
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
 four tagged PDFs this repository owns, fabrication is **0**, and the **> 0.489 chase is parked** —
@@ -4054,6 +4055,177 @@ Named at v2-S13.3, restated at S13.4, S13.5 and S14, and still the owner's.
   - [x] Full gate suite green. Both SDK suites run by hand. No git tag
 
 - **Depends on:** S14.
+
+---
+
+## S15 — the `neither detector` cluster — **done**, as 0.34.0
+
+**A minor bump, because an artifact changed.** Two of the cluster's fifteen sites are **emitted
+wire strings**, so a document this build reads produces different bytes from the one 0.33.1
+produced for the same input. That is what a minor has to be able to say, and it is the same
+reasoning v2-S14 used for a reader that changed.
+
+**The cluster moved as one, which is the whole point.** v2-S13.5 deferred it whole rather than
+repairing the comments, and its reason is worth restating because it is the argument for this
+slice's shape: repairing only the comments would leave the wire saying *neither* and the comments
+saying otherwise — a **new** inconsistency, and worse than the one it fixed.
+
+### What was wrong, and what was not
+
+**The count.** There have been **three** detectors since v1-S8 — `ruled`, `unruled` and
+`stroke_ruled` — so *"neither"* is arithmetically wrong wherever it appears.
+
+**The substance is true and stays true.** No detector reads `/TH`. **The code is correct**:
+`tables::detect` takes `&stroke_rules` and returns all three rules' output, so the behaviour
+consults every detector. Nothing here changes what `tables::detect` consults, and no fourth
+detector was added.
+
+**They were wrong at birth, not rotted.** `git log -S` dates the third detector to `16ff23f`
+(**0.10.0**, v1-S8) and the first *"neither detector"* sentence in `11-V11-MILESTONES.md` to
+`54b2584` (**0.12.0**, v1.1-S2) — two minors later. This is the same class as the `four words`
+cluster S14.1 repaired, and a different class from the eighteen statements S13.5 dated to the
+commit that falsified them.
+
+### The wording, chosen once and carrying no ordinal
+
+**"no detector reads `/TH`."** Not *"none of the three"* — that is the same defect with a different
+number, and this repository has now spent five slices repairing counts. A form with no ordinal in
+it cannot be re-rotted by a fourth detector, which is the property the replacement had to have.
+
+The two wire strings take the same shape: `assurance.rs` now says *"a header this engine never
+read: no detector reads `/TH`"*, and `limitations.rs` now says *"a `/Table` on page(s) … that NO
+table detector found"*.
+
+### The blast radius, measured before the wording was chosen
+
+Changing a wire string twice is two artifact-byte changes, so this was measured first — with the
+strings changed and `parser_version` **held at 0.33.1**, so the effect of the message is isolated
+from the effect of the bump.
+
+| Question | Answer | How it was established |
+| --- | --- | --- |
+| Which pinned digests move? | **`representation_sha256`**, in both projection worked examples: `79f3d68b…` → `dafa1b5c…` at held version | Regenerated from `synthetic/simple-text` |
+| Does `profile_sha256` move? | **No** — confirmed, not assumed. It is unchanged at `a8636a4e…` with the version held; a limitation message is not a profile field | Same run |
+| Does the oracle move? | **No.** 18/18 pass unchanged. A grounding artifact carries `limitation_code`, a `&'static str`, and **never the message** | `cargo test --test oracle` on the changed tree |
+| Do the mutation harnesses move? | **No.** `engine-pdf` 9/9, `engine-office` 6/6. `EXPECTED_SURVIVORS` pins outcomes, not message text | `cargo test --test robustness` |
+
+**And the exact change surface, rather than a summary of it.** Diffing the extract artifact leaf by
+leaf against the one 0.33.1 produced for the same document gives **two** changed leaves and no
+others: `representation.assurance.limitations[7].detail`, and the
+`representation_c14n_sha256` that covers it.
+
+**Only one of the two wire strings was witnessed on an artifact, and that is stated rather than
+implied.** `MARKDOWN_TABLE_SPANS_FLATTENED` is profile-scope and rides on every PDF representation
+this build emits, so it was read back off a generated artifact and reads
+*"a header this engine never read: no detector reads `/TH`"*.
+`TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE` is **document-scoped and conditional** — it fires only where
+the structure tree describes a `/Table` no detector found — and **no document in either tree
+produces it**: every PDF in `fixtures/` and in the Ethos corpus was run through `engine extract`,
+**72 offered, 68 read, 4 refused, and zero declared it**. The code path is live and gated at
+`extract.rs:742`, not dead, and the suite exercises the surrounding derivation; the *message* is
+simply unwitnessed here. So for the corpus this repository can reach, exactly one of the two wire
+strings changes any artifact's bytes — which is a narrower claim than "two wire strings moved" and
+the true one.
+
+### A single-line grep misses three, where S13.5 said two
+
+S13.5's method note is right in kind and short by one. A multi-line scan finds **three** sites whose
+claim spans a line break — `assurance.rs:501` and `limitations.rs:398` wrap inside Rust string
+continuations, and `extract.rs:522` wraps across two `//` lines. Measured on the tree before this
+slice edited it, `git grep -i 'neither.*detector'` returned exactly **one** hit across those three
+files — `assurance.rs:337`, which is a single-line site of its own and none of the three. The
+correction is recorded because the next slice will inherit the note, and a method note that
+undercounts its own blind spot is the shape of defect this repository keeps finding.
+
+### The two v1.1 sites, and the rule they sit under
+
+`11-V11-MILESTONES.md:238` and `:516` are inside **S2's** and **S4's** sections of v1.1's
+milestones document, which has the same *"implementation authority"* header shape as this file —
+and v2-S13.4's acceptance forbids rewriting a past slice section. They were repaired anyway, and
+the reasons are stated rather than assumed:
+
+1. **The cluster's whole justification is that it moves as one.** Leaving two of fifteen recreates
+   exactly the split the deferral existed to prevent.
+2. **These sentences are present-tense claims about how the engine behaves**, not records of what a
+   slice decided. A frozen section preserves a decision as it stood; it does not license a
+   present-tense falsehood about the code.
+3. **They were wrong at birth**, dated above, so the *"true when written"* defence that protects a
+   frozen section does not reach them.
+4. **The substance is untouched.** *"No detector reads `/TH`"* says exactly what *"neither detector
+   reads `/TH`"* meant. This corrects an ordinal inside an unchanged claim rather than rewriting
+   what v1.1-S2 or v1.1-S4 decided.
+
+**This is a different call from S14.1's on the `four words` cluster, and the difference is stated.**
+There, the miscount was about the length of a quotation — self-contained, with no bearing on what
+the engine does, and a reader could count the words themselves. Here it is a present-tense
+statement about the code that also appears on the wire. Where a frozen sentence is about a
+decision, it stays; where it is about current behaviour and is false, it moves.
+
+### What was left, and why
+
+**`CHANGELOG.md` — three occurrences, in shipped entries.** Lines 2948, 3232 and 4863 sit inside
+v1.1-S4's, v1.1-S2's and v1-S3's entries. Append-only history, an excluded scope in both of S13.5's
+sweeps and in S14.1's handling of `four words`. Left, and named here.
+
+**`docs/table-gate-v1.md:630` is a different claim.** *"Neither is a detector defect"* refers to two
+investigated cases, not to a count of detectors. Checked rather than pattern-matched — a repair
+aimed at the wrong sentence is worse than none.
+
+### The proof that does not apply, run anyway — and its blind spot
+
+This is a behaviour change, so the no-behaviour-change proof the patch slices run does not apply.
+S14 reported **48 changed lines** where S13.5 reported an empty diff, and called that the proof
+demonstrating it can fail. Run here, the same extractor reports **zero changed lines** — for a
+slice that provably changes artifact bytes.
+
+**That is a defect in the instrument, and it is reported rather than presented as a pass.** The
+extractor is string-aware precisely so `"http://x"` is not read as a comment, and it replaces every
+string literal with a placeholder token. A change *inside* a string literal is therefore invisible
+to it — which is exactly where a wire string lives. **A proof that reads the wrong thing passes**,
+and this repository has now found that shape at S13 (`\par` matching `\pard`), at S13.1 (a floor
+counting runs where it needed fixtures), and here.
+
+Re-run with string **contents** preserved and everything else identical, the same extractor reports
+**4 changed lines** — the two wire strings, one line on each side of the diff, and nothing else:
+
+```
+- assurance.rs    … asserts a header this engine never read: neither \
++ assurance.rs    … asserts a header this engine never read: no \
+- limitations.rs  "This document's structure tree describes a `/Table` on page(s) {} that NEITHER table \
++ limitations.rs  "This document's structure tree describes a `/Table` on page(s) {} that NO table \
+```
+
+**And that variant partly explains a number S14.1 could not.** S14.1 reported 17,728 lines
+against S13.5's 19,249 and said the 1,548-line gap was the instrument rather than the tree. With
+string contents preserved, the same extractor reports **19,553** at S13.5's own commit — which is
+**304 above** the 19,249 published there, where the blinded variant was 1,548 below. So
+string-blinding is the bulk of the instrument difference and it **over**-corrects: a residue of 304
+lines runs the other way and is not yet identified. Stated in that direction rather than rounded
+into agreement, because a reconciliation that lands past its target has not reconciled.
+
+- **Acceptance — all met:**
+  - [x] All fifteen sites repaired **together**, comments and wire strings, so no new inconsistency
+        is created
+  - [x] The multi-line sites found — **three**, where a single-line grep returns one across the
+        same files and S13.5's note said two
+  - [x] The new wording carries **no ordinal**, so a fourth detector does not re-rot it
+  - [x] The blast radius measured **before** the edit and reported: `representation_sha256` moves,
+        `profile_sha256` does not, the oracle does not, neither mutation harness does — each
+        established by running the thing rather than by reasoning about it
+  - [x] Both wire strings' new text checked, and the one that **could not be witnessed** named:
+        72 PDFs offered across both trees, 68 read, and **zero** declare
+        `tagged-table-without-geometric-table`
+  - [x] Both projection worked examples regenerated and **verified equal to freshly generated
+        artifacts**, all three identity fields
+  - [x] The no-behaviour-change proof run anyway and its number reported — **0**, with the reason
+        it is 0 named as a blind spot in the instrument, and **4** from the same extractor with
+        string contents preserved
+  - [x] Workspace **0.34.0** — minor, because an artifact this build emits differs from one 0.33.1
+        emitted for the same bytes. Nine profile hashes move and stay mutually distinct
+  - [x] Full gate suite green — **49 suites, 1,226 passed, 0 failed**, measured rather than
+        quoted. Both SDK suites by hand: **72** Node, **91** Python. No git tag
+
+- **Depends on:** S14.1.
 
 ---
 

@@ -7,7 +7,102 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0
+
+### v2-S15 — the `neither detector` cluster, as 0.34.0
+
+**A minor bump, because an artifact changed.** Two of the cluster's fifteen sites are **emitted
+wire strings**, so a document this build reads produces different bytes from the ones 0.33.1
+produced for the same input — the same reasoning v2-S14 used for a reader that changed.
+
+**The cluster moved as one.** v2-S13.5 deferred it whole rather than repairing the comments, and
+that reason is this slice's shape: repairing only the comments would leave the wire saying
+*neither* and the comments saying otherwise — a **new** inconsistency, worse than the one it fixed.
+
+#### Fixed — fifteen sites, comments and wire strings together
+
+There have been **three** detectors since v1-S8 — `ruled`, `unruled`, `stroke_ruled` — so
+*"neither"* is arithmetically wrong. The substance it states is **true** and stays true: no
+detector reads `/TH`. **The code is correct** and is untouched: `tables::detect` takes
+`&stroke_rules` and returns all three rules' output, so the behaviour already consults every
+detector.
+
+The wire strings are `assurance.rs`'s `MARKDOWN_TABLE_SPANS_FLATTENED` and `limitations.rs`'s
+`TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE`. The remaining thirteen are **six** source comments, **one**
+test assertion message, **three** draft-schema `$comment`s and **three** documentation sentences.
+
+**The replacement carries no ordinal: "no detector reads `/TH`."** Not *"none of the three"* —
+that is the same defect with a different number, and a fourth detector cannot re-rot a form with no
+count in it.
+
+**Wrong at birth, not rotted.** `git log -S` dates the third detector to `16ff23f` (0.10.0, v1-S8)
+and the earliest of these sentences to `54b2584` (0.12.0, v1.1-S2) — two minors later.
+
+**A single-line grep misses three, where S13.5's method note said two.** `assurance.rs:501` and
+`limitations.rs:398` wrap inside Rust string continuations and `extract.rs:522` wraps across two
+`//` lines; `git grep -i 'neither.*detector'` returned one hit across those three files, and it was
+`assurance.rs:337`, a single-line site of its own.
+
+**Left and named:** three occurrences in shipped `CHANGELOG.md` entries (append-only history, the
+excluded scope S13.5 and v2-S14.1 both honoured), and `table-gate-v1.md:630`, whose *"neither is a
+detector defect"* is a different claim about two investigated cases.
+
+#### Measured — the blast radius, before the wording was chosen
+
+With the strings changed and `parser_version` **held at 0.33.1**, so the message's effect is
+isolated from the bump's:
+
+- **`representation_sha256` moves** — `79f3d68b…` → `dafa1b5c…`. Both projection worked examples
+  carry it.
+- **`profile_sha256` does not move** — confirmed rather than assumed; a limitation message is not a
+  profile field.
+- **The oracle does not move** — 18/18 pass unchanged. A grounding artifact carries
+  `limitation_code`, a `&'static str`, and never the message.
+- **Neither mutation harness moves** — `engine-pdf` 9/9, `engine-office` 6/6. `EXPECTED_SURVIVORS`
+  pins outcomes, not message text.
+
+Diffed leaf by leaf, the extract artifact changes in exactly **two** places:
+`representation.assurance.limitations[7].detail` and the `representation_c14n_sha256` covering it.
+
+**Only one of the two wire strings was witnessed on an artifact.**
+`MARKDOWN_TABLE_SPANS_FLATTENED` is profile-scope and rides on every PDF representation, so its new
+text was read back off a generated artifact. `TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE` is
+document-scoped and conditional, and **no document in either tree produces it** — every PDF in
+`fixtures/` and in the Ethos corpus was run through `engine extract`: 72 offered, 68 read, 4
+refused, zero declared it. The path is live and gated, not dead. For the corpus this repository can
+reach, exactly one of the two wire strings changes any artifact's bytes.
+
+#### The proof that does not apply, run anyway — and the blind spot it revealed
+
+This is a behaviour change, so the no-behaviour-change proof does not apply. Run anyway, it reports
+**0 changed lines** — for a slice that provably changes artifact bytes.
+
+**That is a defect in the instrument and is reported as one.** The extractor replaces every string
+literal with a placeholder so that `"http://x"` is not read as a comment, which makes a change
+*inside* a string literal invisible — exactly where a wire string lives. A proof that reads the
+wrong thing passes, which is the shape found at v2-S13 (`\par` matching `\pard`) and v2-S13.1.
+
+The same extractor with string **contents** preserved reports **4 changed lines**: the two wire
+strings, one line on each side, and nothing else. That variant also reports **19,553** at S13.5's
+own commit against the 19,249 it published — 304 **above**, where the blinded variant was 1,548
+below. String-blinding is therefore the bulk of the instrument gap v2-S14.1 could not explain, and
+it over-corrects: a 304-line residue runs the other way and is not yet identified.
+
+#### Changed — version
+
+- Workspace **0.33.1 → 0.34.0**, a **minor** because an artifact this build emits differs from one
+  0.33.1 emitted for the same bytes; both SDKs pinned to match. Still **nine** profiles, still
+  mutually distinct. The default PDF profile hash moves to
+  `sha256:f2d694cc712c88386193fcb66a64abfc073b538f429b66519ad93e992a12ecc5`
+  (was `sha256:a8636a4ee6e7d428904c5df88cddce68d83baba535313abc0ccd3a0e87ded401`)
+- Both projection schemas regenerated and all three identity fields verified against freshly
+  generated artifacts.
+
+Full gate suite green: **49 suites, 1,226 passed, 0 failed**. SDKs by hand: 72 Node, 91 Python.
+
+**No fourth detector, and no change to what `tables::detect` consults.** v1-S7's parked 0.489
+chase, the absent `16-V22-SCOPE.md` and **P9** are restated unchanged: each is the owner's, not a
+slice's.
 
 ### v2-S14.1 — the guards that were never written, as 0.33.1
 

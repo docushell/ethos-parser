@@ -235,7 +235,7 @@ roadmap row, and nothing in it closes v1.
   | code | counts |
   | --- | --- |
   | `gfm-span-slots-unrepresentable-v1` | slots a merge covered that GFM cannot say it covered — `rowspan × colspan - 1`, summed over the table's cells |
-  | `gfm-row-zero-separator-v1` | **once per table**, because the delimiter row makes row 0 a header on every renderer and neither detector reads `/TH` |
+  | `gfm-row-zero-separator-v1` | **once per table**, because the delimiter row makes row 0 a header on every renderer and no detector reads `/TH` |
   | `gfm-cell-run-claimed-twice-v1` | a run two cells both claimed, kept by the first so one node's characters are not counted twice |
   | `gfm-cell-not-placed-v1` | a cell outside the declared grid or on a taken slot; its runs still project, as paragraphs |
   | `gfm-table-not-projected-v1` | a table with zero rows or columns |
@@ -513,7 +513,7 @@ next slot, the span is clamped so the row stays two cells wide — and the merge
 declared, count 1. Only `gfm-row-zero-separator-v1` is unconditionally absent, because HTML asserts
 no header.
 
-**No `<th>` appears anywhere in the projection.** Neither detector reads `/TH` and the
+**No `<th>` appears anywhere in the projection.** No detector reads `/TH` and the
 representation carries no header declaration, so a header row would be this exporter deciding what
 the document meant. GFM had no such choice, which is why S2 owed a code for it and S4 does not.
 

@@ -334,7 +334,7 @@ pub mod codes {
     /// content would be text this engine authored.
     pub const STRUCTURE_ITEM_WITHOUT_CONTENT: &str = "structure-item-without-content";
 
-    /// The structure tree describes a `/Table` that neither detector found.
+    /// The structure tree describes a `/Table` that no detector found.
     ///
     /// Document-scoped and conditional. The tree's claim is reported and **no table is emitted
     /// for it**: cells placed from `/TD` elements alone would be cells this engine positioned,
@@ -498,7 +498,7 @@ impl Capabilities {
                  What it cannot carry is a MERGE: GFM has no rowspan and no colspan, so a cell \
                  covering several slots is expanded — its text stays in the origin slot and the \
                  slots it covered come out empty. GFM also has no headerless table, so the \
-                 delimiter row after row 0 asserts a header this engine never read: neither \
+                 delimiter row after row 0 asserts a header this engine never read: no \
                  detector reads `/TH`. Both are structural erasures rather than lost characters — \
                  every character still reaches the Markdown and the `coverage` census accounts \
                  for it — so each is counted per document in `coverage.structural_erasures` \

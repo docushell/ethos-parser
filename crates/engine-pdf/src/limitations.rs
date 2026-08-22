@@ -395,7 +395,7 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
     Limitation::document(
         engine_core::codes::TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE,
         format!(
-            "This document's structure tree describes a `/Table` on page(s) {} that NEITHER table \
+            "This document's structure tree describes a `/Table` on page(s) {} that NO table \
              detector found — the page paints no grid of rectangles there and its text implies no \
              coherent alignment lattice. The tree's claim is recorded here and NO table is \
              emitted for it: cells placed from `/TD` elements alone would be cells this engine \
