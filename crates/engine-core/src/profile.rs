@@ -1825,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.34.3","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.35.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2249,11 +2249,21 @@ mod tests {
              `the_local_gate_runs_what_ci_runs` asserts it carries the same commands as the \
              workflow in BOTH directions — a convenience script nobody verified against CI is \
              worse than no script, because a local green would then mean something the remote \
-             does not enforce. No line of `crates/*/src` changed but one blank line."
+             does not enforce. No line of `crates/*/src` changed but one blank line.\n\n\
+             Moved a FIFTY-FIRST time at v2-S19 (0.35.0), on `parser_version` alone — and \
+             `table_detection` is BYTE-IDENTICAL across this bump, which is the proof the slice \
+             owes: S19 grew the gate corpus from four documents to twelve and re-measured, and a \
+             slice that moved the corpus AND the detector in one commit could not tell you which \
+             one moved the number. A MINOR rather than a patch because the corpus is not \
+             cosmetic: `fixtures/manifest.json` went from 55 fixtures to 64, which moves the PDF \
+             mutation harness off its pinned counts. Macro cell-slot F1 read 70‰ over twelve \
+             where it read 64‰ over four — and the band, which is the number that matters, is \
+             0‰ to 590‰ with NINE OF TWELVE scoring exactly 0. See `docs/table-gate-v1.md` and \
+             `00-NORTH-STAR.md` #18, which is written and NOT decided."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:f8613bae6628444886fd72e7c51aa3e25b25722e6bcc47bcc912f0c1b065515d"
+            "sha256:2e728a7e7b68841c2587a61a1cf17d291448bb1098f3a0f555f7b4fd8bd6feb0"
         );
     }
 

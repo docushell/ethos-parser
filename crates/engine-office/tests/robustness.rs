@@ -1230,9 +1230,17 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 /// *"by construction"* is a claim and the manifest is one file away.
 ///
 /// The mechanism worth writing down: the 15 is selected by `owner == "ethos"`, **never by root**.
-/// Owner and root happen to correlate perfectly today — every `conformance` entry is `ethos`,
-/// every `engine` entry is `engine` — which is precisely why someone adding a root could believe
-/// the count is root-scoped and be wrong in a way that only shows up later.
+/// Owner and root happen to correlate today — every `conformance` entry is `ethos`, every
+/// `engine` entry is `engine` — which is precisely why someone adding a root could believe the
+/// count is root-scoped and be wrong in a way that only shows up later.
+///
+/// **v2-S19 added a fourth root, `gate`, and this test is how that was noticed — which is the
+/// whole point of freezing the list.** The frozen list is not a claim that no root may ever be
+/// added; it is a stop that makes anyone adding one come here and answer the question above. The
+/// answer for `gate`: its entries carry `owner: "engine-gate"`, so the `owner == "ethos"` count
+/// is untouched at 15 and the M6 partition does not move. `gate` holds the twelve-document table
+/// corpus (`docs/table-gate-v1.md`), which is PDFs — so the office objection this file's header
+/// raises does not apply to it either, and the office-path check below still proves that.
 #[test]
 fn adding_this_harness_did_not_touch_the_fixture_manifest_or_the_oracle_count() {
     let manifest: serde_json::Value = serde_json::from_slice(
@@ -1252,9 +1260,12 @@ fn adding_this_harness_did_not_touch_the_fixture_manifest_or_the_oracle_count() 
     roots.sort_unstable();
     assert_eq!(
         roots,
-        ["benchmark", "conformance", "engine"],
+        ["benchmark", "conformance", "engine", "gate"],
         "the manifest declares {roots:?}. The office corpus is deliberately not a root of it — see \
-         this file's header for why adding one would feed sixteen packages to the PDF reader."
+         this file's header for why adding one would feed sixteen packages to the PDF reader. If \
+         you have added a NON-office root, this test is the stop that makes you say so: check that \
+         its entries do not carry `owner: \"ethos\"` (which would move the M6 oracle count of 15) \
+         and then add it here with that reasoning, as v2-S19 did for `gate`."
     );
 
     let fixtures = manifest["fixtures"].as_array().expect("a fixtures array");

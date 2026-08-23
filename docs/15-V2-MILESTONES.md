@@ -4828,6 +4828,204 @@ hand-run**, v1.2's decision, unchanged.
 
 ---
 
+## S19 — the corpus that was never grown — **done**, as 0.35.0
+
+**A MINOR, and the reason is not the corpus.** `fixtures/manifest.json` went from 55 fixtures to
+64, and its `counts` drive `crates/engine-pdf/tests/robustness.rs`, so the PDF mutation harness
+moves off its pinned totals. `docs/table-gate-v1.md` predicted exactly that and called it *"a
+corpus decision with a measurement attached"*. **No detector, rule id or tolerance changed** —
+`table_detection` is byte-identical across the version bump, which is the proof this slice owes.
+
+### The unlock was in the method the whole time
+
+Ground truth is **derived**, not authored: shape from `/Table`, `/TR`, `/TD`, `/TH`, `/RowSpan`,
+`/ColSpan`, and cell text from the `/MCID`s beneath each cell. No coordinate is read at any step.
+So a tagged document costs **nothing** to label, and "parked until this repository has a labelled
+set it owns" was never a resourcing constraint.
+
+**What it actually was:** the four documents live in `../ethos/benchmarks/gate-zero/corpus`, a tree
+this repository does not own and must not write to. There was nowhere to put a fifth. That is why
+twelve slices went past without anyone adding one, and it is a one-line fix nobody had named:
+`fixtures/gate/` — an engine-owned root, committed here, which is precisely *"a labelled set it
+owns"*.
+
+### Admission is a rule now, not a judgement
+
+Written into `docs/table-gate-v1.md`: **public, redistributable, stable at a URL, tagged, and
+carrying at least one `/Table`.** The tagged clause is load-bearing — a document needing hand
+labels is not merely more expensive, it is a different kind of thing, and mixing authored labels
+with derived ones puts two epistemologies in one average.
+
+**Personal documents are refused on two grounds, not one.** A machine scan run before this slice
+found 400 PDFs, 99 tagged, and the reachable ones carrying `/Table` are personal: a loan
+acknowledgement, résumés, a phone receipt. *Privacy* — a benchmark corpus is committed, referenced
+by digest and has numbers published about it, which is publication, and a digest is not
+anonymisation. *Representativeness* — the gate measures documents like the ones DocuShell will
+meet, and a résumé's two-column layout is not that. A corpus you cannot publish is also a corpus
+nobody can check; both objections point the same way.
+
+Eleven candidates were fetched. **Three were dropped by the rule**, and the measurement is what
+applied it: `label()` returns zero tables for an untagged or table-less document rather than
+erroring, so the admission test and the measurement are the same run. `irs-f1040s1`,
+`irs-f1040sc` and `irs-f1099msc` declare no `/Table` and are not in the corpus.
+
+**One of the three is a finding, and it is recorded rather than acted on.** `irs-f1040sc` declares
+no table and the detector emits one anyway — twelve false-positive slots. That is a real-world
+**gold negative**, which the three synthetic ones in §"Gold negatives" cannot be. Admitting it to
+the gate corpus would be wrong (rule 5 excludes it, and a macro average cannot see it), but a
+real-world gold-negative set is worth its own slice.
+
+### The number, and why the honest reading is not the arithmetic one
+
+**Macro cell-slot F1: 70‰ over twelve documents, where four read 64‰.**
+
+Read alone that is stability, and it would license *"64‰ is this engine's honest table number."*
+**The band refuses it:**
+
+| | |
+| --- | --- |
+| Band across documents | **0‰ .. 590‰** |
+| Median document | **0‰** |
+| Documents scoring exactly 0‰ | **9 of 12** |
+| Macro without `irs-fw9` alone | **23‰** |
+
+Nine of twelve score zero because the detector emits **no table at all** on them. Two documents
+supply 849 of the 851 averaged points. Removing one document out of twelve moves the macro
+threefold. That is the arithmetic of an average over mostly zeros: it is stable the way a
+thermometer reading mostly zeros is stable, and its value is set by which one or two documents
+happen to have drawn rules.
+
+So **the four-document 64‰ was never a property of this engine, and the twelve-document 70‰ is not
+one either.** What twelve documents establish that four could not is the **shape** — bimodal, not
+weak-everywhere: the ruled rule works where a producer drew the rules and produces nothing where it
+did not. That confirms on twelve documents the finding that reframed five slices of work, and it is
+exactly the claim four documents could have produced by luck.
+
+### Fabrication is 0. Cross-check disagreements went 0 → 9.
+
+**Fabrication is measured every run and it is still 0** across all twelve — the one number with a
+required value. Every cell's text is a concatenation of runs the page actually drew.
+
+**The new number is the cross-check.** `nist-sp-800-218` detects **nine** tables against **four**
+tagged ones, with dimensions of 103 × 22, 108 × 16, 89 × 15, 87 × 14, 86 × 19, 75 × 14, 66 × 17,
+58 × 15 and 6 × 14 — phantom grids spanning whole pages, contributing **11 295 false-positive
+slots**, more than the rest of the corpus produces in either direction.
+
+Two things about it are easy to get backwards and are stated precisely:
+
+- **It is not fabrication.** The detector arranged real text into a grid that is not there; it did
+  not invent text. The metric keeps that distinction visible and the S1 invariant holds.
+- **The engine already knows, and the report now proves it per document.** Cross-check
+  disagreements went from 0 to 9 on this corpus and the per-document column attributes **all
+  nine to this document** — every other of the twelve reads 0. There are exactly nine detected
+  tables here, so **the locator cross-check is rejecting every one of them.** (v2-S19 added the
+  `fabr` and `xcheck` columns for exactly this: the corpus-wide totals could not say *which*
+  document earned them, and a total that cannot be attributed is a number nobody can act on.) Nothing acts on that today, because a rule that declined a table
+  its own cross-check rejected is a **detector change** and this slice is forbidden to make one. It
+  is recorded as the largest concrete lead this corpus produced.
+
+`11 295` FP against `1 236` cells emitted corpus-wide is not a contradiction: `emitted_cells` counts
+**cells**, the score counts **slots**, and a cell with `colspan: 3` occupies three.
+
+### The gap that closed as a side effect
+
+`cfpb-home-loan-toolkit.pdf` — the document carrying the largest single share of the gate number —
+had **no manifest entry at all** and was pinned by nothing. v2-S13.1 pinned that gap rather than
+closing it, because closing it moves the mutation harness, and wrote that the day it closed the
+guard would fail and bring whoever closed it back to that paragraph. **That is what happened.** S19
+had to touch the manifest anyway, so the gap closed in the slice that could pay for it.
+
+`the_gate_corpus_is_pinned_except_the_one_document_that_is_not` is now
+`every_gate_document_is_hash_pinned`: a universal with no exception list, because a
+pinned-versus-not comparison has nothing left to say once the second list is empty and would only
+invite someone to add a document to the wrong side of it. It also asserts the corpus is at least
+twelve, with the reason stated rather than round.
+
+### Two statements that stopped being true, repaired rather than incremented past
+
+`test_support.rs` opened with *"Two roots"* and there were three. It also told a reader that
+*"corpora are read-only and never copied into this repo"*, which was already false of `engine` and
+is false of `gate`. Both are repaired, and the panic now says which kind of root it is talking
+about — a miss in `engine`/`gate` is a deleted file, not an absent checkout.
+
+### What moved with the corpus, because the docs said it would
+
+| | before | after |
+| --- | --- | --- |
+| `fixtures/manifest.json` fixtures | 55 | **64** |
+| `counts.benchmark` | 3 | **4** |
+| `counts.gate` | — | **8** |
+| Gate corpus | 4 documents, 602 pages | **12 documents, 2 068 pages** |
+| Tagged tables / cell slots | 57 / 7 704 | **172 / 15 755** |
+
+The `gate` root takes the **shallow** mutation pass as `benchmark` does: the eight added documents
+run to 1 466 pages and deep-mutating them buys hours and no signal the small fixtures do not
+already give. Naming roots is a proxy for size and a crude one; a `depth` field per manifest entry
+would say it directly, and that is a schema change **named here rather than taken quietly**.
+
+### The corpus found a defect in the mutation harness's own reasoning
+
+Growing the corpus moved `EXPECTED_SURVIVORS` from 60 to **78**: nine new `junk-after-eof` and nine
+new `flip-tail-byte`. The first nine are the documented class — `junk-after-eof` survives on every
+fixture that opens at all, because bytes past `%%EOF` sit outside every offset a document declares.
+The second nine were **triaged rather than pasted**, and the triage found something.
+
+`Mutation::apply` flips the byte at `len - len/20 - 1` and calls it *"deep enough to land in the
+xref/trailer region on **every** fixture in the corpus"*. **That was never true of a large
+document.** Measured on all twelve: the index lands *hundreds of kilobytes before* `startxref` —
+inside a compressed object stream, an embedded font or image data, 370 KB before it on
+`nist-sp-800-53Ar5`. Those documents take the shallow mutation pass, which never decompresses that
+stream, **so they survive because the mutation missed, not because the reader recovered.**
+
+The comment described one class and the array held two. The three large `benchmark` documents had
+been pinned under *"`lopdf` recovers by scanning for the catalog"* **without their bytes ever being
+inspected** — only two small synthetics were. S19 added nine more of the same shape and inspected
+all twelve, which is how the conflation surfaced. **A pin whose stated reason is not the actual
+reason is the shape v2-S13.1 exists for**, so the reason is split in the source rather than the
+count merely incremented.
+
+**Coverage did not regress**: forty-six fixtures still fail closed, unchanged, because all nine
+additions fall in the new class. The ratio moved from 9:46 to 18:46; no fixture stopped refusing.
+
+**Owed and not fixed here.** Making `flip-tail-byte` seek the trailer instead of a fixed fraction
+would exercise the xref path on large documents for the first time. That is a harness change with a
+measurement attached — it moves the survivor set — and this slice's subject is the corpus.
+
+### Scope refused
+
+**No detector change.** Not one tolerance, not one rule id. Five slices of geometric repair are
+already recorded as measured dead ends, and a slice that changed the detector and the corpus in one
+commit could not tell you which moved the number. **No OCR, no new format** (the P9 finding).
+**Decision #18 is written and NOT decided** — the number is reported and the choice is the owner's,
+exactly as #16 and #17 were.
+
+- **Acceptance — all met:**
+  - [x] An **admission rule** in `table-gate-v1.md`: public, redistributable, stable at a URL,
+        tagged, carries `/Table` — with personal documents refused on **privacy and
+        representativeness**, both stated
+  - [x] **Twelve documents**, each with provenance and a digest, **every one tagged**, so every
+        label is derived and none authored. `cfpb-home-loan-toolkit` hash-pinned at last
+  - [x] `fixtures/manifest.json` and `robustness.rs` moved **together**: 55 fixtures / 318 mutants
+        → **64 / 363**; `EXPECTED_INAPPLICABLE` 12 → **21**; `EXPECTED_SURVIVORS` 60 → **78**, with
+        the survivor classes split on triage rather than pasted
+  - [x] `the_committed_labels_still_match_the_documents` **green on the grown set** — the truth
+        still re-derives from the documents' own structure trees
+  - [x] **Fabrication measured, not assumed: still 0** across all twelve. Cross-check disagreements
+        went 0 → 9 and that is reported, not buried
+  - [x] Macro cell-slot F1 **re-measured and reported per document and macro**, with the **band**
+        stated — 0‰ .. 590‰, median 0‰, nine of twelve at zero — so "holds" is a number rather
+        than an impression
+  - [x] **`00-NORTH-STAR.md` #18 written and NOT decided**: two options, the evidence, a
+        recommendation, and an explicit marker that §2's "these are settled" does not cover it
+  - [x] **No detector, rule id or tolerance changed.** Proven: `parser_version` is the *only* field
+        differing between the 0.34.3 and 0.35.0 canonical profiles, and `table_detection` is
+        byte-identical
+  - [x] Workspace **0.35.0**. Full gate suite green. **No git tag**
+
+- **Depends on:** S18 (the gate that proves this slice's green is real).
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

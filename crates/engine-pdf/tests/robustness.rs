@@ -121,7 +121,8 @@ fn all_fixtures() -> Vec<Fixture> {
     // updating `counts`, mutation coverage and the declared corpus size have silently diverged.
     let expected = m["counts"]["conformance_ethos_owned"].as_u64().unwrap()
         + m["counts"]["benchmark"].as_u64().unwrap()
-        + m["counts"]["engine_owned"].as_u64().unwrap();
+        + m["counts"]["engine_owned"].as_u64().unwrap()
+        + m["counts"]["gate"].as_u64().unwrap();
     assert_eq!(
         out.len() as u64,
         expected,
@@ -305,8 +306,18 @@ struct Read {
 ///
 /// `extract`/`to_representation` run only where the caller asks, because a 492-page benchmark
 /// document is minutes of debug-build extraction per mutant and adds no robustness signal the
-/// other **fifty-two** small fixtures do not already give. Exactly three fixtures take the
-/// shallow pass — the `benchmark` root — and which they are is reported, never silent.
+/// small fixtures do not already give. The large real-world documents take the shallow pass —
+/// the `benchmark` and `gate` roots — and which they are is reported, never silent.
+///
+/// **`gate` joined that list at v2-S19 for the same reason `benchmark` was on it, not for
+/// convenience.** The roots are separate because of *where the bytes live* — `benchmark` resolves
+/// into the Ethos tree, `gate` is committed here — and that has nothing to do with mutation depth.
+/// What decides depth is size, and the eleven documents S19 added run to 1,476 pages, one of them
+/// alone larger than the 492-page fixture this paragraph was written about. Deep-mutating them
+/// would add hours per run and no signal. Naming the roots is still a proxy for size, and a
+/// crude one; a `depth` field per manifest entry would say it directly. That is a manifest schema
+/// change and this slice already moves the manifest's counts, so it is named here rather than
+/// taken quietly.
 fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
     let profile = Profile::default();
     let doc = Document::open_bytes(bytes, &profile)?;
@@ -346,54 +357,85 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 ///   holds and is asserted separately: the artifact binds to the *mutant's* digest, so a consumer
 ///   comparing hashes sees a different document, which it is.
 ///
-/// - **`flip-tail-byte` on nine documents.** Inspected during triage rather than assumed. On
-///   `synthetic/two-lines` the flipped byte is the `t` of `/Root` in the trailer; on
-///   `synthetic/two-columns` it is the `R` of `1 0 R`. `lopdf` recovers by scanning for the
+/// - **`flip-tail-byte` on eighteen documents, and v2-S19 found these are TWO classes, not one.**
+///
+///   **(a) Small fixtures, where the byte lands in the trailer and `lopdf` recovers.** Inspected
+///   during triage rather than assumed: on `synthetic/two-lines` the flipped byte is the `t` of
+///   `/Root`, on `synthetic/two-columns` the `R` of `1 0 R`. `lopdf` recovers by scanning for the
 ///   catalog instead of trusting the damaged trailer reference, so a genuinely readable document
-///   is read. The other **forty-six** fixtures, where this mutation lands on an xref digit or a
-///   length, **do** fail closed — and that ratio is what makes this a backend-recovery
-///   observation rather than a hole: the same mutation refuses five times more often than it
-///   survives. (Four and eleven at M7, when the corpus was fifteen documents. The class did not
-///   change as the corpus grew; only the counts did, and this sentence did not grow with them
-///   until v2-S12.1.)
+///   is read. This is a backend-recovery observation and it is the class this comment described.
+///
+///   **(b) Large real-world documents, where the byte lands nowhere load-bearing — and that is a
+///   different fact, which this comment previously did not distinguish.** `Mutation::apply` picks
+///   `len - len/20 - 1` and calls it *"deep enough to land in the xref/trailer region on every
+///   fixture in the corpus"*. **That is false on a large document and was never true of them.**
+///   Measured on all twelve: the index lands *hundreds of kilobytes before* `startxref` — inside
+///   a compressed object stream, an embedded font, or image data — 370 KB before it on
+///   `nist-sp-800-53Ar5`. These documents take the shallow mutation pass, which never
+///   decompresses that stream, so nothing reads the flipped byte at all. **They survive because
+///   the mutation missed, not because the reader recovered.**
+///
+///   The three large `benchmark` documents were pinned under (a)'s heading without their bytes
+///   being inspected — only the two synthetics ever were. v2-S19 added nine more of the same
+///   shape and inspected all twelve, which is how the conflation surfaced. **A pin whose stated
+///   reason is not the actual reason is the shape v2-S13.1 exists for**, so the reason is split
+///   here rather than the count merely incremented.
+///
+///   **Forty-six fixtures still fail closed** — unchanged, because every one of the nine
+///   documents S19 added falls in (b). The ratio moved from 9:46 to 18:46 and the *coverage* did
+///   not: no fixture stopped refusing.
+///
+///   **Owed, not fixed here.** Making `flip-tail-byte` seek the trailer rather than a fixed
+///   fraction would exercise the xref path on large documents for the first time. That is a
+///   harness change with a measurement attached — it moves the survivor set — and this slice's
+///   subject is the corpus. Named rather than taken quietly.
+///   (Four and eleven at M7, when the corpus was fifteen documents.)
 ///
 /// An entry appearing here that is not one of those two classes is a fail-closed path that
 /// stopped firing — triage it before pinning it. An entry disappearing is a path that started
 /// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 60] = [
+const EXPECTED_SURVIVORS: [&str; 78] = [
     "absent-font-metrics/junk-after-eof",
-    // v1-S4's form and annotation fixtures. Same class as every other `junk-after-eof`: bytes
-    // appended past `%%EOF` leave a readable document.
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
     "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
+    "cfpb-home-loan-toolkit/flip-tail-byte",
+    "cfpb-home-loan-toolkit/junk-after-eof",
     "crop-box-smaller-than-media/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
-    "form-field-value/junk-after-eof",
-    "form-orphan-widget/junk-after-eof",
-    "form-xfa-stub/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/flip-tail-byte",
     "foreign/opendataloader/real/junk-after-eof",
+    "form-field-value/junk-after-eof",
+    "form-orphan-widget/junk-after-eof",
+    "form-xfa-stub/junk-after-eof",
     "horizontal-scaling-tz/junk-after-eof",
-    // v1-S6's four. All survive `junk-after-eof` and nothing else — the same answer every other
-    // engine-authored fixture gives, because the parse is driven from the xref table
-    // `startxref` names and bytes appended past `%%EOF` are never read.
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
     "invisible-render-mode/junk-after-eof",
+    "irs-f1040sd-2025/flip-tail-byte",
+    "irs-f1040sd-2025/junk-after-eof",
     "irs-form-1040-2025/flip-tail-byte",
     "irs-form-1040-2025/junk-after-eof",
-    // v1.1-S1's Anchor Map golden, v1.1-S2's GFM one and v1.1-S3's hyphen one. Same class as
-    // every other engine fixture: bytes appended past `%%EOF` leave a readable document, and each
-    // was re-extracted to confirm it yields what it does unmutated rather than pinned on sight —
-    // `markdown-hyphen-break` gives back the same two runs with the same MEASURED ink boxes, which
-    // is what its golden depends on.
+    "irs-fw9/flip-tail-byte",
+    "irs-fw9/junk-after-eof",
     "markdown-hyphen-break/junk-after-eof",
     "markdown-table-cells/junk-after-eof",
     "markdown-two-blocks/junk-after-eof",
     "measured-ink-box/junk-after-eof",
+    "nist-sp-800-161r1/flip-tail-byte",
+    "nist-sp-800-161r1/junk-after-eof",
+    "nist-sp-800-171r3/flip-tail-byte",
+    "nist-sp-800-171r3/junk-after-eof",
+    "nist-sp-800-207/flip-tail-byte",
+    "nist-sp-800-207/junk-after-eof",
+    "nist-sp-800-218/flip-tail-byte",
+    "nist-sp-800-218/junk-after-eof",
+    "nist-sp-800-37r2/flip-tail-byte",
+    "nist-sp-800-37r2/junk-after-eof",
+    "nist-sp-800-53Ar5/flip-tail-byte",
+    "nist-sp-800-53Ar5/junk-after-eof",
     "nist-sp-800-53r5/flip-tail-byte",
     "nist-sp-800-53r5/junk-after-eof",
     "nist-sp-800-63b/flip-tail-byte",
@@ -404,10 +446,6 @@ const EXPECTED_SURVIVORS: [&str; 60] = [
     "ruled-wins-shared-region/junk-after-eof",
     "show-text-quote-operators/junk-after-eof",
     "simple-font-two-byte-tounicode/junk-after-eof",
-    // v1-S8's three stroke-ruled fixtures. Same class again, and the class is the point: bytes
-    // appended past `%%EOF` leave a readable document, so the mutant is not a fail-closed path
-    // that stopped firing. Triaged rather than pinned on sight — each was re-extracted and yields
-    // the same tables it does unmutated.
     "stroke-ruled-columns-not-drawn/junk-after-eof",
     "stroke-ruled-field-boxes/junk-after-eof",
     "stroke-ruled-worksheet/junk-after-eof",
@@ -426,19 +464,11 @@ const EXPECTED_SURVIVORS: [&str; 60] = [
     "synthetic/two-columns/junk-after-eof",
     "synthetic/two-lines/flip-tail-byte",
     "synthetic/two-lines/junk-after-eof",
-    // v1.1-S2's tagged list, the only document in either corpus whose tree declares an `/L`.
     "tagged-list-items/junk-after-eof",
-    // v1-S3's tagged fixtures. `tagged-cycle` is deliberately NOT here: its structure tree does
-    // not terminate, so extraction refuses the mutant for the same reason it refuses the
-    // original, and the mutant never survives.
     "tagged-rolemap/junk-after-eof",
     "tagged-structure-roles/junk-after-eof",
     "tagged-table-agrees/junk-after-eof",
     "tagged-table-disagrees/junk-after-eof",
-    // v1-S5's anti-cliff pair. Both survive `junk-after-eof` and nothing else, which is the same
-    // answer every other engine-authored fixture gives: the parse is driven from the xref table
-    // `startxref` names, so bytes appended past `%%EOF` are never read. Triaged as the known
-    // class rather than pinned on sight.
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
@@ -461,7 +491,7 @@ fn no_mutant_panics_and_every_refusal_is_named() {
 
     for fixture in all_fixtures() {
         // Benchmark documents get the shallow pass. See `run_mutant`.
-        let deep = fixture.root != "benchmark";
+        let deep = !matches!(fixture.root.as_str(), "benchmark" | "gate");
 
         for mutation in Mutation::ALL {
             let Some(mutant) = mutation.apply(&fixture.bytes) else {
@@ -512,7 +542,7 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
 
     for fixture in all_fixtures() {
         let original_digest = format!("sha256:{}", engine_core::sha256_hex_bytes(&fixture.bytes));
-        let deep = fixture.root != "benchmark";
+        let deep = !matches!(fixture.root.as_str(), "benchmark" | "gate");
 
         for mutation in Mutation::ALL {
             let Some(mutant) = mutation.apply(&fixture.bytes) else {
@@ -571,7 +601,7 @@ fn the_surviving_mutants_are_the_pinned_ones() {
     let mut survivors: BTreeSet<String> = BTreeSet::new();
 
     for fixture in all_fixtures() {
-        let deep = fixture.root != "benchmark";
+        let deep = !matches!(fixture.root.as_str(), "benchmark" | "gate");
         for mutation in Mutation::ALL {
             let Some(mutant) = mutation.apply(&fixture.bytes) else {
                 continue;
@@ -680,7 +710,15 @@ fn an_injected_unknown_operator_stops_the_parse() {
 ///   substitution is the only kind that keeps `/Length` honest, so there is nothing to do here
 ///   without re-encoding the document — which would be authoring a fixture, not mutating one.
 ///   The `FlateDecode` exclusion is deliberate and was a triage finding; see `Mutation::apply`.
-const EXPECTED_INAPPLICABLE: [&str; 12] = [
+///
+/// **v2-S19 moved this from twelve pairs to twenty-one, and every one of the nine is the same
+/// case already described above.** The slice pinned `cfpb-home-loan-toolkit` and added the eight
+/// `gate` documents, and all nine compress their content streams — they are real publications from
+/// government typesetting pipelines, which is exactly the property that got them admitted to the
+/// gate corpus. So the count moved and the *reason* did not: no mutation stopped covering anything
+/// it used to cover, and the ratio of inapplicable pairs is a fact about how real PDFs are built
+/// rather than a gap in the harness.
+const EXPECTED_INAPPLICABLE: [&str; 21] = [
     "failure/corrupt-header-valid/truncate-16",
     "failure/corrupt-header-valid/unknown-operator",
     "failure/image-only-or-blank-page/unknown-operator",
@@ -699,6 +737,18 @@ const EXPECTED_INAPPLICABLE: [&str; 12] = [
     "irs-form-1040-2025/unknown-operator",
     "nist-sp-800-53r5/unknown-operator",
     "nist-sp-800-63b/unknown-operator",
+    // v2-S19: the gate corpus. `cfpb-home-loan-toolkit` was always scored and never pinned; the
+    // eight `gate` entries are the documents that took the corpus from four to twelve. All nine
+    // compress their content streams, which is the `FlateDecode` case above and not a new one.
+    "cfpb-home-loan-toolkit/unknown-operator",
+    "irs-f1040sd-2025/unknown-operator",
+    "irs-fw9/unknown-operator",
+    "nist-sp-800-161r1/unknown-operator",
+    "nist-sp-800-171r3/unknown-operator",
+    "nist-sp-800-207/unknown-operator",
+    "nist-sp-800-218/unknown-operator",
+    "nist-sp-800-37r2/unknown-operator",
+    "nist-sp-800-53Ar5/unknown-operator",
 ];
 
 /// **Coverage is exact, and reported.**
@@ -743,8 +793,13 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        55,
-        "the manifest should declare 55 fixtures across three roots (23 at M7, plus v0.1's \
+        64,
+        "the manifest should declare 64 fixtures across FOUR roots. v2-S19 moved this from 55: \
+         it added the `gate` root — eight tagged public documents committed to `fixtures/gate/` \
+         so the table gate could be measured on twelve documents instead of four — and pinned \
+         `cfpb-home-loan-toolkit.pdf` in `benchmark`, which had carried the largest share of the \
+         gate number while being pinned by nothing. `docs/table-gate-v1.md` predicted this \
+         assertion would fail the day that gap closed. The other 55 (23 at M7, plus v0.1's \
          broken-font-encoding, v1-S1's two ruled-table fixtures, v1-S2's three, and v1-S3's \
          five tagged ones, v1-S4's four form/annotation ones — form-field-value, \
          annotation-contents, form-orphan-widget and form-xfa-stub — v1-S5's two-column pair, \

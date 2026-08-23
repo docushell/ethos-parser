@@ -292,6 +292,16 @@ fn manifest_declares_fifteen_ethos_owned_fixtures() {
                 .filter(|f| f["root"].as_str() == Some("benchmark"))
                 .count(),
         ),
+        // v2-S19's root: the table-gate corpus this repository owns and commits. Counted by root
+        // rather than by owner, like `benchmark` and unlike `engine_owned`, because what matters
+        // about it is where the bytes are resolved from.
+        (
+            "gate",
+            fixtures
+                .iter()
+                .filter(|f| f["root"].as_str() == Some("gate"))
+                .count(),
+        ),
         (
             "engine_owned",
             fixtures

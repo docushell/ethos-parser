@@ -20,7 +20,7 @@ version numbers get invented — every delta from the research folds into a row 
 | --- | --- | --- | --- |
 | **v0** | Honest PDF core | classify (reason codes on two orthogonal axes, counts, no confidence, three exit codes) · position-aware text runs · measured ink box or typed absence with declared semantics · `synthesized` flags · single-column order · format detection · error taxonomy · c14n/quanta/ids · capability declarations · `ethos.grounding.v1` · `grounding-check` · CLI + lib · fuzz + mutation tests | Validator agrees byte-identically with `ethos grounding check` on all 15 fixtures |
 | **v0.1** | Verify + robustness — **shipped as 0.2.0** | shell out to the Ethos CLI as a declared capability · encoding-issue detection · xref repair-or-refuse | An ungrounded claim exits 1 with a report; no silent skip. **Met**: `engine verify --fail-on-ungrounded`, bytes relayed verbatim, verifier pinned in the profile |
-| **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Fabrication rate **0** · cross-check diagnostics emitted · an honest table number on the four-PDF set, measured at **64‰**. The **> 0.489** chase is **parked** — see below. **v1 is not complete** |
+| **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Fabrication rate **0** · cross-check diagnostics emitted · an honest table number on the twelve-PDF set, measured at **70‰** with a **0‰..590‰ band and nine of twelve at zero** (v2-S19; 64‰ on the earlier four-PDF set). The **> 0.489** chase is **parked** — see below. **v1 is not complete**, and decision **#18** that would close it is written and undecided |
 | **v1.1** | Safe Markdown | Markdown + **Anchor Map** · HTML · hyphenation / dot-leaders / drop-caps as export-only cosmetics | A Markdown-quoted citation verifies end-to-end; coverage completeness asserted |
 | **v1.2** | Adoption | **MCP server** (first adapter) · Python + Node SDKs · LangChain tool · optional `liteparse → ethos.grounding.v1` adapter | Locators survive every adapter round-trip |
 | **v2** | Anydoc-class formats | DOCX → XLSX → PPTX → ODT → ODS → ODP → RTF → EPUB → **CSV (S10)** · shared IR + one serializer · embedded assets **counted** (decision #17) | A DOCX quote and an XLSX cell both **bind** — each resolves to an address the file itself states; **no synthesised pages** (decision #16) |
@@ -31,10 +31,16 @@ version numbers get invented — every delta from the research folds into a row 
 ### The two gates worth memorising
 
 **v1 tables: 0.489 is incomparable here, so do not chase it — and do not chase hybrid 0.9× either.**
-**64‰** is this engine on **four tagged PDFs this repository owns**. **0.489** is a published
-ODL-local table score on **their** corpus — the one figure ODL and pdf-inspector report
-bit-identically, which is why it was picked. Same unit, different exam. The chase is **parked**
-(`00-NORTH-STAR.md` #10) until this repository has a labelled set it owns and chooses to resume.
+**70‰** is this engine on **twelve tagged PDFs this repository owns** (v2-S19; it read 64‰ over
+four). **Quote the band with it:** 0‰ .. 590‰, median 0‰, **nine of twelve score exactly 0‰**, and
+removing one document drops the macro to 23‰ — an average over mostly zeros is not a summary of a
+detector. **0.489** is a published ODL-local table score on **their** corpus — the one figure ODL
+and pdf-inspector report bit-identically, which is why it was picked. Same unit, different exam.
+
+The chase was **parked** (`00-NORTH-STAR.md` #10) *"until this repository has a labelled set it
+owns and chooses to resume"*. **v2-S19 built that set** — twelve documents under a written
+admission rule — so the first half of the condition is met and the second half is the owner's:
+`00-NORTH-STAR.md` **#18 is written and NOT decided**.
 Hybrid ~0.9× was never the target and still is not: it is a non-deterministic mode, and a
 determinism contract cannot sit under it. **Fabrication 0 still binds. v1 is not complete**, and
 parking the chase is not a pass — `table-gate-v1.md` keeps the method and the miss.
@@ -96,10 +102,10 @@ forced decision in `00-NORTH-STAR.md` §2.
 | What shape must every artifact have? | `01-CONTRACT.md` |
 | Can I borrow feature X from parser Y? | `06-STEAL-REFUSE.md` |
 | Where does verification live? | `07-VERIFY-BOUNDARY.md` |
-| What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 64‰, a miss; the 0.489 chase is parked** |
+| What is v1, and did its gate clear? | `08-V1-SCOPE.md` / `09-V1-MILESTONES.md` — **measured at 70‰ over twelve documents, a miss — and the band (0‰..590‰, nine of twelve at zero) matters more than the macro; the 0.489 chase is parked, and #18 is written and undecided** |
 | What is v1.1 (Safe Markdown)? | `10-V11-SCOPE.md` / `11-V11-MILESTONES.md` — complete |
 | What is v1.2 (adoption)? | `12-V12-SCOPE.md` / `13-V12-MILESTONES.md` — complete |
-| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0 through S18 done, at 0.34.3**: the mutation lane at 0.32.0, guards at 0.32.1, the roadmap reorder at 0.32.2, prose at 0.32.3, the owner's two gate decisions at 0.32.4, the two unrun sweeps at 0.32.5, the CRC-32 answer at 0.33.0, the guards those sweeps named at 0.33.1, the `neither detector` cluster at 0.34.0, the no-behaviour-change extractor itself at 0.34.1 the two guards outside `src` at 0.34.2 and the gate that has never been green at 0.34.3. S10 is CSV as an argued refusal, not a reader. **v2's format row is closed and the gate is MET** (decisions #16, #17); the last question — `zip.rs`'s CRC-32 — was answered at **S14, as 0.33.0**, measured before it shipped |
+| What is v2 (office formats)? | `14-V2-SCOPE.md` / `15-V2-MILESTONES.md` — **S0 through S19 done, at 0.35.0**: the mutation lane at 0.32.0, guards at 0.32.1, the roadmap reorder at 0.32.2, prose at 0.32.3, the owner's two gate decisions at 0.32.4, the two unrun sweeps at 0.32.5, the CRC-32 answer at 0.33.0, the guards those sweeps named at 0.33.1, the `neither detector` cluster at 0.34.0, the no-behaviour-change extractor itself at 0.34.1 the two guards outside `src` at 0.34.2 the gate that has never been green at 0.34.3 and the corpus that was never grown at 0.35.0 — which re-measured the table gate on twelve documents instead of four and escalated decision #18 to the owner, undecided. S10 is CSV as an argued refusal, not a reader. **v2's format row is closed and the gate is MET** (decisions #16, #17); the last question — `zip.rs`'s CRC-32 — was answered at **S14, as 0.33.0**, measured before it shipped |
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has

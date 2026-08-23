@@ -20,7 +20,7 @@ and numbering them `M8+` would imply v0's acceptance list continued into them. I
 | **S7a** | The labelled set and the harness — measurement only | S1–S6 | **done** |
 | **S7b** | Detector calibration against S7a. Seven investigations: six measured and rejected, one shipped (`ruled-rects-v2`) | S7a | **done** |
 | **S8** | The parked stroke-ruled rule, defect-fixed and shipped as a third rule | S7b | **done** |
-| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b, S8 | **measured and MISSED: 64‰ — the chase is parked, the slice is not closed** |
+| **S7** | The > 0.489 gate, assessed with its method stated | S7a, S7b, S8 | **measured and MISSED: 70‰ over twelve documents (v2-S19; 64‰ over four) — the chase is parked, the slice is not closed, and decision #18 is written and undecided** |
 
 ---
 
@@ -1054,12 +1054,19 @@ corpus, and reports what it sees. The number it reports is bad.
 
 ## S7 — The > 0.489 gate, assessed
 
-**Status: assessed, and MISSED. Macro cell-F1 is 64‰, historically measured against a 489‰ floor.
-v1 is not done.** (61‰ when first assessed at S7b; S8 shipped a third detection rule and
-re-measured.)
+**Status: assessed, and MISSED. Macro cell-F1 is 70‰ over twelve documents, historically measured
+against a 489‰ floor. v1 is not done.** (61‰ when first assessed at S7b; S8 shipped a third
+detection rule and re-measured to 64‰ on four documents; **v2-S19 grew the corpus to twelve** and
+re-measured to 70‰ with **no detector change**.)
 
-**The chase is parked, 2026-08-19, and parking is not a pass.** **64‰** is this engine on **four
-tagged PDFs this repository owns**; **0.489** is a published ODL-local table score on **their**
+**The band is the number to read, not the macro.** 0‰ .. 590‰, median 0‰, **nine of the twelve
+score exactly 0‰** — the detector emits no table at all on them. Two documents supply 849 of the
+851 averaged points, and removing one drops the macro to 23‰. So neither 64‰ nor 70‰ was ever a
+property of this engine; what twelve documents establish is the **shape**, which is bimodal.
+**Decision `00-NORTH-STAR.md` #18, written by v2-S19 and NOT decided, is what closes this slice.**
+
+**The chase is parked, 2026-08-19, and parking is not a pass.** **70‰** is this engine on **twelve
+tagged PDFs this repository owns** (v2-S19; 64‰ over the earlier four); **0.489** is a published ODL-local table score on **their**
 corpus. Same unit, different exam. Beating it is no longer a shipping precondition for any slice
 (`00-NORTH-STAR.md` #10), and it resumes only if this repository has a labelled set it owns and the
 owner chooses to resume. **Fabrication 0 still binds. v1 is not complete.** The unticked box below
@@ -1096,8 +1103,9 @@ stays open.
 
 - **Acceptance tests:**
   - [x] The harness is committed and reruns to the same number
-  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 64‰**, see above. Left
-        unticked on purpose: the chase is parked, and a parked chase does not tick a box
+  - [ ] Table-cell accuracy **> 0.489** on the labelled set — **MISSED at 70‰ over twelve
+        documents** (64‰ over the four measured before v2-S19), see above. Left unticked on
+        purpose: the chase is parked, and a parked chase does not tick a box
   - [x] Fabrication rate **0**, measured rather than asserted
   - [x] Cross-check diagnostics emitted across the set, with disagreement counted — **0**, first
         reached by `ruled-rects-v2` at S7b and **held through S8**, which added a third rule and

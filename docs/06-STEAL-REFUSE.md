@@ -259,10 +259,13 @@ reads the source PDF.
 bit-identically on the same corpus. ODL's README leads with 0.907 — that is its **hybrid AI-backed**
 mode, a different and non-deterministic product.
 
-**The chase is parked.** **64‰** is this engine on **four tagged PDFs this repository owns**;
-**0.489** is that published ODL-local score on **their** corpus. Same unit, different exam. 0.489 is
-no longer the floor the next slice must beat (`00-NORTH-STAR.md` #10), and it resumes only if this
-repository has a labelled set it owns and the owner chooses to resume. **Fabrication 0 still binds.
+**The chase is parked.** **70‰** is this engine on **twelve tagged PDFs this repository owns**
+(v2-S19; 64‰ over the earlier four), and the band belongs with it: 0‰..590‰, median 0‰, **nine of
+twelve at zero**. **0.489** is that published ODL-local score on **their** corpus. Same unit,
+different exam. 0.489 is no longer the floor the next slice must beat (`00-NORTH-STAR.md` #10), and
+it resumes only if this repository has a labelled set it owns and the owner chooses to resume —
+**v2-S19 built the set, so only the owner's half of that condition is outstanding** (#18, written
+and undecided). **Fabrication 0 still binds.
 v1 is not complete.**
 
 What has not changed: 0.489 is **never a claim to publish**. And read every other number in

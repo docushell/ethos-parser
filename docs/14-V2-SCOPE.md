@@ -73,8 +73,9 @@ format here with **no container**, which §3's second obligation decided rather 
 constant part name would have let the page-less invariant run unchanged and would have been a
 string the document does not contain, so the invariant grew a fourth rule instead.
 
-**v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **64‰** on the
-four tagged PDFs this repository owns, and fabrication is **0** (`table-gate-v1.md`,
+**v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **70‰** on the
+twelve tagged PDFs this repository owns (v2-S19; 64‰ on the earlier four), the band is
+**0‰..590‰ with nine of twelve at zero**, and fabrication is **0** (`table-gate-v1.md`,
 `09-V1-MILESTONES.md` S7). The **> 0.489 chase is parked** — 0.489 is a published ODL-local score on
 *their* corpus, same unit and a different exam, and it is not a precondition for anything in v2
 (`00-NORTH-STAR.md` #10). Parking it does not close v1. **v1.1 is complete** at 0.14.1 and **v1.2 is
@@ -295,7 +296,7 @@ and the only one forbidden outright.
 - **Not a PDF change.** No detector moves, no rule id moves, no table number moves because an office
   format arrived. `ruled-rects-v2`, `stroke-ruled-v1`, `unruled-align-v1`, `markdown-blocks-v2` and
   `html-blocks-v2` keep their ids and their numbers.
-- **Not v1 closing.** Macro cell-slot F1 is **64‰**, and 489‰ is a published comparator rather than
+- **Not v1 closing.** Macro cell-slot F1 is **70‰** over twelve documents (v2-S19), and 489‰ is a published comparator rather than
   a live floor — the chase is parked, which is not a pass. `08-V1-SCOPE.md`, `09-V1-MILESTONES.md`
   and `table-gate-v1.md` still govern, and no v2 slice may be cited against them.
 - **Not a conversion pipeline.** L30 is a refusal, not a fallback. No LibreOffice, no headless

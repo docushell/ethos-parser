@@ -14,9 +14,21 @@
 
 //! Fixture resolution for tests, matching the oracle harness (`docs/04-ARCHITECTURE.md` §4).
 //!
-//! Two roots, each independently overridable, resolved from `fixtures/manifest.json` exactly as
-//! `crates/engine-cli/tests/oracle.rs` resolves them. **A missing corpus is a failure, never a
+//! **Four roots**, each independently overridable, resolved from `fixtures/manifest.json` exactly
+//! as `crates/engine-cli/tests/oracle.rs` resolves them. **A missing corpus is a failure, never a
 //! skip** — a harness that skips reports green on a machine where it never ran.
+//!
+//! This said *"two roots"* until v2-S19 and there were three: `conformance`, `benchmark` and
+//! `engine`. A count in a sentence beside a list nothing derives it from is the drift v2-S13.3 and
+//! v2-S13.5 kept repairing, and it is repaired here rather than incremented past.
+//!
+//! # Two of the four live in this repository and two do not
+//!
+//! `conformance` and `benchmark` resolve into the sibling Ethos checkout: **read-only, never
+//! copied here**, which is what makes a digest mismatch mean something. `engine` and `gate` are
+//! committed here. The panic below said *"corpora are read-only and never copied into this repo"*
+//! of all of them, which was already false of `engine` and is false of `gate`, so it now says
+//! which kind of root it is talking about.
 
 use std::path::PathBuf;
 
@@ -59,8 +71,10 @@ fn read(root_name: &str, rel: &str) -> Vec<u8> {
             .to_string();
         panic!(
             "fixture `{rel}` not found in the `{root_name}` corpus at {}: {e}\n\
-             Set {env} to override. Corpora are read-only and never copied into this repo; a \
-             missing corpus is a failure, never a skip.",
+             Set {env} to override. `conformance` and `benchmark` are read-only and never copied \
+             into this repo; `engine` and `gate` are committed here, so a miss there is a deleted \
+             file rather than an absent checkout. Either way a missing corpus is a failure, never \
+             a skip.",
             path.display()
         )
     })
@@ -79,4 +93,14 @@ pub fn bench_fixture(rel: &str) -> Vec<u8> {
 /// Read a fixture from the engine-owned CC0 set (`fixtures/engine`).
 pub fn engine_fixture(rel: &str) -> Vec<u8> {
     read("engine", rel)
+}
+
+/// Read a document from the **table-gate corpus this repository owns** (`fixtures/gate`).
+///
+/// Committed here rather than referenced in a sibling tree, which is the difference that made
+/// v2-S19 possible: the four documents the gate scored until then live in the Ethos benchmark
+/// root, and a corpus cannot be grown by writing into a tree this repository does not own.
+/// Admission is a written rule — see `docs/table-gate-v1.md` §"What qualifies a document".
+pub fn gate_fixture(rel: &str) -> Vec<u8> {
+    read("gate", rel)
 }

@@ -1,16 +1,24 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.34.3, and v2's format row
+**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.35.0, and v2's format row
 is closed.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
-open**. Its table number is measured and **missed**: macro cell-slot F1 is **64‰**, fabrication is
-**0**, and the method is [`table-gate-v1.md`](table-gate-v1.md). **The > 0.489 chase is parked** —
-64‰ is this engine on four tagged PDFs this repository owns, 0.489 is a published ODL-local score on
-*their* corpus, same unit and a different exam (`00-NORTH-STAR.md` #10). Parking is not a pass:
-**v1 is not done**, and v1.1 began because the owner asked for the next roadmap row rather than
-because the gate cleared.
+open**. Its table number is measured and **missed**: macro cell-slot F1 is **70‰ over twelve
+tagged documents** (v2-S19; it read 64‰ over four), fabrication is **0**, and the method is
+[`table-gate-v1.md`](table-gate-v1.md).
 
-**What 0.34.3 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
+**Quote the band with the macro or do not quote either.** The band is **0‰ .. 590‰, median 0‰,
+with nine of the twelve scoring exactly 0‰**, because the detector emits no table at all on them.
+Two documents supply 849 of the 851 averaged points, and removing one drops the macro to 23‰. A
+single averaged figure over mostly zeros reads as *"the engine gets 7% of table cells right"* when
+the truth is *"most of two documents and nothing on nine"*.
+
+**The > 0.489 chase is parked** — this is this engine on tagged PDFs this repository owns, 0.489 is
+a published ODL-local score on *their* corpus, same unit and a different exam
+(`00-NORTH-STAR.md` #10). Parking is not a pass: **v1 is not done**, and what closes it is now
+`00-NORTH-STAR.md` **#18 — written by v2-S19 and NOT decided**.
+
+**What 0.35.0 can and cannot do, on one page:** [`CAPABILITY.md`](CAPABILITY.md).
 
 **v1.1 is Safe Markdown** (`10-V11-SCOPE.md`, `11-V11-MILESTONES.md`). `ethos.markdown.v1` carries
 a Markdown string and the **Anchor Map** that inverts every source byte of it back to
@@ -182,7 +190,8 @@ detector found. **The > 0.489 accuracy gate was S7's**, not any of these slices'
 `08-V1-SCOPE.md` §3, both for why chasing it earlier would have been tuning against nobody's number
 and for why the chase is now **parked** outright.
 
-**S7 measured it: macro cell-F1 is 64‰ against the 489‰ comparator — a miss.** The method is
+**S7 measured it: macro cell-F1 is 70‰ over twelve documents against the 489‰ comparator — a
+miss, and v2-S19 showed the macro is the wrong summary; see the band above.** The method is
 [`table-gate-v1.md`](table-gate-v1.md), and it is the only place a table-accuracy number from this
 repository should be quoted from. S7b ran seven investigations: the six aimed at the
 *alignment* rule were all measured and rejected, and one — `ruled-rects-v2` — shipped, taking
@@ -194,7 +203,9 @@ ruling lines rather than filled boxes — the largest measured lead left on this
 cells. It was built and parked at S7b for regressing the very document it was built for; S8 found
 that both its failures were one defect (the page's vertical ink was discarded before the rule saw
 it) and shipped the repair: `cfpb-home-loan-toolkit` 246‰ → 259‰, the gate 61‰ → 64‰,
-`irs-form-1040-2025` still at 0 tables, fabrication still 0.
+`irs-form-1040-2025` still at 0 tables, fabrication still 0. (Those three figures are the
+four-document corpus. v2-S19 re-measured on twelve and the gate reads 70‰; `cfpb` is unchanged at
+259‰, because no detector moved.)
 
 Four measurements shaped the table slices and are worth knowing before reading the detectors:
 
@@ -264,9 +275,12 @@ M7 added no capability. It closed v0 instead:
   drops the interpreter — but the guarantee belonged to the call site rather than to the type, and
   the test that was meant to cover it passed for the wrong reason. It is the type's now.
 
-**What came after v0, and where it stands.** v1's table gate is measured and **missed at 64‰** —
-61‰ when first assessed at S7b, moved to 64‰ by the third detection rule **S8 shipped** — and seven
-investigations in S7b established that no repair to the *alignment* rule moves it. See
+**What came after v0, and where it stands.** v1's table gate is measured and **missed at 70‰ over
+twelve documents** — 61‰ when first assessed at S7b, 64‰ once the third detection rule **S8
+shipped**, and 70‰ when **v2-S19** grew the corpus from four documents to twelve with no detector
+change. Seven investigations in S7b established that no repair to the *alignment* rule moves it,
+and S19 established something the four-document set could not: **nine of the twelve score exactly
+0‰**, so the macro describes which documents have drawn rules more than it describes the engine. See
 [`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the research
 archive of `stroke-ruled-v1`, the rule that was built and parked at S7b and then defect-fixed and
 shipped at S8. **The > 0.489 chase is parked and v1-S7 is not closed**; parking is not a pass.
@@ -340,7 +354,7 @@ Then, as needed:
 | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) | **v2 office formats**: what it is, what it is not, the no-synthesised-pages law, and the open grounding question | Before any office-format work |
 | [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) | **v2-S0–S13**, all done — eight formats read and **S10 (CSV) an argued refusal**. v2's format row is closed and v2 is **not** complete | Every v2 PR. This is the v2 code-review map |
 | [`table-gate-v1.md`](table-gate-v1.md) | The v1 table gate's **method and result** · corpus · formula · join and text rules · why the number is not comparable to the published 0.489, which is why the chase is parked | Before quoting any table-accuracy number |
-| [`CAPABILITY.md`](CAPABILITY.md) | What **0.34.3** can and cannot do, as two tables | When someone asks what this engine actually does today |
+| [`CAPABILITY.md`](CAPABILITY.md) | What **0.35.0** can and cannot do, as two tables | When someone asks what this engine actually does today |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen v0 export list, per crate · what is internal and why · the CLI↔library thin-shell mapping | Before adding a `pub use`, or when embedding the engine |
 | [`draft-schemas/`](draft-schemas/) | DRAFT JSON Schemas for the M1 types and every artifact through v1.1 — classification, extract, the M5 representation, and `ethos.markdown.v1`. Not a shipped contract | When you need a wire shape |
 | [`reference/`](reference/) | A stub. The two research files are **off-tree**; `06-STEAL-REFUSE.md` is the living steal / refuse record | Only to find out where the archive went |

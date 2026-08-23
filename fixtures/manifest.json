@@ -15,12 +15,18 @@
       "default": "fixtures/engine",
       "env": "ETHOS_ENGINE_FIXTURES",
       "note": "CC0 fixtures authored in this repo, for behaviours the Ethos corpus does not cover. Never counted toward the 15-fixture oracle criterion."
+    },
+    "gate": {
+      "default": "fixtures/gate",
+      "env": "ETHOS_GATE_CORPUS",
+      "note": "The table-gate corpus this repository OWNS: public, redistributable, tagged documents committed here, admitted under the rule in docs/table-gate-v1.md. Unlike the other roots these bytes are in this repository, because a corpus the gate publishes numbers about has to be one anybody can re-measure."
     }
   },
   "counts": {
     "conformance_ethos_owned": 15,
-    "benchmark": 3,
-    "engine_owned": 37
+    "benchmark": 4,
+    "engine_owned": 37,
+    "gate": 8
   },
   "fixtures": [
     {
@@ -517,6 +523,87 @@
       "sha256": "sha256:27fb8f92f77fa11f56aad179ed811c41765c44592bc945d99ed2e68f2676f10a",
       "owner": "engine",
       "notes": "An /L / /LI / /Lbl / /LBody structure tree with a nested /L under an /LBody and one item whose body is two marked runs. Neither corpus tags a list anywhere, so this is the only document that reaches the v1.1-S2 list branch; a projection that grew list markers from bullet glyphs instead would be reading layout, which is the refusal L29 makes about font-size headings one level up."
+    },
+    {
+      "id": "cfpb-home-loan-toolkit",
+      "root": "benchmark",
+      "group": "benchmark",
+      "path": "cfpb-home-loan-toolkit.pdf",
+      "sha256": "sha256:eae4ec62ec46a96d1ac9157912f3fbaffa8f0c723da1407038257b2234c122e9",
+      "owner": "ethos-bench",
+      "notes": "CFPB Home Loan Toolkit. 28 pages, 17 tagged tables. THE largest single contributor to the table-gate number, and pinned by nothing until v2-S19: the four manifest entries whose notes name it are engine-owned fixtures DERIVED from it, which are different files. Source: https://files.consumerfinance.gov/f/documents/cfpb_your-home-loan-toolkit.pdf"
+    },
+    {
+      "id": "irs-f1040sd-2025",
+      "root": "gate",
+      "group": "gate",
+      "path": "irs-f1040sd-2025.pdf",
+      "sha256": "sha256:90564c8b7e49280363612639b804d113ebedb516c2e87c70649f29c844da1d2e",
+      "owner": "engine-gate",
+      "notes": "IRS Form 1040 Schedule D (Capital Gains and Losses), tax year 2025. 2 pages. Public domain (US Government work). Source: https://www.irs.gov/pub/irs-pdf/f1040sd.pdf"
+    },
+    {
+      "id": "irs-fw9",
+      "root": "gate",
+      "group": "gate",
+      "path": "irs-fw9.pdf",
+      "sha256": "sha256:2d420cbb4123dcf1fb82595b2359cfbb5d81f00b9df9d359fcc7af361d093f53",
+      "owner": "engine-gate",
+      "notes": "IRS Form W-9 (Request for Taxpayer Identification Number). 6 pages. Public domain (US Government work). Source: https://www.irs.gov/pub/irs-pdf/fw9.pdf"
+    },
+    {
+      "id": "nist-sp-800-161r1",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-161r1.pdf",
+      "sha256": "sha256:c8250b1ea542640a7cffc145be08c6b17ff76bd695f8c0ac1b40c49d45355d89",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-161r1, C-SCRM Practices for Systems and Organizations. 327 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-161r1.pdf"
+    },
+    {
+      "id": "nist-sp-800-171r3",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-171r3.pdf",
+      "sha256": "sha256:3e4631df8b5d61f40a6e542b52779ef30ddbbfff31e09214fa94ad6e6f5e6d08",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-171r3, Protecting CUI in Nonfederal Systems. 120 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-171r3.pdf"
+    },
+    {
+      "id": "nist-sp-800-207",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-207.pdf",
+      "sha256": "sha256:0290d6ece24874287316f4bf430fef770aa4ec08a2227c8f2c1e5b2ff975e03d",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-207, Zero Trust Architecture. 59 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-207.pdf"
+    },
+    {
+      "id": "nist-sp-800-218",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-218.pdf",
+      "sha256": "sha256:617746e553a9e2da49bfbd4eef0dfc3094758a39b869314e4173ac36605cde22",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-218, Secure Software Development Framework. 36 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-218.pdf"
+    },
+    {
+      "id": "nist-sp-800-37r2",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-37r2.pdf",
+      "sha256": "sha256:4f75e1136bb905a654f1bcd9eefefb4108f47597276ee5eec0688f6d96f6a01d",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-37r2, Risk Management Framework. 183 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-37r2.pdf"
+    },
+    {
+      "id": "nist-sp-800-53Ar5",
+      "root": "gate",
+      "group": "gate",
+      "path": "nist-sp-800-53Ar5.pdf",
+      "sha256": "sha256:75665570048b969ad465a4f4f1db425ce505c374951c2c64e462949c6b21be47",
+      "owner": "engine-gate",
+      "notes": "NIST SP 800-53Ar5, Assessing Security and Privacy Controls. 733 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53Ar5.pdf"
     }
   ]
 }

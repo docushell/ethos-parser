@@ -34,36 +34,107 @@ evaluator, and neither this document nor the README does that.
 
 ## Corpus
 
-The four real documents. Engine-owned fixtures are **deliberately excluded** from the gate: they
-are purpose-built to exercise one detector behaviour each, and scoring against them measures how
-well this engine reproduces its own test cases.
+**Twelve documents, across two roots.** It was four until v2-S19, and the reason it stayed four for
+twelve slices was not labelling effort — that is zero, because the labels are derived — but that
+the four lived in a tree this repository does not own and cannot write to. `fixtures/gate/` is the
+answer: an engine-owned root, committed here, so the corpus can grow and anybody can re-measure it.
 
-| Fixture id | pages | tagged tables | tagged cells |
-| --- | --- | --- | --- |
-| `cfpb-home-loan-toolkit.pdf` | 28 | 17 | 159 |
-| `irs-form-1040-2025.pdf` | 2 | 1 | 40 |
-| `nist-sp-800-63b.pdf` | 80 | 13 | 568 |
-| `nist-sp-800-53r5.pdf` | 492 | 26 | 6 937 |
-| **total** | **602** | **57** | **7 704** |
+Engine-owned *fixtures* are still **deliberately excluded**: they are purpose-built to exercise one
+detector behaviour each, and scoring against them measures how well this engine reproduces its own
+test cases. `fixtures/gate/` is a different thing — real documents this repository happens to store.
 
-**Three of the four** have their sha256 digest in `fixtures/manifest.json`, which is the single
-place a digest is recorded; restating them here would create a second copy to drift.
+| Fixture id | root | pages | tagged tables | tagged cells |
+| --- | --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit.pdf` | benchmark | 28 | 17 | 159 |
+| `irs-form-1040-2025.pdf` | benchmark | 2 | 1 | 40 |
+| `nist-sp-800-63b.pdf` | benchmark | 80 | 13 | 568 |
+| `nist-sp-800-53r5.pdf` | benchmark | 492 | 26 | 6 937 |
+| `irs-f1040sd-2025.pdf` | gate | 2 | 2 | 60 |
+| `irs-fw9.pdf` | gate | 6 | 4 | 60 |
+| `nist-sp-800-161r1.pdf` | gate | 327 | 46 | 3 853 |
+| `nist-sp-800-171r3.pdf` | gate | 120 | 24 | 1 946 |
+| `nist-sp-800-207.pdf` | gate | 59 | 4 | 114 |
+| `nist-sp-800-218.pdf` | gate | 36 | 4 | 416 |
+| `nist-sp-800-37r2.pdf` | gate | 183 | 20 | 1 035 |
+| `nist-sp-800-53Ar5.pdf` | gate | 733 | 11 | 567 |
+| **total** | | **2 068** | **172** | **15 755** |
 
-`cfpb-home-loan-toolkit.pdf` **is not in the manifest at all.** The four entries whose notes name
-it — `background-panel-not-a-grid`, `simple-font-two-byte-tounicode`, `stroke-ruled-worksheet` and
-`stroke-ruled-columns-not-drawn` — are engine-owned fixtures derived from it, not the document
-itself, and the `benchmark` root holds three entries where this table names four. So the document
-carrying the largest single share of the gate number is pinned by nothing, and the corpus could
-change underneath the score with every test still green. This sentence claimed otherwise until
-v2-S13.1.
+Digests are in `fixtures/manifest.json`, which is the single place a digest is recorded; restating
+them here would create a second copy to drift.
 
-**The gap is pinned rather than closed**, by
-`the_gate_corpus_is_pinned_except_the_one_document_that_is_not` in `crates/engine-pdf/src/accuracy.rs`,
-which asserts exactly which three are pinned and which one is not. Adding the fourth manifest entry
-is a corpus decision with a measurement attached — `fixtures/manifest.json`'s `counts` drive
-`crates/engine-pdf/tests/robustness.rs`, so a fourth `benchmark` entry moves the mutation corpus off
-its pinned 55 fixtures and 318 mutants — and that is not a patch release's to make. The day it is
-made, that test fails and brings whoever makes it back to this paragraph.
+**Every one of the twelve is now hash-pinned, and one of them was not until this slice.**
+`cfpb-home-loan-toolkit.pdf` had no manifest entry at all — the four entries whose notes name it
+(`background-panel-not-a-grid`, `simple-font-two-byte-tounicode`, `stroke-ruled-worksheet`,
+`stroke-ruled-columns-not-drawn`) are engine-owned fixtures *derived* from it, which are different
+files. So the document carrying the largest single share of the gate number was pinned by nothing,
+and the corpus could have changed underneath the score with every test still green.
+
+v2-S13.1 pinned that gap rather than closing it, because closing it moves the mutation harness, and
+said the day it closed the guard would fail and bring whoever closed it back to this paragraph.
+**That is what happened**: S19 had to touch the manifest to grow the corpus, so the gap closed in
+the slice that could pay for it. The guard is now
+`every_gate_document_is_hash_pinned` — a universal with no exception list, because a
+pinned-versus-not comparison has nothing left to say once the second list is empty and would only
+invite someone to add a document to the wrong side of it.
+
+**What it cost, stated because the warning that predicted it is above.**
+`fixtures/manifest.json`'s `counts` drive `crates/engine-pdf/tests/robustness.rs`, and nine new
+entries — the cfpb pin plus eight `gate` documents — moved the mutation corpus from **55 fixtures
+and 318 mutants** to **64 fixtures and 363 mutants**. `EXPECTED_INAPPLICABLE` went from 12 pairs to
+**21**, and every one of the nine additions is the same `unknown-operator`-on-a-compressed-content-
+stream case the array already documented: these are real publications from government typesetting
+pipelines, which is the very property that got them admitted. **The count moved and the reason did
+not** — no mutation stopped covering anything it used to cover. The `gate`
+root takes the **shallow** mutation pass, as `benchmark` does: the eight added documents run to
+1 466 pages and deep-mutating them would add hours per run and no signal the small fixtures do not
+already give. Naming roots is a proxy for size and a crude one; a `depth` field per manifest entry
+would say it directly, and that is a schema change named here rather than taken quietly.
+
+## What qualifies a document for this corpus
+
+Until v2-S19 the corpus was four documents and no rule — they were the tagged PDFs that happened to
+be in the benchmark root, and "add a fifth" had no criterion to satisfy. That is why the set stayed
+at four for twelve slices: not labelling effort, which is zero, but the absence of an answer to
+*which* fifth.
+
+A document is admitted when **all five** hold:
+
+1. **Public.** Published by a government body or a standards organisation, for anyone to download.
+2. **Redistributable.** This repository commits the bytes and publishes numbers about them, so a
+   licence that permits neither is disqualifying. US Government works are in the public domain.
+3. **Stable at a URL.** The provenance recorded in `fixtures/manifest.json` has to lead somewhere.
+4. **Tagged.** It carries a `/StructTreeRoot`, so its ground truth is *derived* from the producer's
+   own structure tree rather than authored by anyone here. This is the load-bearing one — see
+   §"Ground truth". A document that must be hand-labelled is not cheaper to add, it is a different
+   kind of thing, and mixing the two would put authored labels and derived labels in one average.
+5. **Carries at least one `/Table`.** A tagged document declaring no table contributes nothing to a
+   macro average that excludes it (§"The metric"), so admitting one adds weight without adding
+   signal.
+
+### Personal documents are refused, on two grounds rather than one
+
+A scan of the developer machine — run **before** this slice, and inherited by it rather than
+repeated — found 400 PDFs, 99 of them tagged, and the reachable ones carrying `/Table` are
+personal: a loan acknowledgement, résumés, a phone receipt. They are refused twice over, and the
+second reason matters as much as the first.
+
+**Privacy.** A benchmark corpus is committed, referenced by digest, and has numbers published about
+it. That is publication. A document that was never meant to be published does not become publishable
+because it is convenient, and a digest is not anonymisation.
+
+**Representativeness.** The gate exists to measure documents like the ones DocuShell will meet. A
+résumé's two-column layout is not that, and a phone receipt's is not either. Admitting them would
+move the number without anyone being able to say whether the detector improved or the corpus got
+easier — which is the failure this whole document is written to prevent. **A corpus you cannot
+publish is also a corpus nobody can check**, and the two objections point the same way.
+
+### What this rule does not do
+
+It does not make the corpus representative of *everything*. Every document here is
+English-language, born-digital, and produced by one of a handful of US federal publishing pipelines.
+That is a real bound on what the gate number generalises to, and it is stated here rather than
+discovered later: **a score on this corpus is a score on well-tagged US government publishing**, not
+on documents in general.
 
 ## Ground truth
 
@@ -138,34 +209,81 @@ and the difference is an artifact of how the producer chunked the stream.
 
 ## The result
 
-Engine **0.10.0**, profile
-`sha256:08c4207d18bee0e64daea093d94f0c64c5b897add33288969488be5e75143c65`, measured 2026-08-15,
-under `ruled-rects-v2` + `stroke-ruled-v1` + `unruled-align-v1`.
+Engine **0.35.0**, measured on **twelve** documents. The four-document run this replaces is kept
+below, because the comparison is the finding.
 
 | Document | TP | FP | FN | cell-F1 |
 | --- | --- | --- | --- | --- |
 | `cfpb-home-loan-toolkit.pdf` | 44 | 136 | 115 | **259‰** |
+| `irs-fw9.pdf` | 26 | 2 | 34 | **590‰** |
+| `nist-sp-800-218.pdf` | 12 | 11 295 | 404 | **2‰** |
 | `irs-form-1040-2025.pdf` | 0 | 0 | 40 | **0‰** |
+| `irs-f1040sd-2025.pdf` | 0 | 0 | 60 | **0‰** |
 | `nist-sp-800-63b.pdf` | 0 | 0 | 568 | **0‰** |
 | `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** |
-| **MACRO over 4 documents** | | | | **64‰** |
+| `nist-sp-800-161r1.pdf` | 0 | 0 | 3 853 | **0‰** |
+| `nist-sp-800-171r3.pdf` | 0 | 0 | 1 946 | **0‰** |
+| `nist-sp-800-207.pdf` | 0 | 0 | 114 | **0‰** |
+| `nist-sp-800-37r2.pdf` | 0 | 0 | 1 035 | **0‰** |
+| `nist-sp-800-53Ar5.pdf` | 0 | 0 | 567 | **0‰** |
+| **MACRO over 12 documents** | | | | **70‰** |
 
-**Gate: 64‰ > 489‰ is false. v1-S7 is still not green** — and 489‰ is now a comparator rather than a
-floor the next slice must clear. The verdict stands as a miss; the chase is parked, not passed.
+**Band: 0‰ .. 590‰, median 0‰, and nine of the twelve score exactly 0‰.**
 
 Alongside it, on the same run:
 
-| | |
-| --- | --- |
-| Cells emitted | 180 |
-| **Fabricated cells** | **0** |
-| Cross-check disagreements | **0** |
-| False tables on the gold negatives | 0 |
-| Page-level recall (diagnostic only) | 228‰ |
-| Page-level precision (diagnostic only) | 928‰ |
+| | 4 documents (0.10.0) | 12 documents (0.35.0) |
+| --- | --- | --- |
+| Cells emitted | 180 | 1 236 |
+| **Fabricated cells** | **0** | **0** |
+| Cross-check disagreements | **0** | **9** |
+| False tables on the gold negatives | 0 | 0 |
 
-Page-level recall is a **diagnostic**. It is not the gate and it is not comparable to 0.489.
-228‰ of pages agreeing is not 228‰ of cells right.
+### 64‰ "held" at 70‰, and that is the least informative true thing to say about it
+
+The macro moved 64‰ → 70‰ across a threefold corpus. Read alone, that is stability, and it would
+license *"64‰ is this engine's honest table number."* **The band says otherwise, and the band is
+the number that matters.**
+
+- **Nine of twelve documents score 0‰.** Not "low" — zero, because the detector emits **no table
+  at all** on them. The median document scores nothing.
+- **The macro is carried by two documents out of twelve.** `irs-fw9` at 590‰ and
+  `cfpb-home-loan-toolkit` at 259‰ supply 849 of the 851 points that get averaged.
+- **Remove `irs-fw9` alone and the macro falls to 23‰** — a threefold move from one document out of
+  twelve. That is the arithmetic of an average over mostly zeros: it is stable in the way a
+  thermometer reading mostly zeros is stable, and its value is set by which one or two documents
+  happen to have drawn rules.
+
+So the four-document 64‰ was **not** a property of this engine, and the twelve-document 70‰ is not
+one either. What twelve documents establish that four could not is the **shape**, and the shape is
+not "weak everywhere". It is bimodal: **the ruled rule works where a producer drew the rules and
+produces nothing where it did not** — confirming on twelve documents the finding that reframed five
+slices of work, which four documents could have produced by luck.
+
+### The one document where the failure is not silence
+
+`nist-sp-800-218` is the corpus's new information, and it is worse news than a zero.
+
+Against **4** tagged tables it detects **9**, with dimensions of 103 × 22, 108 × 16, 89 × 15,
+87 × 14, 86 × 19, 75 × 14, 66 × 17, 58 × 15 and 6 × 14 — phantom grids spanning whole pages, built
+from the document's ruling lines rather than from any table. Expanded to slots, they contribute
+**11 295 false positives**, more than the entire rest of the corpus produces in either direction.
+
+Two things about it are worth stating precisely, because they are easy to get backwards:
+
+- **Fabrication is still 0.** Every cell's text is a concatenation of runs the page actually drew.
+  The detector arranged real text into a grid that is not there; it did not invent text. That
+  distinction is the S1 invariant and the metric keeps it visible.
+- **The engine's own cross-check flagged them, and the report now says so per document.**
+  Cross-check disagreements went from 0 to 9 on this corpus, and the per-document column shows
+  **all nine are this document's** — every other of the twelve reads 0. There are exactly nine
+  detected tables here, so the locator cross-check is rejecting **every one of them**. Nothing acts on that today; a rule that
+  declined a table its own cross-check rejected is a **detector change**, which v2-S19 is
+  forbidden to make, and it is recorded here as the largest concrete lead this corpus produced.
+
+FP of 11 295 against 1 236 cells emitted corpus-wide is not a contradiction and is the kind of thing
+worth spelling out: `emitted_cells` counts **cells**, the score counts **slots**, and a cell with
+`colspan: 3` occupies three of them. §"Slots, not cells" settles why the comparison is done that way.
 
 ### The run before this one, for comparison
 

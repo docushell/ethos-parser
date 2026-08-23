@@ -7,7 +7,89 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0
+
+### v2-S19 — the corpus that was never grown, as 0.35.0
+
+**A MINOR, and the corpus is not why.** `fixtures/manifest.json` went from 55 fixtures to 64, and
+its `counts` drive `crates/engine-pdf/tests/robustness.rs`, so the PDF mutation harness moves off
+its pinned totals. `docs/table-gate-v1.md` predicted exactly that. **No detector, rule id or
+tolerance changed** — `table_detection` is byte-identical across the bump, which is the proof this
+slice owes: a commit that moved the corpus *and* the detector could not tell you which one moved
+the number.
+
+#### Added — `fixtures/gate/`, twelve documents, and an admission rule
+
+Ground truth here is **derived** from each document's own tagged structure tree, so a tagged
+document costs **nothing** to label. "Parked until this repository has a labelled set it owns" was
+therefore never a resourcing constraint. What it actually was: the four documents live in a tree
+this repository does not own and must not write to, so there was nowhere to put a fifth.
+`fixtures/gate/` is that place.
+
+Admission is now a written rule — **public, redistributable, stable at a URL, tagged, carrying at
+least one `/Table`** — with personal documents refused on **privacy** (a benchmark corpus is
+published, and a digest is not anonymisation) **and on representativeness** (a résumé's two-column
+layout is not what DocuShell will meet). Eleven candidates were fetched and **three dropped by the
+rule**, applied by the measurement itself: `label()` returns zero tables rather than erroring, so
+the admission test and the measurement are one run.
+
+`cfpb-home-loan-toolkit.pdf` is finally **hash-pinned**. It carried the largest single share of the
+gate number while having no manifest entry at all. v2-S13.1 pinned that gap and said the day it
+closed the guard would fail and bring whoever closed it back to that paragraph — which is what
+happened, in the slice that could pay for it.
+
+#### Changed — the gate is measured on twelve documents, and the honest reading is not the arithmetic one
+
+**Macro cell-slot F1 is 70‰ over twelve, where four read 64‰.** Read alone that is stability. The
+band refuses it: **0‰ .. 590‰, median 0‰, and nine of the twelve score exactly 0‰**, because the
+detector emits no table at all on them. Two documents supply 849 of the 851 averaged points, and
+**removing `irs-fw9` alone drops the macro to 23‰** — a threefold move from one document out of
+twelve.
+
+So the four-document 64‰ was never a property of this engine and the twelve-document 70‰ is not one
+either. What twelve documents establish that four could not is the **shape**: bimodal, not
+weak-everywhere — the ruled rule works where a producer drew the rules and produces nothing where
+it did not.
+
+#### Measured — fabrication is still 0; cross-check disagreements went 0 → 9
+
+**Fabrication is 0 across all twelve**, the one number with a required value.
+
+The new signal is `nist-sp-800-218`: **nine detected tables against four tagged**, up to 103 × 22,
+contributing **11 295 false-positive slots**. It is **not** fabrication — the detector arranged real
+text into a grid that is not there rather than inventing text — and **the engine's own locator
+cross-check already flags all nine**. Nothing acts on that here, because acting on it is a detector
+change this slice is forbidden to make; it is recorded as the largest concrete lead the corpus
+produced.
+
+#### Fixed — the corpus found a defect in the mutation harness's own reasoning
+
+`EXPECTED_SURVIVORS` moved 60 → **78**. Nine are `junk-after-eof`, the documented class. The other
+nine were **triaged rather than pasted**, and the triage found that `Mutation::apply`'s claim —
+flipping the byte at `len - len/20 - 1` is *"deep enough to land in the xref/trailer region on every
+fixture"* — **was never true of a large document**. Measured on all twelve: the index lands hundreds
+of kilobytes before `startxref`, inside a compressed object stream, 370 KB before it on
+`nist-sp-800-53Ar5`. Those documents take the shallow pass and never decompress it, so **they
+survive because the mutation missed, not because the reader recovered**.
+
+The three large `benchmark` documents had been pinned under *"`lopdf` recovers by scanning for the
+catalog"* without their bytes ever being inspected. The reason is now split in two in the source
+rather than the count incremented — a pin whose stated reason is not the actual reason is the shape
+v2-S13.1 exists for. Coverage did not regress: forty-six fixtures still fail closed, unchanged.
+Making the mutation seek the trailer is a harness change with a measurement attached, named and not
+taken here.
+
+`EXPECTED_INAPPLICABLE` moved 12 → **21**, every addition the same already-documented
+`unknown-operator`-on-a-compressed-stream case, and the mutation corpus moved **55 fixtures / 318
+mutants → 64 / 363**.
+
+#### Escalated — `00-NORTH-STAR.md` #18, written and NOT decided
+
+The two options, the evidence and a recommendation are handed to the owner: accept a number and
+close v1, or un-park the v1-S7 chase now that there is evidence rather than a preference. The
+recommendation is to close v1 on an honest **capability statement plus the band** rather than on
+the macro, since a single averaged figure over mostly zeros reads as "7% of table cells" when the
+truth is "most of two documents and nothing on nine".
 
 ### v2-S18 — the gate that has never been green, as 0.34.3
 

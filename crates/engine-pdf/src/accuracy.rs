@@ -543,41 +543,75 @@ fn cell_slots(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::bench_fixture;
+    use crate::test_support::{bench_fixture, gate_fixture};
 
-    /// The four real documents, which are the whole point: the owned fixtures are purpose-built to
+    /// The real documents, which are the whole point: the owned fixtures are purpose-built to
     /// exercise one detector behaviour each, and scoring against them would measure how well this
     /// engine reproduces its own test cases.
-    const CORPUS: [&str; 4] = [
-        "cfpb-home-loan-toolkit.pdf",
-        "irs-form-1040-2025.pdf",
-        "nist-sp-800-63b.pdf",
-        "nist-sp-800-53r5.pdf",
+    ///
+    /// **`(root, file)`, because the corpus spans two roots and did not before v2-S19.** The
+    /// original four live in the Ethos `benchmark` tree, which this repository does not own and
+    /// cannot write to; the documents S19 added are committed here under `gate`. That split is the
+    /// reason the set sat at four for twelve slices — not labelling effort, which is zero, but
+    /// nowhere to put a fifth.
+    ///
+    /// Admission is a written rule rather than a judgement: public, redistributable, stable at a
+    /// URL, tagged, and carrying at least one `/Table`. See `docs/table-gate-v1.md`
+    /// §"What qualifies a document for this corpus", which also records why the tagged personal
+    /// documents on the developer machine are refused on privacy AND on representativeness.
+    const CORPUS: [(&str, &str); CORPUS_LEN] = [
+        ("benchmark", "cfpb-home-loan-toolkit.pdf"),
+        ("benchmark", "irs-form-1040-2025.pdf"),
+        ("benchmark", "nist-sp-800-63b.pdf"),
+        ("benchmark", "nist-sp-800-53r5.pdf"),
+        ("gate", "irs-f1040sd-2025.pdf"),
+        ("gate", "irs-fw9.pdf"),
+        ("gate", "nist-sp-800-161r1.pdf"),
+        ("gate", "nist-sp-800-171r3.pdf"),
+        ("gate", "nist-sp-800-207.pdf"),
+        ("gate", "nist-sp-800-218.pdf"),
+        ("gate", "nist-sp-800-37r2.pdf"),
+        ("gate", "nist-sp-800-53Ar5.pdf"),
     ];
 
-    /// Which of the gate corpus is hash-pinned in `fixtures/manifest.json`, and which is not.
+    const CORPUS_LEN: usize = 12;
+
+    /// Read one corpus document, from whichever root declares it.
+    fn corpus_bytes(root: &str, file: &str) -> Vec<u8> {
+        match root {
+            "benchmark" => bench_fixture(file),
+            "gate" => gate_fixture(file),
+            other => panic!("the gate corpus has no root `{other}`"),
+        }
+    }
+
+    /// **Every document the gate scores is hash-pinned in `fixtures/manifest.json`.** No
+    /// exceptions, and the absence of an exception is the point.
     ///
-    /// `docs/table-gate-v1.md` §Corpus said *"Their sha256 digests are in `fixtures/manifest.json`,
-    /// which is the single place they are recorded"* of all four. **Three of the four.**
-    /// `cfpb-home-loan-toolkit.pdf` has no manifest entry at all — the four entries whose notes
-    /// mention it are engine-owned fixtures derived from it, which are different files — so the
-    /// document contributing the largest share of the 64‰ gate number is pinned by nothing. The
-    /// corpus could change underneath the score and no test would notice.
+    /// # What this used to assert, and why it changed
     ///
-    /// # Why this pins the gap instead of closing it
+    /// Until v2-S19 this test was called
+    /// `the_gate_corpus_is_pinned_except_the_one_document_that_is_not`, and it pinned a **gap**:
+    /// `cfpb-home-loan-toolkit.pdf` had no manifest entry at all, so the document carrying the
+    /// largest single share of the 64‰ gate number was pinned by nothing and the corpus could
+    /// have changed underneath the score with every test still green. The four manifest entries
+    /// whose notes name it are engine-owned fixtures *derived* from it — different files.
     ///
-    /// Adding the entry is not a patch release's to make. `fixtures/manifest.json`'s `counts`
-    /// feed `crates/engine-pdf/tests/robustness.rs`, which asserts the fixture array and the
-    /// counts agree and then mutates every fixture: a fourth `benchmark` entry moves the corpus
-    /// from fifty-five to fifty-six, moves the mutant count off its pinned 318, and moves
-    /// `EXPECTED_SURVIVORS` and `EXPECTED_INAPPLICABLE` with it. That is a corpus decision with a
-    /// measurement attached, and it is not this slice's.
+    /// v2-S13.1 pinned that gap rather than closing it, because closing it moves the mutation
+    /// harness: `fixtures/manifest.json`'s `counts` drive
+    /// `crates/engine-pdf/tests/robustness.rs`, so a fourth `benchmark` entry moves the corpus off
+    /// its pinned fifty-five fixtures and its pinned mutant total. It said the day the gap closed,
+    /// this test would fail and bring whoever closed it back to that paragraph.
     ///
-    /// So the current state is asserted exactly. Pinning `cfpb-home-loan-toolkit.pdf` later fails
-    /// this test, which is the point: the day the gap closes, the sentence in
-    /// `docs/table-gate-v1.md` has to close with it.
+    /// **That is exactly what happened.** S19 had to grow the corpus, growing it meant touching
+    /// the manifest anyway, and the mutation numbers moved in the same commit — so the gap closed
+    /// as a side effect of the slice that could pay for it.
+    ///
+    /// The assertion is now a universal rather than a two-list comparison, because a two-list
+    /// comparison of pinned-versus-not has nothing left to say once the second list is empty, and
+    /// keeping it would invite someone to add a document to the wrong side of it.
     #[test]
-    fn the_gate_corpus_is_pinned_except_the_one_document_that_is_not() {
+    fn every_gate_document_is_hash_pinned() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
@@ -595,39 +629,39 @@ mod tests {
             fixtures.len()
         );
 
-        let mut pinned = Vec::new();
         let mut unpinned = Vec::new();
-        for doc in CORPUS {
-            let entry = fixtures.iter().find(|f| {
-                f["root"] == "benchmark"
+        for (declared_root, doc) in CORPUS {
+            let pinned = fixtures.iter().any(|f| {
+                f["root"].as_str() == Some(declared_root)
                     && f["path"].as_str().is_some_and(|p| p == doc)
                     && f["sha256"]
                         .as_str()
                         .is_some_and(|h| h.starts_with("sha256:"))
             });
-            if entry.is_some() {
-                pinned.push(doc);
-            } else {
-                unpinned.push(doc);
+            if !pinned {
+                unpinned.push(format!("{declared_root}/{doc}"));
             }
         }
 
-        assert_eq!(
-            pinned,
-            vec![
-                "irs-form-1040-2025.pdf",
-                "nist-sp-800-63b.pdf",
-                "nist-sp-800-53r5.pdf",
-            ],
-            "the pinned half of the gate corpus moved"
+        assert!(
+            unpinned.is_empty(),
+            "{} gate document(s) are scored but not hash-pinned: {unpinned:?}\n\
+             A document the gate publishes a number about must be pinned by digest, or the corpus \
+             can change underneath the score with every test still green. Add the manifest entry \
+             — and remember its `counts` drive the mutation harness, so \
+             `crates/engine-pdf/tests/robustness.rs`'s pinned totals move with it.",
+            unpinned.len()
         );
-        assert_eq!(
-            unpinned,
-            vec!["cfpb-home-loan-toolkit.pdf"],
-            "the unpinned half of the gate corpus moved. If `cfpb-home-loan-toolkit.pdf` is now \
-             in `fixtures/manifest.json`, that is the gap closing and it is good news — update \
-             this assertion and `docs/table-gate-v1.md` §Corpus, which describes the split, and \
-             check what a fourth `benchmark` entry did to the mutation harness's pinned counts."
+
+        // The corpus is big enough to tell "the detector is weak" from "these few are hard".
+        // Four could not, which is the finding that produced v2-S19.
+        assert!(
+            CORPUS.len() >= 12,
+            "the gate corpus is {} document(s). Twelve is the floor v2-S19 set, and the reason is \
+             stated rather than round: four documents cannot distinguish a weak detector from a \
+             hard sample, and the claim that reframed five slices of work is exactly the kind a \
+             small corpus produces spuriously.",
+            CORPUS.len()
         );
     }
 
@@ -635,8 +669,8 @@ mod tests {
         let profile = Profile::default();
         let mut rows = Vec::new();
         let mut total = Score::default();
-        for name in CORPUS {
-            let bytes = bench_fixture(name);
+        for (root, name) in CORPUS {
+            let bytes = corpus_bytes(root, name);
             let doc = Document::open_bytes(&bytes, &profile).expect("opens");
             let labels = label(&doc, name).expect("labels");
             let s = score(&doc, &labels, &profile).expect("scores");
@@ -709,8 +743,8 @@ mod tests {
         let profile = Profile::default();
         let fresh: Vec<LabelledDocument> = CORPUS
             .iter()
-            .map(|name| {
-                let bytes = bench_fixture(name);
+            .map(|(root, name)| {
+                let bytes = corpus_bytes(root, name);
                 let doc = Document::open_bytes(&bytes, &profile).expect("opens");
                 label(&doc, name).expect("labels")
             })
@@ -740,8 +774,8 @@ mod tests {
         let profile = Profile::default();
         let fresh: Vec<LabelledDocument> = CORPUS
             .iter()
-            .map(|name| {
-                let bytes = bench_fixture(name);
+            .map(|(root, name)| {
+                let bytes = corpus_bytes(root, name);
                 let doc = Document::open_bytes(&bytes, &profile).expect("opens");
                 label(&doc, name).expect("labels")
             })
@@ -778,19 +812,21 @@ mod tests {
 
         println!("\ntable accuracy, labels from each document's own structure tree:");
         println!(
-            "  {:<28} {:>8} {:>8} {:>8} {:>10} {:>10}",
-            "document", "declared", "detected", "matched", "recall", "precision"
+            "  {:<28} {:>8} {:>8} {:>8} {:>10} {:>10} {:>7} {:>7}",
+            "document", "declared", "detected", "matched", "recall", "precision", "fabr", "xcheck"
         );
         for (name, s) in &rows {
             println!(
-                "  {:<28} {:>8} {:>8} {:>8} {:>9}‰ {:>9}",
+                "  {:<28} {:>8} {:>8} {:>8} {:>9}‰ {:>9} {:>7} {:>7}",
                 name,
                 s.declared,
                 s.detected,
                 s.matched,
                 s.recall_permille().map_or("-".into(), |v| v.to_string()),
                 s.precision_permille()
-                    .map_or("-".to_string(), |v| format!("{v}‰"))
+                    .map_or("-".to_string(), |v| format!("{v}‰")),
+                s.fabricated_cells,
+                s.cross_check_disagreements
             );
         }
         println!(
@@ -836,6 +872,26 @@ mod tests {
             rows.iter().filter(|(_, s)| s.declared > 0).count(),
             macro_f1.map_or("-".to_string(), |v| format!("{v}‰"))
         );
+
+        // **The band, printed rather than left to a reader's impression.** v2-S19 exists because
+        // four documents cannot tell a weak detector from a hard sample, and a macro average is
+        // exactly the statistic that hides which it is: an average of mostly zeros is stable for a
+        // reason that has nothing to do with the detector being stable. So the spread, the median
+        // and the count of documents scoring nothing are printed beside it, and the sentence a
+        // record is allowed to write about "holding" has to survive all four numbers.
+        let mut scored: Vec<u32> = rows
+            .iter()
+            .filter_map(|(_, s)| s.cell_f1_permille())
+            .collect();
+        scored.sort_unstable();
+        if let (Some(&lo), Some(&hi)) = (scored.first(), scored.last()) {
+            let median = scored[scored.len() / 2];
+            let zeros = scored.iter().filter(|v| **v == 0).count();
+            println!(
+                "  band across documents: {lo}‰ .. {hi}‰, median {median}‰, {zeros} of {} score 0‰",
+                scored.len()
+            );
+        }
         println!(
             "  gate is > {GATE_PERMILLE}‰: {}\n",
             match macro_f1 {

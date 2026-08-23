@@ -3,9 +3,17 @@
 **Status:** implementation authority for v1.2 · **Scope document:** `12-V12-SCOPE.md`
 **This is the code-review map for v1.2.** Every v1.2 PR belongs to exactly one slice.
 
-**v1 is not done.** S7's gate is measured and **missed at 64‰**, and 489‰ is a published comparator
+**v1 is not done.** S7's gate is measured and **missed**, and 489‰ is a published comparator
 rather than a live floor — the chase is **parked**, which is not a pass (`00-NORTH-STAR.md` #10,
-`09-V1-MILESTONES.md` S7, `table-gate-v1.md`). **v1.1 is complete** at 0.14.1. v1.2 began because
+`09-V1-MILESTONES.md` S7, `table-gate-v1.md`).
+
+> **Note added by v2-S19.** Every `64‰` in this document is the **four-document** measurement that
+> was current while v1.2 ran. v2-S19 grew the gate corpus to **twelve** documents and re-measured:
+> the macro reads **70‰**, and the band — 0‰..590‰, median 0‰, **nine of twelve at zero** — shows
+> the macro was never the right summary of this detector. **The per-slice acceptance lines below
+> are left exactly as they were measured**, because they record what was true when each slice
+> shipped and rewriting them would erase the evidence that the number moved. Read them as history;
+> read `table-gate-v1.md` for the current number. **v1.1 is complete** at 0.14.1. v1.2 began because
 the owner asked for the next roadmap row, and nothing in it closes v1.
 
 | Slice | Theme | Depends on | State |

@@ -12,11 +12,21 @@ claim is true — that is a separate verifier's job. Together they answer the qu
 
 **v0 is complete and frozen (0.1.0); v0.1 shipped on top of it as 0.2.0. v1's last slice shipped
 as 0.10.0 with S1–S7b and S8 done and S7 open.** Its table number is measured and **missed**: macro
-cell-slot F1 is **64‰** with fabrication at **0**, by the method in
-[`docs/table-gate-v1.md`](docs/table-gate-v1.md). **The > 0.489 chase is parked** — 64‰ is this
-engine on four tagged PDFs this repository owns, 0.489 is a published ODL-local table score on
-*their* corpus, and they are the same unit on a different exam. Parking it is not passing it:
-**v1 is not done**, and 0.489 is not a number this project publishes as its own.
+cell-slot F1 is **70‰ over twelve tagged documents** with fabrication at **0**, by the method in
+[`docs/table-gate-v1.md`](docs/table-gate-v1.md). It read 64‰ over four until **v2-S19** grew the
+corpus and re-measured with **no detector change**.
+
+**Quote the band with the macro or quote neither: 0‰ .. 590‰, median 0‰, and nine of the twelve
+score exactly 0‰**, because the detector emits no table at all on them. Two documents supply 849 of
+the 851 averaged points, and removing one drops the macro to 23‰. An average over mostly zeros is
+not a summary of a detector — what twelve documents show that four could not is the **shape**: the
+ruled rule works where a producer drew the rules and produces nothing where it did not.
+
+**The > 0.489 chase is parked** — this is this engine on tagged PDFs this repository owns, 0.489 is
+a published ODL-local table score on *their* corpus, and they are the same unit on a different exam.
+Parking it is not passing it: **v1 is not done**, 0.489 is not a number this project publishes as
+its own, and the decision that would close v1 — `docs/00-NORTH-STAR.md` **#18** — is **written and
+undecided**.
 
 **What this build can and cannot do, on one page:** [`docs/CAPABILITY.md`](docs/CAPABILITY.md).
 
@@ -26,7 +36,7 @@ and one adapter measured and **refused**: a `liteparse → ethos.grounding.v1` m
 own producer or declare its box semantics, so it does not ship
 ([`docs/06-STEAL-REFUSE.md`](docs/06-STEAL-REFUSE.md)).
 
-**v2 is office formats and it reads eight of them at 0.34.3**, with **S10 (CSV)** a
+**v2 is office formats and it reads eight of them at 0.35.0**, with **S10 (CSV)** a
 **named refusal** — argued rather than shipped, with its reopening preconditions written down —
 and **v2's format row closed and its gate met**. This said *"and v2 **not complete**"* from
 **v2-S6** until v2-S14.1, and stopped being true at **v2-S13.4 (0.32.4)**, when the owner settled
