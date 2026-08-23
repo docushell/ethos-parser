@@ -18,7 +18,7 @@ project is going is the failure this removes.
 | What is decided, and what is the product? | [`../00-NORTH-STAR.md`](../00-NORTH-STAR.md) |
 | Can I borrow feature X from parser Y? | [`../06-STEAL-REFUSE.md`](../06-STEAL-REFUSE.md) — the **living** steal / refuse extract, self-contained |
 | What ships, in what order? | [`../02-ROADMAP.md`](../02-ROADMAP.md) plus the scope / milestones pair for the version |
-| What can 0.34.2 actually do? | [`../CAPABILITY.md`](../CAPABILITY.md) |
+| What can 0.34.3 actually do? | [`../CAPABILITY.md`](../CAPABILITY.md) |
 
 `docs/00`–`docs/15` are the authority. Nothing outside them binds.
 

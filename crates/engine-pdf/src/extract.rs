@@ -1295,8 +1295,7 @@ mod tests {
     /// Interleaved deliberately. A page whose table runs are already contiguous would let a
     /// remap that did nothing still produce the right answer, and a guard that passes without the
     /// code under it is the defect this repository keeps finding.
-    fn a_table_beside_a_column(
-    ) -> (Vec<TextRun>, Vec<crate::tables::DetectedTable>, Vec<usize>) {
+    fn a_table_beside_a_column() -> (Vec<TextRun>, Vec<crate::tables::DetectedTable>, Vec<usize>) {
         use crate::tables::{QuantRect, RunOrigin};
 
         // Origin, text, in content-stream order. Two runs share cell (0,0), because a cell with
@@ -1306,13 +1305,13 @@ mod tests {
         // axes. The loose runs sit at x = 40_000, which is a gutter's width clear of the table's
         // right edge, so the rule really does cut this page into two columns.
         const PAGE: [(i64, i64, &str); 7] = [
-            (40_000, 2_000, "R1"),   // loose, right column
-            (2_000, 2_000, "He"),    // cell (0,0), first half
-            (40_000, 12_000, "R2"),  // loose, right column
-            (12_000, 2_000, "b"),    // cell (0,1)
-            (5_000, 2_000, "llo"),   // cell (0,0), second half
-            (2_000, 12_000, "c"),    // cell (1,0)
-            (12_000, 12_000, "d"),   // cell (1,1)
+            (40_000, 2_000, "R1"),  // loose, right column
+            (2_000, 2_000, "He"),   // cell (0,0), first half
+            (40_000, 12_000, "R2"), // loose, right column
+            (12_000, 2_000, "b"),   // cell (0,1)
+            (5_000, 2_000, "llo"),  // cell (0,0), second half
+            (2_000, 12_000, "c"),   // cell (1,0)
+            (12_000, 12_000, "d"),  // cell (1,1)
         ];
 
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().expect("hashes"));
@@ -1338,7 +1337,11 @@ mod tests {
         let tables = crate::tables::detect_ruled(1, &grid, &origins, &mut alloc)
             .expect("a well-formed grid detects")
             .0;
-        assert_eq!(tables.len(), 1, "the fixture must produce exactly one table");
+        assert_eq!(
+            tables.len(),
+            1,
+            "the fixture must produce exactly one table"
+        );
 
         let runs: Vec<TextRun> = PAGE
             .iter()

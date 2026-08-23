@@ -1825,7 +1825,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.34.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.34.3","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2236,11 +2236,24 @@ mod tests {
              stays outside the walk and the exclusion is argued rather than hidden: `engine \
              verify` forwards the verifier bytes and composes nothing, and `verify_relay.rs` \
              already asserts that stdout byte-identically, which is stronger than the key walk. \
-             No line of `crates/*/src` changed at all."
+             No line of `crates/*/src` changed at all.\n\n\
+             Moved a FIFTIETH time at v2-S18 (0.34.3), on `parser_version` alone. The slice that \
+             made the gate real: `cargo fmt --all --check` had exited NON-ZERO at every commit \
+             since v2-S14, under four consecutive records each claiming a green, because \
+             `.github/workflows/ci.yml` HAS NEVER RUN — no remote, no tag, 85 commits — so every \
+             green this repository has ever recorded was a local partial run with whichever \
+             checks somebody remembered. Four formatting sites repaired, three clippy warnings in \
+             `crates/*/tests/` repaired (the third invisible until the first two were, because \
+             `-D warnings` aborts compilation), and `engine-cli`'s package description stopped \
+             naming four subcommands of nine. `ci/gate.sh` now runs the whole gate locally, and \
+             `the_local_gate_runs_what_ci_runs` asserts it carries the same commands as the \
+             workflow in BOTH directions — a convenience script nobody verified against CI is \
+             worse than no script, because a local green would then mean something the remote \
+             does not enforce. No line of `crates/*/src` changed but one blank line."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:decea59086412ff6195347cad676ab8035b90c529d9ff7a4bc8c81e4822e7f61"
+            "sha256:f8613bae6628444886fd72e7c51aa3e25b25722e6bcc47bcc912f0c1b065515d"
         );
     }
 

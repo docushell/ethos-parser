@@ -302,7 +302,6 @@ fn read_entry_inner(
     Ok(out)
 }
 
-
 fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineError> {
     if declared as u64 > MAX_INFLATED_BYTES {
         return Err(EngineError::ResourceLimit {

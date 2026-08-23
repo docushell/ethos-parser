@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**Version in this file, not in its name:** these two tables describe **0.34.2**. When the workspace
+**Version in this file, not in its name:** these two tables describe **0.34.3**. When the workspace
 version moves, this page moves with it or it is wrong.
 
 This is the honest inventory, for the question *"what does ethos-engine actually do today?"* It is

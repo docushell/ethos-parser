@@ -4685,6 +4685,149 @@ All three were reverted, and `engine-core/src/diagnostics.rs` is byte-identical 
 
 ---
 
+## S18 — the gate that has never been green — **done**, as 0.34.3
+
+**A patch release.** No behaviour changed. Every edit is a formatting reflow, a lint, a metadata
+string, or new test-and-script material; the one production file `cargo fmt` touched
+(`engine-office/src/zip.rs`) lost a duplicate blank line and nothing else. Proven with v2-S16's
+committed extractor: **19,281 lines at `HEAD` and 19,281 after, diff empty.**
+
+### The defect, and why four slices did not see it
+
+`cargo fmt --all --check` **exited non-zero at `HEAD` and had since v2-S14.** Four sites:
+
+| Site | Shape | Introduced |
+| --- | --- | --- |
+| `engine-office/src/zip.rs:302` | a doubled blank line between two items | v2-S14 |
+| `engine-pdf/src/extract.rs:1295` | `fn a_table_beside_a_column(\n)` — a signature broken across lines that fits on one | v2-S14.1 |
+| `engine-pdf/src/extract.rs:1306` | a `const` table's trailing comments over-indented by one column | v2-S14.1 |
+| `engine-pdf/src/extract.rs:1338` | an `assert_eq!` on one line that rustfmt writes as four | v2-S14.1 |
+
+Three of the four are inside `mod tests`, which is why `ci/code-lines.py` reports no change: it
+counts non-comment lines outside `mod tests` in `crates/*/src`, and blank lines are not counted at
+all. **That is the proof of no behaviour change, and it is also the reason the defect was cheap to
+miss** — nothing a slice normally runs looks at those lines.
+
+**The `check` job runs `cargo fmt --check` as its first gate**, so the first CI run this repository
+ever performs would have failed on formatting. That is the worst available first signal: it teaches
+whoever wires up the remote that the gate is noise rather than that the gate is right.
+
+### The finding underneath the defect: no "green" in this repository has ever been a fact
+
+`.github/workflows/ci.yml` **has never run.** No remote, no tag, 85 commits. Every green any record
+claims was a local partial run — somebody's `cargo test`, with whichever checks they remembered —
+and `fmt` was one nobody remembered for four consecutive slices that each recorded a green.
+
+Repairing the four sites fixes today and not tomorrow. So the slice also ships **one command that
+runs everything CI runs**:
+
+```
+ci/gate.sh    # both token greps, then fmt, clippy, build, test, deny
+```
+
+### The script was the easy half; the guard is the point
+
+`ci/forbidden-tokens.sh` set the precedent — *"a script rather than inline YAML so the gate can be
+run locally, exactly as CI runs it, and so the two cannot drift."* That argument scales to the whole
+gate, but so does its risk, and at this size the risk is larger than the precedent's: **a
+convenience script nobody verified against CI is worse than no script**, because a local green then
+means something the remote does not enforce. It manufactures confidence instead of measuring it —
+which is precisely the failure that produced this slice.
+
+So `ci/gate.sh` is **not the authority.** `ci.yml` is, and
+`v0_exit_criteria.rs::the_local_gate_runs_what_ci_runs` asserts **set equality in both directions**:
+
+- **CI → script.** Every `run:` command in the `check` job is in the script, unless its step name is
+  in `GATE_SKIPS`.
+- **script → CI.** Every command the script runs is a command CI runs — without this the script
+  quietly becomes a second source of truth.
+
+The two grep criteria are read **out of the workflow** rather than written into the test, so
+deleting those jobs fails here too. Commands are compared **character for character**: CI is the
+authority, and a tidied flag ordering is a different command.
+
+**No new parser.** `matrix_ids_of` already scoped a job structurally; that scoping is now
+`job_block`, and `run_steps_of` is built on it. A `run: |` block scalar is consumed by indentation
+rather than scanned, so a shell line inside one cannot be read as YAML — the same class of defect as
+a test-region skip that runs to end of file.
+
+**The exclusions are asserted complete, which is what stops the guard going hollow.** A sixth step
+added to `check` is in neither the script nor `GATE_SKIPS` and fails; a `GATE_SKIPS` entry whose CI
+step was renamed away fails, because a skip that excuses nothing while looking like it excuses
+something is the v2-S13.1 shape again. Four are excluded and each is argued in the script's header:
+the oracle build (it would write into a tree this repository does not own), the toolchain tripwire
+(no second toolchain to disagree locally), `v0-fuzz-smoke` (nightly), and `deny-policy-is-enforced`
+(it `git checkout --`s a file, which discards uncommitted work — and a gate is run *while working*).
+Every other matrix entry is a labelled re-run of a subset of `cargo test --workspace`, which is
+step 6.
+
+**The guard was watched failing six ways** and restored each time:
+
+| Break | What it said |
+| --- | --- |
+| `cargo deny check` dropped from the script | `only in ci.yml: ["cargo deny check"]` |
+| a command added that CI does not run | `only in ci/gate.sh: ["cargo test --workspace --all-features"]` |
+| clippy's flags reordered in the script | both spellings listed, one on each side |
+| a sixth step added to `check` | `only in ci.yml: ["cargo audit"]` |
+| a `check` step renamed out from under `GATE_SKIPS` | names the stale skip and says to remove it |
+| the `v0-no-confidence` grep removed from CI | names the grep and says the script must lose it too |
+
+### The three lints, and the third that was hiding behind the first two
+
+v2-S17 reported three clippy warnings in `crates/*/tests/` and was forbidden to sweep there. Two are
+in `engine-office`: a `&file` that is already a `&str`, and an `is_none()`/`return None` pair that is
+`?`. **The third was invisible until those two were fixed** — `-D warnings` aborts compilation, so
+`engine-cli`'s `!path.extension().is_some_and(|e| e == "rs")` never got linted while `engine-office`
+failed first. It is now `is_none_or`. The count S17 gave was right; the ordering is worth recording,
+because "clippy is clean" measured behind a failing crate is not a measurement.
+
+### The third site of a list that one enum owns
+
+`engine-cli`'s package description said `classify | extract | ground | grounding-check` — the v0
+four, when there are nine. v2-S13.5 repaired this drift in `main.rs` and
+`engine-core/src/verifier.rs` and missed this one.
+
+**It now names none.** Those two sites are prose that can carry a count with its history; a one-line
+metadata string cannot argue, nothing guards it, and this is its third staleness with a tenth
+subcommand plausible at v2.2. `Command` in `src/main.rs` is the list that cannot go stale, so the
+description says what the crate *is* — `one thin subcommand per library entry point` — rather than
+what it currently contains. The alternative, writing nine names in and adding a guard to pin them,
+buys a guard for a string nobody reads and leaves the duplication in place.
+
+### Scope refused
+
+**No remote, no tag, no push.** PR 1's job is to make those safe rather than to perform them; they
+are the owner's. **No new CI job** — the workflow is unchanged, which is the point: the script is
+measured against it, so changing both at once would have measured nothing. **The SDK suites stay
+hand-run**, v1.2's decision, unchanged.
+
+- **Acceptance — all met:**
+  - [x] `cargo fmt --all --check` **exits 0** — the first time that is true at a commit in this
+        repository's history
+  - [x] `cargo clippy --workspace --all-targets -- -D warnings` exits 0; all three
+        `crates/*/tests/` warnings repaired, including the one hidden behind the other two
+  - [x] `engine-cli`'s package description names **none** of the nine, with the reason recorded
+        beside it
+  - [x] `ci/gate.sh` ships **with a guard** — `the_local_gate_runs_what_ci_runs` asserts set
+        equality against `ci.yml` in both directions and asserts the exclusion list complete.
+        **Observed failing six ways** and restored
+  - [x] **No behaviour change**, proven with `ci/code-lines.py`: **19,281 lines at `HEAD` and
+        19,281 after, diff empty.** `cargo fmt` touched one shipping file — `zip.rs` lost a
+        duplicate blank line — and the extractor counts neither blank lines nor `mod tests`, so
+        the empty diff is a real proof and not a blind one. Every changed line shown to be a
+        reflow, a lint, or a string
+  - [x] Workspace **0.34.3**; nine profile hashes move on `parser_version` alone and stay mutually
+        distinct; all three draft schemas regenerated by the documented commands and verified
+        **equal to freshly generated artifacts** — no digest hand-edited
+  - [x] **`ci/gate.sh` run end to end on the committed tree: all 7 checks, exit 0, 1,227
+        tests** — 1,226 plus the guard this slice adds. SDKs by hand: **72 Node, 91
+        Python**. **No git tag**
+
+- **Depends on:** S16 (the extractor this proves no-behaviour-change with), S17 (which found two of
+  the three lints and the description site).
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

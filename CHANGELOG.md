@@ -7,7 +7,60 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3
+
+### v2-S18 — the gate that has never been green, as 0.34.3
+
+**A patch release.** No behaviour changed: every edit is a formatting reflow, a lint, a metadata
+string, or new test-and-script material. Proven with v2-S16's committed extractor — **19,281 lines
+before and after, diff empty.**
+
+#### Fixed — `cargo fmt --all --check` exited non-zero at `HEAD`, and had since v2-S14
+
+Four sites: a doubled blank line in `engine-office/src/zip.rs`, and three in
+`engine-pdf/src/extract.rs`'s `mod tests` — a signature broken across lines that fits on one, a
+`const` table's trailing comments over-indented by a column, and an `assert_eq!` rustfmt writes as
+four lines. The `check` job runs `fmt` as its **first** gate, so the first CI run this repository
+ever performs would have failed on formatting — the worst available first signal, because it
+teaches whoever wires up the remote that the gate is noise.
+
+Three of the four are inside `mod tests` and the fourth is a blank line, which is why
+`ci/code-lines.py` reports no change — and is also why four slices missed it.
+
+#### Added — `ci/gate.sh`, and the guard that makes it worth having
+
+**`.github/workflows/ci.yml` has never run.** No remote, no tag, 85 commits. Every green any record
+claims was a local partial run with whichever checks somebody remembered, and `fmt` was one nobody
+remembered for four consecutive slices that each recorded a green. Repairing the four sites fixes
+today and not tomorrow, so this slice also ships one command that runs everything CI runs:
+both token greps, then `fmt`, `clippy`, `build`, `test`, `deny`, in the `check` job's order.
+
+**A convenience script nobody verified against CI is worse than no script**, because a local green
+then means something the remote does not enforce. So the script is not the authority — `ci.yml` is,
+and `v0_exit_criteria.rs::the_local_gate_runs_what_ci_runs` asserts **set equality in both
+directions**, comparing commands character for character. The two grep criteria are read out of the
+workflow rather than written into the test. The four exclusions — the oracle build, the toolchain
+tripwire, `v0-fuzz-smoke` and `deny-policy-is-enforced` — are each argued in the script's header and
+**asserted complete**: a sixth step added to `check` fails, and so does a `GATE_SKIPS` entry whose
+step was renamed away. The guard was watched failing six ways and restored each time.
+
+The test runs inside `cargo test --workspace`, which is the script's own step 6, so running the gate
+proves the gate still matches the workflow. No new YAML parser: `matrix_ids_of`'s structural scoping
+became `job_block`, and `run_steps_of` is built on it.
+
+#### Fixed — three clippy warnings in `crates/*/tests/`, and the ordering that hid one
+
+`engine-office` had a `&file` already a `&str` and an `is_none()`/`return None` pair that is `?`.
+The third, `engine-cli`'s `!…is_some_and(…)` → `is_none_or`, **was invisible until the first two
+were fixed**: `-D warnings` aborts compilation, so that crate was never linted while `engine-office`
+failed first. "Clippy is clean" measured behind a failing crate is not a measurement.
+
+#### Fixed — `engine-cli`'s package description named four subcommands of nine
+
+The third site of a drift v2-S13.5 repaired in `main.rs` and `engine-core/src/verifier.rs`. **It now
+names none.** Those two are prose that can carry a count with its history; a one-line metadata
+string cannot argue and nothing guards it. `Command` in `src/main.rs` is the list that cannot go
+stale, so the description says what the crate is rather than what it currently contains.
 
 ### v2-S17 — the two guards outside `src`, as 0.34.2
 

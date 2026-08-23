@@ -238,7 +238,7 @@ fn no_erasure_counter_reaches_its_total_by_an_operation_that_can_wrap() {
     let office = files.iter().map(|f| (f.as_str(), &ERASURE_COUNTERS[..]));
     let pdf = std::iter::once((PDF_EXTRACT, &PDF_COUNTERS[..]));
     for (file, counters) in office.chain(pdf) {
-        let path = src_dir().join(&file);
+        let path = src_dir().join(file);
         let source = std::fs::read_to_string(&path).expect("readable source");
         for (number, raw) in source.lines().enumerate() {
             let line = normalise(raw);

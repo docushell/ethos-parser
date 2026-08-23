@@ -562,9 +562,7 @@ impl Mutation {
             }
 
             Mutation::SecondEocdAppended => {
-                if eocd_of(original).is_none() {
-                    return None;
-                }
+                eocd_of(original)?;
                 let mut out = original.to_vec();
                 // A minimal, well-formed EOCD: signature, zero disks, zero entries, an empty
                 // directory at offset zero, no comment. Well-formed on purpose — a malformed one

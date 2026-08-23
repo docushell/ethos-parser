@@ -24,12 +24,21 @@
 //! | Every matrix entry is named by a criterion | A job with nothing behind it in the doc |
 //! | No `--skip` anywhere in CI | The cheapest way to make a red criterion green |
 //! | No job filter matches zero tests | The *quietest* way — a job that checks nothing and says `ok` |
+//! | `ci/gate.sh` runs exactly what CI runs | A local "green" that the remote would not give |
 //!
-//! The last two are the ways this scheme goes hollow while still looking complete. Six milestones
-//! ran with a deliberate `--skip` on the oracle test, which M6 removed; re-adding one deletes the
-//! criterion in the process (`docs/05-MILESTONES.md` M6). And a filter naming a test that was
-//! since renamed selects nothing at all, so libtest prints `ok. 0 passed` and the job is green —
-//! with every box still ticked and every job still present.
+//! The `--skip` and zero-filter rows are the ways this scheme goes hollow while still looking
+//! complete. Six milestones ran with a deliberate `--skip` on the oracle test, which M6 removed;
+//! re-adding one deletes the criterion in the process (`docs/05-MILESTONES.md` M6). And a filter
+//! naming a test that was since renamed selects nothing at all, so libtest prints `ok. 0 passed`
+//! and the job is green — with every box still ticked and every job still present.
+//!
+//! The last row is v2-S18's, and it answers a failure the rows above it cannot reach, because
+//! every one of them assumes CI runs. **It never has.** This repository has no remote and no tag,
+//! so every green any record claims was produced by hand with whichever checks somebody
+//! remembered — and `cargo fmt --all --check` was red for four slices underneath four such
+//! claims. `ci/gate.sh` is the answer to that, and a convenience script nobody checked against
+//! the workflow would only move the problem one file along, so the script is guarded the same way
+//! §5 is.
 //!
 //! # Why it does not parse YAML
 //!
@@ -237,7 +246,7 @@ fn collect_test_paths(
             collect_test_paths(&path, in_src, out, attributes);
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "rs") {
+        if path.extension().is_none_or(|e| e != "rs") {
             continue;
         }
         let stem = path
@@ -489,13 +498,12 @@ fn no_job_filter_selects_zero_tests() {
     );
 }
 
-/// The `- id:` entries inside one named job's block.
+/// One named job's block: from its key to the next top-level job key.
 ///
-/// Scoped structurally — from the job key to the next top-level job key — rather than by a
-/// prefix convention. The workflow has more than one matrix, and "every entry is claimed by a §5
-/// line" is only true of the §5 one; scoping by name would have made that rule quietly depend on
-/// nobody choosing an unfortunate job id.
-fn matrix_ids_of(job: &str) -> BTreeSet<String> {
+/// Scoped structurally rather than by a prefix convention. The workflow has more than one matrix,
+/// and "every entry is claimed by a §5 line" is only true of the §5 one; scoping by name would
+/// have made that rule quietly depend on nobody choosing an unfortunate job id.
+fn job_block(job: &str) -> String {
     let wf = workflow();
     let start = wf
         .find(&format!("\n  {job}:\n"))
@@ -520,11 +528,65 @@ fn matrix_ids_of(job: &str) -> BTreeSet<String> {
         .map(|(i, _)| i + 1)
         .unwrap_or(rest.len());
 
-    rest[..end]
+    rest[..end].to_string()
+}
+
+/// The `- id:` entries inside one named job's block.
+fn matrix_ids_of(job: &str) -> BTreeSet<String> {
+    job_block(job)
         .lines()
         .filter_map(|l| l.trim().strip_prefix("- id: "))
         .map(|s| s.trim().to_string())
         .collect()
+}
+
+/// Every `run:` step in one job's block, as `(step name, command)`, in file order.
+///
+/// A step that declares no `name:` yields an empty one; every step this is used on has a name.
+/// A block scalar (`run: |`) yields the literal `"|"` rather than its text — this file does not
+/// interpret shell, and the two multi-line steps in `check` are identified by name instead.
+///
+/// The block scalar's body is **consumed by indentation** rather than scanned. Skipping that
+/// would let a shell line inside a `run: |` be read as if it were YAML, which is the same class
+/// of defect as `ci/forbidden-tokens.sh`'s test-region skip running to end of file: a scanner
+/// that misreads one construct still finds plenty elsewhere and looks like it worked.
+fn run_steps_of(job: &str) -> Vec<(String, String)> {
+    let block = job_block(job);
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut name = String::new();
+    let mut lines = block.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+
+        // A new step. `- name: x` names it; `- uses: x` opens one that has no name.
+        if let Some(rest) = trimmed.strip_prefix("- ") {
+            name = rest
+                .strip_prefix("name:")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+            continue;
+        }
+
+        let Some(cmd) = trimmed.strip_prefix("run:") else {
+            continue;
+        };
+        let cmd = cmd.trim();
+
+        if cmd == "|" {
+            while let Some(next) = lines.peek() {
+                let t = next.trim_start();
+                if t.is_empty() || next.len() - t.len() > indent {
+                    lines.next();
+                } else {
+                    break;
+                }
+            }
+        }
+        out.push((name.clone(), cmd.to_string()));
+    }
+    out
 }
 
 /// **Every §5 matrix entry is claimed by a criterion.**
@@ -773,6 +835,122 @@ fn the_forbidden_token_gate_is_runnable() {
         assert!(
             mode & 0o111 != 0,
             "ci/forbidden-tokens.sh is not executable ({mode:o}); two CI jobs run it directly"
+        );
+    }
+}
+
+/// The `check` job steps `ci/gate.sh` deliberately does not run.
+///
+/// The script's header argues each one; this array is the machine-checked half, and it is
+/// asserted **complete in both directions** below — a step named here that no longer exists in
+/// the workflow is as much a defect as a step in the workflow that is named neither here nor in
+/// the script.
+const GATE_SKIPS: [&str; 3] = [
+    "Assert the toolchain pin is in force",
+    "Build the oracle",
+    "Record the oracle identity",
+];
+
+/// **`ci/gate.sh` runs what CI runs, and nothing CI does not.**
+///
+/// `ci.yml` has never executed — no remote, no tag, 85 commits — so `ci/gate.sh` is the only
+/// thing in this repository that can make "green" a fact rather than a claim. That makes the
+/// script's *fidelity* the whole value: a local gate that runs a subset manufactures exactly the
+/// confidence that let `cargo fmt --all --check` stay red across four slices that each recorded
+/// a green.
+///
+/// So this asserts set equality rather than mere presence, in both directions:
+///
+/// - **CI → script.** Every command the `check` job runs is in the script, unless it is named in
+///   `GATE_SKIPS`. A sixth step added to that job is in neither place and fails here.
+/// - **script → CI.** Every command the script runs is a command CI runs. Without this the
+///   script becomes a second source of truth, and a local green starts meaning something the
+///   remote does not enforce.
+///
+/// The two greps are `v0-exit-criteria` matrix entries rather than `check` steps, and they are
+/// the only entries in any matrix that are not subsets of `cargo test --workspace`. They are read
+/// out of the workflow rather than assumed, so deleting those jobs fails here too.
+///
+/// This test runs inside `cargo test --workspace`, which is the script's own step 6. Running the
+/// gate therefore proves the gate still matches the workflow.
+#[test]
+fn the_local_gate_runs_what_ci_runs() {
+    let script = repo_root().join("ci/gate.sh");
+    assert!(script.is_file(), "ci/gate.sh is missing");
+    let gate = read("ci/gate.sh");
+
+    let steps = run_steps_of("check");
+
+    // Guard the guard. If the step parser silently found nothing, the set comparison below would
+    // still be a comparison — of two nearly empty sets — and would pass for the wrong reason.
+    for expected in ["fmt", "clippy", "build", "test", "deny"] {
+        assert!(
+            steps.iter().any(|(n, _)| n == expected),
+            "the `check` job step parser found no step named `{expected}`; it found {:?}. \
+             The parser has drifted from the workflow's shape.",
+            steps.iter().map(|(n, _)| n).collect::<Vec<_>>()
+        );
+    }
+
+    // A skip that names a step which no longer exists excuses nothing, and hides the fact that
+    // it excuses nothing.
+    for skip in GATE_SKIPS {
+        assert!(
+            steps.iter().any(|(n, _)| n == skip),
+            "GATE_SKIPS names `{skip}`, which is not a step in the `check` job any more. \
+             Remove it here and from ci/gate.sh's header, or restore the step."
+        );
+    }
+
+    // What CI runs that the script is expected to run: every `check` step except the skips …
+    let mut want: BTreeSet<String> = steps
+        .iter()
+        .filter(|(n, _)| !GATE_SKIPS.contains(&n.as_str()))
+        .map(|(_, c)| c.clone())
+        .collect();
+
+    // … plus the two greps, taken from the workflow rather than written in here.
+    for mode in ["confidence", "verification"] {
+        let cmd = format!("ci/forbidden-tokens.sh {mode}");
+        assert!(
+            workflow().contains(&cmd),
+            "no CI job runs `{cmd}` any more. The grep criteria are the only gates that are not \
+             subsets of `cargo test --workspace`; if one is genuinely gone, remove it from \
+             ci/gate.sh too."
+        );
+        want.insert(cmd);
+    }
+
+    // What the script runs. Its commands sit at column 0 — every other line is a comment, the
+    // `announce` helper, or shell — so this reads the script exactly as bash will.
+    let got: BTreeSet<String> = gate
+        .lines()
+        .filter(|l| l.starts_with("cargo ") || l.starts_with("ci/"))
+        .map(|l| l.trim_end().to_string())
+        .collect();
+
+    assert_eq!(
+        got,
+        want,
+        "ci/gate.sh and .github/workflows/ci.yml have drifted.\n  \
+         only in ci.yml:   {:?}\n  only in ci/gate.sh: {:?}\n\
+         The commands must match character for character — CI is the authority, and a command \
+         spelled differently here is a different command. If a `check` step genuinely should not \
+         run locally, name it in GATE_SKIPS and argue it in ci/gate.sh's header.",
+        want.difference(&got).collect::<Vec<_>>(),
+        got.difference(&want).collect::<Vec<_>>(),
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&script)
+            .expect("stat")
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "ci/gate.sh is not executable ({mode:o}); it is documented as `ci/gate.sh`"
         );
     }
 }
