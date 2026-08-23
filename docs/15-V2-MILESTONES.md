@@ -4991,6 +4991,32 @@ additions fall in the new class. The ratio moved from 9:46 to 18:46; no fixture 
 would exercise the xref path on large documents for the first time. That is a harness change with a
 measurement attached — it moves the survivor set — and this slice's subject is the corpus.
 
+### Escalations, restated unchanged
+
+**1. v1-S7's parked chase — now with evidence, and still the owner's.** This slice was asked to
+gather it and it did: twelve documents, a written admission rule, and a number reported with its
+band. `00-NORTH-STAR.md` **#18 is written and NOT decided**, with an explicit marker that §2's
+*"these are settled"* does not cover it. The v2.2 dependency the earlier restatements named is
+sharper now rather than resolved: **tag quality inherits table quality**, and *"tags that are 64‰
+correct"* was already the wrong way to put it — on twelve documents the detector emits **no table
+at all on nine of them**, so what v2.2 would inherit is not a 70‰ tag but **no tag** on
+three-quarters of a tagged corpus. That makes the decision more urgent and no less the owner's.
+
+**2. v2.2 or v3, and the fact the roadmap row does not carry.** Restated unchanged. **This engine
+writes nothing** — the only `write_*` functions in the tree are JSON canonicalization; every
+subcommand reads and declares. **v2.2 means emitting a modified PDF**, which is a posture change
+rather than a format, and it collides with the stance that an engine which only reads cannot
+fabricate. **There is no v2.2 scope document.** v0, v1, v1.1, v1.2 and v2 each have one (`03`,
+`08`, `10`, `12`, `14`); v2.2 begins by writing `16-V22-SCOPE.md`, and the first thing that
+document must argue is **whether this engine may write a document at all.** Nothing in this slice
+touches it.
+
+**3. P9 — vendored CMap tables.** Restated unchanged. `06-STEAL-REFUSE.md`'s TAKE table carries
+`| P9 | Vendored CMap tables | pdf-inspector | v0 |`. The column is **Target**, not status, but v0
+is frozen and complete and the CMaps were **deliberately not carried**, argued in
+`vendor/README.md` with one refused by name. **Nothing records that deferral.** Named at v2-S13.3,
+restated at S13.4, S13.5, S14 and S16, and still the owner's.
+
 ### Scope refused
 
 **No detector change.** Not one tolerance, not one rule id. Five slices of geometric repair are
