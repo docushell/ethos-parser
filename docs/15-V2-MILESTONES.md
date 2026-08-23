@@ -5218,6 +5218,156 @@ still a state the wire can carry and a fixture still produces one.
 
 ---
 
+## S21 — the mutation that missed — **done**, as 0.36.1
+
+**A PATCH, and the reason is that no reader moved.** `ci/code-lines.py` diffs **empty** across this
+commit — 19 325 lines from 59 files on both sides — so every artifact this build writes is
+byte-identical to 0.36.0's but for `parser_version`. What moved is a **test**, and the pinned totals
+it drives.
+
+### The defect: a claim about a fraction, made about a trailer
+
+`Mutation::apply` picked `len - len/20 - 1` and called it *"deep enough to land in the xref/trailer
+region on every fixture in the corpus"*. **A fraction of a file's length has nothing to do with
+where its trailer is**, and the two only coincided because every fixture inspected during triage was
+under three kilobytes. Measured on all sixty-four, the index landed *hundreds of kilobytes before*
+`startxref`:
+
+| Fixture | bytes | flip index | `startxref` at | short by |
+| --- | --- | --- | --- | --- |
+| `nist-sp-800-53Ar5` | 7 469 808 | 7 096 317 | 7 469 785 | **373 468** |
+| `nist-sp-800-53r5` | 6 073 678 | 5 769 994 | 6 073 655 | 303 661 |
+| `nist-sp-800-161r1` | 4 845 469 | 4 603 195 | 4 845 442 | 242 247 |
+| `nist-sp-800-37r2` | 2 270 327 | 2 156 810 | 2 270 304 | 113 494 |
+| `synthetic/simple-text` | 585 | 575 | 565 | — (10 **past** it) |
+
+Those bytes sit inside a compressed object stream, an embedded font, or image data. The large
+documents take the **shallow** pass, which never decompresses that stream, so nothing read the
+flipped byte at all. **Eighteen documents were pinned as survivors under a reason nobody had checked
+against their bytes.** v2-S19 corrected the prose — *"they survive because the mutation missed, not
+because the reader recovered"* — and left the mutation missing, naming the repair as owed. This is
+the S12.1 / S13.1 shape: a guard whose name promises more than its body delivers.
+
+### The repair: seek from `startxref`
+
+The trailer is where a reader **enters** the cross-reference region — PDF 32000-1 §7.5.5 makes
+`startxref <offset> %%EOF` the last thing in the file and that offset the only route to the xref at
+all. So the anchor is the final `startxref` keyword and the index is the midpoint of what follows
+it: still a formula, not a magic index, and now one whose meaning does not depend on the file's
+size. `rfind` rather than `find` because an incrementally-updated document carries several, and only
+the last one is authoritative.
+
+**Shown rather than asserted**, which is what the old claim was missing:
+`the_tail_flip_lands_in_the_cross_reference_pointer` requires, for every fixture, that the changed
+byte sit between the final `startxref` and EOF **and be an ASCII digit** — the offset itself, not
+one of `startxref`'s own letters, since a reader locates that keyword by searching for it. It prints
+the extremes so a CI log records the distance nobody had ever looked at:
+
+```
+tail flip, smallest fixture: failure/image-only-or-blank-page is 431 bytes,
+                             `startxref` at 411, flip at startxref+10
+tail flip, largest  fixture: nist-sp-800-53Ar5 is 7469808 bytes,
+                             `startxref` at 7469785, flip at startxref+11
+```
+
+### Re-measured, and every change triaged
+
+| | v2-S19 (0.35.0) | v2-S21 (0.36.1) |
+| --- | --- | --- |
+| fixtures | 64 | 64 |
+| mutants | 363 | **361** |
+| `EXPECTED_SURVIVORS` | 78 | **60** |
+| `EXPECTED_INAPPLICABLE` | 21 | **23** |
+| fixtures taking the flip | 64 | **62** |
+| `flip-tail-byte` survivors | 18 | **0** |
+| newly surviving | — | **0** |
+
+**All eighteen newly refuse, and every one gives the same named reason**: `malformed` —
+*"failed parsing cross reference table: invalid start value"*. Named, since the acceptance asks:
+`cfpb-home-loan-toolkit`, `foreign/opendataloader/real`, `irs-f1040sd-2025`,
+`irs-form-1040-2025`, `irs-fw9`, `nist-sp-800-161r1`, `nist-sp-800-171r3`, `nist-sp-800-207`,
+`nist-sp-800-218`, `nist-sp-800-37r2`, `nist-sp-800-53Ar5`, `nist-sp-800-53r5`,
+`nist-sp-800-63b`, `synthetic/heading-export`, `synthetic/hyphenated-line-break`,
+`synthetic/list-items`, `synthetic/two-columns`, `synthetic/two-lines`. In fact **all sixty-two**
+fixtures that carry a `startxref` refuse — forty-four already did, and the other eighteen now do.
+
+**The remaining sixty survivors are all `junk-after-eof`**, and that reason was already about the
+reader and is unchanged: bytes appended past `%%EOF` sit outside every offset the document declares,
+so nothing reads them and the document really is intact. The artifact still binds to the mutant's
+digest, which is asserted separately.
+
+**Both old headings dissolve rather than shrink, and neither was quite right.**
+
+- **The large documents were never a reader property.** Nothing read the byte, so nothing could
+  refuse it. They refuse now, which is the repair working — they were surviving a mutation that
+  never reached them.
+- **The small ones were a real reader observation that did not survive a harder blow.** The flip
+  used to land in the trailer *dictionary* — the `t` of `/Root`, the `R` of `1 0 R` — and `lopdf`
+  recovered by scanning for the catalog. Corrupting the **pointer to the table** is a different
+  injury: there is no table to scan toward, so the parse stops at `xref` rather than at the catalog.
+
+**What stopped being covered, said rather than left implicit.** `lopdf`'s catalog-scan recovery was
+exercised only by those five small survivors and is now exercised by nothing. It is a backend
+behaviour rather than an engine guarantee, no test asserted it, and a mutation weak enough to reach
+it is the mutation this slice removed — so it is named in `EXPECTED_SURVIVORS` as coverage this
+corpus stopped having, not quietly dropped.
+
+**Two fixtures leave the flip entirely.** `failure/corrupt-header-valid` and
+`failure/invalid-header` are 9 and 10 bytes and carry no `startxref`, so a mutation that damages the
+trailer's pointer has no pointer to damage — `None`, which this module's own doctrine calls a real
+answer rather than a skip, pinned in `EXPECTED_INAPPLICABLE`. **No coverage is lost:** both are
+refused for their headers with or without the flip, so the mutant they used to produce proved
+nothing about the tail.
+
+**`fixtures/manifest.json` did not move**, and that is the one coupling v2-S19 warned about that
+this slice does not trip: no fixture was added or removed, so the `counts` that drive this harness
+are untouched. The mutant total moved because `EXPECTED_INAPPLICABLE` grew, and that total is
+*derived* — `ALL.len() * fixtures.len() - EXPECTED_INAPPLICABLE.len()` — rather than a second
+number to keep in step.
+
+### Scope refused
+
+**No reader changed** — proven mechanically, not claimed. **The harness was not rewritten around
+the fix**: one formula, one helper, and the pinned sets it moved. **No new mutation** — a sixth
+kind of damage is a different slice with its own triage.
+
+- **Acceptance — all met:**
+  - [x] **The flip demonstrably lands in the cross-reference region on the largest fixture, shown
+        rather than asserted**: `startxref + 11` on `nist-sp-800-53Ar5`, printed by
+        `the_tail_flip_lands_in_the_cross_reference_pointer`, against **373 468 bytes short** before
+  - [x] **Survivor set and every pinned count re-measured and moved together**: survivors 78 → 60,
+        inapplicable 21 → 23, mutants 363 → 361. `fixtures/manifest.json` needed no change and
+        that is stated
+  - [x] **Every change triaged.** Eighteen newly-refusing mutants named, each `malformed` with the
+        same cross-reference reason; the sixty still-surviving are all `junk-after-eof`, whose
+        reason is about the reader; and the `lopdf` recovery those five small survivors used to
+        document is named as coverage lost
+  - [x] **The false claim in `Mutation::apply`'s doc repaired**, saying what it claimed, that it was
+        never true of a large document, and that v2-S19 corrected the prose while leaving the
+        mutation missing
+  - [x] **No reader changed** — `diff <(ci/code-lines.py --rev HEAD) <(ci/code-lines.py)` is
+        **empty**, 19 325 lines from 59 files on both sides
+  - [x] Workspace **0.36.1**. `ci/gate.sh` exits 0. **No git tag**
+
+- **Depends on:** S20 (only for ordering; the harnesses are disjoint — see below).
+
+### On the ordering, since it was asked
+
+**S20 first was right, and for a slightly different reason than the brief gave.** The brief
+sequenced this second because the mutation harness measures robustness rather than table detection,
+so it does not gate S20's measurement. True, and there is a stronger version: the two are
+**disjoint**. This slice touches only `crates/engine-pdf/tests/robustness.rs`; S20 touches the
+detector and never that file. `run_mutant`'s deep pass does call `extract`, so S20's change is
+visible to this harness — but declining a table is not an error, extraction still succeeds, and no
+survivor turns on it. Checked rather than assumed: the survivor set measured **before** S20 landed
+and the set measured after are identical.
+
+The one thing that would have argued for reversing them — S18's *"fix the instrument before you
+trust what it says"* — does not apply, because this instrument reports nothing S20's measurement
+rests on.
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

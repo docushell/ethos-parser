@@ -147,7 +147,11 @@ enum Mutation {
     Empty,
     /// The first 16 bytes and nothing else — a header with no body.
     Truncate16,
-    /// One byte inverted in the last tenth of the file, where the xref and trailer live.
+    /// One byte inverted in the file trailer's **cross-reference pointer** (v2-S21).
+    ///
+    /// It said *"in the last tenth of the file, where the xref and trailer live"* until v2-S21,
+    /// and that was a claim about a fixed fraction rather than about the trailer. See
+    /// [`Mutation::apply`] for what it cost and when it stopped being true.
     FlipTailByte,
     /// `%PDF` overwritten, so content-based detection has nothing to recognise.
     HeaderOverwritten,
@@ -198,12 +202,39 @@ impl Mutation {
                 if original.len() < 4 {
                     return None;
                 }
-                // The midpoint of the last tenth: deep enough to land in the xref/trailer region
-                // on every fixture in the corpus, and a fixed formula rather than a magic index.
-                // Verified rather than assumed — on the four fixtures inspected during triage it
-                // lands on an xref digit, on `/Root`, on the object number inside `1 0 R`, and on
-                // trailer whitespace respectively. Three of those four are load-bearing.
-                let idx = original.len() - original.len() / 20 - 1;
+                // **Seek from `startxref`, not from a fixed fraction** (v2-S21).
+                //
+                // This read `len - len/20 - 1` — the midpoint of the last tenth — and claimed to
+                // be *"deep enough to land in the xref/trailer region on every fixture in the
+                // corpus"*. **That was never true of a large document.** A fraction of a file's
+                // length has nothing to do with where its trailer is, and the two only coincided
+                // because every fixture inspected during triage was under three kilobytes.
+                // Measured on all sixty-four: the index landed *hundreds of kilobytes before*
+                // `startxref` — inside a compressed object stream, an embedded font, or image
+                // data — **373 468 bytes before it on `nist-sp-800-53Ar5`**, 303 661 on
+                // `nist-sp-800-53r5`, 242 247 on `nist-sp-800-161r1`. Those documents take the
+                // shallow pass, which never decompresses that stream, so nothing read the flipped
+                // byte at all. Eighteen of them were pinned as survivors, and v2-S19 corrected the
+                // *reason* to *"they survive because the mutation missed"* while leaving the
+                // mutation missing. A harness that reports coverage it does not have is the
+                // v2-S12.1 / v2-S13.1 shape.
+                //
+                // The trailer is where a reader **enters** the cross-reference region: PDF
+                // 32000-1 §7.5.5 makes `startxref <offset> %%EOF` the last thing in the file and
+                // that offset the only way to find the xref at all. So the anchor is the final
+                // `startxref` keyword and the index is the midpoint of what follows it — still a
+                // formula and not a magic index, and now one whose meaning does not depend on the
+                // file's size. Measured on all sixty-four: it lands on a **digit of the
+                // cross-reference offset** on every fixture that has one, at `startxref + 10` on
+                // a 585-byte synthetic and `startxref + 11` on a 7 MB NIST publication.
+                //
+                // **`None` where there is no `startxref`.** Two header-only failure fixtures — 9
+                // and 10 bytes — declare no cross-reference region, so a mutation that damages one
+                // has nothing to damage. That is a real answer and it is pinned in
+                // `EXPECTED_INAPPLICABLE`; both were refused for their headers before and after,
+                // so no coverage is lost.
+                let sx = rfind(original, b"startxref")?;
+                let idx = sx + (original.len() - sx) / 2;
                 let mut out = original.to_vec();
                 out[idx] ^= 0xFF;
                 Some(out)
@@ -258,6 +289,18 @@ impl Mutation {
             }
         }
     }
+}
+
+/// The **last** offset where `needle` appears.
+///
+/// Last rather than first, because a document written by incremental update carries several
+/// `startxref` keywords and only the final one names the cross-reference section a reader enters
+/// through. `foreign/opendataloader/real` is such a file.
+fn rfind(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .rposition(|w| w == needle)
+        .filter(|_| !needle.is_empty())
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -348,8 +391,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 
 /// `"<fixture id>/<mutation>"` for every mutant that still parses.
 ///
-/// Pinned rather than merely permitted, and triaged into exactly two classes. Both are cases
-/// where refusing would be *wrong*, which is why the right response is a pin and not a fix:
+/// Pinned rather than merely permitted, and since v2-S21 there is **one class left**.
 ///
 /// - **`junk-after-eof`, on every fixture that opens at all.** A PDF reader reaches the trailer
 ///   through `startxref`, so bytes appended past `%%EOF` sit outside every offset the document
@@ -357,55 +399,58 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 ///   holds and is asserted separately: the artifact binds to the *mutant's* digest, so a consumer
 ///   comparing hashes sees a different document, which it is.
 ///
-/// - **`flip-tail-byte` on eighteen documents, and v2-S19 found these are TWO classes, not one.**
+/// # The eighteen `flip-tail-byte` survivors are gone, and that is the whole of v2-S21
 ///
-///   **(a) Small fixtures, where the byte lands in the trailer and `lopdf` recovers.** Inspected
-///   during triage rather than assumed: on `synthetic/two-lines` the flipped byte is the `t` of
-///   `/Root`, on `synthetic/two-columns` the `R` of `1 0 R`. `lopdf` recovers by scanning for the
-///   catalog instead of trusting the damaged trailer reference, so a genuinely readable document
-///   is read. This is a backend-recovery observation and it is the class this comment described.
+/// They were pinned under two headings — small fixtures where `lopdf` recovered from a damaged
+/// trailer, and large documents where **the byte landed nowhere load-bearing**. v2-S19 split those
+/// two and corrected the second's reason to *"they survive because the mutation missed, not
+/// because the reader recovered"*, and left the mutation missing. It named the repair and did not
+/// take it: *"making `flip-tail-byte` seek the trailer rather than a fixed fraction would exercise
+/// the xref path on large documents for the first time. That is a harness change with a
+/// measurement attached."*
 ///
-///   **(b) Large real-world documents, where the byte lands nowhere load-bearing — and that is a
-///   different fact, which this comment previously did not distinguish.** `Mutation::apply` picks
-///   `len - len/20 - 1` and calls it *"deep enough to land in the xref/trailer region on every
-///   fixture in the corpus"*. **That is false on a large document and was never true of them.**
-///   Measured on all twelve: the index lands *hundreds of kilobytes before* `startxref` — inside
-///   a compressed object stream, an embedded font, or image data — 370 KB before it on
-///   `nist-sp-800-53Ar5`. These documents take the shallow mutation pass, which never
-///   decompresses that stream, so nothing reads the flipped byte at all. **They survive because
-///   the mutation missed, not because the reader recovered.**
+/// **Here is the measurement.** With the flip landing on a digit of the cross-reference offset,
+/// **all sixty-two fixtures that carry a `startxref` refuse**, every one of them `malformed` with
+/// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
+/// **78 → 60** and not one mutant newly survives.
 ///
-///   The three large `benchmark` documents were pinned under (a)'s heading without their bytes
-///   being inspected — only the two synthetics ever were. v2-S19 added nine more of the same
-///   shape and inspected all twelve, which is how the conflation surfaced. **A pin whose stated
-///   reason is not the actual reason is the shape v2-S13.1 exists for**, so the reason is split
-///   here rather than the count merely incremented.
+/// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
-///   **Forty-six fixtures still fail closed** — unchanged, because every one of the nine
-///   documents S19 added falls in (b). The ratio moved from 9:46 to 18:46 and the *coverage* did
-///   not: no fixture stopped refusing.
+/// - **The large documents were never a reader property at all.** `nist-sp-800-53Ar5`,
+///   `nist-sp-800-53r5`, `nist-sp-800-161r1` and the nine others took a flip 373 468, 303 661,
+///   242 247 … bytes short of their trailer. Nothing read the byte, so nothing could refuse it.
+///   They now refuse, which is the repair working: they were surviving a mutation that never
+///   reached them.
+/// - **The small ones were a real reader observation, and it did not survive a harder blow.**
+///   The flip used to land in the trailer *dictionary* — the `t` of `/Root` on
+///   `synthetic/two-lines`, the `R` of `1 0 R` on `synthetic/two-columns` — and `lopdf` recovered
+///   by scanning for the catalog instead of trusting the damaged reference. Corrupting the
+///   **pointer to the cross-reference table** is a different injury: there is no table to scan
+///   *toward*, and the parse stops at `xref` rather than at the catalog. So those five stop
+///   surviving too, and the recovery behaviour they documented is still real — it is simply not
+///   what this mutation tests any more.
 ///
-///   **Owed, not fixed here.** Making `flip-tail-byte` seek the trailer rather than a fixed
-///   fraction would exercise the xref path on large documents for the first time. That is a
-///   harness change with a measurement attached — it moves the survivor set — and this slice's
-///   subject is the corpus. Named rather than taken quietly.
-///   (Four and eleven at M7, when the corpus was fifteen documents.)
+/// **What no longer has a home, said rather than left implicit.** `lopdf`'s catalog-scan recovery
+/// was covered only by those five survivors and is now covered by nothing. It is a backend
+/// behaviour rather than an engine guarantee, no test asserted it, and a mutation weak enough to
+/// exercise it is the mutation this slice removed — so it is named here as coverage this corpus
+/// stopped having, not quietly dropped.
 ///
-/// An entry appearing here that is not one of those two classes is a fail-closed path that
-/// stopped firing — triage it before pinning it. An entry disappearing is a path that started
-/// firing, which is usually good and still wants a commit message.
-const EXPECTED_SURVIVORS: [&str; 78] = [
+/// An entry appearing here that is not `junk-after-eof` is a fail-closed path that stopped firing
+/// — triage it before pinning it. An entry disappearing is a path that started firing, which is
+/// usually good and still wants a commit message.
+/// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
+/// eighteen and forty-six at v2-S19.)
+const EXPECTED_SURVIVORS: [&str; 60] = [
     "absent-font-metrics/junk-after-eof",
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
     "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
-    "cfpb-home-loan-toolkit/flip-tail-byte",
     "cfpb-home-loan-toolkit/junk-after-eof",
     "crop-box-smaller-than-media/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
-    "foreign/opendataloader/real/flip-tail-byte",
     "foreign/opendataloader/real/junk-after-eof",
     "form-field-value/junk-after-eof",
     "form-orphan-widget/junk-after-eof",
@@ -414,31 +459,20 @@ const EXPECTED_SURVIVORS: [&str; 78] = [
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
     "invisible-render-mode/junk-after-eof",
-    "irs-f1040sd-2025/flip-tail-byte",
     "irs-f1040sd-2025/junk-after-eof",
-    "irs-form-1040-2025/flip-tail-byte",
     "irs-form-1040-2025/junk-after-eof",
-    "irs-fw9/flip-tail-byte",
     "irs-fw9/junk-after-eof",
     "markdown-hyphen-break/junk-after-eof",
     "markdown-table-cells/junk-after-eof",
     "markdown-two-blocks/junk-after-eof",
     "measured-ink-box/junk-after-eof",
-    "nist-sp-800-161r1/flip-tail-byte",
     "nist-sp-800-161r1/junk-after-eof",
-    "nist-sp-800-171r3/flip-tail-byte",
     "nist-sp-800-171r3/junk-after-eof",
-    "nist-sp-800-207/flip-tail-byte",
     "nist-sp-800-207/junk-after-eof",
-    "nist-sp-800-218/flip-tail-byte",
     "nist-sp-800-218/junk-after-eof",
-    "nist-sp-800-37r2/flip-tail-byte",
     "nist-sp-800-37r2/junk-after-eof",
-    "nist-sp-800-53Ar5/flip-tail-byte",
     "nist-sp-800-53Ar5/junk-after-eof",
-    "nist-sp-800-53r5/flip-tail-byte",
     "nist-sp-800-53r5/junk-after-eof",
-    "nist-sp-800-63b/flip-tail-byte",
     "nist-sp-800-63b/junk-after-eof",
     "off-page-and-offset-box/junk-after-eof",
     "ruled-table-grid/junk-after-eof",
@@ -450,19 +484,14 @@ const EXPECTED_SURVIVORS: [&str; 78] = [
     "stroke-ruled-field-boxes/junk-after-eof",
     "stroke-ruled-worksheet/junk-after-eof",
     "synthesized-space-tj/junk-after-eof",
-    "synthetic/heading-export/flip-tail-byte",
     "synthetic/heading-export/junk-after-eof",
-    "synthetic/hyphenated-line-break/flip-tail-byte",
     "synthetic/hyphenated-line-break/junk-after-eof",
     "synthetic/ligature-fi-embedded-font/junk-after-eof",
-    "synthetic/list-items/flip-tail-byte",
     "synthetic/list-items/junk-after-eof",
     "synthetic/rotation-90/junk-after-eof",
     "synthetic/simple-text/junk-after-eof",
     "synthetic/table-regular-grid/junk-after-eof",
-    "synthetic/two-columns/flip-tail-byte",
     "synthetic/two-columns/junk-after-eof",
-    "synthetic/two-lines/flip-tail-byte",
     "synthetic/two-lines/junk-after-eof",
     "tagged-list-items/junk-after-eof",
     "tagged-rolemap/junk-after-eof",
@@ -569,8 +598,10 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
     // **The comparison only happens for a mutant that parses**, so an empty offender list says
     // nothing on its own: a corpus that went missing, a `run_mutant` that started erroring, or a
     // reader turned fail-closed everywhere would each drive this loop zero times and print `ok`.
-    // Sixty mutants survive at v2-S13.1 and [`EXPECTED_SURVIVORS`] pins exactly which, so the
-    // count is available and there is no reason to leave it unasserted.
+    // Sixty mutants survive at v2-S21 and [`EXPECTED_SURVIVORS`] pins exactly which, so the
+    // count is available and there is no reason to leave it unasserted. (Sixty at v2-S13.1 too,
+    // and seventy-eight in between: v2-S19 grew the corpus and v2-S21 made `flip-tail-byte` land
+    // where it always claimed to, which took all eighteen of that mutation's survivors away.)
     //
     // The office harness in `crates/engine-office/tests/robustness.rs` was written from this
     // file at v2-S13 and carries this floor. It was not back-ported here, which is why the twin
@@ -711,6 +742,12 @@ fn an_injected_unknown_operator_stops_the_parse() {
 ///   without re-encoding the document — which would be authoring a fixture, not mutating one.
 ///   The `FlateDecode` exclusion is deliberate and was a triage finding; see `Mutation::apply`.
 ///
+/// - **`flip-tail-byte`** on the two fixtures that declare no cross-reference region (v2-S21).
+///   They are 9 and 10 bytes and carry no `startxref`, so a mutation that damages the trailer's
+///   pointer to the xref table has no pointer to damage. **No coverage is lost:** both are refused
+///   for their headers with or without the flip, so the mutant they used to produce proved nothing
+///   about the tail. `empty`, `header-overwritten` and `junk-after-eof` all still apply to them.
+///
 /// **v2-S19 moved this from twelve pairs to twenty-one, and every one of the nine is the same
 /// case already described above.** The slice pinned `cfpb-home-loan-toolkit` and added the eight
 /// `gate` documents, and all nine compress their content streams — they are real publications from
@@ -718,7 +755,11 @@ fn an_injected_unknown_operator_stops_the_parse() {
 /// gate corpus. So the count moved and the *reason* did not: no mutation stopped covering anything
 /// it used to cover, and the ratio of inapplicable pairs is a fact about how real PDFs are built
 /// rather than a gap in the harness.
-const EXPECTED_INAPPLICABLE: [&str; 21] = [
+///
+/// **v2-S21 moves it to twenty-three**, and the two additions are the `flip-tail-byte` case above
+/// — the first entries here that are not the `FlateDecode` exclusion.
+const EXPECTED_INAPPLICABLE: [&str; 23] = [
+    "failure/corrupt-header-valid/flip-tail-byte",
     "failure/corrupt-header-valid/truncate-16",
     "failure/corrupt-header-valid/unknown-operator",
     "failure/image-only-or-blank-page/unknown-operator",
@@ -730,6 +771,7 @@ const EXPECTED_INAPPLICABLE: [&str; 21] = [
     // other engine-owned fixture.
     "image-declared-not-drawn/unknown-operator",
     "image-xobject-drawn/unknown-operator",
+    "failure/invalid-header/flip-tail-byte",
     "failure/invalid-header/truncate-16",
     "failure/invalid-header/unknown-operator",
     "failure/password-protected/unknown-operator",
@@ -827,6 +869,94 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
         Mutation::ALL.len() * fixtures.len() - EXPECTED_INAPPLICABLE.len(),
         "the mutant count must be every fixture times every mutation, less exactly the \
          pinned inapplicable pairs"
+    );
+}
+
+/// **The tail flip lands in the cross-reference pointer — shown, not asserted** (v2-S21).
+///
+/// The claim `Mutation::apply` used to make was *"deep enough to land in the xref/trailer region
+/// on every fixture in the corpus"*, and nothing checked it. It was false on every large document
+/// in the corpus for four slices, and the harness reported coverage it did not have.
+///
+/// So the claim is a test now. For every fixture the flip applies to, the changed byte must sit
+/// **between the final `startxref` keyword and end of file** — the trailer's pointer to the
+/// cross-reference table, which is the only route a reader has to find it (PDF 32000-1 §7.5.5).
+/// The offset relative to `startxref` is **printed** for the largest fixture and the smallest, so
+/// a CI log records the property rather than only that nothing failed: the whole defect was a
+/// distance nobody had ever looked at.
+#[test]
+fn the_tail_flip_lands_in_the_cross_reference_pointer() {
+    let mut checked = 0usize;
+    let mut extremes: Vec<(usize, String, i64, usize)> = Vec::new();
+
+    for fixture in all_fixtures() {
+        let Some(mutant) = Mutation::FlipTailByte.apply(&fixture.bytes) else {
+            // Only the two fixtures that declare no cross-reference region at all, and
+            // `EXPECTED_INAPPLICABLE` pins exactly which.
+            assert!(
+                rfind(&fixture.bytes, b"startxref").is_none(),
+                "`{}` has a `startxref` but took no tail flip",
+                fixture.id
+            );
+            continue;
+        };
+        checked += 1;
+
+        let n = fixture.bytes.len();
+        assert_eq!(
+            mutant.len(),
+            n,
+            "`{}`: a byte flip changes no length",
+            fixture.id
+        );
+        let changed: Vec<usize> = (0..n).filter(|i| mutant[*i] != fixture.bytes[*i]).collect();
+        assert_eq!(
+            changed.len(),
+            1,
+            "`{}`: the flip must change exactly one byte, not {}",
+            fixture.id,
+            changed.len()
+        );
+        let idx = changed[0];
+        let sx = rfind(&fixture.bytes, b"startxref").expect("applied, so it has one");
+
+        assert!(
+            idx > sx && idx < n,
+            "`{}`: the flip landed at {idx}, which is {} byte(s) from `startxref` at {sx} — \
+             OUTSIDE the trailer's cross-reference pointer. That is the v2-S21 defect returning: \
+             a mutation named for the tail must damage the tail on a 7 MB document as it does on \
+             a 600-byte one, or the eighteen documents it used to miss go back to surviving for a \
+             reason that is about the harness rather than about the reader.",
+            fixture.id,
+            idx as i64 - sx as i64
+        );
+        // And it must land on the offset itself rather than on `startxref`'s own letters, or the
+        // pointer would still parse and the mutation would be damaging a keyword the reader
+        // locates by searching for it.
+        assert!(
+            fixture.bytes[idx].is_ascii_digit(),
+            "`{}`: the flip landed on {:?} at {idx}, not on a digit of the cross-reference offset",
+            fixture.id,
+            fixture.bytes[idx] as char
+        );
+        extremes.push((n, fixture.id.clone(), idx as i64 - sx as i64, sx));
+    }
+
+    extremes.sort();
+    for (label, e) in [("smallest", extremes.first()), ("largest", extremes.last())] {
+        if let Some((n, id, delta, sx)) = e {
+            println!(
+                "tail flip, {label} fixture: {id} is {n} bytes, `startxref` at {sx}, \
+                 flip at startxref+{delta}"
+            );
+        }
+    }
+
+    assert!(
+        checked >= 60,
+        "only {checked} fixture(s) took the tail flip; sixty-two do at v2-S21 and the floor sits \
+         just below. A fixture dropping out here is a document that stopped declaring a \
+         cross-reference region, which is worth knowing rather than absorbing."
     );
 }
 

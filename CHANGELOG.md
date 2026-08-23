@@ -7,7 +7,105 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1
+
+### v2-S21 — the mutation that missed, as 0.36.1
+
+**A PATCH, and the reason is that no reader moved.** `ci/code-lines.py` diffs **empty** across this
+commit — 19 325 lines from 59 files on both sides — so every artifact this build writes is
+byte-identical to 0.36.0's but for `parser_version`. What moved is a test, and the totals it pins.
+
+#### Fixed — `flip-tail-byte` claimed to reach the trailer and never did on a large document
+
+`Mutation::apply` picked `len - len/20 - 1` and called it *"deep enough to land in the xref/trailer
+region on every fixture in the corpus"*. **A fraction of a file's length has nothing to do with
+where its trailer is**, and the two only coincided because every fixture inspected during triage was
+under three kilobytes. Measured on all sixty-four, the index landed *hundreds of kilobytes before*
+`startxref`: **373 468 bytes short on `nist-sp-800-53Ar5`**, 303 661 on `nist-sp-800-53r5`, 242 247
+on `nist-sp-800-161r1`.
+
+Those bytes sit inside a compressed object stream, an embedded font, or image data, and the large
+documents take the shallow pass, which never decompresses that stream — so nothing read the flipped
+byte at all. **Eighteen documents were pinned as survivors under a reason nobody had checked against
+their bytes.** v2-S19 corrected the prose to *"they survive because the mutation missed, not because
+the reader recovered"* and left the mutation missing, naming the repair as owed. A harness that
+reports coverage it does not have is the v2-S12.1 / v2-S13.1 shape.
+
+The flip now seeks the **file trailer's cross-reference pointer**: the anchor is the final
+`startxref` keyword and the index is the midpoint of what follows it. Still a formula rather than a
+magic index, and now one whose meaning does not depend on the file's size. PDF 32000-1 §7.5.5 makes
+`startxref <offset> %%EOF` the last thing in the file and that offset the only route to the
+cross-reference table, so this is where a reader **enters** the region the old comment named.
+`rfind` rather than `find`, because an incrementally-updated document carries several and only the
+last is authoritative.
+
+#### Added — the claim is a test now, and it prints the distance
+
+`the_tail_flip_lands_in_the_cross_reference_pointer` requires, for every fixture, that the changed
+byte sit between the final `startxref` and EOF **and be an ASCII digit** — the offset itself, not
+one of `startxref`'s own letters, since a reader finds that keyword by searching for it. It prints
+the extremes, because the whole defect was a distance nobody had looked at:
+
+```
+tail flip, smallest fixture: failure/image-only-or-blank-page is 431 bytes,
+                             `startxref` at 411, flip at startxref+10
+tail flip, largest  fixture: nist-sp-800-53Ar5 is 7469808 bytes,
+                             `startxref` at 7469785, flip at startxref+11
+```
+
+#### Changed — the pinned totals, moved together and every change triaged
+
+|                          | v2-S19 (0.35.0) | v2-S21 (0.36.1) |
+| ---                      | ---             | ---             |
+| fixtures                 | 64              | 64              |
+| mutants                  | 363             | **361**         |
+| `EXPECTED_SURVIVORS`     | 78              | **60**          |
+| `EXPECTED_INAPPLICABLE`  | 21              | **23**          |
+| fixtures taking the flip | 64              | **62**          |
+| `flip-tail-byte` survivors | 18            | **0**           |
+| newly surviving          | —               | **0**           |
+
+**All eighteen newly refuse, every one `malformed` with the same reason** — *"failed parsing cross
+reference table: invalid start value"*: `cfpb-home-loan-toolkit`, `foreign/opendataloader/real`,
+`irs-f1040sd-2025`, `irs-form-1040-2025`, `irs-fw9`, `nist-sp-800-161r1`, `nist-sp-800-171r3`,
+`nist-sp-800-207`, `nist-sp-800-218`, `nist-sp-800-37r2`, `nist-sp-800-53Ar5`, `nist-sp-800-53r5`,
+`nist-sp-800-63b`, `synthetic/heading-export`, `synthetic/hyphenated-line-break`,
+`synthetic/list-items`, `synthetic/two-columns`, `synthetic/two-lines`. In fact **all sixty-two**
+fixtures carrying a `startxref` refuse — forty-four already did.
+
+**The sixty survivors left are all `junk-after-eof`**, whose reason was already about the reader and
+is unchanged: bytes appended past `%%EOF` sit outside every offset the document declares.
+
+Both old headings dissolve rather than shrink, and neither was quite right. **The large documents
+were never a reader property** — nothing read the byte, so nothing could refuse it. **The small ones
+were a real reader observation that did not survive a harder blow**: the flip used to land in the
+trailer *dictionary* (the `t` of `/Root`, the `R` of `1 0 R`) and `lopdf` recovered by scanning for
+the catalog; corrupting the **pointer to the table** leaves no table to scan toward, so the parse
+stops at `xref` instead.
+
+**Named as coverage lost rather than quietly dropped:** `lopdf`'s catalog-scan recovery was
+exercised only by those five small survivors and is now exercised by nothing. It is a backend
+behaviour rather than an engine guarantee, no test asserted it, and a mutation weak enough to reach
+it is the one this slice removed.
+
+**Two fixtures leave the flip.** `failure/corrupt-header-valid` and `failure/invalid-header` are 9
+and 10 bytes with no `startxref`, so a mutation damaging the trailer's pointer has no pointer to
+damage — `None`, which this module calls a real answer rather than a skip. **No coverage is lost:**
+both are refused for their headers with or without the flip.
+
+**`fixtures/manifest.json` did not move**, which is the coupling v2-S19 warned about and this slice
+does not trip: no fixture was added or removed. The mutant total moved because
+`EXPECTED_INAPPLICABLE` grew, and that total is *derived* rather than a second number to keep in
+step.
+
+#### On the ordering
+
+S20 first was right. The brief sequenced this second because the mutation harness measures
+robustness rather than table detection; the stronger version is that the two are **disjoint** — this
+slice touches only `crates/engine-pdf/tests/robustness.rs`, and S20 never touches that file. The
+deep pass does call `extract`, so S20's change is visible here, but declining a table is not an
+error and no survivor turns on it: the survivor set measured before S20 landed and after are
+identical, checked rather than assumed.
 
 ### v2-S20 — the nine grids the engine already rejects, as 0.36.0
 
