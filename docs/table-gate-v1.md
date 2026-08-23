@@ -1,11 +1,25 @@
 # The v1 table gate, and how it is computed
 
-**Status: measured, and MISSED.** Macro cell-F1 is **64‰**. **489‰ is a published comparator, not a
-live shipping floor** — the chase for it is **parked** (`00-NORTH-STAR.md` #10, 2026-08-19), and
-parking it is not a pass.
-(**61‰** at v1-S7b, under `ruled-rects-v2` alone; v1-S8 added `stroke-ruled-v1` — see below.)
+**Status: measured, and MISSED.** Macro cell-F1 is **70‰**, over twelve documents. **489‰ is a
+published comparator, not a live shipping floor** — the chase for it is **parked**
+(`00-NORTH-STAR.md` #10, 2026-08-19), and parking it is not a pass.
+(**61‰** at v1-S7b, under `ruled-rects-v2` alone; v1-S8 added `stroke-ruled-v1`; **64‰** was the
+four-document figure from v1-S8 until v2-S19 grew the corpus — see below.)
 
-**The method below does not change.** 64‰ is still measured, still reruns to the same value, still
+**This line read `64‰` from v1-S8 until v2-S20, and stopped being true at v2-S19.** S19 measured
+twelve documents at **70‰** and wrote that number into `00-NORTH-STAR.md` #10 and
+`07-VERIFY-BOUNDARY.md`, and into this document's own §"The result" and §"64‰ 'held' at 70‰" — and
+left the headline three lines above them saying something else. A document whose first paragraph
+contradicts its own body is worse than one that is merely out of date, because a reader who stops
+at the summary is misinformed by the part written to save them the reading. It is repaired here,
+in the slice that had to open the file anyway.
+
+**And 70‰ is the least informative true statement about this corpus**, which §"64‰ 'held' at 70‰"
+argues at length: the band is 0‰..590‰, the median is 0‰, nine of the twelve score exactly 0‰, and
+removing `irs-fw9` alone drops the macro to 23‰. The headline number is here because a reader
+expects one, not because it is the number worth quoting.
+
+**The method below does not change.** 70‰ is still measured, still reruns to the same value, still
 runs in CI, and **fabrication is still 0**. What is parked is treating 489‰ as the number the next
 slice must beat.
 
@@ -209,35 +223,40 @@ and the difference is an artifact of how the producer chunked the stream.
 
 ## The result
 
-Engine **0.35.0**, measured on **twelve** documents. The four-document run this replaces is kept
-below, because the comparison is the finding.
+Engine **0.36.0**, measured on **twelve** documents. The 0.35.0 column is kept beside it because
+the comparison is this slice's whole finding, and the four-document run both replace is kept below.
 
-| Document | TP | FP | FN | cell-F1 |
-| --- | --- | --- | --- | --- |
-| `cfpb-home-loan-toolkit.pdf` | 44 | 136 | 115 | **259‰** |
-| `irs-fw9.pdf` | 26 | 2 | 34 | **590‰** |
-| `nist-sp-800-218.pdf` | 12 | 11 295 | 404 | **2‰** |
-| `irs-form-1040-2025.pdf` | 0 | 0 | 40 | **0‰** |
-| `irs-f1040sd-2025.pdf` | 0 | 0 | 60 | **0‰** |
-| `nist-sp-800-63b.pdf` | 0 | 0 | 568 | **0‰** |
-| `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** |
-| `nist-sp-800-161r1.pdf` | 0 | 0 | 3 853 | **0‰** |
-| `nist-sp-800-171r3.pdf` | 0 | 0 | 1 946 | **0‰** |
-| `nist-sp-800-207.pdf` | 0 | 0 | 114 | **0‰** |
-| `nist-sp-800-37r2.pdf` | 0 | 0 | 1 035 | **0‰** |
-| `nist-sp-800-53Ar5.pdf` | 0 | 0 | 567 | **0‰** |
-| **MACRO over 12 documents** | | | | **70‰** |
+| Document | TP | FP | FN | cell-F1 | at 0.35.0 |
+| --- | --- | --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit.pdf` | 44 | 136 | 115 | **259‰** | 259‰ |
+| `irs-fw9.pdf` | 26 | 2 | 34 | **590‰** | 590‰ |
+| `irs-form-1040-2025.pdf` | 0 | 0 | 40 | **0‰** | 0‰ |
+| `irs-f1040sd-2025.pdf` | 0 | 0 | 60 | **0‰** | 0‰ |
+| `nist-sp-800-63b.pdf` | 0 | 0 | 568 | **0‰** | 0‰ |
+| `nist-sp-800-53r5.pdf` | 0 | 0 | 6 937 | **0‰** | 0‰ |
+| `nist-sp-800-161r1.pdf` | 0 | 0 | 3 853 | **0‰** | 0‰ |
+| `nist-sp-800-171r3.pdf` | 0 | 0 | 1 946 | **0‰** | 0‰ |
+| `nist-sp-800-207.pdf` | 0 | 0 | 114 | **0‰** | 0‰ |
+| **`nist-sp-800-218.pdf`** | **0** | **0** | **416** | **0‰** | **2‰** (12 / 11 295 / 404) |
+| `nist-sp-800-37r2.pdf` | 0 | 0 | 1 035 | **0‰** | 0‰ |
+| `nist-sp-800-53Ar5.pdf` | 0 | 0 | 567 | **0‰** | 0‰ |
+| **MACRO over 12 documents** | | | | **70‰** | **70‰** |
 
-**Band: 0‰ .. 590‰, median 0‰, and nine of the twelve score exactly 0‰.**
+**Band: 0‰ .. 590‰, median 0‰, and TEN of the twelve now score exactly 0‰** — nine before this
+slice, and the tenth is `nist-sp-800-218`, whose 2‰ is gone along with the 11 295 false positives
+that were its denominator. §"The nine grids the engine already rejects" is why, and why the macro
+is unchanged at 70‰.
 
 Alongside it, on the same run:
 
-| | 4 documents (0.10.0) | 12 documents (0.35.0) |
-| --- | --- | --- |
-| Cells emitted | 180 | 1 236 |
-| **Fabricated cells** | **0** | **0** |
-| Cross-check disagreements | **0** | **9** |
-| False tables on the gold negatives | 0 | 0 |
+| | 4 documents (0.10.0) | 12 documents (0.35.0) | 12 documents (0.36.0) |
+| --- | --- | --- | --- |
+| Tables detected / matched | 14 / 13 | 26 / 17 | **17 / 16** |
+| Detection precision | 928‰ | 653‰ | **941‰** |
+| Cells emitted | 180 | 1 236 | **208** |
+| **Fabricated cells** | **0** | **0** | **0** |
+| Cross-check disagreements | **0** | **9** | **0** |
+| False tables on the gold negatives | 0 | 0 | **0** |
 
 ### 64‰ "held" at 70‰, and that is the least informative true thing to say about it
 
@@ -260,9 +279,11 @@ not "weak everywhere". It is bimodal: **the ruled rule works where a producer dr
 produces nothing where it did not** — confirming on twelve documents the finding that reframed five
 slices of work, which four documents could have produced by luck.
 
-### The one document where the failure is not silence
+### The one document where the failure was not silence
 
-`nist-sp-800-218` is the corpus's new information, and it is worse news than a zero.
+`nist-sp-800-218` was the corpus's new information at v2-S19, and it was worse news than a zero.
+**v2-S20 acted on it and the section after this one is the argument**; what follows here is what
+S19 measured, kept as written because the decision only makes sense beside it.
 
 Against **4** tagged tables it detects **9**, with dimensions of 103 × 22, 108 × 16, 89 × 15,
 87 × 14, 86 × 19, 75 × 14, 66 × 17, 58 × 15 and 6 × 14 — phantom grids spanning whole pages, built
@@ -277,13 +298,176 @@ Two things about it are worth stating precisely, because they are easy to get ba
 - **The engine's own cross-check flagged them, and the report now says so per document.**
   Cross-check disagreements went from 0 to 9 on this corpus, and the per-document column shows
   **all nine are this document's** — every other of the twelve reads 0. There are exactly nine
-  detected tables here, so the locator cross-check is rejecting **every one of them**. Nothing acts on that today; a rule that
-  declined a table its own cross-check rejected is a **detector change**, which v2-S19 is
-  forbidden to make, and it is recorded here as the largest concrete lead this corpus produced.
+  detected tables here, so the locator cross-check is rejecting **every one of them**. Nothing
+  acted on that at S19; a rule that declined a table its own cross-check rejected is a **detector
+  change**, which v2-S19 was forbidden to make, and it was recorded as the largest concrete lead
+  this corpus produced. **v2-S20 is that change** — see below.
+
+- **They are `ruled-rects`, not `stroke-ruled-v1`.** *"Built from the document's ruling lines"*
+  above describes the **ink**, not the rule: this producer draws its rules as thin **filled**
+  rectangles, so they arrive as `interp.rects` and fold into a lattice with everything else the
+  page paints. Read off each detected table's `rule` field, all nine say `ruled-rects-v2`, and
+  every stroke-ruled and alignment table in the corpus cross-checks `ok`. The distinction is not
+  pedantic — it decides which rule a repair belongs in, and the sentence above was read the other
+  way at least once.
 
 FP of 11 295 against 1 236 cells emitted corpus-wide is not a contradiction and is the kind of thing
 worth spelling out: `emitted_cells` counts **cells**, the score counts **slots**, and a cell with
 `colspan: 3` occupies three of them. §"Slots, not cells" settles why the comparison is done that way.
+
+## v2-S20: the nine grids the engine already rejects
+
+The question this slice answers, in one line: **should a table whose own cross-check rejects it be
+emitted?** The answer shipped is **no when the rejection is structural**, and the reasoning below is
+longer than the change because the change is four lines and the reasoning is the slice.
+
+### All three options were measured on all twelve documents, and the gate cannot tell them apart
+
+| | keep and declare (0.35.0) | decline on the cross-check | tighten the ruled rule |
+| --- | --- | --- | --- |
+| **MACRO** | **70‰** | **70‰** | **70‰** |
+| `nist-sp-800-218` | 12 TP / 11 295 FP / 404 FN → 2‰ | 0 / 0 / 416 → 0‰ | 0 / 0 / 416 → 0‰ |
+| every other document | — | **unchanged** | **unchanged** |
+| band | 0‰..590‰, median 0‰, 9/12 zero | 0‰..590‰, median 0‰, **10/12** zero | identical |
+| macro without `irs-fw9` | 23‰ | 23‰ | 23‰ |
+| cells emitted | 1 236 | 208 | 208 |
+| **fabricated cells** | **0** | **0** | **0** |
+| cross-check disagreements | 9 | 0 | 0 |
+| gold negatives | 0 tables | 0 tables | 0 tables |
+
+*Decline* was implemented as a gate on `CheckStatus::Mismatch` at the point every rule emits.
+*Tighten* was implemented as a precondition in `Lattice`'s consumer: refuse a lattice in which two
+rectangles claim one slot — the direct cause, since every one of the nine carries
+`OwnedMoreThanOnce` faults by the hundred. **The two are byte-identical on all twelve documents and
+on all three gold negatives**, so the corpus cannot choose between them and the choice is argued.
+
+**The headline of this table is the first row.** Removing **11 295** false-positive cell slots —
+more than the rest of the corpus produces in either direction — moves the published macro by
+**exactly nothing**. That is not evidence the change did nothing. It is v2-S19's finding arriving
+from the other direction: an average over mostly zeros is insensitive to a document that was
+already at 2‰, so a macro of 70‰ survives both the presence and the absence of the worst
+over-detection this engine has ever produced. **A number that cannot see this cannot be the number
+that decides it.**
+
+### So the decision is argued from the artifact, not from the gate
+
+**Keeping and declaring was the posture until this slice, and what it is worth is measurable.**
+The declaration already exists: every table carries its `LocatorCheck`, and on those nine it said
+`Mismatch` with the faults enumerated. **No surface this repository ships reads it.**
+`engine_core::markdown::plan_tables` and `engine_core::html::plan_tables` project **every** table
+in `payload.tables`, branching only on `rows` and `columns`, and consult no check anywhere. So a
+consumer of either projection received nine GFM grids of up to 103 × 22 and received no warning at
+all. A disclosure that no reader of the thing being disclosed about can see is a disclosure in
+name only — the shape v2-S12.1 and v2-S13.1 both exist for.
+
+**Declining is not a new posture.** This engine already refuses candidates and declares the
+refusal: `FaceWithoutRectangle`, `LatticeTooLarge`, `ColumnLineNotStroked`, `FaceIsAFormFieldBox`,
+and every variant of `unruled::Refusal`. A cross-check failure is the same shape — a precondition
+about the evidence that the evidence did not meet — and it goes out through the same channel, as
+`ruled-table-candidate-refused`, naming the page and the fault counts. **Nothing is deleted. The
+disagreement moves from a field beside a grid to a refusal instead of a grid.**
+
+### The cost, named: twelve cell slots, and all twelve are the empty string
+
+Declining loses `nist-sp-800-218`'s entire true-positive contribution — **12 cell slots**, which is
+why its F1 goes 2‰ → 0‰. Every one of them is on **page 14**, inside the **103 × 22** grid the join
+pairs with that page's tagged **72 × 4**, and **every one of them is `""`**:
+
+```
+p14 r6 c0   ""      p14 r25 c0  ""      p14 r47 c0  ""      p14 r62 c0  ""
+p14 r15 c0  ""      p14 r26 c0  ""      p14 r51 c0  ""      p14 r65 c0  ""
+p14 r20 c0  ""      p14 r46 c0  ""      p14 r61 c0  ""      p14 r71 c0  ""
+```
+
+A blank face of a phantom grid agreeing with a blank tagged cell. **Not one character of extracted
+text is lost anywhere in the corpus** — `cfpb-home-loan-toolkit` keeps all 44 of its true positives
+and `irs-fw9` all 26, and no other document had any.
+
+Stated as a rate, the twelve are not a capability: that document emitted **1 028 cells** and
+predicted **11 307 slots** to get **12** right — **one right slot per 941 wrong**. This document
+already records a variant that was *"right about 5% of the cells it emits"* and reverted it. This
+was fifty times worse and it shipped.
+
+### The other cost, which is real and is not designed around
+
+**A table that is emitted can no longer carry a structural `Mismatch`.** That is the honest
+consequence of gating on a check: the check still runs, still computes both halves, and still puts
+its result on every emitted table — but the structural half's disagreement now ends the detection
+instead of accompanying it.
+
+Two things keep that from being the retirement of the cross-check, and both are asserted rather
+than asserted-about:
+
+1. **Only the structural half gates.** The two halves are not the same kind of statement. The
+   structural half (`SlotFault`) is arithmetic on the row/column indices the rule assigned and
+   admits no tolerance — a slot owned twice is a contradiction in the rule's own bookkeeping. The
+   geometric half (`GeometricFault`) compares **exact** boxes against a lattice built with
+   `LATTICE_TOLERANCE`, so it fires on the very slop that tolerance exists to absorb. **Measured:**
+   gating on both was built first and it refuses `near_edges_fold_into_one_lattice_line` — a 2 × 2
+   whose only defect is one edge sitting a single centipoint out, which is exactly what a 1 pt
+   stroked rule looks like. That fixture now emits, carrying a geometric-only `Mismatch`, and the
+   test asserts precisely that — so `CheckStatus::Mismatch` remains a state an emitted table can
+   be in.
+2. **It is the only rule that can fail this check at all.** `stroke-ruled-v1` and
+   `unruled-align-v1` build a cell for **every** face of their lattice, from the same lines the
+   table's own box comes from, so their cells tile exactly, never overlap and never reach outside.
+   `tables::tests::the_other_two_rules_build_a_cell_for_every_face` runs both and asserts it, which
+   is why the gate is in `detect_ruled` alone rather than repeated three times as dead code.
+
+**And one shipped fixture changes its job.** `ruled-table-overlap` existed to prove the engine
+emits a self-contradicting grid and says so; it now proves the engine refuses one and says why. Its
+row in `fixtures/README.md` is rewritten rather than left standing, two tests in
+`crates/engine-pdf/tests/extraction.rs` moved with it, and
+`tables::tests::the_cross_check_still_sees_two_rectangles_claiming_one_slot` holds the check itself
+under test now that no artifact can. That is a real loss of an end-to-end instance and it is
+recorded here rather than absorbed.
+
+### Why not the third option
+
+*Tighten the ruled rule* measures identically and was rejected as the narrower spelling of the same
+decision. Its precondition — "no two rectangles may claim one slot" — **is** the structural half of
+a check the engine already computes two hundred lines later, so shipping it would put two
+derivations of one rule in one file, which is the drift a single pinned rule id exists to prevent.
+`Lattice::build`'s own comment records the earlier decision it would reverse: *"Overlaps are
+deliberately NOT excluded here … it belongs in the cross-check where it is reported rather than in
+a precondition where it would be silently dropped."* That reasoning still holds. What v2-S20 changes
+is not where the overlap is **found** but what happens after it is **reported**.
+
+### A rule id moves, because rule behaviour moved
+
+`table_detection.ruled` goes **`ruled-rects-v2` → `ruled-rects-v3`**, so `profile_sha256` moves and
+an artifact from either side is correctly non-comparable — two builds disagree about whether
+`nist-sp-800-218` has nine tables. `stroke-ruled-v1` and `unruled-align-v1` are **byte-identical**
+and keep their ids: neither rule's code changed and neither could reach the new precondition.
+The prompt for this slice expected `stroke-ruled-v1 → stroke-ruled-v2`; that would have been the
+wrong id, for the reason §"The one document where the failure was not silence" now states.
+
+### The gap this metric has, named and not built
+
+**Fabrication is 0 while the engine emits a 103 × 22 grid that does not exist**, and that is
+correct by the counter's own definition: every cell's text is a concatenation of runs the page
+actually drew, so nothing was invented. **The counter protects against invented text. It says
+nothing about invented structure.** Nine phantom grids are the second thing and `fabricated_cells`
+cannot see them — it read 0 through all of them, and would have read 0 if there had been ninety.
+
+That is a gap, and standing rule 5 says a gap is never presented as a success. It is named here
+and **not** repaired: a structural-fabrication measure is a second metric, this slice is forbidden
+to build one, and a metric introduced in the same commit as the detector change it would score is
+the edit this document exists to make impossible. What can be said without a new metric is said in
+the table above — **detected tables 26 → 17 and detection precision 653‰ → 941‰** — and the gold
+negatives remain the only instrument in the harness that can see an invented grid at all, which is
+itself worth knowing: they are three documents, all engine-owned or synthetic, and none of them
+resembles `nist-sp-800-218`.
+
+### What the corpus report says now, and what it stopped being able to say
+
+`cross_check_disagreements` reads **0** on all twelve documents. That is not the check finding
+nothing; it is the check being enforced, and the column is now structurally 0 for emitted tables.
+The number that moved instead is `detected` — `nist-sp-800-218` goes **9 → 0** — and the nine
+refusals are on the artifact under `ruled-table-candidate-refused`, each naming its page and its
+fault counts. A reader of the printed report alone can no longer tell that document apart from the
+nine that detect nothing; a reader of the **artifact** can, and that is the trade this section
+argues is the right way round.
 
 ### The run before this one, for comparison
 

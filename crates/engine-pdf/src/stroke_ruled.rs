@@ -675,7 +675,7 @@ mod tests {
         let (rules, uprights) = page_13();
         let claimed = vec![face(54.0, 280.6, 558.0, 667.6)];
         let out = detect(13, &rules, &uprights, &[], &[], &claimed, &mut alloc()).expect("detects");
-        assert!(out.tables.is_empty(), "ruled-rects-v2 wins on overlap");
+        assert!(out.tables.is_empty(), "the ruled rule wins on overlap");
     }
 
     /// Every refusal explains itself, and none of them scores anything.

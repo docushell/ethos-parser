@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `engine_core::TABLE_DETECTION_V2` in the profile, so changing any part of it moves
+//! Pinned as `engine_core::TABLE_DETECTION_V3` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -67,7 +67,7 @@ use engine_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `engine_core::TABLE_DETECTION_V2` and is NOT restated here. Two spellings
+// The rule id lives in `engine_core::TABLE_DETECTION_V3` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -76,7 +76,7 @@ use engine_core::{
 /// 150 centipoints — one and a half points. Wide enough to fold the two edges of a 1pt stroked
 /// ruling line into a single lattice line, which is the common way a grid is drawn; narrow enough
 /// that two genuinely distinct columns are never merged, since no table places columns 1.5pt
-/// apart. It is part of `TABLE_DETECTION_V2`, so changing it is a rule-version event and moves
+/// apart. It is part of `TABLE_DETECTION_V3`, so changing it is a rule-version event and moves
 /// the profile hash — the same discipline `crate::thresholds` is under.
 pub const LATTICE_TOLERANCE: i64 = 150;
 
@@ -176,7 +176,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<engine_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `engine_core::TABLE_DETECTION_V2`, `engine_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `engine_core::TABLE_DETECTION_V3`, `engine_core::TABLE_DETECTION_UNRULED_V1`
     /// or `engine_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -209,7 +209,7 @@ pub struct RunOrigin<'a> {
 /// exactly one table is kept, and which one is settled by **what kind of statement the evidence
 /// is** rather than by which grid is larger or scores better:
 ///
-/// 1. **`ruled-rects-v2`** — the author *filled a box* for each cell.
+/// 1. **`ruled-rects-v3`** — the author *filled a box* for each cell.
 /// 2. **`stroke-ruled-v1`** — the author *drew the lines* of the grid.
 /// 3. **`unruled-align-v1`** — the author drew nothing and this engine inferred a grid from where
 ///    the text sits.
@@ -224,7 +224,7 @@ pub struct RunOrigin<'a> {
 /// disagreement; splitting the difference would produce a grid no rule found, with no rule id that
 /// honestly describes it.
 ///
-/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v2` knows
+/// The kept table's `rule` field is the whole diagnostic: a reader who sees `ruled-rects-v3` knows
 /// the author painted it, `stroke-ruled-v1` that they ruled it, and nothing was lost that a
 /// second, weaker derivation of the same cells would have added.
 ///
@@ -316,6 +316,33 @@ pub enum RuledRefusal {
         /// Faces implied.
         faces: usize,
     },
+    /// The grid's own cross-check rejected it **structurally** (v2-S20).
+    ///
+    /// The rule reconstructed a lattice, assigned every rectangle to it, and then
+    /// [`cross_check`]'s structural half found the result contradicts itself: a slot two
+    /// rectangles both claim, or a cell reaching past the grid it declares. Counts, never a
+    /// score — how many faults there were, not how nearly the grid held together.
+    ///
+    /// **Only the structural half refuses, and the difference is measured rather than tidy.**
+    /// The structural half compares indices and spans, so it is arithmetic on integers a rule
+    /// assigned and no tolerance enters it: a slot owned twice is a contradiction in the rule's
+    /// own bookkeeping. The geometric half compares **exact boxes** against a lattice built with
+    /// [`LATTICE_TOLERANCE`], so it reports the very slop that tolerance exists to absorb — a
+    /// grid drawn as 1 pt stroked rules, whose edges are a centipoint apart, disagrees with
+    /// itself geometrically while being a perfectly good grid.
+    /// `tests::near_edges_fold_into_one_lattice_line` is that case, and it emits.
+    ///
+    /// So the geometric count is carried here for disclosure and is not what declined the
+    /// candidate. A table whose geometry alone disagrees is still emitted, still carrying its
+    /// `Mismatch` — which is what keeps [`engine_core::CheckStatus::Mismatch`] a reachable state
+    /// on the wire rather than one this slice quietly retired.
+    CrossCheckRejected {
+        /// Structural faults — the indices and spans disagreeing among themselves. **This is the
+        /// count that refused the candidate**, and it is never zero here.
+        structural: usize,
+        /// Geometric faults — the boxes disagreeing among themselves. Reported, not decisive.
+        geometric: usize,
+    },
 }
 
 impl RuledRefusal {
@@ -330,6 +357,7 @@ impl RuledRefusal {
         match self {
             Self::FaceWithoutRectangle { .. } => "a cell the ink does not draw",
             Self::LatticeTooLarge { .. } => "past the cell ceiling",
+            Self::CrossCheckRejected { .. } => "a grid that contradicts itself",
         }
     }
 
@@ -349,6 +377,18 @@ impl RuledRefusal {
                  and no way to say which",
                 Lattice::MAX_FACES
             ),
+            Self::CrossCheckRejected { .. } => String::from(
+                "The grid was reconstructed and then rejected by its own cross-check \
+                 (`geometric-vs-structural-v1`): the row and column indices this rule assigned \
+                 and the boxes it assigned them from do not describe the same grid. Two \
+                 rectangles claiming one slot is the usual case, and it means the ink itself is \
+                 not consistent about where a cell is. Refused rather than emitted with the \
+                 disagreement noted beside it, because a table on the wire is projected as a \
+                 table — the Markdown and HTML projections draw every grid the artifact carries \
+                 and read no check — so a contradiction recorded in a field nothing consults \
+                 would reach a reader as a grid and reach nobody as a warning. The disagreement \
+                 is not discarded: it is this entry, with the page and the fault counts",
+            ),
         }
     }
 
@@ -359,6 +399,10 @@ impl RuledRefusal {
                 format!("{rects} rectangles implied {faces} cells")
             }
             Self::LatticeTooLarge { faces } => format!("{faces} cells implied"),
+            Self::CrossCheckRejected {
+                structural,
+                geometric,
+            } => format!("{structural} structural and {geometric} geometric fault(s)"),
         }
     }
 }
@@ -465,6 +509,51 @@ pub fn detect_ruled(
 
     let check = cross_check(table_rect, lattice.rows(), lattice.columns(), &detected);
 
+    // **v2-S20: the structural half of the check is acted on.** Until this slice the cross-check
+    // was computed here and consumed by nothing — a grid that contradicted itself was emitted
+    // with the contradiction recorded beside it. `nist-sp-800-218` is where that stopped being
+    // theoretical: nine grids of up to 103 x 22 built from page furniture its rectangles fold
+    // into one lattice, every one of them carrying `OwnedMoreThanOnce` faults by the hundred, and
+    // together contributing 11 295 false-positive cell slots to the twelve-document gate corpus —
+    // more than the rest of it produces in either direction.
+    //
+    // **Why the rule declines rather than declaring.** `engine_core::markdown` and
+    // `engine_core::html` project every table the artifact carries and consult no check, so a
+    // reader of either projection receives the grid and never the disagreement. A disclosure no
+    // surface reads is a disclosure in name only, and this repository has a name for that shape.
+    //
+    // **Why only the structural half.** See [`RuledRefusal::CrossCheckRejected`]: the structural
+    // half is arithmetic on indices this rule assigned and admits no tolerance, while the
+    // geometric half compares exact boxes against a lattice built with `LATTICE_TOLERANCE` and so
+    // fires on the slop that tolerance exists to absorb. Gating on both was measured first and
+    // refuses `tests::near_edges_fold_into_one_lattice_line` — a 2 x 2 whose only defect is that
+    // one edge sits a single centipoint out, which is what a 1 pt stroked rule looks like.
+    //
+    // **Nothing is deleted.** The refusal below carries the page and both fault counts into
+    // `ruled-table-candidate-refused`, the channel this rule's other two refusals already use —
+    // so the artifact still says a grid was found here and rejected, and why.
+    //
+    // **This is the only rule whose check can fail at all.** `crate::stroke_ruled` and
+    // `crate::unruled` build a cell for every face of their lattice, so their cells tile the
+    // table exactly, never overlap and never fall outside it; their cross-check is `Ok` by
+    // construction. Gating them too would be dead code, and
+    // `tests::the_other_two_rules_build_a_cell_for_every_face` is the proof rather than a comment.
+    if let CheckStatus::Mismatch {
+        structural,
+        geometric,
+    } = &check.outcome
+    {
+        if !structural.is_empty() {
+            return Ok((
+                Vec::new(),
+                Some(RuledRefusal::CrossCheckRejected {
+                    structural: structural.len(),
+                    geometric: geometric.len(),
+                }),
+            ));
+        }
+    }
+
     // A well-formed box for the table, or the whole detection is refused rather than emitted with
     // geometry the contract cannot express.
     table_rect.as_qrect_checked()?;
@@ -479,7 +568,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: engine_core::TABLE_DETECTION_V2.to_string(),
+            rule: engine_core::TABLE_DETECTION_V3.to_string(),
         }],
         None,
     ))
@@ -915,20 +1004,40 @@ mod tests {
         assert_eq!(table.check.outcome, CheckStatus::Ok, "{:?}", table.check);
     }
 
+    /// **The cross-check still sees the double claim** — asserted on the check itself, because
+    /// since v2-S20 no emitted table can carry a `Mismatch` to assert it on.
+    ///
+    /// That is the cost of gating emission on this check, and it is why this test exists in this
+    /// shape rather than being deleted with the table it used to read: the check is still the
+    /// engine's only statement about whether a reconstructed grid agrees with itself, and it must
+    /// still be able to make it. What changed is who acts on the answer.
     #[test]
-    fn overlapping_rectangles_are_reported_and_never_repaired() {
-        // The hostile case. Two rectangles claim the same face; the check must say so, and the
-        // geometry must come out untouched.
-        let rects = vec![
-            r(0, 0, 200, 100),
-            r(100, 0, 200, 100),
-            r(0, 100, 100, 200),
-            r(100, 100, 200, 200),
+    fn the_cross_check_still_sees_two_rectangles_claiming_one_slot() {
+        let table = r(0, 0, 200, 200);
+        let id = alloc().next(IdKind::Table).expect("allocates");
+        let cell = |row, column, rect| DetectedCell {
+            position: TableCellPosition {
+                row,
+                column,
+                rowspan: 1,
+                colspan: 1,
+                table_id: id.clone(),
+            },
+            rect,
+            run_indices: Vec::new(),
+            text: String::new(),
+        };
+        // Row 0 column 1 is claimed twice, and the two boxes overlap. Both halves must see it,
+        // independently — that independence is what makes this a check rather than a restatement.
+        let cells = vec![
+            cell(0, 0, r(0, 0, 100, 100)),
+            cell(0, 1, r(100, 0, 200, 100)),
+            cell(0, 1, r(100, 0, 200, 100)),
+            cell(1, 0, r(0, 100, 100, 200)),
+            cell(1, 1, r(100, 100, 200, 200)),
         ];
-        let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
-        let table = &t[0];
 
-        match &table.check.outcome {
+        match &cross_check(table, 2, 2, &cells).outcome {
             CheckStatus::Mismatch {
                 structural,
                 geometric,
@@ -945,6 +1054,44 @@ mod tests {
                 );
             }
             other => panic!("expected a mismatch, got {other:?}"),
+        }
+    }
+
+    /// **A grid whose own cross-check rejects it is refused, and the refusal says so** (v2-S20).
+    ///
+    /// The hostile case, and the whole of this slice. Two rectangles claim the same face. Until
+    /// v2-S20 the rule emitted the grid with the contradiction recorded beside it; the reason it
+    /// no longer does is that neither projection this repository ships reads that field, so the
+    /// grid reached a consumer and the contradiction did not.
+    ///
+    /// Nothing is repaired and nothing is silently dropped: the geometry is not nudged to make
+    /// the grid tile, and the candidate leaves as a named refusal carrying its fault counts.
+    #[test]
+    fn a_grid_its_own_cross_check_rejects_is_refused_rather_than_emitted() {
+        let rects = vec![
+            r(0, 0, 200, 100),
+            r(100, 0, 200, 100),
+            r(0, 100, 100, 200),
+            r(100, 100, 200, 200),
+        ];
+        let (tables, refusal) = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+
+        assert!(
+            tables.is_empty(),
+            "a grid the rule has itself found to contradict itself must not reach the artifact"
+        );
+        match refusal {
+            Some(RuledRefusal::CrossCheckRejected {
+                structural,
+                geometric,
+            }) => {
+                assert!(
+                    structural > 0 && geometric > 0,
+                    "the refusal must carry what disagreed, from both halves: \
+                     {structural} structural, {geometric} geometric"
+                );
+            }
+            other => panic!("expected a cross-check refusal, got {other:?}"),
         }
     }
 
@@ -1025,6 +1172,107 @@ mod tests {
             (2, 2),
             "a one-centipoint nudge must not open a column"
         );
+
+        // **And it still emits, carrying the disagreement** (v2-S20). The lattice folded the
+        // nudged edge; the cross-check's geometric half compares exact boxes and does not, so
+        // this grid disagrees with itself geometrically while being a perfectly good grid. That
+        // is the case the v2-S20 gate is deliberately narrow enough to admit — gating on both
+        // halves refuses it — and it is what keeps `CheckStatus::Mismatch` a state an emitted
+        // table can still be in rather than one this slice retired by construction.
+        match &t[0].check.outcome {
+            CheckStatus::Mismatch {
+                structural,
+                geometric,
+            } => {
+                assert!(
+                    structural.is_empty(),
+                    "a folded edge is not a bookkeeping error: {structural:?}"
+                );
+                assert!(
+                    !geometric.is_empty(),
+                    "the geometric half compares exact boxes, so it must see the centipoint"
+                );
+            }
+            other => panic!(
+                "expected a geometric-only mismatch — the state that proves the v2-S20 gate did \
+                 not retire `Mismatch` on the wire — got {other:?}"
+            ),
+        }
+    }
+
+    /// **The other two rules cannot fail their cross-check**, which is why v2-S20 gates only this
+    /// one and gating them would be dead code.
+    ///
+    /// `crate::stroke_ruled` and `crate::unruled` both emit a cell for **every** face of their
+    /// lattice, computed from the same lines the table's own box is computed from. Their cells
+    /// therefore tile the table exactly, no two overlap, and none reaches outside it — so both
+    /// halves of the check are empty by construction. The ruled rule is different in kind: its
+    /// cells are the rectangles the document painted, and the document may paint two of them over
+    /// one face.
+    ///
+    /// Run rather than read: each rule is given the smallest input that makes it fire, and the
+    /// property is asserted on what it produced.
+    #[test]
+    fn the_other_two_rules_build_a_cell_for_every_face() {
+        let q = |v: f64| (v * f64::from(QUANTUM_PER_POINT)).round() as i64;
+
+        // A 2 x 2 ruled in lines: three baselines bound two rows, three column lines bound two
+        // columns, and the one interior column line is stroked across the band.
+        let rules: Vec<crate::stroke_ruled::Rule> = [100.0, 150.0, 200.0]
+            .iter()
+            .flat_map(|y| {
+                [(0.0, 50.0), (50.0, 100.0)].map(|(x0, x1)| crate::stroke_ruled::Rule {
+                    y: q(*y),
+                    x0: q(x0),
+                    x1: q(x1),
+                })
+            })
+            .collect();
+        let uprights = vec![crate::stroke_ruled::Upright {
+            x: q(50.0),
+            y0: q(100.0),
+            y1: q(200.0),
+        }];
+        let stroked =
+            crate::stroke_ruled::detect(1, &rules, &uprights, &[], &[], &[], &mut alloc())
+                .expect("detects");
+        let stroke_table = stroked.tables.first().expect("the band is a table");
+
+        // A 2 x 2 implied by four runs at four aligned origins, which is what the alignment rule
+        // reads and all it reads.
+        let runs = [
+            (10.0, 10.0, "a"),
+            (110.0, 10.0, "b"),
+            (10.0, 60.0, "c"),
+            (110.0, 60.0, "d"),
+        ]
+        .map(|(x, y, text)| RunOrigin {
+            x: q(x),
+            y: q(y),
+            text,
+        });
+        let leftover: Vec<usize> = (0..runs.len()).collect();
+        let inferred = crate::unruled::detect(1, &runs, &leftover, &mut alloc()).expect("detects");
+        let unruled_table = inferred.table.expect("the alignment rule finds this grid");
+
+        for t in [stroke_table, &unruled_table] {
+            assert_eq!(
+                t.cells.len(),
+                (t.rows * t.columns) as usize,
+                "`{}` must build a cell for every face, or its check could fail and v2-S20's \
+                 gate on the ruled rule alone would be leaving a case out",
+                t.rule
+            );
+            assert_eq!(
+                t.check.outcome,
+                CheckStatus::Ok,
+                "`{}` produced a cross-check disagreement. `detect_ruled` says these two cannot, \
+                 and gates only itself on that basis — if that is no longer true the gate is \
+                 what should change, not this assertion: {:?}",
+                t.rule,
+                t.check
+            );
+        }
     }
 
     #[test]

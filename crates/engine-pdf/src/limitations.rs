@@ -243,12 +243,13 @@ pub fn unruled_candidate_refused(refusals: &[(u32, crate::unruled::Refusal)]) ->
 /// a page where rectangles implied a grid that their own ink did not draw is indistinguishable
 /// from a page that painted nothing. Both say `tables: []`.
 pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) -> Limitation {
-    let mut detail = String::from(
+    let mut detail = format!(
         "On some pages the rectangles the document painted implied a grid and the ruled rule \
          REFUSED it, so no table was emitted there. This is the difference between `nothing \
          grid-shaped was drawn here` and `a grid was implied and judged incoherent`, and only the \
          second one is reported below. Nothing was repaired or partially emitted: a candidate \
-         either satisfies every precondition of `ruled-rects-v2` or it produces no table.",
+         either satisfies every precondition of `{}` or it produces no table.",
+        engine_core::TABLE_DETECTION_V3
     );
     // **Grouped by precondition, so the reasoning is stated once.** The ruled rule refuses 481 of
     // `nist-sp-800-53r5`'s 492 pages; repeating a five-line explanation per page would put a

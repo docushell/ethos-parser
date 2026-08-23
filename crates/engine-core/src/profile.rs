@@ -124,8 +124,8 @@ pub const TEXT_CODE_RULE_V1: &str = "declared-font-codes-v1";
 ///
 /// **There are not two strings to keep in agreement, and this said a test asserted there were
 /// until v2-S13.5.** `engine-pdf` does not restate the id: `tables.rs` says so in as many words
-/// — *"the rule id lives in `engine_core::TABLE_DETECTION_V2` and is NOT restated here"* — and
-/// builds its tables with `rule: engine_core::TABLE_DETECTION_V2.to_string()`. One constant, read
+/// — *"the rule id lives in `engine_core::TABLE_DETECTION_V3` and is NOT restated here"* — and
+/// builds its tables with `rule: engine_core::TABLE_DETECTION_V3.to_string()`. One constant, read
 /// from one place, so the drift this described is structurally impossible rather than guarded.
 /// Contrast [`crate::profile::XrefRepair::Pad19To20V1`], where the id genuinely **is** spelled
 /// twice and nothing checks it.
@@ -160,7 +160,42 @@ pub const TABLE_DETECTION_V1: &str = "ruled-rects-v1";
 ///
 /// Two artifacts either side of this id disagree about whether a page has a table, which is
 /// exactly the disagreement a rule id exists to make legible.
+///
+/// **Superseded by [`TABLE_DETECTION_V3`] at v2-S20.** Kept, exactly as spelled, for the reason
+/// [`TABLE_DETECTION_V1`] is kept: artifacts produced before that change name it.
 pub const TABLE_DETECTION_V2: &str = "ruled-rects-v2";
+
+/// The **ruled** table-detection rule v2-S20 ships: a table that fails its own cross-check is
+/// refused rather than emitted.
+///
+/// # What changed, and why it is a new id rather than a fix
+///
+/// Under [`TABLE_DETECTION_V2`] the locator cross-check ([`crate::LOCATOR_CHECK_V1`]) was computed
+/// on every emitted table and acted on by nothing. `nist-sp-800-218` is where that stopped being
+/// theoretical: against **4** tagged tables it emitted **9** grids of up to 103 × 22, built from
+/// page furniture its rectangles fold into one lattice, and **its own cross-check rejected every
+/// one of the nine** — 1 028 structural faults on the first alone, each a slot two rectangles both
+/// claim. Expanded to cell slots those nine contributed **11 295 false positives**, more than the
+/// rest of the twelve-document gate corpus produces in either direction.
+///
+/// `-v3` refuses such a lattice, and the refusal is declared: the rejected candidate reaches the
+/// artifact as `ruled-table-candidate-refused` with its page and its fault counts, so the
+/// disagreement is reported rather than deleted. What it may no longer do is reach a consumer as
+/// a grid, because `crate::markdown` and `crate::html` project every table on the wire and read
+/// no check — a contradiction carried in a field neither projection consults is a disclosure in
+/// name only.
+///
+/// **Measured on all twelve gate documents.** Those nine grids are the whole of the change: every
+/// other detection in the corpus is unchanged, `irs-fw9` and `cfpb-home-loan-toolkit` keep every
+/// cell they had, fabrication stays 0, and the three gold negatives stay at zero tables. The cost
+/// is **12 cell slots on `nist-sp-800-218`**, and all twelve are the **empty string** — a blank
+/// face of a phantom grid agreeing with a blank tagged cell. Not one character of extracted text
+/// is lost anywhere in the corpus. `docs/table-gate-v1.md` carries the per-document table.
+///
+/// **The macro cannot see any of it**: 70‰ before, 70‰ after. That is a property of an average
+/// over mostly zeros, not evidence the change did nothing, and it is why this decision is argued
+/// from the artifact rather than from the gate.
+pub const TABLE_DETECTION_V3: &str = "ruled-rects-v3";
 
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
@@ -169,7 +204,7 @@ pub const TABLE_DETECTION_V2: &str = "ruled-rects-v2";
 ///
 /// | Rule | Evidence | What it means when it fires |
 /// | --- | --- | --- |
-/// | `ruled-rects-v2` | rectangles the author **painted** | the document drew this grid |
+/// | `ruled-rects-v3` | rectangles the author **painted** | the document drew this grid |
 /// | `unruled-align-v1` | where the author **placed text** | a detector inferred this grid |
 ///
 /// Sharing one id between them would make an artifact unable to say which of those two happened,
@@ -183,7 +218,7 @@ pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 
 /// The **stroke-ruled** table-detection rule v1-S8 ships: grids drawn as ruling lines.
 ///
-/// A third id rather than a widening of [`TABLE_DETECTION_V2`], for the reason the ruled and
+/// A third id rather than a widening of [`TABLE_DETECTION_V3`], for the reason the ruled and
 /// unruled ids are separate: the evidence differs. A filled rectangle is the author saying *this
 /// box is here*; a two-point stroked segment is the author saying *this edge is here*. Both are
 /// ink the author put down — which is why this rule's claim is as strong as the ruled one's and
@@ -217,7 +252,7 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// concept (`docs/04-ARCHITECTURE.md` §1, and a test enforces it), so the field and the id name
 /// *form fields and annotations* — document ideas any format can have — while the format-specific
 /// walk lives in `engine-pdf`. The same split `table_detection` already uses: a generic field
-/// holding `"ruled-rects-v2"`.
+/// holding `"ruled-rects-v3"`.
 pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 
 /// Identity of the character-decoding data this profile carries.
@@ -290,7 +325,7 @@ impl Default for BackendIdentity {
 pub struct TableDetection {
     /// Version id of the rule that reconstructs grids from painted rectangles.
     ///
-    /// See [`TABLE_DETECTION_V2`].
+    /// See [`TABLE_DETECTION_V3`].
     pub ruled: String,
     /// Version id of the rule that infers grids from text alignment.
     ///
@@ -312,7 +347,7 @@ impl Default for TableDetection {
     /// All three rules, enabled — the two v1-S2 shipped and the one v1-S8 added.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V2.to_string(),
+            ruled: TABLE_DETECTION_V3.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
         }
@@ -499,7 +534,7 @@ impl Capabilities {
 ///
 /// **A declared state, not an empty string and not a PDF rule id borrowed for the shape.** The
 /// same discipline `PageBudget::Unlimited` and `RasterDpi::NotEmitted` are under: a reader of a
-/// DOCX profile can see that no table detector ran, rather than seeing `ruled-rects-v2` and
+/// DOCX profile can see that no table detector ran, rather than seeing `ruled-rects-v3` and
 /// wondering whether it did.
 pub const NOT_RUN: &str = "not-run-for-this-format";
 
@@ -1825,7 +1860,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.35.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.36.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2259,11 +2294,23 @@ mod tests {
              mutation harness off its pinned counts. Macro cell-slot F1 read 70‰ over twelve \
              where it read 64‰ over four — and the band, which is the number that matters, is \
              0‰ to 590‰ with NINE OF TWELVE scoring exactly 0. See `docs/table-gate-v1.md` and \
-             `00-NORTH-STAR.md` #18, which is written and NOT decided."
+             `00-NORTH-STAR.md` #18, which is written and NOT decided.\n\n\
+             Moved a FIFTY-SECOND time at v2-S20 (0.36.0), on `parser_version` AND \
+             `table_detection.ruled`, which goes `ruled-rects-v2` to `ruled-rects-v3`. Unlike the \
+             move before it this one is a DETECTOR change and the profile says so: a grid whose \
+             own structural cross-check rejects it is now refused rather than emitted with the \
+             contradiction recorded beside it, because the Markdown and HTML projections draw \
+             every table the artifact carries and read no check. Measured on all twelve gate \
+             documents: `nist-sp-800-218` loses nine phantom grids and 11 295 false-positive cell \
+             slots, every other document is unchanged, fabrication stays 0, and the cost is TWELVE \
+             cell slots that are all the empty string. The macro is 70‰ either way, which is the \
+             finding. `stroke-ruled-v1` and `unruled-align-v1` are byte-identical and keep their \
+             ids: their cells tile by construction, so their check cannot fail. See \
+             `docs/table-gate-v1.md` §\"v2-S20\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:2e728a7e7b68841c2587a61a1cf17d291448bb1098f3a0f555f7b4fd8bd6feb0"
+            "sha256:e518ed7afbe32b21b1b49c0b968cf573876268915072e766424b21bab9ba2269"
         );
     }
 
@@ -2276,12 +2323,12 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V2);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V3);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V2, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V2, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V3, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V3, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
         ] {
             assert_ne!(
@@ -2294,13 +2341,16 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v2","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
 
         let mut ruled_moved = base.clone();
-        ruled_moved.table_detection.ruled = "ruled-rects-v3".into();
+        // A NEXT id, not the current one. This read `"ruled-rects-v2"` until v2-S20 promoted that
+        // string to the default's predecessor and a bulk rename made the line assert that the
+        // default differs from itself — which it does not, and the test said so.
+        ruled_moved.table_detection.ruled = "ruled-rects-v4".into();
         assert_ne!(hash(&base), hash(&ruled_moved), "the ruled id is identity");
 
         let mut unruled_moved = base.clone();
@@ -2338,7 +2388,7 @@ mod tests {
     /// arrived with — claiming a comparability it does not have.
     #[test]
     fn an_unknown_table_rule_key_is_refused() {
-        let bad = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"x-v1"}"#;
+        let bad = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"x-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(bad).is_err(),
             "a fourth rule id must fail closed, not vanish and change the hash"
@@ -2346,13 +2396,13 @@ mod tests {
 
         // And a profile MISSING the field v1-S8 added is refused too, rather than defaulted into
         // one that claims a rule it never ran.
-        let stale = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1"}"#;
+        let stale = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(stale).is_err(),
             "a pre-S8 profile must not silently acquire the stroke-ruled rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v2","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

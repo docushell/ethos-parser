@@ -2013,7 +2013,7 @@ pub(crate) mod tests {
             columns,
             cells: records,
             derivation: DerivationClass::Computed,
-            detection_rule: crate::TABLE_DETECTION_V2.to_string(),
+            detection_rule: crate::TABLE_DETECTION_V3.to_string(),
             locator_check: crate::LocatorCheck {
                 check_id: crate::LOCATOR_CHECK_V1.into(),
                 check_version: "1".into(),

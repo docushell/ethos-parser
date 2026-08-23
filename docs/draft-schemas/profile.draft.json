@@ -167,7 +167,7 @@
       "properties": {
         "ruled": {
           "type": "string",
-          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v2`. A rectangle spanning the whole lattice is the table’s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn."
+          "description": "Version id of the rule that reconstructs grids from rectangles the document painted. `ruled-rects-v3`. A rectangle spanning the whole lattice is the table’s border, so it is neither emitted as a cell nor accepted as evidence that a face was drawn. Since v2-S20 a grid whose own structural cross-check rejects it — a slot two rectangles both claim — is refused rather than emitted, and the refusal is declared with its page and fault counts."
         },
         "unruled": {
           "type": "string",
@@ -374,7 +374,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.35.0",
+      "parser_version": "0.36.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"
@@ -382,7 +382,7 @@
       "reading_order_rule": "gutter-columns-v1",
       "struct_tree_rule": "struct-tree-v1",
       "table_detection": {
-        "ruled": "ruled-rects-v2",
+        "ruled": "ruled-rects-v3",
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1"
       },

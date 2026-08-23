@@ -61,7 +61,7 @@ this table names the ones whose reason for existing is not obvious from the fixt
 | `absent-font-metrics` | M5 | A descriptor that exists and declares **no ink extent**, with the advance known |
 | `broken-font-encoding` | v0.1 | `/Differences` pointing at glyph names no table carries, so the run is dropped rather than turned into mojibake |
 | `ruled-table-grid` | v1-S1 | A 3×3 grid **drawn** with `re`, one merged cell and one empty cell — the ruled golden |
-| `ruled-table-overlap` | v1-S1 | Two rectangles claiming one lattice face, so the cross-check must report mismatch and repair nothing |
+| `ruled-table-overlap` | v1-S1 | Two rectangles claiming one lattice face. Until v2-S20 it proved the cross-check **reports** the mismatch and repairs nothing; since `ruled-rects-v3` it proves the rule **refuses** the grid and declares why, because the Markdown and HTML projections draw every table on the wire and read no check |
 | `unruled-near-miss` | v1-S2 | Columns that align on two rows and miss on the third by five points: **no table**, plus a named refusal |
 | `background-panel-not-a-grid` | v1-S7b | A filled background panel with three scattered bars: the panel covers every face their edges imply, so `ruled-rects-v1` called it a 7×7 table with 3 cells. The first engine fixture whose geometry is **filled** rather than stroked |
 | `both-table-rules` | v1-S2 | One painted grid and one aligned-text grid on a page, so the artifact carries two tables under two rule ids |

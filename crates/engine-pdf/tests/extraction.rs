@@ -1274,7 +1274,9 @@ fn a_cell_enclosing_no_text_is_empty_rather_than_filled_from_nearby() {
 /// rearrangement of text the document contains and can never be a novel string.
 #[test]
 fn every_cell_text_is_built_only_from_extracted_runs() {
-    for name in ["ruled-table-grid", "ruled-table-overlap"] {
+    // `ruled-table-overlap` left this list at v2-S20 for the reason given in
+    // `no_table_cell_carries_text_the_document_did_not_put_there`: it now emits no table.
+    for name in ["ruled-table-grid"] {
         let a = extract_ok(engine_fx(name));
         for page in &a.pages {
             let run_texts: Vec<&str> = page.runs.iter().map(|r| r.text.as_str()).collect();
@@ -1294,11 +1296,29 @@ fn every_cell_text_is_built_only_from_extracted_runs() {
     }
 }
 
-/// **The cross-check agrees on the golden**, and disagrees on the hostile fixture.
+/// **The cross-check agrees on the golden**, and the hostile fixture is REFUSED rather than
+/// emitted with its disagreement noted beside it (v2-S20).
+///
+/// # What this asserted until v2-S20, and why it changed
+///
+/// It asserted that `ruled-table-overlap` produced a table carrying a `Mismatch` — the engine
+/// saying, on the wire, *"two rectangles claim one face here and I have repaired nothing"*. That
+/// was the right posture while it was the only one available, and v2-S20 measured what it was
+/// worth: `engine_core::markdown` and `engine_core::html` project **every** table the artifact
+/// carries and consult no check, so the grid reached a reader of either projection and the
+/// disagreement reached nobody. On `nist-sp-800-218` that came to nine phantom grids of up to
+/// 103 x 22 and 11 295 false-positive cell slots, every one of them already flagged by this check
+/// and none of it acted on.
+///
+/// So the ruled rule now declines a grid whose **structural** half disagrees, and the fixture's
+/// job changes with it: it still proves the engine sees the double claim and still proves nothing
+/// is repaired to hide it, but the seeing is now a refusal on the artifact rather than a field
+/// beside a grid. `tables::tests::the_cross_check_still_sees_two_rectangles_claiming_one_slot`
+/// holds the check itself under test, and
+/// `tables::tests::near_edges_fold_into_one_lattice_line` holds the case that still emits with a
+/// `Mismatch`, so neither the check nor the wire state has been retired.
 #[test]
-fn the_locator_cross_check_reports_agreement_and_disagreement() {
-    use engine_core::CheckStatus;
-
+fn the_locator_cross_check_agrees_on_the_golden_and_the_hostile_grid_is_refused() {
     let good = extract_ok(engine_fx("ruled-table-grid"));
     let t = &good.pages[0].tables[0];
     assert_eq!(
@@ -1308,29 +1328,34 @@ fn the_locator_cross_check_reports_agreement_and_disagreement() {
         t.check
     );
     assert_eq!(t.check.check_id, engine_core::LOCATOR_CHECK_V1);
+    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V3);
 
-    // The hostile fixture draws overlapping rectangles. The engine must SAY so — and must not
-    // nudge a coordinate to make the grid tile.
+    // The hostile fixture draws overlapping rectangles. No table — and the artifact says why,
+    // rather than saying nothing, which is the distinction `ruled-table-candidate-refused` exists
+    // to keep.
     let bad = extract_ok(engine_fx("ruled-table-overlap"));
-    let hostile = bad
-        .pages
-        .iter()
-        .flat_map(|p| p.tables.iter())
-        .find(|t| !matches!(t.check.outcome, CheckStatus::Ok))
-        .expect("the overlap fixture must produce a mismatch");
+    let found: usize = bad.pages.iter().map(|p| p.tables.len()).sum();
+    assert_eq!(
+        found, 0,
+        "a grid whose own cross-check rejects it structurally must not reach the artifact"
+    );
 
-    match &hostile.check.outcome {
-        CheckStatus::Mismatch {
-            structural,
-            geometric,
-        } => {
-            assert!(
-                !structural.is_empty() || !geometric.is_empty(),
-                "a mismatch must name what disagreed"
-            );
-        }
-        other => panic!("expected a mismatch, got {other:?}"),
-    }
+    let refusal = bad
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == engine_core::codes::RULED_TABLE_CANDIDATE_REFUSED)
+        .expect("the refused candidate must be declared, not silently dropped");
+    assert!(
+        refusal.detail.contains("contradicts itself"),
+        "the refusal must name the precondition that failed: {}",
+        refusal.detail
+    );
+    assert!(
+        refusal.detail.contains("structural"),
+        "and carry what disagreed: {}",
+        refusal.detail
+    );
 }
 
 /// **Looked, found none.** A page whose text implies no grid produces an empty table list, not an
@@ -1433,7 +1458,7 @@ fn a_page_with_both_kinds_of_grid_records_both_rules() {
 
     let ruled = tables
         .iter()
-        .find(|t| t.rule == engine_core::TABLE_DETECTION_V2)
+        .find(|t| t.rule == engine_core::TABLE_DETECTION_V3)
         .expect("the painted grid must be found by the ruled rule");
     let unruled = tables
         .iter()
@@ -1494,7 +1519,7 @@ fn where_both_rules_could_fire_the_ruled_one_wins() {
     );
     assert_eq!(
         tables[0].rule,
-        engine_core::TABLE_DETECTION_V2,
+        engine_core::TABLE_DETECTION_V3,
         "the author drew this grid, so the author's derivation is the one kept"
     );
     assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
@@ -1842,9 +1867,13 @@ fn the_tax_form_does_not_become_an_alignment_lattice() {
 /// a novel string.
 #[test]
 fn no_table_cell_carries_text_the_document_did_not_put_there() {
+    // `ruled-table-overlap` was on this list until v2-S20 and is not any more: the ruled rule
+    // now refuses a grid whose structural cross-check rejects it, so that fixture emits no table
+    // and there is no cell here to check. It is not left in with a weakened assertion — a test
+    // that tolerates zero tables is a test that would keep passing if the detector stopped
+    // working. See `the_locator_cross_check_agrees_on_the_golden_and_the_hostile_grid_is_refused`.
     for fixture in [
         "ruled-table-grid",
-        "ruled-table-overlap",
         "both-table-rules",
         "ruled-wins-shared-region",
     ] {
@@ -2129,7 +2158,7 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
     let t = tables[0];
 
     assert_eq!((t.rows, t.columns), (2, 2));
-    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V2);
+    assert_eq!(t.rule, engine_core::TABLE_DETECTION_V3);
 
     let check = t
         .tagged_check
@@ -2558,7 +2587,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     let ruled = extract_ok(engine_fx("ruled-table-grid"));
     let rt: Vec<_> = ruled.pages.iter().flat_map(|p| p.tables.iter()).collect();
     assert_eq!(rt.len(), 1);
-    assert_eq!(rt[0].rule, engine_core::TABLE_DETECTION_V2);
+    assert_eq!(rt[0].rule, engine_core::TABLE_DETECTION_V3);
 
     // S3's four locator states, still four.
     let tagged = extract_ok(engine_fx("tagged-structure-roles"));

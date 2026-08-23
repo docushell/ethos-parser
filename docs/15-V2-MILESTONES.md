@@ -5052,6 +5052,172 @@ exactly as #16 and #17 were.
 
 ---
 
+## S20 — the nine grids the engine already rejects — **done**, as 0.36.0
+
+**A MINOR, and it REMOVES output.** `table_detection.ruled` moves `ruled-rects-v2` →
+`ruled-rects-v3`, so `profile_sha256` moves and an artifact this build writes for
+`nist-sp-800-218` carries **nine fewer tables and 1 028 fewer cells** than one 0.35.0 wrote for the
+same bytes. Two builds either side disagree about whether that document has tables, which is
+exactly the disagreement a versioned rule id exists to make legible.
+
+### The lead v2-S19 recorded and was forbidden to take
+
+S19's own words: *"There are exactly nine detected tables here, so the locator cross-check is
+rejecting every one of them. Nothing acts on that today."* Against **4** tagged tables that
+document emitted **9** grids of up to 103 × 22, contributing **11 295 false-positive cell slots** —
+more than the entire rest of the twelve-document corpus produces in either direction — and the
+engine had already computed, and already put on the artifact, the fact that each of the nine
+contradicted itself.
+
+**The attribution in the slice brief was wrong and it matters.** Those nine are **`ruled-rects`**,
+not `stroke-ruled-v1`. *"Built from the document's ruling lines"* describes the **ink**: this
+producer draws its rules as thin **filled** rectangles, so they arrive as `interp.rects` and fold
+into one lattice with everything else the page paints. Read off each table's `rule` field, all nine
+say `ruled-rects-v2`; every stroke-ruled and alignment table in the corpus cross-checks `ok`. The
+brief expected `stroke-ruled-v1 → stroke-ruled-v2` and that would have been the wrong id on the
+wrong rule.
+
+### All three options were measured on all twelve documents, and the gate cannot tell them apart
+
+| | keep and declare (0.35.0) | decline on the cross-check | tighten the ruled rule |
+| --- | --- | --- | --- |
+| **MACRO** | **70‰** | **70‰** | **70‰** |
+| `nist-sp-800-218` | 12 / 11 295 / 404 → 2‰ | 0 / 0 / 416 → **0‰** | 0 / 0 / 416 → **0‰** |
+| every other document | — | unchanged | unchanged |
+| band | 0‰..590‰, 9/12 zero | 0‰..590‰, **10/12** zero | identical |
+| cells emitted | 1 236 | 208 | 208 |
+| fabricated | **0** | **0** | **0** |
+| cross-check disagreements | 9 | 0 | 0 |
+| gold negatives | 0 tables | 0 tables | 0 tables |
+
+**Removing 11 295 false positives moves the published macro by nothing.** That is v2-S19's finding
+arriving from the other direction — an average over mostly zeros cannot see a document that was
+already at 2‰ — and it is why this decision is argued from the artifact rather than from the gate.
+`docs/table-gate-v1.md` §"v2-S20: the nine grids the engine already rejects" carries the whole
+argument; the three that decided it:
+
+1. **The declaration nothing reads.** `engine_core::markdown::plan_tables` and
+   `html::plan_tables` project **every** table in `payload.tables`, branching on `rows` and
+   `columns` and consulting no check. So "keep and declare" delivered nine GFM grids to a consumer
+   and delivered the contradiction to nobody — the v2-S12.1 / v2-S13.1 shape.
+2. **The cost is twelve cell slots and every one is the empty string.** All twelve sit on page 14
+   inside the 103 × 22 grid the join pairs with that page's tagged 72 × 4, and each is `""` — a
+   blank face agreeing with a blank tagged cell. **No character of extracted text is lost anywhere
+   in the corpus.** As a rate: 1 028 cells emitted and 11 307 slots predicted to get 12 right, one
+   per 941 wrong. This repository reverted a variant that was *"right about 5% of the cells it
+   emits"*.
+3. **Declining is the existing posture, not a new one.** `FaceWithoutRectangle`,
+   `LatticeTooLarge`, `ColumnLineNotStroked` and `FaceIsAFormFieldBox` all refuse and declare. The
+   refusal goes out through the same channel, `ruled-table-candidate-refused`, naming its page and
+   its fault counts. Nothing is deleted; the disagreement moves from a field beside a grid to a
+   refusal instead of a grid.
+
+### Only the STRUCTURAL half gates, and that was measured rather than reasoned
+
+Gating on the whole check was built first and it **refuses
+`tables::tests::near_edges_fold_into_one_lattice_line`** — a 2 × 2 whose only defect is one edge
+sitting a single centipoint out, which is what a 1 pt stroked rule looks like. The two halves are
+not the same kind of statement: `SlotFault` is arithmetic on indices the rule assigned and admits
+no tolerance, while `GeometricFault` compares **exact** boxes against a lattice built with
+`LATTICE_TOLERANCE` and so fires on the slop that tolerance exists to absorb.
+
+So the gate is the structural half alone, and that fixture now **emits, carrying a geometric-only
+`Mismatch`** — asserted, so `CheckStatus::Mismatch` stays a state an emitted table can be in
+rather than one this slice retired by construction.
+
+### The gate is in one rule because it can only fire in one rule
+
+`stroke-ruled-v1` and `unruled-align-v1` build a cell for **every** face of their lattice, from the
+same lines the table's box comes from, so their cells tile exactly, never overlap and never reach
+outside — their cross-check is `Ok` by construction and gating them would be dead code.
+`tables::tests::the_other_two_rules_build_a_cell_for_every_face` runs both and asserts it, rather
+than a comment claiming it.
+
+### What it cost, stated rather than absorbed
+
+**A shipped fixture changed its job.** `ruled-table-overlap` proved the engine emits a
+self-contradicting grid and says so; it now proves the engine refuses one and says why. Two tests
+in `crates/engine-pdf/tests/extraction.rs` moved with it and its row in `fixtures/README.md` is
+rewritten. `tables::tests::the_cross_check_still_sees_two_rectangles_claiming_one_slot` holds the
+check under test now that no artifact can.
+
+**And a CI job filter went stale with it, which v2-S18's guard caught rather than a reviewer.**
+`ci.yml`'s `v1s1-cross-check` job selected on the token `overlapping_rectangles`, which after the
+rename matches no test libtest can select — so that job would have reported `ok. 0 passed`: green,
+and having checked nothing. `no_job_filter_selects_zero_tests` failed the gate instead. The filter
+now names the two tests that replaced it plus `build_a_cell_for_every_face`, and the job's `gate:`
+line says what it proves now: a structural disagreement **refuses** the grid, and the refusal is
+reported.
+
+**And the corpus report lost a distinction.** `cross_check_disagreements` reads 0 on all twelve and
+is structurally 0 for emitted tables; a reader of the printed report alone can no longer tell
+`nist-sp-800-218` from the nine documents that detect nothing. A reader of the **artifact** can.
+That trade is argued in `table-gate-v1.md` and named in `accuracy.rs`'s header so the column is not
+read as the detector agreeing with itself.
+
+### The metric gap, named and not built
+
+**Fabrication is 0 while the engine emits a 103 × 22 grid that does not exist**, and that is
+correct by the counter's definition: every cell's text is runs the page drew. **The counter
+protects invented text and says nothing about invented structure.** It read 0 through all nine and
+would have read 0 through ninety. Named in `table-gate-v1.md` and **not** repaired — a
+structural-fabrication measure is a second metric, forbidden here, and a metric introduced in the
+same commit as the detector change it would score is the edit that document exists to prevent.
+
+### Escalations — restated, not settled
+
+**1. Decision #18 — what v1's table number is.** Written at v2-S19, marked NOT settled, explicitly
+outside §2's *"these are settled"*. The recommendation on record is to close v1 on an honest
+capability statement plus the band rather than the macro, and **this slice's measurements feed it
+without deciding it**: the macro is unchanged at 70‰, the band's zero count went 9 → 10, and the
+lead #18 named as *"the first lead if the chase re-opens"* has now been taken. What that leaves for
+the owner is unchanged and slightly sharper — the capability statement *"detects ruled tables where
+the producer drew the rules; emits nothing otherwise; fabricates nothing"* is now true of ten
+documents rather than nine.
+
+**2. v2.2 or v3.** Restated unchanged. **There is no `16-V22-SCOPE.md`.** v2.2 means emitting a
+modified PDF; this engine has never written a document — the only `write_*` functions in the tree
+are JSON canonicalization — and that is a posture change before it is a format. The first thing
+that scope document must argue is whether this engine may write a document at all.
+
+**3. P9 — vendored CMap tables.** Restated unchanged. `06-STEAL-REFUSE.md`'s TAKE table carries
+`| P9 | Vendored CMap tables | pdf-inspector | v0 |`. The column is **Target**, not status; v0 is
+frozen and complete and the CMaps were **deliberately not carried**, argued in `vendor/README.md`
+with one refused by name. **Nothing records that deferral.** Named at v2-S13.3 and restated at
+S13.4, S13.5, S14, S16 and S19.
+
+### Scope refused
+
+**No second metric** — the structural-fabrication gap is named, not built. **No new threshold and
+no new constant**: the precondition reads a check the engine already computed. **No corpus change**
+— the twelve documents and their digests are untouched, so the number moved because the detector
+moved and nothing else. **No `REPRESENTATION_SCHEMA_VERSION` move**: `CheckStatus::Mismatch` is
+still a state the wire can carry and a fixture still produces one.
+
+- **Acceptance — all met:**
+  - [x] **All three options measured on all twelve documents**, reported per document with TP, FP,
+        F1 and cross-check disagreements, and the chosen one argued against the other two —
+        `table-gate-v1.md` §"v2-S20"
+  - [x] **Every true-positive loss named with the document and the table**: 12 cell slots, all on
+        `nist-sp-800-218` page 14 inside the 103 × 22 joined to that page's tagged 72 × 4, and
+        **every one of them the empty string**. No other document loses a slot
+  - [x] **Fabrication still 0 on all twelve**, measured by
+        `no_emitted_cell_contains_text_the_page_did_not_draw`
+  - [x] The **metric gap named** in `table-gate-v1.md`: fabrication protects invented text, not
+        invented structure. Named, not built
+  - [x] **Line 3's stale `64‰` repaired** in the register — what it is, what it was, and that it
+        stopped being true at v2-S19 — with the note that the macro is the least informative true
+        statement about this corpus
+  - [x] **A rule id moved because rule behaviour moved**: `ruled-rects-v2` → `ruled-rects-v3`.
+        `stroke-ruled-v1` and `unruled-align-v1` are byte-identical and keep their ids, because
+        their cells tile by construction and neither could reach the new precondition
+  - [x] `the_committed_labels_still_match_the_documents` **green** — the truth still re-derives
+  - [x] Workspace **0.36.0**. `ci/gate.sh` exits 0. **No git tag**
+
+- **Depends on:** S19 (the corpus that produced the lead).
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

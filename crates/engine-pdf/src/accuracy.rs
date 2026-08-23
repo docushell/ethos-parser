@@ -33,20 +33,35 @@
 //!
 //! S7a stored `{page, rows, columns, cells}`, so it could measure page-level agreement and nothing
 //! finer. S7b put the cells in, with the text the structure tree binds to each one, and the gate is
-//! macro-averaged cell-slot F1 over the four real documents. The published method — corpus,
-//! formula, join, whitespace rule, and why the number is **not** comparable to the 0.489 it is
-//! named after — is `docs/table-gate-v1.md`. It currently reads **64‰**, and that is a miss.
+//! macro-averaged cell-slot F1 over the real documents — four until v2-S19, twelve since. The
+//! published method — corpus, formula, join, whitespace rule, and why the number is **not**
+//! comparable to the 0.489 it is named after — is `docs/table-gate-v1.md`. Read the number off
+//! `the_corpus_is_measured_and_the_numbers_are_reported`, not off any sentence here: this comment
+//! said `64‰` for two slices after that stopped being true, which is the failure mode a number
+//! written in prose has and a measured one does not.
 //!
-//! **The chase for 0.489 is parked** (`docs/00-NORTH-STAR.md` #10, 2026-08-19): 64‰ is this engine
-//! on four tagged PDFs this repository owns, 0.489 is a published score on somebody else's corpus,
+//! # `cross_check_disagreements` is structurally 0 since v2-S20, and that is not the check passing
+//!
+//! It counts tables whose `LocatorCheck` did not come back `ok`. Since `ruled-rects-v3` a grid
+//! whose **structural** half disagrees is refused rather than emitted, and the other two rules
+//! build a cell per face so their check cannot fail at all — so no emitted table can carry a
+//! structural mismatch and this column reads 0 by construction. The number that moves instead is
+//! `detected`: `nist-sp-800-218` went from nine tables to none, and the nine refusals are on the
+//! artifact as `ruled-table-candidate-refused` with their pages and fault counts. Reading this
+//! column as *"the detector agrees with itself"* would be reading a gap as a success.
+//!
+//! **The chase for 0.489 is parked** (`docs/00-NORTH-STAR.md` #10, 2026-08-19): the gate is this
+//! engine on tagged PDFs this repository owns, 0.489 is a published score on somebody else's corpus,
 //! and they are the same unit on a different exam. Nothing below changes — the measurement, the
 //! comparator constant and the printed verdict all stay — because parking a chase is not passing
 //! it, and the number is more useful written down than argued about.
 //!
 //! **61‰ was S7b's number**, under `ruled-rects-v2` alone. v1-S8 shipped `stroke-ruled-v1` and
 //! moved it to 64‰ — the rise is `cfpb-home-loan-toolkit` alone, 246‰ to 259‰, while
-//! `irs-form-1040-2025` contributes 0‰ on both sides. This sentence lagged that slice by two
-//! versions, which is the failure mode a number written in prose has and a measured one does not:
+//! `irs-form-1040-2025` contributes 0‰ on both sides. v2-S19 then measured twelve documents at
+//! 70‰, and v2-S20 removed 11 295 false-positive cell slots without moving it at all. This
+//! sentence lagged v1-S8 by two versions, which is the failure mode a number written in prose has
+//! and a measured one does not:
 //! `the_cell_gate_is_measured_and_its_verdict_is_recorded` asserts the VERDICT against
 //! `GATE_PERMILLE` and prints the figure, so the gate cannot silently clear — but nothing makes a
 //! doc comment keep up. Read the number off that test's output, not off this line.

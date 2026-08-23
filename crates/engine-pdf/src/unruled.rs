@@ -17,7 +17,7 @@
 //! # A different rule, not a wider one
 //!
 //! `crate::tables` reconstructs a grid the author *drew*. This one infers a grid from where the
-//! author *put text*. They are pinned under different ids — `ruled-rects-v2` and
+//! author *put text*. They are pinned under different ids — `ruled-rects-v3` and
 //! [`engine_core::TABLE_DETECTION_UNRULED_V1`] — and every table on the wire names the one that
 //! produced it, because "the document drew this grid" and "we decided this was a grid" are
 //! claims of very different strength and a consumer is entitled to tell them apart.

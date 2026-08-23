@@ -7,7 +7,155 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0
+
+### v2-S20 — the nine grids the engine already rejects, as 0.36.0
+
+**A MINOR, and it REMOVES output.** `table_detection.ruled` moves from `ruled-rects-v2` to
+**`ruled-rects-v3`**, so `profile_sha256` moves, and an artifact this build writes for
+`nist-sp-800-218` carries **nine fewer tables and 1 028 fewer cells** than one 0.35.0 wrote for the
+same bytes. Two builds either side disagree about whether that document has any table at all, which
+is exactly what a versioned rule id exists to make legible.
+
+#### Changed — a grid whose own structural cross-check rejects it is refused, not emitted
+
+v2-S19 recorded the lead and was forbidden to take it: against **4** tagged tables,
+`nist-sp-800-218` emitted **9** grids of up to 103 × 22 contributing **11 295 false-positive cell
+slots** — more than the entire rest of the twelve-document corpus produces in either direction —
+and *"the locator cross-check is rejecting every one of them. Nothing acts on that today."*
+
+Something acts on it now. `detect_ruled` refuses a lattice whose `geometric-vs-structural-v1`
+check comes back with a **structural** fault, and the refusal is declared: page and fault counts,
+through `ruled-table-candidate-refused`, the channel this rule's other two refusals already use.
+
+**The attribution in the lead was wrong, and it decided which rule to change.** Those nine are
+`ruled-rects`, not `stroke-ruled-v1`. *"Built from the document's ruling lines"* describes the
+**ink** — this producer draws rules as thin **filled** rectangles, so they arrive as `interp.rects`
+and fold into one lattice with everything else the page paints. Read off each table's own `rule`
+field, all nine say `ruled-rects-v2`, and every stroke-ruled and alignment table in the corpus
+cross-checks `ok`.
+
+#### The measurement, which is the finding
+
+All three options were built and run on all twelve documents:
+
+|                              | keep and declare (0.35.0) | decline on the cross-check | tighten the ruled rule |
+| ---                          | ---                       | ---                        | ---                    |
+| **MACRO cell-F1**            | **70‰**                   | **70‰**                    | **70‰**                |
+| `nist-sp-800-218`            | 12 / 11 295 / 404 → 2‰    | 0 / 0 / 416 → **0‰**       | 0 / 0 / 416 → **0‰**   |
+| every other document         | —                         | unchanged                  | unchanged              |
+| band                         | 0‰..590‰, 9/12 zero       | 0‰..590‰, **10/12** zero   | identical              |
+| cells emitted                | 1 236                     | 208                        | 208                    |
+| **fabricated cells**         | **0**                     | **0**                      | **0**                  |
+| cross-check disagreements    | 9                         | 0                          | 0                      |
+| gold negatives               | 0 tables                  | 0 tables                   | 0 tables               |
+
+**Removing 11 295 false-positive slots moves the published macro by exactly nothing.** That is not
+evidence the change did nothing — it is v2-S19's own finding arriving from the other direction. An
+average over mostly zeros cannot see a document that was already at 2‰, so a number that survives
+both the presence and the absence of the worst over-detection this engine has produced is not the
+number that can decide it. Detection precision, which can see it, goes **653‰ → 941‰** and detected
+tables **26 → 17**.
+
+#### Why declining, argued from the artifact
+
+**The declaration nothing reads.** Every table already carried its `LocatorCheck`, and on those
+nine it said `Mismatch` with the faults enumerated. But `engine_core::markdown::plan_tables` and
+`engine_core::html::plan_tables` project **every** table in `payload.tables`, branching only on
+`rows` and `columns` and consulting no check anywhere — so a consumer of either projection received
+nine GFM grids of up to 103 × 22 and received no warning at all. A disclosure that no reader of the
+thing being disclosed about can see is a disclosure in name only, which is the v2-S12.1 / v2-S13.1
+shape.
+
+**Declining is the existing posture.** `FaceWithoutRectangle`, `LatticeTooLarge`,
+`ColumnLineNotStroked` and `FaceIsAFormFieldBox` all refuse a candidate and declare why. Nothing is
+deleted here either: the disagreement moves from a field beside a grid to a refusal instead of a
+grid.
+
+#### The cost — twelve cell slots, and all twelve are the empty string
+
+Declining loses `nist-sp-800-218`'s entire true-positive contribution, which is why its F1 goes
+2‰ → 0‰. All twelve slots sit on **page 14**, inside the **103 × 22** grid the join pairs with that
+page's tagged **72 × 4**, and **every one of them is `""`** — a blank face of a phantom grid
+agreeing with a blank tagged cell. **Not one character of extracted text is lost anywhere in the
+corpus**: `cfpb-home-loan-toolkit` keeps all 44 of its true positives and `irs-fw9` all 26.
+
+As a rate the twelve are not a capability: that document emitted 1 028 cells and predicted 11 307
+slots to get 12 right — **one right slot per 941 wrong**. This repository already reverted a variant
+that was *"right about 5% of the cells it emits"*.
+
+#### Only the STRUCTURAL half gates, and that was measured, not reasoned
+
+Gating on the whole check was built first, and it **refuses**
+`tables::tests::near_edges_fold_into_one_lattice_line` — a 2 × 2 whose only defect is one edge
+sitting a single centipoint out, which is what a 1 pt stroked rule looks like. The halves are not
+the same kind of statement: `SlotFault` is arithmetic on the row/column indices the rule assigned
+and admits no tolerance, while `GeometricFault` compares **exact** boxes against a lattice built
+with `LATTICE_TOLERANCE` and therefore fires on the slop that tolerance exists to absorb.
+
+So the gate is the structural half alone, and that fixture now emits **carrying a geometric-only
+`Mismatch`**, asserted — so `CheckStatus::Mismatch` stays a state an emitted table can be in rather
+than one this slice retired by construction.
+
+#### One rule, because only one rule can fail this check
+
+`stroke-ruled-v1` and `unruled-align-v1` build a cell for **every** face of their lattice, from the
+same lines the table's own box comes from, so their cells tile exactly, never overlap and never
+reach outside it. Their cross-check is `Ok` by construction and gating them would be dead code.
+Both ids are **byte-identical** and unchanged.
+`tables::tests::the_other_two_rules_build_a_cell_for_every_face` runs both rules and asserts the
+property, rather than a comment claiming it.
+
+#### Changed — one shipped fixture's job, and two tests with it
+
+`ruled-table-overlap` existed to prove the engine emits a self-contradicting grid and says so. It
+now proves the engine **refuses** one and says why. Its row in `fixtures/README.md` is rewritten,
+`the_locator_cross_check_reports_agreement_and_disagreement` becomes
+`the_locator_cross_check_agrees_on_the_golden_and_the_hostile_grid_is_refused`, and the fixture
+leaves two cell-text sweeps rather than staying in them with a weakened assertion — a test that
+tolerates zero tables is a test that keeps passing when the detector stops working.
+`tables::tests::the_cross_check_still_sees_two_rectangles_claiming_one_slot` holds the check itself
+under test now that no artifact can.
+
+#### Fixed — a CI job filter the rename left selecting nothing
+
+`.github/workflows/ci.yml`'s `v1s1-cross-check` job filtered on the token
+`overlapping_rectangles`. After the rename that token matches no test libtest can select, so the
+job would have run `ok. 0 passed` — **green, and having checked nothing.** v2-S18's
+`no_job_filter_selects_zero_tests` failed `ci/gate.sh` instead of letting it through, which is the
+whole reason that guard exists. The filter now names the two tests that replaced the old one and
+`build_a_cell_for_every_face`, and the job's `gate:` description says what it proves now rather
+than what it proved before: a structural disagreement **refuses** the grid, and the refusal is
+reported.
+
+#### Fixed — `docs/table-gate-v1.md` line 3 said 64‰ while its own body said 70‰
+
+The headline had been stale since **v2-S19**, which measured twelve documents at 70‰ and wrote that
+into `00-NORTH-STAR.md` #10, `07-VERIFY-BOUNDARY.md` and this document's own result section — and
+left the first paragraph saying something else. A document whose summary contradicts its body is
+worse than one merely out of date, because the reader who stops at the summary is misinformed by
+the part written to save them the reading. Repaired in the register, with the note that **70‰ is
+the least informative true statement about this corpus** — band 0‰..590‰, median 0‰, ten of twelve
+at zero, and 23‰ without `irs-fw9` alone.
+
+#### Named, not built — the gap in the fabrication counter
+
+**Fabrication is 0 while the engine emits a 103 × 22 grid that does not exist**, and that is correct
+by the counter's own definition: every cell's text is a concatenation of runs the page actually
+drew. **It protects invented text and says nothing about invented structure.** It read 0 through all
+nine grids and would have read 0 through ninety. Standing rule 5 says a gap is never presented as a
+success, so it is stated in `table-gate-v1.md` and **not** repaired: a structural-fabrication
+measure is a second metric, this slice is forbidden one, and a metric introduced in the same commit
+as the detector change it would score is the edit that document exists to make impossible.
+
+#### And what the corpus report stopped being able to say
+
+`cross_check_disagreements` now reads **0** on all twelve and is structurally 0 for emitted tables.
+That is the check being enforced, not the check finding nothing, and `accuracy.rs`'s header says so
+in as many words so the column is never read as the detector agreeing with itself. A reader of the
+printed report alone can no longer tell `nist-sp-800-218` from the nine documents that detect
+nothing; a reader of the **artifact** can, because the nine refusals are on it with their pages and
+fault counts.
 
 ### v2-S19 — the corpus that was never grown, as 0.35.0
 

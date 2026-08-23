@@ -411,8 +411,8 @@ jobs:
             run: "cargo test --workspace --locked -- tables:: ruled_grid cell_enclosing_no_text every_cell_text_is_built_only_from_extracted_runs implies_no_grid"
 
           - id: v1s1-cross-check
-            gate: "geometric vs structural derivations compared, and disagreement reported"
-            run: "cargo test --workspace --locked -- locator_cross_check overlapping_rectangles the_cover_sees_no_geometry a_merged_cell_occupies"
+            gate: "geometric vs structural derivations compared; a structural disagreement refuses the grid, and the refusal is reported (v2-S20)"
+            run: "cargo test --workspace --locked -- locator_cross_check two_rectangles_claiming_one_slot cross_check_rejects_is_refused build_a_cell_for_every_face the_cover_sees_no_geometry a_merged_cell_occupies"
 
           - id: v1s1-capability
             gate: "capabilities.tables is true, proved, and partnered by its scope limitation"

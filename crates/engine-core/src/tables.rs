@@ -323,7 +323,7 @@ pub struct TableRecord {
     /// Always `Computed`: the ruling lines and the text are Extracted, and the grid, the indices,
     /// the spans and the concatenation are an inference over them (`docs/01-CONTRACT.md` §6).
     pub derivation: crate::derivation::DerivationClass,
-    /// **Which rule found this table** — `ruled-rects-v2`, `unruled-align-v1` or
+    /// **Which rule found this table** — `ruled-rects-v3`, `unruled-align-v1` or
     /// `stroke-ruled-v1` (v1-S2, S7b, S8).
     ///
     /// This named **two** from v1-S7b until v2-S13.5. `stroke-ruled-v1` shipped at v1-S8 and is
@@ -335,7 +335,7 @@ pub struct TableRecord {
     ///
     /// | Value | What the document did | What the engine did |
     /// | --- | --- | --- |
-    /// | `ruled-rects-v2` | painted the grid | read it |
+    /// | `ruled-rects-v3` | painted the grid | read it |
     /// | `unruled-align-v1` | placed text in columns | inferred it |
     /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells |
     ///
