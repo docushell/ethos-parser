@@ -7,7 +7,70 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2
+
+### v2-S22 — why ten documents produce nothing, as 0.36.2
+
+**A PATCH, and a diagnostic that changes no detector.** The canonical default profile differs from
+0.36.1's in `parser_version` and nothing else — `the_default_profile_is_pinned` asserts the JSON and
+only that field moved — so no rule id, tolerance or profile field changed. This slice answers *why*
+ten of the twelve gate documents score exactly 0‰ and ships no fix, which is a complete slice: this
+repository has five measured dead ends on detector work done before anyone measured.
+
+#### Added — a per-gold-table diagnostic, reusing the harness rather than a second one
+
+`crate::extract::per_page_table_diagnostics` (`cfg(test)`) runs the same per-page ink transform
+`extract` runs and the same `crate::tables::detect`, and keeps the typed `Detected` the artifact
+otherwise folds into a limitation string. `accuracy::tests::the_ten_documents_where_nothing_is_detected`
+joins it to each document's own gold tables — reusing `CORPUS`, `corpus_bytes` and `label` — and
+reports, per gold table: ink present, candidate produced, rejecting precondition. It is deliberate-run
+and cross-checks its emitted tables against `extract`'s, so the mirror cannot drift silently.
+
+#### Added — a standing count and micro recall, off the walk that already exists
+
+`Score::unruled_detected` counts the alignment rule's emissions off the real `extract` run.
+`the_corpus_is_measured` now prints it, prints **micro recall** beside the macro, and asserts the
+count is zero — so the finding below cannot lapse silently.
+
+#### The finding: the alignment rule has produced no table on any real document
+
+**`unruled-align-v1` emitted 0 tables across all 172 gold tables.** Every one of the 17 detections —
+8 ruled, 9 stroke-ruled — is on the two documents that draw their grids, `cfpb-home-loan-toolkit` and
+`irs-fw9`. The four-document corpus had recorded *"the alignment rule emits none at all"*; twelve
+documents make it a much stronger claim, and it holds. The engine ships a rule id, a profile field and
+a slice of machinery that has never produced a table on a real document.
+
+The report names the precondition, uniformly: on **every gold page in all twelve documents** the
+alignment rule refuses at `GutterBelowFloor { columns: true, gap: 151..1132, floor: 1200 }` — the
+text's columns sit closer than the 12 pt gutter, which is prose spacing, not a table gap. That is
+step 2, three steps before the whole-page lattice a prior reading described. The ten that detect
+nothing draw either NIST-style shading rectangles that cover no coherent grid
+(`ruled = FaceWithoutRectangle`) with no stroked rows, or IRS-form partial grids
+(`stroke = ColumnLineNotStroked`, or form-field boxes).
+
+#### The numbers
+
+| | 12 documents (0.36.2) |
+| --- | --- |
+| Macro cell-F1 | 70‰ |
+| **Micro recall** | **4‰** (70 of 15 755 gold slots) |
+| Documents scoring 0‰ | 10 of 12 |
+| Tables emitted (ruled / stroke / **alignment**) | 8 / 9 / **0** |
+| Fabricated cells | 0 |
+
+#### The recommendation, named not taken
+
+**v1's remaining gap is not the alignment rule** — it cannot fire without lowering a gutter floor the
+gold negatives prove is load-bearing, so retiring or reworking it is a version-boundary question,
+named for the owner. The gap is that the two working rules require the producer to have *drawn* the
+grid, and the NIST producers draw their tables without one; recovering the ~15 500 missed slots needs
+a new derivation class, not a v1 tuning. Full argument in `docs/table-gate-v1.md` §"v2-S22".
+
+#### Escalations — restated, not settled
+
+Decision #18 (what v1's table number is — micro recall 4‰ is the sharpest framing, the owner's call);
+v2.2 or v3 (no `16-V22-SCOPE.md`; emitting a modified PDF is a posture change before a format); P9
+(vendored CMap tables, deferral still unrecorded).
 
 ### v2-S21 — the mutation that missed, as 0.36.1
 

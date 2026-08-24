@@ -5368,6 +5368,110 @@ rests on.
 
 ---
 
+## S22 — why ten documents produce nothing — **done**, as 0.36.2
+
+**A PATCH, and a diagnostic that changes no detector.** The canonical default profile differs from
+0.36.1's in `parser_version` and nothing else — `the_default_profile_is_pinned` asserts the JSON and
+only the version field moved — so no rule id, tolerance or profile field changed. This slice answers
+*why* ten of the twelve gate documents score exactly 0‰, and ships no fix, which is a complete slice
+here: this repository has five measured dead ends on detector work done by people who fixed before
+they measured.
+
+### The question, stated so it could not be answered by guessing
+
+v2-S20 raised detection precision to 941‰ and did not move the macro, exposing what the macro had
+hidden since v1-S7b: **ten of the twelve documents detect no table at all** — 0 TP, 0 FP, no wrong
+table, no table. The macro of 70‰ is two documents carrying ten. The 0.489 question could never have
+moved this, and neither could a threshold: something upstream of scoring emits no candidate. So, per
+gold table on the ten: what ink does the page carry, which rule built a candidate, and which
+precondition rejected it?
+
+### The instrument, reusing the harness rather than a second one
+
+`crate::extract::per_page_table_diagnostics` (`cfg(test)`) runs the same per-page ink transform
+`extract` runs and the same `crate::tables::detect`, and keeps the typed `Detected` the artifact
+folds into a limitation string. `accuracy::tests::the_ten_documents_where_nothing_is_detected` joins
+it to each document's own gold tables — reusing `CORPUS`, `corpus_bytes` and `label`, the harness
+that already walks the corpus and derives the gold — and reports per gold table. It is deliberate-run
+and cross-checks its own emitted tables against `extract`'s, so the mirror cannot drift silently. The
+standing count rides the walk that already exists: `Score::unruled_detected` counts the alignment
+rule's emissions off the real `extract` run, and `the_corpus_is_measured` prints it, prints micro
+recall beside the macro, and asserts the count is zero.
+
+### What it found
+
+**`unruled-align-v1` emitted 0 tables across all 172 gold tables.** Every detection — 8 ruled,
+9 stroke-ruled, 17 in total — is on the two documents that draw their grids, `cfpb-home-loan-toolkit`
+and `irs-fw9`. The four-document corpus had recorded *"the alignment rule emits none at all"*; twelve
+documents make it a much stronger claim, and it holds. The engine ships a rule id, a profile field
+and a slice of machinery that has never produced a table on a real document.
+
+**And the report names the precondition, uniformly.** On every gold page in all twelve documents the
+alignment rule refuses at `GutterBelowFloor { columns: true, gap: 151..1132, floor: 1200 }` — the
+text's own columns sit closer than the 12 pt gutter, which is prose spacing, not a table gap. That is
+step 2 of the rule; it never reaches the whole-page lattice that §"Why the number is what it is"
+described at step 6. The ten that detect nothing draw either NIST-style shading rectangles that cover
+no coherent grid (`ruled = FaceWithoutRectangle`) with no stroked rows, or IRS-form partial grids
+(`stroke = ColumnLineNotStroked`, or form-field boxes). `nist-sp-800-218` page 14 is the one v2-S20
+case that survives as a structural refusal (`CrossCheckRejected { structural: 1028, geometric: 127 }`).
+
+### The recommendation, named not taken
+
+**v1's remaining gap is not the alignment rule.** It has never fired and cannot without lowering a
+floor the gold negatives prove is load-bearing, so retiring or reworking it is a version-boundary
+question, named for the owner. The gap is that the two working rules require the producer to have
+drawn the grid, and the NIST producers draw their tables without one — recovering the ~15 500 missed
+slots needs a derivation that reads geometry from the tags or from column inference, a new derivation
+class rather than a v1 tuning. The full argument and the per-document table are in
+`docs/table-gate-v1.md` §"v2-S22".
+
+### Escalations — restated, not settled
+
+**1. Decision #18 — what v1's table number is.** Written at v2-S19, marked NOT settled. This slice
+feeds it the sharpest framing yet without deciding it: **micro recall is 4‰** — 70 of 15 755 gold
+slots — and the owner should decide against the framing *"finds a table on two of twelve documents"*,
+which is the same corpus as *"70‰ macro"*, not against the macro. The choice is the owner's; this
+slice states the number and stops.
+
+**2. v2.2 or v3.** Restated unchanged. **There is no `16-V22-SCOPE.md`.** v2.2 means emitting a
+modified PDF, and this engine has never written a document — a posture change before it is a format.
+
+**3. P9 — vendored CMap tables.** Restated unchanged. `06-STEAL-REFUSE.md`'s TAKE table carries it
+with column **Target** v0; v0 is frozen and the CMaps were deliberately not carried, argued in
+`vendor/README.md`. **Nothing records that deferral.** Named at v2-S13.3 and restated since.
+
+### Scope refused
+
+**No detector, rule id, tolerance or profile field changed** — proven by the pinned profile. **No
+second metric**: micro recall is the macro's own cell slots pooled, not a new gate, and there is no
+verdict on it. **No corpus change** — the twelve documents and their digests are untouched. **No
+`REPRESENTATION_SCHEMA_VERSION` move, no new fixture, no reader behaviour change**: the diagnostic is
+`cfg(test)` and never enters the shipped graph.
+
+- **Acceptance — all met:**
+  - [x] **Per-document, per-gold-table report for all ten zero-scoring documents** — ink present,
+        candidate produced, rejecting precondition — by
+        `the_ten_documents_where_nothing_is_detected`, recorded in `table-gate-v1.md` §"v2-S22"
+  - [x] **Direct answer to "does `unruled-align-v1` fire on the twelve?" with the count**: **zero**,
+        of 172 gold tables. `Score::unruled_detected` counts it off the real run and
+        `the_corpus_is_measured` asserts it stays zero
+  - [x] **Micro recall stated beside the macro** in `table-gate-v1.md`'s headline and printed by the
+        measurement test: **4‰**, 70 of 15 755 slots, where the macro reads 70‰
+  - [x] **A named recommendation for v1's remaining gap, with the evidence** — the alignment rule is
+        a version-boundary question, and the gap is the two working rules requiring drawn grids
+  - [x] **No detector, rule id, tolerance or profile field changed** — the canonical profile differs
+        from 0.36.1's only in `parser_version`, proven by `the_default_profile_is_pinned`
+  - [x] **Fabrication still 0; labels still re-derive; gold negatives still clean** —
+        `no_emitted_cell_contains_text_the_page_did_not_draw`,
+        `the_committed_labels_still_match_the_documents`,
+        `the_gold_negatives_still_have_no_geometric_table`
+  - [x] Workspace **0.36.2**. `ci/gate.sh` exits 0. **No git tag**
+
+- **Depends on:** S19 (the twelve-document corpus) and S20 (which exposed the ten zeros by removing
+  the false positives that were hiding one of them).
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

@@ -817,6 +817,160 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     })
 }
 
+/// One page's table-detection evidence, exposed for the v2-S22 diagnostic (`cfg(test)`).
+///
+/// The ink the three rules read, and the [`crate::tables::Detected`] they produced — the typed
+/// refusals and rule ids that `extract` above folds into a page-grouped limitation *string* and
+/// the artifact then carries only as prose. `docs/table-gate-v1.md`'s v2-S22 question is per gold
+/// table — *what ink does this page carry where a gold table is, and which precondition rejected
+/// it* — and prose grouped by page cannot answer it without being parsed back into structure.
+#[cfg(test)]
+pub(crate) struct PageTableDiagnostic {
+    /// 1-based page.
+    pub page: u32,
+    /// Rectangles the page painted (`interp.rects`), which is the ruled rule's whole evidence.
+    /// Filled cell boxes and thin stroked-line rectangles both arrive here.
+    pub rects: usize,
+    /// Horizontal ruling segments (`interp.segments`), the stroke-ruled rule's rows.
+    pub horizontal_segments: usize,
+    /// Vertical ruling segments, which that rule reads only as column corroboration.
+    pub vertical_segments: usize,
+    /// Form-field widget rectangles, which the stroke-ruled rule excludes as field boxes.
+    pub field_rects: usize,
+    /// What the three rules produced here: the emitted tables and each rule's refusal, if any.
+    pub detected: crate::tables::Detected,
+}
+
+/// **Run the per-page table pipeline and return its structured result** (`cfg(test)`, v2-S22).
+///
+/// It changes nothing about detection. It runs the SAME per-page ink transform `extract` runs —
+/// `interp.rects` and `interp.segments` through the SAME `geom.to_top_left` and quantum as a glyph
+/// origin — and calls the SAME [`crate::tables::detect`]. The only thing it does that `extract`
+/// does not is *keep* the typed `Detected` instead of discarding it into a limitation string.
+///
+/// It is `cfg(test)`, so it never enters the shipped graph and cannot move `profile_sha256`. It is
+/// a **mirror** of the block inside `extract`, and a mirror can drift: `accuracy::tests`'s
+/// `the_ten_documents_where_nothing_is_detected` cross-checks the tables this returns against
+/// `extract`'s own artifact, so a divergence is a test failure rather than a silently wrong report.
+#[cfg(test)]
+pub(crate) fn per_page_table_diagnostics(
+    doc: &Document,
+    profile: &Profile,
+) -> Result<Vec<PageTableDiagnostic>, EngineError> {
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "profile".into(),
+            detail: e.to_string(),
+        })?;
+    let mut alloc = IdAllocator::new(profile_sha256);
+    let mut out = Vec::with_capacity(doc.pages().len());
+
+    for &(page_number, page_id) in doc.pages() {
+        let page_dict =
+            doc.inner()
+                .get_dictionary(page_id)
+                .map_err(|e| EngineError::Malformed {
+                    what: "page dictionary".into(),
+                    detail: e.to_string(),
+                })?;
+        let geom = PageGeometry::resolve(doc, page_dict)?;
+        let fonts = load_page_fonts(doc.inner(), page_dict)?;
+        let content = doc.inner().get_page_content(page_id);
+        let decoded =
+            lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
+                what: "content stream".into(),
+                detail: format!("page {page_number}: {e}"),
+            })?;
+        let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
+        let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
+        interp.run(&decoded.operations)?;
+
+        // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
+        // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
+        let mut owned: Vec<(i64, i64, String)> = Vec::with_capacity(interp.shown.len());
+        for shown in &interp.shown {
+            if shown.text.is_empty() {
+                continue;
+            }
+            let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
+            let origin_x = quantize(ox_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
+            let origin_y = quantize(oy_pt, QUANTUM_PER_POINT).map_err(quantize_err)?;
+            owned.push((origin_x, origin_y, shown.text.clone()));
+        }
+        let origins: Vec<crate::tables::RunOrigin<'_>> = owned
+            .iter()
+            .map(|(x, y, t)| crate::tables::RunOrigin {
+                x: *x,
+                y: *y,
+                text: t.as_str(),
+            })
+            .collect();
+
+        // Rects, exactly as `extract` transforms them.
+        let mut table_rects = Vec::with_capacity(interp.rects.len());
+        for r in &interp.rects {
+            let (ax, ay) = geom.to_top_left(r.x0, r.y0);
+            let (bx, by) = geom.to_top_left(r.x1, r.y1);
+            table_rects.push(crate::tables::quantize_rect(ax, ay, bx, by)?);
+        }
+
+        // Ruling segments, split by orientation exactly as `extract` splits them.
+        let mut stroke_rules = Vec::new();
+        let mut uprights = Vec::new();
+        for seg in &interp.segments {
+            let (ax, ay) = geom.to_top_left(seg.x0, seg.y0);
+            let (bx, by) = geom.to_top_left(seg.x1, seg.y1);
+            let r = crate::tables::quantize_rect(ax, ay, bx, by)?;
+            if seg.is_horizontal() {
+                stroke_rules.push(crate::stroke_ruled::Rule {
+                    y: r.y0,
+                    x0: r.x0,
+                    x1: r.x1,
+                });
+            } else {
+                uprights.push(crate::stroke_ruled::Upright {
+                    x: r.x0,
+                    y0: r.y0,
+                    y1: r.y1,
+                });
+            }
+        }
+
+        // Field rects, exactly as `extract` flips them.
+        let field_rects: Vec<crate::tables::QuantRect> =
+            crate::forms::widget_rects(doc.inner(), page_dict)
+                .into_iter()
+                .map(|r| {
+                    let q = f64::from(QUANTUM_PER_POINT);
+                    let (ax, ay) = geom.to_top_left(r.x0() as f64 / q, r.y0() as f64 / q);
+                    let (bx, by) = geom.to_top_left(r.x1() as f64 / q, r.y1() as f64 / q);
+                    crate::tables::quantize_rect(ax, ay, bx, by)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+        let detected = crate::tables::detect(
+            page_number,
+            &table_rects,
+            &stroke_rules,
+            &uprights,
+            &origins,
+            &field_rects,
+            &mut alloc,
+        )?;
+
+        out.push(PageTableDiagnostic {
+            page: page_number,
+            rects: interp.rects.len(),
+            horizontal_segments: stroke_rules.len(),
+            vertical_segments: uprights.len(),
+            field_rects: field_rects.len(),
+            detected,
+        });
+    }
+    Ok(out)
+}
+
 /// Put one page's runs into reading order, and put its identity there with them (v1-S5).
 ///
 /// `order[i]` is the stream index of the run that belongs at position `i`.

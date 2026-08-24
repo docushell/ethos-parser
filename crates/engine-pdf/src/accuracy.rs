@@ -194,6 +194,16 @@ pub struct Score {
     /// Every slot of an unjoined gold table is an FN, which is what makes a document with no
     /// detections score 0 rather than being quietly absent from the average.
     pub cell_fn: u32,
+    /// **Tables the alignment rule emitted** (v2-S22).
+    ///
+    /// One entry per detected table whose `rule` is `unruled-align-v1`. It is counted here, off
+    /// the same real `extract` run the rest of this struct is scored from, so the corpus-wide
+    /// answer to *"does the alignment rule ever fire on a real document"* is a measured total
+    /// rather than a claim — and `the_alignment_rule_fires_on_no_document_in_the_corpus` asserts
+    /// it stays zero. The ruled and stroke-ruled counts are not tracked beside it: those two rules
+    /// already carry the whole gate number and the per-rule breakdown is in the v2-S22 report,
+    /// while this one number is the standing finding a guard has to keep honest.
+    pub unruled_detected: u32,
 }
 
 impl Score {
@@ -207,6 +217,7 @@ impl Score {
         self.cell_tp += o.cell_tp;
         self.cell_fp += o.cell_fp;
         self.cell_fn += o.cell_fn;
+        self.unruled_detected += o.unruled_detected;
     }
 
     /// **The gate number for one document**, in per-mille, or `None` when it declares no table.
@@ -401,6 +412,9 @@ pub fn score(
         // place it is MEASURED across a corpus rather than asserted on a fixture.
         for table in &page.tables {
             s.detected += 1;
+            if table.rule == engine_core::TABLE_DETECTION_UNRULED_V1 {
+                s.unruled_detected += 1;
+            }
             if declared_pages.contains(&page.index) {
                 s.matched += 1;
             }
@@ -907,6 +921,28 @@ mod tests {
                 scored.len()
             );
         }
+
+        // **Micro recall beside the macro** (v2-S22). The macro gives each document one vote and
+        // reads 70‰; the micro pools every gold cell slot in the corpus and reads what fraction of
+        // them the detector actually recovered. They are the same corpus and the same cell slots,
+        // and the gap between them is the whole point: 70‰ is two documents carrying ten, and the
+        // micro number is the one sentence that says so without a band. It is not a second gate —
+        // there is no verdict on it — it is the macro's denominator, printed.
+        let micro_recall = {
+            let denom = u64::from(total.cell_tp) + u64::from(total.cell_fn);
+            (denom > 0).then(|| (u64::from(total.cell_tp) * 1000 / denom) as u32)
+        };
+        println!(
+            "  MICRO recall over every gold slot: {} ({} true positives, {} missed)",
+            micro_recall.map_or("-".to_string(), |v| format!("{v}‰")),
+            total.cell_tp,
+            total.cell_fn
+        );
+        println!(
+            "  alignment rule (`unruled-align-v1`) emitted {} table(s) across the {} documents",
+            total.unruled_detected,
+            CORPUS.len()
+        );
         println!(
             "  gate is > {GATE_PERMILLE}‰: {}\n",
             match macro_f1 {
@@ -918,6 +954,182 @@ mod tests {
 
         // The set is non-empty, or the assertions below pass vacuously.
         assert!(total.declared > 0, "the labelled set has content");
+
+        // **The alignment rule fires on no document in this corpus** (v2-S22), asserted here
+        // rather than in a sixth full walk of its own: this test already ran the detector over all
+        // twelve, so the standing finding rides the walk that is already paying for itself. The
+        // scan floor is `total.detected > 0` — a corpus that detected nothing would satisfy
+        // `unruled_detected == 0` vacuously, and a guard reading nothing passes. If the alignment
+        // rule ever does emit a table on a real document, this breaks and says where to record it:
+        // the claim in `docs/table-gate-v1.md` §"The finding that reframes all five" that the rule
+        // has never produced a table on a real document would have stopped being true.
+        assert!(
+            total.detected > 0,
+            "the detector produced no table on any document; the alignment-rule claim below would \
+             be vacuous"
+        );
+        assert_eq!(
+            total.unruled_detected, 0,
+            "`unruled-align-v1` emitted {} table(s) on the gate corpus. It has emitted none on any \
+             real document since v1-S2, which is the finding that reframes v1 in \
+             `docs/table-gate-v1.md`; if that changed, that section and this assertion must change \
+             together.",
+            total.unruled_detected
+        );
+    }
+
+    /// **v2-S22: the ten documents where nothing is detected, per gold table.** Deliberate-run,
+    /// **never in CI** — it walks the twelve documents twice (once for the diagnostic, once for
+    /// the faithfulness cross-check against `extract`), which is minutes of work whose product is
+    /// a report a person reads, not a boolean a build gate needs.
+    ///
+    ///   `cargo test -p engine-pdf --lib -- --ignored --nocapture the_ten_documents_where_nothing_is_detected`
+    ///
+    /// # The question, and why the standing measurement cannot answer it
+    ///
+    /// `the_corpus_is_measured` establishes that ten of the twelve score 0‰ — no table detected at
+    /// all, not a wrong one. This asks *why*, per gold table: **what ink does the page carry where
+    /// the table is, which rule built a candidate, and which precondition rejected it.** That
+    /// answer is in `extract`'s per-page detection but the artifact keeps it only as a
+    /// page-grouped limitation string; `crate::extract::per_page_table_diagnostics` returns it
+    /// typed, and this joins it to each document's own gold tables.
+    ///
+    /// # It cross-checks itself against `extract`
+    ///
+    /// The diagnostic helper is a *mirror* of the block inside `extract`, and a mirror can drift.
+    /// So this asserts that the tables the mirror emits — every `(page, rule, rows, columns)` — are
+    /// exactly the tables `extract` emits, before it reads a single refusal off the mirror. A
+    /// wrong ink count or a phantom refusal from a drifted transform is a test failure here, not a
+    /// number that quietly misleads the record.
+    #[test]
+    #[ignore]
+    fn the_ten_documents_where_nothing_is_detected() {
+        let profile = Profile::default();
+
+        let refusals = |d: &crate::tables::Detected| -> String {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(r) = &d.ruled_refusal {
+                parts.push(format!("ruled={r:?}"));
+            }
+            if let Some(r) = &d.stroke_refusal {
+                parts.push(format!("stroke={r:?}"));
+            }
+            if let Some(r) = &d.refusal {
+                parts.push(format!("unruled={r:?}"));
+            }
+            if parts.is_empty() {
+                "no candidate built by any rule".to_string()
+            } else {
+                parts.join("; ")
+            }
+        };
+
+        let (mut ruled_total, mut stroke_total, mut unruled_total) = (0u32, 0u32, 0u32);
+        let mut gold_tables_total = 0u32;
+
+        for (root, name) in CORPUS {
+            let bytes = corpus_bytes(root, name);
+            let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+            let labels = label(&doc, name).expect("labels");
+            let diags =
+                crate::extract::per_page_table_diagnostics(&doc, &profile).expect("diagnoses");
+
+            // **Faithfulness first.** The mirror's emitted tables must equal `extract`'s own.
+            let key =
+                |page: u32, rule: &str, rows: u32, cols: u32| (page, rule.to_string(), rows, cols);
+            let mut mirror: BTreeMap<(u32, String, u32, u32), u32> = BTreeMap::new();
+            for d in &diags {
+                for t in &d.detected.tables {
+                    *mirror
+                        .entry(key(d.page, &t.rule, t.rows, t.columns))
+                        .or_default() += 1;
+                }
+            }
+            let artifact = crate::extract::extract(&doc, &profile).expect("extracts");
+            let mut real: BTreeMap<(u32, String, u32, u32), u32> = BTreeMap::new();
+            for p in &artifact.pages {
+                for t in &p.tables {
+                    *real
+                        .entry(key(p.index, &t.rule, t.rows, t.columns))
+                        .or_default() += 1;
+                }
+            }
+            assert_eq!(
+                mirror, real,
+                "the per-page diagnostic drifted from `extract` on {name}: the mirror in \
+                 `per_page_table_diagnostics` no longer reproduces the block it mirrors, so every \
+                 refusal it reports below is suspect. Re-sync the two."
+            );
+
+            for d in &diags {
+                for t in &d.detected.tables {
+                    match t.rule.as_str() {
+                        engine_core::TABLE_DETECTION_UNRULED_V1 => unruled_total += 1,
+                        engine_core::TABLE_DETECTION_STROKE_V1 => stroke_total += 1,
+                        _ => ruled_total += 1,
+                    }
+                }
+            }
+
+            let by_page: BTreeMap<u32, &crate::extract::PageTableDiagnostic> =
+                diags.iter().map(|d| (d.page, d)).collect();
+            let detected_here: usize = artifact.pages.iter().map(|p| p.tables.len()).sum();
+
+            println!(
+                "\n{name}  ({} tagged table(s), {detected_here} detected)",
+                labels.tables.len()
+            );
+            println!(
+                "  {:>4}  {:>5} {:>5} {:>5} {:>5}  {:<22} precondition",
+                "page", "rects", "hseg", "vseg", "field", "gold shape / candidate"
+            );
+            for t in &labels.tables {
+                gold_tables_total += 1;
+                let shape = format!("{}x{}", t.rows, t.columns);
+                match t.page.and_then(|p| by_page.get(&p)) {
+                    Some(diag) => {
+                        let candidate = if diag.detected.tables.is_empty() {
+                            format!("gold {shape} / none")
+                        } else {
+                            let found: Vec<String> = diag
+                                .detected
+                                .tables
+                                .iter()
+                                .map(|d| format!("{} {}x{}", d.rule, d.rows, d.columns))
+                                .collect();
+                            format!("gold {shape} / {}", found.join(", "))
+                        };
+                        println!(
+                            "  {:>4}  {:>5} {:>5} {:>5} {:>5}  {:<22} {}",
+                            t.page.unwrap(),
+                            diag.rects,
+                            diag.horizontal_segments,
+                            diag.vertical_segments,
+                            diag.field_rects,
+                            candidate,
+                            refusals(&diag.detected),
+                        );
+                    }
+                    None => {
+                        let candidate = format!("gold {shape} / (page not cited by tree)");
+                        println!(
+                            "  {:>4}  {:>5} {:>5} {:>5} {:>5}  {candidate:<22} not locatable to a page",
+                            "-", "-", "-", "-", "-",
+                        );
+                    }
+                }
+            }
+        }
+
+        println!(
+            "\nacross the twelve documents: {gold_tables_total} gold tables; emitted \
+             {ruled_total} ruled, {stroke_total} stroke-ruled, {unruled_total} alignment"
+        );
+        assert_eq!(
+            unruled_total, 0,
+            "the alignment rule emitted {unruled_total} table(s); the report above and \
+             `docs/table-gate-v1.md` say it emits none on any real document"
+        );
     }
 
     /// **The gate, asserted rather than only printed** — with the honest consequence when it is

@@ -15,9 +15,21 @@ at the summary is misinformed by the part written to save them the reading. It i
 in the slice that had to open the file anyway.
 
 **And 70‰ is the least informative true statement about this corpus**, which §"64‰ 'held' at 70‰"
-argues at length: the band is 0‰..590‰, the median is 0‰, nine of the twelve score exactly 0‰, and
-removing `irs-fw9` alone drops the macro to 23‰. The headline number is here because a reader
-expects one, not because it is the number worth quoting.
+argues at length: the band is 0‰..590‰, the median is 0‰, ten of the twelve score exactly 0‰, and
+removing `irs-fw9` alone drops the macro to 23‰. (This said *nine* until v2-S22 — the tenth,
+`nist-sp-800-218`, lost its 2‰ at v2-S20 along with the 11 295 false positives that were its
+denominator, and the headline lagged the body's §"The result", which had it right.)
+
+**Micro recall is 4‰, and it is the number this headline was missing** (v2-S22). Pool every gold
+cell slot in the corpus instead of giving each document one vote, and the detector recovered **70 of
+15 755** — the 70 true positives against the 15 685 slots it missed. The macro reads 70‰ because it
+averages two documents that draw rules against ten that get one vote each for zero; the micro reads
+4‰ because it counts cells, and ten documents contributing nothing to a pool cannot be averaged back
+up by two that do. Both are true of the same corpus and the same slots. The micro is the one number
+that says *"two documents carrying ten"* without a band, and it is stated here beside the macro for
+exactly that reason — not as a second gate, of which this repository has none, but as the macro's
+denominator, printed. The headline number is here because a reader expects one, not because it is
+the number worth quoting.
 
 **The method below does not change.** 70‰ is still measured, still reruns to the same value, still
 runs in CI, and **fabrication is still 0**. What is parked is treating 489‰ as the number the next
@@ -523,6 +535,99 @@ cost one explanation rather than 481 copies of it.
 none this engine may claim. All three still yield **0** geometric tables. They are a safety rail on
 calibration, not part of the average — they are engine-owned or synthetic, and scoring against
 grids this project built itself measures nothing.
+
+## v2-S22: why ten documents produce nothing
+
+**This slice measures and changes no detector.** The canonical default profile differs from
+0.36.1's only in `parser_version`, and `the_default_profile_is_pinned` proves it. What it adds is a
+per-gold-table report — `crate::extract::per_page_table_diagnostics`, driven by
+`accuracy::tests::the_ten_documents_where_nothing_is_detected` — that walks every one of the corpus's
+**172 tagged tables** and records, for the page each sits on: what ink the page carries, which rule
+built a candidate, and which precondition rejected it. The report is deliberate-run and never in CI;
+it cross-checks its own emitted tables against `extract`'s before reading a single refusal, so a
+drift in the mirror is a test failure rather than a wrong number.
+
+### The one-line finding, on twelve documents rather than four
+
+**Every detected table is a ruled or a stroke-ruled one. The alignment rule emitted none.**
+
+```
+across the twelve documents: 172 gold tables; emitted 8 ruled, 9 stroke-ruled, 0 alignment
+```
+
+All **17** detections are on the two documents that draw their grids: `cfpb-home-loan-toolkit`
+(8 ruled, 6 stroke-ruled) and `irs-fw9` (3 stroke-ruled). The other ten detect nothing — not a
+wrong table, no table. §"The finding that reframes all five" established this on the four-document
+corpus by reading each table's `rule` field; twelve documents make it a much stronger claim, and it
+holds: `unruled-align-v1` has produced no table on any real document this repository has measured.
+`the_corpus_is_measured` now asserts that count stays zero, so the claim cannot lapse silently.
+
+### And now we know *which* precondition refuses it, on every gold page
+
+The report's most uniform column is the alignment rule's. On **every gold page in all twelve
+documents**, `unruled-align-v1` refuses at the same precondition:
+
+```
+unruled = GutterBelowFloor { columns: true, gap: <151..1132>, floor: 1200 }
+```
+
+Two adjacent text columns sit closer than the 1 200-centipoint (12 pt) column-gutter floor — word
+spacing and running prose, never a table's column gap. This is a sharper statement than the S7b
+reading in §"Why the number is what it is" #2, and it supersedes it as the *first*-failing gate: the
+gutter floor is step 2 of the rule and the whole-page-lattice ceiling is step 6, so on no gold page
+does the rule ever reach the 22 176-face lattice that analysis described — it is turned away three
+steps earlier, at the gutter. The floor is doing exactly its job: the gold negatives
+(`synthetic/two-columns`, a flawless 2 × 2 of prose) prove that lowering it buys a fabrication, and
+the report shows the real documents fall on the same side of it as that negative does.
+
+### What the ten that detect nothing actually draw
+
+The ruled and stroke-ruled rules read drawn ink, and the ten produce none they can use:
+
+| Document | gold | what its gold pages draw | why nothing is emitted |
+| --- | --- | --- | --- |
+| `nist-sp-800-63b` | 13 | many filled rects (20–490/pg), **0 horizontal rules**, one margin upright | `ruled = FaceWithoutRectangle` — the rects cover no coherent lattice; stroke builds no band with no rows |
+| `nist-sp-800-53r5` | 26 | 4–1 004 rects/pg, **0 h-rules**, one upright | same: `FaceWithoutRectangle` on every page that paints ≥ 2 faces' worth |
+| `nist-sp-800-161r1` | 46 | 1–966 rects/pg, **0 h-rules** | same; two pages (310, 319) paint a single rect and build no candidate at all |
+| `nist-sp-800-171r3` | 24 | 118–705 rects/pg, **0 h-rules, 0 uprights** | same |
+| `nist-sp-800-207` | 4 | 24–199 rects/pg, no rules | same |
+| `nist-sp-800-218` | 4 | 14–217 rects/pg | one page is the v2-S20 case — `ruled = CrossCheckRejected { structural: 1028, geometric: 127 }`, the 72 × 4 phantom refused structurally; the other three `FaceWithoutRectangle` |
+| `nist-sp-800-37r2` | 20 | 1–747 rects/pg, one upright | `FaceWithoutRectangle` |
+| `nist-sp-800-53Ar5` | 11 | 1–70 rects/pg | `FaceWithoutRectangle`, or a lone rect and no candidate |
+| `irs-f1040sd-2025` | 2 | 8 rects, **83 h-rules, 60 uprights**, 45 field boxes | `stroke = ColumnLineNotStroked { interior: 5, stroked: 4 }` — one interior column line is not drawn |
+| `irs-form-1040-2025` | 1 | 200 rects, 157 h-rules, 128 field boxes | `ruled = LatticeTooLarge { faces: 6642 }`, `stroke = FaceIsAFormFieldBox` — the 662-cell fabrication surface of v1-S1, correctly refused |
+
+Two shapes, and neither is a tuning target. The **NIST family** draws its tables with cell-shading
+and decoration rectangles and at most a single margin rule — never a covered cell grid and never a
+stroked lattice — so the ruled rule sees rects that explain no grid (`FaceWithoutRectangle`) and the
+stroke rule sees no rows at all. The **IRS forms** draw a real but *partial* grid: a column line
+left undrawn, or a table that is a block of form-field widgets. In every case the two working rules
+refuse correctly; the tables are real, but their geometry is in the tags and the text, not in ink
+that forms a grid.
+
+### The recommendation: v1's remaining gap is not the alignment rule
+
+Stated as a recommendation, not a fix — this slice ships neither.
+
+**The alignment rule is not a gap to close in v1.** It has emitted zero tables on 172 real gold
+tables and refuses at the gutter floor on every one, because real-document columns are gutter-close;
+reaching them means lowering a floor whose only job is to refuse prose, and the gold negatives prove
+that floor is load-bearing. So the five geometric-repair slices measured against it (§"What would
+actually move it") were tuning a rule the gate never exercised, and no seventh repair to it will
+move the number. Whether `unruled-align-v1` — a rule id, a profile field, and its machinery, none of
+which has ever produced a table on a real document — should be retired or reworked is a
+**version-boundary question**, not a v1 calibration, and it is named here for the owner rather than
+decided.
+
+**v1's remaining gap is that its two working rules require the producer to have drawn the grid.**
+The ~15 500 missed slots are almost all NIST, and the report shows why: those producers draw tables
+without a grid this engine can read. Recovering them is not a tolerance move on any existing rule —
+it needs a derivation that reads a table's geometry from something *other* than drawn grid ink: the
+tagged structure tree's own cell bounds, or a column inference the gutter floor exists to forbid.
+That is a new derivation class with its own slice and its own gold negatives, and it is the honest
+boundary of what v1's three geometric rules can do. **Micro recall states the size of the gap in one
+number: 4‰** — 70 of the corpus's 15 755 gold slots — which is the headline the macro's 70‰ was
+hiding.
 
 ## Why the number is what it is
 

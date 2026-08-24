@@ -1860,7 +1860,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.36.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.36.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2312,11 +2312,19 @@ mod tests {
              artifact this build writes is byte-identical to 0.36.0's but for this field. What \
              moved is a test: `flip-tail-byte` now seeks the file trailer's cross-reference \
              pointer instead of a fixed fraction of the file's length, which it had claimed to \
-             reach since M7 and never did on a large document."
+             reach since M7 and never did on a large document.\n\n\
+             Moved a FIFTY-FOURTH time at v2-S22 (0.36.2), on `parser_version` alone, and this is \
+             the whole proof that the slice changed no detector. v2-S22 is a diagnostic: it \
+             measures why ten of the twelve gate documents produce no table at all, and the \
+             finding is that `unruled-align-v1` has emitted none on any of them — the ruled and \
+             stroke-ruled rules carry the entire gate number. No rule id, tolerance or field \
+             below moves; the JSON above differs from 0.36.1's in `parser_version` and nothing \
+             else, which is what a diagnostic slice is allowed to move and all it is allowed to \
+             move. See `docs/table-gate-v1.md` §\"v2-S22\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ba2bdeff0a58e29c4d9ab8bbd6c3067691db9018a7bfe13d948ed4b2f7ea868e"
+            "sha256:8d46576383768f4b9fa2499a13c1f64dae506382e64bed00eb18330fff41f0ee"
         );
     }
 
