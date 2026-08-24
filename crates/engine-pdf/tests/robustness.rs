@@ -436,6 +436,16 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// exercise it is the mutation this slice removed — so it is named here as coverage this corpus
 /// stopped having, not quietly dropped.
 ///
+/// **v2-S23 decided it stays that way — argued deletion rather than a fixture.** The choice this
+/// slice weighed was a fixture that exercises the recovery again, or refusing one. It refuses:
+/// catalog-scan recovery is `lopdf` *salvaging* a document whose trailer dictionary is damaged,
+/// which is the exact opposite of what this harness tests — that damage makes the reader fail
+/// closed. A fixture pinning it would assert a backend leniency the engine makes no promise about
+/// and whose behaviour it does not own, and re-weakening `flip-tail-byte` to resurrect the five
+/// survivors would trade v2-S21's real repair for a coverage number. There is nothing
+/// engine-owned to delete; the deletion is of the *claim* that this corpus covers it, made here.
+/// See `docs/15-V2-MILESTONES.md` S23.
+///
 /// An entry appearing here that is not `junk-after-eof` is a fail-closed path that stopped firing
 /// — triage it before pinning it. An entry disappearing is a path that started firing, which is
 /// usually good and still wants a commit message.

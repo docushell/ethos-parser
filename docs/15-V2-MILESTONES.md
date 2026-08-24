@@ -5472,6 +5472,81 @@ verdict on it. **No corpus change** — the twelve documents and their digests a
 
 ---
 
+## S23 — the coverage two slices retired — **done**, as 0.36.3
+
+**A PATCH, and the reason is that no reader moved.** `ci/code-lines.py` diffs empty across this
+commit — the only source edits are inside `mod tests`, which the extractor excludes — so every
+artifact this build writes is byte-identical to 0.36.2's but for `parser_version`. This slice
+revisits the two coverages v2-S20 and v2-S21 retired, and settles each: one verified and pinned, one
+argued for deletion. Both outcomes are complete slices here, and the second is not a cop-out.
+
+### The on-wire `CheckStatus::Mismatch` — verified, not inherited
+
+v2-S20 made the ruled rule refuse a grid whose **structural** cross-check disagrees, so the
+`ruled-table-overlap` fixture no longer carries a `Mismatch` on the wire — it is refused
+structurally. v2-S20 argued the variant stays reachable through a **geometric-only** fault and
+pointed at `tables::tests::near_edges_fold_into_one_lattice_line`. That argument was the only thing
+standing between `CheckStatus::Mismatch` and being a dead state, and it was **inherited rather than
+checked**.
+
+This slice checks it. The test nudges one cell's edge a single centipoint into its neighbour; the
+lattice folds the edge back to one line (structurally a clean 2 × 2), but the exact boxes overlap by
+that centipoint. Run, it emits **one** table whose check is `Mismatch { structural: [], geometric:
+[CellsOverlap, …] }` — a table on the wire, carrying the disagreement, refused by neither half.
+**The fixture is that unit test; the fault kind is `CellsOverlap`** (with `DoesNotTile` riding on
+the area mismatch), and v2-S23 adds the two assertions that pin them: that a table is emitted, and
+that the geometric fault is a `CellsOverlap`. A refactor that stopped producing the overlap — and so
+silently retired the on-wire `Mismatch` — now fails this test rather than passing it.
+
+**Why no document fixture.** The geometric-only `Mismatch` is sub-tolerance geometry — a fold within
+`LATTICE_TOLERANCE` whose exact boxes still disagree — which a hand-built rect array expresses
+exactly and a committed PDF would express only through the interpreter's and transform's rounding,
+fragilely. And it would buy no coverage the unit test lacks: `engine_core::markdown` and
+`engine_core::html` project every table and read no check, so a `Mismatch` table projects identically
+to an `Ok` one — the only thing worth pinning is that `detect_ruled` *can emit* one, which the unit
+test does. A fixture is refused, argued rather than skipped.
+
+### `lopdf`'s catalog-scan recovery — argued for deletion
+
+v2-S21 made `flip-tail-byte` land on the cross-reference pointer, so the five small survivors whose
+damaged *trailer dictionary* `lopdf` used to recover from by scanning for the catalog now fail
+closed. That recovery path is exercised by nothing, and v2-S21 named it as coverage lost.
+
+This slice decides it **stays** lost. A fixture that exercises catalog-scan recovery is a document
+`lopdf` *salvages* despite damage — the exact opposite of what the mutation harness tests, which is
+that damage makes the reader fail closed. Pinning it would assert a backend leniency the engine
+makes no promise about and whose behaviour it does not own, and the one way to resurrect the five
+survivors — re-weakening `flip-tail-byte` — would trade v2-S21's real repair for a coverage number,
+which this slice will not do. There is nothing engine-owned to delete: the deletion is of the
+*claim* that this corpus covers it, made explicit in `crates/engine-pdf/tests/robustness.rs` beside
+the `EXPECTED_SURVIVORS` note that first named the loss.
+
+### Scope refused
+
+**No reader changed** — proven mechanically: `ci/code-lines.py` diffs empty. **No new fixture** — so
+`fixtures/manifest.json` and the pinned mutation totals are untouched; the acceptance's *"any new
+fixture moves them together"* is satisfied vacuously. **No mutation weakened**: `flip-tail-byte`
+stays where v2-S21 put it. **No `REPRESENTATION_SCHEMA_VERSION` move**: `CheckStatus::Mismatch` is
+still a state the wire can carry, now with an assertion that proves it.
+
+- **Acceptance — all met:**
+  - [x] **`CheckStatus::Mismatch` reachability verified, not inherited — the fixture and the fault
+        kind named**: `tables::tests::near_edges_fold_into_one_lattice_line`, a geometric-only
+        `CellsOverlap` (with `DoesNotTile`), pinned by two new assertions and run green
+  - [x] **Catalog-scan recovery argued for deletion, the argument written down** — here and in
+        `robustness.rs`: it is a backend leniency the engine never guaranteed, fixturing it would
+        assert the opposite of fail-closed, and re-weakening the mutation to resurrect it is refused
+  - [x] **No new fixture, so `manifest.json` counts and the pinned mutation numbers do not move** —
+        and that they must move *together* is stated rather than assumed
+  - [x] **No reader changed** — `diff <(ci/code-lines.py --rev HEAD) <(ci/code-lines.py)` is empty
+  - [x] Workspace **0.36.3**. `ci/gate.sh` exits 0. **No git tag**
+
+- **Depends on:** S20 (whose gate made the on-wire `Mismatch` geometric-only) and S21 (whose repair
+  retired the catalog-scan coverage). The two are disjoint in code — one test file each — and this
+  slice touches only `mod tests` in both.
+
+---
+
 ## Standing rules for every v2 slice
 
 Carried from `08-V1-SCOPE.md` §6, `10-V11-SCOPE.md` §8, `12-V12-SCOPE.md` §8 and `14-V2-SCOPE.md`

@@ -1167,6 +1167,13 @@ mod tests {
         // testing the coverage precondition instead of the clustering.
         rects[3].x0 -= 1;
         let t = detect_ruled(1, &rects, &[], &mut alloc()).unwrap().0;
+        // **A table is emitted** — the wire-emission is the whole point, so it is asserted
+        // rather than left implicit in the `t[0]` below (v2-S23).
+        assert_eq!(
+            t.len(),
+            1,
+            "the folded grid must reach the artifact, not be refused"
+        );
         assert_eq!(
             (t[0].rows, t[0].columns),
             (2, 2),
@@ -1179,6 +1186,16 @@ mod tests {
         // is the case the v2-S20 gate is deliberately narrow enough to admit — gating on both
         // halves refuses it — and it is what keeps `CheckStatus::Mismatch` a state an emitted
         // table can still be in rather than one this slice retired by construction.
+        //
+        // **v2-S23 names the fault kind, verified rather than inherited.** After v2-S20 the
+        // `ruled-table-overlap` fixture no longer carries a `Mismatch` on the wire — it is
+        // refused structurally — so this synthetic 2 x 2 is the *only* thing keeping the variant
+        // reachable, and the record relied on that without asserting which fault it is. Nudging
+        // cell (1,1)'s left edge one centipoint into cell (1,0) makes the exact boxes overlap by
+        // that centipoint, so the fault is `CellsOverlap` (and the areas no longer sum, so
+        // `DoesNotTile` rides with it). Both are geometric; neither is structural. Pinning the
+        // variant here means a refactor that stopped producing an overlap — and so quietly
+        // retired the on-wire `Mismatch` — fails this test rather than passing it.
         match &t[0].check.outcome {
             CheckStatus::Mismatch {
                 structural,
@@ -1189,8 +1206,11 @@ mod tests {
                     "a folded edge is not a bookkeeping error: {structural:?}"
                 );
                 assert!(
-                    !geometric.is_empty(),
-                    "the geometric half compares exact boxes, so it must see the centipoint"
+                    geometric
+                        .iter()
+                        .any(|f| matches!(f, GeometricFault::CellsOverlap { .. })),
+                    "the folded edge overlaps its neighbour by the centipoint, so the geometric \
+                     fault that keeps `Mismatch` on the wire is `CellsOverlap`: {geometric:?}"
                 );
             }
             other => panic!(

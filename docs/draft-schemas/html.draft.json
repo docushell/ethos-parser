@@ -207,7 +207,7 @@
     {
       "artifact_type": "ethos.html.v1",
       "schema_version": "1.0.0",
-      "parser_version": "0.36.2",
+      "parser_version": "0.36.3",
       "profile_sha256": "sha256:2e728a7e7b68841c2587a61a1cf17d291448bb1098f3a0f555f7b4fd8bd6feb0",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
       "representation_sha256": "sha256:43003bcacba67974cb572a9e2c6cff20f748cdb4d8bedec1f8f66cb75752328c",

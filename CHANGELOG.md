@@ -7,7 +7,48 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3
+
+### v2-S23 — the coverage two slices retired, as 0.36.3
+
+**A PATCH, and the reason is that no reader moved.** `ci/code-lines.py` diffs empty across this
+commit — the only source edits are inside `mod tests`, which the extractor excludes — so every
+artifact this build writes is byte-identical to 0.36.2's but for `parser_version`. This slice
+revisits the two coverages v2-S20 and v2-S21 retired: one verified and pinned, one argued for
+deletion.
+
+#### Verified — `CheckStatus::Mismatch` is still reachable on the wire, through a geometric-only fault
+
+v2-S20 made the ruled rule refuse a grid whose **structural** cross-check disagrees, so
+`ruled-table-overlap` no longer carries a `Mismatch` on the wire. v2-S20 argued the variant stays
+reachable through a geometric-only fault and pointed at `near_edges_fold_into_one_lattice_line` —
+the only thing then standing between `CheckStatus::Mismatch` and a dead state, inherited rather than
+checked. This slice checks it: the test emits **one** table whose check is `Mismatch { structural:
+[], geometric: [CellsOverlap, …] }`. The fixture is that unit test; the fault kind is `CellsOverlap`
+(with `DoesNotTile`); and two new assertions pin them — that a table is emitted, and that the
+geometric fault is a `CellsOverlap` — so a refactor that stopped producing the overlap fails the
+test rather than silently retiring the state.
+
+A document fixture is **refused, argued not skipped**: the geometric-only `Mismatch` is
+sub-tolerance geometry a unit test expresses exactly and a PDF only fragilely, and it would buy no
+coverage the unit test lacks — the Markdown and HTML projections read no check, so a `Mismatch` table
+projects identically to an `Ok` one.
+
+#### Deleted — `lopdf`'s catalog-scan recovery stays uncovered, by argument
+
+v2-S21 made `flip-tail-byte` land on the cross-reference pointer, so the five small survivors whose
+damaged trailer dictionary `lopdf` recovered from by scanning for the catalog now fail closed. This
+slice decides the coverage stays lost: a fixture exercising catalog-scan recovery is a document
+`lopdf` salvages despite damage — the opposite of what the mutation harness tests — so pinning it
+would assert a backend leniency the engine never guaranteed, and re-weakening the mutation to
+resurrect the survivors would trade v2-S21's real repair for a coverage number. There is nothing
+engine-owned to delete; the deletion is of the *claim* that this corpus covers it, made explicit in
+`crates/engine-pdf/tests/robustness.rs`.
+
+#### Scope refused
+
+No reader changed (code-lines empty); no new fixture, so `manifest.json` and the pinned mutation
+totals are untouched; no mutation weakened; no `REPRESENTATION_SCHEMA_VERSION` move.
 
 ### v2-S22 — why ten documents produce nothing, as 0.36.2
 
