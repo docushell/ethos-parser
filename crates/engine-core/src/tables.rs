@@ -272,9 +272,19 @@ pub struct TableCellRecord {
     pub id: NodeId,
     /// Where it sits and how far it reaches.
     pub position: TableCellPosition,
-    /// Its box, in the artifact's declared coordinate system.
-    pub bbox: crate::geom::QRect,
-    /// The concatenation of the extracted runs whose origins fall inside it.
+    /// Its box, in the artifact's declared coordinate system — or a typed reason there is none.
+    ///
+    /// `Measured` for a cell a detector bounded from ink; `Absent` for a cell of a **tagged**
+    /// table, whose grid came from `/TR`/`/TD` and whose box the structure tree never stated
+    /// ([`crate::GeometryAbsence::NotReportedByStructureTree`], v2-S24). A tagged cell is never
+    /// given an invented box — that is the whole reason this is a [`crate::GeometryPresence`] and
+    /// not a bare rectangle.
+    pub geometry: crate::derivation::GeometryPresence,
+    /// The concatenation of extracted runs, joined by [`Self::node_ids`].
+    ///
+    /// For a geometric cell those are the runs whose origins fall inside its box; for a **tagged**
+    /// cell they are the runs the structure tree binds under it by `(page, mcid)` (v2-S24). Either
+    /// way it is real runs concatenated, never re-decoded and never placed.
     ///
     /// **Never a novel string.** A cell enclosing no run carries an empty one, because that is
     /// what the document put there — `docs/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
@@ -310,8 +320,14 @@ pub struct TableRecord {
     pub id: NodeId,
     /// The page this table is on.
     pub page: NodeId,
-    /// Its bounding box.
-    pub bbox: crate::geom::QRect,
+    /// Its bounding box, in the artifact's declared coordinate system — or a typed reason there is
+    /// none.
+    ///
+    /// `Measured` for a table a detector bounded from ink; `Absent` for a **tagged** table, which
+    /// the document declared in its structure tree and which carries no coordinate to bound it with
+    /// ([`crate::GeometryAbsence::NotReportedByStructureTree`], v2-S24). No box is invented for the
+    /// tagged case, which is why this is a [`crate::GeometryPresence`] rather than a bare rectangle.
+    pub geometry: crate::derivation::GeometryPresence,
     /// Rows in the lattice.
     pub rows: u32,
     /// Columns in the lattice.
@@ -320,29 +336,38 @@ pub struct TableRecord {
     pub cells: Vec<TableCellRecord>,
     /// The derivation class of the table structure.
     ///
-    /// Always `Computed`: the ruling lines and the text are Extracted, and the grid, the indices,
-    /// the spans and the concatenation are an inference over them (`docs/01-CONTRACT.md` §6).
+    /// `Computed` for a geometric table: the ruling lines and the text are Extracted, and the grid,
+    /// the indices, the spans and the concatenation are an inference over them
+    /// (`docs/01-CONTRACT.md` §6). **`Extracted` for a tagged table** (v2-S24): its grid is not an
+    /// inference at all but the document's own `/Table`/`/TR`/`/TD` structure read off the tree, so
+    /// the stronger class is the honest one — and it is exactly this field, paired with
+    /// [`Self::detection_rule`], that lets a consumer tell "the engine inferred this grid from ink"
+    /// from "the document declared this grid and the engine read it". `Extracted` rides with
+    /// `tagged-tables-v1`; `Computed` with the three geometric ids.
     pub derivation: crate::derivation::DerivationClass,
-    /// **Which rule found this table** — `ruled-rects-v3`, `unruled-align-v1` or
-    /// `stroke-ruled-v1` (v1-S2, S7b, S8).
+    /// **Which rule found this table** — `ruled-rects-v3`, `unruled-align-v1`, `stroke-ruled-v1`
+    /// or `tagged-tables-v1` (v1-S2, S7b, S8, v2-S24).
     ///
-    /// This named **two** from v1-S7b until v2-S13.5. `stroke-ruled-v1` shipped at v1-S8 and is
-    /// written into this field by `engine-pdf`'s third build site, so a consumer matching on the
-    /// two listed values has had a third reachable since **0.10.0**.
+    /// This named **two** from v1-S7b until v2-S13.5, then three, and a fourth arrived at v2-S24.
+    /// `stroke-ruled-v1` shipped at v1-S8 and is written into this field by `engine-pdf`'s third
+    /// build site; `tagged-tables-v1` is written by a fourth. A consumer matching on the listed
+    /// values must carry all four.
     ///
-    /// Per table, not per document, because one document can carry all three kinds and the
+    /// Per table, not per document, because one document can carry all four kinds and the
     /// difference matters to a consumer:
     ///
-    /// | Value | What the document did | What the engine did |
-    /// | --- | --- | --- |
-    /// | `ruled-rects-v3` | painted the grid | read it |
-    /// | `unruled-align-v1` | placed text in columns | inferred it |
-    /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells |
+    /// | Value | What the document did | What the engine did | `derivation` |
+    /// | --- | --- | --- | --- |
+    /// | `ruled-rects-v3` | painted the grid | read it | `Computed` |
+    /// | `unruled-align-v1` | placed text in columns | inferred it | `Computed` |
+    /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells | `Computed` |
+    /// | `tagged-tables-v1` | tagged the grid in its structure tree | read the tags | `Extracted` |
     ///
-    /// `derivation` is `Computed` either way — both are inferences over Extracted evidence — so
-    /// it cannot carry this distinction, and the profile cannot either: it says which rules *ran*,
-    /// not which one produced any given table. Only a per-table field can answer "did the author
-    /// draw this grid, or did we decide it was one".
+    /// `derivation` is `Computed` for the first three — all inferences over Extracted ink — and
+    /// `Extracted` for the fourth, which is the document's own statement rather than an inference.
+    /// The profile cannot carry this distinction: it says which rules *ran*, not which one produced
+    /// any given table. Only a per-table field can answer "did the author draw this grid, tag it,
+    /// or did we decide it was one".
     ///
     /// A plain string, matching the rule-id-as-data convention `Profile::table_detection` uses,
     /// and matching the ids pinned there.

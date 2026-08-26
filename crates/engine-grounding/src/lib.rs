@@ -516,27 +516,43 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
     // looked, so the array is present — **possibly empty**, which is the artifact saying it
     // looked and found none. `None` and `Some(vec![])` are different artifacts and the consuming
     // validator treats the difference as meaning what it says.
+    // v2-S24. A table with no measured box cannot enter this projection: `ethos.grounding.v1`
+    // requires a `bbox` on every table and cell, and fabricating one is forbidden. A **tagged**
+    // table is exactly that case — its grid is the document's tags and it carries no geometry — so
+    // it is OMITTED here, the same omit-plus-count-plus-declare the representation applies to text
+    // runs with no ink box. The count is not lost: the representation carries
+    // `tagged-table-without-geometric-table`, and this schema is `additionalProperties: false` and
+    // cannot hold a limitation list, so a consumer comes back to the record to find what is
+    // missing. `filter_map` drops a table whose own box OR any cell's box is absent — the tagged
+    // case has both absent, and a geometric table has both measured, so this only ever drops the
+    // tagged tables and leaves every geometric one byte-identical.
     let projected_tables: Vec<Table> = payload
         .tables
         .iter()
-        .map(|t| Table {
-            id: t.id.as_str().to_string(),
-            page: t.page.as_str().to_string(),
-            bbox: t.bbox.to_array(),
-            cells: t
+        .filter_map(|t| {
+            let table_bbox = t.geometry.measured()?;
+            let cells: Vec<Cell> = t
                 .cells
                 .iter()
-                .map(|c| Cell {
-                    row: c.position.row,
-                    col: c.position.column,
-                    row_span: c.position.rowspan,
-                    col_span: c.position.colspan,
-                    bbox: c.bbox.to_array(),
-                    // The concatenation the record already holds. Not recomputed here: two
-                    // places deriving the same text is two places for it to drift.
-                    text: c.text.clone(),
+                .map(|c| {
+                    c.geometry.measured().map(|cell_bbox| Cell {
+                        row: c.position.row,
+                        col: c.position.column,
+                        row_span: c.position.rowspan,
+                        col_span: c.position.colspan,
+                        bbox: cell_bbox.to_array(),
+                        // The concatenation the record already holds. Not recomputed here: two
+                        // places deriving the same text is two places for it to drift.
+                        text: c.text.clone(),
+                    })
                 })
-                .collect(),
+                .collect::<Option<Vec<_>>>()?;
+            Some(Table {
+                id: t.id.as_str().to_string(),
+                page: t.page.as_str().to_string(),
+                bbox: table_bbox.to_array(),
+                cells,
+            })
         })
         .collect();
 

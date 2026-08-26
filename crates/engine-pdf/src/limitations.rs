@@ -385,25 +385,32 @@ pub fn mcid_property_list_by_name(sequences: u32) -> Limitation {
     )
 }
 
-/// The document-scoped limitation for a tagged table no detector found.
+/// The document-scoped disclosure for a tagged table emitted with geometry typed-absent (v2-S24).
 ///
-/// **No table is invented to match the tags.** A grid emitted on the strength of `/TD` elements
-/// alone would have cells this engine placed rather than cells reconstructed from the page, and a
-/// consumer could not tell the two apart. The tree's claim is reported instead, so the gap is
-/// visible without being filled (`docs/09-V1-MILESTONES.md` S3, decision 7).
+/// **What this meant changed at v2-S24, and the change is the slice.** Through v1-S3 it declared
+/// that a `/Table` the tree describes was found by no detector and *therefore emitted nothing* —
+/// the engine declining to place cells it could not distinguish on the wire from reconstructed
+/// ones. `DerivationClass` is now that distinction, so the engine emits the table under
+/// `tagged-tables-v1` as `Extracted` and this limitation instead **discloses** that it carries no
+/// geometry: a consumer reading only the assurance block learns some of this document's tables have
+/// no box and cannot enter a grounding projection.
 pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
     let list: Vec<String> = pages.iter().map(u32::to_string).collect();
     Limitation::document(
         engine_core::codes::TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE,
         format!(
-            "This document's structure tree describes a `/Table` on page(s) {} that NO table \
-             detector found — the page paints no grid of rectangles there and its text implies no \
-             coherent alignment lattice. The tree's claim is recorded here and NO table is \
-             emitted for it: cells placed from `/TD` elements alone would be cells this engine \
-             positioned, indistinguishable on the wire from cells reconstructed off the page \
-             itself. The text is present and complete either way, with exact origins, and each \
-             run carries the role path the tree gave it — so the table's content is addressable \
-             even though its grid is not.",
+            "This document's structure tree describes a `/Table` on page(s) {} that NO geometric \
+             detector matched — the page paints no grid of rectangles there and its text implies \
+             no coherent alignment lattice. The table IS emitted, under `tagged-tables-v1`: its \
+             shape is read from the document's own `/TR`/`/TD`/`/RowSpan`/`/ColSpan` tags and its \
+             cell text from the runs the tree binds beneath each cell, so it is `Extracted` — the \
+             document's own statement — rather than a grid this engine inferred. It carries NO \
+             geometry: the structure tree names no coordinate, so the box is reported absent \
+             (`not_reported_by_structure_tree`) and none is invented, and the geometric \
+             cross-check is not-applicable because there is no box to compare. Because it has no \
+             box it is OMITTED from any `ethos.grounding.v1` projection of this document, which is \
+             what this disclosure exists to make visible; the text is present and complete, so the \
+             table's content is addressable even though its grid is not.",
             list.join(", ")
         ),
     )

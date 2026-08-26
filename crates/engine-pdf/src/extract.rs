@@ -42,7 +42,13 @@ use crate::nodes::{PageExtract, PdfLocator, SynthesisReason, SynthesizedChar, Te
 pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.engine.extract.v0";
 
 /// Shape version of the extract artifact. **DRAFT**.
-pub const EXTRACT_SCHEMA_VERSION: &str = "0.3.0";
+///
+/// `0.4.0` at v2-S24: [`crate::nodes::PageExtract`] gained `tagged_tables`, the tables the
+/// structure tree declares that no geometric detector matched. The field is omitted when empty, so
+/// a document with no tagged tables serializes byte-identically to a `0.3.0` extract — but the
+/// shape is `deny_unknown_fields`, so a `0.3.0` reader rejects an extract that carries the key, and
+/// the version says the two are genuinely non-comparable rather than letting a reader guess.
+pub const EXTRACT_SCHEMA_VERSION: &str = "0.4.0";
 
 /// The extract artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -525,6 +531,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         // Paired by position: the nth `/Table` the tree describes on this page against the nth
         // table found on it. Anything cleverer would be matching two grids by geometry, and the
         // tagged half has no geometry to match with.
+        // v2-S24. The tagged tables on this page a detector did NOT match, collected here and
+        // emitted after reading order has settled the run list — so their cells' `run_indices`
+        // address the final order rather than a pre-reorder one.
+        let mut unmatched_tagged: Vec<&crate::structure::TaggedTable> = Vec::new();
         if let Some(tree) = structure.as_ref() {
             let tagged_here: Vec<&crate::structure::TaggedTable> = tree
                 .tables
@@ -539,11 +549,16 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                         found.tagged_check =
                             Some(tagged.check_against(found.rows, found.columns, &positions));
                     }
-                    // The tree says there is a table here and no detector found one. **No table
-                    // is invented to match the tags**: a grid emitted on the strength of `/TD`
-                    // elements alone would have cells this engine placed, and a consumer could
-                    // not tell them from cells a detector reconstructed from the page.
-                    None => tagged_without_geometric.push(page_number),
+                    // The tree says there is a table here and no detector found one. **Until
+                    // v2-S24 no table was emitted** — a grid built from `/TD` elements alone would
+                    // have cells this engine placed, and with nothing on the wire to distinguish
+                    // them a consumer could not tell them from cells a detector reconstructed off
+                    // the page. `DerivationClass` is now that distinction: the table is emitted as
+                    // `Extracted` under `tagged-tables-v1` with geometry typed-absent, so it says
+                    // out loud that the document declared it and the engine read the tags rather
+                    // than inferring a grid. This is the `None` arm the double-emission guard
+                    // relies on — a tagged table that paired above is never emitted here.
+                    None => unmatched_tagged.push(*tagged),
                 }
             }
         }
@@ -589,6 +604,73 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 &mut tables,
                 &crate::reading_order::order(&geometry, &boxes),
             );
+        }
+
+        // v2-S24. Emit the tagged tables collected above, now that `runs` is in its final order.
+        // A cell's `run_indices` address that final list, and its text is the runs the tree bound
+        // beneath it concatenated in reading order — so fabrication stays 0 by construction, and
+        // reordering the page cannot leave a stale index behind. No box is invented anywhere: the
+        // geometry is typed-absent.
+        let mut page_tagged_tables = Vec::new();
+        for tagged in &unmatched_tagged {
+            // A `/Table` the walk found no cell for is not a table — its `rows`/`columns` are 0 —
+            // and an empty grid is not emitted. Left uncounted rather than declared as a
+            // without-geometric page: there is nothing there to have geometry.
+            if tagged.cells.is_empty() || tagged.rows == 0 || tagged.columns == 0 {
+                continue;
+            }
+            let id = alloc.next(IdKind::Table)?;
+            let mut cells = Vec::with_capacity(tagged.cells.len());
+            for cell in &tagged.cells {
+                // Bind by `(page, mcid)`, the key v1-S3 already uses. Only a cell the tree places
+                // on THIS page may claim this page's runs: mcids restart per page, so a cell on
+                // another page of a straddling table must not collect a run whose id collides.
+                let (run_indices, text) = if cell.page == Some(page_id) {
+                    let mut idx = Vec::new();
+                    let mut text = String::new();
+                    for (i, run) in runs.iter().enumerate() {
+                        if run.mcid.is_some_and(|m| cell.mcids.contains(&m)) {
+                            idx.push(i);
+                            text.push_str(&run.text);
+                        }
+                    }
+                    (idx, text)
+                } else {
+                    // A cell on another page of a multi-page table: its runs are not on this page,
+                    // so it binds nothing here and carries the empty string. Honest rather than
+                    // guessed — the page-granular emit cannot reach another page's runs.
+                    (Vec::new(), String::new())
+                };
+                cells.push(crate::tables::TaggedCellRecord {
+                    position: engine_core::TableCellPosition {
+                        row: cell.row,
+                        column: cell.column,
+                        rowspan: cell.rowspan,
+                        colspan: cell.colspan,
+                        table_id: id.clone(),
+                    },
+                    run_indices,
+                    text,
+                    geometry: crate::tables::TAGGED_TABLE_GEOMETRY,
+                });
+            }
+            page_tagged_tables.push(crate::tables::TaggedTableRecord {
+                id,
+                page: page_number,
+                rows: tagged.rows,
+                columns: tagged.columns,
+                cells,
+                rule: engine_core::TABLE_DETECTION_TAGGED_V1.to_string(),
+                check: crate::tables::tagged_not_applicable_check(),
+                geometry: crate::tables::TAGGED_TABLE_GEOMETRY,
+            });
+        }
+        // v2-S24. The repurposed disclosure: a page that emitted a tagged table carries a table
+        // with no geometry, so a consumer reading only the assurance block learns some tables on
+        // this document are not groundable and why. It fires where a table IS emitted now, not
+        // where one was withheld — the meaning `tagged-table-without-geometric-table` used to have.
+        if !page_tagged_tables.is_empty() {
+            tagged_without_geometric.push(page_number);
         }
 
         // v1-S4. Annotations and form fields, from the page's own `/Annots`. Walked here rather
@@ -684,6 +766,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
         pages.push(PageExtract {
             tables,
+            tagged_tables: page_tagged_tables,
             objects,
             images,
             index: page_number,

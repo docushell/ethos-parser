@@ -156,7 +156,22 @@ pub struct PageExtract {
     /// **Empty means the detector looked and found none** — never "did not look". The capability
     /// says which of those two a reader is seeing, and `ethos.grounding.v1` draws the same
     /// distinction with an absent key versus an empty array.
+    ///
+    /// **Geometric only.** A table the document tagged but no detector matched is in
+    /// [`Self::tagged_tables`] instead, kept apart so `accuracy`'s geometric gate scores the
+    /// detectors against the tree without the tagged tables — which come from the tree — scoring it
+    /// against itself.
     pub tables: Vec<crate::tables::DetectedTable>,
+    /// Tables the document's structure tree declares that no geometric detector matched (v2-S24).
+    ///
+    /// A separate list from [`Self::tables`] because it is a different kind of statement: these are
+    /// `Extracted` from the document's own `/Table` tags and carry no geometry, where a detected
+    /// table is `Computed` from ink and carries a measured box. Empty for an untagged document, for
+    /// a tagged one whose every table a detector matched, and for a page the tree describes no
+    /// table on. Omitted from the wire when empty, so a document with no tagged tables is
+    /// byte-identical to one produced before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tagged_tables: Vec<crate::tables::TaggedTableRecord>,
     /// Form fields and annotations this page carries (v1-S4).
     ///
     /// **Empty means the walk looked and found none.** The capabilities say which of those a

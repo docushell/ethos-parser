@@ -73,7 +73,10 @@ pub fn to_representation(
                 cells.push(engine_core::TableCellRecord {
                     id: alloc.next(IdKind::Element)?,
                     position: c.position.clone(),
-                    bbox: rect_to_qrect(c.rect)?,
+                    // A detected cell always has a box: the detector measured it from ink. Wrapped
+                    // as `Measured` because the field is now a `GeometryPresence` — the tagged
+                    // tables below are the `Absent` case, and this is the other half of the pair.
+                    geometry: engine_core::GeometryPresence::Measured(rect_to_qrect(c.rect)?),
                     text: c.text.clone(),
                     // v1.1-S2. `run_indices` addresses this page's run list and every one of
                     // those runs becomes a node under the id it already has, so this is the
@@ -104,7 +107,7 @@ pub fn to_representation(
             tables.push(engine_core::TableRecord {
                 id: t.id.clone(),
                 page: page_id.clone(),
-                bbox: rect_to_qrect(t.rect)?,
+                geometry: engine_core::GeometryPresence::Measured(rect_to_qrect(t.rect)?),
                 rows: t.rows,
                 columns: t.columns,
                 cells,
@@ -119,6 +122,65 @@ pub fn to_representation(
                 // this page — an absent key means the tree said nothing here, which is not the
                 // same as the two derivations agreeing.
                 tagged_check: t.tagged_check.clone(),
+            });
+        }
+
+        // v2-S24. The tagged tables become `TableRecord`s in the SAME list, distinguished by
+        // `derivation`: `Extracted`, where the geometric tables above are `Computed`. That is the
+        // whole point of the field — a consumer reads one `tables` array and tells "the document
+        // declared this grid" from "a detector inferred it" off the derivation, not off two lists.
+        // The ids the extractor allocated are carried forward verbatim so a cell's `table_id`
+        // matches its table's `id`, exactly as for the geometric tables.
+        for t in &page.tagged_tables {
+            let cells = t
+                .cells
+                .iter()
+                .map(|c| {
+                    Ok(engine_core::TableCellRecord {
+                        id: alloc.next(IdKind::Element)?,
+                        position: c.position.clone(),
+                        // Typed-absent, carried straight through: the tree named no box, and none
+                        // is invented here any more than it was in the extractor.
+                        geometry: c.geometry,
+                        text: c.text.clone(),
+                        node_ids: c
+                            .run_indices
+                            .iter()
+                            .map(|i| {
+                                page.runs.get(*i).map(|r| r.id.clone()).ok_or_else(|| {
+                                    EngineError::Malformed {
+                                        what: "tagged table cell".into(),
+                                        detail: format!(
+                                            "tagged cell names run {i} of page {}, which holds {} \
+                                             run(s)",
+                                            page.index,
+                                            page.runs.len()
+                                        ),
+                                    }
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    })
+                })
+                .collect::<Result<Vec<_>, EngineError>>()?;
+            tables.push(engine_core::TableRecord {
+                id: t.id.clone(),
+                page: page_id.clone(),
+                // Absent, and never a fabricated box: the structure tree carries no coordinate.
+                geometry: t.geometry,
+                rows: t.rows,
+                columns: t.columns,
+                cells,
+                // **Extracted, not Computed** — the grid is the document's own statement, read off
+                // its tags, not an inference over ink. The stronger class is the honest one.
+                derivation: engine_core::DerivationClass::Extracted,
+                detection_rule: t.rule.to_string(),
+                // NotApplicable: no geometry to compare against the structural derivation.
+                locator_check: t.check.clone(),
+                // The table IS the tree's derivation; there is no independent geometric grid to
+                // check it against, and comparing the tree to itself would agree with itself. So no
+                // tagged-versus-geometric check is recorded rather than a self-agreeing `Ok`.
+                tagged_check: None,
             });
         }
         pages.push(PageRecord {
@@ -415,7 +477,7 @@ fn rect_to_qrect(r: crate::tables::QuantRect) -> Result<engine_core::QRect, Engi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{conformance_fixture, engine_fixture};
+    use crate::test_support::{conformance_fixture, engine_fixture, gate_fixture};
     use crate::Document;
 
     fn represent(bytes: &[u8]) -> DocumentRepresentation {
@@ -423,6 +485,79 @@ mod tests {
         let doc = Document::open_bytes(bytes, &profile).expect("opens");
         let extract = crate::extract(&doc, &profile).expect("extracts");
         to_representation(&extract, &profile).expect("represents")
+    }
+
+    /// **A tagged table reaches the representation as `Extracted`, in the same `tables` list, with
+    /// absent geometry** (v2-S24).
+    ///
+    /// This is the slice's central claim about the wire: the geometric tables and the tagged ones
+    /// live in one `tables` array, and `derivation` — not two lists — is what tells a consumer
+    /// which is which. `irs-f1040sd-2025` draws no readable grid, so every table it contributes is
+    /// tagged and `Extracted`; the assertion is that they are present, carry `tagged-tables-v1`,
+    /// report geometry absent rather than a fabricated box, and their cross-check is not-applicable.
+    #[test]
+    fn a_tagged_table_reaches_the_representation_as_extracted_with_absent_geometry() {
+        let repr = represent(&gate_fixture("irs-f1040sd-2025.pdf"));
+        let tables = &repr.payload().tables;
+        let tagged: Vec<&engine_core::TableRecord> = tables
+            .iter()
+            .filter(|t| t.detection_rule == engine_core::TABLE_DETECTION_TAGGED_V1)
+            .collect();
+        assert!(
+            !tagged.is_empty(),
+            "the tagged tables must reach the published record, not stop at the extract stage"
+        );
+        for t in &tagged {
+            assert_eq!(
+                t.derivation,
+                engine_core::DerivationClass::Extracted,
+                "a tagged table is the document's own statement, so it is Extracted — the field \
+                 that distinguishes it from a Computed geometric table in the same list"
+            );
+            assert!(
+                matches!(
+                    t.geometry,
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NotReportedByStructureTree
+                    )
+                ),
+                "no box is invented for a tagged table: {:?}",
+                t.geometry
+            );
+            assert!(
+                matches!(
+                    t.locator_check.outcome,
+                    engine_core::CheckStatus::NotApplicable { .. }
+                ),
+                "the cross-check is not-applicable, never a false ok: {:?}",
+                t.locator_check.outcome
+            );
+            assert!(
+                t.tagged_check.is_none(),
+                "the tagged table IS the tree's derivation; there is no independent grid to run a \
+                 tagged-versus-geometric check against"
+            );
+            for c in &t.cells {
+                assert!(
+                    matches!(c.geometry, engine_core::GeometryPresence::Absent(_)),
+                    "a tagged cell carries no box"
+                );
+            }
+        }
+        // And a geometric-table document is unaffected: its tables are still Computed with a
+        // measured box, so the change is additive.
+        let geo = represent(&engine_fixture("tagged-table-agrees/document.pdf"));
+        let g = geo
+            .payload()
+            .tables
+            .iter()
+            .find(|t| t.detection_rule == engine_core::TABLE_DETECTION_V3)
+            .expect("the painted grid is a Computed table");
+        assert_eq!(g.derivation, engine_core::DerivationClass::Computed);
+        assert!(matches!(
+            g.geometry,
+            engine_core::GeometryPresence::Measured(_)
+        ));
     }
 
     #[test]

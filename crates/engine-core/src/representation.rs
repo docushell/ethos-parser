@@ -69,7 +69,13 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.engine.representation.v0";
 /// `0.4.0` carries a cell's text with no link back to the runs it is a concatenation of, and this
 /// build refuses it rather than defaulting the field to empty — an empty `node_ids` means "this
 /// cell encloses no run", which is a different statement from "this file predates the link".
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.5.0";
+///
+/// `0.6.0` at v2-S24: [`crate::TableRecord`] and [`crate::TableCellRecord`] replaced their required
+/// `bbox: QRect` with `geometry: `[`crate::GeometryPresence`], so a **tagged** table can report its
+/// box as absent rather than carry an invented one. A record written under `0.5.0` has a `bbox`
+/// key this shape does not, and vice versa, so the two are genuinely non-comparable and the version
+/// says so rather than a reader silently coercing one into the other.
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.6.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///

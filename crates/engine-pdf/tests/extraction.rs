@@ -2174,6 +2174,18 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
 
     // Both cross-checks pass, and they are asking different questions.
     assert_eq!(t.check.outcome, engine_core::CheckStatus::Ok);
+
+    // **No double-emission** (v2-S24). The tree's `/Table` was MATCHED by the painted grid, so it
+    // paired in the Some arm and is recorded as this geometric table's `tagged_check`. It must NOT
+    // also be emitted as a `tagged-tables-v1` table: a gold `/Table` reaches the artifact once,
+    // geometrically OR tagged, never both. The tagged emit fires only in the None arm, which this
+    // page never reaches.
+    let tagged: usize = a.pages.iter().map(|p| p.tagged_tables.len()).sum();
+    assert_eq!(
+        tagged, 0,
+        "the tree's /Table paired with the detected grid, so it must not ALSO be emitted as a \
+         tagged table — that is the double-emission the None-arm guard prevents"
+    );
 }
 
 /// **Tagged and geometric disagree**: named, counted, and nothing repaired.

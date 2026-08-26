@@ -7,7 +7,91 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0
+
+### v2-S24 — tagged tables, as 0.37.0
+
+**A MINOR, because a reader changed.** The PDF extractor now emits a table for each `/Table` the
+document's structure tree declares that no geometric detector matched — so a NIST document whose
+tables are tagged but drawn as no readable grid gains tables on the artifact where 0.36.3 emitted
+none. `parser_version` moves and `table_detection` gains a fourth key, `tagged` = `tagged-tables-v1`,
+so `profile_sha256` moves twice over.
+
+#### The finding this acts on, and why it is not a detector change
+
+v2-S22 measured it: `unruled-align-v1` emitted 0 of 172 gold tables, and the two working geometric
+rules require the producer to have *drawn* the grid, which the NIST producers do not. Micro recall
+was **4‰** — 70 of 15 755 gold slots. But the documents *declare* their tables in the structure
+tree, and `structure.rs` already reads that tree and binds cell text by `(page object, mcid)`. So
+this slice reads the tags rather than the ink. The three geometric rules are **byte-identical** —
+no tolerance, no rule id, no lattice touched — and the new rule adds a table only where they found
+none.
+
+#### The classes invert the usual intuition, and that is the whole argument
+
+A geometric table is `Computed`: the engine inferred a grid from ink. A **tagged** table's structure
+is stated by the document, so it is `Extracted` — a *stronger* claim, not a weaker one. The standing
+refusal — *"cells placed from `/TD` elements alone would be cells this engine positioned, and a
+consumer could not tell them from cells reconstructed off the page"* — was right when there was
+nothing to tell them apart with. `DerivationClass` is now that distinction, on the wire: the two
+kinds share one `tables` list in the representation and `derivation` says which is which. Emitting
+the tagged table is not a relaxation of the fabrication rule; refusing it was the engine declining
+to report something the file says out loud.
+
+#### What is built
+
+- A tagged table for each unmatched `/Table`, shape from `/TR`/`/TD`/`/TH`/`/RowSpan`/`/ColSpan`,
+  cell text from the `/MCID`s the tree binds beneath each cell — the same key v1-S3 binds locators
+  with. **Fabrication stays 0**: a cell's text is the runs it names concatenated in reading order,
+  never placed. Measured across the corpus: 15 593 tagged cells emitted, **0 fabricated**.
+- **Geometry typed-absent.** `GeometryPresence::Absent(NotReportedByStructureTree)` — a NEW variant,
+  argued rather than reused: it is deliberately not `NotReportedByReader`, because that one counts as
+  a reader ink-measurement limitation and a tagged table's absent box is a property of its *source*,
+  not a shortfall of the reader. No rectangle is invented. `TableRecord`/`TableCellRecord` replace
+  their required `bbox: QRect` with `geometry: GeometryPresence`, so the wire can carry the absence;
+  `REPRESENTATION_SCHEMA_VERSION` moves `0.5.0 → 0.6.0` and `EXTRACT_SCHEMA_VERSION` `0.3.0 → 0.4.0`.
+- **The cross-check reports not-applicable, never `ok`.** `geometric-vs-structural-v1` compares two
+  derivations; a tagged table supplies only the structural one, so there is nothing to compare and
+  `tagged_not_applicable_check()` says so. A stray `ok` would be the check passing a comparison it
+  never ran.
+- **No double-emission.** A tagged table is emitted only in the `None` arm of the positional pairing
+  — where the tree declares a table no detector found. A tagged `/Table` a detector *did* match
+  pairs in the `Some` arm and rides as that geometric table's `tagged_check` instead;
+  `a_tagged_table_that_matches_the_painted_grid_checks_ok` pins it, asserting zero tagged tables on
+  the page whose `/Table` paired.
+- **Not groundable.** A table with no box cannot enter `ethos.grounding.v1`, so the projection omits
+  it, and `tagged-table-without-geometric-table` — whose text is repaired to say what it now means —
+  discloses the omission in the representation the grounding artifact is derived from.
+
+#### Measured — one run over the twelve documents
+
+The geometric gate is untouched: MACRO cell-F1 **70‰**, MICRO recall **4‰** (70 / 15 755), band
+0‰..590‰, ten of twelve at 0‰. Kept apart on purpose — the gate scores the detectors against the
+independent tree, and a tagged table scored against the tree it came from would measure the tree
+against itself.
+
+**Combined micro recall — geometric plus tagged — moves to 502‰** (7 924 of 15 755 gold slots
+recovered, against 70 before). It does not reach 1000‰ because the tagged emit and the gold share
+the tree derivation but the cell text still comes from run joining, which differs from the gold's
+`/MCID`-with-space join wherever a cell's runs do not concatenate to the same string. **157 of the
+172 gold tables** are emitted as tagged; the other 15 paired with a geometric detection.
+
+#### Escalations — restated, not settled
+
+- **#18 — what v1's table number is.** Not settled here. This slice feeds it the sharpest evidence
+  yet: v1's remaining gap — *"the two working rules require the producer to have drawn the grid"* —
+  is closed on evidence the documents supply, with combined recall at 502‰ where the geometric
+  detector reaches 4‰. Whether that closes v1 is the owner's decision; the gate assertion stays a
+  ceiling and v1's milestone is not ticked here.
+- **v2.2 or v3.** Restated unchanged. There is no `16-V22-SCOPE.md`.
+- **P9 — vendored CMap tables.** Restated unchanged; nothing records the v0 deferral.
+
+#### Scope refused
+
+**No detector change** — the three geometric rules are byte-identical and the gate is unmoved. **No
+corpus growth** — the twelve documents and their digests are untouched. **No second instrument** —
+`accuracy` scores the tagged tables through the same join it already ran, shared rather than copied.
+**No git tag.**
 
 ### v2-S23 — the coverage two slices retired, as 0.36.3
 

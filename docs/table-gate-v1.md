@@ -31,6 +31,14 @@ exactly that reason — not as a second gate, of which this repository has none,
 denominator, printed. The headline number is here because a reader expects one, not because it is
 the number worth quoting.
 
+**The gate stayed geometric, and v2-S24 is why that matters.** That slice added `tagged-tables-v1`,
+a rule that reads the tables the documents *declare* in their structure tree rather than the grids
+they *draw*. It closes the gap this whole document circles — the two working geometric rules need a
+drawn grid, and the NIST producers do not draw one. But the gate above is unmoved at **70‰/4‰**,
+deliberately: scoring a tree-derived table against the tree is circular, so the tagged tables are
+measured apart. The number that moves is **combined micro recall, 4‰ → 502‰** (7 924 of 15 755 gold
+slots), and fabrication stays 0. See §"v2-S24".
+
 **The method below does not change.** 70‰ is still measured, still reruns to the same value, still
 runs in CI, and **fabrication is still 0**. What is parked is treating 489‰ as the number the next
 slice must beat.
@@ -628,6 +636,86 @@ That is a new derivation class with its own slice and its own gold negatives, an
 boundary of what v1's three geometric rules can do. **Micro recall states the size of the gap in one
 number: 4‰** — 70 of the corpus's 15 755 gold slots — which is the headline the macro's 70‰ was
 hiding.
+
+## v2-S24: the tagged tables the documents declare
+
+**This slice took the derivation v2-S22 named.** That section ended by saying the ~15 500 missed
+slots need *"a derivation that reads a table's geometry from something other than drawn grid ink:
+the tagged structure tree's own cell bounds"* — a new derivation class. `tagged-tables-v1` is that
+class, and it reads the tree's shape and cell text rather than any coordinate. **The geometric gate
+does not move**, and that is the proof the detector did not: MACRO cell-F1 is still **70‰**, the band
+is still 0‰..590‰ with ten of twelve at 0‰, and geometric micro recall is still **4‰** (70 / 15 755).
+
+### The gate is kept geometric on purpose
+
+The gate scores the geometric **detectors** against the document's **tags**, which are independent by
+construction — matching by box against the tree would be scoring the detector against itself. A
+tagged table comes *from* the tree, so scoring it against the tree would be the same circularity in
+reverse: recall of ~1.0 that means nothing. So the tagged tables are emitted into their own list,
+scored apart, and the gate — the macro that decides whether the detector cleared 489‰ — is byte-for-
+byte the number it was at 0.36.3. Decision #18 is fed, not settled.
+
+### What the tagged emit recovers: combined micro recall, 4‰ → 502‰
+
+Pool every gold slot in the corpus and count what the engine now recovers with its **full** table
+output — the geometric detections plus the tables it reads from the tags:
+
+| Document | geo-recall | combined recall | tagged tables | gold tables |
+| --- | --- | --- | --- | --- |
+| `cfpb-home-loan-toolkit.pdf` | 276‰ | **452‰** | 5 | 17 |
+| `irs-fw9.pdf` | 433‰ | **450‰** | 1 | 4 |
+| `irs-form-1040-2025.pdf` | 0‰ | **700‰** | 1 | 1 |
+| `irs-f1040sd-2025.pdf` | 0‰ | **1000‰** | 2 | 2 |
+| `nist-sp-800-63b.pdf` | 0‰ | **654‰** | 13 | 13 |
+| `nist-sp-800-53r5.pdf` | 0‰ | **495‰** | 26 | 26 |
+| `nist-sp-800-161r1.pdf` | 0‰ | **437‰** | 46 | 46 |
+| `nist-sp-800-171r3.pdf` | 0‰ | **695‰** | 24 | 24 |
+| `nist-sp-800-207.pdf` | 0‰ | **745‰** | 4 | 4 |
+| `nist-sp-800-218.pdf` | 0‰ | **372‰** | 4 | 4 |
+| `nist-sp-800-37r2.pdf` | 0‰ | **458‰** | 20 | 20 |
+| `nist-sp-800-53Ar5.pdf` | 0‰ | **313‰** | 11 | 11 |
+| **MICRO over every gold slot** | **4‰** (70 / 15 755) | **502‰** (7 924 / 15 755) | **157** | 172 |
+
+The ten documents that read exactly 0‰ geometric now recover most of their gold — the NIST family
+between 313‰ and 745‰, and `irs-f1040sd-2025` all of it. **157 of the 172 gold tables** are emitted
+as tagged; the other 15 paired with a geometric detection on `cfpb-home-loan-toolkit` and `irs-fw9`
+and so ride those documents' geometric numbers instead.
+
+### Why it stops at 502‰ and not 1000‰
+
+Gold and the tagged emit share the tree derivation, so the **grid** matches by construction — same
+`/TR`/`/TD` ordinals, same spans. What differs is the **text**. The gold joins a cell's `/MCID`
+texts with a space; the tagged emit concatenates the runs it binds with nothing, exactly the 27‰
+separator gap §"A known defect in this metric" already records — now applied across all the newly
+recovered cells rather than the handful the geometric detector reached. It is a real difference and
+it is not tuned away: the tagged cell text is the runs the page drew, and closing the gap would mean
+adopting the gold's join convention, which would make the number measure the harness rather than the
+extractor. **Fabrication stays 0**: 15 593 tagged cells emitted, every one of them real runs
+concatenated, none placed.
+
+### What a tagged table carries, and what it does not
+
+- **`derivation: Extracted`**, where a geometric table is `Computed`. The document *stated* the grid;
+  the engine did not infer it. This is the field — not two lists — that tells a consumer which is
+  which, and it inverts the usual intuition: the tagged table is the *stronger* claim.
+- **Geometry typed-absent**: `GeometryPresence::Absent(NotReportedByStructureTree)`. No box is
+  invented. `TableRecord`/`TableCellRecord` carry a `GeometryPresence` rather than a bare `QRect`
+  so the absence is expressible; the representation schema moves to `0.6.0` for it.
+- **A not-applicable cross-check.** `geometric-vs-structural-v1` compares two derivations of one
+  table; a tagged table supplies only the structural one, so the check reports `NotApplicable`,
+  never `ok`.
+- **Omitted from grounding.** `ethos.grounding.v1` requires a `bbox` on every table and cell, and a
+  tagged table has none — so it is left out and disclosed through
+  `tagged-table-without-geometric-table`, whose text is repaired to name the emitted absent-geometry
+  tables rather than the withheld ones it used to.
+
+### What this leaves for #18
+
+v1's remaining gap was *"the two working rules require the producer to have drawn the grid."* That is
+now closed on evidence the documents supply: where the producer drew nothing but tagged everything,
+the engine recovers the tables the document declares. Whether v1's table number is stated as the
+geometric gate's 70‰/4‰ or as the capability plus 502‰ combined recall is decision #18, and it is
+the owner's — this slice reports both and settles neither.
 
 ## Why the number is what it is
 

@@ -187,6 +187,92 @@ pub struct DetectedTable {
     pub rule: String,
 }
 
+/// A table the document's structure tree declares, emitted when no geometric detector matched it
+/// on its page (v2-S24).
+///
+/// # Why this is a different type from [`DetectedTable`], not a flag on it
+///
+/// A `DetectedTable` is a grid this engine **inferred from ink** — `Computed`, with a box a
+/// detector measured. This is a grid the document **declared in its tags** — `Extracted`, with no
+/// box at all, because a structure tree states structure and never a coordinate. The two are
+/// different kinds of statement, and folding them into one type would mean either giving a tagged
+/// table an `Option` box (the sentinel this project refuses) or giving a detected table a
+/// geometry it does not need to justify. Keeping them apart also keeps the geometric gate honest:
+/// `accuracy` scores [`DetectedTable`]s against the tree, and a tagged table scored against the
+/// tree it came from would be measuring the tree against itself.
+///
+/// The geometry is **typed-absent**: [`engine_core::GeometryPresence::Absent`] with
+/// [`engine_core::GeometryAbsence::NotReportedByStructureTree`]. No rectangle is invented.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TaggedTableRecord {
+    /// Stable id.
+    pub id: NodeId,
+    /// 1-based page.
+    pub page: u32,
+    /// Rows, from the tree's `/TR` extent (spans counted).
+    pub rows: u32,
+    /// Columns, from the tree's widest row once spans are counted.
+    pub columns: u32,
+    /// Cells, in tree order.
+    pub cells: Vec<TaggedCellRecord>,
+    /// Which rule produced this table: always [`engine_core::TABLE_DETECTION_TAGGED_V1`]. Set from
+    /// the constant at the one build site, never spelled here, for the reason the detected ids are
+    /// not: a rule id written twice is one that can drift.
+    pub rule: String,
+    /// The locator cross-check. Always `NotApplicable`, and it must be: [`LOCATOR_CHECK_V1`]
+    /// compares a geometric derivation against a structural one, and a tagged table has no geometry
+    /// to put on the geometric side. Reporting `Ok` would be the check passing a comparison it
+    /// never ran — the risk v2-S24 names explicitly.
+    pub check: LocatorCheck,
+    /// Typed-absent geometry: [`engine_core::GeometryAbsence::NotReportedByStructureTree`]. The box
+    /// is not invented, and the reason it is missing is a property of the source rather than a gap
+    /// in this reader.
+    pub geometry: engine_core::GeometryPresence,
+}
+
+/// One `/TD` or `/TH` of a tagged table (v2-S24).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TaggedCellRecord {
+    /// Where it sits and how far it reaches, from the tree's position and `/RowSpan`/`/ColSpan`.
+    pub position: TableCellPosition,
+    /// Indices into the page's run list whose `(page, mcid)` the tree binds beneath this cell, in
+    /// reading order. The join key is the tree's own `/MCID` — never a coordinate — so the cell's
+    /// text is as independent of any geometric detector as its row and column are.
+    pub run_indices: Vec<usize>,
+    /// The concatenation of those runs' text. **Never a novel string**: the fabrication-0 invariant
+    /// holds here exactly as it does for a detected cell — a cell binding no run carries the empty
+    /// string, because that is what the document put there.
+    pub text: String,
+    /// Typed-absent geometry, as for the table.
+    pub geometry: engine_core::GeometryPresence,
+}
+
+/// The typed-absent geometry every tagged table and tagged cell carries (v2-S24).
+///
+/// A single constant so the reason is stated in one place: a table read from the structure tree has
+/// no box because the tree names none, and inventing one is exactly the fabrication this rule may
+/// not commit.
+pub const TAGGED_TABLE_GEOMETRY: engine_core::GeometryPresence =
+    engine_core::GeometryPresence::Absent(engine_core::GeometryAbsence::NotReportedByStructureTree);
+
+/// The locator cross-check a tagged table carries: `NotApplicable`, always (v2-S24).
+///
+/// Built here rather than inline so the reason travels with it and cannot drift into a stray `Ok`.
+/// The geometric-vs-structural check compares two derivations of one table; a tagged table supplies
+/// only the structural one, so the comparison cannot run.
+pub fn tagged_not_applicable_check() -> LocatorCheck {
+    LocatorCheck {
+        check_id: LOCATOR_CHECK_V1.to_string(),
+        check_version: "1".to_string(),
+        outcome: CheckStatus::NotApplicable {
+            reason:
+                "a tagged table carries no geometry, so the geometric-vs-structural cross-check \
+                     has nothing to compare against the structural derivation"
+                    .to_string(),
+        },
+    }
+}
+
 // -------------------------------------------------------------------------------------------
 // Detection
 // -------------------------------------------------------------------------------------------

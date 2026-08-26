@@ -230,6 +230,30 @@ pub const TABLE_DETECTION_UNRULED_V1: &str = "unruled-align-v1";
 /// segment produced no rectangle and never reached a lattice.
 pub const TABLE_DETECTION_STROKE_V1: &str = "stroke-ruled-v1";
 
+/// The **tagged** table-detection rule v2-S24 ships: emit a table for each `/Table` the structure
+/// tree declares that no geometric detector matched.
+///
+/// A fourth id rather than a widening of any other, for the reason the first three are separate:
+/// the evidence differs, and it differs in the direction that inverts the usual intuition. The
+/// three geometric rules read **ink** — painted rectangles, stroked lines, text origins — and infer
+/// a grid over it, so their tables are [`crate::DerivationClass::Computed`]. This rule reads the
+/// document's **own tags**: `/TR`, `/TD`, `/TH`, `/RowSpan`, `/ColSpan`, with cell text joined from
+/// the `/MCID`s beneath each cell. That is the document *stating* its table rather than the engine
+/// inferring one, so a tagged table is [`crate::DerivationClass::Extracted`] — a stronger claim
+/// than any geometric table, not a weaker one.
+///
+/// It carries **no geometry**. The tree names structure and never a coordinate, so the table's box
+/// is [`crate::GeometryPresence::Absent`] with [`crate::GeometryAbsence::NotReportedByStructureTree`]
+/// and no rectangle is invented. Its locator cross-check ([`crate::LOCATOR_CHECK_V1`]) is therefore
+/// `NotApplicable`: that check compares a geometric derivation against a structural one, and with
+/// no geometry there is nothing to compare.
+///
+/// v2-S22 measured the gap this closes: `unruled-align-v1` emitted 0 of 172 gold tables, and the
+/// two working geometric rules require the producer to have drawn the grid — which the NIST
+/// producers do not. Reading the tags recovers the tables the documents declare rather than the
+/// grids they draw.
+pub const TABLE_DETECTION_TAGGED_V1: &str = "tagged-tables-v1";
+
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
 /// On the profile because it changes output. Which structure types are recognised, how `/RoleMap`
@@ -341,15 +365,27 @@ pub struct TableDetection {
     /// declaring `stroke-ruled-tables-not-detected`, which every build declared from v1-S1 to
     /// v1-S7b.
     pub stroke_ruled: String,
+    /// Version id of the rule that emits a table for each `/Table` the structure tree declares that
+    /// no geometric detector matched (v2-S24).
+    ///
+    /// See [`TABLE_DETECTION_TAGGED_V1`]. A fourth field rather than a widening of any other, for
+    /// the reason there were three: the evidence differs. The first three read ink and infer a grid
+    /// (`Computed`); this one reads the document's own tags and reports what they state
+    /// (`Extracted`), carrying no geometry. Its arrival is what the `table_detection` doc comment
+    /// anticipated — *"a future slice that retires or adds one changes this shape and moves the
+    /// hash"* — and moving the hash is correct: two builds disagree about whether a NIST document's
+    /// tables reach the artifact.
+    pub tagged: String,
 }
 
 impl Default for TableDetection {
-    /// All three rules, enabled — the two v1-S2 shipped and the one v1-S8 added.
+    /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
             ruled: TABLE_DETECTION_V3.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
+            tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
         }
     }
 }
@@ -1082,6 +1118,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1144,6 +1181,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1200,6 +1238,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1260,6 +1299,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1307,6 +1347,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1360,6 +1401,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1411,6 +1453,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1466,6 +1509,7 @@ impl Profile {
                 ruled: NOT_RUN.into(),
                 unruled: NOT_RUN.into(),
                 stroke_ruled: NOT_RUN.into(),
+                tagged: NOT_RUN.into(),
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
@@ -1564,8 +1608,9 @@ mod tests {
     /// # What this test adds over the pin
     ///
     /// Per field: that a *changed* value moves the digest, that the mutation is not a no-op, and
-    /// that no two mutations collide. The name is still narrower than it reads — thirty-one of
-    /// thirty-four leaves — and saying so is the same repair v2-S12.1 made to
+    /// that no two mutations collide. The name is still narrower than it reads — thirty-two of
+    /// thirty-five leaves since v2-S24 added `table_detection.tagged` and its mutation together —
+    /// and saying so is the same repair v2-S12.1 made to
     /// `every_profile_is_distinct_from_every_other`, which checked four of nine while its name
     /// said every.
     #[test]
@@ -1613,6 +1658,7 @@ mod tests {
                     ruled: _,
                     unruled: _,
                     stroke_ruled: _,
+                    tagged: _,
                 },
             struct_tree_rule: _,
             markdown_rule: _,
@@ -1651,6 +1697,14 @@ mod tests {
                 Box::new(|p: &mut Profile| {
                     p.table_detection.stroke_ruled = "other-stroke-v9".into()
                 }),
+            ),
+            (
+                // v2-S24. A fourth separate knob, for a different kind of evidence again: a run
+                // that reads the document's own `/Table` tags emitted tables a run that read only
+                // ink could not have, and every NIST document in the gate corpus is the measured
+                // instance of exactly that.
+                "table_detection.tagged",
+                Box::new(|p: &mut Profile| p.table_detection.tagged = "other-tagged-v9".into()),
             ),
             (
                 // v1-S4. Which form and annotation nodes exist at all.
@@ -1798,14 +1852,16 @@ mod tests {
         ];
 
         // Pinned, so shrinking the list is a decision someone makes here rather than a line that
-        // quietly disappears. Thirty-two mutations cover thirty-one of the pattern's thirty-four
+        // quietly disappears. Thirty-three mutations cover thirty-two of the pattern's thirty-five
         // leaves — `page_budget` takes two, for its mode and its value — and the three that are
         // not covered are named in this test's doc comment, each because its type has exactly one
-        // legal value and cannot be mutated at all.
+        // legal value and cannot be mutated at all. Thirty-two was the number at v2-S13.1; the
+        // one it grew by is `table_detection.tagged`, which arrived at v2-S24 with its mutation
+        // in the same commit.
         assert_eq!(
             mutations.len(),
-            32,
-            "{} single-field mutation(s); thirty-two is the number at v2-S13.1",
+            33,
+            "{} single-field mutation(s); thirty-three is the number at v2-S24",
             mutations.len()
         );
 
@@ -1860,7 +1916,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.36.3","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.37.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2325,30 +2381,46 @@ mod tests {
              revisits the two coverages v2-S20 and v2-S21 retired — the on-wire \
              `CheckStatus::Mismatch` and `lopdf`'s catalog-scan recovery — and changes no reader: \
              `ci/code-lines.py` diffs empty and the only source edits are inside `mod tests`. The \
-             JSON above differs from 0.36.2's in `parser_version` and nothing else."
+             JSON above differs from 0.36.2's in `parser_version` and nothing else.\n\n\
+             Moved a FIFTY-SIXTH time at v2-S24 (0.37.0), on `parser_version` AND a NEW field: \
+             `table_detection` gains a fourth key, `tagged` = `tagged-tables-v1`. This is a MINOR \
+             because a reader changed — the PDF extractor now emits a table for each `/Table` the \
+             structure tree declares that no geometric detector matched, so a NIST document whose \
+             tables are tagged but not drawn gains tables on the artifact where 0.36.3 emitted \
+             none. The `table_detection` doc anticipated this exact move — *\"a future slice that \
+             retires or adds one changes this shape and moves the hash\"* — and it moves the hash \
+             twice over, by the new field and by `parser_version`. A tagged table is `Extracted` \
+             and carries no geometry (`GeometryAbsence::NotReportedByStructureTree`); the geometric \
+             detectors, the gate, and the three ids they write are byte-identical, so this is an \
+             ADDITION to what the profile runs, not a change to any rule it already ran. See \
+             `docs/table-gate-v1.md` §\"v2-S24\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:1d821fa64912b21daf1c7ab9859a4f888cf7894c7d2c10fa4723d74fb1d24453"
+            "sha256:9d77d8875af612c5734449eacd84e803567dc743c2de0b6577c900955b1a09b9"
         );
     }
 
-    /// All three rules are named on the profile, and any one moving moves the identity.
+    /// All four rules are named on the profile, and any one moving moves the identity.
     ///
     /// The reason `table_detection` stopped being a string at v1-S2, extended to the third rule at
-    /// v1-S8. With one id, an artifact could not distinguish "looked for this kind of table and
-    /// found none" from "never looked", and a reader comparing two such artifacts cell for cell
-    /// would be comparing different detectors.
+    /// v1-S8 and the fourth at v2-S24. With one id, an artifact could not distinguish "looked for
+    /// this kind of table and found none" from "never looked", and a reader comparing two such
+    /// artifacts cell for cell would be comparing different detectors.
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
         assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V3);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
+        assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
             (TABLE_DETECTION_V3, TABLE_DETECTION_UNRULED_V1),
             (TABLE_DETECTION_V3, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V3, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
         ] {
             assert_ne!(
                 a, b,
@@ -2356,11 +2428,11 @@ mod tests {
             );
         }
 
-        // All three appear on the wire, under their own keys.
+        // All four appear on the wire, under their own keys.
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -2393,10 +2465,24 @@ mod tests {
              tables a run that did not could not have"
         );
 
+        // The fourth, added at v2-S24. A run that reads the structure tree's `/Table` tags emits
+        // tables a run that only reads ink cannot, so its id is identity too.
+        let mut tagged_moved = base.clone();
+        tagged_moved.table_detection.tagged = "tagged-tables-v2".into();
+        assert_ne!(
+            hash(&base),
+            hash(&tagged_moved),
+            "and so is the tagged one — a run that reads the document's own table tags emitted \
+             tables a run that read only ink could not have"
+        );
+
         // And no knob is another: moving one must not produce a second one's digest.
         assert_ne!(hash(&ruled_moved), hash(&unruled_moved));
         assert_ne!(hash(&ruled_moved), hash(&stroke_moved));
+        assert_ne!(hash(&ruled_moved), hash(&tagged_moved));
         assert_ne!(hash(&unruled_moved), hash(&stroke_moved));
+        assert_ne!(hash(&unruled_moved), hash(&tagged_moved));
+        assert_ne!(hash(&stroke_moved), hash(&tagged_moved));
     }
 
     /// An unknown rule id fails closed rather than deserializing with the key dropped.
@@ -2407,10 +2493,13 @@ mod tests {
     /// arrived with — claiming a comparability it does not have.
     #[test]
     fn an_unknown_table_rule_key_is_refused() {
-        let bad = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"x-v1"}"#;
+        // The probe key was `tagged` until v2-S24 made that a real field — the exact promotion
+        // this test exists to catch, and it caught it: the assertion failed the moment the key
+        // stopped being unknown, and the probe moved to a fifth key instead of being deleted.
+        let bad = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","recognized":"x-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(bad).is_err(),
-            "a fourth rule id must fail closed, not vanish and change the hash"
+            "a fifth rule id must fail closed, not vanish and change the hash"
         );
 
         // And a profile MISSING the field v1-S8 added is refused too, rather than defaulted into
@@ -2421,7 +2510,15 @@ mod tests {
             "a pre-S8 profile must not silently acquire the stroke-ruled rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
+        // The same claim one field later: a profile from before v2-S24 must be refused, not
+        // defaulted into one that says the tagged rule ran when it did not.
+        let pre_tagged = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
+        assert!(
+            serde_json::from_str::<TableDetection>(pre_tagged).is_err(),
+            "a pre-S24 profile must not silently acquire the tagged rule"
+        );
+
+        let good = r#"{"ruled":"ruled-rects-v3","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

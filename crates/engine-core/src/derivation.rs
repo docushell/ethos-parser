@@ -121,6 +121,25 @@ pub enum GeometryAbsence {
     NoInkToMeasure,
     /// This profile does not declare the capability that would produce the measurement.
     CapabilityNotEnabled,
+    /// The node was reconstructed from the document's structure tree, which states structure and
+    /// never a coordinate — so there is no box to report, and none is invented (v2-S24).
+    ///
+    /// The case in practice is a **tagged table**: its grid comes from `/Table`, `/TR`, `/TD`,
+    /// `/RowSpan` and `/ColSpan`, and not one of those is a rectangle. The engine emits the table
+    /// because the document declares it, and reports the geometry as absent because the tree the
+    /// table came from names none.
+    ///
+    /// **It is deliberately NOT [`Self::NotReportedByReader`], and the difference is the same one
+    /// v1-S6.2 drew for [`Self::NoInkToMeasure`].** `NotReportedByReader` means the reader tried to
+    /// measure ink and the font supplied no metrics — a real gap in what this engine can do, which
+    /// [`GeometryPresence::is_declarable_limitation`] counts. Here the reader did not try and could
+    /// not: the thing it read from is a structure tree, and a tag has no geometry to measure.
+    /// Counting it as a reader limitation would inflate that count with nodes whose absent geometry
+    /// is a property of the source, not a shortfall of the reader — exactly the conflation that
+    /// motivated splitting `NoInkToMeasure` out. So this variant is **not** a declarable
+    /// limitation, and it is not groundable either: a table with no box cannot enter a
+    /// `ethos.grounding.v1` projection any more than a run with no ink box can.
+    NotReportedByStructureTree,
 }
 
 /// Geometry that was measured, or a typed reason it was not.
@@ -314,6 +333,13 @@ mod tests {
             !GeometryPresence::Absent(GeometryAbsence::CapabilityNotEnabled)
                 .is_declarable_limitation()
         );
+        assert!(
+            !GeometryPresence::Absent(GeometryAbsence::NotReportedByStructureTree)
+                .is_declarable_limitation(),
+            "a tagged table's absent geometry is a property of the structure tree it came from, \
+             not a gap in what this reader could measure — counting it would inflate the \
+             ink-measurement limitation exactly as NoInkToMeasure would have"
+        );
         let r = QRect::new(0, 0, 10, 10).unwrap();
         assert!(!GeometryPresence::Measured(r).is_declarable_limitation());
     }
@@ -326,6 +352,7 @@ mod tests {
             GeometryAbsence::NotReportedByReader,
             GeometryAbsence::NotApplicableToKind,
             GeometryAbsence::CapabilityNotEnabled,
+            GeometryAbsence::NotReportedByStructureTree,
         ] {
             assert!(!GeometryPresence::Absent(a).is_groundable());
         }
@@ -338,6 +365,7 @@ mod tests {
             GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
             GeometryPresence::Absent(GeometryAbsence::CapabilityNotEnabled),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByStructureTree),
         ];
         for c in cases {
             let v = serde_json::to_value(c).unwrap();

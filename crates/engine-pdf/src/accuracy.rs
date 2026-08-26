@@ -204,6 +204,30 @@ pub struct Score {
     /// already carry the whole gate number and the per-rule breakdown is in the v2-S22 report,
     /// while this one number is the standing finding a guard has to keep honest.
     pub unruled_detected: u32,
+    /// **Tables emitted from the structure tree's tags** (v2-S24, `tagged-tables-v1`).
+    ///
+    /// Counted separately from [`Self::detected`] and never folded into it: `detected` is the
+    /// GEOMETRIC detectors' output, the thing the gate scores against the independent tree, and a
+    /// tagged table comes from the tree — counting it there would corrupt precision and the gate's
+    /// meaning. Reported, not gated.
+    pub tagged_detected: u32,
+    /// Tagged cells emitted in total, so the tagged fabrication rate has a denominator.
+    pub tagged_emitted_cells: u32,
+    /// Tagged cells whose text is **not** a concatenation of runs the page drew. Required value: 0,
+    /// exactly as for [`Self::fabricated_cells`] — a tagged cell's text is real runs joined by the
+    /// tree's `/MCID`, never placed.
+    pub tagged_fabricated_cells: u32,
+    /// Cell-slot true positives over GEOMETRIC **and** tagged tables together (v2-S24).
+    ///
+    /// The numerator of the combined micro recall the slice moves. The geometric-only
+    /// [`Self::cell_tp`]/[`Self::cell_fp`]/[`Self::cell_fn`] stay the gate and do not move; these
+    /// pool the same gold slots over the engine's full table output — geometric plus tagged — to
+    /// state how many of the corpus's gold slots the engine now recovers.
+    pub combined_cell_tp: u32,
+    /// Combined cell-slot false positives. See [`Self::combined_cell_tp`].
+    pub combined_cell_fp: u32,
+    /// Combined cell-slot false negatives. See [`Self::combined_cell_tp`].
+    pub combined_cell_fn: u32,
 }
 
 impl Score {
@@ -218,6 +242,12 @@ impl Score {
         self.cell_fp += o.cell_fp;
         self.cell_fn += o.cell_fn;
         self.unruled_detected += o.unruled_detected;
+        self.tagged_detected += o.tagged_detected;
+        self.tagged_emitted_cells += o.tagged_emitted_cells;
+        self.tagged_fabricated_cells += o.tagged_fabricated_cells;
+        self.combined_cell_tp += o.combined_cell_tp;
+        self.combined_cell_fp += o.combined_cell_fp;
+        self.combined_cell_fn += o.combined_cell_fn;
     }
 
     /// **The gate number for one document**, in per-mille, or `None` when it declares no table.
@@ -254,6 +284,21 @@ impl Score {
     pub fn precision_permille(self) -> Option<u32> {
         (self.detected > 0)
             .then(|| (u64::from(self.matched) * 1000 / u64::from(self.detected)) as u32)
+    }
+
+    /// Combined (geometric + tagged) cell-slot recall in per-mille, or `None` when nothing is
+    /// declared (v2-S24). The number this slice moves, reported per document beside the geometric
+    /// gate rather than replacing it.
+    pub fn combined_recall_permille(self) -> Option<u32> {
+        let denom = u64::from(self.combined_cell_tp) + u64::from(self.combined_cell_fn);
+        (self.declared > 0 && denom > 0)
+            .then(|| (u64::from(self.combined_cell_tp) * 1000 / denom) as u32)
+    }
+
+    /// Geometric-only cell-slot recall in per-mille, the gate's denominator (v2-S22).
+    pub fn geometric_recall_permille(self) -> Option<u32> {
+        let denom = u64::from(self.cell_tp) + u64::from(self.cell_fn);
+        (self.declared > 0 && denom > 0).then(|| (u64::from(self.cell_tp) * 1000 / denom) as u32)
     }
 }
 
@@ -434,12 +479,45 @@ pub fn score(
                 }
             }
         }
+
+        // v2-S24. The same fabrication measurement over the tagged tables, counted apart. A tagged
+        // cell's text is real runs the tree bound by `/MCID`, joined in reading order — so
+        // `tagged_fabricated_cells` must be 0 for exactly the reason `fabricated_cells` is, and
+        // `no_tagged_cell_contains_text_the_page_did_not_draw` asserts it across the corpus. The
+        // cross-check is deliberately NOT counted here: a tagged table's check is `NotApplicable`,
+        // which is not a disagreement and must not read as one.
+        for table in &page.tagged_tables {
+            s.tagged_detected += 1;
+            for cell in &table.cells {
+                s.tagged_emitted_cells += 1;
+                let from_runs: String = cell
+                    .run_indices
+                    .iter()
+                    .filter_map(|i| page.runs.get(*i))
+                    .map(|r| r.text.as_str())
+                    .collect();
+                if from_runs != cell.text {
+                    s.tagged_fabricated_cells += 1;
+                }
+            }
+        }
     }
 
+    // The gate, geometric only and unchanged: the detectors scored against the independent tree.
     let (tp, fp, fn_) = cell_slots(&extract, labels);
     s.cell_tp = tp;
     s.cell_fp = fp;
     s.cell_fn = fn_;
+
+    // v2-S24. The same join over the engine's FULL table output — geometric plus tagged — for the
+    // combined micro recall. This is the number the slice moves: the geometric gate stays put, and
+    // this states how many of the corpus's gold slots the engine now recovers once it reads the
+    // tags. It is not a second gate — there is no verdict on it — and it deliberately shares no
+    // input with the gate above, which keeps the gate the detector-versus-tree measurement it is.
+    let (ctp, cfp, cfn) = cell_slots_including_tagged(&extract, labels);
+    s.combined_cell_tp = ctp;
+    s.combined_cell_fp = cfp;
+    s.combined_cell_fn = cfn;
     Ok(s)
 }
 
@@ -486,6 +564,98 @@ fn cell_slots(
     extract: &crate::extract::ExtractArtifact,
     labels: &LabelledDocument,
 ) -> (u32, u32, u32) {
+    // The gate: GEOMETRIC tables only, in page-major order. Byte-for-byte the scoring v2-S23 ran.
+    let predicted = geometric_predicted(extract);
+    score_predicted_tables(&predicted, labels)
+}
+
+/// The same join over the engine's full table output — geometric first, then tagged (v2-S24).
+///
+/// Geometric tables are placed before tagged ones on each page so a geometric detection claims its
+/// gold table first, leaving the tagged ones to claim the rest. This is what moves the combined
+/// micro recall: on the ten documents that draw no grid, every gold table is now claimed by a
+/// tagged emission rather than left as an all-miss. It is **not** the gate — [`cell_slots`] is —
+/// and the two are kept apart precisely so reading the tree cannot inflate the number that scores
+/// the detectors.
+fn cell_slots_including_tagged(
+    extract: &crate::extract::ExtractArtifact,
+    labels: &LabelledDocument,
+) -> (u32, u32, u32) {
+    let mut predicted = Vec::new();
+    for page in &extract.pages {
+        for table in &page.tables {
+            predicted.push((
+                page.index,
+                table.rows,
+                table.columns,
+                expand(table.cells.iter().map(|c| {
+                    (
+                        c.position.row,
+                        c.position.column,
+                        c.position.rowspan,
+                        c.position.colspan,
+                        c.text.as_str(),
+                    )
+                })),
+            ));
+        }
+        for table in &page.tagged_tables {
+            predicted.push((
+                page.index,
+                table.rows,
+                table.columns,
+                expand(table.cells.iter().map(|c| {
+                    (
+                        c.position.row,
+                        c.position.column,
+                        c.position.rowspan,
+                        c.position.colspan,
+                        c.text.as_str(),
+                    )
+                })),
+            ));
+        }
+    }
+    score_predicted_tables(&predicted, labels)
+}
+
+/// Every geometric table, expanded to `(page, rows, columns, slots)`, in page-major order.
+fn geometric_predicted(
+    extract: &crate::extract::ExtractArtifact,
+) -> Vec<(u32, u32, u32, BTreeMap<engine_core::CellSlot, String>)> {
+    let mut predicted = Vec::new();
+    for page in &extract.pages {
+        for table in &page.tables {
+            predicted.push((
+                page.index,
+                table.rows,
+                table.columns,
+                expand(table.cells.iter().map(|c| {
+                    (
+                        c.position.row,
+                        c.position.column,
+                        c.position.rowspan,
+                        c.position.colspan,
+                        c.text.as_str(),
+                    )
+                })),
+            ));
+        }
+    }
+    predicted
+}
+
+/// Score a list of predicted tables against the gold, returning `(tp, fp, fn)` over cell slots.
+///
+/// Shared by [`cell_slots`] (geometric only, the gate) and [`cell_slots_including_tagged`] (the
+/// combined recall) so the join is stated once — the reuse `docs/15`'s S24 asks for rather than a
+/// second copy. Each predicted table is `(page, rows, columns, expanded slots)`. The join is the
+/// one `docs/table-gate-v1.md` publishes: page, then closest shape greedily, ties by lower gold
+/// index; everything unjoined is counted, never dropped.
+fn score_predicted_tables(
+    predicted: &[(u32, u32, u32, BTreeMap<engine_core::CellSlot, String>)],
+    labels: &LabelledDocument,
+) -> (u32, u32, u32) {
     let (mut tp, mut fp, mut fn_) = (0u32, 0u32, 0u32);
 
     // Gold tables by page, with an index so "claimed" is recordable.
@@ -497,61 +667,49 @@ fn cell_slots(
     }
     let mut claimed: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
 
-    for page in &extract.pages {
-        for table in &page.tables {
-            let pred = expand(table.cells.iter().map(|c| {
-                (
-                    c.position.row,
-                    c.position.column,
-                    c.position.rowspan,
-                    c.position.colspan,
-                    c.text.as_str(),
-                )
-            }));
+    for (page_index, rows, columns, pred) in predicted {
+        // Step 2 of the join.
+        let pick = gold_by_page
+            .get(page_index)
+            .into_iter()
+            .flatten()
+            .filter(|i| !claimed.contains(*i))
+            .min_by_key(|i| {
+                let g = &labels.tables[**i];
+                let d = (i64::from(g.rows) * i64::from(g.columns)
+                    - i64::from(*rows) * i64::from(*columns))
+                .abs();
+                (d, **i)
+            })
+            .copied();
 
-            // Step 2 of the join.
-            let pick = gold_by_page
-                .get(&page.index)
-                .into_iter()
-                .flatten()
-                .filter(|i| !claimed.contains(*i))
-                .min_by_key(|i| {
-                    let g = &labels.tables[**i];
-                    let d = (i64::from(g.rows) * i64::from(g.columns)
-                        - i64::from(table.rows) * i64::from(table.columns))
-                    .abs();
-                    (d, **i)
-                })
-                .copied();
+        let Some(gi) = pick else {
+            // No gold table on this page to join. Every predicted slot is a false positive.
+            fp += pred.len() as u32;
+            continue;
+        };
+        claimed.insert(gi);
+        let gold = expand(
+            labels.tables[gi]
+                .cell_list
+                .iter()
+                .map(|c| (c.row, c.column, c.rowspan, c.colspan, c.text.as_str())),
+        );
 
-            let Some(gi) = pick else {
-                // No gold table on this page to join. Every predicted slot is a false positive.
-                fp += pred.len() as u32;
-                continue;
-            };
-            claimed.insert(gi);
-            let gold = expand(
-                labels.tables[gi]
-                    .cell_list
-                    .iter()
-                    .map(|c| (c.row, c.column, c.rowspan, c.colspan, c.text.as_str())),
-            );
-
-            for (slot, text) in &pred {
-                match gold.get(slot) {
-                    Some(g) if g == text => tp += 1,
-                    // Both a wrong-text slot and a slot the gold does not have. Charged to both
-                    // sides when the gold has one, because the detector both produced a wrong cell
-                    // and failed to produce the right one.
-                    Some(_) => fp += 1,
-                    None => fp += 1,
-                }
+        for (slot, text) in pred {
+            match gold.get(slot) {
+                Some(g) if g == text => tp += 1,
+                // Both a wrong-text slot and a slot the gold does not have. Charged to both
+                // sides when the gold has one, because the detector both produced a wrong cell
+                // and failed to produce the right one.
+                Some(_) => fp += 1,
+                None => fp += 1,
             }
-            fn_ += gold
-                .keys()
-                .filter(|s| pred.get(*s).is_none_or(|p| gold[*s] != *p))
-                .count() as u32;
         }
+        fn_ += gold
+            .keys()
+            .filter(|s| pred.get(*s).is_none_or(|p| gold[*s] != *p))
+            .count() as u32;
     }
 
     // Gold tables nothing joined: every slot missed. This is the term that keeps a document with
@@ -902,6 +1060,28 @@ mod tests {
             macro_f1.map_or("-".to_string(), |v| format!("{v}‰"))
         );
 
+        // **Per-document recall, geometric vs combined** (v2-S24). The slice asks for micro recall
+        // re-reported per document, and this is where the tagged emit shows up document by
+        // document: the ten NIST/IRS documents that read 0‰ geometric now recover most of their
+        // gold slots once the tags are read, while the two that draw grids move less because their
+        // geometric detections already carried them.
+        println!("\nper-document recall, geometric only vs geometric + tagged (v2-S24):");
+        println!(
+            "  {:<28} {:>10} {:>12} {:>14}",
+            "document", "geo-recall", "comb-recall", "tagged tables"
+        );
+        for (name, s) in &rows {
+            println!(
+                "  {:<28} {:>9} {:>11} {:>14}",
+                name,
+                s.geometric_recall_permille()
+                    .map_or("-".to_string(), |v| format!("{v}‰")),
+                s.combined_recall_permille()
+                    .map_or("-".to_string(), |v| format!("{v}‰")),
+                s.tagged_detected,
+            );
+        }
+
         // **The band, printed rather than left to a reader's impression.** v2-S19 exists because
         // four documents cannot tell a weak detector from a hard sample, and a macro average is
         // exactly the statistic that hides which it is: an average of mostly zeros is stable for a
@@ -933,10 +1113,33 @@ mod tests {
             (denom > 0).then(|| (u64::from(total.cell_tp) * 1000 / denom) as u32)
         };
         println!(
-            "  MICRO recall over every gold slot: {} ({} true positives, {} missed)",
+            "  MICRO recall over every gold slot (GEOMETRIC only, the gate's denominator): {} \
+             ({} true positives, {} missed)",
             micro_recall.map_or("-".to_string(), |v| format!("{v}‰")),
             total.cell_tp,
             total.cell_fn
+        );
+
+        // **Combined micro recall, geometric plus tagged** (v2-S24). The number this slice moves.
+        // The gate above stays the detector-versus-tree measurement; this pools the SAME gold slots
+        // over the engine's full output — the geometric detections plus the tables it now reads
+        // from the tags — and states how many of the corpus's gold slots the engine recovers. It
+        // will not reach 1000‰: gold and the tagged emit share the tree derivation, but the tagged
+        // cell text comes from joining runs and the gold from joining `/MCID` texts with a space,
+        // so the two differ wherever a cell's runs do not concatenate to the same string.
+        let combined_recall = {
+            let denom = u64::from(total.combined_cell_tp) + u64::from(total.combined_cell_fn);
+            (denom > 0).then(|| (u64::from(total.combined_cell_tp) * 1000 / denom) as u32)
+        };
+        println!(
+            "  COMBINED micro recall (geometric + tagged, v2-S24): {} ({} true positives, {} \
+             missed); tagged tables emitted {}, tagged cells {} (fabricated {})",
+            combined_recall.map_or("-".to_string(), |v| format!("{v}‰")),
+            total.combined_cell_tp,
+            total.combined_cell_fn,
+            total.tagged_detected,
+            total.tagged_emitted_cells,
+            total.tagged_fabricated_cells,
         );
         println!(
             "  alignment rule (`unruled-align-v1`) emitted {} table(s) across the {} documents",
@@ -1192,6 +1395,106 @@ mod tests {
                  draws no grid and implies none that this engine may claim. A calibration that \
                  buys recall here has bought a fabrication."
             );
+            // v2-S24. And no TAGGED table either. All three negatives are untagged — no
+            // `/StructTreeRoot` — so the tagged rule has nothing to read and must emit nothing.
+            // Asserted rather than assumed: a tagged emit that fired on an untagged document would
+            // be inventing a table out of an empty tree, the same fabrication one direction over.
+            let tagged: usize = ex.pages.iter().map(|p| p.tagged_tables.len()).sum();
+            assert_eq!(
+                tagged, 0,
+                "{rel} now yields {tagged} tagged table(s). It carries no structure tree, so the \
+                 tagged rule has no `/Table` to read — emitting one would be a fabrication."
+            );
+        }
+    }
+
+    /// **A tagged table is emitted with typed-absent geometry and a not-applicable cross-check**
+    /// (v2-S24).
+    ///
+    /// `irs-f1040sd-2025` tags two tables and draws neither as a grid a detector can read — its
+    /// stroke rule refuses at `ColumnLineNotStroked` — so both are emitted under `tagged-tables-v1`
+    /// off the same real `extract` run the gate scores. This pins the wire shape the slice's
+    /// acceptance names: geometry typed-absent with no box invented, and a cross-check that reports
+    /// not-applicable rather than a false `ok`.
+    #[test]
+    fn tagged_tables_are_emitted_with_typed_absent_geometry_and_no_ok_cross_check() {
+        let profile = Profile::default();
+        let bytes = gate_fixture("irs-f1040sd-2025.pdf");
+        let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+        let extract = crate::extract::extract(&doc, &profile).expect("extracts");
+
+        let tagged: Vec<&crate::tables::TaggedTableRecord> = extract
+            .pages
+            .iter()
+            .flat_map(|p| p.tagged_tables.iter())
+            .collect();
+        assert!(
+            !tagged.is_empty(),
+            "a document whose tables are tagged but drawn as no readable grid must emit tagged \
+             tables; none were emitted"
+        );
+        // And it did not also produce a geometric table for them — the gate corpus records this
+        // document detects nothing, so the tagged tables are the whole of its table output.
+        let geometric: usize = extract.pages.iter().map(|p| p.tables.len()).sum();
+        assert_eq!(
+            geometric, 0,
+            "this document draws no readable grid; the {geometric} geometric table(s) here would \
+             mean the detector changed, which v2-S24 does not touch"
+        );
+
+        for t in &tagged {
+            assert_eq!(t.rule, engine_core::TABLE_DETECTION_TAGGED_V1);
+            // Geometry typed-absent, no box invented, and the reason is the source not the reader.
+            assert!(
+                matches!(
+                    t.geometry,
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NotReportedByStructureTree
+                    )
+                ),
+                "a tagged table carries no box, typed by why: {:?}",
+                t.geometry
+            );
+            // The cross-check reports not-applicable, NEVER a false ok — the risk the slice names.
+            assert!(
+                matches!(
+                    t.check.outcome,
+                    engine_core::CheckStatus::NotApplicable { .. }
+                ),
+                "a geometry-free table's cross-check must be not-applicable: {:?}",
+                t.check.outcome
+            );
+            assert_ne!(
+                t.check.outcome,
+                engine_core::CheckStatus::Ok,
+                "the cross-check must not read `ok` for a table with nothing to compare"
+            );
+            assert!(!t.cells.is_empty(), "an emitted tagged table has cells");
+            for c in &t.cells {
+                assert!(
+                    matches!(c.geometry, engine_core::GeometryPresence::Absent(_)),
+                    "a tagged cell carries no box either"
+                );
+            }
+        }
+
+        // Fabrication is checked at the cell against the page's OWN run list, so it is exact rather
+        // than corpus-pooled: every tagged cell's text is its named runs concatenated.
+        for page in &extract.pages {
+            for t in &page.tagged_tables {
+                for c in &t.cells {
+                    let from_runs: String = c
+                        .run_indices
+                        .iter()
+                        .filter_map(|i| page.runs.get(*i))
+                        .map(|r| r.text.as_str())
+                        .collect();
+                    assert_eq!(
+                        from_runs, c.text,
+                        "a tagged cell's text must be exactly the runs it names, never placed"
+                    );
+                }
+            }
         }
     }
 
@@ -1251,6 +1554,75 @@ mod tests {
             "{} of {} emitted cells carry text that is not a concatenation of the runs they \
              name — fabrication is the one number in this harness with a required value",
             total.fabricated_cells, total.emitted_cells
+        );
+    }
+
+    /// **Fabrication is 0 for the TAGGED tables too** (v2-S24), measured across the corpus.
+    ///
+    /// A tagged cell's text is the runs the tree binds beneath it by `/MCID`, concatenated in
+    /// reading order — real runs, never placed. The tagged emit is a new way to produce a cell, so
+    /// the fabrication-0 invariant has to be re-established for it rather than inherited: this is
+    /// the place that is done over real documents. The corpus emits thousands of tagged cells, so
+    /// this is not a vacuous zero.
+    #[test]
+    fn no_tagged_cell_contains_text_the_page_did_not_draw() {
+        let (_, total) = measure();
+        assert!(
+            total.tagged_emitted_cells > 0,
+            "no tagged cell was emitted anywhere in the corpus, so this fabrication check is \
+             vacuous — the tagged rule is the whole point of v2-S24 and must fire"
+        );
+        assert_eq!(
+            total.tagged_fabricated_cells, 0,
+            "{} of {} tagged cells carry text that is not a concatenation of the runs they name. \
+             A tagged cell's text is real runs joined by the tree's `/MCID`; fabrication stays 0 \
+             here for exactly the reason it does for a detected cell.",
+            total.tagged_fabricated_cells, total.tagged_emitted_cells
+        );
+    }
+
+    /// **The tagged emit moves combined micro recall off the 4‰ floor** (v2-S24).
+    ///
+    /// The geometric detectors recover 70 of the corpus's 15 755 gold slots — 4‰, the number
+    /// `docs/table-gate-v1.md` §"v2-S22" names as v1's remaining gap. Reading the tags recovers the
+    /// tables the documents *declare* rather than the grids they *draw*, and this asserts the move
+    /// is material rather than checking an exact figure — the slice's own instruction is *"do not
+    /// tune to make a number"*. The floor here is deliberately far below the measured value and far
+    /// above the geometric 4‰: a regression that stopped emitting tagged tables would drop back
+    /// toward the geometric recall and trip it.
+    #[test]
+    fn tagged_tables_move_combined_micro_recall() {
+        let (_, total) = measure();
+
+        let geometric = {
+            let denom = u64::from(total.cell_tp) + u64::from(total.cell_fn);
+            u64::from(total.cell_tp) * 1000 / denom.max(1)
+        };
+        let combined = {
+            let denom = u64::from(total.combined_cell_tp) + u64::from(total.combined_cell_fn);
+            u64::from(total.combined_cell_tp) * 1000 / denom.max(1)
+        };
+
+        // The geometric side is the gate's denominator and must not have moved: the tagged emit is
+        // a separate list, scored apart, so the detectors-versus-tree number is untouched.
+        assert!(
+            geometric < 20,
+            "geometric micro recall is {geometric}‰, far above the ~4‰ v2-S22 measured — the \
+             tagged tables have leaked into the geometric gate, which they must never do"
+        );
+        // The combined side is the number this slice moves. A tenfold-plus rise, not a nudge.
+        assert!(
+            combined > 200,
+            "combined micro recall (geometric + tagged) is only {combined}‰. v2-S24 emits a table \
+             for every gold `/Table` the tree declares, so most of the corpus's 15 755 gold slots \
+             should now be recovered; a number this low means the tagged emit is not firing or its \
+             cells are not joining their gold. If the tagged emit genuinely recovers little, this \
+             slice failed and the record must say so — see the slice's own terms."
+        );
+        assert!(
+            combined > geometric * 10,
+            "combined recall {combined}‰ is not materially above the geometric {geometric}‰; the \
+             tagged emit added little, which is the slice failing"
         );
     }
 

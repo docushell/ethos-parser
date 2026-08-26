@@ -161,9 +161,10 @@
       "required": [
         "ruled",
         "unruled",
-        "stroke_ruled"
+        "stroke_ruled",
+        "tagged"
       ],
-      "description": "The table-detection rules in force. An object rather than a string since v1-S2, and three fields since v1-S8: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
+      "description": "The table-detection rules in force. An object rather than a string since v1-S2, three fields since v1-S8 and four since v2-S24: with several rules running, a single id could not say whether a run looked for a kind of table and found none or never looked, and those are different documents to a consumer. Every table on the wire also names the rule that produced it.",
       "properties": {
         "ruled": {
           "type": "string",
@@ -176,6 +177,10 @@
         "stroke_ruled": {
           "type": "string",
           "description": "Version id of the rule that reconstructs grids from stroked ruling lines (v1-S8). `stroke-ruled-v1`. A two-point stroked segment is the author saying `this edge is here`, which is evidence they left rather than an inference this engine made — so it ranks with the ruled rule and above the alignment one. Rows are the regions between rules, so a grid whose top edge was never drawn comes back one row short rather than completed."
+        },
+        "tagged": {
+          "type": "string",
+          "description": "Version id of the rule that emits a table for each `/Table` the structure tree declares that no geometric detector matched (v2-S24). `tagged-tables-v1`. This one reads the document's own tags rather than ink, so its table is `Extracted` — the document's own statement — rather than `Computed`, and it carries no geometry: the tree names no coordinate, so the box is absent (`not_reported_by_structure_tree`) and none is invented. Its locator cross-check is not-applicable, and it is omitted from any `ethos.grounding.v1` projection."
         }
       }
     },
@@ -374,7 +379,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.36.3",
+      "parser_version": "0.37.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"
@@ -384,7 +389,8 @@
       "table_detection": {
         "ruled": "ruled-rects-v3",
         "unruled": "unruled-align-v1",
-        "stroke_ruled": "stroke-ruled-v1"
+        "stroke_ruled": "stroke-ruled-v1",
+        "tagged": "tagged-tables-v1"
       },
       "text_code_rule": "declared-font-codes-v1",
       "verifier": {

@@ -2000,7 +2000,7 @@ pub(crate) mod tests {
                     colspan: c.colspan,
                     table_id: table_id.clone(),
                 },
-                bbox: QRect::new(0, 0, 100, 100).unwrap(),
+                geometry: crate::GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
                 text: c.runs.iter().map(|i| texts[*i]).collect(),
                 node_ids: c.runs.iter().map(|i| nodes[*i].id.clone()).collect(),
             })
@@ -2008,7 +2008,7 @@ pub(crate) mod tests {
         let table = crate::TableRecord {
             id: table_id,
             page: page.id.clone(),
-            bbox: QRect::new(0, 0, 100, 100).unwrap(),
+            geometry: crate::GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
             rows,
             columns,
             cells: records,
