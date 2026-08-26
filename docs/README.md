@@ -8,7 +8,7 @@ tagged documents** (v2-S19; it read 64‰ over four), fabrication is **0**, and 
 [`table-gate-v1.md`](table-gate-v1.md).
 
 **Quote the band with the macro or do not quote either.** The band is **0‰ .. 590‰, median 0‰,
-with nine of the twelve scoring exactly 0‰**, because the detector emits no table at all on them.
+with ten of the twelve scoring exactly 0‰**, because the detector emits no table at all on them.
 Two documents supply 849 of the 851 averaged points, and removing one drops the macro to 23‰. A
 single averaged figure over mostly zeros reads as *"the engine gets 7% of table cells right"* when
 the truth is *"most of two documents and nothing on nine"*.
@@ -279,7 +279,7 @@ M7 added no capability. It closed v0 instead:
 twelve documents** — 61‰ when first assessed at S7b, 64‰ once the third detection rule **S8
 shipped**, and 70‰ when **v2-S19** grew the corpus from four documents to twelve with no detector
 change. Seven investigations in S7b established that no repair to the *alignment* rule moves it,
-and S19 established something the four-document set could not: **nine of the twelve score exactly
+and S19 established something the four-document set could not: **ten of the twelve score exactly
 0‰**, so the macro describes which documents have drawn rules more than it describes the engine. See
 [`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the research
 archive of `stroke-ruled-v1`, the rule that was built and parked at S7b and then defect-fixed and

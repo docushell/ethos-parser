@@ -9,9 +9,10 @@ rather than a live floor — the chase is **parked**, which is not a pass (`00-N
 
 > **Note added by v2-S19.** Every `64‰` below is the **four-document** measurement current while
 > this row was being built. v2-S19 grew the gate corpus to **twelve** documents and re-measured:
-> the macro reads **70‰**, and the band — 0‰..590‰, median 0‰, **nine of twelve at zero** — shows
-> the macro was never the right summary of this detector. **The per-slice acceptance lines below
-> are left exactly as they were measured**, because rewriting them would erase the evidence that
+> the macro reads **70‰**, and the band — 0‰..590‰, median 0‰, **nine of twelve at zero** (ten
+> since v2-S20, which refused `nist-sp-800-218`'s nine phantom grids; the band and median are
+> unchanged) — shows the macro was never the right summary of this detector. **The per-slice
+> acceptance lines below are left exactly as they were measured**, because rewriting them would erase the evidence that
 > the number moved. Read `table-gate-v1.md` for the current number. v1.1 began because the owner asked for the next
 roadmap row, and nothing in it closes v1.
 

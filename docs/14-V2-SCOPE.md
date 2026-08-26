@@ -75,7 +75,7 @@ string the document does not contain, so the invariant grew a fourth rule instea
 
 **v1 is not done.** Its table number is measured and honest: macro cell-slot F1 is **70‰** on the
 twelve tagged PDFs this repository owns (v2-S19; 64‰ on the earlier four), the band is
-**0‰..590‰ with nine of twelve at zero**, and fabrication is **0** (`table-gate-v1.md`,
+**0‰..590‰ with ten of twelve at zero**, and fabrication is **0** (`table-gate-v1.md`,
 `09-V1-MILESTONES.md` S7). The **> 0.489 chase is parked** — 0.489 is a published ODL-local score on
 *their* corpus, same unit and a different exam, and it is not a precondition for anything in v2
 (`00-NORTH-STAR.md` #10). Parking it does not close v1. **v1.1 is complete** at 0.14.1 and **v1.2 is

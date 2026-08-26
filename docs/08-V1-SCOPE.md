@@ -17,7 +17,7 @@ it could not do. v1 is the version at which DocuShell could stop calling somethi
 | --- | --- | --- |
 | **Fabrication rate 0** | **binds** | No cell text the document does not contain. Not "low" — zero |
 | **Cross-check diagnostics emitted** | **binds** | Geometric and structural derivations of the same cell are compared, and disagreement is on the artifact |
-| Table-cell accuracy **> 0.489** on a labelled set | **parked as pass/fail** (owner, 2026-08-19) | **70‰** is this engine on **twelve tagged PDFs this repository owns** (v2-S19; 64‰ over the earlier four) — and the band is what to quote: 0‰..590‰, median 0‰, **nine of twelve at zero**. **0.489** is a published ODL-local table score on **their** corpus. Same unit, different exam. The chase is **parked** until this repository has a labelled set it owns and chooses to resume |
+| Table-cell accuracy **> 0.489** on a labelled set | **parked as pass/fail** (owner, 2026-08-19) | **70‰** is this engine on **twelve tagged PDFs this repository owns** (v2-S19; 64‰ over the earlier four) — and the band is what to quote: 0‰..590‰, median 0‰, **ten of twelve at zero**. **0.489** is a published ODL-local table score on **their** corpus. Same unit, different exam. The chase is **parked** until this repository has a labelled set it owns and chooses to resume |
 
 The first two are properties of the design, testable from the first slice, and they are not
 negotiable. The third was always the last slice's problem; it is now nobody's until the owner says
@@ -95,7 +95,7 @@ metric exists, is documented in `docs/table-gate-v1.md`, runs in CI and reruns t
 macro cell-F1 is **70‰** over twelve documents (v2-S19; **64‰** over the four measured before
 it), historically measured against a 489‰ comparator that this repository no longer treats as a
 shipping floor (`00-NORTH-STAR.md` #10). Parking it closes nothing — and v2-S19's band shows the
-macro was never the right summary: 0‰..590‰, median 0‰, **nine of twelve documents at zero**.
+macro was never the right summary: 0‰..590‰, median 0‰, **ten of twelve documents at zero**.
 
 S7b ran seven investigations: the six aimed at the *alignment* rule were all measured and rejected,
 and one — `ruled-rects-v2`, which stops a background panel from witnessing its own lattice —

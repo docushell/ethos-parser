@@ -1059,7 +1059,7 @@ against a 489‰ floor. v1 is not done.** (61‰ when first assessed at S7b; S8 
 detection rule and re-measured to 64‰ on four documents; **v2-S19 grew the corpus to twelve** and
 re-measured to 70‰ with **no detector change**.)
 
-**The band is the number to read, not the macro.** 0‰ .. 590‰, median 0‰, **nine of the twelve
+**The band is the number to read, not the macro.** 0‰ .. 590‰, median 0‰, **ten of the twelve
 score exactly 0‰** — the detector emits no table at all on them. Two documents supply 849 of the
 851 averaged points, and removing one drops the macro to 23‰. So neither 64‰ nor 70‰ was ever a
 property of this engine; what twelve documents establish is the **shape**, which is bimodal.
