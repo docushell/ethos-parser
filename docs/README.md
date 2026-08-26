@@ -1,6 +1,6 @@
 # ethos-engine — implementation documentation
 
-**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.35.0, and v2's format row
+**Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.37.0, and v2's format row
 is closed.** v1.1 is complete. v1 is
 the DocuShell replacement gate (`08-V1-SCOPE.md`); S1–S6, S7a, S7b and S8 are done and **S7 is
 open**. Its table number is measured and **missed**: macro cell-slot F1 is **70‰ over twelve
@@ -284,7 +284,7 @@ and S19 established something the four-document set could not: **ten of the twel
 [`table-gate-v1.md`](table-gate-v1.md) for all of them, and [`attic/`](attic/) for the research
 archive of `stroke-ruled-v1`, the rule that was built and parked at S7b and then defect-fixed and
 shipped at S8. **The > 0.489 chase is parked and v1-S7 is not closed**; parking is not a pass.
-v1.1, v1.2 and v2-S0 through S10 shipped on top of it — the status line at the top of this file is
+v1.1, v1.2 and v2-S0 through S24 shipped on top of it — the status line at the top of this file is
 the current one, and this paragraph is the v0 → v1 hand-off it describes.
 
 ---
