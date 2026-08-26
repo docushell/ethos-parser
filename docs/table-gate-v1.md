@@ -284,10 +284,10 @@ The macro moved 64‰ → 70‰ across a threefold corpus. Read alone, that is s
 license *"64‰ is this engine's honest table number."* **The band says otherwise, and the band is
 the number that matters.**
 
-- **Nine of twelve documents score 0‰.** Not "low" — zero, because the detector emits **no table
+- **Ten of twelve documents score 0‰.** Not "low" — zero, because the detector emits **no table
   at all** on them. The median document scores nothing.
 - **The macro is carried by two documents out of twelve.** `irs-fw9` at 590‰ and
-  `cfpb-home-loan-toolkit` at 259‰ supply 849 of the 851 points that get averaged.
+  `cfpb-home-loan-toolkit` at 259‰ supply all 849 of the points that get averaged.
 - **Remove `irs-fw9` alone and the macro falls to 23‰** — a threefold move from one document out of
   twelve. That is the arithmetic of an average over mostly zeros: it is stable in the way a
   thermometer reading mostly zeros is stable, and its value is set by which one or two documents

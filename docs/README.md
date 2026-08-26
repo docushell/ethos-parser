@@ -9,9 +9,9 @@ tagged documents** (v2-S19; it read 64‰ over four), fabrication is **0**, and 
 
 **Quote the band with the macro or do not quote either.** The band is **0‰ .. 590‰, median 0‰,
 with ten of the twelve scoring exactly 0‰**, because the detector emits no table at all on them.
-Two documents supply 849 of the 851 averaged points, and removing one drops the macro to 23‰. A
+Two documents supply all 849 of the averaged points, and removing one drops the macro to 23‰. A
 single averaged figure over mostly zeros reads as *"the engine gets 7% of table cells right"* when
-the truth is *"most of two documents and nothing on nine"*.
+the truth is *"most of two documents and nothing on ten"*.
 
 **The > 0.489 chase is parked** — this is this engine on tagged PDFs this repository owns, 0.489 is
 a published ODL-local score on *their* corpus, same unit and a different exam

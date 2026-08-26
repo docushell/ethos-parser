@@ -17,8 +17,8 @@ cell-slot F1 is **70‰ over twelve tagged documents** with fabrication at **0**
 corpus and re-measured with **no detector change**.
 
 **Quote the band with the macro or quote neither: 0‰ .. 590‰, median 0‰, and ten of the twelve
-score exactly 0‰**, because the detector emits no table at all on them. Two documents supply 849 of
-the 851 averaged points, and removing one drops the macro to 23‰. An average over mostly zeros is
+score exactly 0‰**, because the detector emits no table at all on them. Two documents supply all 849 of
+the averaged points, and removing one drops the macro to 23‰. An average over mostly zeros is
 not a summary of a detector — what twelve documents show that four could not is the **shape**: the
 ruled rule works where a producer drew the rules and produces nothing where it did not.
 
