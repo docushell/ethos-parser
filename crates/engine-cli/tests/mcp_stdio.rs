@@ -241,6 +241,61 @@ fn the_artifact_through_mcp_is_the_artifact_the_cli_prints() {
     }
 }
 
+/// A DOCX over MCP reads through the same router the CLI uses (0.38.0). Before
+/// the router was shared, `mcp extract` called the PDF reader directly and a
+/// DOCX was refused for lacking a `%PDF-` header — the wrong-cause refusal
+/// v2-S6, v2-S8, and v2-S10 each retired for a format on the CLI surface while
+/// the MCP surface silently kept it.
+#[test]
+fn an_office_document_through_mcp_gets_the_office_reader() {
+    let docx = repo_root().join("fixtures/office/simple-paragraphs/document.docx");
+    let responses = session(&[call(
+        "extract",
+        json!({ "path": docx.to_str().unwrap() }),
+        1,
+    )]);
+    let result = &responses[0]["result"];
+    assert_eq!(result["isError"], json!(false), "{result}");
+    assert_eq!(
+        result["structuredContent"]["representation"]["source"]["media_type"],
+        json!("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "the office reader answered, under its own media type"
+    );
+}
+
+/// Bytes that state no format get the router's own refusal over MCP — naming
+/// what was looked for, never a missing `%PDF-` header they never aimed at.
+#[test]
+fn no_format_bytes_through_mcp_get_the_routers_refusal() {
+    let dir = std::env::temp_dir().join(format!(
+        "engine-mcp-no-format-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("notes.csv");
+    std::fs::write(&path, b"a,b,c\n1,2,3\n").expect("temp file");
+
+    let responses = session(&[call(
+        "extract",
+        json!({ "path": path.to_str().unwrap() }),
+        1,
+    )]);
+    let result = &responses[0]["result"];
+    assert_eq!(result["isError"], json!(true));
+    let message = result["content"][0]["text"].as_str().expect("a refusal");
+    assert!(
+        message.contains("state no format this engine reads"),
+        "the refusal names its cause: {message}"
+    );
+    assert!(
+        !message.contains("%PDF-"),
+        "a file that never aimed at the PDF reader must not be refused for missing its header: {message}"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // The handle law — the version gate
 // -------------------------------------------------------------------------------------------

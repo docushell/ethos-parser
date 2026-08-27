@@ -51,7 +51,7 @@ use quick_xml::events::{BytesStart, Event};
 use crate::opc::resolve_target;
 use crate::xml::{
     attribute_value, cdata_text, check_closed, decode, local_name, new_reader, parse_error,
-    resolve_entity,
+    resolve_reference,
 };
 
 // The OPC relationship machinery moved to `opc.rs` at v2-S4 so the slide reader could use the
@@ -382,7 +382,7 @@ pub fn read_shared_strings(part: &[u8], part_name: &str) -> Result<Vec<String>, 
                 current.push_str(cdata_text(&cdata, name)?.as_ref());
             }
             Ok(Event::GeneralRef(entity)) if in_si && in_text && !in_phonetic => {
-                current.push_str(resolve_entity(entity.as_ref(), name)?);
+                current.push_str(&resolve_reference(entity.as_ref(), name)?);
             }
             Ok(_) => {}
         }
@@ -555,7 +555,8 @@ pub fn read_cells(
             }
             Ok(Event::GeneralRef(entity)) => {
                 if let Some(cell) = open.as_mut() {
-                    let resolved = resolve_entity(entity.as_ref(), part_name)?;
+                    let resolved = resolve_reference(entity.as_ref(), part_name)?;
+                    let resolved = resolved.as_ref();
                     collect.push(cell, resolved);
                 }
             }
@@ -1049,6 +1050,19 @@ mod tests {
     #[test]
     fn an_entity_this_reader_cannot_resolve_is_refused() {
         assert!(cells(r#"<c r="A1" t="inlineStr"><is><t>&xxe;</t></is></c>"#, &[]).is_err());
+    }
+
+    #[test]
+    fn a_numeric_character_reference_resolves_since_v2() {
+        // A reference names a scalar written another way — refused through v1's
+        // rule id, read under `xlsx-stored-value-verbatim-v2`, which moved for
+        // exactly this.
+        let read = cells(
+            r#"<c r="A1" t="inlineStr"><is><t>caf&#233; &#x2014; open</t></is></c>"#,
+            &[],
+        )
+        .expect("well-formed");
+        assert_eq!(read[0].text, "caf\u{e9} \u{2014} open");
     }
 
     // ---------------------------------------------------------------------------------------

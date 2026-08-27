@@ -1038,39 +1038,57 @@ mod tests {
     fn the_coverage_grid_is_the_per_pair_scan_by_another_route() {
         let tol_pt = LATTICE_TOLERANCE / i64::from(QUANTUM_PER_POINT);
         let cases: Vec<(&str, Vec<QuantRect>)> = vec![
-            ("clean 2x2 grid", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 100, 100), r(100, 50, 200, 100),
-            ]),
-            ("one face uncovered", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 100, 100),
-            ]),
-            ("cover within tolerance", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 100, 100),
-                // Edges one tolerance inside the face it must cover.
-                QuantRect {
-                    x0: pt(100) + LATTICE_TOLERANCE,
-                    y0: pt(50) + LATTICE_TOLERANCE,
-                    x1: pt(200) - LATTICE_TOLERANCE,
-                    y1: pt(100) - LATTICE_TOLERANCE,
-                },
-            ]),
-            ("cover just past tolerance", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 100, 100),
-                r(100 + tol_pt + 1, 50, 200, 100),
-            ]),
-            ("spanning rectangle covers two faces", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 200, 100),
-            ]),
-            ("whole-grid border is not evidence", vec![
-                r(0, 0, 100, 50), r(100, 0, 200, 50),
-                r(0, 50, 100, 100), r(100, 50, 200, 100),
-                r(0, 0, 200, 100),
-            ]),
+            (
+                "clean 2x2 grid",
+                vec![
+                    r(0, 0, 100, 50),
+                    r(100, 0, 200, 50),
+                    r(0, 50, 100, 100),
+                    r(100, 50, 200, 100),
+                ],
+            ),
+            (
+                "one face uncovered",
+                vec![r(0, 0, 100, 50), r(100, 0, 200, 50), r(0, 50, 100, 100)],
+            ),
+            (
+                "cover within tolerance",
+                vec![
+                    r(0, 0, 100, 50),
+                    r(100, 0, 200, 50),
+                    r(0, 50, 100, 100),
+                    // Edges one tolerance inside the face it must cover.
+                    QuantRect {
+                        x0: pt(100) + LATTICE_TOLERANCE,
+                        y0: pt(50) + LATTICE_TOLERANCE,
+                        x1: pt(200) - LATTICE_TOLERANCE,
+                        y1: pt(100) - LATTICE_TOLERANCE,
+                    },
+                ],
+            ),
+            (
+                "cover just past tolerance",
+                vec![
+                    r(0, 0, 100, 50),
+                    r(100, 0, 200, 50),
+                    r(0, 50, 100, 100),
+                    r(100 + tol_pt + 1, 50, 200, 100),
+                ],
+            ),
+            (
+                "spanning rectangle covers two faces",
+                vec![r(0, 0, 100, 50), r(100, 0, 200, 50), r(0, 50, 200, 100)],
+            ),
+            (
+                "whole-grid border is not evidence",
+                vec![
+                    r(0, 0, 100, 50),
+                    r(100, 0, 200, 50),
+                    r(0, 50, 100, 100),
+                    r(100, 50, 200, 100),
+                    r(0, 0, 200, 100),
+                ],
+            ),
         ];
         for (name, rects) in cases {
             let built = Lattice::build(&rects);

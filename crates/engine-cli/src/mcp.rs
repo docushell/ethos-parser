@@ -71,7 +71,7 @@
 
 use std::io::{BufRead, Write};
 
-use engine_core::{DocumentRepresentation, EngineError, Profile};
+use engine_core::{DocumentRepresentation, EngineError};
 use serde_json::{json, Value};
 
 /// The MCP revision this server implements.
@@ -299,11 +299,15 @@ fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
         .and_then(Value::as_str)
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`path` is required and must be a string"))?;
 
-    let profile = Profile::default();
-    let artifact = engine_pdf::Document::open(std::path::Path::new(path), &profile)
-        .and_then(|doc| engine_pdf::extract(&doc, &profile))
-        .and_then(|extract| engine_pdf::to_representation(&extract, &profile))
-        .map_err(|e| Failure::from(&e))?;
+    // Through the same router the CLI uses — a DOCX over MCP used to be handed
+    // straight to the PDF reader and refused for lacking a `%PDF-` header, the
+    // wrong-cause refusal three CLI slices had already retired for their formats.
+    let head = std::fs::read(std::path::Path::new(path)).map_err(|e| {
+        Failure::from(&engine_core::EngineError::Io {
+            detail: format!("{path}: {e}"),
+        })
+    })?;
+    let artifact = crate::representation_for_bytes(&head).map_err(|e| Failure::from(&e))?;
 
     let summary = format!(
         "{} page(s), {} node(s). Locators are in the artifact.",

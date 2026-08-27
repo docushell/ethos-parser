@@ -7,7 +7,32 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0
+
+### Numeric character references resolve everywhere, and the router is shared — as 0.38.0
+
+The decision v2-S9 recorded rather than made is made, and the six hash moves it priced are
+paid. `&#233;` is a scalar written another way — XML 1.0 §4.1, no DTD required — and the six
+office readers that reach an entity through the shared resolver (`docx`, `xlsx`, `pptx`,
+`odt`, `ods`, `odp`) refused it by name while the EPUB reader resolved it through a hardened
+resolver that already existed nine lines away. Every valid document containing one character
+reference was unreadable in six of eight formats, an unbounded per-document cost held against
+a bounded one-time price. All six now resolve references through that resolver, in text and
+in the names attributes carry — a sheet named `R&#233;sum&#233;` is an address, and refusing
+the whole workbook over a well-formed name was a wrong-cause refusal. Named entities beyond
+the five predefined stay refused: `&nbsp;` is an HTML name an XML parser without a DTD cannot
+resolve, and a name that silently became an empty string would be a character dropped from
+evidence. The six `text_code_rule` ids move verbatim-v1 → verbatim-v2 because the behaviour
+they name moved, which is the whole function of a rule id; `resolve_entity` stays as the
+five-only named-entity core the reference resolver falls back to.
+
+The same slice ends the format-dispatch fork: `mcp extract` called the PDF reader directly,
+so a DOCX over MCP was refused for lacking a `%PDF-` header — the wrong-cause refusal v2-S6,
+v2-S8 and v2-S10 each retired for a format on the CLI surface while the MCP surface silently
+kept it. The routing now lives in one function both surfaces call, so a fix there is a fix
+everywhere; the PDF path also opens from the bytes the router already read, so a file is read
+exactly once end to end. Tests pin a DOCX over MCP answering under its own media type and
+format-less bytes getting the router's own refusal.
 
 ### The detector quadratics go — as 0.37.2
 

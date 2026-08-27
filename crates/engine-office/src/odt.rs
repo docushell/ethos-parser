@@ -134,7 +134,7 @@ use quick_xml::name::ResolveResult;
 
 use crate::xml::{
     attribute_value, cdata_text, check_closed, decode, local_name, new_ns_reader, new_reader,
-    parse_error, parse_error_at, resolve_entity,
+    parse_error, parse_error_at, resolve_reference,
 };
 
 /// The three OpenDocument namespaces this reader resolves element names in.
@@ -783,7 +783,8 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                 push_source(&mut open, decoded.as_ref(), &mut skips, &mut text_bytes)?;
             }
             Event::GeneralRef(entity) => {
-                let resolved = resolve_entity(entity.as_ref(), CONTENT_PART)?;
+                let resolved = resolve_reference(entity.as_ref(), CONTENT_PART)?;
+                let resolved = resolved.as_ref();
                 push_source(&mut open, resolved, &mut skips, &mut text_bytes)?;
             }
             _ => {}

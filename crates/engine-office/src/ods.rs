@@ -77,7 +77,7 @@ use crate::odt::{
     MAX_BLOCK_NESTING, NS_OFFICE,
 };
 use crate::xml::{
-    cdata_text, check_closed, decode, local_name, new_ns_reader, parse_error_at, resolve_entity,
+    cdata_text, check_closed, decode, local_name, new_ns_reader, parse_error_at, resolve_reference,
     resolved_attribute,
 };
 
@@ -639,7 +639,8 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                 }
             }
             Event::GeneralRef(entity) => {
-                let resolved = resolve_entity(entity.as_ref(), odt::CONTENT_PART)?;
+                let resolved = resolve_reference(entity.as_ref(), odt::CONTENT_PART)?;
+                let resolved = resolved.as_ref();
                 if !outside_every_block(
                     &open,
                     &mut skips,

@@ -36,11 +36,16 @@
 //! the evidence.
 //!
 //! **Measured at S3:** `quick-xml` 0.41 delivers a *numeric character reference* — `&#66;` — as
-//! a `GeneralRef` event too, with the name `#66`. So this rule refuses those as well, even
-//! though they are ordinary XML that needs no DTD to resolve. That is a **named refusal of a
-//! valid document**, not a silent drop, so it fails in the safe direction; it is recorded here
-//! and in `docs/15-V2-MILESTONES.md` S3 rather than quietly widened, because widening it would
-//! change what a shipped DOCX artifact contains and no measurement in this slice asked for that.
+//! a `GeneralRef` event too, with the name `#66`. Through v2 this rule refused those as well —
+//! a **named refusal of a valid document**, recorded at S3 and left standing because widening
+//! it would change what a shipped DOCX artifact contains and no measurement had asked for that.
+//! **0.38.0 made the widening**, as the decision S9 recorded rather than made: every reader that
+//! reaches an entity through this module now resolves numeric character references via
+//! [`resolve_reference`], in text and in attribute values alike, and the six `text_code_rule`
+//! ids moved with the behaviour they name. [`resolve_entity`] keeps the five-only rule as the
+//! named-entity core `resolve_reference` falls back to — `&nbsp;` is still a refusal, because an
+//! XML parser without a DTD cannot resolve an HTML name, and a name that silently became an
+//! empty string would be a character dropped from evidence.
 
 use engine_core::EngineError;
 use quick_xml::Reader;
@@ -107,8 +112,9 @@ pub(crate) fn resolve_entity(name: &[u8], part: &str) -> Result<&'static str, En
 /// names moves. Widening the shared function would change what a DOCX reader does with a document
 /// it currently refuses, which is a behaviour change in six profiles for a slice that measured one
 /// format. So the EPUB reader — whose rule id is new — resolves character references, the other
-/// six still refuse them, and unifying the two is a decision with six hash moves attached that
-/// `docs/15-V2-MILESTONES.md` S9 records rather than makes.
+/// six still refused them until 0.38.0, when the decision S9 recorded was made and the six hash
+/// moves were paid: every XML reader in this crate now resolves references through this
+/// function, and the per-reader `text_code_rule` ids moved to v2 with the behaviour.
 ///
 /// **Named entities are still the five.** `&nbsp;` is an HTML name, not an XML one, and an XML
 /// parser without the DTD cannot resolve it — refusing it is what the specification says to do.
@@ -158,7 +164,7 @@ pub(crate) fn resolve_reference(
     }
 }
 
-/// Resolve entity references in a raw attribute value, under [`resolve_entity`]'s rule.
+/// Resolve entity references in a raw attribute value, under [`resolve_reference`]'s rule.
 ///
 /// `quick-xml` hands an attribute back with its entities **unresolved**, and its own unescaping
 /// helper is both deprecated in 0.41 and more permissive than the text path. Doing it here means
@@ -186,7 +192,7 @@ pub(crate) fn unescape_attribute(raw: &str, part: &str) -> Result<String, Engine
                     .into(),
             });
         };
-        out.push_str(resolve_entity(&after.as_bytes()[..end], part)?);
+        out.push_str(&resolve_reference(&after.as_bytes()[..end], part)?);
         rest = &after[end + 1..];
     }
     out.push_str(rest);
@@ -409,6 +415,17 @@ mod tests {
                 "the refusal names its reason: {error}"
             );
         }
+    }
+
+    #[test]
+    fn attribute_numeric_references_resolve_since_v2() {
+        // A sheet named with a character reference is an address, and refusing the
+        // whole document over a well-formed name was a wrong-cause refusal.
+        assert_eq!(
+            unescape_attribute("R&#233;sum&#233; &#x2013; final", "xl/workbook.xml")
+                .expect("well-formed"),
+            "R\u{e9}sum\u{e9} \u{2013} final"
+        );
     }
 
     #[test]

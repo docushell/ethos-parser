@@ -217,7 +217,8 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
             // because the workbook reader needs the same one and two copies of "what counts as
             // text" is two places for the answer to drift.
             Ok(Event::GeneralRef(entity)) if in_text => {
-                let resolved = crate::xml::resolve_entity(entity.as_ref(), MAIN_PART)?;
+                let resolved = crate::xml::resolve_reference(entity.as_ref(), MAIN_PART)?;
+                let resolved = resolved.as_ref();
                 if let Some(run) = open_run.as_mut() {
                     run.text.push_str(resolved);
                 }

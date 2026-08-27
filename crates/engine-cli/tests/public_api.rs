@@ -216,7 +216,7 @@ const CORE: &[&str] = &[
     "OfficeRunAttributes",
     "NOT_RUN",
     "DOCX_READING_ORDER_RULE_V1",
-    "DOCX_TEXT_CODE_RULE_V1",
+    "DOCX_TEXT_CODE_RULE_V2",
     // v2-S3. The third format's address and its facts. A cell is not a run: it has a value type
     // and it may have a formula, and neither is a thing a `<w:r>` has.
     "XlsxLocator",
@@ -224,13 +224,13 @@ const CORE: &[&str] = &[
     "CellValueType",
     "CellTextSource",
     "XLSX_READING_ORDER_RULE_V1",
-    "XLSX_TEXT_CODE_RULE_V1",
+    "XLSX_TEXT_CODE_RULE_V2",
     // v2-S4. The third format's address and its facts. A slide run is neither a cell nor a
     // `<w:r>`: it has a shape, and DrawingML has no `xml:space` to record.
     "PptxLocator",
     "OfficeSlideRunAttributes",
     "PPTX_READING_ORDER_RULE_V1",
-    "PPTX_TEXT_CODE_RULE_V1",
+    "PPTX_TEXT_CODE_RULE_V2",
     // v2-S5. The fifth format's address and its facts, and the first that is not OOXML. The
     // address is a BLOCK rather than a run, because ODF paragraphs often carry no inline element
     // to address; the fact is which of ODF's two blocks it was, because ODF has no `xml:space` to
@@ -239,7 +239,7 @@ const CORE: &[&str] = &[
     "OfficeParagraphAttributes",
     "OdfBlockKind",
     "ODT_READING_ORDER_RULE_V1",
-    "ODT_TEXT_CODE_RULE_V1",
+    "ODT_TEXT_CODE_RULE_V2",
     // v2-S6. The sixth format's address and its facts. The address is the first in this contract
     // that the source file does not write down at all — ODF states a cell's position by where it
     // sits among its siblings, compressed by `table:number-columns-repeated` — and the facts are a
@@ -250,7 +250,7 @@ const CORE: &[&str] = &[
     "OdfValueType",
     "OdfCellTextSource",
     "ODS_READING_ORDER_RULE_V1",
-    "ODS_TEXT_CODE_RULE_V1",
+    "ODS_TEXT_CODE_RULE_V2",
     // v2-S7. The seventh format's address and its facts. The address carries a `draw_page`
     // POSITION and no page: an `.odp` lists `<draw:page>` elements and a master page states
     // `fo:page-width`, so a `PageRecord` needed no arithmetic and is refused anyway
@@ -260,7 +260,7 @@ const CORE: &[&str] = &[
     "OdpLocator",
     "OfficeOdfShapeAttributes",
     "ODP_READING_ORDER_RULE_V1",
-    "ODP_TEXT_CODE_RULE_V1",
+    "ODP_TEXT_CODE_RULE_V2",
     // v2-S8. The eighth format's address and its facts, and the first that names no part: an
     // `.rtf` is one brace-group byte stream with no container. `names_a_part` is the question
     // `check_structure` asks instead of `part().is_none()`, which meant "paginated" until a format

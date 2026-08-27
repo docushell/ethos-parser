@@ -586,7 +586,13 @@ pub const DOCX_READING_ORDER_RULE_V1: &str = "docx-document-order-v1";
 /// The DOCX counterpart to `declared-font-codes-v1`, and a much smaller claim: OOXML text is
 /// already Unicode, so there is no glyph-code-to-scalar step to get wrong and no ligature caveat
 /// to declare.
-pub const DOCX_TEXT_CODE_RULE_V1: &str = "docx-wt-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const DOCX_TEXT_CODE_RULE_V2: &str = "docx-wt-verbatim-v2";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
 /// order their worksheet part lists them.
@@ -604,7 +610,13 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// else is the `<v>` as stored. **No number formatting is applied**: `42` under a currency format
 /// is `42` here, because `$42.00` is a string `xl/styles.xml` would have to be read and *run* to
 /// produce, and a rendered string is not a stored one.
-pub const XLSX_TEXT_CODE_RULE_V1: &str = "xlsx-stored-value-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const XLSX_TEXT_CODE_RULE_V2: &str = "xlsx-stored-value-verbatim-v2";
 
 /// v2-S4's PPTX reading order: slides in the order `ppt/presentation.xml` lists them, shapes and
 /// runs in the order each slide part lists them.
@@ -618,11 +630,17 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 
 /// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
 ///
-/// The DrawingML counterpart to `docx-wt-verbatim-v1`, and the same small claim: the text is
+/// The DrawingML counterpart to `docx-wt-verbatim-v2`, and the same small claim: the text is
 /// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
 /// resolved**: text that a slide layout or master would supply is not substituted in, because
 /// this reader did not read those parts and a substituted string is not one the slide stated.
-pub const PPTX_TEXT_CODE_RULE_V1: &str = "pptx-at-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const PPTX_TEXT_CODE_RULE_V2: &str = "pptx-at-verbatim-v2";
 
 /// v2-S5's ODT reading order: paragraphs in the order `content.xml` lists them.
 ///
@@ -639,7 +657,13 @@ pub const ODT_READING_ORDER_RULE_V1: &str = "odt-content-document-order-v1";
 /// file states, never a count inferred from where anything sits — `<text:tab/>` is a tab and
 /// `<text:line-break/>` is a line feed. Nothing else is substituted: a field's cached rendering, a
 /// list's number and a footnote's mark are all produced by a layout this reader does not perform.
-pub const ODT_TEXT_CODE_RULE_V1: &str = "odt-text-content-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const ODT_TEXT_CODE_RULE_V2: &str = "odt-text-content-verbatim-v2";
 
 /// v2-S6's ODS reading-order rule: the cells in the part's own document order (v2-S6).
 ///
@@ -652,12 +676,18 @@ pub const ODS_READING_ORDER_RULE_V1: &str = "ods-content-document-order-v1";
 
 /// v2-S6's ODS text rule: the cell's own blocks, verbatim, joined by a line feed.
 ///
-/// [`ODT_TEXT_CODE_RULE_V1`]'s three exceptions apply unchanged, because it is the same engine
+/// [`ODT_TEXT_CODE_RULE_V2`]'s three exceptions apply unchanged, because it is the same engine
 /// reading the same `<text:p>`. The one addition is the join: a cell holding two paragraphs
 /// displays two lines, and the line feed is what the file states by writing two blocks rather than
 /// one. Nothing here reads `office:value` — the text is what the document **displays**, and the
 /// stored typed value is a separate declared fact.
-pub const ODS_TEXT_CODE_RULE_V1: &str = "ods-cell-blocks-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const ODS_TEXT_CODE_RULE_V2: &str = "ods-cell-blocks-verbatim-v2";
 
 /// v2-S7's ODP reading order: draw pages, shapes and blocks in the part's own document order.
 ///
@@ -670,13 +700,19 @@ pub const ODP_READING_ORDER_RULE_V1: &str = "odp-content-document-order-v1";
 
 /// v2-S7's ODP text rule: the block's own content, verbatim.
 ///
-/// [`ODT_TEXT_CODE_RULE_V1`] unchanged — the same engine reading the same `<text:p>`, so
+/// [`ODT_TEXT_CODE_RULE_V2`] unchanged — the same engine reading the same `<text:p>`, so
 /// `<text:s text:c="n">` is n spaces, `<text:tab/>` is a tab and `<text:line-break/>` is a line
 /// feed. **No placeholder inheritance is resolved**: text a master page or a presentation layout
 /// would supply is not substituted in, because this reader did not read those and a substituted
-/// string is not one the draw page stated. That is [`PPTX_TEXT_CODE_RULE_V1`]'s claim in ODF's
+/// string is not one the draw page stated. That is [`PPTX_TEXT_CODE_RULE_V2`]'s claim in ODF's
 /// spelling, and it is why a slide whose title lives only on its master reads as having none.
-pub const ODP_TEXT_CODE_RULE_V1: &str = "odp-shape-blocks-verbatim-v1";
+/// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
+/// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
+/// reader shipped at v2-S9 now serves this reader too — in text and in the names
+/// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
+/// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
+/// the behaviour it names moves: a document this rule refused at v1 now reads.
+pub const ODP_TEXT_CODE_RULE_V2: &str = "odp-shape-blocks-verbatim-v2";
 
 /// v2-S8's RTF reading order: paragraphs in the stream's own order.
 ///
@@ -723,7 +759,7 @@ pub const EPUB_READING_ORDER_RULE_V1: &str = "epub-spine-then-document-order-v1"
 ///
 /// The rule XHTML states for `white-space: normal` — a run of spaces, tabs, carriage returns and
 /// line feeds is one space, and one at either end of a block is not part of it — which is
-/// character-for-character the rule [`ODT_TEXT_CODE_RULE_V1`] already implements, so the engine is
+/// character-for-character the rule [`ODT_TEXT_CODE_RULE_V2`] already implements, so the engine is
 /// shared rather than restated. `<pre>` is the one divergence and it is read as the file writes
 /// it, because `white-space: pre` is the document saying those spaces are content.
 ///
@@ -1126,7 +1162,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: DOCX_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1189,7 +1225,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: XLSX_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: XLSX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1246,7 +1282,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: PPTX_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: PPTX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1307,7 +1343,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: ODT_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: ODT_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1355,7 +1391,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: ODS_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: ODS_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1409,7 +1445,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
-            text_code_rule: ODP_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: ODP_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1916,7 +1952,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.37.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.38.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2410,11 +2446,21 @@ mod tests {
              binary searches, and the cross-check's overlap test becomes a sweep — each rewrite \
              argued equivalent in the source and then proven the only way that counts: the gate \
              corpus artifacts are byte-identical at equal version. The JSON above differs from \
-             0.37.1's in `parser_version` and nothing else. See CHANGELOG \"0.37.2\"."
+             0.37.1's in `parser_version` and nothing else. See CHANGELOG \"0.37.2\".\n\n\
+             Moved a FIFTY-NINTH time at 0.38.0, on `parser_version` — and, in the six office \
+             profiles, on their `text_code_rule` ids, which go verbatim-v1 to verbatim-v2 \
+             because the behaviour they name moved: the DOCX, XLSX, PPTX, ODT, ODS and ODP \
+             readers now resolve numeric character references, in text and in the names \
+             attributes carry, through the hardened resolver the EPUB reader shipped at v2-S9. \
+             This is the decision v2-S9 recorded rather than made — a MINOR, because readers \
+             changed: a document those rules refused by name at v1 now reads, and the six hash \
+             moves are the receipt. The JSON above is the PDF profile and carries no office \
+             rule, so it moves on `parser_version` alone; the same slice gave the MCP surface \
+             the CLI's format router, which changes no profile at all. See CHANGELOG \"0.38.0\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8ed78672d035434cdb107e775ec6b925b7465a846527128da132512c19b8b991"
+            "sha256:d3495248287d3113fd70f7cc5cef1887dd779451c9eb5f1eaf6b9448491e7ec8"
         );
     }
 

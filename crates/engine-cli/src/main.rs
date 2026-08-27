@@ -452,14 +452,31 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // what the package is and is not, so an unread ZIP now fails closed for the cause it actually
     // has. This is the third time the same defect has been fixed for a different format, and it is
     // fixed here for the shape rather than for one more member of it.
-    if engine_office::is_docx(&head)
-        || engine_office::is_xlsx(&head)
-        || engine_office::is_pptx(&head)
-        || engine_office::is_opendocument(&head)
-        || engine_office::is_rtf(&head)
-        || engine_office::zip::looks_like_zip(&head)
+    emit_representation(representation_for_bytes(&head))
+}
+
+/// Route bytes to the reader their own signatures name, and return the canonical
+/// representation.
+///
+/// **The one place format dispatch lives** (0.38.0). Until this function existed
+/// the routing was private to `run_extract`, and the MCP surface had quietly
+/// reintroduced the wrong-cause refusal three CLI slices retired one format at a
+/// time: `mcp extract` called the PDF reader directly, so a DOCX handed over MCP
+/// was refused for lacking a `%PDF-` header — exactly the defect v2-S6 fixed for
+/// an `.ods`, v2-S8 for an `.rtf`, and v2-S10 for untyped bytes. Both surfaces
+/// now ask this function, so a fix here is a fix everywhere and the two can never
+/// diverge again.
+pub(crate) fn representation_for_bytes(
+    head: &[u8],
+) -> Result<engine_core::DocumentRepresentation, EngineError> {
+    if engine_office::is_docx(head)
+        || engine_office::is_xlsx(head)
+        || engine_office::is_pptx(head)
+        || engine_office::is_opendocument(head)
+        || engine_office::is_rtf(head)
+        || engine_office::zip::looks_like_zip(head)
     {
-        return emit_representation(engine_office::read(&head));
+        return engine_office::read(head);
     }
 
     // **v2-S10: the branch that was missing, and the last member of the shape S8 named.**
@@ -481,24 +498,24 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     //
     // A **truncated** PDF is deliberately not here: it aimed at the PDF reader, so the PDF
     // reader's own message is the honest cause for it, down to the zero-byte case.
-    if !engine_pdf::aims_at_the_pdf_reader(&head) {
-        return fail(&no_format_stated());
+    if !engine_pdf::aims_at_the_pdf_reader(head) {
+        return Err(no_format_stated());
     }
 
     let profile = Profile::default();
 
-    // Opened once, exactly as `classify` opens it. The same handle serves both stages
-    // (docs/04-ARCHITECTURE.md §2.1); nothing below the CLI opens a file.
+    // Opened once, exactly as `classify` opens it — and from the bytes the router
+    // already read, so the file is read exactly once end to end. The same handle
+    // serves both stages (docs/04-ARCHITECTURE.md §2.1); nothing below the CLI
+    // opens a file.
     //
     // The happy-path output is the REPRESENTATION, not the stage artifact: `05-MILESTONES.md`
     // M5 makes `DocumentRepresentation v0` the canonical record, and it is what `engine ground`
     // consumes. The stage artifact remains the library's return type, so M3's acceptance suite
     // still asserts on the thing the parser actually produces.
-    let result = Document::open(&args.path, &profile)
-        .and_then(|doc| engine_pdf::extract(&doc, &profile))
-        .and_then(|extract| engine_pdf::to_representation(&extract, &profile));
-
-    emit_representation(result)
+    let doc = Document::open_bytes(head, &profile)?;
+    let extract = engine_pdf::extract(&doc, &profile)?;
+    engine_pdf::to_representation(&extract, &profile)
 }
 
 /// The refusal for bytes that state no format at all (v2-S10).

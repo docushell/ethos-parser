@@ -78,7 +78,7 @@ use quick_xml::events::{BytesStart, Event};
 use crate::opc::{resolve_target, Relationship};
 use crate::xml::{
     attribute_value, cdata_text, check_closed, decode, local_name, new_reader, parse_error,
-    resolve_entity,
+    resolve_reference,
 };
 
 /// The part every presentation keeps its slide list in.
@@ -525,7 +525,7 @@ pub fn read_slide(part: &[u8], part_name: &str) -> Result<SlideContent, EngineEr
             Ok(Event::GeneralRef(entity)) if in_text => {
                 if let Some(run) = open_run.as_mut() {
                     run.text
-                        .push_str(resolve_entity(entity.as_ref(), part_name)?);
+                        .push_str(&resolve_reference(entity.as_ref(), part_name)?);
                 }
             }
             Ok(_) => {}
