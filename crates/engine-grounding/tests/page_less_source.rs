@@ -92,43 +92,52 @@ fn schema() -> Value {
 /// These are the sentences `14-V2-SCOPE.md` §5 quotes. They are asserted here rather than
 /// remembered, because "grounding stays PDF-only" is a decision that would otherwise become false
 /// the first time someone made `page` optional to get a DOCX through.
+
+/// Serialize the artifact and run the engine's own validator over it — the same
+/// path `engine grounding-check` takes, so the emitted page-less shape is held to
+/// the exact rules a consumer's copy of this validator would apply.
+fn check_valid(artifact: &engine_grounding::GroundingSource) {
+    let bytes = engine_grounding::to_canonical_bytes(artifact).expect("canonicalizes");
+    let report = engine_grounding::check::grounding_check(&bytes, None).expect("check runs");
+    assert_eq!(
+        report.exit_code(),
+        0,
+        "the emitted artifact must pass the engine's own validator: {:?}",
+        report
+            .to_canonical_bytes()
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+    );
+}
+
 #[test]
-fn the_grounding_artifact_can_only_name_a_pdf() {
+fn the_grounding_artifact_names_pdf_paginated_and_eight_page_less_types() {
     let schema = schema();
 
+    // The const became the 1.1.0 union: PDF first, then the eight page-less types.
+    let media = schema["$defs"]["source"]["properties"]["media_type"]["enum"]
+        .as_array()
+        .expect("media_type is an enum since 1.1.0");
+    assert_eq!(media[0], "application/pdf");
     assert_eq!(
-        schema["$defs"]["source"]["properties"]["media_type"]["const"], "application/pdf",
-        "wall 1: a page-less source cannot even be NAMED as the source of this artifact"
+        media.len(),
+        9,
+        "one paginated type plus eight page-less ones"
     );
 
+    // The old wall stands for the paginated shape: under it, page and bbox are
+    // still required on every element — enforced by the version gate rather than
+    // by `required`, and `a_paginated_node_still_cannot_name_a_page_that_is_not_declared`
+    // plus the check-side tests hold the semantics.
     let element_required: Vec<&str> = schema["$defs"]["element"]["required"]
         .as_array()
         .expect("element declares required fields")
         .iter()
         .map(|v| v.as_str().expect("a field name"))
         .collect();
-    for field in ["page", "bbox"] {
-        assert!(
-            element_required.contains(&field),
-            "wall 2: `{field}` is required on every element, and a DOCX run has neither"
-        );
-    }
-
-    let page_required: Vec<&str> = schema["$defs"]["page"]["required"]
-        .as_array()
-        .expect("page declares required fields")
-        .iter()
-        .map(|v| v.as_str().expect("a field name"))
-        .collect();
-    for field in ["index", "width", "height", "rotation"] {
-        assert!(
-            page_required.contains(&field),
-            "wall 3: `{field}` is required on every page, and there is no page geometry to put there"
-        );
-    }
-    assert_eq!(
-        schema["$defs"]["page"]["properties"]["width"]["minimum"], 1,
-        "a zero-width page is not a way to spell `this document has no pages`"
+    assert!(element_required.contains(&"id") && element_required.contains(&"kind"));
+    assert!(
+        schema["$defs"]["element"]["properties"]["locator"].is_object(),
+        "the page-less element's address field exists"
     );
 }
 
@@ -234,13 +243,21 @@ fn a_page_less_representation_is_refused_by_project() {
     let sealed = DocumentRepresentation::seal(payload, vec![geometry])
         .expect("v2-S2 made this constructible");
 
-    let error = engine_grounding::project(&sealed).expect_err("and it still does not project");
-    let message = error.to_string();
-    assert!(message.contains("application/pdf"), "{message}");
-    assert!(
-        message.contains("14-V2-SCOPE.md"),
-        "the refusal points at the law it is enforcing: {message}"
-    );
+    let projection =
+        engine_grounding::project(&sealed).expect("since schema 1.1.0 a page-less source projects");
+    let artifact = &projection.source;
+    assert_eq!(artifact.schema_version, "1.1.0");
+    assert!(artifact.pages.is_empty(), "no page was synthesized");
+    assert_eq!(artifact.elements.len(), 1);
+    let element = &artifact.elements[0];
+    assert_eq!(element.page, None);
+    assert_eq!(element.bbox, None);
+    let locator = element
+        .locator
+        .as_deref()
+        .expect("the native address travels");
+    assert!(locator.contains("word/document.xml"), "{locator}");
+    check_valid(artifact);
 }
 
 /// **And so is a workbook** (v2-S3), for the same reason and with no change to this crate.
@@ -281,13 +298,20 @@ fn an_xlsx_representation_is_refused_by_project() {
     let sealed =
         DocumentRepresentation::seal(payload, vec![geometry]).expect("a workbook artifact seals");
 
-    let error = engine_grounding::project(&sealed).expect_err("and it does not project");
-    let message = error.to_string();
-    assert!(message.contains("application/pdf"), "{message}");
+    let projection =
+        engine_grounding::project(&sealed).expect("since schema 1.1.0 a workbook projects");
+    let artifact = &projection.source;
+    assert_eq!(artifact.schema_version, "1.1.0");
+    assert!(artifact.pages.is_empty());
+    let locator = artifact.elements[0]
+        .locator
+        .as_deref()
+        .expect("the cell address travels");
     assert!(
-        message.contains("14-V2-SCOPE.md"),
-        "the refusal points at the law it is enforcing: {message}"
+        locator.contains("Ledger") && locator.contains("\"row\":12"),
+        "the locator is the sheet's own address language: {locator}"
     );
+    check_valid(artifact);
 }
 
 /// **And so is a presentation** (v2-S4), still with no change to this crate.
@@ -327,10 +351,12 @@ fn a_pptx_representation_is_refused_by_project() {
     let sealed =
         DocumentRepresentation::seal(payload, vec![geometry]).expect("a deck artifact seals");
 
-    let error = engine_grounding::project(&sealed).expect_err("and it does not project");
-    let message = error.to_string();
-    assert!(message.contains("application/pdf"), "{message}");
-    assert!(message.contains("14-V2-SCOPE.md"), "{message}");
+    let projection =
+        engine_grounding::project(&sealed).expect("since schema 1.1.0 a deck projects");
+    let artifact = &projection.source;
+    assert_eq!(artifact.schema_version, "1.1.0");
+    assert!(artifact.pages.is_empty(), "a slide never became a page");
+    check_valid(artifact);
 }
 
 /// The media type a presentation declares. Spelled out for the reason below.

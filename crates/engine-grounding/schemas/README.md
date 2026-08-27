@@ -4,7 +4,7 @@
 
 | File | Origin | `sha256` of the snapshot |
 | --- | --- | --- |
-| `ethos-grounding-source.schema.json` | `../ethos/schemas/ethos-grounding-source.schema.json` (`$id` `urn:ethos:schema:grounding-source:1`) | `8d41c1e08f49ec0ca4878ac0ec3ccf3a79f7b9ffa31aa26ad0a60a6f27b319de` |
+| `ethos-grounding-source.schema.json` | `../ethos/schemas/ethos-grounding-source.schema.json` (`$id` `urn:ethos:schema:grounding-source:1`) | `410f1ce12d8f48bcf8d3d5f6b38baa12ff0d7ce02fc3562d74c902ad7fd13894` |
 | `ethos-grounding-validation-report.schema.json` | `../ethos/schemas/ethos-grounding-validation-report.schema.json` (`$id` `urn:ethos:schema:grounding-validation-report:1`) | `eed7e2f3575a6d57f25a7b29bbdc6597255e4d9018c8f06b50546f03d45b6f11` |
 
 ## Why a snapshot rather than a path

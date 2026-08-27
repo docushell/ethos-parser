@@ -1952,7 +1952,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.38.3","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.39.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2488,11 +2488,21 @@ mod tests {
              the two routes byte-equal. Proof is byte comparison across the gate documents at \
              equal version; the 492-page document falls from ~50 s to ~40 s. The JSON above \
              differs from 0.38.2's in `parser_version` and nothing else. See CHANGELOG \
-             \"0.38.3\"."
+             \"0.38.3\".\n\n\
+             Moved a SIXTY-THIRD time at 0.39.0, on `parser_version` alone — and this MINOR is \
+             the one v2-S1 priced and parked. The Ethos-side revision the page-less refusal \
+             waited on landed as `ethos.grounding.v1` schema 1.1.0, and `engine ground` now \
+             projects a page-less office representation into its page-less shape: `pages: []`, \
+             every element under its own node id, the native locator serialized beside the \
+             text, no geometry anywhere. A PDF projection is byte-identical to 0.38.3's — \
+             1.0.0, same bytes — which is why this JSON moves on `parser_version` alone. \
+             Measured end to end with real binaries on both sides: a DOCX quote extracted, \
+             grounded, and verified comes back grounded at element scope. See CHANGELOG \
+             \"0.39.0\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:19a3bf9008fef43e8ccc14bbf8f081da72700e63c765f8eb7e20d6f41c2642af"
+            "sha256:280594f171e86eda895cb3fc0ecd642e2c21181bb0280359cee6b64907a66c40"
         );
     }
 

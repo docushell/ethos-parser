@@ -377,7 +377,7 @@ fn reject_unknown_fields(value: &serde_json::Value) -> Result<(), (String, Strin
     )?;
     array(
         root.get("elements"),
-        &["id", "page", "bbox", "kind", "text"],
+        &["id", "page", "bbox", "kind", "text", "locator"],
         "/elements",
     )?;
     array(
@@ -550,17 +550,23 @@ fn validate(a: &GroundingSource) -> Result<(), Box<ValidationReport>> {
     };
 
     if a.artifact_type != crate::GROUNDING_ARTIFACT_TYPE
-        || a.schema_version != crate::GROUNDING_SCHEMA_VERSION
+        || !matches!(a.schema_version.as_str(), "1.0.0" | "1.1.0")
     {
         return bad(
             "unsupported_version",
             "/artifact_type",
-            "use ethos.grounding.v1 with schema_version 1.0.0",
+            "use ethos.grounding.v1 with schema_version 1.0.0 or 1.1.0",
         );
     }
 
+    // Mirrors the Ethos intake exactly: 1.0.0 is PDF and nothing else; 1.1.0
+    // adds the eight page-less types, each held to the page-less shape below.
+    let page_less = a.source.media_type != "application/pdf";
+    let media_admitted = !page_less
+        || (a.schema_version == "1.1.0"
+            && crate::PAGE_LESS_MEDIA_TYPES.contains(&a.source.media_type.as_str()));
     let sha = &a.source.sha256;
-    if a.source.media_type != "application/pdf"
+    if !media_admitted
         || !sha.starts_with("sha256:")
         || sha.len() != 71
         || !sha[7..]
@@ -589,6 +595,44 @@ fn validate(a: &GroundingSource) -> Result<(), Box<ValidationReport>> {
         );
     }
 
+    if page_less {
+        if !a.pages.is_empty() {
+            return bad(
+                "invalid_invariant",
+                "/pages",
+                "a page-less source states no page",
+            );
+        }
+        if a.spans.as_ref().is_some_and(|s| !s.is_empty())
+            || a.tables.as_ref().is_some_and(|t| !t.is_empty())
+        {
+            return bad(
+                "invalid_invariant",
+                "/spans",
+                "a page-less source carries no spans and no tables",
+            );
+        }
+        for (i, e) in a.elements.iter().enumerate() {
+            let path = format!("/elements/{i}");
+            if e.page.is_some() || e.bbox.is_some() {
+                return bad(
+                    "invalid_field",
+                    &path,
+                    "a page-less element states no page and no bbox",
+                );
+            }
+            match e.locator.as_deref() {
+                Some(locator) if !locator.is_empty() && locator.len() <= 2048 => {}
+                _ => {
+                    return bad(
+                        "invalid_field",
+                        &format!("{path}/locator"),
+                        "a page-less element carries its native locator",
+                    )
+                }
+            }
+        }
+    }
     if a.pages.len() > limits::MAX_PAGES
         || a.elements.len() > limits::MAX_ELEMENTS
         || a.spans
@@ -664,19 +708,35 @@ fn validate(a: &GroundingSource) -> Result<(), Box<ValidationReport>> {
         if !ids.insert(e.id.as_str()) {
             return bad("duplicate_id", &format!("{path}/id"), "repeated id");
         }
-        if !page_by_id.contains_key(e.page.as_str()) {
-            return bad(
-                "unknown_reference",
-                &format!("{path}/page"),
-                "page reference does not resolve",
-            );
-        }
-        if !valid_bbox(e.bbox, page_by_id.get(e.page.as_str()).copied()) {
-            return bad(
-                "invalid_bbox",
-                &format!("{path}/bbox"),
-                "bbox is malformed or outside its page",
-            );
+        if !page_less {
+            let (Some(page), Some(bbox)) = (e.page.as_deref(), e.bbox) else {
+                return bad(
+                    "invalid_field",
+                    &path,
+                    "a paginated element states its page and bbox",
+                );
+            };
+            if e.locator.is_some() {
+                return bad(
+                    "invalid_field",
+                    &format!("{path}/locator"),
+                    "a locator belongs only to the page-less shape",
+                );
+            }
+            if !page_by_id.contains_key(page) {
+                return bad(
+                    "unknown_reference",
+                    &format!("{path}/page"),
+                    "page reference does not resolve",
+                );
+            }
+            if !valid_bbox(bbox, page_by_id.get(page).copied()) {
+                return bad(
+                    "invalid_bbox",
+                    &format!("{path}/bbox"),
+                    "bbox is malformed or outside its page",
+                );
+            }
         }
         if !valid_kind(&e.kind) {
             return bad("invalid_field", &format!("{path}/kind"), "malformed kind");
@@ -923,10 +983,11 @@ mod tests {
             }],
             elements: vec![Element {
                 id: "e1".into(),
-                page: "p1".into(),
-                bbox: [10, 10, 100, 100],
+                page: Some("p1".into()),
+                bbox: Some([10, 10, 100, 100]),
                 kind: "text_run".into(),
                 text: Some("hello".into()),
+                locator: None,
             }],
             spans: Some(vec![Span {
                 id: "s1".into(),

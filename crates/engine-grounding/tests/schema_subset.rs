@@ -73,7 +73,7 @@ fn schema_path() -> PathBuf {
 
 /// The snapshot's digest, recorded in `schemas/README.md`.
 const PINNED_SCHEMA_SHA256: &str =
-    "8d41c1e08f49ec0ca4878ac0ec3ccf3a79f7b9ffa31aa26ad0a60a6f27b319de";
+    "410f1ce12d8f48bcf8d3d5f6b38baa12ff0d7ce02fc3562d74c902ad7fd13894";
 
 pub fn schema() -> Value {
     let bytes = std::fs::read(schema_path()).unwrap_or_else(|e| {
@@ -133,7 +133,7 @@ fn the_snapshot_has_not_drifted_from_the_ethos_tree() {
 // -------------------------------------------------------------------------------------------
 
 /// Keywords this validator interprets. Anything else is a hard error.
-const IMPLEMENTED: [&str; 20] = [
+const IMPLEMENTED: [&str; 25] = [
     // assertions
     "type",
     "const",
@@ -151,7 +151,13 @@ const IMPLEMENTED: [&str; 20] = [
     "minItems",
     "maxItems",
     "$ref",
+    // applicators, arrived with schema 1.1.0's version-gated page-less union
+    "allOf",
+    "if",
+    "then",
+    "else",
     // annotations, ignored on purpose but named so they are not "unknown"
+    "description",
     "$schema",
     "$id",
     "title",
@@ -271,6 +277,29 @@ impl<'a> Ctx<'a> {
             if !ok {
                 self.err(at, format!("expected type {t}"));
                 return;
+            }
+        }
+        if let Some(Value::Array(all)) = obj.get("allOf") {
+            for sub in all {
+                self.check(sub, instance, at);
+            }
+        }
+        if let Some(condition) = obj.get("if") {
+            // Standard conditional semantics: probe the condition silently, then
+            // apply whichever branch its verdict selects. The probe uses its own
+            // error list so a failing `if` is a branch selector, not a violation.
+            let mut probe = Ctx {
+                root: self.root,
+                errors: Vec::new(),
+            };
+            probe.check(condition, instance, at);
+            let branch = if probe.errors.is_empty() {
+                obj.get("then")
+            } else {
+                obj.get("else")
+            };
+            if let Some(branch) = branch {
+                self.check(branch, instance, at);
             }
         }
         if let Some(c) = obj.get("const") {
@@ -424,7 +453,8 @@ fn every_keyword_in_the_schema_is_implemented() {
 
     let mut used = BTreeSet::new();
     walk(&schema(), &mut used, false);
-    // `description` is annotation-only and absent from this schema; assert we did not miss one.
+    // `description` is annotation-only and named in IMPLEMENTED so its presence
+    // (schema 1.1.0 documents its unions) is not mistaken for an uninterpreted rule.
     let unimplemented: Vec<&String> = used
         .iter()
         .filter(|k| !IMPLEMENTED.contains(&k.as_str()))

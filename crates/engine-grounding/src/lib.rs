@@ -69,8 +69,33 @@ pub const GROUNDING_ARTIFACT_TYPE: &str = "ethos.grounding.v1";
 /// that a format name as data is permitted where machinery is not.
 pub const SOURCE_MEDIA_TYPE: &str = "application/pdf";
 
-/// Schema version. Also a const in the schema.
+/// Schema version emitted for a paginated (PDF) source — the shape M5 froze,
+/// byte-identical ever since.
 pub const GROUNDING_SCHEMA_VERSION: &str = "1.0.0";
+
+/// Schema version emitted for a page-less source (0.39.0).
+///
+/// The revision `page_less_source.rs` recorded as *owned by Ethos, not refused*
+/// was made on the Ethos side first: `ethos.grounding.v1` schema 1.1.0 admits
+/// eight page-less media types whose elements carry the producer's native
+/// locator string in place of the page/bbox pair, with `pages: []` — a
+/// page-less source states no page, and synthesizing one is what
+/// `docs/14-V2-SCOPE.md` §3 refuses. A PDF artifact keeps `1.0.0` and its
+/// exact bytes.
+pub const GROUNDING_SCHEMA_VERSION_PAGE_LESS: &str = "1.1.0";
+
+/// The eight page-less media types schema 1.1.0 admits, mirrored from the
+/// schema exactly as [`SOURCE_MEDIA_TYPE`] mirrors its PDF const.
+pub const PAGE_LESS_MEDIA_TYPES: [&str; 8] = [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "application/vnd.oasis.opendocument.presentation",
+    "application/rtf",
+    "application/epub+zip",
+];
 
 /// The limitation code naming what the projection dropped.
 ///
@@ -203,14 +228,24 @@ pub struct Element {
     /// Element id.
     pub id: String,
     /// The **page's id**, not its index — the schema models this as an id reference.
-    pub page: String,
-    /// `[x0, y0, x1, y1]`.
-    pub bbox: [i64; 4],
+    ///
+    /// `Some` on every paginated element; `None` on a page-less one (schema
+    /// 1.1.0), where there is no page id to give and the locator below is the
+    /// address instead. Skipped when absent, so paginated artifacts keep their
+    /// exact 1.0.0 bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    /// `[x0, y0, x1, y1]`. `Some` on every paginated element; `None` page-less.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<[i64; 4]>,
     /// `^[a-z0-9][a-z0-9_-]*$`.
     pub kind: String,
     /// The element's text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// The producer's native locator, canonically serialized (page-less only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
 }
 
 /// One text span.
@@ -381,17 +416,9 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
     // media type rather than on the locator, because this crate never reads a locator: the check
     // is this projection enforcing its own output contract, not learning what a second format is.
     if repr.payload().source.media_type != SOURCE_MEDIA_TYPE {
-        return Err(EngineError::Unsupported {
-            what: "grounding source".into(),
-            detail: format!(
-                "`{}` is `{}`, and `{GROUNDING_ARTIFACT_TYPE}` describes `{SOURCE_MEDIA_TYPE}` \
-                 only. A page-less source has no page and no box to put in this shape, and \
-                 inventing them is what `docs/14-V2-SCOPE.md` §3 refuses. The representation \
-                 itself is the record for such a document — see `docs/15-V2-MILESTONES.md` S1.",
-                repr.payload().identity.artifact_type,
-                repr.payload().source.media_type
-            ),
-        });
+        // The page-less shape (schema 1.1.0), which exists on the Ethos side
+        // since the revision this branch used to record as owned-elsewhere.
+        return project_page_less(repr);
     }
 
     let payload = repr.payload();
@@ -432,10 +459,11 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         let element_id = format!("e{element_ordinal}");
         elements.push(Element {
             id: element_id.clone(),
-            page: page_id.clone(),
-            bbox: bbox.to_array(),
+            page: Some(page_id.clone()),
+            bbox: Some(bbox.to_array()),
             kind: node.kind.as_str().to_string(),
             text: Some(node.text.clone()),
+            locator: None,
         });
         spans.push(Span {
             id: node.id.as_str().to_string(),
@@ -591,6 +619,91 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         omission: OmissionReport {
             nodes_total: payload.nodes.len() as u32,
             nodes_omitted: omitted,
+            limitation_code: GEOMETRY_ABSENT_OMITTED,
+        },
+    })
+}
+
+/// Project a page-less representation into `ethos.grounding.v1` schema 1.1.0.
+///
+/// Every node becomes an element under **its own node id** — a page-less
+/// artifact carries no spans, so the id a consumer joins back to the record by
+/// has to live on the element itself. The element's address is the node's
+/// native locator, canonically serialized: opaque to the verifier, which
+/// resolves by element id, and exactly reversible by a consumer holding the
+/// representation. No geometry exists anywhere in the shape, so nothing is
+/// omitted for lacking a box — the omission ledger the PDF path keeps for
+/// ink-less runs has nothing to count here.
+fn project_page_less(repr: &DocumentRepresentation) -> Result<Projection, EngineError> {
+    let payload = repr.payload();
+    if !PAGE_LESS_MEDIA_TYPES.contains(&payload.source.media_type.as_str()) {
+        return Err(EngineError::Unsupported {
+            what: "grounding source".into(),
+            detail: format!(
+                "`{}` names media type `{}`, which `{GROUNDING_ARTIFACT_TYPE}` admits under \
+                 neither its paginated (1.0.0) nor its page-less (1.1.0) shape. The schema's \
+                 media list is the contract; a type outside it is refused by name rather than \
+                 projected into a shape nobody defined for it.",
+                payload.identity.artifact_type, payload.source.media_type
+            ),
+        });
+    }
+    if !payload.pages.is_empty() {
+        return Err(malformed(format!(
+            "a page-less source declares {} page(s); the representation law says it must \
+             declare none, and a page here would be the invented pagination \
+             `docs/14-V2-SCOPE.md` §3 refuses",
+            payload.pages.len()
+        )));
+    }
+
+    let mut elements = Vec::with_capacity(payload.nodes.len());
+    for node in &payload.nodes {
+        let locator_bytes = engine_core::c14n::canonical_bytes_of(&node.native_locator)
+            .map_err(|e| malformed(e.to_string()))?;
+        let locator = String::from_utf8(locator_bytes)
+            .map_err(|e| malformed(format!("locator serialization is not UTF-8: {e}")))?;
+        elements.push(Element {
+            id: node.id.as_str().to_string(),
+            page: None,
+            bbox: None,
+            kind: node.kind.as_str().to_string(),
+            text: Some(node.text.clone()),
+            locator: Some(locator),
+        });
+    }
+
+    Ok(Projection {
+        source: GroundingSource {
+            artifact_type: GROUNDING_ARTIFACT_TYPE.to_string(),
+            schema_version: GROUNDING_SCHEMA_VERSION_PAGE_LESS.to_string(),
+            source: Source {
+                media_type: payload.source.media_type.clone(),
+                sha256: payload.source.sha256.to_string(),
+            },
+            producer: Producer {
+                name: payload.processing_run.processor.name.clone(),
+                version: payload.processing_run.processor.version.clone(),
+            },
+            // The artifact carries no spans, no offsets, no tables — the
+            // capabilities describe THIS artifact, not the reader's talents.
+            capabilities: GroundingCapabilities {
+                spans: false,
+                char_offsets: false,
+                tables: false,
+            },
+            coordinate_system: GroundingCoordinateSystem {
+                unit: "centipoint".to_string(),
+                origin: "top-left".to_string(),
+            },
+            pages: Vec::new(),
+            elements,
+            spans: None,
+            tables: None,
+        },
+        omission: OmissionReport {
+            nodes_total: u32::try_from(payload.nodes.len()).unwrap_or(u32::MAX),
+            nodes_omitted: 0,
             limitation_code: GEOMETRY_ABSENT_OMITTED,
         },
     })
