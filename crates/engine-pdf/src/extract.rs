@@ -911,7 +911,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 page_number,
                 Some(extract_page(
                     doc,
-                    &profile,
+                    profile,
                     &profile_sha256,
                     &structure,
                     &tree_mcids_by_page,

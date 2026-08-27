@@ -92,7 +92,6 @@ fn schema() -> Value {
 /// These are the sentences `14-V2-SCOPE.md` §5 quotes. They are asserted here rather than
 /// remembered, because "grounding stays PDF-only" is a decision that would otherwise become false
 /// the first time someone made `page` optional to get a DOCX through.
-
 /// Serialize the artifact and run the engine's own validator over it — the same
 /// path `engine grounding-check` takes, so the emitted page-less shape is held to
 /// the exact rules a consumer's copy of this validator would apply.

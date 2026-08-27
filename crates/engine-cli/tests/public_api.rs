@@ -442,6 +442,8 @@ const GROUNDING: &[&str] = &[
     // page-less one by name rather than on a page lookup that would report the wrong reason.
     "SOURCE_MEDIA_TYPE",
     "GROUNDING_SCHEMA_VERSION",
+    "GROUNDING_SCHEMA_VERSION_PAGE_LESS",
+    "PAGE_LESS_MEDIA_TYPES",
     "GroundedBox",
     "GroundingCapabilities",
     "GroundingCoordinateSystem",

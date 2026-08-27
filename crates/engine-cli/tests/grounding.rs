@@ -321,7 +321,13 @@ fn every_emitted_box_is_ordered_and_inside_its_page() {
         for (label, page_id, bbox) in g
             .elements
             .iter()
-            .map(|e| ("element", e.page.as_str(), e.bbox))
+            .map(|e| {
+                (
+                    "element",
+                    e.page.as_deref().expect("paginated"),
+                    e.bbox.expect("paginated"),
+                )
+            })
             .chain(
                 g.spans
                     .iter()
@@ -500,7 +506,7 @@ fn every_emitted_box_is_the_measured_box() {
         }
         // And the element beside it carries the same box, since v0's granularities coincide.
         for (e, s2) in g.elements.iter().zip(g.spans.iter().flatten()) {
-            assert_eq!(e.bbox, s2.bbox);
+            assert_eq!(e.bbox.expect("paginated"), s2.bbox);
         }
     }
     assert!(
@@ -747,7 +753,7 @@ fn the_artifact_satisfies_the_invariants_the_schema_cannot_express() {
         for e in &g.elements {
             assert!(seen.insert(e.id.as_str()), "{label}: duplicate element id");
             assert!(
-                page_ids.contains(e.page.as_str()),
+                page_ids.contains(e.page.as_deref().expect("paginated")),
                 "{label}: dangling page ref"
             );
         }

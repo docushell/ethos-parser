@@ -118,12 +118,12 @@ fn two_runs_over_one_docx_produce_identical_bytes() {
 // Under (b), `ground` refuses — and says why
 // -------------------------------------------------------------------------------------------
 
-/// **`engine ground` on a DOCX artifact is a named failure, not a PDF-shaped guess.**
+/// **`engine ground` on a DOCX artifact projects the page-less shape (0.39.0).**
 ///
 /// v2-S1 decided `ethos.grounding.v1` stays PDF-only. The failure names the media type and points
 /// at the decision, so a caller learns what happened rather than seeing an empty projection.
 #[test]
-fn ground_refuses_a_page_less_representation_by_name() {
+fn ground_projects_a_page_less_representation_by_name() {
     let directory = tempdir();
     let artifact = directory.join("representation.json");
     let (_, stdout, _) = extract(&fixture());
@@ -136,18 +136,26 @@ fn ground_refuses_a_page_less_representation_by_name() {
 
     assert_eq!(
         out.status.code(),
-        Some(2),
-        "a refusal, not an empty artifact"
+        Some(0),
+        "since 0.39.0 a page-less representation projects: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let artifact: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("a grounding artifact is printed");
+    assert_eq!(artifact["schema_version"], "1.1.0");
+    assert_eq!(
+        artifact["pages"].as_array().expect("pages").len(),
+        0,
+        "no page was synthesized"
+    );
+    let first = &artifact["elements"][0];
+    assert!(
+        first["locator"].as_str().is_some_and(|l| !l.is_empty()),
+        "the native address travels on the element: {first}"
     );
     assert!(
-        out.stdout.is_empty(),
-        "nothing that looks like a grounding artifact is printed"
-    );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("application/pdf"), "{stderr}");
-    assert!(
-        stderr.contains("14-V2-SCOPE.md"),
-        "the refusal points at the law: {stderr}"
+        first.get("page").is_none() && first.get("bbox").is_none(),
+        "a page-less element states no page and no bbox: {first}"
     );
     std::fs::remove_dir_all(&directory).ok();
 }

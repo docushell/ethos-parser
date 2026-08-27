@@ -263,13 +263,13 @@ fn an_unread_zip_is_still_refused_by_container_rather_than_as_a_missing_pdf() {
 // The grounding boundary, unmoved
 // -------------------------------------------------------------------------------------------
 
-/// **(b) still holds.** `ethos.grounding.v1` is PDF-only, and an EPUB is refused by name.
+/// **(a) taken at 0.39.0.** `ethos.grounding.v1` 1.1.0 carries the page-less shape, and an EPUB projects into it.
 ///
 /// This passes with **no change to `engine-grounding`** — which is worth saying for this format
 /// above all the others, because an EPUB is the first one whose own file could have supplied the
 /// page the grounding schema requires.
 #[test]
-fn ground_refuses_a_page_less_publication_by_name() {
+fn ground_projects_a_page_less_publication_by_name() {
     let dir = tempdir();
     let (_, stdout, _) = extract(&fixture());
     let path = dir.join("representation.json");
@@ -280,16 +280,28 @@ fn ground_refuses_a_page_less_publication_by_name() {
         .output()
         .expect("the engine binary runs");
 
-    assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty(), "a refusal prints no artifact");
-    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "since 0.39.0 a page-less representation projects: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let artifact: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("a grounding artifact is printed");
+    assert_eq!(artifact["schema_version"], "1.1.0");
+    assert_eq!(
+        artifact["pages"].as_array().expect("pages").len(),
+        0,
+        "no page was synthesized"
+    );
+    let first = &artifact["elements"][0];
     assert!(
-        stderr.contains("application/pdf"),
-        "the refusal names the only media type the schema admits: {stderr}"
+        first["locator"].as_str().is_some_and(|l| !l.is_empty()),
+        "the native address travels on the element: {first}"
     );
     assert!(
-        stderr.contains("14-V2-SCOPE.md"),
-        "and the law it is refusing under: {stderr}"
+        first.get("page").is_none() && first.get("bbox").is_none(),
+        "a page-less element states no page and no bbox: {first}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
