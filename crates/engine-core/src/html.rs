@@ -88,7 +88,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::c14n::c14n_bytes;
 use crate::markdown::{
     census, dropped_code, heading_level, hyphen_tail, list_role, normalize, plan_tables, AnchorMap,
     Coverage, Emit, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS, GFM_ROW_ZERO_SEPARATOR,
@@ -157,11 +156,7 @@ impl HtmlArtifact {
     ///
     /// [`EngineError::Malformed`] if the artifact will not canonicalize.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "html artifact".into(),
-            detail: e.to_string(),
-        })?;
-        c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        crate::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "html artifact".into(),
             detail: e.to_string(),
         })

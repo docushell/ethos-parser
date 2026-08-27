@@ -94,11 +94,7 @@ impl ExtractArtifact {
     /// [`EngineError::Malformed`] if the artifact cannot be canonicalized — unreachable through
     /// the public API, since every field is an integer, string, bool, or enum.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "extract".into(),
-            detail: e.to_string(),
-        })?;
-        engine_core::c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        engine_core::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "extract".into(),
             detail: e.to_string(),
         })
@@ -250,6 +246,20 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
     // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
     let structure = crate::structure::read(doc.inner())?;
+    // The tree's citations grouped by page, built once: the per-page loop below
+    // consults only its own page's keys, where iterating `tree.keys()` per page made
+    // the reconciliation O(pages × total keys) across the document.
+    let tree_mcids_by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> = structure
+        .as_ref()
+        .map(|tree| {
+            let mut by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> =
+                std::collections::BTreeMap::new();
+            for &(page, mcid) in tree.keys() {
+                by_page.entry(page).or_default().push(mcid);
+            }
+            by_page
+        })
+        .unwrap_or_default();
     // Counted while binding, declared afterwards, and only when non-zero.
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
@@ -295,7 +305,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         // v1-S6. The frame an off-page finding is measured against, in the same coordinate system
         // the runs end up in. Computed once per page rather than per run.
         let visible = geom.visible_in_display_space();
-        let fonts = load_page_fonts(doc.inner(), page_dict)?;
+        let fonts = load_page_fonts(doc, page_dict)?;
 
         composite_fonts = declare(
             composite_fonts,
@@ -343,8 +353,12 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             }
         }
 
-        let mut runs = Vec::with_capacity(interp.shown.len());
-        for shown in &interp.shown {
+        // Taken by value: the interpreter's buffers are dead after this loop, and the
+        // run text was the largest allocation in extraction to clone. The other
+        // interpreter fields (rects, segments, counters) are read below and stay put.
+        let shown_runs = std::mem::take(&mut interp.shown);
+        let mut runs = Vec::with_capacity(shown_runs.len());
+        for shown in shown_runs {
             if shown.text.is_empty() {
                 continue;
             }
@@ -397,11 +411,11 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
             runs.push(TextRun {
                 id: alloc.next(IdKind::Span)?,
-                text: shown.text.clone(),
-                char_codes: shown.codes.clone(),
+                text: shown.text,
+                char_codes: shown.codes,
                 scalar_code_mismatch,
                 synthesized,
-                font_id: shown.font_id.clone(),
+                font_id: shown.font_id,
                 font_size: quantize(shown.font_size, QUANTUM_PER_POINT).map_err(quantize_err)?,
                 locator: PdfLocator {
                     page: page_number,
@@ -424,12 +438,19 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             });
         }
 
+        // The mcids this page's runs carry — membership only, so it is immune to the
+        // reorder below. The index-bearing map the tagged join needs is built later,
+        // after `runs` reaches its final order, precisely because a prebuilt index
+        // here would be the stale-index bug the join's comment warns about.
+        let run_mcids: std::collections::BTreeSet<i64> =
+            runs.iter().filter_map(|run| run.mcid).collect();
+
         // Which of the tree's citations this page's runs actually answered. A cited pair that no
         // run claims is a real hole — the tree says there is content there and the content stream
         // did not mark any — and it is counted rather than filled with a fabricated run.
-        if let Some(tree) = structure.as_ref() {
-            for &(pg, mcid) in tree.keys() {
-                if pg == page_id && !runs.iter().any(|r| r.mcid == Some(mcid)) {
+        if structure.is_some() {
+            for &mcid in tree_mcids_by_page.get(&page_id).into_iter().flatten() {
+                if !run_mcids.contains(&mcid) {
                     unclaimed_tree_items = declare(unclaimed_tree_items, 1);
                 }
             }
@@ -611,6 +632,16 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         // beneath it concatenated in reading order — so fabrication stays 0 by construction, and
         // reordering the page cannot leave a stale index behind. No box is invented anywhere: the
         // geometry is typed-absent.
+        //
+        // Indices per mcid over the FINAL run order — built here and not a line
+        // earlier, because `reorder_page` above renumbers every index.
+        let mut runs_by_mcid: std::collections::BTreeMap<i64, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (i, run) in runs.iter().enumerate() {
+            if let Some(mcid) = run.mcid {
+                runs_by_mcid.entry(mcid).or_default().push(i);
+            }
+        }
         let mut page_tagged_tables = Vec::new();
         for tagged in &unmatched_tagged {
             // A `/Table` the walk found no cell for is not a table — its `rows`/`columns` are 0 —
@@ -626,13 +657,25 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
                 // on THIS page may claim this page's runs: mcids restart per page, so a cell on
                 // another page of a straddling table must not collect a run whose id collides.
                 let (run_indices, text) = if cell.page == Some(page_id) {
-                    let mut idx = Vec::new();
+                    // Collected via the page's mcid index, re-sorted, and DEDUPED —
+                    // the last step is load-bearing. A malformed-but-parseable cell
+                    // can cite the same mcid twice (`/K [0 0]`), and nothing dedups
+                    // `TaggedCell::mcids`; the old whole-list scan visited each run
+                    // once regardless, so without the dedup a doubled citation
+                    // doubled the run into the cell's text and node_ids. Caught by
+                    // an adversarial byte-comparison against the pre-index build.
+                    let mut idx: Vec<usize> = cell
+                        .mcids
+                        .iter()
+                        .filter_map(|mcid| runs_by_mcid.get(mcid))
+                        .flatten()
+                        .copied()
+                        .collect();
+                    idx.sort_unstable();
+                    idx.dedup();
                     let mut text = String::new();
-                    for (i, run) in runs.iter().enumerate() {
-                        if run.mcid.is_some_and(|m| cell.mcids.contains(&m)) {
-                            idx.push(i);
-                            text.push_str(&run.text);
-                        }
+                    for &i in &idx {
+                        text.push_str(&runs[i].text);
                     }
                     (idx, text)
                 } else {
@@ -958,7 +1001,7 @@ pub(crate) fn per_page_table_diagnostics(
                     detail: e.to_string(),
                 })?;
         let geom = PageGeometry::resolve(doc, page_dict)?;
-        let fonts = load_page_fonts(doc.inner(), page_dict)?;
+        let fonts = load_page_fonts(doc, page_dict)?;
         let content = doc.inner().get_page_content(page_id);
         let decoded =
             lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {

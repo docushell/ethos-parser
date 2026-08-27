@@ -56,7 +56,7 @@ pub use check::{
 
 use serde::{Deserialize, Serialize};
 
-use engine_core::{c14n_bytes, Capabilities, DocumentRepresentation, EngineError, PageRecord};
+use engine_core::{Capabilities, DocumentRepresentation, EngineError, PageRecord};
 
 /// Artifact type. A const in the schema, so a const here.
 pub const GROUNDING_ARTIFACT_TYPE: &str = "ethos.grounding.v1";
@@ -622,8 +622,7 @@ fn malformed(detail: String) -> EngineError {
 /// [`EngineError::Malformed`] if the artifact will not canonicalize — which, since c14n rejects
 /// any non-integer number, also means no float ever reaches a grounding artifact.
 pub fn to_canonical_bytes(g: &GroundingSource) -> Result<Vec<u8>, EngineError> {
-    let value = serde_json::to_value(g).map_err(|e| malformed(e.to_string()))?;
-    c14n_bytes(&value).map_err(|e| malformed(e.to_string()))
+    engine_core::c14n::canonical_bytes_of(g).map_err(|e| malformed(e.to_string()))
 }
 
 /// The crate name, used by the M0 harness to prove the workspace links.

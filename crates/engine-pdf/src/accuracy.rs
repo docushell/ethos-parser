@@ -410,7 +410,7 @@ fn marked_text(doc: &Document) -> Result<BTreeMap<(lopdf::ObjectId, i64), String
         let Ok(decoded) = doc.inner().get_and_decode_page_content(page_id) else {
             continue;
         };
-        let fonts = crate::fonts::load_page_fonts(doc.inner(), page_dict)?;
+        let fonts = crate::fonts::load_page_fonts(doc, page_dict)?;
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
         let mut interp = crate::content::Interpreter::new(&fonts).with_xobjects(xobjects);
         interp.run(&decoded.operations)?;

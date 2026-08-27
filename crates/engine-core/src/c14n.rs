@@ -187,6 +187,590 @@ pub fn sha256_hex(value: &Value) -> Result<String, C14nError> {
     Ok(hex(&Sha256::digest(c14n_bytes(value)?)))
 }
 
+/// Canonical bytes of any serializable value, streamed straight to sorted-key
+/// output with no intermediate `serde_json::Value` tree.
+///
+/// This exists for the emit path. `c14n_bytes(&serde_json::to_value(v)?)` builds
+/// the whole artifact as a `Value` DOM — a `BTreeMap` insert and a key `String`
+/// per field, per node — before a single byte is written, which made
+/// serialization the dominant cost of extraction on large documents. This
+/// function produces **byte-identical** output (an equivalence property test
+/// below feeds both paths the same values), including byte-identical refusal
+/// messages for non-integer and out-of-range numbers: the contract is c14n v1
+/// either way, this is only a cheaper route to it.
+///
+/// Objects still sort at write time, by the raw key string exactly as
+/// [`c14n_bytes`] sorts, so the `preserve_order` hazard documented there cannot
+/// reach this path either — entry order from the serialized type never survives.
+///
+/// # Errors
+///
+/// The refusals of [`c14n_bytes`] — non-integer numbers and integers whose
+/// magnitude exceeds [`MAX_SAFE_INT`] — plus three cases where this route is
+/// deliberately STRICTER than `to_value` would have been, all unreachable from
+/// the workspace's serialized types today and each a fail-closed answer to a
+/// hazard `to_value` papers over: a non-string map key (`to_value` stringifies
+/// `1` into `"1"` — an invented key name), a NaN or infinity (`to_value`
+/// silently emits `null` — a value the type never held), and a duplicate key
+/// from a colliding `#[serde(flatten)]` (`to_value` keeps whichever came last —
+/// a field silently dropped).
+pub fn canonical_bytes_of<T: serde::Serialize + ?Sized>(value: &T) -> Result<Vec<u8>, C14nError> {
+    let mut out = Vec::with_capacity(256);
+    value
+        .serialize(CanonicalSerializer { out: &mut out })
+        .map_err(|e| e.0)?;
+    Ok(out)
+}
+
+/// [`C14nError`] wearing serde's error trait, so the serializer can travel
+/// through `Serialize` impls.
+#[derive(Debug)]
+struct SerError(C14nError);
+
+impl core::fmt::Display for SerError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for SerError {}
+
+impl serde::ser::Error for SerError {
+    fn custom<T: core::fmt::Display>(msg: T) -> Self {
+        SerError(C14nError::new(msg.to_string()))
+    }
+}
+
+fn ser_err(message: &str) -> SerError {
+    SerError(err(message))
+}
+
+fn write_checked_i64(i: i64, out: &mut Vec<u8>) -> Result<(), SerError> {
+    if i.unsigned_abs() > MAX_SAFE_INT as u64 {
+        return Err(ser_err("integer exceeds 2^53-1 in canonical value"));
+    }
+    out.extend_from_slice(i.to_string().as_bytes());
+    Ok(())
+}
+
+fn write_checked_u64(u: u64, out: &mut Vec<u8>) -> Result<(), SerError> {
+    if u > MAX_SAFE_INT as u64 {
+        return Err(ser_err("integer exceeds 2^53-1 in canonical value"));
+    }
+    out.extend_from_slice(u.to_string().as_bytes());
+    Ok(())
+}
+
+struct CanonicalSerializer<'a> {
+    out: &'a mut Vec<u8>,
+}
+
+/// Streams sequence elements straight into the parent buffer — arrays keep their
+/// order, so nothing needs staging.
+struct CanonicalSeq<'a> {
+    out: &'a mut Vec<u8>,
+    first: bool,
+}
+
+/// Buffers `(raw key, value bytes)` pairs and writes them sorted on end — the
+/// map/struct counterpart of [`c14n_bytes`]'s explicit write-time sort. The raw
+/// key is kept for the sort because escaped bytes do not order like code points.
+struct CanonicalMap<'a> {
+    out: &'a mut Vec<u8>,
+    entries: Vec<(String, Vec<u8>)>,
+    pending_key: Option<String>,
+    /// A variant wrapper (`{"variant":…}`) already opened in `out`, to close.
+    close_variant: bool,
+}
+
+impl CanonicalMap<'_> {
+    fn finish(self) -> Result<(), SerError> {
+        let mut entries = self.entries;
+        entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        // Refused, not collapsed: a `#[serde(flatten)]` whose inner and outer
+        // fields collide reaches a streaming serializer as two entries under one
+        // key. Emitting both would be invalid canonical JSON (idempotence breaks);
+        // silently keeping one — the `to_value` route's last-wins behavior — would
+        // drop a field no one decided to drop. No serialized type in this
+        // workspace collides today, so the refusal costs nothing and a future
+        // collision fails loudly at the first emit instead of shipping.
+        if let Some(window) = entries.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+            return Err(SerError(C14nError::new(format!(
+                "duplicate key \"{}\" in canonical value",
+                window[0].0
+            ))));
+        }
+        self.out.push(b'{');
+        for (i, (key, value)) in entries.into_iter().enumerate() {
+            if i > 0 {
+                self.out.push(b',');
+            }
+            write_string(&key, self.out);
+            self.out.push(b':');
+            self.out.extend_from_slice(&value);
+        }
+        self.out.push(b'}');
+        if self.close_variant {
+            self.out.push(b'}');
+        }
+        Ok(())
+    }
+}
+
+/// Accepts strings (and the shapes that ARE strings: chars, unit variants,
+/// `Display`-serialized newtypes) as object keys, and refuses everything else.
+/// That is stricter than `serde_json`, which stringifies bool and integer keys —
+/// `{1: …}` becoming `{"1": …}` is an invented key name, and inventing what goes
+/// on the wire is what this module exists to prevent. No serialized type in the
+/// workspace carries a non-string-keyed map, so the refusal is a tripwire, not a
+/// behavior change.
+struct KeySerializer;
+
+impl serde::Serializer for KeySerializer {
+    type Ok = String;
+    type Error = SerError;
+    type SerializeSeq = serde::ser::Impossible<String, SerError>;
+    type SerializeTuple = serde::ser::Impossible<String, SerError>;
+    type SerializeTupleStruct = serde::ser::Impossible<String, SerError>;
+    type SerializeTupleVariant = serde::ser::Impossible<String, SerError>;
+    type SerializeMap = serde::ser::Impossible<String, SerError>;
+    type SerializeStruct = serde::ser::Impossible<String, SerError>;
+    type SerializeStructVariant = serde::ser::Impossible<String, SerError>;
+
+    fn serialize_str(self, v: &str) -> Result<String, SerError> {
+        Ok(v.to_string())
+    }
+    fn serialize_char(self, v: char) -> Result<String, SerError> {
+        Ok(v.to_string())
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+    ) -> Result<String, SerError> {
+        Ok(variant.to_string())
+    }
+    fn serialize_newtype_struct<T: serde::Serialize + ?Sized>(
+        self,
+        _: &'static str,
+        value: &T,
+    ) -> Result<String, SerError> {
+        value.serialize(self)
+    }
+    fn collect_str<T: core::fmt::Display + ?Sized>(self, value: &T) -> Result<String, SerError> {
+        Ok(value.to_string())
+    }
+
+    fn serialize_bool(self, _: bool) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_i8(self, _: i8) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_i16(self, _: i16) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_i32(self, _: i32) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_i64(self, _: i64) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_u8(self, _: u8) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_u16(self, _: u16) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_u32(self, _: u32) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_u64(self, _: u64) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_f32(self, _: f32) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_f64(self, _: f64) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_bytes(self, _: &[u8]) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_none(self) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_some<T: serde::Serialize + ?Sized>(self, _: &T) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_unit(self) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_newtype_variant<T: serde::Serialize + ?Sized>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: &T,
+    ) -> Result<String, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleStruct, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant, SerError> {
+        Err(ser_err("map key must be a string in canonical value"))
+    }
+}
+
+impl<'a> serde::Serializer for CanonicalSerializer<'a> {
+    type Ok = ();
+    type Error = SerError;
+    type SerializeSeq = CanonicalSeq<'a>;
+    type SerializeTuple = CanonicalSeq<'a>;
+    type SerializeTupleStruct = CanonicalSeq<'a>;
+    type SerializeTupleVariant = CanonicalSeq<'a>;
+    type SerializeMap = CanonicalMap<'a>;
+    type SerializeStruct = CanonicalMap<'a>;
+    type SerializeStructVariant = CanonicalMap<'a>;
+
+    fn serialize_bool(self, v: bool) -> Result<(), SerError> {
+        self.out
+            .extend_from_slice(if v { b"true" as &[u8] } else { b"false" });
+        Ok(())
+    }
+    fn serialize_i8(self, v: i8) -> Result<(), SerError> {
+        write_checked_i64(i64::from(v), self.out)
+    }
+    fn serialize_i16(self, v: i16) -> Result<(), SerError> {
+        write_checked_i64(i64::from(v), self.out)
+    }
+    fn serialize_i32(self, v: i32) -> Result<(), SerError> {
+        write_checked_i64(i64::from(v), self.out)
+    }
+    fn serialize_i64(self, v: i64) -> Result<(), SerError> {
+        write_checked_i64(v, self.out)
+    }
+    fn serialize_i128(self, v: i128) -> Result<(), SerError> {
+        i64::try_from(v)
+            .map_err(|_| ser_err("integer exceeds 2^53-1 in canonical value"))
+            .and_then(|v| write_checked_i64(v, self.out))
+    }
+    fn serialize_u8(self, v: u8) -> Result<(), SerError> {
+        write_checked_u64(u64::from(v), self.out)
+    }
+    fn serialize_u16(self, v: u16) -> Result<(), SerError> {
+        write_checked_u64(u64::from(v), self.out)
+    }
+    fn serialize_u32(self, v: u32) -> Result<(), SerError> {
+        write_checked_u64(u64::from(v), self.out)
+    }
+    fn serialize_u64(self, v: u64) -> Result<(), SerError> {
+        write_checked_u64(v, self.out)
+    }
+    fn serialize_u128(self, v: u128) -> Result<(), SerError> {
+        u64::try_from(v)
+            .map_err(|_| ser_err("integer exceeds 2^53-1 in canonical value"))
+            .and_then(|v| write_checked_u64(v, self.out))
+    }
+    fn serialize_f32(self, _: f32) -> Result<(), SerError> {
+        Err(ser_err("non-integer number in canonical value"))
+    }
+    fn serialize_f64(self, _: f64) -> Result<(), SerError> {
+        Err(ser_err("non-integer number in canonical value"))
+    }
+    fn serialize_char(self, v: char) -> Result<(), SerError> {
+        let mut buf = [0u8; 4];
+        write_string(v.encode_utf8(&mut buf), self.out);
+        Ok(())
+    }
+    fn serialize_str(self, v: &str) -> Result<(), SerError> {
+        write_string(v, self.out);
+        Ok(())
+    }
+    fn serialize_bytes(self, v: &[u8]) -> Result<(), SerError> {
+        // What `to_value` does with bytes: an array of integers.
+        self.out.push(b'[');
+        for (i, byte) in v.iter().enumerate() {
+            if i > 0 {
+                self.out.push(b',');
+            }
+            self.out.extend_from_slice(byte.to_string().as_bytes());
+        }
+        self.out.push(b']');
+        Ok(())
+    }
+    fn serialize_none(self) -> Result<(), SerError> {
+        self.out.extend_from_slice(b"null");
+        Ok(())
+    }
+    fn serialize_some<T: serde::Serialize + ?Sized>(self, value: &T) -> Result<(), SerError> {
+        value.serialize(self)
+    }
+    fn serialize_unit(self) -> Result<(), SerError> {
+        self.out.extend_from_slice(b"null");
+        Ok(())
+    }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<(), SerError> {
+        self.out.extend_from_slice(b"null");
+        Ok(())
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+    ) -> Result<(), SerError> {
+        write_string(variant, self.out);
+        Ok(())
+    }
+    fn serialize_newtype_struct<T: serde::Serialize + ?Sized>(
+        self,
+        _: &'static str,
+        value: &T,
+    ) -> Result<(), SerError> {
+        value.serialize(self)
+    }
+    fn serialize_newtype_variant<T: serde::Serialize + ?Sized>(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        value: &T,
+    ) -> Result<(), SerError> {
+        self.out.push(b'{');
+        write_string(variant, self.out);
+        self.out.push(b':');
+        value.serialize(CanonicalSerializer { out: self.out })?;
+        self.out.push(b'}');
+        Ok(())
+    }
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, SerError> {
+        self.out.push(b'[');
+        Ok(CanonicalSeq {
+            out: self.out,
+            first: true,
+        })
+    }
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, SerError> {
+        self.serialize_seq(Some(len))
+    }
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleStruct, SerError> {
+        self.serialize_seq(Some(len))
+    }
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, SerError> {
+        self.out.push(b'{');
+        write_string(variant, self.out);
+        self.out.extend_from_slice(b":[");
+        Ok(CanonicalSeq {
+            out: self.out,
+            first: true,
+        })
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, SerError> {
+        Ok(CanonicalMap {
+            out: self.out,
+            entries: Vec::new(),
+            pending_key: None,
+            close_variant: false,
+        })
+    }
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStruct, SerError> {
+        Ok(CanonicalMap {
+            out: self.out,
+            entries: Vec::with_capacity(len),
+            pending_key: None,
+            close_variant: false,
+        })
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStructVariant, SerError> {
+        self.out.push(b'{');
+        write_string(variant, self.out);
+        self.out.push(b':');
+        Ok(CanonicalMap {
+            out: self.out,
+            entries: Vec::with_capacity(len),
+            pending_key: None,
+            close_variant: true,
+        })
+    }
+    fn is_human_readable(&self) -> bool {
+        // `serde_json` answers true, and types branch on this (hex vs raw bytes);
+        // answering false here would change what they hand us.
+        true
+    }
+}
+
+impl serde::ser::SerializeSeq for CanonicalSeq<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_element<T: serde::Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), SerError> {
+        if !self.first {
+            self.out.push(b',');
+        }
+        self.first = false;
+        value.serialize(CanonicalSerializer { out: self.out })
+    }
+    fn end(self) -> Result<(), SerError> {
+        self.out.push(b']');
+        Ok(())
+    }
+}
+
+impl serde::ser::SerializeTuple for CanonicalSeq<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_element<T: serde::Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), SerError> {
+        serde::ser::SerializeSeq::serialize_element(self, value)
+    }
+    fn end(self) -> Result<(), SerError> {
+        serde::ser::SerializeSeq::end(self)
+    }
+}
+
+impl serde::ser::SerializeTupleStruct for CanonicalSeq<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_field<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), SerError> {
+        serde::ser::SerializeSeq::serialize_element(self, value)
+    }
+    fn end(self) -> Result<(), SerError> {
+        serde::ser::SerializeSeq::end(self)
+    }
+}
+
+impl serde::ser::SerializeTupleVariant for CanonicalSeq<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_field<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), SerError> {
+        serde::ser::SerializeSeq::serialize_element(self, value)
+    }
+    fn end(self) -> Result<(), SerError> {
+        self.out.extend_from_slice(b"]}");
+        Ok(())
+    }
+}
+
+impl serde::ser::SerializeMap for CanonicalMap<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_key<T: serde::Serialize + ?Sized>(&mut self, key: &T) -> Result<(), SerError> {
+        self.pending_key = Some(key.serialize(KeySerializer)?);
+        Ok(())
+    }
+    fn serialize_value<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), SerError> {
+        let key = self
+            .pending_key
+            .take()
+            .ok_or_else(|| ser_err("map value serialized before its key"))?;
+        let mut bytes = Vec::new();
+        value.serialize(CanonicalSerializer { out: &mut bytes })?;
+        self.entries.push((key, bytes));
+        Ok(())
+    }
+    fn end(self) -> Result<(), SerError> {
+        self.finish()
+    }
+}
+
+impl serde::ser::SerializeStruct for CanonicalMap<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_field<T: serde::Serialize + ?Sized>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), SerError> {
+        let mut bytes = Vec::new();
+        value.serialize(CanonicalSerializer { out: &mut bytes })?;
+        self.entries.push((key.to_string(), bytes));
+        Ok(())
+    }
+    fn end(self) -> Result<(), SerError> {
+        self.finish()
+    }
+}
+
+impl serde::ser::SerializeStructVariant for CanonicalMap<'_> {
+    type Ok = ();
+    type Error = SerError;
+    fn serialize_field<T: serde::Serialize + ?Sized>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), SerError> {
+        serde::ser::SerializeStruct::serialize_field(self, key, value)
+    }
+    fn end(self) -> Result<(), SerError> {
+        self.finish()
+    }
+}
+
 /// Lowercase hex sha256 over raw bytes, for source-artifact identity.
 pub fn sha256_hex_bytes(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
@@ -431,6 +1015,105 @@ mod tests {
         assert_eq!(c14n_str(&v), r#"{"a":{"b":4,"c":3},"z":{"x":2,"y":1}}"#);
     }
 
+    #[test]
+    fn a_colliding_flatten_is_refused_not_collapsed() {
+        // `to_value` would keep whichever field came last; the streaming route
+        // refuses, because a silently dropped field is worse than a loud error.
+        #[derive(serde::Serialize)]
+        struct Inner {
+            id: u32,
+        }
+        #[derive(serde::Serialize)]
+        struct Colliding {
+            id: u32,
+            #[serde(flatten)]
+            inner: Inner,
+        }
+        let err = canonical_bytes_of(&Colliding {
+            id: 1,
+            inner: Inner { id: 2 },
+        })
+        .unwrap_err();
+        assert_eq!(err.message(), "duplicate key \"id\" in canonical value");
+
+        // The non-colliding flatten shape both artifact writers use stays
+        // byte-equal with the Value route.
+        #[derive(serde::Serialize)]
+        struct Fine {
+            top: u32,
+            #[serde(flatten)]
+            inner: Inner,
+        }
+        let fine = Fine {
+            top: 1,
+            inner: Inner { id: 2 },
+        };
+        assert_eq!(
+            canonical_bytes_of(&fine).unwrap(),
+            c14n_bytes(&serde_json::to_value(&fine).unwrap()).unwrap(),
+        );
+    }
+
+    #[test]
+    fn streaming_refusals_carry_the_value_route_messages_byte_for_byte() {
+        // The refusal text is part of the contract's determinism: a consumer
+        // diagnosing a failure must see one message whichever route produced it.
+        let float = serde_json::json!({"x": 1.5});
+        assert_eq!(
+            canonical_bytes_of(&float).unwrap_err().message(),
+            c14n_bytes(&float).unwrap_err().message(),
+        );
+        let too_big = serde_json::json!({"x": MAX_SAFE_INT + 1});
+        assert_eq!(
+            canonical_bytes_of(&too_big).unwrap_err().message(),
+            c14n_bytes(&too_big).unwrap_err().message(),
+        );
+    }
+
+    #[test]
+    fn streaming_serializes_rust_shapes_the_value_route_agrees_on() {
+        // Shapes that reach the serializer as Rust types rather than Values:
+        // structs, options, enums in every variant form, nested maps.
+        #[derive(serde::Serialize)]
+        struct Probe {
+            b: Option<u32>,
+            a: Vec<&'static str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            skipped: Option<bool>,
+            map: std::collections::BTreeMap<String, i64>,
+        }
+        let probe = Probe {
+            b: None,
+            a: vec!["z", "a"],
+            skipped: None,
+            map: [("k2".to_string(), 2), ("k1".to_string(), 1)].into(),
+        };
+        assert_eq!(
+            canonical_bytes_of(&probe).unwrap(),
+            c14n_bytes(&serde_json::to_value(&probe).unwrap()).unwrap(),
+        );
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Variants {
+            Unit,
+            Newtype(u8),
+            Tuple(u8, u8),
+            Struct { z: u8, a: u8 },
+        }
+        for variant in [
+            Variants::Unit,
+            Variants::Newtype(1),
+            Variants::Tuple(1, 2),
+            Variants::Struct { z: 1, a: 2 },
+        ] {
+            assert_eq!(
+                canonical_bytes_of(&variant).unwrap(),
+                c14n_bytes(&serde_json::to_value(&variant).unwrap()).unwrap(),
+            );
+        }
+    }
+
     // --- property tests -------------------------------------------------------------------
 
     fn arb_canonical_value() -> impl Strategy<Value = Value> {
@@ -471,6 +1154,13 @@ mod tests {
         #[test]
         fn c14n_output_is_utf8(v in arb_canonical_value()) {
             prop_assert!(String::from_utf8(c14n_bytes(&v).unwrap()).is_ok());
+        }
+
+        /// The streaming serializer is the same contract by a cheaper route: for any
+        /// canonicalizable value, both paths produce identical bytes.
+        #[test]
+        fn canonical_bytes_of_matches_the_value_route(v in arb_canonical_value()) {
+            prop_assert_eq!(canonical_bytes_of(&v).unwrap(), c14n_bytes(&v).unwrap());
         }
 
         /// Key insertion order never reaches the output.

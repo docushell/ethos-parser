@@ -40,7 +40,7 @@ the items re-exported at the crate root.
 
 | Module | Supported items |
 | --- | --- |
-| `c14n` | `c14n_bytes`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
+| `c14n` | `c14n_bytes`, `canonical_bytes_of`, `sha256_hex`, `sha256_hex_bytes`, `C14nError` |
 | `geom` | `quantize`, `QRect`, `QRectError`, `QuantizeError`, `MAX_SAFE_INT`, `QUANTUM_PER_POINT` |
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
 | `html` | `to_html`, `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V2` |

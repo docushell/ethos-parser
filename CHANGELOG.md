@@ -7,7 +7,60 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1
+
+### The emit path stops building every artifact twice — as 0.37.1
+
+A performance repair with a byte-identity proof: at equal version, every artifact this build
+emits is byte-for-byte what 0.37.0 emitted for the same input. The proof is not a sentence —
+the 932 MB `nist-sp-800-53Ar5` extract artifact and the `nist-sp-800-218` artifact were
+compared byte-for-byte against pre-change output at every step, the c14n property suite
+gained an equivalence law, and the full workspace suite is green. Measured on
+`nist-sp-800-53Ar5` (492 pages), `engine extract` fell from 100.4 s to 59.9 s.
+
+- **Canonical serialization streams.** `canonical_bytes_of` serializes any value straight to
+  sorted-key canonical bytes. The old route — `serde_json::to_value` into a full `Value` DOM,
+  then `c14n_bytes` over it — allocated a `BTreeMap` insert and a key `String` per field per
+  node before writing one byte, and sampling showed it dominating extraction wall-clock.
+  Byte-equivalence with the `Value` route is a property test (`c14n.rs`), refusal messages
+  included, and objects still sort at write time, so the `preserve_order` hazard cannot reach
+  this path either. Every emit site moved: representation payload and artifact, extract,
+  classify, markdown, html, grounding.
+- **The artifact-per-serialization clone is gone.** `#[serde(into = "RepresentationWire")]`
+  made serde clone the entire `DocumentRepresentation` — every run's text and codes — once per
+  serialization, to re-emit the same five fields under the same names. A hand-written
+  `Serialize` emits the wire shape without the clone; the wire struct still owns parsing,
+  where `deny_unknown_fields` and the structural checks live, and a test pins the shapes
+  equal.
+- **Fonts parse once per document.** `load_page_fonts` re-parsed every font per page —
+  re-inflating and re-reading `/ToUnicode` CMaps and embedded font programs that inherited
+  `/Resources` share document-wide. The parse is now cached on the `Document`, keyed by
+  `(object id, resource name)`: the name is part of the key because it is baked into a font's
+  error strings and its widths-absent limitation prose, and one object under two names must
+  not share those bytes.
+- **The hot loop stops allocating per glyph, and runs move instead of cloning.**
+  `decode_code` lends from its tables instead of returning a fresh `String` per glyph, the
+  interpreter's shown runs are taken by value into `TextRun`s, and the structure-tree
+  reconciliation and tagged-cell join read per-page indexes instead of rescanning every key
+  or every run — with the index built only after `reorder_page`, because an index built a
+  line earlier is exactly the stale-index bug the join's own comment warns about (caught by
+  the byte oracle during this work, before commit).
+- **What the adversarial review on this diff caught, fixed before commit.** A
+  malformed-but-parseable tagged cell can cite the same mcid twice (`/K [0 0]`), and the
+  new per-page index would have bound the doubled citation's run twice into the cell's
+  text and `node_ids` where the old whole-list scan bound it once — proven by a
+  byte-comparison of crafted fixtures against a pre-change binary, and closed with a
+  dedup after the sort. The streaming serializer's docs also over-claimed equivalence:
+  it is deliberately stricter than the `Value` route on three inputs no workspace type
+  produces — non-string map keys (`to_value` invents a stringified key name), NaN
+  (`to_value` silently emits `null`), and colliding `#[serde(flatten)]` keys, which now
+  refuse loudly instead of emitting invalid JSON or silently dropping a field.
+- **Named misses, left open honestly.** The payload is still serialized twice per artifact —
+  once for the fingerprint inside `seal`, once for the final emit — and pages are still
+  processed sequentially; both are the next slices of this work. A benchmark harness is still
+  absent: criterion would put ~30 dev-dependency crates in front of `cargo deny`, which is a
+  license-vetting decision, not a patch. The measurements above are from `/usr/bin/time` on
+  the gate corpus, method stated so they can be recomputed.
 
 ### v2-S24 — tagged tables, as 0.37.0
 

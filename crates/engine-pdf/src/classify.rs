@@ -170,11 +170,7 @@ impl Classification {
     /// [`EngineError::Malformed`] if the artifact cannot be canonicalized — unreachable through
     /// the public API, since every field is an integer, string, bool, or enum.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "classification".into(),
-            detail: e.to_string(),
-        })?;
-        engine_core::c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        engine_core::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "classification".into(),
             detail: e.to_string(),
         })

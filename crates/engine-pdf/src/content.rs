@@ -202,7 +202,7 @@ struct Subpath {
 
 /// Interprets one page's content stream.
 pub struct Interpreter<'a> {
-    fonts: &'a std::collections::BTreeMap<String, Font>,
+    fonts: &'a std::collections::BTreeMap<String, std::sync::Arc<Font>>,
     /// The page's `/XObject` resources, by resource name (v1-S6).
     ///
     /// `None` when the caller supplied none, which is not the same as an empty map: an empty map
@@ -264,7 +264,7 @@ pub struct Interpreter<'a> {
 
 impl<'a> Interpreter<'a> {
     /// Start an interpreter over a page's fonts.
-    pub fn new(fonts: &'a std::collections::BTreeMap<String, Font>) -> Self {
+    pub fn new(fonts: &'a std::collections::BTreeMap<String, std::sync::Arc<Font>>) -> Self {
         Self {
             fonts,
             gs_stack: Vec::new(),
@@ -668,7 +668,7 @@ impl<'a> Interpreter<'a> {
         for code in codes {
             match font.decode_code(code) {
                 Ok(s) => {
-                    text.push_str(&s);
+                    text.push_str(s);
                     kept_codes.push(code);
                 }
                 Err(e) => {
@@ -953,7 +953,7 @@ mod tests {
             .operations
     }
 
-    fn no_fonts() -> BTreeMap<String, Font> {
+    fn no_fonts() -> BTreeMap<String, std::sync::Arc<Font>> {
         BTreeMap::new()
     }
 
@@ -981,7 +981,7 @@ mod tests {
     ///
     /// `no_fonts()` cannot: `Tf` on an empty map fails first, with `missing_part`, which is
     /// correct behaviour and the wrong thing to be testing when the subject is an operator.
-    fn one_font() -> BTreeMap<String, Font> {
+    fn one_font() -> BTreeMap<String, std::sync::Arc<Font>> {
         use crate::encoding::{BaseEncoding, SimpleEncoding};
         use crate::fonts::{Decoder, FontKind, WidthSource};
         use engine_core::GeometryAbsence;
@@ -989,7 +989,7 @@ mod tests {
         let mut m = BTreeMap::new();
         m.insert(
             "F1".to_string(),
-            Font {
+            std::sync::Arc::new(Font {
                 id: "F1".into(),
                 kind: FontKind::Simple,
                 decoder: Decoder::Simple(SimpleEncoding::new(
@@ -1002,7 +1002,7 @@ mod tests {
                     type3_scale_x: None,
                 },
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
-            },
+            }),
         );
         m
     }

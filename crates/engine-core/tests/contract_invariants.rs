@@ -294,6 +294,17 @@ fn floats_appear_only_inside_quantize() {
                 continue;
             }
         }
+        // The canonical serializer must NAME f32/f64 in order to refuse them:
+        // serde's Serializer trait fixes those two method signatures, and each
+        // arm's whole body is the same "non-integer number" refusal the Value
+        // route produces. A float still cannot reach canonical output — these
+        // are precisely the lines that guarantee it. The exemption matches the
+        // signatures alone, so a float USED anywhere in c14n.rs still fails here.
+        if hit.starts_with("c14n.rs:")
+            && (hit.contains("fn serialize_f32(") || hit.contains("fn serialize_f64("))
+        {
+            continue;
+        }
         offenders.push(hit);
     }
 

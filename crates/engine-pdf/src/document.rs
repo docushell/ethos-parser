@@ -24,7 +24,9 @@
 //! `classify` takes `&Document` today; M3's `extract` will take the same `&Document`. Nothing
 //! below the CLI opens a file.
 
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use engine_core::{EngineError, Profile, Sha256Hex};
 
@@ -45,6 +47,16 @@ pub struct Document {
     /// declare it; a repaired open that produced an artifact indistinguishable from an
     /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
     xref_entries_padded: Option<u32>,
+    /// Parsed fonts, keyed by `(font dictionary object id, resource name)`.
+    ///
+    /// Fonts are shared document-wide through inherited `/Resources`, and parsing one means
+    /// inflating and reading its `/ToUnicode` CMap and embedded font program — so re-parsing
+    /// per page multiplied that work by the page count on long documents. The resource name is
+    /// part of the key because it is baked into a `Font`'s error strings and its widths-absent
+    /// limitation prose: one object referenced under two names must not share those bytes, or
+    /// a limitation recorded on a later page would carry an earlier page's name. A `Mutex`
+    /// rather than a `RefCell` so the handle stays `Sync`.
+    font_cache: std::sync::Mutex<BTreeMap<(lopdf::ObjectId, String), Arc<crate::fonts::Font>>>,
 }
 
 impl core::fmt::Debug for Document {
@@ -133,7 +145,29 @@ impl Document {
             pages,
             inner,
             xref_entries_padded,
+            font_cache: std::sync::Mutex::new(BTreeMap::new()),
         })
+    }
+
+    /// A cached parse of the font at `oid` under resource name `id`, if any page loaded it.
+    pub(crate) fn cached_font(
+        &self,
+        oid: lopdf::ObjectId,
+        id: &str,
+    ) -> Option<Arc<crate::fonts::Font>> {
+        self.font_cache
+            .lock()
+            .expect("font cache lock is never poisoned: no panics while held")
+            .get(&(oid, id.to_string()))
+            .cloned()
+    }
+
+    /// Record a parsed font for reuse by later pages.
+    pub(crate) fn cache_font(&self, oid: lopdf::ObjectId, id: &str, font: Arc<crate::fonts::Font>) {
+        self.font_cache
+            .lock()
+            .expect("font cache lock is never poisoned: no panics while held")
+            .insert((oid, id.to_string()), font);
     }
 
     /// The one bounded repair, attempted only after a normal parse failed.

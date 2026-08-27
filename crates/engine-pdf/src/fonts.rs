@@ -27,6 +27,7 @@
 //! no metrics, and conflating the two is how `height = font_size` gets written.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use engine_core::{
     quantize, EngineError, GeometryAbsence, GeometryPresence, QRect, QUANTUM_PER_POINT,
@@ -190,25 +191,24 @@ impl Font {
     /// [`EngineError::Unsupported`] when neither the `ToUnicode` CMap nor the encoding can map
     /// the code. Refused rather than replaced: a substitution character in the evidence is a
     /// character the document does not contain.
-    pub fn decode_code(&self, code: u32) -> Result<String, EngineError> {
+    pub fn decode_code(&self, code: u32) -> Result<&str, EngineError> {
+        // Borrowed, not owned: this is the innermost loop of extraction — one call
+        // per glyph across every document — and both decoders can lend from their
+        // tables. The error message is built only on the failure path.
         match &self.decoder {
-            Decoder::ToUnicode(t) => {
-                t.get(code)
-                    .map(str::to_string)
-                    .ok_or_else(|| EngineError::Unsupported {
-                        what: "character code".into(),
-                        detail: format!(
-                            "font /{} has a ToUnicode CMap with no entry for code {code:#04x}",
-                            self.id
-                        ),
-                    })
-            }
+            Decoder::ToUnicode(t) => t.get(code).ok_or_else(|| EngineError::Unsupported {
+                what: "character code".into(),
+                detail: format!(
+                    "font /{} has a ToUnicode CMap with no entry for code {code:#04x}",
+                    self.id
+                ),
+            }),
             Decoder::Simple(e) => {
                 let byte = u8::try_from(code).map_err(|_| EngineError::Malformed {
                     what: "character code".into(),
                     detail: format!("code {code:#x} exceeds one byte in a simple font"),
                 })?;
-                e.decode(byte).map(str::to_string)
+                e.decode(byte)
             }
         }
     }
@@ -295,27 +295,46 @@ impl Font {
 /// resource yields an empty map rather than an error — that is a page without text, not a broken
 /// page.
 pub fn load_page_fonts(
-    doc: &lopdf::Document,
+    doc: &crate::document::Document,
     page_dict: &lopdf::Dictionary,
-) -> Result<BTreeMap<String, Font>, EngineError> {
+) -> Result<BTreeMap<String, Arc<Font>>, EngineError> {
     let mut out = BTreeMap::new();
 
-    let Some(resources) = resolve_dict(doc, page_dict.get(b"Resources").ok()) else {
+    let Some(resources) = resolve_dict(doc.inner(), page_dict.get(b"Resources").ok()) else {
         return Ok(out);
     };
-    let Some(fonts) = resolve_dict(doc, resources.get(b"Font").ok()) else {
+    let Some(fonts) = resolve_dict(doc.inner(), resources.get(b"Font").ok()) else {
         return Ok(out);
     };
 
     for (name, value) in fonts.iter() {
         let id = String::from_utf8_lossy(name).to_string();
-        let Some(fd) = resolve_dict(doc, Some(value)) else {
+        // Fonts are shared document-wide via inherited /Resources, and parsing one
+        // inflates and reads its /ToUnicode CMap and embedded font program — so the
+        // parse is cached on the document, keyed by (object id, resource name).
+        // Only referenced fonts can be cached: an inline dictionary has no object
+        // id, and gets parsed per page as before.
+        let reference = match value {
+            lopdf::Object::Reference(oid) => Some(*oid),
+            _ => None,
+        };
+        if let Some(oid) = reference {
+            if let Some(cached) = doc.cached_font(oid, &id) {
+                out.insert(id, cached);
+                continue;
+            }
+        }
+        let Some(fd) = resolve_dict(doc.inner(), Some(value)) else {
             return Err(EngineError::Malformed {
                 what: "font resource".into(),
                 detail: format!("/{id} does not resolve to a dictionary"),
             });
         };
-        out.insert(id.clone(), load_font(doc, &id, &fd)?);
+        let font = Arc::new(load_font(doc.inner(), &id, &fd)?);
+        if let Some(oid) = reference {
+            doc.cache_font(oid, &id, Arc::clone(&font));
+        }
+        out.insert(id, font);
     }
 
     Ok(out)

@@ -53,7 +53,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::assurance::Assurance;
-use crate::c14n::{c14n_bytes, sha256_hex_bytes};
+use crate::c14n::sha256_hex_bytes;
 use crate::derivation::{DerivationClass, GeometryPresence};
 use crate::error::EngineError;
 use crate::geom::QRect;
@@ -1980,11 +1980,7 @@ impl RepresentationPayload {
     ///
     /// [`EngineError::Malformed`] if the payload will not canonicalize.
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "representation payload".into(),
-            detail: e.to_string(),
-        })?;
-        c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        crate::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "representation payload".into(),
             detail: e.to_string(),
         })
@@ -2008,8 +2004,8 @@ impl RepresentationPayload {
 /// geometry box against its page. There is no constructor that *accepts* a fingerprint, for the
 /// same reason [`Assurance`] derives its terminal state instead of accepting one: a value that
 /// can be asserted independently of what it describes is a value that can disagree with it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "RepresentationWire", into = "RepresentationWire")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "RepresentationWire")]
 pub struct DocumentRepresentation {
     artifact_type: String,
     schema_version: String,
@@ -2029,15 +2025,25 @@ struct RepresentationWire {
     geometry: Vec<NodeGeometry>,
 }
 
-impl From<DocumentRepresentation> for RepresentationWire {
-    fn from(d: DocumentRepresentation) -> Self {
-        Self {
-            artifact_type: d.artifact_type,
-            schema_version: d.schema_version,
-            representation: d.representation,
-            representation_c14n_sha256: d.representation_c14n_sha256,
-            geometry: d.geometry,
-        }
+/// Serialized by hand rather than through `#[serde(into = "RepresentationWire")]`:
+/// serde's `into` attribute serializes via `self.clone().into()`, which deep-cloned
+/// the entire artifact — every run's text and codes — once per serialization, purely
+/// to re-emit the same five fields under the same names. The wire struct still owns
+/// parsing, where `deny_unknown_fields` and the structural checks live, and a test
+/// below pins that this emits exactly what the wire form emits.
+impl Serialize for DocumentRepresentation {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct as _;
+        let mut s = serializer.serialize_struct("RepresentationWire", 5)?;
+        s.serialize_field("artifact_type", &self.artifact_type)?;
+        s.serialize_field("schema_version", &self.schema_version)?;
+        s.serialize_field("representation", &self.representation)?;
+        s.serialize_field(
+            "representation_c14n_sha256",
+            &self.representation_c14n_sha256,
+        )?;
+        s.serialize_field("geometry", &self.geometry)?;
+        s.end()
     }
 }
 
@@ -2530,11 +2536,7 @@ impl DocumentRepresentation {
     ///
     /// [`EngineError::Malformed`] if the artifact will not canonicalize.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "representation".into(),
-            detail: e.to_string(),
-        })?;
-        c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        crate::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "representation".into(),
             detail: e.to_string(),
         })
@@ -2545,6 +2547,7 @@ impl DocumentRepresentation {
 mod tests {
     use super::*;
     use crate::assurance::{PageState, PageStateEntry};
+    use crate::c14n::c14n_bytes;
     use crate::derivation::GeometryAbsence;
     use crate::ids::{IdAllocator, IdKind};
     use crate::profile::{Capabilities, Profile};
@@ -3046,6 +3049,23 @@ mod tests {
             docx.capabilities.spans,
             "a run is a span, and that is the claim this reader makes"
         );
+    }
+
+    #[test]
+    fn manual_serialize_emits_the_wire_shape_and_the_streaming_route_agrees() {
+        // The hand-written Serialize replaced `#[serde(into = "RepresentationWire")]`
+        // to stop cloning the whole artifact per serialization; this pins that it
+        // still emits exactly the wire form — the parse round-trip re-serializes to
+        // the same bytes — and that the streaming canonical route agrees with the
+        // Value route on a real artifact.
+        let d = simple();
+        let bytes = d.to_canonical_bytes().unwrap();
+        assert_eq!(
+            bytes,
+            c14n_bytes(&serde_json::to_value(&d).unwrap()).unwrap()
+        );
+        let reparsed: DocumentRepresentation = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(reparsed.to_canonical_bytes().unwrap(), bytes);
     }
 
     #[test]

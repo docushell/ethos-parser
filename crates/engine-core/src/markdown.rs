@@ -98,8 +98,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    c14n::c14n_bytes, sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError,
-    NodeKind, Sha256Hex,
+    sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, NodeKind, Sha256Hex,
 };
 
 /// The artifact type this module emits.
@@ -505,11 +504,7 @@ impl MarkdownArtifact {
     ///
     /// [`EngineError::Malformed`] if the artifact will not canonicalize.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "markdown artifact".into(),
-            detail: e.to_string(),
-        })?;
-        c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        crate::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "markdown artifact".into(),
             detail: e.to_string(),
         })

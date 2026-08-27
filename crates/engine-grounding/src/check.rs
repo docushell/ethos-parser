@@ -41,7 +41,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use engine_core::{c14n_bytes, sha256_hex_bytes, EngineError, Sha256Hex};
+use engine_core::{sha256_hex_bytes, EngineError, Sha256Hex};
 
 use crate::{Element, GroundingSource, Page, Span, Table};
 
@@ -170,11 +170,7 @@ impl ValidationReport {
     ///
     /// [`EngineError::Malformed`] if the report will not canonicalize.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        let value = serde_json::to_value(self).map_err(|e| EngineError::Malformed {
-            what: "validation report".into(),
-            detail: e.to_string(),
-        })?;
-        c14n_bytes(&value).map_err(|e| EngineError::Malformed {
+        engine_core::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
             what: "validation report".into(),
             detail: e.to_string(),
         })
