@@ -9,6 +9,7 @@ authors.workspace = true
 description = "ethos-engine PDF reader: classification and position-aware extraction."
 
 [dependencies]
+rayon = { workspace = true }
 engine-core.workspace = true
 lopdf = { version = "0.44.0", default-features = false }
 serde.workspace = true

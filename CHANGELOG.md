@@ -7,7 +7,29 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2
+
+### Pages extract in parallel, and the artifact cannot tell — as 0.38.2
+
+The workspace's first threading dependency (rayon, MIT/Apache through its whole tree,
+reviewed against `deny.toml` before addition) parallelizes the per-page half of extraction.
+Each page runs the body the sequential loop always ran — `extract_page` is that body, carved
+out verbatim — against the shared read-only handle, with a page-local id allocator; a
+sequential fold then walks the results in page order, rebases every id ordinal onto the
+document-global sequence, folds each counter delta with the same saturating arithmetic in
+the same order, and returns the first page error in page order, which is where the
+sequential loop always stopped. The subtlety the byte oracle caught before commit: a
+refused table candidate consumes an id it never ships, and the artifact keeps that hole —
+so the fold rebases by offset and replays allocation counts rather than renumbering emitted
+entities, which would have closed every hole and shifted every id after it. Even the
+`MAX_SAFE_INT` id-overflow refusal still fires at the page it always fired at, because the
+replay allocates through the same guarded path.
+
+Proof is byte comparison at equal version across the gate documents, `nist-sp-800-53Ar5`'s
+932 MB artifact included. The honest number is modest and says where the next slice lives:
+the 492-page document falls from ~57 s to ~50 s, because the emit tail — one whole-document
+serialization for the fingerprint and one for the print, still sequential — now dominates
+the wall clock. Amdahl's receipt, named rather than rounded up.
 
 ### The clustering lead, measured and refused — as 0.38.1
 

@@ -1952,7 +1952,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.38.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.38.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2467,11 +2467,23 @@ mod tests {
              not there. The code is reverted; `docs/table-gate-v1.md` carries the per-document \
              table, the two mechanisms, and the finding the next attempt has to answer. The \
              JSON above differs from 0.38.0's in `parser_version` and nothing else. See \
-             CHANGELOG \"0.38.1\"."
+             CHANGELOG \"0.38.1\".\n\n\
+             Moved a SIXTY-FIRST time at 0.38.2, on `parser_version` alone — pages extract in \
+             parallel, and the artifact cannot tell. Each page runs the body the sequential \
+             loop always ran, against the shared read-only handle, with a page-local id \
+             allocator; a sequential fold then rebases every ordinal onto the document-global \
+             sequence — holes included, because a refused candidate consumes an id it never \
+             ships and the artifact keeps that hole — and replays the allocation counts so \
+             even the MAX_SAFE_INT refusal fires at the page it always fired at. Proof is \
+             byte comparison across the gate documents at equal version, and the honest \
+             number is modest: the emit tail is still sequential, so the 492-page document \
+             falls from ~57 s to ~50 s and the tail is now the named next slice. The JSON \
+             above differs from 0.38.1's in `parser_version` and nothing else. See CHANGELOG \
+             \"0.38.2\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:699ac8edd130802fee709f897d0c507cfb2135c4060404658192d1eae403a8b3"
+            "sha256:cd8b53fcda65a09398b33508c5bcc536e10be82cdd657d942cef5f30b7f37337"
         );
     }
 

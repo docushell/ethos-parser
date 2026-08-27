@@ -199,100 +199,68 @@ fn to_top_left_rect(
     }
 }
 
-/// Extract text runs from an already-open document.
-///
-/// # Errors
-///
-/// - [`EngineError::Unsupported`] — an operator outside PDF 32000-1 Table A.1, or a character
-///   code this profile cannot decode. **Fails closed**: a skipped operator can move or delete
-///   text, and a substituted character is a character the document does not contain.
-/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure.
-/// - [`EngineError::MissingPart`] — a font resource a `Tf` refers to is absent.
-pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, EngineError> {
-    let profile_sha256 = profile
-        .profile_sha256()
-        .map_err(|e| EngineError::Malformed {
-            what: "profile".into(),
-            detail: e.to_string(),
-        })?;
+/// Everything one admitted page contributes to the artifact, produced with a
+/// page-local id allocator whose ids the sequential fold in [`extract`] rewrites.
+struct PageYield {
+    page: PageExtract,
+    ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)>,
+    stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)>,
+    unruled_refusals: Vec<(u32, crate::unruled::Refusal)>,
+    encoding_dropped_runs: u32,
+    encoding_detail: String,
+    mcids_unbound: u32,
+    unclaimed_tree_items: u32,
+    props_by_name: u32,
+    tagged_without_geometric: Vec<u32>,
+    unresolved_field_parents: u32,
+    inline_images: u32,
+    unresolved_xobjects: u32,
+    composite_fonts: u32,
+    findings_seen: std::collections::BTreeMap<&'static str, u32>,
+    widths_absent: Vec<engine_core::Limitation>,
+    /// The page-local allocator, counters included — the fold rebases every id by
+    /// the document-global base and then replays the same NUMBER of allocations,
+    /// because a refused candidate consumes an id it never ships (a cross-check
+    /// rejection mints `t1` and emits nothing), and the sequential artifact keeps
+    /// that hole. Rewriting only emitted entities would close it and renumber
+    /// every id after it.
+    local_ids: IdAllocator,
+}
 
+/// One page's whole extraction, exactly the body the sequential loop ran, with two
+/// differences that the fold undoes: ids come from a page-local allocator (rewritten
+/// into the document-global sequence afterwards), and cross-page accumulators are
+/// returned as this page's deltas instead of mutated in place. Pure with respect to
+/// the document handle, which is what lets pages run in parallel.
+#[allow(clippy::too_many_lines)]
+fn extract_page(
+    doc: &Document,
+    profile: &Profile,
+    profile_sha256: &engine_core::Sha256Hex,
+    structure: &Option<crate::structure::StructureTree>,
+    tree_mcids_by_page: &std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>>,
+    page_number: u32,
+    page_id: lopdf::ObjectId,
+) -> Result<PageYield, EngineError> {
     let mut alloc = IdAllocator::new(profile_sha256.clone());
-    let mut pages = Vec::with_capacity(doc.pages().len());
-    let mut limitations = lim::extract_limitations();
-    // A repaired open is never silent: every artifact derived from one says so.
-    if let Some(padded) = doc.xref_entries_padded() {
-        limitations.push(lim::xref_entry_padded(padded));
-    }
-    let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
-    // Accumulated across pages: how much text is missing from this artifact because a font's
-    // encoding could not map it, and the first failure's reason for the declaration's detail.
     let mut encoding_dropped_runs: u32 = 0;
     let mut encoding_detail = String::new();
-    // v1-S2. Pages where the alignment rule built a candidate lattice and refused it, with the
-    // precondition that failed. Collected rather than declared per page so the artifact carries
-    // one limitation naming every such page instead of one per page.
     let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
-    // v1-S7b. The same, for the ruled rule. It had no voice until `ruled-rects-v2` made its
-    // coherence precondition a live path — under `-v1` a background panel satisfied coverage for
-    // every face at once, so the check almost never fired.
     let mut ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)> = Vec::new();
-    // v1-S8. The same again, for the stroke-ruled rule. It is a live path on ordinary documents —
-    // any page whose rules happen to end at common x positions builds a band and most of them are
-    // refused — so without this a page where the ink implied a grid the author never divided reads
-    // exactly like a page that drew no lines at all.
     let mut stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)> = Vec::new();
-
-    // v1-S3. Read the document's own structure tree ONCE, off the same handle every other stage
-    // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
-    // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
-    let structure = crate::structure::read(doc.inner())?;
-    // The tree's citations grouped by page, built once: the per-page loop below
-    // consults only its own page's keys, where iterating `tree.keys()` per page made
-    // the reconciliation O(pages × total keys) across the document.
-    let tree_mcids_by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> = structure
-        .as_ref()
-        .map(|tree| {
-            let mut by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> =
-                std::collections::BTreeMap::new();
-            for &(page, mcid) in tree.keys() {
-                by_page.entry(page).or_default().push(mcid);
-            }
-            by_page
-        })
-        .unwrap_or_default();
-    // Counted while binding, declared afterwards, and only when non-zero.
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
-    // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
-    // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
-    // v1-S6.1. Composite fonts whose code width came from `/ToUnicode` rather than from the
-    // `/Encoding` CMap this profile does not parse. Counted by resource name per page, which
-    // over-counts a font shared across pages — the declaration says "font(s) on this document",
-    // and the number is a scale, not an inventory.
     let mut composite_fonts: u32 = 0;
-
-    let budget = profile.page_budget;
-    let page_count = doc.page_count();
-
-    for &(page_number, page_id) in doc.pages() {
-        // The budget is checked before any work on the page, not after. A page counted as
-        // quarantined must genuinely not have been read — otherwise the coverage summary
-        // describes a run that did not happen.
-        if !budget.admits(page_number) {
-            page_states.push(PageStateEntry {
-                index: page_number,
-                state: PageState::Quarantined(engine_core::codes::RESOURCE_LIMIT_PAGES.to_string()),
-            });
-            continue;
-        }
-
+    let mut widths_absent: Vec<engine_core::Limitation> = Vec::new();
+    let page_extract;
+    {
         let page_dict =
             doc.inner()
                 .get_dictionary(page_id)
@@ -320,8 +288,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         for font in fonts.values() {
             if let WidthSource::Absent { reason } = &font.widths {
                 let entry = lim::font_widths_absent(reason);
-                if !limitations.contains(&entry) {
-                    limitations.push(entry);
+                if !widths_absent.contains(&entry) {
+                    widths_absent.push(entry);
                 }
             }
         }
@@ -807,7 +775,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             }
         }
 
-        pages.push(PageExtract {
+        page_extract = PageExtract {
             tables,
             tagged_tables: page_tagged_tables,
             objects,
@@ -817,10 +785,249 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             height: quantize(geom.display_height, QUANTUM_PER_POINT).map_err(quantize_err)?,
             rotation: geom.rotation,
             runs,
-        });
-        // Reached only after the page's runs are in the artifact, so `Processed` cannot be
-        // claimed for a page whose interpretation failed — that path returns `Err` above and
-        // produces no artifact at all.
+        };
+    }
+    Ok(PageYield {
+        page: page_extract,
+        ruled_refusals,
+        stroke_refusals,
+        unruled_refusals,
+        encoding_dropped_runs,
+        encoding_detail,
+        mcids_unbound,
+        unclaimed_tree_items,
+        props_by_name,
+        tagged_without_geometric,
+        unresolved_field_parents,
+        inline_images,
+        unresolved_xobjects,
+        composite_fonts,
+        findings_seen,
+        widths_absent,
+        local_ids: alloc,
+    })
+}
+
+/// Extract text runs from an already-open document.
+///
+/// # Errors
+///
+/// - [`EngineError::Unsupported`] — an operator outside PDF 32000-1 Table A.1, or a character
+///   code this profile cannot decode. **Fails closed**: a skipped operator can move or delete
+///   text, and a substituted character is a character the document does not contain.
+/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure.
+/// - [`EngineError::MissingPart`] — a font resource a `Tf` refers to is absent.
+pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, EngineError> {
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "profile".into(),
+            detail: e.to_string(),
+        })?;
+
+    let mut alloc = IdAllocator::new(profile_sha256.clone());
+    let mut pages = Vec::with_capacity(doc.pages().len());
+    let mut limitations = lim::extract_limitations();
+    // A repaired open is never silent: every artifact derived from one says so.
+    if let Some(padded) = doc.xref_entries_padded() {
+        limitations.push(lim::xref_entry_padded(padded));
+    }
+    let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
+    // Accumulated across pages: how much text is missing from this artifact because a font's
+    // encoding could not map it, and the first failure's reason for the declaration's detail.
+    let mut encoding_dropped_runs: u32 = 0;
+    let mut encoding_detail = String::new();
+    // v1-S2. Pages where the alignment rule built a candidate lattice and refused it, with the
+    // precondition that failed. Collected rather than declared per page so the artifact carries
+    // one limitation naming every such page instead of one per page.
+    let mut unruled_refusals: Vec<(u32, crate::unruled::Refusal)> = Vec::new();
+    // v1-S7b. The same, for the ruled rule. It had no voice until `ruled-rects-v2` made its
+    // coherence precondition a live path — under `-v1` a background panel satisfied coverage for
+    // every face at once, so the check almost never fired.
+    let mut ruled_refusals: Vec<(u32, crate::tables::RuledRefusal)> = Vec::new();
+    // v1-S8. The same again, for the stroke-ruled rule. It is a live path on ordinary documents —
+    // any page whose rules happen to end at common x positions builds a band and most of them are
+    // refused — so without this a page where the ink implied a grid the author never divided reads
+    // exactly like a page that drew no lines at all.
+    let mut stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)> = Vec::new();
+
+    // v1-S3. Read the document's own structure tree ONCE, off the same handle every other stage
+    // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
+    // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
+    let structure = crate::structure::read(doc.inner())?;
+    // The tree's citations grouped by page, built once: the per-page loop below
+    // consults only its own page's keys, where iterating `tree.keys()` per page made
+    // the reconciliation O(pages × total keys) across the document.
+    let tree_mcids_by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> = structure
+        .as_ref()
+        .map(|tree| {
+            let mut by_page: std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>> =
+                std::collections::BTreeMap::new();
+            for &(page, mcid) in tree.keys() {
+                by_page.entry(page).or_default().push(mcid);
+            }
+            by_page
+        })
+        .unwrap_or_default();
+    // Counted while binding, declared afterwards, and only when non-zero.
+    let mut mcids_unbound: u32 = 0;
+    let mut unclaimed_tree_items: u32 = 0;
+    let mut props_by_name: u32 = 0;
+    let mut tagged_without_geometric: Vec<u32> = Vec::new();
+    // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
+    let mut unresolved_field_parents: u32 = 0;
+    // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
+    let mut inline_images: u32 = 0;
+    let mut unresolved_xobjects: u32 = 0;
+    let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
+        std::collections::BTreeMap::new();
+    // v1-S6.1. Composite fonts whose code width came from `/ToUnicode` rather than from the
+    // `/Encoding` CMap this profile does not parse. Counted by resource name per page, which
+    // over-counts a font shared across pages — the declaration says "font(s) on this document",
+    // and the number is a scale, not an inventory.
+    let mut composite_fonts: u32 = 0;
+
+    let budget = profile.page_budget;
+    let page_count = doc.page_count();
+
+    // Pages in parallel, folded in order (0.39.0). Each admitted page runs the same
+    // body it always ran — `extract_page` — against the shared read-only handle, with
+    // a page-local id allocator. The fold below then walks the results in page order:
+    // it rewrites every id through one document-global allocator (per-kind counters
+    // are independent and `reorder_page` already lays run ids contiguous per page, so
+    // the rewritten sequence is byte-identical to the sequential one), folds each
+    // page's counter deltas with the same saturating arithmetic in the same order,
+    // and returns the FIRST page error in page order — the sequential loop's abort
+    // point — so a failing document reports the same failure it always did.
+    use rayon::prelude::*;
+    let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
+        .pages()
+        .par_iter()
+        .map(|&(page_number, page_id)| {
+            if !budget.admits(page_number) {
+                return (page_number, None);
+            }
+            (
+                page_number,
+                Some(extract_page(
+                    doc,
+                    &profile,
+                    &profile_sha256,
+                    &structure,
+                    &tree_mcids_by_page,
+                    page_number,
+                    page_id,
+                )),
+            )
+        })
+        .collect();
+
+    for (page_number, outcome) in outcomes {
+        let Some(result) = outcome else {
+            page_states.push(PageStateEntry {
+                index: page_number,
+                state: PageState::Quarantined(engine_core::codes::RESOURCE_LIMIT_PAGES.to_string()),
+            });
+            continue;
+        };
+        let mut y = result?;
+
+        // Rebase the page-local ids onto the document-global sequence. An id is
+        // prefix + ordinal; adding the global base to each local ordinal reproduces
+        // the sequential numbering EXACTLY — holes included, because a refused
+        // candidate consumed an ordinal it never shipped and the artifact keeps
+        // that hole. The global counters then advance by replaying the same number
+        // of allocations the page made, which also reproduces the sequential
+        // MAX_SAFE_INT refusal at the same page it would always have fired.
+        let bases = [
+            IdKind::Span,
+            IdKind::Table,
+            IdKind::Image,
+            IdKind::FormField,
+            IdKind::Annotation,
+        ]
+        .map(|kind| (kind, alloc.count(kind)));
+        let base = |kind: IdKind| {
+            bases
+                .iter()
+                .find(|(k, _)| *k == kind)
+                .map(|(_, b)| *b)
+                .expect("kind is listed")
+        };
+        let rebase = |id: &engine_core::NodeId, kind: IdKind| {
+            let ordinal: u64 = id.as_str()[kind.prefix().len()..]
+                .parse()
+                .expect("engine-minted ids carry a decimal ordinal");
+            engine_core::NodeId::from_parts(kind, base(kind) + ordinal)
+        };
+        for run in &mut y.page.runs {
+            run.id = rebase(&run.id, IdKind::Span);
+        }
+        for table in &mut y.page.tables {
+            let id = rebase(&table.id, IdKind::Table);
+            for cell in &mut table.cells {
+                cell.position.table_id = id.clone();
+            }
+            table.id = id;
+        }
+        for table in &mut y.page.tagged_tables {
+            let id = rebase(&table.id, IdKind::Table);
+            for cell in &mut table.cells {
+                cell.position.table_id = id.clone();
+            }
+            table.id = id;
+        }
+        for image in &mut y.page.images {
+            image.id = rebase(&image.id, IdKind::Image);
+        }
+        for object in &mut y.page.objects {
+            object.id = rebase(
+                &object.id,
+                match object.attributes {
+                    engine_core::NodeAttributes::FormField(_) => IdKind::FormField,
+                    _ => IdKind::Annotation,
+                },
+            );
+        }
+        for kind in [
+            IdKind::Span,
+            IdKind::Table,
+            IdKind::Image,
+            IdKind::FormField,
+            IdKind::Annotation,
+        ] {
+            for _ in 0..y.local_ids.count(kind) {
+                let _ = alloc.next(kind)?;
+            }
+        }
+
+        ruled_refusals.extend(y.ruled_refusals);
+        stroke_refusals.extend(y.stroke_refusals);
+        unruled_refusals.extend(y.unruled_refusals);
+        if y.encoding_dropped_runs > 0 {
+            if encoding_dropped_runs == 0 {
+                encoding_detail = y.encoding_detail;
+            }
+            encoding_dropped_runs = declare(encoding_dropped_runs, y.encoding_dropped_runs);
+        }
+        mcids_unbound = declare(mcids_unbound, y.mcids_unbound);
+        unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
+        props_by_name = declare(props_by_name, y.props_by_name);
+        tagged_without_geometric.extend(y.tagged_without_geometric);
+        unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
+        inline_images = declare(inline_images, y.inline_images);
+        unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
+        composite_fonts = declare(composite_fonts, y.composite_fonts);
+        for (code, n) in y.findings_seen {
+            *findings_seen.entry(code).or_insert(0) += n;
+        }
+        for entry in y.widths_absent {
+            if !limitations.contains(&entry) {
+                limitations.push(entry);
+            }
+        }
+
+        pages.push(y.page);
         page_states.push(PageStateEntry {
             index: page_number,
             state: PageState::Processed,
