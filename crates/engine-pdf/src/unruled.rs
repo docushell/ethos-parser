@@ -490,7 +490,9 @@ fn gutter_fault(lines: &[i64], floor: i64, columns: bool) -> Option<Refusal> {
 /// Total by construction — `lines[0]` is the smallest value in the set every lookup comes from,
 /// so nothing can fall before it.
 fn line_of(lines: &[i64], v: i64) -> usize {
-    lines.iter().rposition(|l| *l <= v).unwrap_or(0)
+    // Binary search with the linear rposition's exact semantics on sorted input:
+    // the LAST line ≤ v, or 0 when every line is greater.
+    lines.partition_point(|l| *l <= v).saturating_sub(1)
 }
 
 /// The face geometry of an inferred grid.

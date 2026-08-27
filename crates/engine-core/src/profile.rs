@@ -1916,7 +1916,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.37.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.37.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2403,11 +2403,18 @@ mod tests {
              `nist-sp-800-53Ar5` and the `nist-sp-800-218` extract artifacts are byte-identical \
              to pre-change output, and the c14n suite gained the equivalence law \
              `canonical_bytes_of(v) == c14n_bytes(&to_value(v))`. The JSON above differs from \
-             0.37.0's in `parser_version` and nothing else. See CHANGELOG \"0.37.1\"."
+             0.37.0's in `parser_version` and nothing else. See CHANGELOG \"0.37.1\".\n\n\
+             Moved a FIFTY-EIGHTH time at 0.37.2, on `parser_version` alone — the second half of \
+             the same performance repair, with the same proof. The ruled rule's face-coverage \
+             scan becomes a difference grid, its line lookups and the unruled rule's become \
+             binary searches, and the cross-check's overlap test becomes a sweep — each rewrite \
+             argued equivalent in the source and then proven the only way that counts: the gate \
+             corpus artifacts are byte-identical at equal version. The JSON above differs from \
+             0.37.1's in `parser_version` and nothing else. See CHANGELOG \"0.37.2\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:971f37addcc5af32966bfe1b743836d5f97a4d9ef2880321d3444c38d57854c0"
+            "sha256:8ed78672d035434cdb107e775ec6b925b7465a846527128da132512c19b8b991"
         );
     }
 

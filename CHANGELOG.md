@@ -7,7 +7,24 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2
+
+### The detector quadratics go — as 0.37.2
+
+The second half of the performance repair, on the same proof: the gate corpus artifacts are
+byte-identical at equal version, and each rewrite is argued equivalent at the site. The ruled
+rule's coherence precondition was O(faces × rectangles × lattice-lines) — every face re-scanned
+every rectangle, and `encloses_everything`, a property of the rectangle alone, was recomputed
+per pair; covering a face whose edges are lattice lines is an interval condition on the line
+indices, so each rectangle now marks its covered block in one 2-D difference grid. The lattice
+line lookups (`index_of`) and the unruled rule's `line_of` become binary searches with the
+linear scans' exact first/last-match semantics, and the cross-check's overlap test becomes an
+x-sweep that finds the same pairs and re-sorts them into the (i, j > i) order the wire has
+always recorded — up to 4096 cells made the all-pairs form 16.7M tests per table. Measured on
+`nist-sp-800-218`, the tagged gate document with the densest painted grids: extract falls from
+2.04 s to 1.75 s; `nist-sp-800-53Ar5` from 59.9 s to 56.7 s. The run-to-cell assignment scan
+stays O(cells × runs) deliberately: cells can overlap, a run inside two cells belongs to both,
+and a bucketed rewrite that preserved that faithfully was not worth its risk this slice.
 
 ### The emit path stops building every artifact twice — as 0.37.1
 

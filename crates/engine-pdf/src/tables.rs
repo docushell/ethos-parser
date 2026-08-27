@@ -133,6 +133,12 @@ impl QuantRect {
     /// lattice line is a **cluster representative**, not any one rectangle's exact edge. Asking
     /// for exact containment against it would fail on the very documents clustering exists to
     /// handle — a grid drawn with 1pt rules, where each line's edges differ by the rule's width.
+    /// Retained under `cfg(test)` as the executable SPEC of the coherence scan:
+    /// production decides face coverage through the difference grid in
+    /// `Lattice::build`, and the equivalence test in this file re-derives every
+    /// verdict through this predicate to prove the two agree. Deleting it would
+    /// turn the grid's "exact rewrite" claim back into a sentence.
+    #[cfg(test)]
     fn covers_within_tolerance(self, other: Self) -> bool {
         self.x0 - LATTICE_TOLERANCE <= other.x0
             && self.y0 - LATTICE_TOLERANCE <= other.y0
@@ -696,15 +702,31 @@ pub fn cross_check(
                 });
             }
         }
-        for (i, a) in cells.iter().enumerate() {
-            for b in cells.iter().skip(i + 1) {
-                if a.rect.overlaps(b.rect) {
-                    geometric.push(GeometricFault::CellsOverlap {
-                        a: CellSlot::new(a.position.row, a.position.column),
-                        b: CellSlot::new(b.position.row, b.position.column),
-                    });
+        // Same pairs, same wire order, one sweep instead of all pairs (up to 4096
+        // cells made that 16.7M overlap tests per table). Indices sort by x0; a
+        // candidate pair must satisfy the overlap predicate's own necessary
+        // condition x0_later < x1_earlier before the full test runs; and because
+        // the wire has always recorded faults in (i, j > i) cell order, the found
+        // pairs are re-sorted into exactly that order before they are pushed.
+        let mut by_x0: Vec<usize> = (0..cells.len()).collect();
+        by_x0.sort_unstable_by_key(|&i| (cells[i].rect.x0, i));
+        let mut overlapping: Vec<(usize, usize)> = Vec::new();
+        for (k, &p) in by_x0.iter().enumerate() {
+            for &q in &by_x0[k + 1..] {
+                if cells[q].rect.x0 >= cells[p].rect.x1 {
+                    break;
+                }
+                if cells[p].rect.overlaps(cells[q].rect) {
+                    overlapping.push((p.min(q), p.max(q)));
                 }
             }
+        }
+        overlapping.sort_unstable();
+        for (i, j) in overlapping {
+            geometric.push(GeometricFault::CellsOverlap {
+                a: CellSlot::new(cells[i].position.row, cells[i].position.column),
+                b: CellSlot::new(cells[j].position.row, cells[j].position.column),
+            });
         }
         let cell_area: i128 = cells.iter().map(|c| c.rect.area()).sum();
         if cell_area != table.area() {
@@ -809,13 +831,68 @@ impl Lattice {
                 .span_of(*r)
                 .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
         };
-        for row in 0..lattice.rows() {
-            for column in 0..lattice.columns() {
-                let face = lattice.face(row, column);
-                if !rects
-                    .iter()
-                    .any(|r| !encloses_everything(r) && r.covers_within_tolerance(face))
-                {
+        // The same precondition, decided in one pass instead of one scan per
+        // (face, rectangle) pair. `covers_within_tolerance` against a face whose
+        // edges ARE lattice lines is an interval condition on the line indices —
+        // xs[c] >= r.x0 − tol and xs[c+1] <= r.x1 + tol, and likewise for rows —
+        // so each rectangle marks the block of faces it covers in a 2-D difference
+        // grid, and `encloses_everything`, a property of the rectangle alone, runs
+        // once per rectangle instead of once per pair. A face is uncovered under
+        // this scan exactly when it was under the per-pair scan, and the refusal
+        // carries the identical payload, so nothing on the wire can move.
+        let columns = lattice.columns() as usize;
+        let row_count = lattice.rows() as usize;
+        let mut coverage = vec![0i64; (row_count + 1) * (columns + 1)];
+        let stride = columns + 1;
+        for r in rects {
+            if encloses_everything(r) {
+                continue;
+            }
+            let c_lo = lattice
+                .xs
+                .partition_point(|x| *x < r.x0 - LATTICE_TOLERANCE);
+            let c_hi = lattice
+                .xs
+                .partition_point(|x| *x <= r.x1 + LATTICE_TOLERANCE);
+            let r_lo = lattice
+                .ys
+                .partition_point(|y| *y < r.y0 - LATTICE_TOLERANCE);
+            let r_hi = lattice
+                .ys
+                .partition_point(|y| *y <= r.y1 + LATTICE_TOLERANCE);
+            // Covered faces are [r_lo, r_hi−1) × [c_lo, c_hi−1): a face needs both
+            // its near line inside the rectangle's tolerance band and its far line,
+            // which is the next line up.
+            if c_hi < c_lo + 2 || r_hi < r_lo + 2 {
+                continue;
+            }
+            let (c1, r1) = (c_hi - 1, r_hi - 1);
+            coverage[r_lo * stride + c_lo] += 1;
+            coverage[r_lo * stride + c1] -= 1;
+            coverage[r1 * stride + c_lo] -= 1;
+            coverage[r1 * stride + c1] += 1;
+        }
+        let mut running = vec![0i64; (row_count + 1) * (columns + 1)];
+        for row in 0..row_count {
+            for column in 0..columns {
+                let above = if row > 0 {
+                    running[(row - 1) * stride + column]
+                } else {
+                    0
+                };
+                let left = if column > 0 {
+                    running[row * stride + column - 1]
+                } else {
+                    0
+                };
+                let diag = if row > 0 && column > 0 {
+                    running[(row - 1) * stride + column - 1]
+                } else {
+                    0
+                };
+                let total = coverage[row * stride + column] + above + left - diag;
+                running[row * stride + column] = total;
+                if total == 0 {
                     return Err(Some(RuledRefusal::FaceWithoutRectangle {
                         faces,
                         rects: rects.len(),
@@ -844,6 +921,9 @@ impl Lattice {
         }
     }
 
+    /// Retained under `cfg(test)` with [`QuantRect::covers_within_tolerance`], as
+    /// the other half of the coherence scan's executable spec.
+    #[cfg(test)]
     fn face(&self, row: u32, column: u32) -> QuantRect {
         QuantRect {
             x0: self.xs[column as usize],
@@ -886,9 +966,13 @@ fn cluster(values: impl Iterator<Item = i64>) -> Vec<i64> {
 }
 
 fn index_of(lines: &[i64], v: i64) -> Option<usize> {
-    lines
-        .iter()
-        .position(|l| (l - v).abs() <= LATTICE_TOLERANCE)
+    // Binary search with the linear scan's exact semantics: the FIRST line within
+    // ±LATTICE_TOLERANCE of `v`. `lines` is sorted, so the first candidate at all
+    // is the first line ≥ v − tolerance; it matches iff it is also ≤ v + tolerance.
+    // (Clustering keeps successive lines more than one tolerance apart, but nothing
+    // here relies on that — the equivalence holds for any sorted input.)
+    let first = lines.partition_point(|l| *l < v - LATTICE_TOLERANCE);
+    (lines.get(first).copied()? - v <= LATTICE_TOLERANCE).then_some(first)
 }
 
 /// Quantize a user-space rectangle into page space.
@@ -945,6 +1029,88 @@ mod tests {
     /// A point coordinate in centipoints, for tests that need to place a run inside a cell.
     fn pt(v: i64) -> i64 {
         v * i64::from(QUANTUM_PER_POINT)
+    }
+
+    /// The difference-grid coherence scan agrees with its per-pair spec on every
+    /// face, for lattices that pass and lattices that refuse — including the
+    /// tolerance edges, a spanning rectangle, and the excluded whole-grid border.
+    #[test]
+    fn the_coverage_grid_is_the_per_pair_scan_by_another_route() {
+        let tol_pt = LATTICE_TOLERANCE / i64::from(QUANTUM_PER_POINT);
+        let cases: Vec<(&str, Vec<QuantRect>)> = vec![
+            ("clean 2x2 grid", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 100, 100), r(100, 50, 200, 100),
+            ]),
+            ("one face uncovered", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 100, 100),
+            ]),
+            ("cover within tolerance", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 100, 100),
+                // Edges one tolerance inside the face it must cover.
+                QuantRect {
+                    x0: pt(100) + LATTICE_TOLERANCE,
+                    y0: pt(50) + LATTICE_TOLERANCE,
+                    x1: pt(200) - LATTICE_TOLERANCE,
+                    y1: pt(100) - LATTICE_TOLERANCE,
+                },
+            ]),
+            ("cover just past tolerance", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 100, 100),
+                r(100 + tol_pt + 1, 50, 200, 100),
+            ]),
+            ("spanning rectangle covers two faces", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 200, 100),
+            ]),
+            ("whole-grid border is not evidence", vec![
+                r(0, 0, 100, 50), r(100, 0, 200, 50),
+                r(0, 50, 100, 100), r(100, 50, 200, 100),
+                r(0, 0, 200, 100),
+            ]),
+        ];
+        for (name, rects) in cases {
+            let built = Lattice::build(&rects);
+            // The spec's own answer, re-derived per (face, rectangle) pair exactly
+            // as the pre-0.37.2 scan computed it.
+            let spec = |lattice: &Lattice| {
+                let encloses = |rect: &QuantRect| {
+                    lattice.span_of(*rect).is_some_and(|s| {
+                        (s.rowspan * s.colspan) as usize
+                            == (lattice.rows() * lattice.columns()) as usize
+                    })
+                };
+                (0..lattice.rows()).all(|row| {
+                    (0..lattice.columns()).all(|column| {
+                        let face = lattice.face(row, column);
+                        rects
+                            .iter()
+                            .any(|rect| !encloses(rect) && rect.covers_within_tolerance(face))
+                    })
+                })
+            };
+            match built {
+                Ok(lattice) => assert!(
+                    spec(&lattice),
+                    "{name}: the grid accepted a lattice the per-pair spec refuses"
+                ),
+                Err(Some(RuledRefusal::FaceWithoutRectangle { .. })) => {
+                    // Rebuild the lattice geometry alone to ask the spec the same
+                    // question the grid answered.
+                    let xs = cluster(rects.iter().flat_map(|rect| [rect.x0, rect.x1]));
+                    let ys = cluster(rects.iter().flat_map(|rect| [rect.y0, rect.y1]));
+                    let lattice = Lattice { xs, ys };
+                    assert!(
+                        !spec(&lattice),
+                        "{name}: the grid refused a lattice the per-pair spec accepts"
+                    );
+                }
+                Err(other) => panic!("{name}: unexpected refusal {other:?}"),
+            }
+        }
     }
 
     /// A 2×2 grid drawn as four cell rectangles.
