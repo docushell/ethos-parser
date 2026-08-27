@@ -1191,3 +1191,51 @@ perfect grid and free text wherever a single marked-content unit supplies it, an
 TP/G — 72/159, 11/40, 328/568, 3352/6937, **macro 446‰**. Below the 489‰ floor. That is the
 quantitative reason the gate is not gameable by an mcid rule, and it is also the reason no amount
 of text accuracy alone would have cleared it.
+
+## The clustering lead, measured and refused (0.38.1)
+
+The estate audit's highest-confidence ruled-rule recommendation was component clustering:
+group a page's rectangles into connected components before building any lattice, judge each
+component alone, and the page-global lattice's brutal arithmetic — one stray painted box
+refuses a clean grid beside it — goes away. The audit predicted it "should convert a large
+share of those 556 refusals into detections without weakening a single precondition." It was
+implemented in full — union-find over edge-contact within `LATTICE_TOLERANCE`, components in
+reading order, `-v3`'s lattice, coherence, border rule and cross-check unchanged per
+component — measured on the twelve-document gate, and **refused**. The numbers:
+
+| measure | `ruled-rects-v3` | clustering |
+| --- | --- | --- |
+| macro cell-F1 | **70‰** | **63‰** |
+| `irs-fw9` (the corpus's best document) | 590‰ | 490‰ |
+| `cfpb-home-loan-toolkit` | ~0‰ | 269‰ |
+| geometric tables emitted | 18 | 112 |
+| false-positive cell slots added | — | ~2 000 across six documents |
+| fabrication | 0 | 0 |
+
+Two mechanisms, both invisible until measured:
+
+- **The page-global lattice was load-bearing on the best document.** `irs-fw9`'s form rows
+  are boxes separated by more than one tolerance, so clustering splits the W-9's grid into
+  five components — every one of them N×1 or 1×N — where the single page-wide lattice had
+  unified them into the 2-D grid the truth declares. The defect the audit diagnosed was, on
+  this document, the mechanism doing the work.
+- **A component is furniture-sized.** `nist-sp-800-53Ar5` emits **70** geometric tables
+  against 11 tagged ones — thirty of them 3×3, fourteen 4×3: control-parameter boxes whose
+  rectangles genuinely tile a small grid. On `nist-sp-800-161r1`, ten of eleven admitted
+  grids are single-column stacks of boxed disclaimer prose, and every one carries a
+  `does_not_tile` geometric fault the structural gate cannot see. Coherence was written for
+  a page's worth of evidence; against a three-box component it is nearly always satisfied.
+
+Fabrication stayed 0 throughout — the cells carry real text — which is exactly #18's
+"worse than a zero" shape: real text arranged into a grid that is not there. A single-
+dimension refusal (rows ≥ 2 and columns ≥ 2) was probed against the artifacts before being
+written: it clears `nist-sp-800-161r1`'s ten stacks and then deletes `irs-fw9`'s remaining
+true positives with the same stroke, because the split components it would refuse are the
+real table's fragments. The repair and the regression are the same predicate.
+
+So the lead joins the six measured repairs above rather than the two that shipped, and the
+finding it adds to the record is one the next attempt has to answer: **any per-region ruled
+rule needs a region-merging step strong enough to reunify a form's rows before it can
+afford to judge regions alone** — and that is the v1-S7 chase, which `00-NORTH-STAR.md`
+#10 parks and #18 holds for the owner. The code is reverted; this section, the audit row
+it answers, and the artifacts sampled for the shape census are the slice's whole output.

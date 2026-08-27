@@ -7,7 +7,26 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1
+
+### The clustering lead, measured and refused — as 0.38.1
+
+The estate audit's highest-confidence ruled-rule recommendation — cluster a page's
+rectangles into connected components and judge each alone, so a stray painted box stops
+refusing the clean grid beside it — was implemented in full, run against the
+twelve-document gate, and refused on its numbers: macro fell 70‰ to 63‰, `irs-fw9` — the
+corpus's best document — split into five single-dimension fragments because the page-global
+lattice was the very mechanism unifying its form rows, and sixty-five furniture grids
+arrived on `nist-sp-800-53Ar5` alone, with fabrication still 0 — which is #18's "worse than
+a zero" shape, real text arranged into grids that are not there. A single-dimension refusal
+was probed against the artifacts and not written: the ten prose stacks it clears on
+`nist-sp-800-161r1` and the fw9 fragments it would delete are the same predicate. The code
+is reverted; `docs/table-gate-v1.md` §"The clustering lead, measured and refused" carries
+the per-document table, both mechanisms, and the finding the next attempt has to answer —
+any per-region ruled rule needs a region-merging step strong enough to reunify a form's
+rows before it can afford to judge regions alone. That is the v1-S7 chase, parked by
+decision #10 and held for the owner by #18; this slice adds its evidence and changes no
+reader, so `parser_version` moves alone.
 
 ### Numeric character references resolve everywhere, and the router is shared — as 0.38.0
 
