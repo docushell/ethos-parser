@@ -7,7 +7,21 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3
+
+### The payload is walked once per artifact — as 0.38.3
+
+The emit tail 0.38.2 named as the next slice. `seal` was already canonicalizing the whole
+payload to hash it; `to_canonical_bytes` then walked the same payload again to print it —
+on the 932 MB artifact, most of the remaining wall clock. `seal` now keeps the bytes it
+hashed, and the print splices them into the envelope through `c14n::canonical_object`, a
+joiner that sorts keys and refuses duplicates exactly as the full serializer would, so the
+spliced emit is the full serialization by construction — and by test, which pins the two
+routes byte-equal. A parsed artifact carries no cache and takes the full pass unchanged.
+The cache is derived state, not identity: it never serializes, and equality remains the
+five wire fields, because a minted artifact must equal its own parsed round-trip. Measured:
+`nist-sp-800-53Ar5` falls from ~50 s to ~40 s — the extraction batch's whole journey now
+reads 100.4 s → ~40 s at byte-identical output per version.
 
 ### Pages extract in parallel, and the artifact cannot tell — as 0.38.2
 

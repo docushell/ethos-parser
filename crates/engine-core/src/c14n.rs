@@ -187,6 +187,42 @@ pub fn sha256_hex(value: &Value) -> Result<String, C14nError> {
     Ok(hex(&Sha256::digest(c14n_bytes(value)?)))
 }
 
+/// Join field values that are ALREADY canonical bytes into one canonical object.
+///
+/// The one caller that earns this exists because an artifact's payload is
+/// canonicalized twice on the emit path — once inside `seal` for the fingerprint,
+/// once inside `to_canonical_bytes` for the print — and on a 932 MB artifact the
+/// second pass is most of the wall clock. `seal` keeps the bytes it hashed;
+/// this splices them into the envelope without re-walking the payload. Keys are
+/// sorted here and duplicates are refused, exactly as [`canonical_bytes_of`]
+/// would have done, so the output is byte-identical to serializing the whole
+/// struct — a property the caller's tests pin.
+///
+/// # Errors
+///
+/// [`C14nError`] on a duplicate key.
+pub fn canonical_object(mut fields: Vec<(&str, Vec<u8>)>) -> Result<Vec<u8>, C14nError> {
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+    if let Some(pair) = fields.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+        return Err(C14nError::new(format!(
+            "duplicate key \"{}\" in canonical value",
+            pair[0].0
+        )));
+    }
+    let mut out = Vec::with_capacity(fields.iter().map(|(k, v)| k.len() + v.len() + 4).sum());
+    out.push(b'{');
+    for (i, (key, value)) in fields.iter().enumerate() {
+        if i > 0 {
+            out.push(b',');
+        }
+        write_string(key, &mut out);
+        out.push(b':');
+        out.extend_from_slice(value);
+    }
+    out.push(b'}');
+    Ok(out)
+}
+
 /// Canonical bytes of any serializable value, streamed straight to sorted-key
 /// output with no intermediate `serde_json::Value` tree.
 ///

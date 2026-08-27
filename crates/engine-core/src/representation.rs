@@ -2004,7 +2004,7 @@ impl RepresentationPayload {
 /// geometry box against its page. There is no constructor that *accepts* a fingerprint, for the
 /// same reason [`Assurance`] derives its terminal state instead of accepting one: a value that
 /// can be asserted independently of what it describes is a value that can disagree with it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(try_from = "RepresentationWire")]
 pub struct DocumentRepresentation {
     artifact_type: String,
@@ -2012,7 +2012,29 @@ pub struct DocumentRepresentation {
     representation: RepresentationPayload,
     representation_c14n_sha256: Sha256Hex,
     geometry: Vec<NodeGeometry>,
+    /// The payload's canonical bytes, kept from the pass `seal` hashed — so the
+    /// emit path can splice them into the envelope instead of walking the whole
+    /// payload a second time. Derived, not identity: absent on a parsed artifact,
+    /// never on the wire, and excluded from equality below, because two artifacts
+    /// that differ only in whether this cache is warm are the same artifact.
+    #[serde(skip)]
+    payload_c14n: Option<Vec<u8>>,
 }
+
+/// Equality is the five wire fields and nothing else — `payload_c14n` is a
+/// derived cache, and deriving `PartialEq` over it would make a minted artifact
+/// unequal to its own parsed round-trip.
+impl PartialEq for DocumentRepresentation {
+    fn eq(&self, other: &Self) -> bool {
+        self.artifact_type == other.artifact_type
+            && self.schema_version == other.schema_version
+            && self.representation == other.representation
+            && self.representation_c14n_sha256 == other.representation_c14n_sha256
+            && self.geometry == other.geometry
+    }
+}
+
+impl Eq for DocumentRepresentation {}
 
 /// The wire form, so `deny_unknown_fields` and the structural checks both apply on parse.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2062,6 +2084,7 @@ impl TryFrom<RepresentationWire> for DocumentRepresentation {
             representation: w.representation,
             representation_c14n_sha256: w.representation_c14n_sha256,
             geometry: w.geometry,
+            payload_c14n: None,
         };
         d.check_structure()?;
         Ok(d)
@@ -2080,13 +2103,18 @@ impl DocumentRepresentation {
         payload: RepresentationPayload,
         geometry: Vec<NodeGeometry>,
     ) -> Result<Self, EngineError> {
-        let fingerprint = payload.fingerprint()?;
+        // One canonical pass serves both the fingerprint and, kept as a cache, the
+        // eventual print — the payload was being walked twice per artifact.
+        let payload_bytes = payload.canonical_bytes()?;
+        let fingerprint = Sha256Hex::from_hex(&sha256_hex_bytes(&payload_bytes))
+            .expect("sha256 hex is always 64 lowercase hex digits");
         let d = Self {
             artifact_type: REPRESENTATION_ARTIFACT_TYPE.to_string(),
             schema_version: REPRESENTATION_SCHEMA_VERSION.to_string(),
             representation: payload,
             representation_c14n_sha256: fingerprint,
             geometry,
+            payload_c14n: Some(payload_bytes),
         };
         d.check_structure()?;
         Ok(d)
@@ -2536,10 +2564,38 @@ impl DocumentRepresentation {
     ///
     /// [`EngineError::Malformed`] if the artifact will not canonicalize.
     pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        crate::c14n::canonical_bytes_of(self).map_err(|e| EngineError::Malformed {
+        let malformed = |e: crate::c14n::C14nError| EngineError::Malformed {
             what: "representation".into(),
             detail: e.to_string(),
-        })
+        };
+        // A minted artifact carries the payload bytes `seal` already canonicalized
+        // and hashed; splicing them into the envelope skips the second whole-payload
+        // walk. A parsed artifact has no cache and takes the full pass, and a test
+        // pins the two routes byte-equal.
+        if let Some(payload_bytes) = &self.payload_c14n {
+            return crate::c14n::canonical_object(vec![
+                (
+                    "artifact_type",
+                    crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?,
+                ),
+                (
+                    "schema_version",
+                    crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?,
+                ),
+                ("representation", payload_bytes.clone()),
+                (
+                    "representation_c14n_sha256",
+                    crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256)
+                        .map_err(malformed)?,
+                ),
+                (
+                    "geometry",
+                    crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?,
+                ),
+            ])
+            .map_err(malformed);
+        }
+        crate::c14n::canonical_bytes_of(self).map_err(malformed)
     }
 }
 
@@ -2672,6 +2728,27 @@ mod tests {
             .unwrap();
         }
         DocumentRepresentation::seal(p, geometry)
+    }
+
+    /// The spliced emit route and the full serialization are one byte stream —
+    /// and a parsed artifact, whose cache is cold, equals its minted original.
+    #[test]
+    fn the_payload_cache_splice_is_the_full_serialization_by_another_route() {
+        let minted = simple();
+        let spliced = minted.to_canonical_bytes().expect("cache route");
+        let full = crate::c14n::canonical_bytes_of(&minted).expect("full route");
+        assert_eq!(spliced, full, "the splice must not be able to differ");
+
+        let parsed: DocumentRepresentation = serde_json::from_slice(&spliced).expect("round-trips");
+        assert_eq!(
+            parsed, minted,
+            "equality is the wire fields; a cold cache must not break it"
+        );
+        assert_eq!(
+            parsed.to_canonical_bytes().expect("cold-cache route"),
+            spliced,
+            "a parsed artifact re-emits the same bytes through the full pass"
+        );
     }
 
     fn simple() -> DocumentRepresentation {
