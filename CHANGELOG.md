@@ -7,7 +7,25 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0; the annotation that refused to seal at 0.40.0; the assurance envelope that only guarded one door at 0.40.1
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0; the annotation that refused to seal at 0.40.0; the assurance envelope that only guarded one door at 0.40.1; the overlay note that could not see a tagged table at 0.40.2
+
+### The overlay note counts the tables it cannot draw — as 0.40.2
+
+The overlay's per-page note exists for one reason, stated in the module header: an overlay
+that drew only the boxes it had would make a partly-read document look fully read. So it
+reports what was found and what has no rectangle to draw, and a reader uses the difference to
+tell a missing box from a missed node.
+
+Since v2-S24 a tagged table is a first-class record in the artifact carrying absent geometry
+— found, real, and undrawable by construction, which is precisely the case the note exists to
+disclose. The note counted `page.tables` and never `page.tagged_tables`, so on
+`irs-f1040sd-2025` page 1 it read "678 run(s), 0 table(s), 0 image(s) … 0 marked item(s) on
+this page have NO rectangle this overlay can draw" about a page carrying two tagged tables.
+Both numbers the note supplies were wrong, and wrong in the direction that reassures.
+
+Both now cover both table populations, and the note's prose names the third cause alongside
+the two it already listed. Nothing in the representation moves; this is the overlay's own
+output.
 
 ### The assurance envelope guards the parse door too — as 0.40.1
 

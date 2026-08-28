@@ -137,6 +137,12 @@ pub fn build_overlay(
         // than passed over — see the module header.
         let mut without_geometry: u32 = 0;
 
+        // A tagged table's grid is the document's own tags and it carries no
+        // geometry (v2-S24), so it cannot be drawn — which is exactly what this
+        // count exists to report. It was iterating `page.tables` alone, so the note
+        // said a page with two tagged tables had no tables and nothing undrawable.
+        without_geometry += u32::try_from(page.tagged_tables.len()).unwrap_or(u32::MAX);
+
         for table in &page.tables {
             annots.push(square(
                 &geom,
@@ -282,13 +288,14 @@ fn page_note(geom: &PageGeometry, page: &crate::nodes::PageExtract, without: u32
         lopdf::Object::string_literal(format!(
             "ethos-engine overlay, page {}: {} run(s), {} table(s), {} image(s), {} flagged \
              run(s). {} marked item(s) on this page have NO rectangle this overlay can draw — a \
-             run whose font supplies no ink metrics, or an image placed by a matrix that is not \
-             axis-aligned. They were found and they are in the artifact; what is missing is a box, \
-             not the evidence. This note's own position is the page corner and is not a claim \
+             run whose font supplies no ink metrics, an image placed by a matrix that is not \
+             axis-aligned, or a tagged table, whose grid is the document's own tags and which \
+             carries no geometry at all. They were found and they are in the artifact; what is \
+             missing is a box, not the evidence. This note's own position is the page corner and is not a claim \
              about where anything is.",
             page.index,
             page.runs.len(),
-            page.tables.len(),
+            page.tables.len() + page.tagged_tables.len(),
             page.images.len(),
             flagged,
             without
@@ -346,6 +353,32 @@ fn stamp_identity(
 
 #[cfg(test)]
 mod tests {
+    /// **A tagged table is counted, both as a table and as undrawable.**
+    ///
+    /// Since v2-S24 a tagged table is a first-class record carrying absent
+    /// geometry, so it is exactly the case this note exists to disclose: found,
+    /// in the artifact, and impossible to draw. The loops read `page.tables`
+    /// alone, so on `irs-f1040sd-2025` page 1 the note read "0 table(s) … 0
+    /// marked item(s) have NO rectangle" about a page holding two of them. A
+    /// reader doing what the module header asks — using the note to tell a
+    /// missing box from a missed node — was told the page had neither.
+    #[test]
+    fn the_page_note_counts_tagged_tables_as_undrawable() {
+        let source = include_str!("overlay.rs");
+        assert!(
+            source.contains("without_geometry += u32::try_from(page.tagged_tables.len())"),
+            "tagged tables must reach the undrawable count"
+        );
+        assert!(
+            source.contains("page.tables.len() + page.tagged_tables.len()"),
+            "the note's table count must cover both table populations"
+        );
+        assert!(
+            source.contains("or a tagged table, whose grid is the document's own tags"),
+            "the note's prose must name the third cause it now counts"
+        );
+    }
+
     /// The overlay marks, and never edits.
     ///
     /// A source scan, because the difference between an overlay and a redactor is exactly which

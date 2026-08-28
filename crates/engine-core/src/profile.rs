@@ -1952,7 +1952,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.40.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.40.2","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2524,11 +2524,21 @@ mod tests {
              states and the terminal state from the coverage, exactly as `Assurance::new` does, \
              and refuses a disagreement. Sixty artifacts across the fixture and gate corpora \
              round-trip unchanged; a forged one with a recomputed fingerprint, which `engine \
-             ground` used to accept and project, is refused by name. See CHANGELOG \"0.40.1\"."
+             ground` used to accept and project, is refused by name. See CHANGELOG \"0.40.1\".\n\n\
+             Moved a SIXTY-SIXTH time at 0.40.2, on `parser_version` alone, and again nothing in \
+             the representation changes — the move is the overlay's. Since v2-S24 a tagged table \
+             is a first-class record carrying absent geometry, which makes it exactly the case \
+             the overlay's per-page note exists to disclose: found, in the artifact, and \
+             impossible to draw. The note counted `page.tables` alone, so on \
+             `irs-f1040sd-2025` page 1 it read \"0 table(s) ... 0 marked item(s) have NO \
+             rectangle\" about a page holding two of them, and a reader using the note to tell a \
+             missing box from a missed node was told the page had neither. Both numbers now \
+             cover both table populations, and the note's prose names the third cause it counts. \
+             See CHANGELOG \"0.40.2\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:94ca5687fa863bfc455f7111156cdc0bc5a7991fa197c7597e2019654b29f10d"
+            "sha256:5b176111b4934f1c37982574a36f61bf4235154e8bb91103d68a09dc5292722b"
         );
     }
 
