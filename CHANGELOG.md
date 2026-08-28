@@ -7,7 +7,59 @@ Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0; the annotation that refused to seal at 0.40.0; the assurance envelope that only guarded one door at 0.40.1
+
+### The assurance envelope guards the parse door too — as 0.40.1
+
+`Assurance` says of itself that an artifact claiming `Complete` while carrying a quarantined
+page "is not a bug this type can have", and `Assurance::new` earns that: it tallies the
+coverage from the page states and derives the terminal state from the coverage, so no
+producer can assert the three apart. Reading took the wire's word for all of them. A derived
+`Deserialize` over five `pub` fields is not a constructor, and `verify_fingerprint` cannot
+close the gap — it binds a payload to itself, not to the truth of what the payload asserts.
+
+Demonstrated rather than argued: a real artifact was edited to quarantine a page while its
+coverage and terminal state kept claiming completion, its `representation_c14n_sha256`
+recomputed with the published c14n rules (no secret is involved — the canonicalizer was
+reimplemented in twenty lines of Python and checked against an untouched artifact first), and
+`engine ground` accepted it, exit 0, and projected a grounding artifact from a record whose
+own pages contradict it.
+
+Deserialization now re-derives both figures the way the constructor does and refuses a
+disagreement, naming which of the two it found. Nothing this engine emits changes — the
+serializer is untouched, so this is a version move without a shape move — and all sixty
+artifacts across the fixture and gate corpora round-trip unchanged, which is the check that
+the new door refuses only forgeries.
+
+### A node whose kind has no ink box stops refusing to seal — as 0.40.0
+
+`check_structure` has always required `geometry-absent-not-groundable` to be declared exactly
+when some node is non-groundable, and an annotation, a form field and an image are each
+non-groundable by construction — their rectangle is a number the author wrote into a
+dictionary, not ink this engine measured. The PDF producer triggered that declaration on
+ink-absent TEXT RUNS only. The two populations disagreed, and the seal enforced the wider
+one, so a PDF whose font supplies real metrics and which carries a single annotation was
+REFUSED: `engine extract` exited 2 with "1 node(s) have no measurable ink box, but the
+payload does not declare", and produced no representation, no grounding, no markdown, no
+HTML for that document.
+
+Real files escaped by luck rather than by design. One whitespace-only run or one metric-less
+font supplies a text-run absence that fires the declaration for an unrelated reason —
+`nist-sp-800-53r5` has 11 421 of the former — and every fixture in the tree that carries an
+annotation or an image also has an unmeasurable lone text run, so the combination was never
+built. Reproduced by taking `measured-ink-box`, whose text does measure, and adding one
+annotation to its own bytes: exit 0 before, exit 2 after.
+
+The same slice corrects the ink sentence's denominator, which counted every node while its
+numerator counted text runs — a document with one text run and two annotations reported "1 of
+3 text node(s)" about a document with one text node. The by-kind absences now carry their own
+clause rather than being folded into a count that means something else, because "this kind
+has no ink" and "this reader could not measure the ink" are different statements and the
+artifact already keeps them apart everywhere else.
+
+Measured: six of fifty-two fixtures move, and every one of them carries a non-text node. The
+office readers are untouched and their artifacts are byte-identical, which is the check that
+this is a PDF-producer fix and not a change to what the seal means.
 
 ### The office formats stop being stranded — as 0.39.0
 

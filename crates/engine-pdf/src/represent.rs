@@ -355,16 +355,42 @@ pub fn to_representation(
         .count() as u32;
     let ink_absent = unmeasurable + no_ink;
     let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
+    // Nodes whose geometry is absent because their KIND has none — an annotation, a
+    // form field, an image. `check_structure` requires the geometry declaration
+    // whenever ANY node is non-groundable, and these are non-groundable, so leaving
+    // them out of the trigger meant a document could be refused for not declaring a
+    // gap this function had decided not to mention. A PDF with measurable text and
+    // one annotation did exactly that: it sealed before the annotation was added and
+    // failed after, with no artifact at all.
+    let kind_absent = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| {
+            n.kind != NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    engine_core::GeometryPresence::Absent(
+                        engine_core::GeometryAbsence::NotApplicableToKind
+                    )
+                )
+        })
+        .count() as u32;
+    // The denominator the ink sentence needs: its numerator counts text runs, so its
+    // total must too. It was `nodes.len()`, which diluted the ratio with every image
+    // and widget in the file and made the sentence say "N of M text node(s)" about a
+    // document that did not have M text nodes.
+    let text_total = nodes.iter().filter(|n| n.kind == NodeKind::TextRun).count() as u32;
 
     // Rebuild the assurance so the geometry declaration travels with everything else M4
     // established. `Assurance::new` re-derives the capability-limited entries and normalizes,
     // so passing the extract's own list back in deduplicates rather than doubling.
     let mut limitations = extract.assurance.limitations.clone();
-    if ink_absent > 0 {
+    if ink_absent > 0 || kind_absent > 0 {
         limitations.push(geometry_absent_limitation(
             unmeasurable,
             no_ink,
-            nodes.len() as u32,
+            text_total,
+            kind_absent,
         ));
     }
     if non_text > 0 {
@@ -443,7 +469,12 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
     )
 }
 
-fn geometry_absent_limitation(unmeasurable: u32, no_ink: u32, total: u32) -> Limitation {
+fn geometry_absent_limitation(
+    unmeasurable: u32,
+    no_ink: u32,
+    total: u32,
+    kind_absent: u32,
+) -> Limitation {
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
         format!(
@@ -462,7 +493,28 @@ fn geometry_absent_limitation(unmeasurable: u32, no_ink: u32, total: u32) -> Lim
              they were split, an artifact reported their sum under a sentence that read as though \
              the reader had failed every time.",
             unmeasurable + no_ink
-        ),
+        ) + &kind_absent_clause(kind_absent),
+    )
+}
+
+/// The sentence for nodes whose kind has no ink box at all.
+///
+/// Kept as its own clause rather than folded into the counts above, because it is a
+/// different statement: an annotation or a widget has no ink to measure BY
+/// DEFINITION, where an unmeasurable run is a gap in this reader. Empty when there
+/// are none, so a document without them carries the text-only sentence it always
+/// carried.
+fn kind_absent_clause(kind_absent: u32) -> String {
+    if kind_absent == 0 {
+        return String::new();
+    }
+    format!(
+        "\n\n\
+         A further {kind_absent} node(s) carry no ink box because their KIND has none — an \
+         annotation, a form field or an image, whose rectangle is a number the author wrote into \
+         a dictionary rather than ink this engine measured. Their absence is correct rather than \
+         a gap, and they are counted here because `check_structure` requires this declaration \
+         whenever any node is non-groundable."
     )
 }
 
@@ -476,6 +528,63 @@ fn rect_to_qrect(r: crate::tables::QuantRect) -> Result<engine_core::QRect, Engi
 
 #[cfg(test)]
 mod tests {
+
+    /// **A node whose KIND has no ink box still demands the declaration** — the
+    /// seal says so, and the producer used not to.
+    ///
+    /// `check_structure` refuses a representation unless
+    /// `geometry-absent-not-groundable` is declared exactly when some node is
+    /// non-groundable, and an annotation, a form field and an image are all
+    /// non-groundable by construction. The trigger here counted ink-absent TEXT
+    /// RUNS only, so a PDF whose font supplies real metrics and which carries one
+    /// annotation produced no artifact at all: `engine extract` exited 2 with
+    /// "1 node(s) have no measurable ink box, but the payload does not declare".
+    /// Real documents escaped only by luck — one whitespace-only run or one
+    /// metric-less font supplies the text-run absence that made the declaration
+    /// fire for a different reason.
+    #[test]
+    fn a_non_text_node_alone_still_declares_the_geometry_gap() {
+        use engine_core::{GeometryAbsence, GeometryPresence};
+
+        // One measured text run, one annotation: the combination every fixture in
+        // the tree happens to avoid.
+        let measured = GeometryPresence::Measured(engine_core::QRect::new(0, 0, 10, 10).unwrap());
+        let by_kind = GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind);
+        assert!(measured.is_groundable());
+        assert!(!by_kind.is_groundable());
+
+        // The producer's own trigger, exercised through the two counts it derives.
+        // Before the fix `ink_absent` was the whole condition and this case gave 0.
+        let ink_absent = 0u32;
+        let kind_absent = 1u32;
+        assert!(
+            ink_absent > 0 || kind_absent > 0,
+            "a representation carrying only a by-kind absence must still declare"
+        );
+
+        // And the declaration it produces names that population rather than
+        // silently reporting zero text nodes.
+        let limitation = geometry_absent_limitation(0, 0, 1, kind_absent);
+        assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
+        assert!(
+            limitation.detail.contains("their KIND has none"),
+            "the detail must say why these nodes have no box: {}",
+            limitation.detail
+        );
+    }
+
+    /// The ink sentence's denominator counts TEXT nodes, because its numerator does.
+    #[test]
+    fn the_ink_sentence_counts_text_nodes_on_both_sides() {
+        // One unmeasurable text run in a document that also holds two annotations:
+        // the sentence is about text, so the total is 1, not 3.
+        let limitation = geometry_absent_limitation(1, 0, 1, 2);
+        assert!(
+            limitation.detail.starts_with("1 of 1 text node(s)"),
+            "the denominator was diluted by non-text nodes: {}",
+            limitation.detail
+        );
+    }
     use super::*;
     use crate::test_support::{conformance_fixture, engine_fixture, gate_fixture};
     use crate::Document;

@@ -1000,7 +1000,7 @@ impl RefusalCode {
 /// other. An artifact that claims `Complete` while carrying a quarantined page is not a bug this
 /// type can have.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, try_from = "AssuranceWire")]
 pub struct Assurance {
     /// What the profile that produced this artifact claims it can do.
     pub capabilities: Capabilities,
@@ -1012,6 +1012,76 @@ pub struct Assurance {
     pub page_states: Vec<PageStateEntry>,
     /// How the run ended. Derived from the page states, never asserted independently.
     pub terminal_state: ProcessingTerminalState,
+}
+
+/// The parse-time shape of [`Assurance`], which exists so the type's own invariant
+/// survives deserialization.
+///
+/// The doc comment above says the three cannot disagree, and that was true of every
+/// artifact this crate BUILDS — `Assurance::new` derives the coverage from the page
+/// states and the terminal state from the coverage, so no producer can assert them
+/// apart. Parsing did not go through that door. A derived `Deserialize` over five
+/// `pub` fields accepted whatever the wire said, so an artifact edited to claim
+/// `Complete` while carrying a quarantined page loaded cleanly, and
+/// `verify_fingerprint` did not catch it: the fingerprint binds a payload to itself,
+/// not to the truth of what it asserts. `is_complete()` then answered `true` for a
+/// record whose own page states say otherwise.
+///
+/// This re-derives both on the way in and refuses a disagreement. It is the same
+/// door, opened from the other side.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssuranceWire {
+    capabilities: Capabilities,
+    limitations: Vec<Limitation>,
+    coverage: CoverageSummary,
+    page_states: Vec<PageStateEntry>,
+    terminal_state: ProcessingTerminalState,
+}
+
+impl TryFrom<AssuranceWire> for Assurance {
+    type Error = EngineError;
+
+    fn try_from(w: AssuranceWire) -> Result<Self, Self::Error> {
+        let malformed = |detail: String| EngineError::Malformed {
+            what: "assurance".into(),
+            detail,
+        };
+
+        // Derived from the page states exactly as `new` derives them. `pages_authorized`
+        // is the one coverage figure that is an input rather than a tally, so it is taken
+        // from the wire and everything else is recomputed against it.
+        let derived_coverage =
+            CoverageSummary::from_page_states(w.coverage.pages_authorized, &w.page_states)?;
+        if derived_coverage != w.coverage {
+            return Err(malformed(format!(
+                "the coverage summary does not match the page states it claims to tally: the \
+                 states give {derived_coverage:?}, the artifact says {:?}. `Assurance::new` \
+                 derives one from the other, so a record where they differ was not built by \
+                 this engine.",
+                w.coverage
+            )));
+        }
+
+        let derived_terminal = ProcessingTerminalState::derive(&derived_coverage, &w.page_states);
+        if derived_terminal != w.terminal_state {
+            return Err(malformed(format!(
+                "the terminal state does not follow from the page states: they give \
+                 {derived_terminal:?}, the artifact says {:?}. An artifact claiming a terminal \
+                 state its own pages contradict is the one thing this envelope exists to make \
+                 impossible.",
+                w.terminal_state
+            )));
+        }
+
+        Ok(Self {
+            capabilities: w.capabilities,
+            limitations: w.limitations,
+            coverage: derived_coverage,
+            page_states: w.page_states,
+            terminal_state: derived_terminal,
+        })
+    }
 }
 
 impl Assurance {
@@ -1137,6 +1207,69 @@ pub fn page_binding_status(
 
 #[cfg(test)]
 mod tests {
+
+    /// **The invariant survives the parse door, not just the constructor door.**
+    ///
+    /// `Assurance`'s own doc comment says an artifact claiming `Complete` while
+    /// carrying a quarantined page "is not a bug this type can have". That was true
+    /// of everything this crate BUILDS and false of everything it READS: a derived
+    /// `Deserialize` over five `pub` fields took the wire's word for all three, and
+    /// `verify_fingerprint` cannot help — it binds a payload to itself, not to the
+    /// truth of what the payload asserts. Reproduced end to end before this landed:
+    /// a real artifact edited to quarantine a page, its fingerprint recomputed with
+    /// the public c14n rules, was accepted by `engine ground`, which then emitted a
+    /// grounding artifact from it.
+    #[test]
+    fn a_terminal_state_its_pages_contradict_does_not_deserialize() {
+        let honest = Assurance::new(
+            Capabilities::default(),
+            2,
+            vec![
+                PageStateEntry {
+                    index: 1,
+                    state: PageState::Processed,
+                },
+                PageStateEntry {
+                    index: 2,
+                    state: PageState::Processed,
+                },
+            ],
+            Vec::new(),
+        )
+        .expect("two processed pages reconcile");
+        assert!(honest.is_complete());
+
+        let wire = serde_json::to_value(&honest).expect("serializes");
+        let round_tripped: Assurance =
+            serde_json::from_value(wire.clone()).expect("its own output parses back");
+        assert_eq!(round_tripped, honest);
+
+        // Quarantine a page while leaving the tally and the terminal state alone —
+        // exactly the edit the fingerprint cannot detect.
+        let mut forged = wire.clone();
+        forged["page_states"][1]["state"] =
+            serde_json::json!({ "state": "quarantined", "reason": "resource-limit-pages" });
+        let err = serde_json::from_value::<Assurance>(forged)
+            .expect_err("a coverage tally its pages contradict must not parse");
+        assert!(
+            err.to_string().contains("does not match the page states"),
+            "the refusal names the disagreement: {err}"
+        );
+
+        // And the mirror case: pages and coverage agreeing, terminal state lying.
+        let mut forged = wire;
+        forged["page_states"][1]["state"] =
+            serde_json::json!({ "state": "quarantined", "reason": "resource-limit-pages" });
+        forged["coverage"]["pages_processed"] = serde_json::json!(1);
+        forged["coverage"]["pages_quarantined"] = serde_json::json!(1);
+        let err = serde_json::from_value::<Assurance>(forged)
+            .expect_err("a terminal state its own coverage contradicts must not parse");
+        assert!(
+            err.to_string()
+                .contains("does not follow from the page states"),
+            "the refusal names the derivation: {err}"
+        );
+    }
     use super::*;
     use crate::c14n::c14n_bytes;
 
