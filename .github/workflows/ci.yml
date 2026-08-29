@@ -35,7 +35,12 @@ jobs:
   check:
     name: build · test · clippy · fmt · deny
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 90 rather than 45, because 45 was never a measurement. The `test` step reached CI for the
+    # first time in this repository's history on 8e2b4e1 — every earlier run died at `fmt`
+    # before it — and took 41m26s of a 44m22s job, clearing the old ceiling by 38 seconds on a
+    # quiet runner with a warm cache. A cache miss or one more test file turns that into a
+    # timeout, which reads as an infrastructure blip rather than the budget it actually is.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
