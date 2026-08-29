@@ -4,7 +4,7 @@
 **This is the code-review map for v2.** Every v2 PR belongs to exactly one slice.
 
 **v2 reads eight formats, and v2's format row is closed.** S0 through S15 are done: this
-document, the grounding decision in §5, `engine-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
+document, the grounding decision in §5, `ethos-parser-office` — the fifth crate — DOCX, XLSX, PPTX, ODT,
 ODS, ODP, RTF and EPUB, **S10 (CSV) as an argued refusal rather than a reader**, embedded assets
 counted at S11, both A11 lanes closed at S12 and S13, the guard and prose repairs at S13.1 and
 S13.3, the owner's two gate decisions at S13.4, the two unrun sweeps at S13.5, the CRC-32
@@ -41,7 +41,7 @@ The two as they stood, kept because the reasoning is the record:
    **fixed at S11**, under a second code rather than a widened first one — `office-parts-not-read`'s
    message says its parts *carry text*, and a PNG does not. What S11 does **not** settle is whether
    the roadmap's word meant *counted* or *read*: no office asset is read, decoded or emitted as a
-   node, and `engine-pdf`'s `ImageRecord` has no office counterpart. **Settled by #17: counted
+   node, and `ethos-parser-pdf`'s `ImageRecord` has no office counterpart. **Settled by #17: counted
    satisfies v2.** Reading an office asset is a contract change rather than a reader change — an
    office image has no page and no coordinate system — and it gets its own row rather than sitting
    implied inside v2's.
@@ -169,7 +169,7 @@ machinery for it:
   is a dependency, and one that arrives shows up there before it shows up in a review.
 
 S1 turned the third obligation into a test (`page_less_source.rs` reads the lock file for a
-renderer) and **S2 turned the rest into tests in `engine-core`**, where the invariant lives. The
+renderer) and **S2 turned the rest into tests in `ethos-parser-core`**, where the invariant lives. The
 sentences existed **before** the first parser — the pattern `12-V12-SCOPE.md` §3 set for the handle
 law, for the same reason, and S2 is what they were written for.
 
@@ -179,8 +179,8 @@ Anydoc's **A2** (`06-STEAL-REFUSE.md`, target v2): shared IR → one serializer.
 
 - A new format projects into **the representation this engine already emits** — same
   `artifact_type`, same `schema_version` line, same c14n, same fingerprint discipline.
-- The existing paths then consume it unchanged: `engine ground`, `engine markdown`, `engine html`,
-  `engine mcp`, both SDKs and the LangChain tools. **None of them is taught a second format.**
+- The existing paths then consume it unchanged: `ethos-parser ground`, `ethos-parser markdown`, `ethos-parser html`,
+  `ethos-parser mcp`, both SDKs and the LangChain tools. **None of them is taught a second format.**
 - **There is no second canonical JSON.** A per-format artifact type would mean a per-format
   fingerprint, a per-format verifier path and a per-format bug, which is the outcome one serializer
   exists to prevent.
@@ -188,32 +188,32 @@ Anydoc's **A2** (`06-STEAL-REFUSE.md`, target v2): shared IR → one serializer.
 `04-ARCHITECTURE.md` §6 already books this in and names its precondition:
 
 > **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection
-> behaviour | None — **provided `engine-grounding` never learned about pages**
+> behaviour | None — **provided `ethos-parser-grounding` never learned about pages**
 
 **Verified at v2-S1: the precondition holds, and it points at the wrong crate.**
-`engine-grounding` never learned what a page *is* — it reads no locator
-(`engine_grounding_has_no_pdf_concept` fails if it so much as mentions `NativeLocator`), derives no
+`ethos-parser-grounding` never learned what a page *is* — it reads no locator
+(`ethos_parser_grounding_has_no_pdf_concept` fails if it so much as mentions `NativeLocator`), derives no
 geometry, and addresses pages by id. `project()`'s own check that `node.parent` names a declared
 page is a **re-assertion of an invariant `seal` already guarantees**, not independent knowledge:
 `project()` can never be handed a page-less representation, because one cannot be constructed.
 
-The assumption that every node has a page parent lives in **`engine-core`**. That is permitted by
+The assumption that every node has a page parent lives in **`ethos-parser-core`**. That is permitted by
 §1's M5 line — a contract invariant is not format machinery, and nothing there can parse anything —
 but it is the sentence v2 has to revisit, and it is the finding §5 records. Pinned by
-`crates/engine-grounding/tests/page_less_source.rs`.
+`crates/ethos-parser-grounding/tests/page_less_source.rs`.
 
 ### Where the office crate lives, and why it did not exist until v2-S2
 
 `04-ARCHITECTURE.md` already named it and already refused to create it early:
 
 > **A fifth crate before a second format is speculative structure.** Revisit only when office or OCR
-> needs a real home — **`engine-office`**, `engine-ocr` — and not before.
+> needs a real home — **`ethos-parser-office`**, `engine-ocr` — and not before.
 
-So: the name is `engine-office`, its rules are the existing table's (`engine-core` must never learn
+So: the name is `ethos-parser-office`, its rules are the existing table's (`ethos-parser-core` must never learn
 what a DOCX is, exactly as it never learned what a PDF is), and S0 did not create it — **v2-S2 did**,
 because a second format is what makes it stop being speculative and a scope document is not.
 
-**One new crate arrived in the lock with it: `quick-xml`.** ZIP is read inside `engine-office` over
+**One new crate arrived in the lock with it: `quick-xml`.** ZIP is read inside `ethos-parser-office` over
 `flate2`, which the graph already carried, because the `zip` crate drags twelve transitives —
 including a *compressor* — to save a hundred lines of central-directory reading. XML is the opposite
 call and is not hand-rolled: entities, namespaces, CDATA and encodings are where a hand-rolled
@@ -230,7 +230,7 @@ a new dependency and a second definition of what counts as text.
 ## 5. The contract question, decided at S1
 
 **`ethos.grounding.v1` is a PDF schema today, and a DOCX cannot enter it.** Three independent walls,
-read off `crates/engine-grounding/schemas/ethos-grounding-source.schema.json`:
+read off `crates/ethos-parser-grounding/schemas/ethos-grounding-source.schema.json`:
 
 | # | the schema says | a DOCX has |
 | --- | --- | --- |
@@ -247,13 +247,13 @@ The v2 gate says *"a DOCX quote and an XLSX cell both **ground**"*. Those three 
 
 The alternative — **(a)**, revising the artifact so it can name a page-less source — is a change to
 the **verifier's** contract, and `07-VERIFY-BOUNDARY.md` is why it cannot be made here.
-`engine-cli/tests/oracle.rs` agrees with the pinned Ethos CLI on this exact schema, so an
+`ethos-parser-cli/tests/oracle.rs` agrees with the pinned Ethos CLI on this exact schema, so an
 engine-only revision would produce artifacts the verifier does not speak while both still called
 themselves `ethos.grounding.v1`. **(a) is therefore blocked on an Ethos-side revision** — recorded
 as owned elsewhere, not refused. Adding an optional `page` to the engine's copy would be the lying
 artifact v1.2-S5 refused for loose boxes, wearing a different field name.
 
-Pinned by `crates/engine-grounding/tests/page_less_source.rs`, which asserts all three walls. Relax
+Pinned by `crates/ethos-parser-grounding/tests/page_less_source.rs`, which asserts all three walls. Relax
 one and S1 is reopened deliberately.
 
 ### And the measurement that resized S2
@@ -328,7 +328,7 @@ and the only one forbidden outright.
   measurement.
 - **Not auto-tagging, assist, or OCR.** v2.2, v3 and v4 have their own rows and their own gates.
 - **Not permission to reopen v1.2.** S5's LiteParse refusal is settled: no adapter, no mapper, and
-  no refusing CLI, pinned by `crates/engine-grounding/tests/liteparse_refusal.rs`. Its two walls are
+  no refusing CLI, pinned by `crates/ethos-parser-grounding/tests/liteparse_refusal.rs`. Its two walls are
   producer identity and undeclared loose boxes — **not** the coordinate hazard everyone predicted —
   and widening `ethos.grounding.v1` to accommodate LiteParse is not a thing v2 does under cover of
   §5's question.

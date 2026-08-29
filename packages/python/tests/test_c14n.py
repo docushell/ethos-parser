@@ -1,4 +1,4 @@
-# Copyright 2026 The ethos-engine maintainers
+# Copyright 2026 The ethos-parser maintainers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 
 """c14n parity — the Rust module's own vectors, run through the Python port.
 
-These are lifted verbatim from ``crates/engine-core/src/c14n.rs``, which lifted them from Ethos's
+These are lifted verbatim from ``crates/ethos-parser-core/src/c14n.rs``, which lifted them from Ethos's
 committed vectors, which are cross-checked against a Python reference. Matching them is what
-makes :func:`ethos_engine.node_get`'s fingerprint the engine's fingerprint rather than one that
+makes :func:`ethos_parser.node_get`'s fingerprint the engine's fingerprint rather than one that
 resembles it.
 
 They are the cheap half of the proof. The load-bearing half is in ``test_cli_surface.py``, where
@@ -27,7 +27,7 @@ import json
 
 import pytest
 
-from ethos_engine._c14n import (
+from ethos_parser._c14n import (
     MAX_SAFE_INT,
     CanonicalizationError,
     c14n_bytes,

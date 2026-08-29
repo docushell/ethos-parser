@@ -14,7 +14,7 @@ makes it dishonest.
 
 From the research pass that produced this file, quoted verbatim so the wording survives its source:
 
-> ethos-engine should take **the table model, tagged-PDF consumption, and XY-Cut reading order** from
+> ethos-parser should take **the table model, tagged-PDF consumption, and XY-Cut reading order** from
 > **OpenDataLoader**; **the shared multi-format IR, the `CellSlot` merged-cell model, the six-variant
 > error taxonomy, content-based format detection, and mutation-plus-fuzz testing** from **Anydoc**;
 > **rectangle-based table detection, encoding-issue detection, single-document-load, and the `mcid`
@@ -66,7 +66,7 @@ Not the full table. These are the ones a reasonable engineer would get wrong.
 | — | **Wrapping pdf-inspector (or any competitor) as the grounded PDF core** | **REFUSE** | Reference-only. See below |
 | L31 | Build-time PDFium download, unpinned | **REFUSE** | Vendor fork, by tag, no checksum, `vendor/` absent so the build is network-dependent by default |
 | L19 | Sourcing character origins from LiteParse's design | **REFUSE — structural** | `FPDFText_GetCharOrigin` has **zero call sites**. The fingerprint-critical primitive is not bound at all, so that design cannot be the grounded PDF core |
-| — | **A `liteparse` → `ethos.grounding.v1` adapter** | **REFUSE — measured at v1.2-S5** | Two walls in the *artifact type*, not in any document. Their JSON emits `page, width, height, text, text_items` and nothing else (L20), so it cannot name its own producer — and this schema requires `producer: {name, version}` with no way to mark a field asserted rather than measured. Their boxes are loose em boxes (L18) and §`01-CONTRACT.md` 5.3 requires an emitted box to declare its kind; this schema has nowhere to. Coordinates were **not** the blocker the memo predicted — see below. Pinned by `engine-grounding/tests/liteparse_refusal.rs` |
+| — | **A `liteparse` → `ethos.grounding.v1` adapter** | **REFUSE — measured at v1.2-S5** | Two walls in the *artifact type*, not in any document. Their JSON emits `page, width, height, text, text_items` and nothing else (L20), so it cannot name its own producer — and this schema requires `producer: {name, version}` with no way to mark a field asserted rather than measured. Their boxes are loose em boxes (L18) and §`01-CONTRACT.md` 5.3 requires an emitted box to declare its kind; this schema has nowhere to. Coordinates were **not** the blocker the memo predicted — see below. Pinned by `ethos-parser-grounding/tests/liteparse_refusal.rs` |
 
 #### The adapter, measured (v1.2-S5)
 
@@ -102,7 +102,7 @@ centipoint is an omission with a count, the same honesty `project()` already use
    result would look like evidence.
 
 Neither wall is per-document, so no adapter could clear them by being careful. The refusal is
-pinned to those schema facts by `crates/engine-grounding/tests/liteparse_refusal.rs`: relax the
+pinned to those schema facts by `crates/ethos-parser-grounding/tests/liteparse_refusal.rs`: relax the
 `producer` requirement or add a box-semantics field and the test fails, and this decision gets taken
 again on purpose rather than lapsing.
 
@@ -164,8 +164,8 @@ hold it and a half-discharged obligation read as a whole one is how a gap surviv
 
 | Half | PDF | Office |
 | --- | --- | --- |
-| **`cargo-fuzz`** | **covered** since v0-M7 — `open_and_classify` and `open_and_extract` | **covered at v2-S12** — `office_read`, on `engine_office::read`, the one entry point all eight formats share, seeded from `fixtures/office/` |
-| **Mutation testing every fixture** | **covered** — every fixture in `fixtures/manifest.json` damaged six ways, survivors pinned and triaged (v0-M7) | **covered at v2-S13** — every package in `fixtures/office/` damaged **twelve** ways, 148 mutants, survivors pinned and triaged in five classes, run by CI job `v0-office-mutation`. A **second harness** in `crates/engine-office/tests/robustness.rs` rather than a second root in the manifest: that file's `all_fixtures()` feeds every entry of every root to `Document::open_bytes`, so office entries would have been refused as non-PDF while every assertion still passed |
+| **`cargo-fuzz`** | **covered** since v0-M7 — `open_and_classify` and `open_and_extract` | **covered at v2-S12** — `office_read`, on `ethos_parser_office::read`, the one entry point all eight formats share, seeded from `fixtures/office/` |
+| **Mutation testing every fixture** | **covered** — every fixture in `fixtures/manifest.json` damaged six ways, survivors pinned and triaged (v0-M7) | **covered at v2-S13** — every package in `fixtures/office/` damaged **twelve** ways, 148 mutants, survivors pinned and triaged in five classes, run by CI job `v0-office-mutation`. A **second harness** in `crates/ethos-parser-office/tests/robustness.rs` rather than a second root in the manifest: that file's `all_fixtures()` feeds every entry of every root to `Document::open_bytes`, so office entries would have been refused as non-PDF while every assertion still passed |
 
 **The mutation half is not the same six kinds, and that is the result rather than a shortcut.** A
 PDF is a byte stream; an office document is mostly a container. Five of the PDF kinds carry over
@@ -277,4 +277,4 @@ and with OCR on. A competitor benchmarked a rival by running the first command i
 published a number 34 points low.
 
 That is the strongest available argument for pinning the exact artifact **and invocation** — and the
-reason ethos-engine publishes none of these tables.
+reason ethos-parser publishes none of these tables.

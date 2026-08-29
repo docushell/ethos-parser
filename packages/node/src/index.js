@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * The Node SDK — a thin surface over the `engine` CLI (v1.2-S3).
+ * The Node SDK — a thin surface over the `ethos-parser` CLI (v1.2-S3).
  *
  * # This is not a second design
  *
@@ -64,8 +64,8 @@
  *
  * # Locating the binary
  *
- * `ETHOS_ENGINE` first and **authoritatively** — a path named there and not present is
- * {@link EngineNotFound}, not a reason to go looking for some other build — then `engine` on
+ * `ETHOS_PARSER` first and **authoritatively** — a path named there and not present is
+ * {@link EngineNotFound}, not a reason to go looking for some other build — then `ethos-parser` on
  * `PATH`. That is the precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is
  * the same: resolving to a binary nobody chose means returning artifacts from a parser nobody
  * chose. Nothing here downloads or vendors one.
@@ -85,14 +85,14 @@ import { CanonicalizationError, c14nBytes, sha256Hex } from "./c14n.js";
  */
 export const version = "0.36.1";
 
-/** The `artifact_type` `engine extract` stamps on a representation. */
-export const REPRESENTATION_ARTIFACT_TYPE = "ethos.engine.representation.v0";
+/** The `artifact_type` `ethos-parser extract` stamps on a representation. */
+export const REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0";
 
 /** Everything under this prefix is a representation this package will read. */
-const REPRESENTATION_PREFIX = "ethos.engine.representation.";
+const REPRESENTATION_PREFIX = "ethos.parser.representation.";
 
 /** The environment variable that pins the binary, named to match `ETHOS_BIN`. */
-const BINARY_ENV = "ETHOS_ENGINE";
+const BINARY_ENV = "ETHOS_PARSER";
 
 // -------------------------------------------------------------------------------------------
 // Failures, each one named
@@ -117,7 +117,7 @@ export class EngineError extends Error {
   }
 }
 
-/** No `engine` binary could be located, or the one pinned by `ETHOS_ENGINE` is absent. */
+/** No `ethos-parser` binary could be located, or the one pinned by `ETHOS_PARSER` is absent. */
 export class EngineNotFound extends EngineError {
   constructor(message) {
     super(message);
@@ -135,7 +135,7 @@ export class EngineNotFound extends EngineError {
 export class EngineFailed extends EngineError {
   constructor(commandArgs, status, stderr) {
     super(
-      `\`engine ${commandArgs.join(" ")}\` exited ${status}: ${stderr.trim() || "(no stderr)"}`,
+      `\`ethos-parser ${commandArgs.join(" ")}\` exited ${status}: ${stderr.trim() || "(no stderr)"}`,
     );
     this.name = "EngineFailed";
     this.commandArgs = [...commandArgs];
@@ -194,7 +194,7 @@ export class NodeNotFound extends EngineError {
 // -------------------------------------------------------------------------------------------
 
 /**
- * Read a PDF and return `DocumentRepresentation v0`, as `engine extract` prints it.
+ * Read a PDF and return `DocumentRepresentation v0`, as `ethos-parser extract` prints it.
  *
  * Every locator a later call needs is minted here. Pass this object back to {@link ground} or
  * {@link nodeGet} rather than composing one.
@@ -209,7 +209,7 @@ export function extract(pdfPath) {
 }
 
 /**
- * Project a representation into `ethos.grounding.v1`, as `engine ground` prints it.
+ * Project a representation into `ethos.grounding.v1`, as `ethos-parser ground` prints it.
  *
  * Takes the artifact {@link extract} returned — the object itself, or a path to bytes this engine
  * wrote — mirroring the MCP tool of the same name and the Python `ground`. **The engine
@@ -217,7 +217,7 @@ export function extract(pdfPath) {
  * same `verify_fingerprint` every other subcommand runs, rather than by a second check here that
  * could drift from it.
  *
- * It takes no quote and no page, because `engine ground` takes neither: it projects the record.
+ * It takes no quote and no page, because `ethos-parser ground` takes neither: it projects the record.
  *
  * Nodes with no measurable ink box are omitted from the projection and counted by the engine on
  * stderr; the representation this came from is where that declaration lives, which is the CLI's
@@ -248,7 +248,7 @@ export function ground(representation) {
     throw e;
   }
 
-  const directory = mkdtempSync(join(tmpdir(), "ethos-engine-"));
+  const directory = mkdtempSync(join(tmpdir(), "ethos-parser-"));
   try {
     const path = join(directory, "representation.json");
     writeFileSync(path, body);
@@ -262,7 +262,7 @@ export function ground(representation) {
  * Return one node from `representation`, by the id the engine minted for it.
  *
  * **The handle law, made mechanical**, and the one function here with no subcommand behind it.
- * `engine node-get` does not exist and this slice does not add it — MCP already carries the tool,
+ * `ethos-parser node-get` does not exist and this slice does not add it — MCP already carries the tool,
  * and a third CLI verb nobody asked for is surface to keep honest forever. So the checks are
  * ported rather than shelled out, in the order `mcp.rs` and the Python SDK run them:
  *
@@ -348,7 +348,7 @@ function validatedPayload(representation) {
   return { payload, declared };
 }
 
-/** Locate the engine. `ETHOS_ENGINE` is authoritative; `PATH` is the fallback. */
+/** Locate the engine. `ETHOS_PARSER` is authoritative; `PATH` is the fallback. */
 function binary() {
   const pinned = process.env[BINARY_ENV];
   if (pinned) {
@@ -365,15 +365,15 @@ function binary() {
     );
   }
 
-  const found = onPath("engine");
+  const found = onPath("ethos-parser");
   if (found) {
     return found;
   }
 
   throw new EngineNotFound(
-    "no `engine` binary. Tried, in order:\n" +
+    "no `ethos-parser` binary. Tried, in order:\n" +
       `  ${BINARY_ENV} (unset)\n` +
-      "  `engine` on PATH (not found)\n\n" +
+      "  `ethos-parser` on PATH (not found)\n\n" +
       "This package is a surface over that binary and computes nothing without it. Build it " +
       "with `cargo build --release`, then put it on PATH or point " +
       `${BINARY_ENV} at it. Nothing here downloads one.`,

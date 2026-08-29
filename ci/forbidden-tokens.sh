@@ -18,7 +18,7 @@
 #
 # 1. **`//` comments.** Same reason: the crate docs argue these rules, and a doc comment
 #    explaining why there is no confidence field is not a confidence field. Rust's own guard
-#    tests (`engine-core/tests/contract_invariants.rs`) strip comments the same way, and there
+#    tests (`ethos-parser-core/tests/contract_invariants.rs`) strip comments the same way, and there
 #    are no `/* */` block comments anywhere in `crates/*/src` — asserted below rather than hoped.
 #
 # 2. **The `mod tests { … }` block, and only that block.** Two test modules list the banned

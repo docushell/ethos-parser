@@ -25,7 +25,7 @@ env:
   # The Ethos commit this engine is oracled against. Pinned for the same reason the fixture
   # corpus is pinned by sha256: docs/07-VERIFY-BOUNDARY.md §4 requires a verifier swap to be
   # visible. Unpinned, every run silently tests against whatever `main` is at that instant and
-  # no ethos-engine commit records which verifier answered.
+  # no ethos-parser commit records which verifier answered.
   #
   # 5cb9f9b == ethos 0.6.0 work ("fix(ci): repair the release workflow's Windows version step").
   # Bump deliberately, in its own commit, and re-run the oracle test when you do.
@@ -148,7 +148,7 @@ jobs:
   # timing flake in the bound test shows up as `v0-classify-bound` failing, not as a mysterious
   # `cargo test`.
   #
-  # `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that every `- [x]` line in §5 names a
+  # `crates/ethos-parser-cli/tests/v0_exit_criteria.rs` asserts that every `- [x]` line in §5 names a
   # job id that appears in this file. Adding a criterion without a job, or renaming a job without
   # updating §5, fails there.
   #
@@ -169,7 +169,7 @@ jobs:
             corpus: true
             oracle: true
             rust: true
-            run: cargo test -p engine-cli --test oracle --locked -- manifest_declares_fifteen_ethos_owned_fixtures oracle_agrees_on_all_ethos_owned_fixtures refused_fixtures_fail_closed_rather_than_producing_an_artifact
+            run: cargo test -p ethos-parser-cli --test oracle --locked -- manifest_declares_fifteen_ethos_owned_fixtures oracle_agrees_on_all_ethos_owned_fixtures refused_fixtures_fail_closed_rather_than_producing_an_artifact
 
           - id: v0-double-run
             criterion: "double-run byte identity, on files and not merely payloads"
@@ -183,7 +183,7 @@ jobs:
             corpus: true
             oracle: true
             rust: true
-            run: cargo test -p engine-cli --test oracle --locked
+            run: cargo test -p ethos-parser-cli --test oracle --locked
 
           - id: v0-artifact-identity
             criterion: "artifact_type, schema_version, parser_version, profile_sha256 on every artifact"
@@ -211,21 +211,21 @@ jobs:
             corpus: false
             oracle: false
             rust: true
-            run: cargo test -p engine-core --locked -- c14n float quantize integers_at_the_2_53_boundary no_public_type_emits_a_decimal_number
+            run: cargo test -p ethos-parser-core --locked -- c14n float quantize integers_at_the_2_53_boundary no_public_type_emits_a_decimal_number
 
           - id: v0-locators
             criterion: "every node carries a NativeLocator; no box is derived from a font size"
             corpus: true
             oracle: false
             rust: true
-            run: cargo test -p engine-pdf --test extraction --locked -- every_run_carries_a_native_locator no_source_line_derives_a_box_from_the_font_size measured_metrics_produce_a_box_that_is_not_the_font_size a_font_without_metrics_yields_typed_absence
+            run: cargo test -p ethos-parser-pdf --test extraction --locked -- every_run_carries_a_native_locator no_source_line_derives_a_box_from_the_font_size measured_metrics_produce_a_box_that_is_not_the_font_size a_font_without_metrics_yields_typed_absence
 
           - id: v0-l1-gate
             criterion: "capability and limitation declarations, including the reading-order pair"
             corpus: true
             oracle: false
             rust: true
-            run: cargo test -p engine-pdf --test capabilities --locked
+            run: cargo test -p ethos-parser-pdf --test capabilities --locked
 
           - id: v0-exit-codes
             criterion: "three exit codes, one asserting fixture each, all distinguishable"
@@ -244,7 +244,7 @@ jobs:
             corpus: true
             oracle: false
             rust: true
-            run: cargo test -p engine-pdf --test classification --locked -- --exact --test-threads=1 the_sampler_is_bounded_on_a_492_page_document pages_content_scanned_is_always_min_of_n_and_page_count classify_cost_is_flat_in_total_page_count
+            run: cargo test -p ethos-parser-pdf --test classification --locked -- --exact --test-threads=1 the_sampler_is_bounded_on_a_492_page_document pages_content_scanned_is_always_min_of_n_and_page_count classify_cost_is_flat_in_total_page_count
 
           - id: v0-fail-closed
             criterion: "unknown operator, unknown magic and unquantizable number each fail closed"
@@ -264,7 +264,7 @@ jobs:
             # files. The count is deliberately not repeated here — the harness derives it from
             # `fixtures/manifest.json` and prints it, and a number in this comment is a number
             # nothing checks. It said 23 for long enough that the corpus reached 55 underneath it.
-            run: cargo test -p engine-pdf --test robustness --locked -- --nocapture
+            run: cargo test -p ethos-parser-pdf --test robustness --locked -- --nocapture
 
           - id: v0-no-verify
             criterion: "no verification code, type, or field exists anywhere in the tree"
@@ -340,7 +340,7 @@ jobs:
           - id: v01-verify-relay
             gate: "citation verification by shell-out: bytes relayed verbatim, absence is loud"
             oracle: true
-            run: cargo test -p engine-cli --test verify_relay --locked
+            run: cargo test -p ethos-parser-cli --test verify_relay --locked
 
           - id: v01-encoding
             gate: "a broken font encoding is a named limitation or a named refusal, never mojibake"
@@ -404,7 +404,7 @@ jobs:
         include:
           - id: v1s1-paths
             gate: "axis-aligned path capture; curves and diagonals never become ruling lines"
-            run: "cargo test -p engine-pdf --lib --locked -- content::tests"
+            run: "cargo test -p ethos-parser-pdf --lib --locked -- content::tests"
 
           - id: v1s1-ruled-tables
             gate: "ruled grids, CellSlot occupancy, merged spans, and fabrication 0"
@@ -476,7 +476,7 @@ jobs:
         include:
           - id: v1-table-gate
             gate: "cell-F1 computed and reported; fabrication 0; stable; gold negatives clean"
-            run: "cargo test -p engine-pdf --lib --locked -- --nocapture accuracy::"
+            run: "cargo test -p ethos-parser-pdf --lib --locked -- --nocapture accuracy::"
 
     steps:
       - uses: actions/checkout@v4
@@ -591,7 +591,7 @@ jobs:
   # `A11`'s mutation lane for the other eight formats.
   #
   # **A top-level job rather than a fifteenth entry in the `v0-exit-criteria` matrix, and that is
-  # forced rather than chosen.** `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that matrix
+  # forced rather than chosen.** `crates/ethos-parser-cli/tests/v0_exit_criteria.rs` asserts that matrix
   # is exactly fourteen entries — §5 is fifteen criteria across fourteen jobs because the fuzz and
   # mutation criterion names two — and v0 is frozen, so that number does not move for v2 work. §5's
   # mutation line names this job as a third, which keeps the criteria count at fifteen and lets
@@ -619,7 +619,7 @@ jobs:
       # indistinguishable from one covering three files. The report names every fixture, the
       # mutations each took, and every pair that could not be built.
       - name: Mutate every office fixture
-        run: cargo test -p engine-office --test robustness --locked -- --nocapture
+        run: cargo test -p ethos-parser-office --test robustness --locked -- --nocapture
 
   # Forced decision #14 ("no AGPL") is only real if it is tested. A policy nobody proves is a
   # policy that has already drifted.
@@ -649,8 +649,8 @@ jobs:
       - name: Flip a crate to AGPL-3.0 and require rejection for the right reason
         run: |
           set -euo pipefail
-          sed -i 's/^license.workspace = true/license = "AGPL-3.0"/' crates/engine-core/Cargo.toml
-          grep -q 'AGPL-3.0' crates/engine-core/Cargo.toml || {
+          sed -i 's/^license.workspace = true/license = "AGPL-3.0"/' crates/ethos-parser-core/Cargo.toml
+          grep -q 'AGPL-3.0' crates/ethos-parser-core/Cargo.toml || {
             echo "::error::probe did not apply; the licence gate was never exercised"; exit 1; }
 
           set +e
@@ -664,9 +664,9 @@ jobs:
           # crate name in the diagnostic, so this proves the gate fired for THIS reason.
           [ "$code" -eq 4 ] || {
             echo "::error::expected cargo-deny exit 4 (licence rejection), got $code"; exit 1; }
-          echo "$out" | grep -q 'engine-core' || {
-            echo "::error::cargo-deny failed, but not about engine-core's licence"; exit 1; }
-          echo "cargo deny correctly rejected AGPL-3.0 on engine-core (exit 4)."
+          echo "$out" | grep -q 'ethos-parser-core' || {
+            echo "::error::cargo-deny failed, but not about ethos-parser-core's licence"; exit 1; }
+          echo "cargo deny correctly rejected AGPL-3.0 on ethos-parser-core (exit 4)."
 
       # Safe in CI because the runner checks out a clean tree. Do NOT run this probe by hand in a
       # working tree with uncommitted changes: `git checkout --` restores the COMMITTED file and
@@ -674,5 +674,5 @@ jobs:
       - name: Restore and confirm the tree is clean
         if: always()
         run: |
-          git checkout -- crates/engine-core/Cargo.toml
+          git checkout -- crates/ethos-parser-core/Cargo.toml
           git diff --exit-code

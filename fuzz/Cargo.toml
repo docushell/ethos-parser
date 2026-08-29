@@ -1,4 +1,4 @@
-# ethos-engine fuzz targets.
+# ethos-parser fuzz targets.
 #
 # **Deliberately not a workspace member** (`../Cargo.toml` excludes it). `libfuzzer-sys` and
 # `arbitrary` would otherwise enter the workspace dependency graph, where `cargo deny check`
@@ -10,7 +10,7 @@
 # `fuzz/` resolves against `fuzz/Cargo.lock` rather than reaching up.
 
 [package]
-name = "engine-fuzz"
+name = "ethos-parser-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -24,9 +24,9 @@ members = ["."]
 
 [dependencies]
 libfuzzer-sys = "0.4"
-engine-core = { path = "../crates/engine-core" }
-engine-pdf = { path = "../crates/engine-pdf" }
-engine-office = { path = "../crates/engine-office" }
+ethos-parser-core = { path = "../crates/ethos-parser-core" }
+ethos-parser-pdf = { path = "../crates/ethos-parser-pdf" }
+ethos-parser-office = { path = "../crates/ethos-parser-office" }
 
 [[bin]]
 name = "open_and_classify"
@@ -43,7 +43,7 @@ doc = false
 bench = false
 
 # v2-S12. ONE target on the router rather than one per format, and the reason is libFuzzer's
-# coverage feedback rather than economy: `engine_office::read` is the single entry point all
+# coverage feedback rather than economy: `ethos_parser_office::read` is the single entry point all
 # eight formats share and the one the CLI calls, so a corpus seeded with a valid package of each
 # shape drives every reader through it. Eight harnesses would split that corpus eight ways and
 # explore each branch with a fraction of the budget. If a reader is ever measured unreachable

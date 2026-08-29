@@ -170,7 +170,7 @@ Unchanged from `08-V1-SCOPE.md` §6, and repeated because a projection is where 
 3. **No silent drop, and no silent repair.** A dropped character is a named bucket with a count.
 4. **No invented coordinate, identifier, fingerprint or pagination.** A projection mints no ids.
 5. **Fail closed, and distinguishably.**
-6. **Byte identity is a test.** Two runs of `engine markdown` are byte-identical.
+6. **Byte identity is a test.** Two runs of `ethos-parser markdown` are byte-identical.
 7. **The Ethos tree is read-only.**
 8. **No verification.** Markdown does not acquire a verdict.
 

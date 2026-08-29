@@ -1,12 +1,12 @@
 {
-  "name": "ethos-engine",
+  "name": "ethos-parser",
   "version": "0.36.3",
-  "description": "A thin Node surface over the ethos-engine CLI. Locators are minted by the engine, never composed by a caller.",
+  "description": "A thin Node surface over the ethos-parser CLI. Locators are minted by the engine, never composed by a caller.",
   "license": "Apache-2.0",
-  "author": "ethos-engine maintainers",
+  "author": "ethos-parser maintainers",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/docushell/ethos-engine.git",
+    "url": "git+https://github.com/docushell/ethos-parser.git",
     "directory": "packages/node"
   },
   "type": "module",

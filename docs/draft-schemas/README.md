@@ -38,7 +38,7 @@ carrying M2's own words.
 
 `ethos.grounding.v1` is **owned by Ethos**, not by this repo, so it is not redrafted here. A
 byte-for-byte snapshot lives at
-[`crates/engine-grounding/schemas/`](../../crates/engine-grounding/schemas/) with its origin path
+[`crates/ethos-parser-grounding/schemas/`](../../crates/ethos-parser-grounding/schemas/) with its origin path
 and digest recorded, and it is the file the conformance tests actually validate against. Writing a
 DRAFT of someone else's shipped schema would create a second, drifting description of a contract we
 do not control.
@@ -63,7 +63,7 @@ the identity half — the processing run and the representation fingerprint — 
 
 ## Relationship to the Rust
 
-The schemas were written from `crates/engine-core/src/`, not the other way round, and
+The schemas were written from `crates/ethos-parser-core/src/`, not the other way round, and
 `profile.draft.json`'s example is the **real** canonical profile — the same bytes and digest pinned
 in `profile.rs`'s tests. They are documentation of a shape that already compiles, not a spec waiting
 for an implementation.
@@ -92,9 +92,9 @@ the example names.** Not a sketch of one, and never a hand-edited digest. Both p
 carry one, both describe the same document, and both are reproduced by three commands:
 
 ```bash
-engine extract  "$ETHOS_FIXTURES/synthetic/simple-text/document.pdf" > repr.json
-engine markdown repr.json    # the whole `examples[0]` of markdown.draft.json
-engine html     repr.json    # the whole `examples[0]` of html.draft.json
+ethos-parser extract  "$ETHOS_FIXTURES/synthetic/simple-text/document.pdf" > repr.json
+ethos-parser markdown repr.json    # the whole `examples[0]` of markdown.draft.json
+ethos-parser html     repr.json    # the whole `examples[0]` of html.draft.json
 ```
 
 `ETHOS_FIXTURES` defaults to the `conformance` root `fixtures/manifest.json` declares. The fixture

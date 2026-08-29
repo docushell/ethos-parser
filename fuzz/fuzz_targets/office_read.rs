@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The office router: arbitrary bytes into `engine_office::read`.
+//! The office router: arbitrary bytes into `ethos_parser_office::read`.
 //!
 //! **The obligation.** `06-STEAL-REFUSE.md`'s **A11** — *mutation testing every fixture +
 //! `cargo-fuzz` per format*, sourced from Anydoc and due at **v0**. v2-S2 deferred the office half
@@ -37,7 +37,7 @@
 //!
 //! # One target, not eight
 //!
-//! `read` is the single entry point every format shares and the one `engine extract` calls, so a
+//! `read` is the single entry point every format shares and the one `ethos-parser extract` calls, so a
 //! corpus seeded with one valid package of each shape reaches every reader through it. Eight
 //! harnesses would divide that corpus eight ways and explore each branch on a fraction of the
 //! budget, which is libFuzzer's coverage feedback working against itself. A format measured
@@ -52,7 +52,7 @@ fuzz_target!(|data: &[u8]| {
     // No profile argument, unlike the two PDF targets: `read` selects the profile from what the
     // package turns out to be, which is the behaviour under test. A caller cannot pass one in and
     // neither can this.
-    if let Ok(repr) = engine_office::read(data) {
+    if let Ok(repr) = ethos_parser_office::read(data) {
         // Sealing already happened inside `read`. Re-deriving the fingerprint and canonicalizing
         // are nearly free and turn "it produced something" into "it produced something internally
         // consistent" — and they put the c14n encoder on the path, which is where a string a

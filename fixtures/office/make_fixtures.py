@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 The ethos-engine maintainers
+# Copyright 2026 The ethos-parser maintainers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ def write(path: pathlib.Path, parts: dict, stored_first=None) -> None:
     `stored_first` names an entry that must be written FIRST and UNCOMPRESSED. Only ODF needs it,
     and it is not a convenience: the OpenDocument package specification requires the `mimetype`
     entry to be the first file and to be stored, so that a consumer can identify the document from
-    the leading bytes without inflating anything. `engine-office`'s reader checks both, so a
+    the leading bytes without inflating anything. `ethos-parser-office`'s reader checks both, so a
     fixture that deflated it — which `zipfile` does by default — would not read.
     """
     path.parent.mkdir(parents=True, exist_ok=True)

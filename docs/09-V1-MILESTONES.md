@@ -1028,7 +1028,7 @@ corpus, and reports what it sees. The number it reports is bad.
   precision 1000‰ → 928‰, carried in the number rather than tuned out of it. Full account in
   `docs/table-gate-v1.md`.
 
-- **In:** `crates/engine-pdf/src/stroke_ruled.rs`; `PathSegment` capture in `content.rs`;
+- **In:** `crates/ethos-parser-pdf/src/stroke_ruled.rs`; `PathSegment` capture in `content.rs`;
   `forms::widget_rects`; three-way arbitration in `tables::detect` (ruled → stroke-ruled →
   alignment, author evidence before inference); `codes::STROKE_RULED_TABLE_CANDIDATE_REFUSED` with
   its builder and accumulator; `TableDetection.stroke_ruled` with schema, digest and PUBLIC-API;

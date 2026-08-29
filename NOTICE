@@ -1,14 +1,14 @@
-ethos-engine
-Copyright 2026 The ethos-engine maintainers
+ethos-parser
+Copyright 2026 The ethos-parser maintainers
 
-This product includes software developed by the ethos-engine maintainers,
+This product includes software developed by the ethos-parser maintainers,
 licensed under the Apache License, Version 2.0.
 
 --------------------------------------------------------------------------------
 Character encoding data
 --------------------------------------------------------------------------------
 
-The simple-font encoding tables in crates/engine-pdf/src/encoding.rs
+The simple-font encoding tables in crates/ethos-parser-pdf/src/encoding.rs
 (WinAnsiEncoding, the ASCII range of StandardEncoding, and a glyph-name subset
 for /Differences) are transcriptions of PDF 32000-1 (ISO 32000-1:2008) Annex D,
 a published specification. They were authored for this project.

@@ -1,12 +1,12 @@
 # 00 — North star
 
-**Status:** bootstrap authority · **Date:** 2026-08-12 · **Applies to:** all of `ethos-engine`
+**Status:** bootstrap authority · **Date:** 2026-08-12 · **Applies to:** all of `ethos-parser`
 
 ---
 
 ## 1. What this is
 
-ethos-engine is an open, high-performance document parser that emits **evidence**: a versioned,
+ethos-parser is an open, high-performance document parser that emits **evidence**: a versioned,
 fingerprinted representation in which every node carries a locator back into the source bytes, every
 declared capability is declared on the wire, and everything the parser could not do is stated
 instead of guessed. It does not decide whether a document is good, whether a claim is true, or
@@ -29,8 +29,8 @@ this repository may cite it as decided, and v1 stays open.
 
 | # | Decision |
 | --- | --- |
-| 1 | **Product:** ethos-engine = DocuShell's open high-performance parser / evidence emitter. Citation verification (L3) is a separate verifier product ("Ethos" / Ethos-next). Together they answer: did this AI claim actually come from this document? |
-| 2 | **Build order:** Freeze the verify contract (artifact + rules) first. Implement ethos-engine against that contract — not against today's Ethos crate layout. A faster/better verifier may be rebuilt later to consume the same contract. Do not invent verification rules ad hoc after the parser "feels done." |
+| 1 | **Product:** ethos-parser = DocuShell's open high-performance parser / evidence emitter. Citation verification (L3) is a separate verifier product ("Ethos" / Ethos-next). Together they answer: did this AI claim actually come from this document? |
+| 2 | **Build order:** Freeze the verify contract (artifact + rules) first. Implement ethos-parser against that contract — not against today's Ethos crate layout. A faster/better verifier may be rebuilt later to consume the same contract. Do not invent verification rules ad hoc after the parser "feels done." |
 | 3 | **Trust ladder:** Engine owns L0–L2 (registered / extracted / locatable). Verifier owns L3 (grounded). Never emit a single field that means "this document is good." |
 | 4 | **Canonical emit:** `DocumentRepresentation v0` (DocuShell). Adapter: `ethos.grounding.v1`. `NativeLocator` required; geometry/`RenderedLocator` optional "for inspection"; typed absence over invention. |
 | 5 | **Parsing optional forever:** BYO parsers remain first-class via a grounding-intake shape. Engine must not become the only path to verify. |
@@ -71,13 +71,13 @@ count, a named reason, a typed absence, or a declared limitation.
 
 Three things are true at once, and confusing them is the most likely way this project goes wrong.
 
-**Today's Ethos repo (`~/Desktop/Stuff/repo/ethos/`) is the verifier and the oracle.** ethos-engine
+**Today's Ethos repo (`~/Desktop/Stuff/repo/ethos/`) is the verifier and the oracle.** ethos-parser
 reuses its *wire contracts* (`ethos-grounding-source.schema.json` as an emit target,
 `ethos-grounding-validation-report.schema.json` as a validation oracle), its *fixtures* as a
 conformance corpus, and its *designs* — c14n v1, integer centipoint quanta, profile-as-identity, the
 capability/fail-closed vocabulary. It reuses **none** of its crate tree.
 
-**ethos-engine is a greenfield sibling, not a fork and not a wrapper.** It is a separate workspace
+**ethos-parser is a greenfield sibling, not a fork and not a wrapper.** It is a separate workspace
 with its own MSRV (1.88, which `lopdf` 0.42 requires and Ethos's 1.87 pin cannot give). It is not a
 rewrite of Ethos, does not replace Ethos, and does not verify.
 

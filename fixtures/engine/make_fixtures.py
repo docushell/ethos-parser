@@ -118,7 +118,7 @@ LAST_CHAR = 126
 
 
 # What kind of /FontDescriptor a fixture carries. The three values are three distinct paths
-# through crates/engine-pdf/src/metrics.rs, and the difference between the last two is the whole
+# through crates/ethos-parser-pdf/src/metrics.rs, and the difference between the last two is the whole
 # point of the absent-font-metrics fixture:
 #
 #   None          no descriptor at all      -> resolve_font_ink returns Absent immediately

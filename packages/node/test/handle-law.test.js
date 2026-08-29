@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -140,7 +140,7 @@ test("a thing that is not a representation is refused rather than coerced", () =
     "s1",
     42,
     { artifact_type: "ethos.grounding.v1", elements: [] },
-    { artifact_type: "ethos.engine.representation.v0" },
+    { artifact_type: "ethos.parser.representation.v0" },
   ]) {
     assert.throws(() => nodeGet(value, "s1"), NotARepresentation);
   }

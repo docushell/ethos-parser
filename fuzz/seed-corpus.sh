@@ -38,7 +38,7 @@ corpus="$here/corpus/$target"
 mkdir -p "$corpus"
 
 # The office target takes the office packages and nothing else: a PDF is refused by
-# `engine_office::read` at the first predicate, so seeding it with one buys no coverage and
+# `ethos_parser_office::read` at the first predicate, so seeding it with one buys no coverage and
 # costs an entry in every mutation round.
 if [ "$target" = "office_read" ]; then
   for f in "$repo"/fixtures/office/*/*; do

@@ -77,7 +77,7 @@ carry a box.
 
 Both halves have shipped: v1.2-S1 in `structuredContent`, v1.2-S4 in
 `response_format="content_and_artifact"`. The second is checked against the first — the LangChain
-tools' `content` is compared **byte-for-byte** with what `engine mcp` emits — so the two adapters
+tools' `content` is compared **byte-for-byte** with what `ethos-parser mcp` emits — so the two adapters
 cannot drift into two different sentences about the same document.
 
 ## 4. What v1.2 is
@@ -85,7 +85,7 @@ cannot drift into two different sentences about the same document.
 | | |
 | --- | --- |
 | **Adapters, not features** | every slice wraps stages that already exist and shipped under v0–v1.1 |
-| **Thin over the library** | the CLI is a shell over `engine-core` / `engine-pdf` / `engine-grounding`, and so is every adapter, so they cannot diverge |
+| **Thin over the library** | the CLI is a shell over `ethos-parser-core` / `ethos-parser-pdf` / `ethos-parser-grounding`, and so is every adapter, so they cannot diverge |
 | **Locator-safe by construction** | §3's three obligations, enforced by the type and by tests rather than by documentation |
 | **Bounded by `deny.toml`** | the network/TLS/async surface stays banned; an adapter that needs it does not ship in this version |
 
@@ -123,7 +123,7 @@ cannot drift into two different sentences about the same document.
 adapter: LiteParse's output cannot name its own producer and its boxes are loose em boxes this
 schema cannot declare. Both walls are in `ethos.grounding.v1` itself, so no adapter could clear them
 per document. `13-V12-MILESTONES.md` S5 and `06-STEAL-REFUSE.md` carry the measurement;
-`engine-grounding/tests/liteparse_refusal.rs` pins it.
+`ethos-parser-grounding/tests/liteparse_refusal.rs` pins it.
 
 ## 7. Identity
 

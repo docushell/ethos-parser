@@ -1,7 +1,7 @@
 # 01 — The contract
 
 **Status:** bootstrap authority · frozen before implementation (north-star decision #2)
-**Scope:** what an ethos-engine artifact must contain, for any version, in any format
+**Scope:** what an ethos-parser artifact must contain, for any version, in any format
 
 ---
 
@@ -202,7 +202,7 @@ A missing box is a **type**, never a sentinel and never a substitute.
   Workbench rule 3 forbids inventing a coordinate.
 - **Never a zero box, a null island, or a page-sized box** as a stand-in.
 - The consequence is stated, not hidden: without geometry on some nodes, **crops and highlight
-  rendering cannot be driven by ethos-engine v0** for those nodes. PDFium/Ethos keeps the crop lane.
+  rendering cannot be driven by ethos-parser v0** for those nodes. PDFium/Ethos keeps the crop lane.
 
 ### 5.3 Declared box semantics
 
@@ -429,7 +429,7 @@ verification report, alter a deterministic result state, or blend into a combine
 ordinal unless a profile proves otherwise; and **absence is not confidence** — a processor reporting
 no uncertainty emits an absent field, never an implied `1.0`.
 
-**ethos-engine v0 has no uncertainty to report.** Every node is `Extracted` by a deterministic
+**ethos-parser v0 has no uncertainty to report.** Every node is `Extracted` by a deterministic
 reader; there is no recognition step. So the field is **absent**, which the spec explicitly permits,
 and §9's prohibition stands unqualified for v0 through v2. When the OCR lane lands at v4, it may
 populate span-level uncertainty as a **diagnostic** — accepted if a server sends it, recorded, and
@@ -487,10 +487,10 @@ Ethos's `QRect`. Not `[x, y, w, h]`. The schema enforces `x1 ≥ 1` and `y1 ≥ 
 (`ethos-core/src/geom.rs:87`) rejects only `x0 > x1 || y0 > y1`, so a **degenerate `x0 == x1` box is
 accepted** on the grounding path; the non-positive-area rejection at `crop_element.rs:284` is on the
 *crop* path and does not run here. The grounding schema does not exclude it either. So a zero-area
-box is not a shared error — it is something ethos-engine refuses to *emit* while Ethos would accept
+box is not a shared error — it is something ethos-parser refuses to *emit* while Ethos would accept
 it. State it that way round, and never as "matching Ethos's fail-closed behaviour."
 
-Implemented at M1: `engine_core::QRect::new` requires `x1 > x0 && y1 > y0`, and `serde`
+Implemented at M1: `ethos_parser_core::QRect::new` requires `x1 > x0 && y1 > y0`, and `serde`
 deserialization goes through the same constructor so a degenerate rectangle cannot enter through the
 wire either.
 

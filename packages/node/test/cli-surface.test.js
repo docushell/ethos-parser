@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  * **It cannot diverge from what the CLI prints**, which is the whole claim S2 made and S3 inherits.
  *
  * The load-bearing test is the first one below: the SDK's return value is re-canonicalized and
- * compared against the bytes `engine extract` actually wrote to a pipe. Structural equality would
+ * compared against the bytes `ethos-parser extract` actually wrote to a pipe. Structural equality would
  * not do — it would pass a package that reordered a key on the way through, and reordering a key
  * is exactly how a fingerprint stops matching.
  *
@@ -38,7 +38,7 @@ import * as sdk from "../src/index.js";
 import { EngineFailed, EngineNotFound, NotARepresentation, extract, ground } from "../src/index.js";
 import { c14nBytes } from "../src/c14n.js";
 
-/** What `import "ethos-engine"` reaches. The langchain subpath is deliberately not here. */
+/** What `import "ethos-parser"` reaches. The langchain subpath is deliberately not here. */
 const DEFAULT_ENTRY_SOURCES = ["src/index.js", "src/c14n.js"];
 
 /** Every source in the package, for the rules that bind regardless of entry point. */
@@ -208,7 +208,7 @@ test("every module the default entry point imports is a node: builtin", () => {
 });
 
 test("the package resolves by name, with no install step and no lockfile", async () => {
-  // `import "ethos-engine"` must reach the same module `./src/index.js` is. Resolved through the
+  // `import "ethos-parser"` must reach the same module `./src/index.js` is. Resolved through the
   // manifest's own `exports` map rather than through a registry, because this package is not
   // published and has nothing to install.
   const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
@@ -253,7 +253,7 @@ test("the SDK version is the workspace version", () => {
   // And the Python SDK tracks the same number, because two adapters at different versions over
   // one binary is exactly the disagreement a version string exists to make legible.
   const python = readFileSync(
-    join(REPO_ROOT, "packages", "python", "src", "ethos_engine", "__init__.py"),
+    join(REPO_ROOT, "packages", "python", "src", "ethos_parser", "__init__.py"),
     "utf8",
   );
   assert.match(python, new RegExp(`^__version__ = "${match[1]}"$`, "m"));
@@ -269,11 +269,11 @@ test("an explicit pin is authoritative", async (t) => {
   // A named path that is not there is an error, never a reason to find some other build.
   // `VerifierBinary::resolve` sets the precedent for `ETHOS_BIN` and the reason carries: resolving
   // to a binary nobody chose means returning artifacts from a parser nobody chose.
-  const original = process.env.ETHOS_ENGINE;
+  const original = process.env.ETHOS_PARSER;
   t.after(() => {
-    process.env.ETHOS_ENGINE = original;
+    process.env.ETHOS_PARSER = original;
   });
-  process.env.ETHOS_ENGINE = join(tmpdir(), "no-such-engine");
+  process.env.ETHOS_PARSER = join(tmpdir(), "no-such-engine");
   assert.throws(
     () => extract(FIXTURE_PDF),
     (error) => {
@@ -285,18 +285,18 @@ test("an explicit pin is authoritative", async (t) => {
 });
 
 test("no binary anywhere is a named failure", async (t) => {
-  const original = { engine: process.env.ETHOS_ENGINE, path: process.env.PATH };
+  const original = { engine: process.env.ETHOS_PARSER, path: process.env.PATH };
   t.after(() => {
-    process.env.ETHOS_ENGINE = original.engine;
+    process.env.ETHOS_PARSER = original.engine;
     process.env.PATH = original.path;
   });
-  delete process.env.ETHOS_ENGINE;
+  delete process.env.ETHOS_PARSER;
   process.env.PATH = "";
   assert.throws(
     () => extract(FIXTURE_PDF),
     (error) => {
       assert.ok(error instanceof EngineNotFound);
-      assert.match(error.message, /ETHOS_ENGINE/);
+      assert.match(error.message, /ETHOS_PARSER/);
       assert.match(error.message, /PATH/);
       assert.match(error.message, /cargo build/, "the failure must carry the command that fixes it");
       return true;

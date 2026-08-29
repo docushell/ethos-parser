@@ -1,13 +1,55 @@
 # Changelog
 
-All notable changes to ethos-engine. Format loosely follows
+All notable changes to ethos-parser. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Entries through M7 are grouped by **milestone** (`docs/05-MILESTONES.md`) rather than by version
 number, because a milestone was the unit of work that had acceptance criteria. M7 ends that: v0 is
 frozen at **0.1.0** and later entries are versions.
 
-## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0; the annotation that refused to seal at 0.40.0; the assurance envelope that only guarded one door at 0.40.1; the overlay note that could not see a tagged table at 0.40.2
+## [Unreleased] — v2's format row is closed, as 0.29.0; docs repaired at 0.29.1; embedded assets counted at 0.30.0; the office readers fuzzed at 0.31.0; the guards that were never there at 0.31.1; A11's mutation half closed at 0.32.0; the guards that check nothing at 0.32.1; the roadmap reordered at 0.32.2; the statements that stopped being true at 0.32.3; the owner's two gate decisions at 0.32.4; the two sweeps that never ran at 0.32.5; the CRC-32 question answered at 0.33.0; the guards those sweeps named at 0.33.1; the `neither detector` cluster at 0.34.0; the no-behaviour-change extractor committed at 0.34.1; the two guards outside `src` at 0.34.2; the gate that has never been green at 0.34.3; the corpus that was never grown at 0.35.0; the nine grids the engine already rejects at 0.36.0; the mutation that missed at 0.36.1; why ten documents produce nothing at 0.36.2; the coverage two slices retired at 0.36.3; the tagged tables the documents declare at 0.37.0; the emit path that built every artifact twice at 0.37.1; the detector quadratics at 0.37.2; numeric character references and the shared format router at 0.38.0; the clustering lead, measured and refused, at 0.38.1; page-parallel extraction at 0.38.2; the emit tail walked once at 0.38.3; the office formats verifiable end to end at 0.39.0; the annotation that refused to seal at 0.40.0; the assurance envelope that only guarded one door at 0.40.1; the overlay note that could not see a tagged table at 0.40.2; the engine that became a parser at 0.41.0
+
+### The engine becomes `ethos-parser` — as 0.41.0
+
+This repository shipped as `ethos-engine`, and the name was wrong in two ways that only
+get more expensive to fix. The smaller one is mechanical: `engine` and `engine-core` are
+both taken on crates.io, so the five crates could never have been published under the names
+they had. Any Rust release required renaming them regardless of what the product was called,
+and doing the product rename separately would have meant two migrations instead of one.
+
+The larger one is that `ethos-engine` reads as Ethos's internals, and this is not that.
+`docs/00-NORTH-STAR.md` has always said the parser and the verifier are separate products
+that compose; the name said the opposite, to the audience least equipped to know better. A
+document parser is useful to anyone with documents. A citation verifier is useful to a
+narrower set. Naming the broader tool after the narrower one told most of its potential
+readers they had found an accessory.
+
+**Everything wire-visible moved, which is why this is a MINOR and not a rename.** The ten
+`ethos.engine.*` artifact types are now `ethos.parser.*` — representation, classification,
+extract, overlay, and one per office format. `profile_sha256` moves for every artifact this
+build writes — the SIXTY-SEVENTH hash move — but not for the same reason everywhere, and the
+distinction is worth stating. A PDF artifact moves on `parser_version` alone: that profile's
+`backend.name` is `lopdf`, the library that reads the bytes, and a rename of the crate calling
+it does not touch that field. The eight office profiles move for two reasons, because their
+`BackendIdentity.name` really was the crate name and went `engine-office` ->
+`ethos-parser-office`. Either way it is a rename of the producer, not a change in what was
+read. The MCP `serverInfo.name`, the `ETHOS_ENGINE` and `ETHOS_ENGINE_FIXTURES` environment
+variables, and the CLI binary itself all follow. There are no published consumers to migrate
+— nothing was on crates.io, npm or PyPI — which is precisely why the change lands now rather
+than after the first release.
+
+**Three things deliberately did not move.** `ethos.grounding.v1` is the verifier's format and
+belongs to Ethos, not here. `ETHOS_BIN`, `ETHOS_FIXTURES` and `ETHOS_BENCH_CORPUS` address the
+Ethos oracle, so renaming them would have pointed the oracle harness at itself. And the bare
+English word "engine" stays in the prose: this is still an engine, the sentences saying so are
+still true, and 2826 of them would have been mangled by a substitution that could not tell a
+product name from a common noun. The `fixtures/engine` manifest root is a key in
+`fixtures/manifest.json`, not a product name, and stays too — an audit caught four places where
+the first pass had renamed it and left the documentation describing a root that does not exist.
+
+The archived `docs/attic/stroke-ruled-v1/` patch keeps its pre-rename `crates/engine-*` paths,
+because rewriting an archived patch would make it claim to apply to a tree that did not exist
+when it was written. Its README says so, and uses today's names for everything else.
 
 ### The overlay note counts the tables it cannot draw — as 0.40.2
 
@@ -40,7 +82,7 @@ Demonstrated rather than argued: a real artifact was edited to quarantine a page
 coverage and terminal state kept claiming completion, its `representation_c14n_sha256`
 recomputed with the published c14n rules (no secret is involved — the canonicalizer was
 reimplemented in twenty lines of Python and checked against an untouched artifact first), and
-`engine ground` accepted it, exit 0, and projected a grounding artifact from a record whose
+`ethos-parser ground` accepted it, exit 0, and projected a grounding artifact from a record whose
 own pages contradict it.
 
 Deserialization now re-derives both figures the way the constructor does and refuses a
@@ -57,7 +99,7 @@ non-groundable by construction — their rectangle is a number the author wrote 
 dictionary, not ink this engine measured. The PDF producer triggered that declaration on
 ink-absent TEXT RUNS only. The two populations disagreed, and the seal enforced the wider
 one, so a PDF whose font supplies real metrics and which carries a single annotation was
-REFUSED: `engine extract` exited 2 with "1 node(s) have no measurable ink box, but the
+REFUSED: `ethos-parser extract` exited 2 with "1 node(s) have no measurable ink box, but the
 payload does not declare", and produced no representation, no grounding, no markdown, no
 HTML for that document.
 
@@ -84,7 +126,7 @@ this is a PDF-producer fix and not a change to what the seal means.
 The largest capability gap the estate audit named, closed from both sides. The Ethos-side
 revision that `page_less_source.rs` recorded as *owned elsewhere rather than refused*
 landed first — `ethos.grounding.v1` schema 1.1.0 admits eight page-less media types under
-a version-gated union — and this slice takes option (a): `engine ground` projects a
+a version-gated union — and this slice takes option (a): `ethos-parser ground` projects a
 page-less office representation into that shape. `pages: []`, because a page-less source
 states no page and synthesizing one is the invented pagination §3 refuses; every element
 under **its own node id**, because a page-less artifact carries no spans and the id a
@@ -208,7 +250,7 @@ emits is byte-for-byte what 0.37.0 emitted for the same input. The proof is not 
 the 932 MB `nist-sp-800-53Ar5` extract artifact and the `nist-sp-800-218` artifact were
 compared byte-for-byte against pre-change output at every step, the c14n property suite
 gained an equivalence law, and the full workspace suite is green. Measured on
-`nist-sp-800-53Ar5` (492 pages), `engine extract` fell from 100.4 s to 59.9 s.
+`nist-sp-800-53Ar5` (492 pages), `ethos-parser extract` fell from 100.4 s to 59.9 s.
 
 - **Canonical serialization streams.** `canonical_bytes_of` serializes any value straight to
   sorted-key canonical bytes. The old route — `serde_json::to_value` into a full `Value` DOM,
@@ -372,7 +414,7 @@ slice decides the coverage stays lost: a fixture exercising catalog-scan recover
 would assert a backend leniency the engine never guaranteed, and re-weakening the mutation to
 resurrect the survivors would trade v2-S21's real repair for a coverage number. There is nothing
 engine-owned to delete; the deletion is of the *claim* that this corpus covers it, made explicit in
-`crates/engine-pdf/tests/robustness.rs`.
+`crates/ethos-parser-pdf/tests/robustness.rs`.
 
 #### Scope refused
 
@@ -535,7 +577,7 @@ step.
 
 S20 first was right. The brief sequenced this second because the mutation harness measures
 robustness rather than table detection; the stronger version is that the two are **disjoint** — this
-slice touches only `crates/engine-pdf/tests/robustness.rs`, and S20 never touches that file. The
+slice touches only `crates/ethos-parser-pdf/tests/robustness.rs`, and S20 never touches that file. The
 deep pass does call `extract`, so S20's change is visible here, but declining a table is not an
 error and no survivor turns on it: the survivor set measured before S20 landed and after are
 identical, checked rather than assumed.
@@ -591,8 +633,8 @@ tables **26 → 17**.
 #### Why declining, argued from the artifact
 
 **The declaration nothing reads.** Every table already carried its `LocatorCheck`, and on those
-nine it said `Mismatch` with the faults enumerated. But `engine_core::markdown::plan_tables` and
-`engine_core::html::plan_tables` project **every** table in `payload.tables`, branching only on
+nine it said `Mismatch` with the faults enumerated. But `ethos_parser_core::markdown::plan_tables` and
+`ethos_parser_core::html::plan_tables` project **every** table in `payload.tables`, branching only on
 `rows` and `columns` and consulting no check anywhere — so a consumer of either projection received
 nine GFM grids of up to 103 × 22 and received no warning at all. A disclosure that no reader of the
 thing being disclosed about can see is a disclosure in name only, which is the v2-S12.1 / v2-S13.1
@@ -691,7 +733,7 @@ fault counts.
 ### v2-S19 — the corpus that was never grown, as 0.35.0
 
 **A MINOR, and the corpus is not why.** `fixtures/manifest.json` went from 55 fixtures to 64, and
-its `counts` drive `crates/engine-pdf/tests/robustness.rs`, so the PDF mutation harness moves off
+its `counts` drive `crates/ethos-parser-pdf/tests/robustness.rs`, so the PDF mutation harness moves off
 its pinned totals. `docs/table-gate-v1.md` predicted exactly that. **No detector, rule id or
 tolerance changed** — `table_detection` is byte-identical across the bump, which is the proof this
 slice owes: a commit that moved the corpus *and* the detector could not tell you which one moved
@@ -778,8 +820,8 @@ before and after, diff empty.**
 
 #### Fixed — `cargo fmt --all --check` exited non-zero at `HEAD`, and had since v2-S14
 
-Four sites: a doubled blank line in `engine-office/src/zip.rs`, and three in
-`engine-pdf/src/extract.rs`'s `mod tests` — a signature broken across lines that fits on one, a
+Four sites: a doubled blank line in `ethos-parser-office/src/zip.rs`, and three in
+`ethos-parser-pdf/src/extract.rs`'s `mod tests` — a signature broken across lines that fits on one, a
 `const` table's trailing comments over-indented by a column, and an `assert_eq!` rustfmt writes as
 four lines. The `check` job runs `fmt` as its **first** gate, so the first CI run this repository
 ever performs would have failed on formatting — the worst available first signal, because it
@@ -811,14 +853,14 @@ became `job_block`, and `run_steps_of` is built on it.
 
 #### Fixed — three clippy warnings in `crates/*/tests/`, and the ordering that hid one
 
-`engine-office` had a `&file` already a `&str` and an `is_none()`/`return None` pair that is `?`.
-The third, `engine-cli`'s `!…is_some_and(…)` → `is_none_or`, **was invisible until the first two
-were fixed**: `-D warnings` aborts compilation, so that crate was never linted while `engine-office`
+`ethos-parser-office` had a `&file` already a `&str` and an `is_none()`/`return None` pair that is `?`.
+The third, `ethos-parser-cli`'s `!…is_some_and(…)` → `is_none_or`, **was invisible until the first two
+were fixed**: `-D warnings` aborts compilation, so that crate was never linted while `ethos-parser-office`
 failed first. "Clippy is clean" measured behind a failing crate is not a measurement.
 
-#### Fixed — `engine-cli`'s package description named four subcommands of nine
+#### Fixed — `ethos-parser-cli`'s package description named four subcommands of nine
 
-The third site of a drift v2-S13.5 repaired in `main.rs` and `engine-core/src/verifier.rs`. **It now
+The third site of a drift v2-S13.5 repaired in `main.rs` and `ethos-parser-core/src/verifier.rs`. **It now
 names none.** Those two are prose that can carry a count with its history; a one-line metadata
 string cannot argue and nothing guards it. `Command` in `src/main.rs` is the list that cannot go
 stale, so the description says what the crate is rather than what it currently contains.
@@ -826,7 +868,7 @@ stale, so the description says what the crate is rather than what it currently c
 ### v2-S17 — the two guards outside `src`, as 0.34.2
 
 **A patch release.** No behaviour changed, and no line of `crates/*/src` changed at all — the only
-Rust edits are in `crates/engine-cli/tests/`, plus `profile.rs`'s pinned digest and version ledger
+Rust edits are in `crates/ethos-parser-cli/tests/`, plus `profile.rs`'s pinned digest and version ledger
 inside `mod tests`. Both sweeps at v2-S13.5 declared `crates/*/tests/` out of scope, found two real
 defects there in passing, and recorded them for a later slice. This is that slice, and it is those
 two sites and no others.
@@ -853,7 +895,7 @@ the split v2-S15 argued against when it moved the `neither detector` cluster who
 
 **`Stage::Verify` stays outside the walk, and that is not a gap presented as a success.** Three
 options were weighed and two refused. **Covering it** was refused because there is nothing
-engine-owned to walk: `engine verify` writes the verifier's bytes verbatim and composes nothing, so
+engine-owned to walk: `ethos-parser verify` writes the verifier's bytes verbatim and composes nothing, so
 the walk would be asserting a property of the pinned Ethos binary and reporting it as evidence
 about this engine — and
 `verify_relay.rs::a_grounded_claim_relays_the_verifier_bytes_verbatim` already asserts that stdout
@@ -866,7 +908,7 @@ presented as a success* here because, once the property is asserted where it act
 is no gap to present — only a boundary, now stated in the file rather than implied by a number.
 
 Because `Stage::Verify` is not covered, **no new process dependency was taken**: `diagnostics.rs`
-still spawns only `engine`, and `oracle.rs`'s resolver did not need to be reused.
+still spawns only `ethos-parser`, and `oracle.rs`'s resolver did not need to be reused.
 
 #### Fixed — `verify_relay.rs` said "the other four subcommands"
 
@@ -883,7 +925,7 @@ cannot be re-rotted by a tenth subcommand.
 
 #### Reported and not repaired — a third site, left where it was found
 
-`crates/engine-cli/Cargo.toml`'s package `description` reads *"ethos-engine command line: classify
+`crates/ethos-parser-cli/Cargo.toml`'s package `description` reads *"ethos-parser command line: classify
 | extract | ground | grounding-check"* — v0's four, of nine. Found while re-resolving the first
 site. **A slice that widens its own scope is how the last four each ended up rebuilding an
 extractor**, so it is named here and left.
@@ -893,7 +935,7 @@ extractor**, so it is named here and left.
 Three breaks, each reverted: dropping the `ground` case from the harness made the assertion name
 the missing stage rather than report an arithmetic mismatch; claiming `Stage::Verify` is walked
 made it name `verify` as expected and unreached; and adding a sixth `Stage` variant to
-`engine-core` stopped `diagnostics.rs` compiling with `non-exhaustive patterns: Stage::Probe not
+`ethos-parser-core` stopped `diagnostics.rs` compiling with `non-exhaustive patterns: Stage::Probe not
 covered`, which is the derived half of the floor doing the thing the hardcoded number could not.
 
 ### v2-S16 — the instrument four slices rebuilt wrong, as 0.34.1
@@ -930,7 +972,7 @@ building a fifth extractor. Each defect was invisible until the other was correc
 `/^mod tests \{/` — anchored at column 0, with no `pub(crate)` alternative — and its skip resumes
 at the matching `^}` rather than running to end of file. This script matches that rule exactly and
 says so in its header, because a second definition of "test module" in one repository is the drift
-a shared rule exists to prevent. `crates/engine-core/src/markdown.rs` is the **one** file writing
+a shared rule exists to prevent. `crates/ethos-parser-core/src/markdown.rs` is the **one** file writing
 `pub(crate) mod tests {`; fifty-two write `mod tests {`, and the difference between an anchored
 matcher and a loose one is 1,017 lines, all in that single file.
 
@@ -1031,7 +1073,7 @@ isolated from the bump's:
   profile field.
 - **The oracle does not move** — 18/18 pass unchanged. A grounding artifact carries
   `limitation_code`, a `&'static str`, and never the message.
-- **Neither mutation harness moves** — `engine-pdf` 9/9, `engine-office` 6/6. `EXPECTED_SURVIVORS`
+- **Neither mutation harness moves** — `ethos-parser-pdf` 9/9, `ethos-parser-office` 6/6. `EXPECTED_SURVIVORS`
   pins outcomes, not message text.
 
 Diffed leaf by leaf, the extract artifact changes in exactly **two** places:
@@ -1041,7 +1083,7 @@ Diffed leaf by leaf, the extract artifact changes in exactly **two** places:
 `MARKDOWN_TABLE_SPANS_FLATTENED` is profile-scope and rides on every PDF representation, so its new
 text was read back off a generated artifact. `TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE` is
 document-scoped and conditional, and **no document in either tree produces it** — every PDF in
-`fixtures/` and in the Ethos corpus was run through `engine extract`: 72 offered, 68 read, 4
+`fixtures/` and in the Ethos corpus was run through `ethos-parser extract`: 72 offered, 68 read, 4
 refused, zero declared it. The path is live and gated, not dead. For the corpus this repository can
 reach, exactly one of the two wire strings changes any artifact's bytes.
 
@@ -1087,7 +1129,7 @@ failed: a word injected into an emitted wire string is reported. Re-measured, **
 hold**: v2-S14.1 **0 changed lines**, v2-S15 **4**, at 18,232 / 18,264 / 18,264 / 18,264 across
 0.32.5 → 0.34.0.
 
-**The 1,017 is closed too: one file, one keyword.** `crates/engine-core/src/markdown.rs` declares
+**The 1,017 is closed too: one file, one keyword.** `crates/ethos-parser-core/src/markdown.rs` declares
 `pub(crate) mod tests {` and is the only file that does — 52 say `mod tests {`. A loose matcher
 excludes that module, an anchored one does not, and the difference is 1,017 lines all in that one
 file. Which is right is decidable and not from the count: `ci/forbidden-tokens.sh` line 82 is
@@ -1145,9 +1187,9 @@ S13.5's findings. Both comments cited proofs that had never existed.
 - `extract::tests::a_tables_runs_are_contiguous_after_the_reorder` — the premise the first rests
   on, asserted separately, because cell text survives trivially on a page whose table did not move.
 - `xref::tests::the_repair_id_is_spelled_the_same_in_the_profile_and_in_this_module` —
-  `XrefRepair::Pad19To20V1`'s serde spelling **is** `engine_pdf::xref::XREF_REPAIR_V1`, asserted in
+  `XrefRepair::Pad19To20V1`'s serde spelling **is** `ethos_parser_pdf::xref::XREF_REPAIR_V1`, asserted in
   **both directions**, because one direction alone would pass if a second variant took the same
-  rename. It lives in `engine-pdf` because importing `engine-pdf` from `engine-core` would be a
+  rename. It lives in `ethos-parser-pdf` because importing `ethos-parser-pdf` from `ethos-parser-core` would be a
   dependency cycle, exactly as S13.5 argued.
 
 **Each was broken on purpose and watched go red**, then restored: giving `XREF_REPAIR_V1` the
@@ -1311,7 +1353,7 @@ mood.
   copy was simply incomplete, which is what a second copy of a table does. Restored, not reworded.
 - **Two comments named tests that have never existed.** `extract.rs` cited
   `cell_text_survives_the_reordering` as *"the proof over real fixtures"*, and `profile.rs` said a
-  test asserted `pad-19-to-20-v1` equals `engine_pdf::xref::XREF_REPAIR_V1`. `git log --all -S`
+  test asserted `pad-19-to-20-v1` equals `ethos_parser_pdf::xref::XREF_REPAIR_V1`. `git log --all -S`
   returns one commit for each — the one that wrote the comment. Both are real unguarded seams; the
   statements are repaired and the missing guards are **named, not written**.
 - **`reasons.rs` sent readers to the artifact's `not_detected` list in two places.** M4 absorbed
@@ -1322,7 +1364,7 @@ mood.
   variants since v0.1), **`representation.rs` "Three rules"** above a list of four, and its
   `media_type` *"Always `application/pdf`"* when eight office types are written into that field.
 - **The `stroke-ruled-v1` cluster**, stale since **v1-S8**: `TableRecord::detection_rule` documented
-  as one of two values when three are reachable, `engine-pdf` naming *"the two places a table is
+  as one of two values when three are reachable, `ethos-parser-pdf` naming *"the two places a table is
   built"* when there are three, and a limitation described as *"declared since v1-S1"* that v1-S8
   retired and a test now asserts is **absent**.
 - **`zip.rs`'s inflate bound never matched the line below it** — `.take(MAX_INFLATED_BYTES + 1)` is
@@ -1388,7 +1430,7 @@ The ladder after v2 was **v2.1 (OCR) → v2.2 (accessibility) → v3 (assist)**.
   two v4 blockers that remain unpaid: `deny.toml` denies the HTTP surface by name and says the OCR
   lane needs its own ADR, and ONNX would be the largest runtime dependency in the tree.
 - Twenty-three `v2.1` references renumbered across eleven documents, `deny.toml`, and three rustdoc
-  comments in `crates/engine-core/src/derivation.rs`. That last is why this is a version bump at
+  comments in `crates/ethos-parser-core/src/derivation.rs`. That last is why this is a version bump at
   all: the rustdoc is compiled, so the tree that produced an artifact changed.
 - `docs/CAPABILITY.md` corrected from *"two owner questions"* to **three** — v2-S13 added the
   CRC-32 question and did not update this row.
@@ -1431,7 +1473,7 @@ Both sentences now say *bind* — each quote resolves to an address the file its
 
 v2-S11 made every reader declare how many entries it passed over that hold a picture, an audio or
 video clip, or an embedded object, which closed the **A14** violation. **That satisfies v2.**
-Reading an office asset is explicitly *not* v2: `engine-pdf` emits an `ImageRecord` for a PDF image
+Reading an office asset is explicitly *not* v2: `ethos-parser-pdf` emits an `ImageRecord` for a PDF image
 because a PDF image has a page and a coordinate system to be addressed in, and an office image has
 neither — so a node for one is a `REPRESENTATION_SCHEMA_VERSION` question, not a reader change. It
 gets its own row rather than sitting implied inside v2's.
@@ -1470,7 +1512,7 @@ and these are the sixteen that are prose, plus what a derived sweep found on top
 `vendor/` holds **one** tracked file, `vendor/README.md`. Four places said otherwise, and the
 location question had to be settled before any of them could be reworded:
 
-- `crates/engine-pdf/src/encoding.rs` said the encoding tables live *"as data under
+- `crates/ethos-parser-pdf/src/encoding.rs` said the encoding tables live *"as data under
   `vendor/encodings/`"*, and the doc on `WIN_ANSI` said *"Loaded from `vendor/encodings/`"*. **They
   are `const fn` builders in that same file**, which the compiler evaluates into `.rodata` —
   `vendor/README.md` has said so correctly the whole time, and says why: a 256-entry table in a
@@ -1484,13 +1526,13 @@ location question had to be settled before any of them could be reworded:
 named it. The brief named `NOTICE`.
 
 **And an adversarial pass caught a claim this slice introduced**: the first draft said the CMap
-limitation rides on *"every artifact this build produces"*. It does not — `engine-office` never
+limitation rides on *"every artifact this build produces"*. It does not — `ethos-parser-office` never
 calls `backend_limitations()`, so it is every **PDF** artifact, classify and extract alike.
 
 #### The rest of the sixteen
 
-- **`docs/04-ARCHITECTURE.md`** — the tree was missing `engine-office` entirely, four slices after
-  it joined; the `engine-office` row named **four** formats where the crate reads **eight**; §4
+- **`docs/04-ARCHITECTURE.md`** — the tree was missing `ethos-parser-office` entirely, four slices after
+  it joined; the `ethos-parser-office` row named **four** formats where the crate reads **eight**; §4
   said *"exactly one"* engine-owned fixture where the manifest counts **37**, and *"two roots"*
   where it declares **three**; and the *"Four crates, not six"* heading had been five since v2-S2.
 - **§2 and `docs/PUBLIC-API.md` both said "four subcommands"** where `enum Command` has **nine** —
@@ -1499,7 +1541,7 @@ calls `backend_limitations()`, so it is every **PDF** artifact, classify and ext
   now names all nine. **Its thin-shell mapping table covers four of the nine**, which is a real gap
   rather than a count — `verify`, `overlay`, `markdown`, `html` and `mcp` have their library
   equivalence stated nowhere — and that is named rather than papered over.
-- **`crates/engine-core/src/lib.rs`** — the `# What lives here` table listed **11** of the crate's
+- **`crates/ethos-parser-core/src/lib.rs`** — the `# What lives here` table listed **11** of the crate's
   **14** modules. One of the three missing was `representation`, the module that owns the type the
   crate exists to define.
 - **`verifier.rs`** — *"the other four subcommands"*, twice, where the complement of `verify` is
@@ -1570,7 +1612,7 @@ from all thirty `crates/*/src/**.rs` files at `HEAD` and at the working tree and
 
 #### The defect, and it was the same shape as v2-S12.1's
 
-`crates/engine-cli/tests/v0_exit_criteria.rs`'s `no_job_filter_selects_zero_tests` exists to catch
+`crates/ethos-parser-cli/tests/v0_exit_criteria.rs`'s `no_job_filter_selects_zero_tests` exists to catch
 the quietest failure this repository's CI scheme has: a job filtering on a renamed test, printing
 `ok. 0 passed`, and going green having checked nothing. **It could not see five of the workflow's
 twenty-two `cargo test` commands.**
@@ -1635,53 +1677,53 @@ Every one of `docs/15-V2-MILESTONES.md` S13's twenty-eight deferred statements t
 rather than prose was re-derived from the source and adversarially re-verified. **None was refuted.**
 Repaired:
 
-- **`crates/engine-core/src/profile.rs`, `every_profile_field_is_hash_sensitive`** — the comment
+- **`crates/ethos-parser-core/src/profile.rs`, `every_profile_field_is_hash_sensitive`** — the comment
   said the destructuring made a silently uncovered knob impossible. It does not: it gates the
   *pattern*, not the mutation list. The pattern had **34 leaves and 24 mutations covering 23 of
   them**. Eight are now mutated — `capabilities.images`, `page_screenshots`, `markdown`, `html`,
   `text_code_rule`, `observation_rule`, `markdown_rule`, `html_rule` — each demonstrated to move
   the digest rather than argued from the pin. Three cannot be mutated at all, their types having
   one legal value, and are named as such. The count is pinned at **32**.
-- **`crates/engine-core/src/profile.rs`, `the_profile_names_every_table_rule_and_any_one_moves_the_hash`**
+- **`crates/ethos-parser-core/src/profile.rs`, `the_profile_names_every_table_rule_and_any_one_moves_the_hash`**
   — *any one* over three rules, and only two were moved. `stroke_ruled`, added at v1-S8, was the
   one left out. Now moved, with all three pairwise digests asserted distinct.
-- **`crates/engine-core/src/assurance.rs`, `every_false_capability_declares_a_limitation`** — the
+- **`crates/ethos-parser-core/src/assurance.rs`, `every_false_capability_declares_a_limitation`** — the
   loop named **eleven of the twelve** capability codes. The omission was `html`, added at v1.1-S4,
   which the count assertion's own message names as the reason the total is thirteen.
-- **`crates/engine-pdf/src/limitations.rs`, `PDF_CODES`** — seven entries covering **five** of this
+- **`crates/ethos-parser-pdf/src/limitations.rs`, `PDF_CODES`** — seven entries covering **five** of this
   module's seven `pub const` spellings. `xref-entry-padded` and `broken-font-encoding` were checked
   by nothing. Both added, and the list is now cross-checked against the spellings read back out of
   the source.
-- **`crates/engine-office/tests/erasure_counters.rs`** — `READERS` was a nine-name array against a
+- **`crates/ethos-parser-office/tests/erasure_counters.rs`** — `READERS` was a nine-name array against a
   twelve-file directory; it now reads the directory, for the reason
   `the_fuzz_target_and_seed_corpus_are_present` reads `fuzz/fuzz_targets/`. And **`PDF_COUNTERS`
-  had no completeness check at all**; the eight accumulators in `engine-pdf/src/extract.rs` are now
+  had no completeness check at all**; the eight accumulators in `ethos-parser-pdf/src/extract.rs` are now
   derived and compared, reading both `let mut n = 0u32` and `let mut n: u32 = 0`.
-- **`crates/engine-cli/tests/oracle.rs`, `every_workspace_crate_links`** — the doc said *"the
+- **`crates/ethos-parser-cli/tests/oracle.rs`, `every_workspace_crate_links`** — the doc said *"the
   four-crate wiring"*, the workspace has five members, and the body asserted **three**.
-  `engine-office` joined at v2-S1 and was never added. Now four — the four that export a
-  `CRATE_NAME` — with the member count read from `Cargo.toml` and the fifth, `engine-cli`, named as
+  `ethos-parser-office` joined at v2-S1 and was never added. Now four — the four that export a
+  `CRATE_NAME` — with the member count read from `Cargo.toml` and the fifth, `ethos-parser-cli`, named as
   this test's own binary crate rather than an omission.
-- **`crates/engine-cli/src/mcp.rs`** — two per-tool properties iterated the advertised tool list
+- **`crates/ethos-parser-cli/src/mcp.rs`** — two per-tool properties iterated the advertised tool list
   with no floor, so an empty list satisfied both. Three tools and four arguments, asserted.
-- **`crates/engine-pdf/tests/capabilities.rs`, `test_sources`** — *"Every source line of the
-  workspace's integration tests"* over a hardcoded `["engine-pdf", "engine-cli"]`, grown one crate
-  at a time after each failure. `engine-core`, `engine-office` and `engine-grounding` were
+- **`crates/ethos-parser-pdf/tests/capabilities.rs`, `test_sources`** — *"Every source line of the
+  workspace's integration tests"* over a hardcoded `["ethos-parser-pdf", "ethos-parser-cli"]`, grown one crate
+  at a time after each failure. `ethos-parser-core`, `ethos-parser-office` and `ethos-parser-grounding` were
   invisible: a capability whose proof landed in any of them would have read as having no proof. The
   crate list now comes from `Cargo.toml`'s `members` — **24 files to 40** — and the anti-vacuity
   floor, which sat at `> 1000` bytes against a real 660,013, is now a crate-count equality plus a
   file and byte floor.
-- **`crates/engine-pdf/tests/extraction.rs`** — `no_source_line_derives_a_box_from_the_font_size`
+- **`crates/ethos-parser-pdf/tests/extraction.rs`** — `no_source_line_derives_a_box_from_the_font_size`
   and `no_confidence_in_the_extract_source_modules` each accumulated offenders and asserted the
   list empty with **no floor whatever**. Both now assert what they read (28 files / 16,201 lines;
   4,267 lines), and the second asserts its six named modules all still resolve, on the
   `NAME_READING_EXEMPTIONS` precedent.
-- **`crates/engine-pdf/tests/extraction.rs`, `the_conformance_corpus_keeps_every_box_it_had`** —
+- **`crates/ethos-parser-pdf/tests/extraction.rs`, `the_conformance_corpus_keeps_every_box_it_had`** —
   the name said the corpus and the body listed five documents. The five are not a widenable
   sample: the property holds only of documents with no whitespace-only run. **Renamed
   `five_conformance_documents_keep_every_box_they_had`**, count pinned, and each document asserted
   to have produced runs so `all()` cannot hold vacuously.
-- **`crates/engine-core/tests/contract_invariants.rs`, `public_type_samples`** — four tests said
+- **`crates/ethos-parser-core/tests/contract_invariants.rs`, `public_type_samples`** — four tests said
   *every public type* over **17 values covering 15 types**, against 188 frozen crate-root exports.
   It cannot stop being a sample — the property is about a serialized value, and most exports have
   none — so the number is now stated, the universal claim is attributed to
@@ -1704,31 +1746,31 @@ Repaired:
 accumulate-offenders-and-assert-empty shape, one for hardcoded arrays that could be derived. All
 five are repaired here:
 
-- **`crates/engine-pdf/src/thresholds.rs`, `the_garbled_reason_is_never_constructed`** — the same
+- **`crates/ethos-parser-pdf/src/thresholds.rs`, `the_garbled_reason_is_never_constructed`** — the same
   floorless shape as the two in `extraction.rs`, plus a two-name exemption list nothing asserted
   still resolved.
-- **`crates/engine-core/tests/contract_invariants.rs`** — five contract invariants
-  (`no_confidence_anywhere_in_engine_core_code`, `no_other_quality_summary_vocabulary_leaks_in`,
-  `no_pdf_type_or_import_in_engine_core`, `no_verification_concept_in_engine_core`,
-  `floats_appear_only_inside_quantize`) all funnel through one walk of `engine-core/src`, and
+- **`crates/ethos-parser-core/tests/contract_invariants.rs`** — five contract invariants
+  (`no_confidence_anywhere_in_ethos_parser_core_code`, `no_other_quality_summary_vocabulary_leaks_in`,
+  `no_pdf_type_or_import_in_ethos_parser_core`, `no_verification_concept_in_ethos_parser_core`,
+  `floats_appear_only_inside_quantize`) all funnel through one walk of `ethos-parser-core/src`, and
   **not one of them recorded how much it read.** Thirty-seven banned needles return an empty hit
   list on a scan that read nothing exactly as on a scan that read everything. The file guards its
   *matchers* three ways and guarded its *corpus* not at all. The floor is in the shared helper, so
   a sixth invariant inherits it.
-- **`crates/engine-pdf/tests/robustness.rs`, `a_surviving_mutant_never_claims_to_be_the_original`**
+- **`crates/ethos-parser-pdf/tests/robustness.rs`, `a_surviving_mutant_never_claims_to_be_the_original`**
   — the digest comparison runs only for a mutant that parses, and nothing counted them. A corpus
   that went missing would print `ok` having compared nothing. Sixty survive and
   `EXPECTED_SURVIVORS` pins exactly which, so the count is asserted equal to it. **The office
   harness written from this file at v2-S13 already carries this floor**; it was never back-ported.
-- **`crates/engine-pdf/tests/extraction.rs`, `every_run_carries_a_native_locator`** — a CI-named
+- **`crates/ethos-parser-pdf/tests/extraction.rs`, `every_run_carries_a_native_locator`** — a CI-named
   gate (`v0-locators`) that skips a fixture twice, silently, and floors on `total > 10` where
   `total` counts **runs**. One small document produces more than ten, so fifty-four of the
   fifty-five could have stopped extracting with the gate green. Now floors on fixtures that
   extracted: **44 of 55**.
-- **`crates/engine-cli/tests/public_api.rs`, `FROZEN`** — the per-crate diff is derived, the *set
+- **`crates/ethos-parser-cli/tests/public_api.rs`, `FROZEN`** — the per-crate diff is derived, the *set
   of crates* was a four-name array, and a library crate absent from it has its whole public surface
   unchecked. That is not hypothetical: at `ac148cf` (v2-S2, 0.21.0) the array had three entries
-  while `engine-office/src/lib.rs` already exported six items. **Its public surface was unfrozen
+  while `ethos-parser-office/src/lib.rs` already exported six items. **Its public surface was unfrozen
   and undocumented for a whole release and no test failed.** The set is now derived from
   `Cargo.toml`'s members filtered to those with a `src/lib.rs`.
 
@@ -1762,7 +1804,7 @@ packages across eight formats, never damaged and never asked what they would do 
 
 #### Added
 
-- **`crates/engine-office/tests/robustness.rs`** — every package in `fixtures/office/` damaged
+- **`crates/ethos-parser-office/tests/robustness.rs`** — every package in `fixtures/office/` damaged
   **twelve** ways. **148 mutants across sixteen fixtures, and not one panicked.** Two permitted
   outcomes, asserted: a named `EngineError` from the six-code taxonomy, or an artifact binding to
   the **mutant's** `source.sha256`. **36 survivors pinned** in five explained classes and **44
@@ -1811,7 +1853,7 @@ that appending junk to an RTF stream adds exactly one node — true of `rich-tex
 ends `\row }`; false of `rich-text-unread-destinations`, which has no trailing break, so the junk
 is absorbed into the final paragraph instead. And its unknown-control-word mutation searched for
 `\par` as a substring and matched the **`\pard`** that opens every paragraph, mangling something no
-reader can see — the same trap `engine-pdf`'s harness records for a space-delimited ` Tj `.
+reader can see — the same trap `ethos-parser-pdf`'s harness records for a space-delimited ` Tj `.
 
 #### Changed
 
@@ -1854,13 +1896,13 @@ stale, a thing outside every gate, found by reading rather than by a test.
 
 - **`the_fuzz_target_and_seed_corpus_are_present` reads the target list from
   `fuzz/fuzz_targets/`** instead of a hardcoded pair, and asserts per target that it uses
-  `fuzz_target!`, that it drives **its own** entry point — `engine_office::read` for the office
+  `fuzz_target!`, that it drives **its own** entry point — `ethos_parser_office::read` for the office
   target, `Document::open_bytes` for the PDF ones — that `fuzz/Cargo.toml` declares it as a
   `[[bin]]`, and that **some CI job names `cargo fuzz build` for it**. The count is pinned at three
   so a fourth target is a decision rather than an accident. Verified by removing the CI line and
   watching the test go red.
 - **`no_job_filter_selects_zero_tests` can see the whole workspace.** It scanned four crates while
-  the workspace had five; `engine-office` joined at v2-S1 and the list did not. A job filtering on
+  the workspace had five; `ethos-parser-office` joined at v2-S1 and the list did not. A job filtering on
   an office test name would have been reported as matching no test at all — a false negative in the
   guard that exists to catch filters matching nothing. The crate list is now parsed from
   `Cargo.toml`'s `members`, with a floor asserting it found at least five.
@@ -1900,7 +1942,7 @@ than 66,000 did.
 The brief named four. The method was v2-S10.2's: derive the target set from the code, then check
 the handed list against it. **Fifty-two false statements were confirmed** — each found by a sweep
 and then re-checked by an independent pass that defaulted to *refuted* — plus four more found by
-hand in `crates/engine-pdf/tests/robustness.rs`. **Twenty-four are repaired here.** Among them:
+hand in `crates/ethos-parser-pdf/tests/robustness.rs`. **Twenty-four are repaired here.** Among them:
 *"With four formats"* where the list has seven; *"this engine reads two of the family"* where the
 `if` below it names three; *"# Three rules"* over a list of four, wrong since M4; *"23 fixtures"*
 in the mutation job's comment where the manifest declares 55; *"flip-tail-byte on four documents"*
@@ -1938,15 +1980,15 @@ runs it, and reports what it found.
 every fixture + `cargo-fuzz` **per format***, from Anydoc, due at **v0**. v2-S2 deferred the office
 half in one clause: *"a cargo-fuzz campaign — `A11`'s mutation lane for this format waits for a
 second one"*. The condition was met at v2-S3 and there are now **eight** formats;
-`fuzz/Cargo.toml` still depended on `engine-core` and `engine-pdf` alone, so **no office byte had
+`fuzz/Cargo.toml` still depended on `ethos-parser-core` and `ethos-parser-pdf` alone, so **no office byte had
 ever been fuzzed**. Not hypothetical: v2-S9's first adversarial finding was a **panic** in the
 percent-decoder, reachable from any `href` in a crafted package document, and the review record
 says it survived to review *precisely because office code is unfuzzed*.
 
 #### Added
 
-- **`fuzz/fuzz_targets/office_read.rs`** on `engine_office::read` — the single entry point all
-  eight formats share and the one `engine extract` calls. `engine-office` joins `fuzz/Cargo.toml`.
+- **`fuzz/fuzz_targets/office_read.rs`** on `ethos_parser_office::read` — the single entry point all
+  eight formats share and the one `ethos-parser extract` calls. `ethos-parser-office` joins `fuzz/Cargo.toml`.
 - **`fuzz/seed-corpus.sh office_read`** seeds from the **sixteen** packages in `fixtures/office/`,
   one valid package of every shape this engine reads. Scripted, not copied. Seeding matters more
   here than for the PDF targets: random bytes almost never open like a ZIP, so an unseeded office
@@ -2028,7 +2070,7 @@ test-running reports.
 `fixtures/office/make_fixtures.py` now authors media into `unread-parts` (**2**),
 `workbook-unread-parts` (**1**) and `deck-unread-parts` (**3**) — three different numbers on
 purpose, so a reader returning another reader's count is caught by the number alone.
-`crates/engine-office/tests/embedded_assets.rs` then asserted the declared count against the
+`crates/ethos-parser-office/tests/embedded_assets.rs` then asserted the declared count against the
 **un-fixed** readers: **four of its six tests failed**, each on the same fact, that the count did
 not move. The two that passed assert the *text* bucket is unchanged, which is the baseline the fix
 had to preserve.
@@ -2057,8 +2099,8 @@ shared constant.
 
 #### Not in this slice, stated rather than implied
 
-- **No asset byte is read, decoded, hashed or emitted.** `ImageRecord` stays in `engine-pdf`;
-  `engine-core` learns nothing about images.
+- **No asset byte is read, decoded, hashed or emitted.** `ImageRecord` stays in `ethos-parser-pdf`;
+  `ethos-parser-core` learns nothing about images.
 - **No node for a media part** — it has no text, no address a citation could bind to and no
   geometry, so a node for one would be a node nobody can cite.
 - **No new detection.** A media part is identified by **where the package puts it**, which the
@@ -2081,7 +2123,7 @@ the only difference old-to-new is the added limitation and the fingerprint that 
   time, to `sha256:fda6a4b157569fc0d3ae5ba597a7599338fee7e96c8715fa5f95c2ce57dd3a90`
 
 **v2 is not complete.** S11 discharges the A14 half of the embedded-assets obligation and names the
-other half rather than deciding it: no office asset is *read*, `engine-pdf`'s `ImageRecord` has no
+other half rather than deciding it: no office asset is *read*, `ethos-parser-pdf`'s `ImageRecord` has no
 office counterpart, and whether the roadmap's word meant *counted* or *read* is the owner's. The
 gate sentence's verb is still unsettled.
 
@@ -2105,18 +2147,18 @@ check and find false is the defect; the cosmetics are incidental.
 | 1 | `docs/README.md`, the v2 paragraph | *"reads **four** of them"* | **eight**, named, with CSV the argued refusal. Wrong since v2-S5 |
 | 2 | same paragraph | *"The fourth format…"* | **ODT** named, since the sentence above it now enumerates all eight |
 | 3 | `docs/README.md`, the **"Next:"** paragraph | *"missed at **61‰**"*, *"S8 is unstarted"*, *"the one that was built and parked"* | **64‰**; **S8 is done** and shipped that rule; and it is the v0 → v1 hand-off, not what is next |
-| 4 | `docs/PUBLIC-API.md`, the `engine-office` heading | *"the OOXML readers, and OpenDocument text and spreadsheets"* | names the three ODF readers, **RTF and EPUB** |
+| 4 | `docs/PUBLIC-API.md`, the `ethos-parser-office` heading | *"the OOXML readers, and OpenDocument text and spreadsheets"* | names the three ODF readers, **RTF and EPUB** |
 | 5 | `docs/PUBLIC-API.md`, the `xml` note | *"all **six** readers share"* | **seven** — and says why not eight: `rtf` reaches none of it |
 | 6 | `docs/14-V2-SCOPE.md`, the office-crate heading | *"why it **does not exist yet**"* | *"why it did not exist until v2-S2"*, which its own body already said |
 | 7 | `docs/14-V2-SCOPE.md`, the no-new-dependency paragraph | *"XLSX, PPTX and ODT each added a reader"* | all **seven** since the crate landed, with the EPUB case named |
-| 8 | `docs/02-ROADMAP.md`, the document-pairs paragraph | *"`engine-office` reading **two** formats"* | **eight** |
+| 8 | `docs/02-ROADMAP.md`, the document-pairs paragraph | *"`ethos-parser-office` reading **two** formats"* | **eight** |
 | 9 | `README.md`, the subcommand synopsis | `extract` accepted `.pdf` through `.ods` | `.odp`, `.rtf` and `.epub` too |
-| 10 | `crates/engine-cli/src/main.rs`, `run_extract`'s dispatch comment | *"these **four** `\|\|`s"* | **six**, and names the v2-S10 branch below them as their negation |
+| 10 | `crates/ethos-parser-cli/src/main.rs`, `run_extract`'s dispatch comment | *"these **four** `\|\|`s"* | **six**, and names the v2-S10 branch below them as their negation |
 | 11 | `docs/draft-schemas/markdown.draft.json` | `parser_version` `0.13.0` | regenerated |
 | 12 | `docs/draft-schemas/html.draft.json` | `representation_sha256` from a build its own `parser_version` disagreed with | regenerated |
 | 13 | `docs/15-V2-MILESTONES.md`, the S10 escalation | cited `:54` and `:149` | both had rotted by 1 and 3 lines; replaced with **named anchors** |
 | 14 | `docs/14-V2-SCOPE.md`, open question 1 | cited `15-V2-MILESTONES.md:149` | same rot, same repair |
-| 15 | `fuzz/Cargo.lock` | `engine-core` and `engine-pdf` at **0.27.0** | `0.29.1`. Stale since v2-S8 |
+| 15 | `fuzz/Cargo.lock` | `ethos-parser-core` and `ethos-parser-pdf` at **0.27.0** | `0.29.1`. Stale since v2-S8 |
 | 16 | `Cargo.toml`'s release-history line | stopped at `v2-S10 as 0.29.0` | carries this release |
 
 **Two of these were decisions rather than typos, and both are argued where a reader will find
@@ -2141,7 +2183,7 @@ release has none.
 
 #### Changed — one behaviour, and it is a test harness
 
-- **`crates/engine-cli/tests/{markdown_cli,html_cli,mcp_stdio}.rs` now resolve the conformance
+- **`crates/ethos-parser-cli/tests/{markdown_cli,html_cli,mcp_stdio}.rs` now resolve the conformance
   corpus through `fixtures/manifest.json`**, honouring the `ETHOS_FIXTURES` override the manifest
   declares — as `classify_cli.rs`, `diagnostics.rs`, `grounding.rs` and `library_surface.rs`
   always have. All three hardcoded `repo_root().join("../ethos/fixtures")` and asserted the file
@@ -2224,7 +2266,7 @@ design.
 
 #### The last wrong-cause refusal, fixed for the shape
 
-At 0.28.1, `engine extract rows.csv` said *"expected a PDF header (%PDF-) at byte 0, found
+At 0.28.1, `ethos-parser extract rows.csv` said *"expected a PDF header (%PDF-) at byte 0, found
 `name,`"*. Right exit code, **wrong cause** — a `.csv` is not a broken PDF, it is bytes that state
 **no format at all**, and PDF was merely the fallthrough that caught them. A prose `.txt` got the
 same message with different quoted bytes, which is how it is known to be a shape rather than a
@@ -2250,7 +2292,7 @@ and the `.csv` itself.
 
 A **truncated PDF** — bytes that are a proper prefix of `%PDF-`, the zero-byte file included —
 keeps the PDF reader's own message, because it aimed there. A four-byte `%PDX` is not a prefix and
-takes the no-format branch. And **`engine classify` did not move with `engine extract`**: it never
+takes the no-format branch. And **`ethos-parser classify` did not move with `ethos-parser extract`**: it never
 reaches the office router, so a `.csv` handed to it is still refused for having no `%PDF-` header.
 That is deliberate — `classify` **is** the PDF classifier — and it is now pinned by a test and
 written down in `docs/15-V2-MILESTONES.md` S10 rather than left to be discovered.
@@ -2281,24 +2323,24 @@ Either would reopen CSV. **Neither is met, neither is a day's work, and neither 
 
 #### Added
 
-- `engine_pdf::aims_at_the_pdf_reader` — **not a detector**. It decides nothing about what bytes
+- `ethos_parser_pdf::aims_at_the_pdf_reader` — **not a detector**. It decides nothing about what bytes
   *are*; it answers whether a message about a PDF header is the honest cause for them, which is
   true only when they start with the header or are a proper prefix of it. Frozen in
   `docs/PUBLIC-API.md` under Format detection
-- `crates/engine-cli/tests/no_format_cli.rs` — the byte-identical-stderr proof, the truncated-PDF
+- `crates/ethos-parser-cli/tests/no_format_cli.rs` — the byte-identical-stderr proof, the truncated-PDF
   edge, the exit contract, the `classify` divergence, and a source walker pinning that no shipping
   source contains `is_csv`, `text/csv`, `.extension()`, `.file_name()` or `.file_stem()`. The
   walker scans **whole files** and exempts the one real occurrence by name. Its first version
   trimmed each file at the first `#[cfg(test)]`, which reads as equivalent and is not:
-  `engine-pdf/src/lib.rs` carries one at line 56, so the trim hid that crate's entire public
+  `ethos-parser-pdf/src/lib.rs` carries one at line 56, so the trim hid that crate's entire public
   surface — including the export this slice added — and the guard passed because it read nothing
 
 #### Changed
 
-- `engine extract` refuses bytes that state no format by naming what was **looked for**, without
+- `ethos-parser extract` refuses bytes that state no format by naming what was **looked for**, without
   opening a reader that was never asked for. Exit stays **2**, `code()` stays `unsupported`, stdout
   stays empty — only the **cause** moved
-- `crates/engine-cli/tests/epub_cli.rs` and `rtf_cli.rs` were **strengthened, not deleted**. Both
+- `crates/ethos-parser-cli/tests/epub_cli.rs` and `rtf_cli.rs` were **strengthened, not deleted**. Both
   asserted only exit 2 and empty stdout, so both would have stayed green straight through the
   message change they existed to notice — the vacuous-test trap v2-S9's review named. Both now
   assert the message text
@@ -2324,7 +2366,7 @@ shape survived in seven other readers.** This is that defect, repaired everywher
 
 #### The width is not the fix
 
-Every A14 erasure counter in `engine-office` is a `u32` and stays one. A **saturated** count is
+Every A14 erasure counter in `ethos-parser-office` is a `u32` and stays one. A **saturated** count is
 honest at the ceiling — it over-declares, which is the direction **A14** asks for everywhere else.
 A **wrapped** one is a drop presented as a success, and widening to `u64` would move the ceiling
 rather than remove it.
@@ -2334,7 +2376,7 @@ rather than remove it.
 `zip.rs` bounds each entry it inflates at 256 MiB, so a single `content.xml` cannot on its own
 reach `u32::MAX`. The **folds** can, because nothing bounds the number of entries: EPUB's spine
 fold is the one S9 reproduced, and `read_pptx`'s cross-slide fold at
-`crates/engine-office/src/lib.rs` is the same shape. RTF has no per-part bound at all. The
+`crates/ethos-parser-office/src/lib.rs` is the same shape. RTF has no per-part bound at all. The
 remaining per-document counters were repaired for the shape, not because a file was found that
 reaches them.
 
@@ -2354,7 +2396,7 @@ slice's.
 
 #### Fixed
 
-- `engine-office`: `lib.rs` (the cross-slide fold), `pptx.rs`, `xlsx.rs`, `odt.rs`, `ods.rs`,
+- `ethos-parser-office`: `lib.rs` (the cross-slide fold), `pptx.rs`, `xlsx.rs`, `odt.rs`, `ods.rs`,
   `odp.rs` and `rtf.rs` fold every erasure through the new `declare`, which saturates. The site
   list this slice started from named **19** places and **22** were found. `ods.rs` had a sixth the
   list did not carry — and `other_kinds`, which counts entries in a slide list or a sheet list that
@@ -2362,18 +2404,18 @@ slice's.
   artifact as a declared limitation, so it is an A14 count like any other; it was missed because
   this slice's own search was for names ending `_not_read`, and it does not end that way. **A site
   list is not a search, and a search shaped like the list finds what the list already knew.**
-- `engine-pdf`: `extract.rs`'s `unclaimed_tree_items` and `mcids_unbound`, the two of eight
+- `ethos-parser-pdf`: `extract.rs`'s `unclaimed_tree_items` and `mcids_unbound`, the two of eight
   document-level accumulators still on `+=`. The other six already saturated
-- `engine-office`, `engine-pdf`: every `.count() as u32` feeding an erasure count
+- `ethos-parser-office`, `ethos-parser-pdf`: every `.count() as u32` feeding an erasure count
 
 #### Added
 
 - One saturation test per repaired reader, each driving that reader's own measured count past
   `u32::MAX` and asserting `u32::MAX` rather than a small number
-- `crates/engine-office/tests/erasure_counters.rs` — the guard that fails on a **revert**, which
+- `crates/ethos-parser-office/tests/erasure_counters.rs` — the guard that fails on a **revert**, which
   the per-reader tests cannot: a fold that is correct and a reader that stopped calling it would
   leave every one of them passing, and that is precisely how the S9 defect survived. It reads the
-  source of all nine `engine-office` files plus `engine-pdf`'s `extract.rs`, and it recognises
+  source of all nine `ethos-parser-office` files plus `ethos-parser-pdf`'s `extract.rs`, and it recognises
   every spelling of a wrapping accumulation rather than one — `x += 1`, `x  += 1` and
   `x = x + 1` all wrap identically, and a guard that knew only the first would have called the
   other two clean. `the_counter_list_is_complete` derives the counter names from the source rather
@@ -2394,8 +2436,8 @@ moved. `docs/CAPABILITY.md` still reads **0.28.0** in its body; that line moves 
 
 ### v2-S9 — EPUB into the representation, and the page a publisher named
 
-**An EPUB block binds, and `pages` is still `[]`.** `engine extract` reads an `.epub` into the same
-`ethos.engine.representation.v0` the other eight formats produce. **S9 is EPUB and is done; S10
+**An EPUB block binds, and `pages` is still `[]`.** `ethos-parser extract` reads an `.epub` into the same
+`ethos.parser.representation.v0` the other eight formats produce. **S9 is EPUB and is done; S10
 parks CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still bind, and **v2 is not
 complete**.
 
@@ -2440,7 +2482,7 @@ refused rather than clamped.
 An EPUB is a package with **many** parts, so it takes the bijection `read_xlsx` has used since
 v2-S3: one part id per spine document, ordinals contiguous within each. v2-S8 split
 `check_page_less_shape` so a format with **no** parts could be checked on the one claim it can make;
-v2-S9 uses the other half, and needed nothing new in `engine-core`.
+v2-S9 uses the other half, and needed nothing new in `ethos-parser-core`.
 
 #### HTML's own default display, which is stronger than a list
 
@@ -2521,10 +2563,10 @@ crate, no EPUB crate, and no HTML5 parser: EPUB content documents are XML, and t
 
 #### Added
 
-- `engine_core`: `NativeLocator::Epub`, `EpubLocator`, `NodeAttributes::EpubBlock`,
+- `ethos_parser_core`: `NativeLocator::Epub`, `EpubLocator`, `NodeAttributes::EpubBlock`,
   `EpubBlockAttributes`, `Profile::epub_v0`, `EPUB_READING_ORDER_RULE_V1`,
   `EPUB_TEXT_CODE_RULE_V1`
-- `engine_office`: the `epub` module (`read`, `Block`, `SpineDocument`, `Publication`, `is_epub`,
+- `ethos_parser_office`: the `epub` module (`read`, `Block`, `SpineDocument`, `Publication`, `is_epub`,
   `unread_entries`, `EPUB_MEDIA_TYPE`, `CONTAINER_PART`, `ENCRYPTION_PART`), plus `is_epub` and
   `EPUB_MEDIA_TYPE` at the crate root
 - `fixtures/office/book-spine` and `fixtures/office/book-unread-parts`, with their generator
@@ -2535,8 +2577,8 @@ crate, no EPUB crate, and no HTML5 parser: EPUB content documents are XML, and t
 - `xml` gained `resolve_reference` (character references, for XHTML only) and
   `unprefixed_attribute` — XML puts an unprefixed **attribute** in no namespace at all, so asking
   `resolved_attribute` for an OPF `href` found none of them
-- `engine_office::read`'s router claims an EPUB, and its no-format refusal now names it
-- The `engine-office` crate header, stale since v2-S6, names every format the crate reads
+- `ethos_parser_office::read`'s router claims an EPUB, and its no-format refusal now names it
+- The `ethos-parser-office` crate header, stale since v2-S6, names every format the crate reads
 - `rtf_cli.rs`'s "formats this slice did not implement" test hands the EPUB half to `epub_cli.rs`
   and keeps CSV
 
@@ -2584,14 +2626,14 @@ fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S8 — RTF into the representation, and the address with no part
 
-**A Rich Text Format paragraph binds, and `pages` is still `[]`.** `engine extract` reads an `.rtf`
-into the same `ethos.engine.representation.v0` the other seven formats produce. **S8 is RTF and is
+**A Rich Text Format paragraph binds, and `pages` is still `[]`.** `ethos-parser extract` reads an `.rtf`
+into the same `ethos.parser.representation.v0` the other seven formats produce. **S8 is RTF and is
 done; S9 parks EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still bind,
 and **v2 is not complete**.
 
 #### The first format here that is not a package
 
-Every reader in `engine-office` before this one opens by asking a **container** a question: does the
+Every reader in `ethos-parser-office` before this one opens by asking a **container** a question: does the
 central directory list `word/document.xml`, does the first stored entry declare an OpenDocument
 type, which part does this `r:id` resolve to. An `.rtf` has none of that. It is one sequence of
 bytes — `{`, `}`, control words beginning with `\`, and everything else is text — with no manifest,
@@ -2690,16 +2732,16 @@ layout engine's canvas rather than measuring its ink. The default PDF profile ha
 `parser_version` **alone**, for the thirty-first time, to
 `sha256:a9416ce96a7471d8a9cd951eda179978d737f1bfb1670faa151ad75ea734160d`.
 
-**No new dependency.** A hand-rolled control-word walker in `engine-office`, in character with
+**No new dependency.** A hand-rolled control-word walker in `ethos-parser-office`, in character with
 `zip.rs`'s argument for hand-rolling the ZIP reader: no RTF crate, no `zip` crate, no LibreOffice,
 no shelling out.
 
 #### Added
 
-- `engine_core`: `NativeLocator::Rtf`, `NativeLocator::names_a_part`, `RtfLocator`,
+- `ethos_parser_core`: `NativeLocator::Rtf`, `NativeLocator::names_a_part`, `RtfLocator`,
   `NodeAttributes::RtfParagraph`, `RtfParagraphAttributes`, `RtfParagraphBreak`,
   `Profile::rtf_v0`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`
-- `engine_office`: the `rtf` module (`read`, `Paragraph`, `Document`, `is_rtf`, `RTF_MEDIA_TYPE`),
+- `ethos_parser_office`: the `rtf` module (`read`, `Paragraph`, `Document`, `is_rtf`, `RTF_MEDIA_TYPE`),
   plus `is_rtf` and `RTF_MEDIA_TYPE` at the crate root
 - `fixtures/office/rich-text-paragraphs` and `fixtures/office/rich-text-unread-destinations`, with
   their generator
@@ -2709,9 +2751,9 @@ no shelling out.
 - Workspace **0.26.0 → 0.27.0**; both SDKs pinned to match
 - `check_structure`'s page-less shape gained a fourth rule for a format with no parts, and refuses
   an artifact that mixes part-named locators with part-less ones
-- `engine_office::read` answers the RTF question **before** the container question, and its
+- `ethos_parser_office::read` answers the RTF question **before** the container question, and its
   no-container refusal now names both shapes
-- `engine extract` routes any ZIP to the office router, so an unread package fails closed for the
+- `ethos-parser extract` routes any ZIP to the office router, so an unread package fails closed for the
   cause it has rather than for a missing `%PDF-` header
 
 #### What could not be measured, recorded
@@ -2729,8 +2771,8 @@ fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S7 — ODP into the representation, and the page that was free
 
-**An OpenDocument presentation block binds, and `pages` is still `[]`.** `engine extract` reads an
-`.odp` into the same `ethos.engine.representation.v0` the other six formats produce. **S7 is ODP and
+**An OpenDocument presentation block binds, and `pages` is still `[]`.** `ethos-parser extract` reads an
+`.odp` into the same `ethos.parser.representation.v0` the other six formats produce. **S7 is ODP and
 is done; S8 parks RTF, EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still
 bind, and **v2 is not complete**.
 
@@ -2847,15 +2889,15 @@ would say a detector ran. `measured_ink_boxes` is false and every geometry row i
 The default PDF profile hash moves on `parser_version` **alone**, for the thirtieth time, to
 `sha256:ba367599bc4649f6ca71c45f71dd7b71c22a26f8a4997cb0e39544afdde02773`.
 
-**No new dependency.** The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+**No new dependency.** The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same
 `quick-xml` — no `zip`, no ODF crate, no LibreOffice.
 
 #### Added
 
-- `engine_core`: `NativeLocator::Odp`, `OdpLocator`, `NodeAttributes::OfficeOdfShape`,
+- `ethos_parser_core`: `NativeLocator::Odp`, `OdpLocator`, `NodeAttributes::OfficeOdfShape`,
   `OfficeOdfShapeAttributes`, `Profile::odp_v0`, `ODP_READING_ORDER_RULE_V1`,
   `ODP_TEXT_CODE_RULE_V1`
-- `engine_office`: the `odp` module (`read_content`, `TextBlock`, `Presentation`, `is_odp`,
+- `ethos_parser_office`: the `odp` module (`read_content`, `TextBlock`, `Presentation`, `is_odp`,
   `ODP_MEDIA_TYPE`), plus `is_odp` and `ODP_MEDIA_TYPE` at the crate root
 - `fixtures/office/presentation-pages` and `fixtures/office/presentation-unread-parts`, with their
   generator
@@ -2863,7 +2905,7 @@ The default PDF profile hash moves on `parser_version` **alone**, for the thirti
 #### Changed
 
 - Workspace **0.25.0 → 0.26.0**; both SDKs pinned to match
-- `engine_office::read` routes a declared `…presentation` to the new reader, and its
+- `ethos_parser_office::read` routes a declared `…presentation` to the new reader, and its
   unimplemented-ODF refusal now names three implemented types instead of two
 - `xml` gained the namespace-resolved attribute matcher `ods` used to hold privately; `ods` calls it
 
@@ -2881,8 +2923,8 @@ fabrication **0**, and the **0.489 chase still parked**.
 
 ### v2-S6 — ODS into the representation, and the address the file never writes
 
-**An OpenDocument cell binds, and `pages` is still `[]`.** `engine extract` reads a `.ods` into the
-same `ethos.engine.representation.v0` the other five formats produce. **S6 is ODS and is done; S7
+**An OpenDocument cell binds, and `pages` is still `[]`.** `ethos-parser extract` reads a `.ods` into the
+same `ethos.parser.representation.v0` the other five formats produce. **S6 is ODS and is done; S7
 still parks ODP, RTF, EPUB and CSV.** v2's gate is still a DOCX quote and an XLSX cell, both still
 bind, and **v2 is not complete**.
 
@@ -2966,7 +3008,7 @@ half that does not transfer is written down in `15` rather than asserted as thou
 An `.ods` used to fall past the office branch to the PDF reader and come back with *"expected a PDF
 header (%PDF-) at byte 0"* — fail-closed, and naming the wrong cause.
 
-Two changes, neither a special case. `engine_office::is_opendocument` asks the **family** question —
+Two changes, neither a special case. `ethos_parser_office::is_opendocument` asks the **family** question —
 *is the office reader the one to ask* — which only an ODF package can answer about itself, and the
 CLI dispatches on that instead of on `is_odt`. It checks the declared **type**, not merely that a
 stored first `mimetype` entry exists: that container rule is **OCF**'s, and an `.epub` follows it
@@ -3005,7 +3047,7 @@ Two caps, both named refusals rather than allocations: a **text-bearing** repeat
 axis, and a part yielding more than a million cells. An *empty* repeat costs one addition, so the
 `table:number-columns-repeated="16384"` every producer writes for a row's trailing blanks is free.
 
-**No new dependency.** The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+**No new dependency.** The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same
 `quick-xml` — no `zip`, no `calamine`, no ODF crate, no LibreOffice.
 
 #### What could not be measured, recorded
@@ -3051,7 +3093,7 @@ that **no slice is measured against 0.489 at all**, and that no slice may cite p
 #### The research archive is off-tree
 
 `docs/reference/ethos-parser-expansion-memo.md` and
-`docs/reference/ethos-engine-parity-checklist.md` are **removed from git**. The owner keeps them
+`docs/reference/ethos-parser-parity-checklist.md` are **removed from git**. The owner keeps them
 elsewhere; holding a second document describing where the project is going is the confusion this
 removes. `docs/reference/README.md` is now a stub saying
 so and pointing at the living authority. **They are not to be restored, and not to be summarised
@@ -3063,8 +3105,8 @@ already was — the quote survives its source. Row ids (`O5`, `A14`, `L30`, `P6`
 the names of decisions recorded there.
 
 Every in-tree **path** citation is retargeted so nothing points at a missing file — `02`, `00`,
-`docs/README.md`, and four Rust comments (`engine-cli/src/mcp.rs`, `engine-pdf/src/thresholds.rs`,
-`engine-pdf/src/classify.rs`, `engine-grounding/tests/liteparse_refusal.rs`). Each was retargeted at
+`docs/README.md`, and four Rust comments (`ethos-parser-cli/src/mcp.rs`, `ethos-parser-pdf/src/thresholds.rs`,
+`ethos-parser-pdf/src/classify.rs`, `ethos-parser-grounding/tests/liteparse_refusal.rs`). Each was retargeted at
 a document that **actually records the claim being cited**, which is not always the obvious one: the
 MCP host ranking and its hazard are `12-V12-SCOPE.md` **§2**, not §3's handle law; the LiteParse
 vowel-floor trap is in `03-V0-SCOPE.md`'s open-measurements list and in the test that pins this
@@ -3108,8 +3150,8 @@ and once from the root README. It claims no OCR, no ODS, and neither v1 nor v2 c
 
 ### v2-S5 — ODT into the representation, and the page break that is in the file
 
-**An OpenDocument paragraph binds, and `pages` is still `[]`.** `engine extract` reads a `.odt`
-into the same `ethos.engine.representation.v0` the other four formats produce. The
+**An OpenDocument paragraph binds, and `pages` is still `[]`.** `ethos-parser extract` reads a `.odt`
+into the same `ethos.parser.representation.v0` the other four formats produce. The
 remaining-formats row splits again: **S5 is ODT and is done; S6 parks ODS, ODP, RTF, EPUB and CSV.**
 
 #### The format that could have had a page for free
@@ -3235,9 +3277,9 @@ measured — and S6 reads ODS and ODP over the same container and should measure
 
 #### No new dependency, and no new mechanism
 
-The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same `quick-xml`. No `zip`,
+The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same `quick-xml`. No `zip`,
 no ODF crate, no LibreOffice. `mcp.rs` is untouched and `node_get` resolves an ODF paragraph
-anyway; `engine-grounding` is untouched and `engine ground` on an ODT is a named refusal, per
+anyway; `ethos-parser-grounding` is untouched and `ethos-parser ground` on an ODT is a named refusal, per
 v2-S1's decision (b). `Profile::odt_v0` has its own hash — five profiles, mutually distinct — and
 carries the same inert `coordinate_system` the other three page-less profiles do. The PDF profile
 hash moves on `parser_version` **alone**, as at S2, S3 and S4:
@@ -3248,24 +3290,24 @@ and both bind; ODT is coverage beyond it, and S6 has not started.
 
 #### Added
 
-- `engine_office::{odt, is_odt, ODT_MEDIA_TYPE}` and `zip::first_entry` — frozen surface,
+- `ethos_parser_office::{odt, is_odt, ODT_MEDIA_TYPE}` and `zip::first_entry` — frozen surface,
   `docs/PUBLIC-API.md`
 - `OdtLocator`, `NativeLocator::Odt`, `NodeAttributes::OfficeParagraph`,
   `OfficeParagraphAttributes`, `OdfBlockKind`, `Profile::odt_v0`, `ODT_READING_ORDER_RULE_V1`,
-  `ODT_TEXT_CODE_RULE_V1` in `engine-core`
+  `ODT_TEXT_CODE_RULE_V1` in `ethos-parser-core`
 - `fixtures/office/text-paragraphs` and `fixtures/office/text-unread-parts`, authored by
   `fixtures/office/make_fixtures.py` with `mimetype` written first and stored
 
 #### Changed
 
-- Workspace and both SDKs to **0.24.0**; `engine extract` dispatches on ODT bytes as well
+- Workspace and both SDKs to **0.24.0**; `ethos-parser extract` dispatches on ODT bytes as well
 - `docs/15-V2-MILESTONES.md` splits the parked row: S5 is ODT and done, S6 is ODS/ODP/RTF/EPUB/CSV
   and not started
 
 ### v2-S4 — PPTX into the representation, and the format that tested the page law
 
-**A slide's text binds, and a slide is a part.** `engine extract` reads a `.pptx` into the same
-`ethos.engine.representation.v0` the other three formats produce.
+**A slide's text binds, and a slide is a part.** `ethos-parser extract` reads a `.pptx` into the same
+`ethos.parser.representation.v0` the other three formats produce.
 
 #### The temptation this slice exists to have refused
 
@@ -3349,7 +3391,7 @@ Each fix is mutation-checked: deleting it fails a test.
 - Workspace and both SDKs to **0.23.0**. The PDF default profile hash moves to
   `sha256:8dfca0e41d51668c6d540ec45bf83dd66503dbc2dcb1fa7c188cceebe255d4bd` on `parser_version`
   **alone**, as at S2 and S3. All four profile hashes are now mutually distinct.
-- `engine_office::read` counts the main parts a package lists instead of asking three ordered
+- `ethos_parser_office::read` counts the main parts a package lists instead of asking three ordered
   questions, so a package claiming two formats is a named refusal rather than whichever `if` ran
   first. `is_pptx` joins `is_docx` and `is_xlsx`; none consults a file name (**A4**).
 - **`docs/15-V2-MILESTONES.md`'s remaining-formats row split**, which is what S2 and S3 were
@@ -3367,8 +3409,8 @@ and S5 is not required for it. v1 is still **missed at 64‰**.
 
 ### v2-S3 — XLSX into the representation, and the `coordinate_system` question closed
 
-**A cell binds.** `engine extract` reads an `.xlsx` into the same
-`ethos.engine.representation.v0` a PDF and a DOCX produce — and nothing on that path is a page, a
+**A cell binds.** `ethos-parser extract` reads an `.xlsx` into the same
+`ethos.parser.representation.v0` a PDF and a DOCX produce — and nothing on that path is a page, a
 column width or a print range.
 
 #### The locator, and the two spellings the file uses
@@ -3394,7 +3436,7 @@ Excel leaves part names alone, deleting one leaves a gap, and part names are aut
 those attaches the **wrong sheet name to the right cells**, which is worse than no address at all.
 The fixture's second sheet is `sheet3.xml` behind `rId7` so the shortcut cannot pass silently.
 
-#### The first artifact with more than one part — and `engine-core` did not change
+#### The first artifact with more than one part — and `ethos-parser-core` did not change
 
 A workbook is one part per sheet. v2-S2's page-less rules already allowed that and nobody had
 exercised it: the part-id ↔ part-name check is a **bijection**, not a cardinality-of-one rule, and
@@ -3419,7 +3461,7 @@ engine's `TableRecord` IR, and this slice emits cells.
 
 v2-S2 left `coordinate_system` declaring `centipoint`/`top-left` on a page-less profile and asked
 S3 to settle it with a second format's evidence. **Nothing acts on the value for a page-less
-artifact**: `engine_grounding::project` hard-codes the pair rather than copying it and refuses a
+artifact**: `ethos_parser_grounding::project` hard-codes the pair rather than copying it and refuses a
 non-`application/pdf` source long before reaching it; the only branch on the value in the workspace
 is inside the `ethos.grounding.v1` validator, downstream of that refusal; and both SDKs re-hash the
 field as opaque bytes without parsing it.
@@ -3487,9 +3529,9 @@ fails without the fix.
   `"kind":"annotation"` with `office_cell` attributes sealed cleanly and read as two different
   things depending on which field a consumer trusted. `check_structure` now enforces it on both
   construction paths. Found while adding the third variant that relies on the claim.
-- **`engine-office` was outside the public-API freeze.** It shipped at v2-S2 without a row in
+- **`ethos-parser-office` was outside the public-API freeze.** It shipped at v2-S2 without a row in
   `docs/PUBLIC-API.md` or the gate's `FROZEN` table, which by that document's own rule made
-  `engine_office::read` — the entry point for two of the three formats `engine extract` accepts —
+  `ethos_parser_office::read` — the entry point for two of the three formats `ethos-parser extract` accepts —
   "internal", renameable without a note. Added, with its own section.
 
 #### Measured in passing, recorded rather than acted on
@@ -3506,15 +3548,15 @@ fails without the fix.
 - Workspace and both SDKs to **0.22.0**. The PDF default profile hash moves to
   `sha256:26c10d2a73e41c357c82589b0acfabffd8b33f9f93e3c666452b8a437743b6fa` on `parser_version`
   **alone** — every other byte of that profile is identical, as at S2.
-- `engine_office::read` is now a router. `is_xlsx` joins `is_docx`; both refuse to decide by
+- `ethos_parser_office::read` is now a router. `is_xlsx` joins `is_docx`; both refuse to decide by
   extension (**A4**).
-- The five-entity rule and the local-name helper moved to `engine-office/src/xml.rs`, unchanged and
+- The five-entity rule and the local-name helper moved to `ethos-parser-office/src/xml.rs`, unchanged and
   message-identical, so the two readers cannot drift on what counts as text.
 
 ### v2-S2 — DOCX into the representation, and the page-parent invariant S1 found
 
-**The first office reader, and the IR change that had to come first.** `engine extract` reads a
-`.docx` into the same `ethos.engine.representation.v0` a PDF produces — and **nothing on that path
+**The first office reader, and the IR change that had to come first.** `ethos-parser extract` reads a
+`.docx` into the same `ethos.parser.representation.v0` a PDF produces — and **nothing on that path
 is a page**.
 
 #### The invariant, split rather than loosened
@@ -3537,7 +3579,7 @@ itself already. Every page-less node names its part in its own locator instead, 
 that one part id means one part name **in both directions**.
 
 The measured-box row is what makes "no geometry" a property of the artifact rather than a habit of
-the reader: `engine-office` could not emit a rectangle if a later edit tried.
+the reader: `ethos-parser-office` could not emit a rectangle if a later edit tried.
 
 #### The locator, and why the attributes are a new variant
 
@@ -3558,10 +3600,10 @@ not read, and `measured_ink_boxes: false` is the load-bearing one.
 
 #### The fifth crate, and exactly one new dependency
 
-`engine-office`, where `04-ARCHITECTURE.md` always said an office reader would live —
+`ethos-parser-office`, where `04-ARCHITECTURE.md` always said an office reader would live —
 *"revisit only when office or OCR needs a real home"*. DOCX is that revisit.
 
-**`quick-xml` is the only new crate in the lock.** ZIP is read in `engine-office/src/zip.rs` over
+**`quick-xml` is the only new crate in the lock.** ZIP is read in `ethos-parser-office/src/zip.rs` over
 `flate2`, which the graph already carried via `lopdf`: the `zip` crate drags twelve transitives
 including `zopfli`, a *compressor*, to save ~120 lines of central-directory reading. XML is the
 opposite call and is **not** hand-rolled, because entities, namespaces, CDATA and encodings are
@@ -3587,7 +3629,7 @@ that will not parse, and a part ending with elements still open are each a **nam
 
 #### What did not change, which is the one-IR claim being paid
 
-**`ethos.grounding.v1` is untouched** and `engine ground` on a DOCX artifact is a named refusal
+**`ethos.grounding.v1` is untouched** and `ethos-parser ground` on a DOCX artifact is a named refusal
 naming `application/pdf` and pointing at the law — v2-S1's decision (b), now live rather than
 hypothetical. `project()`'s PDF path is unchanged; relaxing its page requirement "for office" would
 have changed PDF behaviour for a format that did not exist here yet.
@@ -3615,7 +3657,7 @@ this entry closes it.
 
 **A contract decision with no reader.** S0 posed the question and S1 answers it: **(b)**, grounding
 stays PDF-only. No page-less source shape, no optional `page`, no forked schema. Revising the
-artifact is **(a)**, a change to the **verifier's** contract — `engine-cli/tests/oracle.rs` agrees
+artifact is **(a)**, a change to the **verifier's** contract — `ethos-parser-cli/tests/oracle.rs` agrees
 with the pinned Ethos CLI on this exact schema, so an engine-only revision would produce artifacts
 the verifier does not speak while both still called themselves `ethos.grounding.v1`. (a) is recorded
 as **blocked on an Ethos-side revision**, owned rather than refused. Adding an optional `page` to
@@ -3636,14 +3678,14 @@ either. Reaching v2's gate is upstream of grounding, in the IR's own page-parent
 design decision about the representation rather than a schema question. `15` hands it to S2, which
 now knows it **before** writing a reader against an invariant that would have rejected its output.
 
-**`04-ARCHITECTURE.md` §6's precondition — *"provided `engine-grounding` never learned about
+**`04-ARCHITECTURE.md` §6's precondition — *"provided `ethos-parser-grounding` never learned about
 pages"* — holds, and points at the wrong crate.** This crate never learned what a page *is*: it
 reads no locator, derives no geometry, and addresses pages by id. `project()`'s check that
 `node.parent` names a declared page is a **re-assertion of an invariant `seal` already guarantees**,
 not independent knowledge — it can never be handed a page-less representation, because one cannot be
-constructed. The assumption lives in `engine-core`, which the M5 line permits.
+constructed. The assumption lives in `ethos-parser-core`, which the M5 line permits.
 
-Four guards in `crates/engine-grounding/tests/page_less_source.rs`: the three schema walls; the seal
+Four guards in `crates/ethos-parser-grounding/tests/page_less_source.rs`: the three schema walls; the seal
 refusal with its named message; **the same document with its page declared, which seals and
 projects**, so the refusal test fails for the page and for nothing else; and a `Cargo.lock` scan for
 LibreOffice, soffice, headless Chrome, wkhtmltopdf, WeasyPrint, chromiumoxide and printpdf, because
@@ -3651,7 +3693,7 @@ LibreOffice, soffice, headless Chrome, wkhtmltopdf, WeasyPrint, chromiumoxide an
 
 `project()` is untouched — relaxing the PDF path's page requirement "for office" would change PDF
 behaviour to accommodate a format that does not exist here yet. No reader, no `zip`, no
-`quick-xml`, no `engine-office`, no schema field.
+`quick-xml`, no `ethos-parser-office`, no schema field.
 
 ### Identity, after v2-S1
 
@@ -3690,7 +3732,7 @@ representation level. **Inventing a page to satisfy the schema is the third opti
 forbidden outright.** `15` makes that decision S1, ahead of any reader whose output would depend on
 it — the shape v1.2-S0 used for the handle law.
 
-`engine-office` is **named** as where an office crate would live (`04-ARCHITECTURE.md` already
+`ethos-parser-office` is **named** as where an office crate would live (`04-ARCHITECTURE.md` already
 named it) and **not created**: a fifth crate before a second format is speculative structure. A1's
 14-format horizon is parked as a single row until DOCX and XLSX have shipped and the cost of the
 third is measured rather than guessed. No LibreOffice, no Anydoc dependency, no JVM, no AGPL.
@@ -3700,7 +3742,7 @@ this entry closes it.
 
 ### v1.2 — complete
 
-**v1.2 is adoption, and it adds no parse feature at all.** `engine mcp` serves the stages that
+**v1.2 is adoption, and it adds no parse feature at all.** `ethos-parser mcp` serves the stages that
 already exist over MCP on stdio: newline-delimited JSON-RPC on a pipe, three tools, no new crate
 and no new dependency. **v1 is still not done** — the S7 gate is measured and missed at 64‰ — and
 nothing here closes it. **v1.1 stays complete** and untouched. Not tagged.
@@ -3732,7 +3774,7 @@ its guess was merely unlucky; an error tells it the guess was not admissible.
 
 | tool | argument | returns |
 | --- | --- | --- |
-| `extract` | `path` | `DocumentRepresentation v0`, byte-identical to `engine extract` |
+| `extract` | `path` | `DocumentRepresentation v0`, byte-identical to `ethos-parser extract` |
 | `ground` | `representation` | `ethos.grounding.v1` |
 | `node_get` | `representation`, `node_id` | the node record from **that** artifact |
 
@@ -3772,7 +3814,7 @@ thing about the same document, and the hash moves because `parser_version` is in
 
 ### S2 — the Python SDK, and the decision that makes divergence impossible
 
-`packages/python/` — **`extract`, `ground`, `node_get`, and nothing else.** It wraps the `engine`
+`packages/python/` — **`extract`, `ground`, `node_get`, and nothing else.** It wraps the `ethos-parser`
 binary with `subprocess` and parses stdout with the stdlib `json` module, so **byte-identity with
 the CLI is a tautology rather than a promise**: there is no second serialization anywhere in the
 package for an artifact to change in. A test re-canonicalizes what `extract` returned and compares
@@ -3790,21 +3832,21 @@ one binary, not layers.
 
 | function | shells out to | returns |
 | --- | --- | --- |
-| `extract(pdf_path)` | `engine extract <path>` | `DocumentRepresentation v0` |
-| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `extract(pdf_path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `node_get(representation, node_id)` | **nothing** | the node record from **that** artifact |
 
-**`ground` takes a representation, not a quote and not a page.** `engine ground` takes neither — it
+**`ground` takes a representation, not a quote and not a page.** `ethos-parser ground` takes neither — it
 projects the record into `ethos.grounding.v1` — and a locator-shaped argument would be §3's
 corollary violation in its purest form.
 
-**`node_get` has no subcommand behind it**, and this slice did not add an `engine node-get` for
+**`node_get` has no subcommand behind it**, and this slice did not add an `ethos-parser node-get` for
 symmetry. MCP already carries the tool. So its checks are ported in the order `mcp.rs` runs them:
 the value is a representation; its payload is re-canonicalized and re-hashed and must equal
 `representation_c14n_sha256`, **before any lookup happens**; the id is looked up among that
 artifact's own nodes, and a miss **raises**.
 
-That is why `_c14n.py` exists — c14n v1 in Python, running `engine-core/src/c14n.rs`'s own parity
+That is why `_c14n.py` exists — c14n v1 in Python, running `ethos-parser-core/src/c14n.rs`'s own parity
 vectors. A fingerprint that were merely *nearly* the engine's would be worse than none: it would
 accept an artifact the engine refuses, or refuse one the engine minted, and either way a caller
 would be told something false about a document. The load-bearing proof is not the five vectors but
@@ -3835,7 +3877,7 @@ version string.
 ### S3 — the Node SDK, which is the Python one in a second language
 
 `packages/node/` — **`extract`, `ground`, `nodeGet`, and nothing else.** Same shape as S2 and for
-the same reasons: spawn the `engine` binary, parse stdout, hand back the bytes the CLI printed.
+the same reasons: spawn the `ethos-parser` binary, parse stdout, hand back the bytes the CLI printed.
 JavaScript and `node:test`, no TypeScript, no bundler, no test framework, no runtime dependency.
 
 **It is not a second design.** S2 is the contract, and if Node disagreed with Python about a
@@ -3854,7 +3896,7 @@ writes **c14n bytes** to a temp file rather than `JSON.stringify` output, becaus
 serialization is the one thing this package exists not to have. It does not repeat the fingerprint
 check in JavaScript: the engine runs it, and the SDK surfaces the engine's own stderr.
 
-**c14n ported a second time**, running `engine-core/src/c14n.rs`'s own parity vectors, with two
+**c14n ported a second time**, running `ethos-parser-core/src/c14n.rs`'s own parity vectors, with two
 JavaScript-specific hazards handled rather than hoped: `Array.prototype.sort` compares UTF-16 code
 units and disagrees with Rust's `String: Ord` above the BMP, so keys are sorted by **code point**
 explicitly (a test asserts the default sort would have got that pair wrong); and `Buffer.from`
@@ -3887,8 +3929,8 @@ test exists to catch.
 
 ### S4 — LangChain tools, and the split is the whole slice
 
-`ethos_engine.langchain` and `ethos-engine/langchain` — **`extract`, `ground`, `node_get` in both
-languages**, each calling the SDK that already exists. Nothing spawns `engine` a third way and
+`ethos_parser.langchain` and `ethos-parser/langchain` — **`extract`, `ground`, `node_get` in both
+languages**, each calling the SDK that already exists. Nothing spawns `ethos-parser` a third way and
 nothing here speaks MCP; if a tool returned bytes an SDK would not, the tool would be wrong.
 
 **`12-V12-SCOPE.md` §3's second corollary, implemented a second time.** Locators live in the
@@ -3906,7 +3948,7 @@ sides for that one reason.
 | `node_get` | ``1 node, kind `{kind}`.`` | the node record |
 
 **MCP is the oracle for those strings, not this slice's opinion.** Both suites compare `content`
-byte-for-byte against what `engine mcp` emits, on one fixture where nothing is omitted and one
+byte-for-byte against what `ethos-parser mcp` emits, on one fixture where nothing is omitted and one
 where everything is. That stops a second adapter inventing a richer sentence than the first, and it
 is the proof that `ground`'s omitted count — computed out here as **nodes minus elements** — equals
 the engine's own `omission.nodes_omitted`. Counting geometry rows instead would re-encode
@@ -3914,18 +3956,18 @@ the engine's own `omission.nodes_omitted`. Counting geometry rows instead would 
 question than the one being asked goes wrong the first time a second absence variant appears.
 
 `node_get`'s summary names the **kind** and never the id, spelled the way the artifact spells it
-(`text_run`) rather than the way `engine mcp` prints Rust's `Debug` (`TextRun`): reshaping it would
+(`text_run`) rather than the way `ethos-parser mcp` prints Rust's `Debug` (`TextRun`): reshaping it would
 be the adapter inventing a name for a thing it did not read.
 
 **One wire shape.** The three argument schemas are plain JSON Schema, verbatim from what
-`engine mcp` advertises, and a test in each language asserts them against `tools/list`. `node_id`
+`ethos-parser mcp` advertises, and a test in each language asserts them against `tools/list`. `node_id`
 keeps MCP's spelling in both languages even though the Node SDK's parameter is `nodeId` — the tool
 argument is the wire, and one wire has one name. JSON Schema rather than pydantic models or zod, so
 the adapters compare object to object and the Node package still needs nothing but
 `@langchain/core`.
 
 **The install stays empty.** `langchain-core` is an optional Python extra and `@langchain/core` an
-optional Node peer, both reached on a subpath, so `import ethos_engine` and `import "ethos-engine"`
+optional Node peer, both reached on a subpath, so `import ethos_parser` and `import "ethos-parser"`
 still pull nothing — asserted off the **default entry point's** import graph. Importing the subpath
 without the dependency is a named failure carrying the install command; in JS that is a dynamic
 import inside a try/catch at module load, so it fails where Python's `ImportError` fails rather
@@ -3938,13 +3980,13 @@ unreadable document **raises**, which is MCP's `isError: true` in this framework
 
 ### A false green this slice found and closed
 
-Both SDK suites preferred `target/release/engine` and took the first file that existed. On a tree
+Both SDK suites preferred `target/release/ethos-parser` and took the first file that existed. On a tree
 with a stale release build that was a **`0.11.0`** binary, and every S2 and S3 assertion passed
 against it — the byte-identity checks compare the SDK against the CLI using the same binary, so
 they are self-consistent whichever one it is. They proved what they claim, about the wrong engine.
 
-Both locators now read `engine --version` and refuse a binary that is not this workspace's: an
-explicit `ETHOS_ENGINE` pin errors rather than being silently overridden, and the search skips a
+Both locators now read `ethos-parser --version` and refuse a binary that is not this workspace's: an
+explicit `ETHOS_PARSER` pin errors rather than being silently overridden, and the search skips a
 build from another version and names what it found.
 
 ### Identity, after S4
@@ -3993,7 +4035,7 @@ parser for a JSON shape this tree has no sample of, so it would reject real Lite
 malformed when the truth is that this engine guessed their schema.
 
 Instead the refusal is executable the way this repository makes rules executable:
-`crates/engine-grounding/tests/liteparse_refusal.rs` asserts `producer` requires a non-empty name
+`crates/ethos-parser-grounding/tests/liteparse_refusal.rs` asserts `producer` requires a non-empty name
 and version, that no property anywhere in the schema declares box semantics, and that
 `additionalProperties: false` leaves no room to add one. Relax any of those and the test fails, and
 S5 is reopened **deliberately**.
@@ -4011,7 +4053,7 @@ disagree about what this repository decided must not both call themselves 0.18.0
 Every artifact and every rule: `markdown-blocks-v2`, `html-blocks-v2`, the three table rules, the
 representation (0.5.0). The table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0, and all four v1.1 goldens. `project()` and
-`engine ground` are untouched — `engine-grounding/src` has no diff in this slice. Four crates, no
+`ethos-parser ground` are untouched — `ethos-parser-grounding/src` has no diff in this slice. Four crates, no
 new Rust dependency, no HTTP, no SSE, no socket, no Tokio, no TLS. No PyO3, no maturin, no napi, no
 neon, no node-gyp, no native extension, and **no default-install dependency in either SDK**. No
 LangGraph, no LlamaIndex, no Haystack, no liteparse, no PDFium. Not on PyPI, not on npm. No tag.
@@ -4135,7 +4177,7 @@ finding a schema that had drifted for want of one.
 `markdown_rule` and every byte of Markdown it produces. The representation (0.5.0), `extract`, the
 three detection rules, the table gate (**still missed at 64‰**), the oracle (12/3),
 `irs-form-1040-2025` at 0 tables, fabrication 0. Four crates, no new dependency, no HTML parser, no
-fixture added. **`engine-pdf` imports neither projection** and its `src/` has zero mentions of
+fixture added. **`ethos-parser-pdf` imports neither projection** and its `src/` has zero mentions of
 Markdown; its three `html` mentions are pre-existing magic-byte sniffing (a file that *is*
 HTML) and one analogy in a doc comment. Its `tests/` names the new capability, which is where
 the capability table lives. No CSS, no JS, no MCP, no tag. v1.2 has not started.
@@ -4235,7 +4277,7 @@ run — a running head, a footer, a folio — passed every other tail guard. A p
 line ends in a soft hyphen and whose footer is the next node in reading order projected
 `Rates may be recalcu-` + `Confidential draft` as **`recalcuConfidential`**: a word on no page,
 welded out of two streams the document itself declared separate (PDF 32000 §14.8.2.2, and
-`engine-pdf`'s own binding rule — *artifact wins*).
+`ethos-parser-pdf`'s own binding rule — *artifact wins*).
 
 It also broke a promise `to_markdown` rule 1 makes out loud. Artifacts are kept in the projection
 precisely so **a consumer that wants them gone drops them itself, knowing it did** — checklist
@@ -4305,7 +4347,7 @@ rather than 0.12.1 for the same reason 0.12.0 was not a patch.
 The representation (0.5.0) and every artifact shape. The three detection rules, the table gate
 (**still missed at 64‰**), `extract`, the oracle (12/3), `irs-form-1040-2025` at 0 tables,
 fabrication 0. Regenerating `fixtures/engine/` leaves every pre-existing document byte-identical.
-Four crates, no new CLI, no new artifact type. `engine-pdf` still has no Markdown in it. No HTML,
+Four crates, no new CLI, no new artifact type. `ethos-parser-pdf` still has no Markdown in it. No HTML,
 no dot-leaders, no drop-caps, no MCP, no tag. v1.1-S4 has not started.
 
 ---
@@ -4512,9 +4554,9 @@ this branch never fires and every document projects as paragraphs. It is proved 
 a hand-built representation rather than by a PDF nobody has, which is the honest way to test a path
 the corpus cannot reach.
 
-### Added — `engine markdown`
+### Added — `ethos-parser markdown`
 
-`engine markdown <representation.json>`, the same input `engine ground` takes. One input kind,
+`ethos-parser markdown <representation.json>`, the same input `ethos-parser ground` takes. One input kind,
 documented, rather than a subcommand that silently means two things. The fingerprint is checked
 before anything is projected: a representation that does not hash to its declared digest is refused
 with exit 2, because projecting it would launder the disagreement into a fresh-looking artifact
@@ -4553,9 +4595,9 @@ paraphrased away.
 
 The table gate still reads **64‰**; `irs-form-1040-2025` still yields **0** tables; fabrication
 still **0**; oracle still **12 / 3**. No detector was retuned — `ruled-rects-v2`,
-`stroke-ruled-v1` and `unruled-align-v1` keep their ids and their numbers. `engine-pdf` did not
-learn Markdown and `engine-grounding` did not grow a Markdown schema; the projection lives in
-`engine-core`, which is where a projection of the representation belongs. No fifth crate.
+`stroke-ruled-v1` and `unruled-align-v1` keep their ids and their numbers. `ethos-parser-pdf` did not
+learn Markdown and `ethos-parser-grounding` did not grow a Markdown schema; the projection lives in
+`ethos-parser-core`, which is where a projection of the representation belongs. No fifth crate.
 
 Still open and still listed: page rasters, low-contrast detection, structure-order, undrawn table
 edges, and **S7's miss at 64‰**.
@@ -5511,7 +5553,7 @@ The engine does **not** decide what it is looking at: the same mode carries a sc
 which is ordinary, and a prompt hidden behind an image, which is not, and nothing in the content
 stream tells them apart.
 
-### Added — the annotated overlay, and `engine overlay`
+### Added — the annotated overlay, and `ethos-parser overlay`
 
 A deterministic lopdf copy of the document with `/Square` annotations over table boxes, image
 placements and flagged runs, plus a per-page `/Text` note. **The note is the part that satisfies
@@ -5611,8 +5653,8 @@ fail and the fallible spelling was never describing a real possibility.
 - Classify is **untouched**. It counts image XObjects a page's `/Resources` declare; extraction
   emits a node per `Do` that paints one. `image-declared-not-drawn` pins both answers at once —
   `embedded-images` from classify, zero image nodes from extract — and neither is wrong.
-- `engine-pdf` gained an `overlay` and an `images` module, both `pub(crate)`; the CLI stays a thin
-  shell. New exports: `build_overlay`, `OVERLAY_ARTIFACT_TYPE`, `ImageRecord`, and in `engine-core`
+- `ethos-parser-pdf` gained an `overlay` and an `images` module, both `pub(crate)`; the CLI stays a thin
+  shell. New exports: `build_overlay`, `OVERLAY_ARTIFACT_TYPE`, `ImageRecord`, and in `ethos-parser-core`
   `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `RasterDpi`,
   `OBSERVATION_RULE_V1`.
 
@@ -5881,10 +5923,10 @@ and `PageExtract` both gained fields on `deny_unknown_fields` types, so these ar
 
 ### Two defects caught by existing guards, both worth naming
 
-- **The architecture boundary test rejected `acroform` in `engine-core`.** It was right:
+- **The architecture boundary test rejected `acroform` in `ethos-parser-core`.** It was right:
   `docs/04-ARCHITECTURE.md` §1 says that crate learns no format concept. The rule id and profile
   field are now `form-annotations-v1` / `form_annotation_rule` — named for what the rule *does*,
-  with the format-specific walk in `engine-pdf`. Same split `table_detection` already used: a
+  with the format-specific walk in `ethos-parser-pdf`. Same split `table_detection` already used: a
   generic field holding `"ruled-rects-v1"`. The capability limitation prose was reworded off
   `/AcroForm` and `/Annots` for the same reason.
 - **The oracle caught an artifact that could not read its own output.**
@@ -5904,7 +5946,7 @@ hidden annotation), `form-orphan-widget`, `form-xfa-stub`. `make_fixtures.py` ga
 
 ### API
 
-`engine_core::{NodeAttributes, FormFieldAttributes, AnnotationAttributes, FieldValue,
+`ethos_parser_core::{NodeAttributes, FormFieldAttributes, AnnotationAttributes, FieldValue,
 PdfObjectLocator, AnnotationRect, FORM_ANNOTATION_RULE_V1}` added to the frozen surface and to
 `docs/PUBLIC-API.md`. `IdKind` gained `FormField` (`f`) and `Annotation` (`a`). The walk stays
 `pub(crate)`.
@@ -6033,7 +6075,7 @@ also claims object 6.
 
 ### API
 
-`engine_core::{PdfTaggedLocator, PdfArtifactLocator, TaggedGridCheck, TaggedGridStatus,
+`ethos_parser_core::{PdfTaggedLocator, PdfArtifactLocator, TaggedGridCheck, TaggedGridStatus,
 TaggedGridFault, STRUCT_TREE_RULE_V1, TAGGED_GRID_CHECK_V1}` added to the frozen surface and to
 `docs/PUBLIC-API.md`. The tree walk stays `pub(crate)`.
 
@@ -6052,7 +6094,7 @@ gate is S7's.
 ### Added — `unruled-align-v1`, a second detection rule
 
 A grid inferred from where a document placed text. Pinned as
-`engine_core::TABLE_DETECTION_UNRULED_V1`, and **a separate id rather than a bump of
+`ethos_parser_core::TABLE_DETECTION_UNRULED_V1`, and **a separate id rather than a bump of
 `ruled-rects-v1`**: one means *the author drew this grid* and the other means *a detector decided
 this was one*, and an artifact that could not tell them apart would be flattening the stronger
 claim into the weaker.
@@ -6161,7 +6203,7 @@ Three engine-owned CC0 additions (`fixtures/engine/`, `engine_owned` 8 → 11):
 
 ### API
 
-`engine_core::{TableDetection, TABLE_DETECTION_UNRULED_V1}` added to the frozen surface and to
+`ethos_parser_core::{TableDetection, TABLE_DETECTION_UNRULED_V1}` added to the frozen surface and to
 `docs/PUBLIC-API.md`. The alignment detector itself stays `pub(crate)`: its tolerances and
 `Refusal` vocabulary move whenever the rule version does, and a caller pinned to them would be
 pinned to a version of the rule rather than to the contract.
@@ -6204,7 +6246,7 @@ Three things are deliberately refused rather than approximated, each with a test
 
 ### Added — ruled tables, `CellSlot`, and the cross-check
 
-`engine_core::tables` carries the occupancy model: `TableCellPosition { row, column, rowspan,
+`ethos_parser_core::tables` carries the occupancy model: `TableCellPosition { row, column, rowspan,
 colspan, table_id }`, zero-based, span 1 meaning *not merged*, and `CellSlot` enumerating every
 slot a merged cell owns. Addressing cells by array index with an implied span of 1 is the shipped
 Ethos ODL-adapter defect (memo §16), and its real cost is not cosmetic: with spans discarded there
@@ -6295,17 +6337,17 @@ caught it during the change.
 The version number now leads the roadmap label by one minor: v0 shipped as 0.1.0, and this row —
 "v0.1" — ships as 0.2.0. Two profile fields and a fifth subcommand are more than a patch.
 
-### Added — `engine verify`: invoking a verifier, still not verifying
+### Added — `ethos-parser verify`: invoking a verifier, still not verifying
 
 ```bash
 engine verify grounding.json --citations claims.json [--fail-on-ungrounded] [--config F] [--out F]
 ```
 
-**The report is the verifier's bytes.** `engine verify` stdout is byte-identical to running
+**The report is the verifier's bytes.** `ethos-parser verify` stdout is byte-identical to running
 `ethos verify` with the same arguments, asserted on both the grounded and the ungrounded path.
 Not "the same fields" — the same bytes, because the engine forwards them and forms no opinion.
 
-`engine_core::verifier` is the whole of it, and **what it does not contain is the design**: no
+`ethos_parser_core::verifier` is the whole of it, and **what it does not contain is the design**: no
 type for a report, a claim, a check, an evidence tier or a result. There is nothing to re-derive
 because there is nothing that reads. `ci/forbidden-tokens.sh verification` still exits 0 with the
 shim in the tree, which is the check that the shim really is only a shim.
@@ -6373,7 +6415,7 @@ The code was the truth and the comment was aspiration.
 ### Added — the xref decision, written down (parity checklist P20)
 
 **Decided: repair, bounded and declared.** `docs/01-CONTRACT.md` §8.1 is the decision;
-`engine_pdf::xref` is its implementation; `Profile::xref_repair` is the knob, and
+`ethos_parser_pdf::xref` is its implementation; `Profile::xref_repair` is the knob, and
 `{"mode":"refuse"}` restores v0's behaviour exactly.
 
 v0 refused 19-byte cross-reference entries where PDF 32000-1 §7.5.4 requires 20 — about 1 valid
@@ -6465,7 +6507,7 @@ Opt-in, global across all four subcommands, **off by default**.
   and not canonicalized — it uses plain `serde_json`, not `c14n`. An object that looked like an
   artifact would eventually be consumed like one, and then a timing would be inside somebody's
   hash.
-- **New:** `engine_core::diagnostics` — `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`,
+- **New:** `ethos_parser_core::diagnostics` — `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`,
   `DIAGNOSTICS_VERSION`. The library assembles the observation; the CLI only picks the stream,
   which is the whole of what a thin shell may do.
 - `no_diagnostics_field_name_appears_in_any_artifact` walks every key of all four artifacts at
@@ -6475,10 +6517,10 @@ Opt-in, global across all four subcommands, **off by default**.
 #### Changed — the public API is now a list
 
 `docs/PUBLIC-API.md` is new and enumerates every supported export per crate.
-`crates/engine-cli/tests/public_api.rs` fails if a crate root and that document disagree in either
+`crates/ethos-parser-cli/tests/public_api.rs` fails if a crate root and that document disagree in either
 direction.
 
-**`engine-pdf`'s parsing machinery is `pub(crate)`:** `ops`, `content`, `cmap`, `encoding`,
+**`ethos-parser-pdf`'s parsing machinery is `pub(crate)`:** `ops`, `content`, `cmap`, `encoding`,
 `fonts`, `metrics`, `text_state`, `thresholds`, `nodes`, `magic`, `classify`, `document`,
 `extract`, `represent`, `reasons`. Everything a caller needs is re-exported at the crate root by
 name. `exit` and `limitations` stay public — the latter because its constants are wire vocabulary
@@ -6509,7 +6551,7 @@ test shows real text first, with a control asserting the unmutated stream does p
 
 #### Added — fixture mutation over the whole manifest
 
-`crates/engine-pdf/tests/robustness.rs`. All **23** manifest fixtures × **6** deterministic
+`crates/ethos-parser-pdf/tests/robustness.rs`. All **23** manifest fixtures × **6** deterministic
 mutations = 130 mutants; the 8 pairs that cannot be built are pinned with reasons rather than
 skipped. Mutations: empty, truncate-to-16, a byte flipped in the last tenth, `%PDF` overwritten,
 junk after `%%EOF`, and a same-length operator substitution injecting a token outside Table A.1.
@@ -6566,7 +6608,7 @@ data*). **The first version skipped from `mod tests` to end of file** on the rea
 modules come last; they do, and it was still wrong — a probe appended after one sailed through
 clean. It now resumes at the closing brace.
 
-`crates/engine-cli/tests/v0_exit_criteria.rs` closes the loop: every §5 line is ticked and names a
+`crates/ethos-parser-cli/tests/v0_exit_criteria.rs` closes the loop: every §5 line is ticked and names a
 job, every named job exists, every matrix entry is claimed by a criterion, **no `--skip` appears
 anywhere in CI**, and **no job's filter matches zero tests**.
 
@@ -6579,7 +6621,7 @@ inside some test function's name.
 
 #### Added — library-only thin-shell proofs
 
-`crates/engine-cli/tests/library_surface.rs`. The existing CLI tests assert the binary's stdout
+`crates/ethos-parser-cli/tests/library_surface.rs`. The existing CLI tests assert the binary's stdout
 equals the library's bytes, which on its own is circular: it proves the two agree, not that the
 library alone can produce the artifact. If a subcommand grew a step the CLI performed itself, both
 sides would include it and both tests would pass. These do not spawn the binary, and
@@ -6610,7 +6652,7 @@ classification, which carries no geometry, does not.
 `oracle_agrees_on_simple_text` was written in the first commit to fail, with a diagnostic naming
 what was missing; it failed for six milestones and now runs the comparison it always described.
 
-**Added — `engine-grounding::check`**
+**Added — `ethos-parser-grounding::check`**
 
 - `grounding_check(grounding_json, source_pdf_bytes) -> ValidationReport`, plus `ValidationReport`,
   `Structure`, `SourceBinding`, `Counts`, `ReportError`. Emits `ethos.grounding_validation.v1`.
@@ -6620,7 +6662,7 @@ what was missing; it failed for six milestones and now runs the comparison it al
   are absent has to name them, and a scan that cannot tell a rule from its enforcement fires on
   itself. (It did, once.)
 
-**Added — `engine grounding-check [--source-artifact <pdf>]`**
+**Added — `ethos-parser grounding-check [--source-artifact <pdf>]`**
 
 The last unimplemented subcommand. `no_subcommand_claims_to_be_unimplemented` replaces the test
 that used to assert the opposite — inverted rather than deleted, because the property still
@@ -6788,10 +6830,10 @@ pointed squarely at the wrong component.
 
 ### M5 — `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter
 
-The canonical evidence record, and the projection a verifier consumes. `engine extract` now emits
-the record; `engine ground` projects it.
+The canonical evidence record, and the projection a verifier consumes. `ethos-parser extract` now emits
+the record; `ethos-parser ground` projects it.
 
-**Added — `engine-core`**
+**Added — `ethos-parser-core`**
 
 - `representation` — `DocumentRepresentation`, `RepresentationPayload`, `PageRecord`, `Node`,
   `NativeLocator` (the contract's discriminated union, `Pdf` variant only), `StructuralLocator`,
@@ -6816,13 +6858,13 @@ the record; `engine ground` projects it.
   a *character* origin. A page has none, and `{"origin_x":0,"origin_y":0}` for a page is
   indistinguishable on the wire from a run drawn in the corner.
 
-**Added — `engine-pdf`**
+**Added — `ethos-parser-pdf`**
 
 - `represent::to_representation` — `ExtractArtifact` → record. `extract()` keeps its signature and
   its artifact, so M3's thirty-odd behavioural tests still assert on what the parser produces;
   `every_extracted_run_appears_exactly_once` is the bridge that stops the two drifting.
 
-**Added — `engine-grounding`** (was an M0 skeleton)
+**Added — `ethos-parser-grounding`** (was an M0 skeleton)
 
 - `project()` → `Projection { source, omission }`, and `to_canonical_bytes()`.
 - **The omission rule is a type, not a convention.** `GroundedBox` has a private field and one
@@ -6832,9 +6874,9 @@ the record; `engine ground` projects it.
   constructor in the obvious shape, so `GroundedBox` now lives in its own module with the field
   private to it: `project()` cannot construct one either, and the guarantee is the compiler's
   rather than a grep's.
-- The crate depends on `engine-core` alone and **never reads a locator at all**: the projection
+- The crate depends on `ethos-parser-core` alone and **never reads a locator at all**: the projection
   addresses pages by node id. A test fails if it so much as mentions `NativeLocator`, which is a
-  stronger guarantee than hiding the type in `engine-pdf` would have given.
+  stronger guarantee than hiding the type in `ethos-parser-pdf` would have given.
 
 **Added — schema conformance without a new dependency**
 
@@ -6844,7 +6886,7 @@ the record; `engine ground` projects it.
   `the_validator_rejects_each_deliberate_break` runs 17 artifacts broken one rule at a time.
   Without that corpus, every positive conformance test would be satisfied by a validator that
   returns `Ok(())`.
-- `crates/engine-grounding/schemas/` holds a byte-for-byte snapshot of Ethos's schema with its
+- `crates/ethos-parser-grounding/schemas/` holds a byte-for-byte snapshot of Ethos's schema with its
   origin and digest recorded, plus a drift check against `../ethos` when that tree is present.
 
 **Measured, and it is the most important thing in this milestone**
@@ -6885,11 +6927,11 @@ tempt a `height = font_size` fallback.
 
 **Clarified — `docs/04-ARCHITECTURE.md` §1**
 
-"No PDF concept in `engine-core`" as written forbids something `01-CONTRACT.md` §5.1 requires: the
+"No PDF concept in `ethos-parser-core`" as written forbids something `01-CONTRACT.md` §5.1 requires: the
 `NativeLocator` union with a `PdfLocator` variant. The architecture doc's own header says the
 contract wins, so §1 now states the line as **machinery, not vocabulary** — no `lopdf`, no
 operator, no page tree, no font program; a contract-defined locator variant carrying integers is
-data. `engine-grounding` is held to the stronger rule and a test enforces it.
+data. `ethos-parser-grounding` is held to the stronger rule and a test enforces it.
 
 **Fixed after an adversarial audit, and the findings are worth recording**
 
@@ -6944,7 +6986,7 @@ has not reached "extracted" regardless of how good its text is. Every emitted ar
 declares what the profile can do, what it could not do, what happened to each page, and how the
 run ended.
 
-**Added — `engine-core`**
+**Added — `ethos-parser-core`**
 
 - `assurance` — `Limitation` (stable kebab code + detail + `Profile | Document | Page(n)` scope),
   `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`,
@@ -6972,9 +7014,9 @@ run ended.
   optional field**. An `Option` missing from incoming JSON deserializes to `None` and silently
   re-hashes as though it had been there; a declared enum cannot.
 
-**Added — `engine-pdf`**
+**Added — `ethos-parser-pdf`**
 
-- `limitations` — the format-specific codes `engine-core` is not allowed to know about:
+- `limitations` — the format-specific codes `ethos-parser-core` is not allowed to know about:
   `backend-xref-strict-20-byte`, `predefined-cmaps-not-vendored`,
   `form-xobject-text-not-descended`, `font-widths-absent`, `classify-sample-bound`, and the
   derived `*-reason-not-detected` pair.
@@ -7015,7 +7057,7 @@ is the proof the gap came from the knob.
 - The profile sensitivity test's `capabilities.char_offsets` mutation wrote back the value the
   field already held once `V0` flipped, so it proved nothing while passing. Every mutation now
   asserts it actually changed the profile before asking whether the hash moved.
-- `no_pdf_type_or_import_in_engine_core` banned the **prefix** `struct Page`, which read the
+- `no_pdf_type_or_import_in_ethos_parser_core` banned the **prefix** `struct Page`, which read the
   format-agnostic `PageStateEntry` as a PDF page-tree type — forbidding a type the contract
   requires. Banned type names are now matched as whole identifiers, with a test proving the
   exact-match form still catches `struct Page {`.
@@ -7039,7 +7081,7 @@ is the proof the gap came from the knob.
 Position-aware text runs whose origins are trustworthy, whose boxes are measured or typed-absent,
 and whose parse stops rather than silently dropping content.
 
-**Added — `engine-pdf`**
+**Added — `ethos-parser-pdf`**
 
 - `ops` — all **73** operators of PDF 32000-1 Table A.1 as an enum. Dispatch is an exhaustive
   match with **no wildcard arm**: adding a variant without handling it is a compile error, and a
@@ -7059,7 +7101,7 @@ and whose parse stops rather than silently dropping content.
 - `encoding` — `WinAnsiEncoding` in full, `StandardEncoding`'s ASCII range including the two codes
   where it is *not* ASCII (`0x27` is `quoteright`, `0x60` is `quoteleft`), and `/Differences`.
 - `nodes` — `TextRun` with `PdfLocator`, `SynthesizedChar`, `scalar_code_mismatch`.
-- `engine extract <pdf>` — canonical JSON, exit 0 or 2. **No exit 1**: "needs attention" is a
+- `ethos-parser extract <pdf>` — canonical JSON, exit 0 or 2. **No exit 1**: "needs attention" is a
   classify concept, and overloading it would make a caller's `&&` chain mean two different things
   depending on which subcommand ran.
 
@@ -7105,20 +7147,20 @@ List. All three are declared in `not_decoded` and explained in `vendor/README.md
 
 ### M2 — Classify: reason codes, two axes, three exit codes, bounded sampling
 
-`engine-pdf` opens a PDF once and reports what it observed. No verdict, no confidence, no quality
+`ethos-parser-pdf` opens a PDF once and reports what it observed. No verdict, no confidence, no quality
 field — the engine owns the observation, the caller owns the routing policy.
 
 **Added**
 
-- `engine_pdf::Document` — magic-checked, opened once, shared by every stage. M3's `extract` takes
+- `ethos_parser_pdf::Document` — magic-checked, opened once, shared by every stage. M3's `extract` takes
   the same handle rather than reopening: two loads can disagree, and a classifier that saw a
   different object graph from the extractor is a silent divergence with no diagnostic.
-- `engine_pdf::classify` — per-page counts, two orthogonal reason axes, a derived boolean, and
+- `ethos_parser_pdf::classify` — per-page counts, two orthogonal reason axes, a derived boolean, and
   `pages_content_scanned` as an observable bound.
 - `OcrNeedReason` / `LayoutComplexityReason` — **separate types**, so `table-likely` cannot be
   constructed as an OCR-need reason. A dense financial table in crisp born-digital text needs no
   OCR at all; a single "complex" list would send it to an engine that could only make it worse.
-- `engine classify <pdf>` — canonical JSON on stdout, exit 0 / 1 / 2. `extract`, `ground` and
+- `ethos-parser classify <pdf>` — canonical JSON on stdout, exit 0 / 1 / 2. `extract`, `ground` and
   `grounding-check` exit 2 naming the milestone that owns them, rather than printing usage and
   exiting 0 as though the work happened.
 - `docs/draft-schemas/classification.draft.json`.
@@ -7166,7 +7208,7 @@ catalogue full of `AC-2`/`SC-7` — is not reported as textless.
 `docs/01-CONTRACT.md` is now Rust. The artifact shape stops being negotiable and starts being a
 compile error.
 
-**Added — `engine-core`**
+**Added — `ethos-parser-core`**
 
 - `c14n` — c14n v1, a clean-room implementation of the contract Ethos implements. UTF-8, no
   whitespace, keys sorted **explicitly at write time**, minimal escaping, integers only,

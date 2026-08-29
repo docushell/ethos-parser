@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 /**
  * c14n parity — the Rust module's own vectors, run through the JavaScript port.
  *
- * These are lifted verbatim from `crates/engine-core/src/c14n.rs`, which lifted them from Ethos's
+ * These are lifted verbatim from `crates/ethos-parser-core/src/c14n.rs`, which lifted them from Ethos's
  * committed vectors, which are cross-checked against a Python reference. The Python SDK runs the
  * same five. Matching them is what makes `nodeGet`'s fingerprint the engine's fingerprint rather
  * than one that resembles it.
@@ -127,7 +127,7 @@ test("NaN and either infinity are refused", () => {
 /**
  * **The one place JavaScript cannot follow the Rust, stated rather than papered over.**
  *
- * `crates/engine-core/src/c14n.rs` has `float_shaped_text_stays_rejected_regardless_of_number_
+ * `crates/ethos-parser-core/src/c14n.rs` has `float_shaped_text_stays_rejected_regardless_of_number_
  * representation`, which asserts that JSON text like `1.0` or `2.0` is refused even though the
  * value is mathematically integral. Python's SDK ports it, because Python's parser stores those
  * as `float`. **JavaScript has one number type**: `JSON.parse("1.0")` yields the same value as

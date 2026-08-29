@@ -1,4 +1,4 @@
-# ethos-engine
+# ethos-parser
 
 An open, high-performance document parser that emits **evidence**: a versioned, fingerprinted
 representation in which every node carries a locator back into the source bytes, every capability is
@@ -42,7 +42,7 @@ and **v2's format row closed and its gate met**. This said *"and v2 **not comple
 **v2-S6** until v2-S14.1, and stopped being true at **v2-S13.4 (0.32.4)**, when the owner settled
 the two questions that stood between this repository and the gate as `00-NORTH-STAR.md` decisions
 **#16** and **#17**; `docs/CAPABILITY.md` has said so since. **v1 is still not complete** — that is
-the sentence below, and it is a different claim. `engine extract` takes a `.docx`, an
+the sentence below, and it is a different claim. `ethos-parser extract` takes a `.docx`, an
 `.xlsx`, a `.pptx`, an `.odt`, an `.ods`, an `.odp`, an `.rtf` or an `.epub` and emits the same
 record a PDF does — and **no page appears anywhere on that path**. A cell is addressed as its workbook addresses it: sheet, row and column,
 with the column kept as the letters the file wrote. An ODT is the sharpest case, because its
@@ -72,15 +72,15 @@ rather than whatever happened to be `pub` ([`docs/PUBLIC-API.md`](docs/PUBLIC-AP
 Nine subcommands, one library, one document load:
 
 ```bash
-engine classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
-engine extract         document.pdf|.docx|.xlsx|.pptx|.odt|.ods|.odp|.rtf|.epub  # DocumentRepresentation v0 · 0 / 2
-engine ground          representation.json               # ethos.grounding.v1        · 0 / 2
-engine markdown        representation.json               # ethos.markdown.v1         · 0 / 2
-engine html            representation.json               # ethos.html.v1             · 0 / 2
-engine grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
-engine verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
-engine overlay         document.pdf                      # an annotated PDF          · 0 / 2
-engine mcp                                               # MCP over stdio            · 0 / 2
+ethos-parser classify        document.pdf                      # counts and reason codes  · 0 / 1 / 2
+ethos-parser extract         document.pdf|.docx|.xlsx|.pptx|.odt|.ods|.odp|.rtf|.epub  # DocumentRepresentation v0 · 0 / 2
+ethos-parser ground          representation.json               # ethos.grounding.v1        · 0 / 2
+ethos-parser markdown        representation.json               # ethos.markdown.v1         · 0 / 2
+ethos-parser html            representation.json               # ethos.html.v1             · 0 / 2
+ethos-parser grounding-check grounding.json --source-artifact document.pdf   # validation  · 0 / 1 / 2
+ethos-parser verify          grounding.json --citations claims.json --fail-on-ungrounded  # 0 / 1 / 2
+ethos-parser overlay         document.pdf                      # an annotated PDF          · 0 / 2
+ethos-parser mcp                                               # MCP over stdio            · 0 / 2
 ```
 
 **`markdown` never emits Markdown alone.** `ethos.markdown.v1` carries the string *and* the
@@ -100,7 +100,7 @@ built. What earns it a subcommand rather than a stylesheet is tables: GFM has no
 `<td colspan="2">` and carries the merge the document drew. Same four laws, same census — the two
 artifacts of one document are asserted to agree character for character.
 
-**`engine mcp` serves the engine to an agent, and it will not take a locator from one.** MCP over
+**`ethos-parser mcp` serves the engine to an agent, and it will not take a locator from one.** MCP over
 **stdio** — newline-delimited JSON-RPC on a pipe, so no HTTP, no socket, no TLS and no async
 runtime; the network bans in `deny.toml` stay in force. Three tools: `extract`, `ground`, and
 `node_get`.
@@ -133,29 +133,29 @@ The handle law carries over unchanged. **No function signature names a coordinat
 `bbox`, no `x`/`y`, no row/column pair — because a locator is returned and never accepted as prose.
 `node_get` is the only function with no subcommand behind it (MCP already has that tool, and a
 third CLI verb would exist for symmetry), so c14n v1 is ported into each and pinned against
-`engine-core`'s own parity vectors: a minted id returns the node, a forged one **fails closed**, and
+`ethos-parser-core`'s own parity vectors: a minted id returns the node, a forged one **fails closed**, and
 an edited artifact fails at its fingerprint before any lookup happens. `markdown`, `html` and
 `verify` are deliberately absent from both. **Neither is published** — not on PyPI, not on npm, and
 this version does not put them there.
 
 **The LangChain tools are the same three functions, with the locators kept out of the prose.**
 Both SDKs expose `extract`, `ground` and `node_get` on a subpath —
-[`ethos_engine.langchain`](packages/python/) and [`ethos-engine/langchain`](packages/node/) — as
+[`ethos_parser.langchain`](packages/python/) and [`ethos-parser/langchain`](packages/node/) — as
 tools declaring `response_format="content_and_artifact"`. **The artifact carries the record; the
 `content` string carries counts.** A box in `content` is a locator a model can edit and then cite,
 which is the whole hazard, so the summaries are MCP's own — compared byte-for-byte against what
-`engine mcp` emits, and the argument schemas are read off `tools/list` rather than retyped. `node_get`'s
+`ethos-parser mcp` emits, and the argument schemas are read off `tools/list` rather than retyped. `node_get`'s
 summary names the node's kind and never its id.
 
-LangChain is an **optional extra** and an **optional peer**, so `import ethos_engine` and
-`import "ethos-engine"` still pull nothing; importing the subpath without it is a named failure
+LangChain is an **optional extra** and an **optional peer**, so `import ethos_parser` and
+`import "ethos-parser"` still pull nothing; importing the subpath without it is a named failure
 carrying the install command. There is no LangGraph adapter — a bindable tool is already what
 LangGraph binds — no trust state on any result, and no `verify` tool.
 
 **`extract` reads a DOCX and an XLSX too, and refuses to invent a page for either.** Dispatch is by content, never
 by extension — a renamed `report.bin` still reads and a `.docx` full of something else is a named
 failure — and the artifact is the **same** `DocumentRepresentation v0`: one type, one canonical
-JSON, one fingerprint. The reader is [`crates/engine-office/`](crates/engine-office/), the fifth
+JSON, one fingerprint. The reader is [`crates/ethos-parser-office/`](crates/ethos-parser-office/), the fifth
 crate, which existed as a name in the architecture doc until a second format made it real. A run is addressed by `part` + `paragraph` +
 `run` — the positions OOXML states about itself — with no page, no box and no `x`/`y`, because
 *where* a Word paragraph falls is a decision a renderer makes from a font stack and a paper size.
@@ -182,8 +182,8 @@ because `p:sldSz` is a size nothing measured and a position in `<p:sldIdLst>` is
 consumer would read as a page. Tables, charts and slide-number fields are **counted, not read** —
 a field's text is a cached number that goes stale when the deck is reordered.
 
-`ethos.grounding.v1` stays PDF-only, so `engine ground` on any of them is a **named refusal** —
-that was decided at v2-S1 and is why no DOCX, no cell and no slide run ever acquires a bbox. `engine mcp` and
+`ethos.grounding.v1` stays PDF-only, so `ethos-parser ground` on any of them is a **named refusal** —
+that was decided at v2-S1 and is why no DOCX, no cell and no slide run ever acquires a bbox. `ethos-parser mcp` and
 both SDKs were not taught anything: `node_get` resolves a DOCX run and a spreadsheet cell because
 there is one IR.
 
@@ -204,11 +204,11 @@ Add `--diagnostics` to any of them for timing, host and input details **on stder
 artifact and does not change: two runs over the same bytes produce identical files, with the flag
 and without.
 
-The artifact contract is Rust (`engine-core`), frozen *before* any parser was written so it is
+The artifact contract is Rust (`ethos-parser-core`), frozen *before* any parser was written so it is
 shaped by what a verifier needs rather than by a parser's accidents. Extraction interprets content
 streams against an **exhaustive** operator table — an unrecognised operator stops the parse instead
 of being skipped — puts a native locator on every run, and reports an ink box only when it was
-measured. `engine-grounding` projects the record into `ethos.grounding.v1` and validates one; the
+measured. `ethos-parser-grounding` projects the record into `ethos.grounding.v1` and validates one; the
 oracle test compares its answer against the Ethos CLI's on every fixture that reaches an artifact.
 
 - **Start here:** [`docs/README.md`](docs/README.md)
@@ -279,13 +279,13 @@ Node has nothing to install for the core suite: no runtime dependency means no l
 without it — `npm install --no-save @langchain/core` from `packages/node` runs them. Python's dev
 extra already includes `langchain-core`, so its LangChain tests always run.
 
-Both suites refuse a binary that is not this workspace's: they read `engine --version` and compare
-it to `Cargo.toml`. A stale `target/release/engine` would otherwise be preferred over nothing and
+Both suites refuse a binary that is not this workspace's: they read `ethos-parser --version` and compare
+it to `Cargo.toml`. A stale `target/release/ethos-parser` would otherwise be preferred over nothing and
 answer every question plausibly, and a byte-identity check that compares the SDK against the CLI
 using the same stale binary is self-consistent — green, and about the wrong engine.
 
-Both packages read `ETHOS_ENGINE` first and **authoritatively** — a path named there and not present
-is an error, not a reason to go looking for some other build — then `engine` on `PATH`. Both suites
+Both packages read `ETHOS_PARSER` first and **authoritatively** — a path named there and not present
+is an error, not a reason to go looking for some other build — then `ethos-parser` on `PATH`. Both suites
 additionally fall back to the workspace `target/`, so a plain `cargo build` is enough to run them,
 and both use the same in-tree fixture PDF, so neither depends on anything outside this repository.
 A missing binary fails the run by name; it is never a skip, for the reason the oracle's absence is
@@ -314,7 +314,7 @@ later work: `v01-verify-relay` (bytes relayed verbatim, absence loud), `v01-enco
 or a refusal, never mojibake) and `v01-xref-decision` (one bounded repair, everything outside it
 still refused).
 
-`crates/engine-cli/tests/v0_exit_criteria.rs` checks that mapping in both directions, so a renamed
+`crates/ethos-parser-cli/tests/v0_exit_criteria.rs` checks that mapping in both directions, so a renamed
 job or an unticked box is a red test rather than a stale document.
 
 ## Performance posture

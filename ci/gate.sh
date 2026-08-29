@@ -19,7 +19,7 @@
 # then means something CI does not enforce — it manufactures confidence instead of measuring it.
 #
 # So this file is **not the authority**. `ci.yml` is, and
-# `crates/engine-cli/tests/v0_exit_criteria.rs::the_local_gate_runs_what_ci_runs` asserts the two
+# `crates/ethos-parser-cli/tests/v0_exit_criteria.rs::the_local_gate_runs_what_ci_runs` asserts the two
 # carry the same commands in **both** directions: every check CI runs appears here, and every
 # check here appears in CI. That test runs inside `cargo test --workspace`, which is step 6
 # below — so running this script is itself the proof that this script still matches the workflow.
@@ -48,7 +48,7 @@
 #   * **`v0-fuzz-smoke`.** Needs a nightly toolchain and `cargo-fuzz` for `-Z sanitizer=address`.
 #     The workspace MSRV is 1.88 and no other job installs nightly.
 #
-#   * **`deny-policy-is-enforced`.** It flips `crates/engine-core/Cargo.toml` to AGPL and restores
+#   * **`deny-policy-is-enforced`.** It flips `crates/ethos-parser-core/Cargo.toml` to AGPL and restores
 #     it with `git checkout --`, which silently discards uncommitted work in that file. Its own
 #     step comment says not to run it by hand in a dirty tree, and a gate a developer runs *while
 #     working* is exactly a dirty tree.

@@ -7,7 +7,7 @@ network is a build whose output nobody can reproduce.
 
 | Data | Where | Licence | Why in-tree |
 | --- | --- | --- | --- |
-| `WinAnsiEncoding` (Windows-1252), full 0x20–0xFF | `crates/engine-pdf/src/encoding.rs` | PDF 32000-1 Annex D — a specification table, authored here | Small, does not churn, and needed for every Latin document |
+| `WinAnsiEncoding` (Windows-1252), full 0x20–0xFF | `crates/ethos-parser-pdf/src/encoding.rs` | PDF 32000-1 Annex D — a specification table, authored here | Small, does not churn, and needed for every Latin document |
 | `StandardEncoding`, ASCII range | same | same | Same, plus the two codes where it is *not* ASCII |
 | Glyph-name subset for `/Differences` | same | same | The names the corpus uses, plus the obvious Latin set and the f-ligatures |
 

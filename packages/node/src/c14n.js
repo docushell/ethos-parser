@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 // limitations under the License.
 
 /**
- * c14n v1 in JavaScript — the same canonical serialization `engine-core/src/c14n.rs` writes,
- * and the same one `packages/python/src/ethos_engine/_c14n.py` writes.
+ * c14n v1 in JavaScript — the same canonical serialization `ethos-parser-core/src/c14n.rs` writes,
+ * and the same one `packages/python/src/ethos_parser/_c14n.py` writes.
  *
  * **Why this file exists at all.** `nodeGet` has no CLI subcommand behind it, so it is the one
  * function here that computes something rather than relaying it. What it computes is a
@@ -50,7 +50,7 @@
 
 import { createHash } from "node:crypto";
 
-/** The integer bound c14n v1 declares, matching `engine_core::MAX_SAFE_INT`. */
+/** The integer bound c14n v1 declares, matching `ethos_parser_core::MAX_SAFE_INT`. */
 export const MAX_SAFE_INT = 9007199254740991;
 
 /**

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ethos-engine:draft-schema:geometry:0",
+  "$id": "urn:ethos-parser:draft-schema:geometry:0",
   "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §5.2 and §5.3. TODO(re-read DocumentRepresentation v0 field list): the DocuShell companion models geometry as an OPTIONAL field and never names a variant for WHY it is absent, so the absence spellings below are engine-local and project to a plain absent field on the DocuShell wire. Pending DocuShell review.",
   "title": "Quantized geometry and typed absence (DRAFT)",
   "description": "A measured ink box, or a typed reason there is none. Deliberately not a nullable rectangle: null would collapse 'could not measure', 'nothing to measure', and 'not asked to measure' into one value, and only the first is a declarable capability limitation.",

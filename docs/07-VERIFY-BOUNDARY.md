@@ -24,8 +24,8 @@ the point of the section.
 
 | # | Decision |
 | --- | --- |
-| 1 | **Product:** ethos-engine = DocuShell's open high-performance parser / evidence emitter. Citation verification (L3) is a separate verifier product ("Ethos" / Ethos-next). Together they answer: did this AI claim actually come from this document? |
-| 2 | **Build order:** Freeze the verify contract (artifact + rules) first. Implement ethos-engine against that contract — not against today's Ethos crate layout. A faster/better verifier may be rebuilt later to consume the same contract. Do not invent verification rules ad hoc after the parser "feels done." |
+| 1 | **Product:** ethos-parser = DocuShell's open high-performance parser / evidence emitter. Citation verification (L3) is a separate verifier product ("Ethos" / Ethos-next). Together they answer: did this AI claim actually come from this document? |
+| 2 | **Build order:** Freeze the verify contract (artifact + rules) first. Implement ethos-parser against that contract — not against today's Ethos crate layout. A faster/better verifier may be rebuilt later to consume the same contract. Do not invent verification rules ad hoc after the parser "feels done." |
 | 3 | **Trust ladder:** Engine owns L0–L2 (registered / extracted / locatable). Verifier owns L3 (grounded). Never emit a single field that means "this document is good." |
 | 4 | **Canonical emit:** `DocumentRepresentation v0` (DocuShell). Adapter: `ethos.grounding.v1`. `NativeLocator` required; geometry/`RenderedLocator` optional "for inspection"; typed absence over invention. |
 | 5 | **Parsing optional forever:** BYO parsers remain first-class via a grounding-intake shape. Engine must not become the only path to verify. |
@@ -46,7 +46,7 @@ the point of the section.
 
 ## 2. Who owns what
 
-| | **ethos-engine** | **the verifier (Ethos / Ethos-next)** |
+| | **ethos-parser** | **the verifier (Ethos / Ethos-next)** |
 | --- | --- | --- |
 | **Question answered** | What does this document contain, and exactly where? | Did this claim come from this document? |
 | **Trust levels** | L0 registered · L1 extracted · L2 locatable | **L3 grounded** |
@@ -61,7 +61,7 @@ the boundary is being crossed.
 
 ---
 
-## 3. Why ethos-engine does not replace the Ethos repo
+## 3. Why ethos-parser does not replace the Ethos repo
 
 Four reasons, in descending order of how often they get forgotten.
 
@@ -128,7 +128,7 @@ is worth being exact about what is and is not in here:
 
 | In the tree | Not in the tree, and asserted so |
 | --- | --- |
-| A spawn shim — `engine_core::verifier` — that runs a verifier and forwards its bytes | Any type for a report, a claim, a check, an evidence tier, or a result |
+| A spawn shim — `ethos_parser_core::verifier` — that runs a verifier and forwards its bytes | Any type for a report, a claim, a check, an evidence tier, or a result |
 | A `verify` subcommand and a `Profile::verifier` pin | Any code that reads, re-derives, summarizes or second-guesses what the verifier said |
 
 Through v0 the sentence here read *"no verification code exists in the tree"*, and that was true
@@ -154,14 +154,14 @@ adjacent rule would get itself disabled.
 **Shipped.** Verification arrives as a **declared capability**, not as an implementation:
 
 ```bash
-engine verify grounding.json --citations claims.json [--fail-on-ungrounded] [--config F] [--out F]
+ethos-parser verify grounding.json --citations claims.json [--fail-on-ungrounded] [--config F] [--out F]
 ```
 
 | Rule | How it is held |
 | --- | --- |
 | **Absence is a named error** | No verifier ⇒ exit 2, **no report on stdout**, a named `missing_part`. Never a skip, never a stub, never a default-pass. `ETHOS_BIN` is authoritative: set and unresolvable is a hard error, not a fallback |
 | **Pin the verifier's identity** | `Profile::verifier` carries `ethos --version` **and** the sha256 of the binary's bytes. Both move `profile_sha256`, so a rebuild of the same version is as visible as a version change — a version-only pin would not have been |
-| **Relay report bytes verbatim** | `engine verify` stdout is **byte-identical** to `ethos verify` with the same arguments, asserted on the grounded and the ungrounded path. `engine_core::verifier` has no type for a report, a claim, a check or a result: there is nothing to re-derive because nothing is read |
+| **Relay report bytes verbatim** | `ethos-parser verify` stdout is **byte-identical** to `ethos verify` with the same arguments, asserted on the grounded and the ungrounded path. `ethos_parser_core::verifier` has no type for a report, a claim, a check or a result: there is nothing to re-derive because nothing is read |
 | **The gate is the product** | `--fail-on-ungrounded` exits 1 *and* writes the report. Without it the report is still written and the verifier's own exit status is forwarded — an ungrounded claim is never a silent skip either way |
 | **1 and 2 never collapse** | "the verifier refused" and "the run did not happen" are different answers, kept apart for the same reason the classify exit codes are |
 | **Spawn cost is acknowledged, not optimised** | ~19–22 ms measured floor. At the 20,000 docs/day design target (≈14/minute) it is irrelevant. No daemon, no socket, no cache |
@@ -176,7 +176,7 @@ Ethos Rust CLI once per invocation behind a byte-size admission gate.
 
 **What Stage 1 did not do**, and the grep gate proves it: no report parsing, no re-derivation of
 `all_evidence_grounded` or `capability_limits` or an evidence tier, no claim type anywhere in
-`engine-pdf` or `engine-grounding`. The engine gained a way to *run* a verifier, not an opinion.
+`ethos-parser-pdf` or `ethos-parser-grounding`. The engine gained a way to *run* a verifier, not an opinion.
 
 *(Still unmeasured, cheap spike: per-invocation `ethos verify` cost.)*
 

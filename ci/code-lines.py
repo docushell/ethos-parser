@@ -39,7 +39,7 @@ Both defects were invisible until the other was corrected.
 of file. This file matches that rule exactly, because a second definition of "test module" in one
 repository is the drift a shared rule exists to prevent.
 
-`crates/engine-core/src/markdown.rs` is the **one** file in the tree that writes
+`crates/ethos-parser-core/src/markdown.rs` is the **one** file in the tree that writes
 `pub(crate) mod tests {`; fifty-two others write `mod tests {`. The anchored rule therefore scans
 markdown.rs's test module and a looser one would not, a difference of 1,017 lines — all in that
 single file. The anchored rule is right on the repository's own authority and on

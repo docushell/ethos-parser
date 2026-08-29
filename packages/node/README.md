@@ -1,10 +1,10 @@
-# ethos-engine — Node SDK
+# ethos-parser — Node SDK
 
-A thin Node surface over the `engine` CLI (**v1.2-S3**). Three functions, `node:` builtins only,
+A thin Node surface over the `ethos-parser` CLI (**v1.2-S3**). Three functions, `node:` builtins only,
 and **not published** — `private: true`, and this slice does not change that.
 
 ```js
-import { extract, ground, nodeGet } from "ethos-engine";
+import { extract, ground, nodeGet } from "ethos-parser";
 
 const representation = extract("contract.pdf");
 const grounding = ground(representation);
@@ -15,8 +15,8 @@ const node = nodeGet(representation, nodeId);
 
 | function | shells out to | returns |
 | --- | --- | --- |
-| `extract(pdfPath)` | `engine extract <path>` | `DocumentRepresentation v0` |
-| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `extract(pdfPath)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `nodeGet(representation, nodeId)` | nothing — the checks are ported | that artifact's node record |
 
 ## This is not a second design
@@ -53,10 +53,10 @@ returns it as an opaque handle, and re-validates it on the way back in.**
   and never `{}`. An edited artifact throws `FingerprintMismatch` *before* any lookup happens,
   because its payload no longer hashes to its own declared digest.
 
-`nodeGet` is the one function with no subcommand behind it — `engine node-get` does not exist and
+`nodeGet` is the one function with no subcommand behind it — `ethos-parser node-get` does not exist and
 this slice does not add it, since MCP already carries the tool. So its checks are ported, and
 [`src/c14n.js`](src/c14n.js) is c14n v1 in JavaScript, running the same parity vectors
-`crates/engine-core/src/c14n.rs` and `packages/python/src/ethos_engine/_c14n.py` run.
+`crates/ethos-parser-core/src/c14n.rs` and `packages/python/src/ethos_parser/_c14n.py` run.
 
 **One thing JavaScript cannot follow, stated rather than papered over.** The language has a single
 number type, so `JSON.parse("1.0")` yields the same value as `JSON.parse("1")` and no port can
@@ -82,7 +82,7 @@ npm install @langchain/core
 ```
 
 ```js
-import { tools } from "ethos-engine/langchain";
+import { tools } from "ethos-parser/langchain";
 
 const withTools = model.bindTools(tools());   // or a LangGraph ToolNode
 ```
@@ -99,7 +99,7 @@ a summary in `.content` — counts, and nothing a pipeline would bind to:
 
 A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
 version is arranged against. The summaries are MCP's own and the test compares them **byte for
-byte** against what `engine mcp` emits; the argument schemas are the ones `tools/list` advertises,
+byte** against what `ethos-parser mcp` emits; the argument schemas are the ones `tools/list` advertises,
 verbatim — including `node_id` rather than `nodeId`, because the tool argument is the wire and one
 wire has one name.
 
@@ -107,16 +107,16 @@ A forged id, an edited payload or an unreadable document **throws** — MCP's `i
 framework's currency. No tool sets trust state, there is no `verify` tool, and there is no
 LangGraph adapter: a bindable tool is already what LangGraph binds.
 
-Importing `ethos-engine/langchain` without the peer is a named failure carrying the install
+Importing `ethos-parser/langchain` without the peer is a named failure carrying the install
 command; the tests skip with that same command when it is absent.
 
 ## Running it
 
-The `engine` binary is a prerequisite; nothing here downloads or vendors one. The core suite has
+The `ethos-parser` binary is a prerequisite; nothing here downloads or vendors one. The core suite has
 nothing to install — no runtime dependency means no lockfile and no `npm install`.
 
 ```bash
-cargo build --release --locked && ETHOS_ENGINE=target/release/engine node --test packages/node
+cargo build --release --locked && ETHOS_PARSER=target/release/ethos-parser node --test packages/node
 ```
 
 The LangChain tests need the optional peer and skip with the install command without it:
@@ -125,12 +125,12 @@ The LangChain tests need the optional peer and skip with the install command wit
 npm install --no-save @langchain/core
 ```
 
-`ETHOS_ENGINE` is checked **first and authoritatively** — a path named there and not present is an
-error, not a reason to go looking for some other build — then `engine` on `PATH`. That is the
+`ETHOS_PARSER` is checked **first and authoritatively** — a path named there and not present is an
+error, not a reason to go looking for some other build — then `ethos-parser` on `PATH`. That is the
 precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is the same: resolving to
 a binary nobody chose means returning artifacts from a parser nobody chose.
 
-The suite additionally checks `engine --version` against `Cargo.toml` and refuses a binary from
-another version. A stale `target/release/engine` would otherwise be preferred over nothing and
+The suite additionally checks `ethos-parser --version` against `Cargo.toml` and refuses a binary from
+another version. A stale `target/release/ethos-parser` would otherwise be preferred over nothing and
 answer every question plausibly — and a byte-identity check that compares the SDK against the CLI
 using the same stale binary is self-consistent, so it would go green about the wrong engine.

@@ -1,4 +1,4 @@
-# Copyright 2026 The ethos-engine maintainers
+# Copyright 2026 The ethos-parser maintainers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 """The handle law in Python — `docs/12-V12-SCOPE.md` §3, as executables.
 
-| handed to :func:`ethos_engine.node_get` | expected |
+| handed to :func:`ethos_parser.node_get` | expected |
 | --- | --- |
 | a node id the engine minted, copied off the artifact | the node record |
 | an id nothing minted | **raises**, never ``None`` and never ``{}`` |
@@ -30,8 +30,8 @@ import inspect
 
 import pytest
 
-import ethos_engine
-from ethos_engine import (
+import ethos_parser
+from ethos_parser import (
     EngineError,
     FingerprintMismatch,
     NodeNotFound,
@@ -63,7 +63,7 @@ BANNED_ARGUMENT_NAMES = [
 
 @pytest.fixture(scope="module")
 def representation(fixture_pdf):
-    return ethos_engine.extract(fixture_pdf)
+    return ethos_parser.extract(fixture_pdf)
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +83,7 @@ def minted_id(representation):
 def test_a_minted_handle_returns_the_node_that_artifact_carries(
     representation, minted_id
 ):
-    node = ethos_engine.node_get(representation, minted_id)
+    node = ethos_parser.node_get(representation, minted_id)
     assert node["id"] == minted_id
     assert node is representation["representation"]["nodes"][0], (
         "the node record must be the one the artifact carries, verbatim — not a copy this "
@@ -93,7 +93,7 @@ def test_a_minted_handle_returns_the_node_that_artifact_carries(
 
 def test_a_forged_handle_fails_closed(representation):
     with pytest.raises(NodeNotFound) as excinfo:
-        ethos_engine.node_get(representation, "s-forged")
+        ethos_parser.node_get(representation, "s-forged")
 
     message = str(excinfo.value)
     assert "s-forged" in message, "the refusal must name what was refused: {!r}".format(
@@ -110,7 +110,7 @@ def test_an_edited_payload_fails_at_the_fingerprint_before_any_lookup(
     edited["representation"]["nodes"][0]["text"] = "Tampered"
 
     with pytest.raises(FingerprintMismatch) as excinfo:
-        ethos_engine.node_get(edited, minted_id)
+        ethos_parser.node_get(edited, minted_id)
 
     # Both digests, as `verify_fingerprint` names them, so the failure is diagnosable.
     assert excinfo.value.declared == representation["representation_c14n_sha256"]
@@ -124,7 +124,7 @@ def test_an_edited_payload_fails_even_when_the_id_is_forged_too(representation):
     edited = copy.deepcopy(representation)
     edited["representation"]["nodes"][0]["text"] = "Tampered"
     with pytest.raises(FingerprintMismatch):
-        ethos_engine.node_get(edited, "s-forged")
+        ethos_parser.node_get(edited, "s-forged")
 
 
 @pytest.mark.parametrize(
@@ -135,14 +135,14 @@ def test_an_edited_payload_fails_even_when_the_id_is_forged_too(representation):
         [],
         "s1",
         {"artifact_type": "ethos.grounding.v1", "elements": []},
-        {"artifact_type": "ethos.engine.representation.v0"},
+        {"artifact_type": "ethos.parser.representation.v0"},
     ],
 )
 def test_a_thing_that_is_not_a_representation_is_refused_rather_than_coerced(
     not_a_representation,
 ):
     with pytest.raises(NotARepresentation):
-        ethos_engine.node_get(not_a_representation, "s1")
+        ethos_parser.node_get(not_a_representation, "s1")
 
 
 def test_a_payload_that_will_not_canonicalize_is_refused(representation):
@@ -154,15 +154,15 @@ def test_a_payload_that_will_not_canonicalize_is_refused(representation):
     edited = copy.deepcopy(representation)
     edited["representation"]["nodes"][0]["probe"] = 1.5
     with pytest.raises(NotARepresentation):
-        ethos_engine.node_get(edited, "s1")
+        ethos_parser.node_get(edited, "s1")
 
 
 def test_a_projection_is_not_a_representation(representation):
     """`ground`'s output carries locators too, and it is still not the record they were minted in."""
-    projection = ethos_engine.ground(representation)
+    projection = ethos_parser.ground(representation)
     assert projection["artifact_type"] == "ethos.grounding.v1"
     with pytest.raises(NotARepresentation):
-        ethos_engine.node_get(projection, "s1")
+        ethos_parser.node_get(projection, "s1")
 
 
 def test_no_refusal_is_ever_an_empty_answer(representation, minted_id):
@@ -182,7 +182,7 @@ def test_no_refusal_is_ever_an_empty_answer(representation, minted_id):
         ({}, minted_id),
     ]:
         with pytest.raises(EngineError):
-            ethos_engine.node_get(artifact, node_id)
+            ethos_parser.node_get(artifact, node_id)
 
 
 # --- the corollary: no argument names a locator ------------------------------------------------
@@ -195,8 +195,8 @@ def test_no_public_function_signature_names_a_coordinate():
     for, which is the hazard memo §16.7 says decides whether an adapter is worth having.
     """
     checked = 0
-    for name in ethos_engine.__all__:
-        member = getattr(ethos_engine, name)
+    for name in ethos_parser.__all__:
+        member = getattr(ethos_parser, name)
         if not inspect.isfunction(member):
             continue
         checked += 1
@@ -215,14 +215,14 @@ def test_no_public_function_signature_names_a_coordinate():
 def test_the_public_surface_is_the_three_functions_and_nothing_else():
     functions = sorted(
         name
-        for name in ethos_engine.__all__
-        if inspect.isfunction(getattr(ethos_engine, name))
+        for name in ethos_parser.__all__
+        if inspect.isfunction(getattr(ethos_parser, name))
     )
     assert functions == ["extract", "ground", "node_get"]
 
 
 def test_node_get_takes_a_handle_and_an_artifact_and_nothing_else():
-    assert list(inspect.signature(ethos_engine.node_get).parameters) == [
+    assert list(inspect.signature(ethos_parser.node_get).parameters) == [
         "representation",
         "node_id",
     ]

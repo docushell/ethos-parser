@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ethos-engine:draft-schema:document-representation:0",
-  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 (identity), §3 (coordinates), §4 (c14n, and geometry excluded from the fingerprint), §5 (locators and typed absence), §6 (derivation), §7 (the L1 gate), §11 (the grounding projection). Written from crates/engine-core/src/representation.rs. THE RECORD, not a projection: ethos.grounding.v1 is derived from this and is deliberately lossy, so a grounding round-trip is never proof this is intact.",
+  "$id": "urn:ethos-parser:draft-schema:document-representation:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §2 (identity), §3 (coordinates), §4 (c14n, and geometry excluded from the fingerprint), §5 (locators and typed absence), §6 (derivation), §7 (the L1 gate), §11 (the grounding projection). Written from crates/ethos-parser-core/src/representation.rs. THE RECORD, not a projection: ethos.grounding.v1 is derived from this and is deliberately lossy, so a grounding round-trip is never proof this is intact.",
   "title": "DocumentRepresentation v0 (DRAFT)",
   "description": "The canonical evidence record: what was read, who read it, under what pinned configuration, what they could not do, and every ordered typed node with its required native address.",
   "type": "object",
@@ -9,7 +9,7 @@
   "required": ["artifact_type", "schema_version", "representation", "representation_c14n_sha256", "geometry"],
   "properties": {
     "artifact_type": {
-      "const": "ethos.engine.representation.v0",
+      "const": "ethos.parser.representation.v0",
       "$comment": "At the TOP LEVEL, before any payload (§2), so a reader can fail closed on an unrecognised shape before parsing it (§8). Mirrors representation.identity.artifact_type, and a parse-time check refuses an artifact where the two disagree — a mirror that can disagree is worse than no mirror."
     },
     "schema_version": { "const": "0.6.0" },
@@ -20,7 +20,7 @@
     "representation_c14n_sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "$comment": "REPRESENTATION identity, distinct from source identity (§2) and — importantly — distinct from Ethos's field of the same name, which is a hash of a grounding FILE's raw bytes. Computed as `\"sha256:\" + hex(sha256(c14n(doc[\"representation\"])))`. The hashed bytes are a literal subtree rather than the document minus a named key set, because an exclusion rule is a second canonicalization contract two implementations can drift on, and a drifted rule produces a mismatch that looks exactly like tampering. NOT checked at parse time, deliberately: a validator that refuses to load the artifact it is judging can only ever report 'invalid JSON', where the report shape distinguishes structure from binding. `engine ground` calls verify_fingerprint() before projecting."
+      "$comment": "REPRESENTATION identity, distinct from source identity (§2) and — importantly — distinct from Ethos's field of the same name, which is a hash of a grounding FILE's raw bytes. Computed as `\"sha256:\" + hex(sha256(c14n(doc[\"representation\"])))`. The hashed bytes are a literal subtree rather than the document minus a named key set, because an exclusion rule is a second canonicalization contract two implementations can drift on, and a drifted rule produces a mismatch that looks exactly like tampering. NOT checked at parse time, deliberately: a validator that refuses to load the artifact it is judging can only ever report 'invalid JSON', where the report shape distinguishes structure from binding. `ethos-parser ground` calls verify_fingerprint() before projecting."
     },
     "geometry": {
       "type": "array",
@@ -35,7 +35,7 @@
       "additionalProperties": false,
       "required": ["identity", "source", "processing_run", "coordinate_system", "pages", "nodes", "assurance"],
       "properties": {
-        "identity": { "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0" },
+        "identity": { "$ref": "urn:ethos-parser:draft-schema:artifact-identity:0" },
         "source": {
           "type": "object",
           "additionalProperties": false,
@@ -57,7 +57,7 @@
               "additionalProperties": false,
               "required": ["name", "version", "backend"],
               "properties": {
-                "name": { "type": "string", "examples": ["ethos-engine"] },
+                "name": { "type": "string", "examples": ["ethos-parser"] },
                 "version": { "type": "string" },
                 "backend": { "type": "string", "examples": ["lopdf 0.44.0"] }
               }
@@ -69,11 +69,11 @@
             }
           }
         },
-        "coordinate_system": { "$ref": "urn:ethos-engine:draft-schema:coordinate-system:0" },
+        "coordinate_system": { "$ref": "urn:ethos-parser:draft-schema:coordinate-system:0" },
         "pages": { "type": "array", "items": { "$ref": "#/$defs/page_record" } },
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
         "assurance": {
-          "$ref": "urn:ethos-engine:draft-schema:coverage:0",
+          "$ref": "urn:ethos-parser:draft-schema:coverage:0",
           "$comment": "M4's L1 gate, carried forward by value: capabilities, limitations, per-page state, coverage, terminal state. An artifact without it has not reached 'extracted' regardless of how good its text is."
         }
       }
@@ -118,14 +118,14 @@
         "text": { "type": "string" },
         "native_locator": { "$ref": "#/$defs/native_locator" },
         "structural_locator": { "$ref": "#/$defs/structural_locator" },
-        "derivation": { "$ref": "urn:ethos-engine:draft-schema:derivation-class:0" },
+        "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0" },
         "attributes": { "$ref": "#/$defs/text_run_attributes" }
       }
     },
 
     "native_locator": {
       "title": "NativeLocator — required on every node (§5.1)",
-      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed. Lives in engine-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. engine-grounding never reads one.",
+      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed. Lives in ethos-parser-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. ethos-parser-grounding never reads one.",
       "type": "object",
       "additionalProperties": false,
       "required": ["pdf"],
@@ -189,7 +189,7 @@
       "properties": {
         "node": { "type": "string", "$comment": "The node id this row describes. Index-aligned with payload.nodes." },
         "presence": {
-          "$ref": "urn:ethos-engine:draft-schema:geometry:0",
+          "$ref": "urn:ethos-parser:draft-schema:geometry:0",
           "$comment": "Measured, or a typed reason there is none. A MEASURED box is additionally required to lie inside its page: a box outside is a HARD ERROR on construction, never a clamp and never an omission. Clamping fabricates a coordinate; omitting would have to travel the geometry-omission path, and that path takes a typed absence by construction — an out-of-page measured box is not an absence, and routing it through would be the 'omit for a non-geometry reason' hole §11 forbids."
         }
       }

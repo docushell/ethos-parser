@@ -1,4 +1,4 @@
-# Copyright 2026 The ethos-engine maintainers
+# Copyright 2026 The ethos-parser maintainers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ def _workspace_version():
 
 
 def _binary_version(path):
-    """`engine --version`, or ``None`` if it will not run."""
+    """`ethos-parser --version`, or ``None`` if it will not run."""
     try:
         completed = subprocess.run(
             [str(path), "--version"], capture_output=True, text=True, check=False
@@ -60,7 +60,7 @@ def _binary_version(path):
 def _locate_binary():
     """Find a binary that is **this workspace's**, and refuse one that is not.
 
-    The version check is not decoration. A stale `target/release/engine` is preferred by mtime
+    The version check is not decoration. A stale `target/release/ethos-parser` is preferred by mtime
     over nothing at all and answers every question plausibly, so a suite that took the first file
     it found would compare the SDK against a parser from six minor versions ago and go green — it
     would still prove the SDK does not alter what the CLI prints, but about the wrong CLI. That is
@@ -69,24 +69,24 @@ def _locate_binary():
     """
     want = _workspace_version()
 
-    pinned = os.environ.get("ETHOS_ENGINE")
+    pinned = os.environ.get("ETHOS_PARSER")
     if pinned:
         # An explicit pin is authoritative in both directions: it is never silently overridden,
         # and a pin that is the wrong build is an error rather than a reason to look elsewhere.
         got = _binary_version(pinned)
         if got != want:
             raise RuntimeError(
-                "ETHOS_ENGINE={!r} reports {} but this workspace is {}. Rebuild it, or point "
-                "ETHOS_ENGINE at a build of this tree.".format(pinned, got or "nothing", want)
+                "ETHOS_PARSER={!r} reports {} but this workspace is {}. Rebuild it, or point "
+                "ETHOS_PARSER at a build of this tree.".format(pinned, got or "nothing", want)
             )
         return pinned
 
     tried = []
     candidates = [
-        REPO_ROOT / "target" / "release" / "engine",
-        REPO_ROOT / "target" / "debug" / "engine",
+        REPO_ROOT / "target" / "release" / "ethos-parser",
+        REPO_ROOT / "target" / "debug" / "ethos-parser",
     ]
-    found_on_path = shutil.which("engine")
+    found_on_path = shutil.which("ethos-parser")
     if found_on_path:
         candidates.append(pathlib.Path(found_on_path))
 
@@ -97,9 +97,9 @@ def _locate_binary():
         tried.append("  {} ({})".format(candidate, got or "absent"))
 
     raise RuntimeError(
-        "no `engine` binary at {}. Tried, in order:\n{}\n\n"
+        "no `ethos-parser` binary at {}. Tried, in order:\n{}\n\n"
         "    cargo build --locked\n\n"
-        "or point ETHOS_ENGINE at a build of this tree. This is a failure and not a skip: a "
+        "or point ETHOS_PARSER at a build of this tree. This is a failure and not a skip: a "
         "green run against a parser from another version would prove something about the wrong "
         "engine.".format(want, "\n".join(tried) or "  (nothing)")
     )
@@ -109,7 +109,7 @@ def _locate_binary():
 def engine_binary():
     """Pin the binary for the whole session, the way a caller would."""
     binary = _locate_binary()
-    os.environ["ETHOS_ENGINE"] = binary
+    os.environ["ETHOS_PARSER"] = binary
     return binary
 
 
@@ -144,5 +144,5 @@ def cli(engine_binary):
 
 @pytest.fixture(scope="session")
 def cli_representation_bytes(cli, fixture_pdf):
-    """The exact bytes ``engine extract`` printed — the thing byte-identity is measured against."""
+    """The exact bytes ``ethos-parser extract`` printed — the thing byte-identity is measured against."""
     return cli("extract", str(fixture_pdf))

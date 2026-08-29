@@ -224,7 +224,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-core"
+name = "ethos-parser-core"
 version = "0.35.0"
 dependencies = [
  "serde",
@@ -233,30 +233,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-fuzz"
+name = "ethos-parser-fuzz"
 version = "0.0.0"
 dependencies = [
- "engine-core",
- "engine-office",
- "engine-pdf",
+ "ethos-parser-core",
+ "ethos-parser-office",
+ "ethos-parser-pdf",
  "libfuzzer-sys",
 ]
 
 [[package]]
-name = "engine-office"
+name = "ethos-parser-office"
 version = "0.35.0"
 dependencies = [
- "engine-core",
+ "ethos-parser-core",
  "flate2",
  "quick-xml",
  "serde",
 ]
 
 [[package]]
-name = "engine-pdf"
+name = "ethos-parser-pdf"
 version = "0.35.0"
 dependencies = [
- "engine-core",
+ "ethos-parser-core",
  "lopdf",
  "serde",
  "serde_json",

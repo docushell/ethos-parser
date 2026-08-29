@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ethos-engine:draft-schema:extract:0",
-  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §3 (coordinates), §4 (c14n/quanta), §5 (locators and typed absence), §6 (derivation), §9 (no confidence). Written from crates/engine-pdf/src/{extract,nodes}.rs. This is NOT DocumentRepresentation v0 — that envelope and the grounding projection land at M5.",
+  "$id": "urn:ethos-parser:draft-schema:extract:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §3 (coordinates), §4 (c14n/quanta), §5 (locators and typed absence), §6 (derivation), §9 (no confidence). Written from crates/ethos-parser-pdf/src/{extract,nodes}.rs. This is NOT DocumentRepresentation v0 — that envelope and the grounding projection land at M5.",
   "title": "Extract artifact (DRAFT)",
   "description": "Position-aware text runs whose origins are trustworthy, whose boxes are measured or typed-absent, and whose parse stopped rather than silently dropping content.",
   "type": "object",
@@ -16,8 +16,8 @@
   ],
   "properties": {
     "identity": {
-      "$ref": "urn:ethos-engine:draft-schema:artifact-identity:0",
-      "description": "artifact_type is `ethos.engine.extract.v0`; schema_version is `0.3.0` since v1-S4, when `PageExtract` gained `objects`. Both DRAFT."
+      "$ref": "urn:ethos-parser:draft-schema:artifact-identity:0",
+      "description": "artifact_type is `ethos.parser.extract.v0`; schema_version is `0.3.0` since v1-S4, when `PageExtract` gained `objects`. Both DRAFT."
     },
     "source": {
       "type": "object",
@@ -56,7 +56,7 @@
       "$comment": "Per-page results for the PROCESSED pages only. A page missing from this list was not read, and `assurance.page_states` says which of the reasons applied — its absence here is never evidence that the page holds no text. A test asserts pages.length == coverage.pages_processed."
     },
     "assurance": {
-      "$ref": "urn:ethos-engine:draft-schema:coverage:0",
+      "$ref": "urn:ethos-parser:draft-schema:coverage:0",
       "$comment": "The L1 gate (docs/01-CONTRACT.md §7): declared capabilities, limitations, per-page state, coverage, and terminal state. ABSORBS M3's `not_decoded` list, which no longer exists on the wire — absent font widths are now the document-scoped `font-widths-absent` limitation and undescended form XObjects the profile-scoped `form-xobject-text-not-descended`. It also carries the explicit multi-column reading-order limitation that synthetic/two-columns pins."
     }
   },
@@ -175,14 +175,14 @@
           "$ref": "#/$defs/pdf_locator"
         },
         "geometry": {
-          "$ref": "urn:ethos-engine:draft-schema:geometry:0"
+          "$ref": "urn:ethos-parser:draft-schema:geometry:0"
         },
         "mcid": {
           "type": "integer",
           "$comment": "Marked-content id, present only when the document supplies one via BDC. Omitted otherwise — never invented (Workbench rule 3)."
         },
         "derivation": {
-          "$ref": "urn:ethos-engine:draft-schema:derivation-class:0"
+          "$ref": "urn:ethos-parser:draft-schema:derivation-class:0"
         }
       }
     },

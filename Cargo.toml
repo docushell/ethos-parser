@@ -1,25 +1,25 @@
-# ethos-engine workspace.
+# ethos-parser workspace.
 #
 # Five crates as of v2-S2 (docs/04-ARCHITECTURE.md §1). The fifth was refused until a second
 # format existed — "a fifth crate before a second format is speculative structure" — and DOCX is
-# that format, so `engine-office` stops being speculative and starts being the only place OOXML
+# that format, so `ethos-parser-office` stops being speculative and starts being the only place OOXML
 # may live.
 #
 # Boundary rules, enforced in review:
-#   engine-core       — no PDF concept, and no OOXML concept
-#   engine-pdf        — no grounding concept
-#   engine-office     — no PDF concept, no grounding concept (OOXML and ODF both live here)
-#   engine-grounding  — no format concept — it projects the representation, never a document
-#   engine-cli        — no logic
+#   ethos-parser-core       — no PDF concept, and no OOXML concept
+#   ethos-parser-pdf        — no grounding concept
+#   ethos-parser-office     — no PDF concept, no grounding concept (OOXML and ODF both live here)
+#   ethos-parser-grounding  — no format concept — it projects the representation, never a document
+#   ethos-parser-cli        — no logic
 
 [workspace]
 resolver = "2"
 members = [
-    "crates/engine-core",
-    "crates/engine-pdf",
-    "crates/engine-office",
-    "crates/engine-grounding",
-    "crates/engine-cli",
+    "crates/ethos-parser-core",
+    "crates/ethos-parser-pdf",
+    "crates/ethos-parser-office",
+    "crates/ethos-parser-grounding",
+    "crates/ethos-parser-cli",
 ]
 # `fuzz/` is a cargo-fuzz package, not a member (M7). Excluding it keeps `libfuzzer-sys` — a
 # nightly-only sanitizer shim — out of the workspace dependency graph, which is what `cargo deny
@@ -35,7 +35,7 @@ exclude = ["fuzz"]
 # The version number leads the roadmap label by one minor: v0 shipped as 0.1.0 (M7), the "v0.1"
 # roadmap row shipped as 0.2.0, and v1's slices ship one minor each — S1 as 0.3.0, S2 as 0.4.0,
 # S3 as 0.5.0, S4 as 0.6.0, S5 as 0.7.0, S6 as 0.8.0, the S6 repair slices as 0.8.1 and 0.8.2,
-# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, v2-S11 as 0.30.0, v2-S12 as 0.31.0, its guard repair as 0.31.1, v2-S13 as 0.32.0, its guard repair as 0.32.1, the roadmap reorder as 0.32.2, its prose repair as 0.32.3, the owner's two gate decisions as 0.32.4, the two sweeps that never ran as 0.32.5, the CRC-32 answer as 0.33.0 — a MINOR, because it changes a reader — the guards those sweeps named and did not write as 0.33.1, the `neither detector` cluster as 0.34.0 — a MINOR, because two of its sites are emitted wire strings and an artifact this build writes differs from one 0.33.1 wrote for the same bytes — the no-behaviour-change extractor four slices rebuilt by hand as 0.34.1, the two guards outside `src` as 0.34.2, the gate that has never been green as 0.34.3, the corpus that was never grown as 0.35.0 — a MINOR, because it moves the mutation corpus off its pinned counts and re-measures the table gate on three times the documents — the nine grids the engine already rejects as 0.36.0, the mutation that missed as 0.36.1, why ten documents produce nothing as 0.36.2, the coverage two slices retired as 0.36.3, and the tagged tables the documents declare as 0.37.0 — a MINOR, because a reader changed: the PDF extractor now emits a table for each `/Table` the structure tree declares that no geometric detector matched, with geometry typed-absent, so a NIST document gains tables on the artifact where 0.36.3 emitted none, and the emit path that built every artifact twice as 0.37.1 — a PATCH, because output bytes are identical at equal version: canonical serialization streams instead of building a `serde_json::Value` tree, fonts parse once per document instead of once per page, and the run buffers move instead of cloning. The detector quadratics went the same way as 0.37.2 — a PATCH on the same proof: the ruled coherence scan, the lattice line lookups, the overlap check, and the unruled line lookup keep their exact semantics at lower complexity, and the gate artifacts are byte-identical at equal version. Numeric character references and the shared format router landed as 0.38.0 — a MINOR, because six readers changed: the office XML readers resolve `&#233;` where they refused it, six `text_code_rule` ids move to v2 with the behaviour, and the MCP surface routes through the same dispatch as the CLI. The clustering lead was measured and refused as 0.38.1 — a PATCH that changes no reader: the audit's per-component ruled rule was implemented, run against the gate, and reverted on its numbers, and the measurement is the slice. Pages went parallel as 0.38.2 — a PATCH carrying the workspace's first threading dependency: every gate artifact is byte-identical, ids, holes, and first-error semantics included, and the fold that proves it is the commit's whole story. The emit tail followed as 0.38.3: seal keeps the canonical payload bytes it hashed and the print splices them into the envelope, so the payload is walked once per artifact instead of twice — byte-identical again, and measured. The office formats stopped being stranded as 0.39.0 — a MINOR, because the emitter changed: the Ethos-side schema revision the page-less refusal waited on landed as ethos.grounding.v1 1.1.0, engine ground projects office representations into its page-less shape, and a DOCX quote verifies end to end across the estate. A node whose kind has no ink box stopped refusing to seal at 0.40.0 — a MINOR, because six fixtures' artifacts move: the geometry declaration now fires for annotations, form fields and images as `check_structure` always demanded, and the ink sentence's denominator counts text nodes on both sides. The assurance envelope started enforcing its own invariant on the way IN at 0.40.1 — a PATCH: nothing this engine emits changes, and a forged record claiming completion its pages contradict is refused where it used to be read. The overlay note started counting tagged tables at 0.40.2 — a PATCH on the overlay's own output: a page holding two of them said it held none, and said nothing was undrawable.
+# S7a/S7b as 0.9.0, S8 as 0.10.0, v1.1-S0/S1 as 0.11.0, v1.1-S2 as 0.12.0, v1.1-S3 as 0.13.0, v1.1-S4 as 0.14.0, its repair as 0.14.1, v1.2-S0/S1 as 0.15.0, v1.2-S2 as 0.16.0, v1.2-S3 as 0.17.0, v1.2-S4 as 0.18.0, v1.2-S5 as 0.19.0, v2-S1 as 0.20.0, v2-S2 as 0.21.0, v2-S3 as 0.22.0, v2-S4 as 0.23.0, v2-S5 as 0.24.0, v2-S6 as 0.25.0, v2-S7 as 0.26.0, v2-S8 as 0.27.0, v2-S9 as 0.28.0, its counter repair as 0.28.1, v2-S10 as 0.29.0, its documentation repair as 0.29.1, v2-S11 as 0.30.0, v2-S12 as 0.31.0, its guard repair as 0.31.1, v2-S13 as 0.32.0, its guard repair as 0.32.1, the roadmap reorder as 0.32.2, its prose repair as 0.32.3, the owner's two gate decisions as 0.32.4, the two sweeps that never ran as 0.32.5, the CRC-32 answer as 0.33.0 — a MINOR, because it changes a reader — the guards those sweeps named and did not write as 0.33.1, the `neither detector` cluster as 0.34.0 — a MINOR, because two of its sites are emitted wire strings and an artifact this build writes differs from one 0.33.1 wrote for the same bytes — the no-behaviour-change extractor four slices rebuilt by hand as 0.34.1, the two guards outside `src` as 0.34.2, the gate that has never been green as 0.34.3, the corpus that was never grown as 0.35.0 — a MINOR, because it moves the mutation corpus off its pinned counts and re-measures the table gate on three times the documents — the nine grids the engine already rejects as 0.36.0, the mutation that missed as 0.36.1, why ten documents produce nothing as 0.36.2, the coverage two slices retired as 0.36.3, and the tagged tables the documents declare as 0.37.0 — a MINOR, because a reader changed: the PDF extractor now emits a table for each `/Table` the structure tree declares that no geometric detector matched, with geometry typed-absent, so a NIST document gains tables on the artifact where 0.36.3 emitted none, and the emit path that built every artifact twice as 0.37.1 — a PATCH, because output bytes are identical at equal version: canonical serialization streams instead of building a `serde_json::Value` tree, fonts parse once per document instead of once per page, and the run buffers move instead of cloning. The detector quadratics went the same way as 0.37.2 — a PATCH on the same proof: the ruled coherence scan, the lattice line lookups, the overlap check, and the unruled line lookup keep their exact semantics at lower complexity, and the gate artifacts are byte-identical at equal version. Numeric character references and the shared format router landed as 0.38.0 — a MINOR, because six readers changed: the office XML readers resolve `&#233;` where they refused it, six `text_code_rule` ids move to v2 with the behaviour, and the MCP surface routes through the same dispatch as the CLI. The clustering lead was measured and refused as 0.38.1 — a PATCH that changes no reader: the audit's per-component ruled rule was implemented, run against the gate, and reverted on its numbers, and the measurement is the slice. Pages went parallel as 0.38.2 — a PATCH carrying the workspace's first threading dependency: every gate artifact is byte-identical, ids, holes, and first-error semantics included, and the fold that proves it is the commit's whole story. The emit tail followed as 0.38.3: seal keeps the canonical payload bytes it hashed and the print splices them into the envelope, so the payload is walked once per artifact instead of twice — byte-identical again, and measured. The office formats stopped being stranded as 0.39.0 — a MINOR, because the emitter changed: the Ethos-side schema revision the page-less refusal waited on landed as ethos.grounding.v1 1.1.0, engine ground projects office representations into its page-less shape, and a DOCX quote verifies end to end across the estate. A node whose kind has no ink box stopped refusing to seal at 0.40.0 — a MINOR, because six fixtures' artifacts move: the geometry declaration now fires for annotations, form fields and images as `check_structure` always demanded, and the ink sentence's denominator counts text nodes on both sides. The assurance envelope started enforcing its own invariant on the way IN at 0.40.1 — a PATCH: nothing this engine emits changes, and a forged record claiming completion its pages contradict is refused where it used to be read. The overlay note started counting tagged tables at 0.40.2 — a PATCH on the overlay's own output: a page holding two of them said it held none, and said nothing was undrawable. The engine became `ethos-parser` at 0.41.0 — a MINOR, because every wire-visible name it emits moved with it: the ten `ethos.engine.*` artifact types are now `ethos.parser.*`, `profile_sha256` moves for every artifact — on `parser_version` alone for PDF, whose backend is `lopdf`, and on both that and `BackendIdentity.name` for the eight office profiles, which really did carry the crate name — and the MCP `serverInfo.name`, the `ETHOS_ENGINE` environment variables and the CLI binary follow. `ethos.grounding.v1` and the `ETHOS_BIN`/`ETHOS_FIXTURES` oracle variables are Ethos's and did not move.
 #
 # **0.9.0 was a detector change, on the ruled side only.** S7b set out to move
 # `unruled::COLUMN_GUTTER_MIN` and measured that no value of it changes any number, so the
@@ -120,7 +120,7 @@ exclude = ["fuzz"]
 # producing different bytes under one id is precisely the state a rule id exists to make
 # impossible. A patch bump, on the precedent of the S6 repair slices (0.8.1, 0.8.2).
 #
-# **0.15.0 starts v1.2 — ADOPTION — and adds no parse feature at all.** `engine mcp` serves the
+# **0.15.0 starts v1.2 — ADOPTION — and adds no parse feature at all.** `ethos-parser mcp` serves the
 # existing stages over MCP on stdio: newline-delimited JSON-RPC over a pipe, no HTTP, no socket, no
 # async runtime, so `deny.toml`'s network bans stay in force and `Cargo.lock` gains nothing. No
 # profile FIELD moves: a transport is not a parse capability, and `capabilities.mcp` would put a
@@ -129,7 +129,7 @@ exclude = ["fuzz"]
 # because a version claiming otherwise is the one lie that field cannot afford.
 #
 # **0.16.0 is v1.2-S2, the Python SDK, and it adds no Rust at all.** `packages/python/` wraps the
-# `engine` binary with `subprocess` and the stdlib `json` module: `extract` and `ground` shell out
+# `ethos-parser` binary with `subprocess` and the stdlib `json` module: `extract` and `ground` shell out
 # to the subcommands a shell would run, so byte-identity with the CLI is a tautology rather than a
 # promise. `node_get` is the one function with no subcommand behind it — MCP already carries the
 # tool and a third CLI verb is speculative — so c14n v1 is ported to Python and runs the Rust
@@ -142,7 +142,7 @@ exclude = ["fuzz"]
 # cannot afford.
 #
 # **0.17.0 is v1.2-S3, the Node SDK, and it adds no Rust either.** `packages/node/` is the same
-# three functions `packages/python/` shipped, on the same terms: spawn the `engine` binary, parse
+# three functions `packages/python/` shipped, on the same terms: spawn the `ethos-parser` binary, parse
 # stdout, hand back the bytes the CLI printed. JavaScript + `node:test`, no TypeScript, no
 # bundler, no runtime dependency — and NO NATIVE ADDON, refused for the reason S2 refused PyO3: a
 # second path to the library is a second thing that can disagree with the first, and napi would
@@ -158,14 +158,14 @@ exclude = ["fuzz"]
 # (docs/12-V12-SCOPE.md §7).
 #
 # **0.18.0 is v1.2-S4, LangChain tools, and it adds no Rust either.** Three callable tools per
-# language, each one calling the SDK that already exists — nothing spawns `engine` a third way and
+# language, each one calling the SDK that already exists — nothing spawns `ethos-parser` a third way and
 # nothing here speaks MCP. The slice is one sentence from docs/12-V12-SCOPE.md §3: LOCATORS LIVE
 # IN THE ARTIFACT, NEVER IN THE PROSE A MODEL READS AND EDITS. MCP says that with
 # `structuredContent` vs `content`; LangChain says it with a tool's `artifact` vs its `content`,
 # and `response_format="content_and_artifact"` is what makes the two sides real.
 #
 # LangChain is an OPTIONAL EXTRA (Python) and an OPTIONAL PEER (Node), reached on a subpath, so
-# `import ethos_engine` and `import "ethos-engine"` still pull nothing. No LangGraph adapter: the
+# `import ethos_parser` and `import "ethos-parser"` still pull nothing. No LangGraph adapter: the
 # memo refused one, because a bindable tool is already what LangGraph binds.
 #
 # Nothing but the version moves, the FIFTH time, after v1-S7b (0.9.0) and v1.2-S1/S2/S3. A
@@ -181,7 +181,7 @@ exclude = ["fuzz"]
 # schema has nowhere to declare it. Loose boxes here would be checklist L18 — "sold as precise
 # positioning, with nothing in the output saying which it is" — reproduced inside this repository's
 # own artifact type. No adapter ships, and the refusal is pinned to those schema facts by
-# `engine-grounding/tests/liteparse_refusal.rs` so relaxing one reopens the decision deliberately.
+# `ethos-parser-grounding/tests/liteparse_refusal.rs` so relaxing one reopens the decision deliberately.
 #
 # The memo's predicted blocker — `coordinate_origin: unknown` — DISSOLVED and that is recorded:
 # their space is top-left/72-DPI/CropBox->MediaBox and this engine's visible box is the same box,
@@ -201,9 +201,9 @@ exclude = ["fuzz"]
 # so that deciding this would leave v2's gate reachable "at the representation level". It does not:
 # `DocumentRepresentation::seal` refuses a node whose parent is not a declared page, on BOTH
 # construction paths, so a page-less document cannot become a representation either. The invariant
-# is in `engine-core`, and 04-ARCHITECTURE.md §6's precondition — "provided engine-grounding never
+# is in `ethos-parser-core`, and 04-ARCHITECTURE.md §6's precondition — "provided ethos-parser-grounding never
 # learned about pages" — HOLDS while pointing at the wrong crate. See
-# `engine-grounding/tests/page_less_source.rs`.
+# `ethos-parser-grounding/tests/page_less_source.rs`.
 #
 # No reader, no crate, no schema field. The version moves because tests landed and because a slice
 # that measures still moves it — the S7b and v1.2-S5 precedent.
@@ -220,12 +220,12 @@ exclude = ["fuzz"]
 # profile does not carry it. What is new is a SECOND profile: `Profile::docx_v0`, with its own
 # hash, so a DOCX artifact and a PDF artifact are provably non-comparable (14-V2-SCOPE.md §8).
 #
-# The fifth crate stops being speculative: `engine-office`, exactly as 04-ARCHITECTURE.md said it
+# The fifth crate stops being speculative: `ethos-parser-office`, exactly as 04-ARCHITECTURE.md said it
 # would be revisited "when office needs a real home". One new crate in the lock — `quick-xml` —
 # because ZIP is read here over `flate2`, which the graph already had, rather than by taking a zip
 # crate that drags twelve transitives including a compressor.
 #
-# `ethos.grounding.v1` is UNTOUCHED and `engine ground` on a DOCX is a named refusal, per v2-S1's
+# `ethos.grounding.v1` is UNTOUCHED and `ethos-parser ground` on a DOCX is a named refusal, per v2-S1's
 # decision (b). `mcp.rs` is untouched too, and `node_get` resolves a DOCX run anyway — which is
 # what "one IR, one serializer" buys.
 #
@@ -244,9 +244,9 @@ exclude = ["fuzz"]
 # numeral that the workbook never performed. The two halves concatenate back to the `r` attribute
 # exactly, which is the difference between a locator that quotes and one that computes.
 #
-# NO NEW CRATE and NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over
+# NO NEW CRATE and NO NEW DEPENDENCY. The same `ethos-parser-office`, the same hand-rolled ZIP over
 # `flate2`, the same `quick-xml` — no `zip`, no `calamine`, no spreadsheet library. What IS new is
-# a workbook being the first artifact with MORE THAN ONE PART, which `engine-core` needed no
+# a workbook being the first artifact with MORE THAN ONE PART, which `ethos-parser-core` needed no
 # change to allow: the part-id/part-name rule was already a bijection and ordinals already counted
 # per parent.
 #
@@ -269,7 +269,7 @@ exclude = ["fuzz"]
 # and the id is a label. And `<mc:Fallback>` duplicates its sibling `<mc:Choice>`, so reading both
 # would emit one phrase twice at two addresses — the mirror of a silent drop.
 #
-# NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+# NO NEW DEPENDENCY. The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same
 # `quick-xml`. What moved is internal: the `r:id`-to-part rule to `opc.rs` and the XML plumbing to
 # `xml.rs`, because a third copy of a rule is how two copies of it start disagreeing.
 #
@@ -295,7 +295,7 @@ exclude = ["fuzz"]
 # comment this slice does not read. A reader that numbered only what it kept would put every
 # citation after a footnote on the wrong paragraph.
 #
-# NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+# NO NEW DEPENDENCY. The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same
 # `quick-xml` — no `zip`, no ODF crate, no LibreOffice. `Profile::odt_v0` has its own hash, five
 # profiles are now mutually distinct, and this hash moves on `parser_version` ALONE as at S2, S3
 # and S4.
@@ -336,7 +336,7 @@ exclude = ["fuzz"]
 # question (`is_opendocument`), and `read` refuses a declared type it does not implement by name. An
 # `.odp` says so about itself.
 #
-# NO NEW DEPENDENCY. The same `engine-office`, the same hand-rolled ZIP over `flate2`, the same
+# NO NEW DEPENDENCY. The same `ethos-parser-office`, the same hand-rolled ZIP over `flate2`, the same
 # `quick-xml` — no `zip`, no `calamine`, no ODF crate, no LibreOffice. `Profile::ods_v0` has its own
 # hash, six profiles are now mutually distinct, and this hash moves on `parser_version` ALONE.
 #
@@ -420,7 +420,7 @@ exclude = ["fuzz"]
 # every destination test passed transparently and the whole skip rule was silently off. Found by the
 # unit tests it exists for.
 #
-# NO NEW DEPENDENCY. A hand-rolled control-word walker in `engine-office`, in character with
+# NO NEW DEPENDENCY. A hand-rolled control-word walker in `ethos-parser-office`, in character with
 # `zip.rs`: no RTF crate, no LibreOffice, no shelling out. `Profile::rtf_v0` has its own hash; eight
 # profiles are mutually distinct; `capabilities.tables` is FALSE even though RTF writes `\cell`,
 # because that is recorded as a paragraph's TERMINATOR rather than as a grid a detector inferred.
@@ -554,12 +554,12 @@ exclude = ["fuzz"]
 # **0.31.0 is v2-S12: THE OFFICE READERS GET FUZZED. No reader changed.** `06-STEAL-REFUSE.md`'s
 # A11 asks for mutation testing plus `cargo-fuzz` PER FORMAT, from Anydoc, due at v0. v2-S2
 # deferred the office half on the condition that a SECOND office format would reopen it. There
-# were EIGHT, and `fuzz/Cargo.toml` still depended on `engine-core` and `engine-pdf` only — no
+# were EIGHT, and `fuzz/Cargo.toml` still depended on `ethos-parser-core` and `ethos-parser-pdf` only — no
 # office byte had ever been fuzzed. That is not hypothetical: v2-S9's first adversarial finding
 # was a PANIC in the percent-decoder, and the review record says it reached review precisely
 # because office code is unfuzzed.
 #
-# ONE TARGET on `engine_office::read`, the single entry point all eight formats share, seeded from
+# ONE TARGET on `ethos_parser_office::read`, the single entry point all eight formats share, seeded from
 # the sixteen packages in `fixtures/office/`. One rather than eight is MEASURED, not assumed: every
 # entry of the grown corpus was driven through the CLI, and all eight readers produced successful
 # artifacts from it. Eight harnesses would divide one corpus eight ways.
@@ -593,12 +593,12 @@ exclude = ["fuzz"]
 # it DECLINED to repair named there too rather than left for someone to rediscover. The office
 # MUTATION half of A11 is still open and this slice does not touch it. **v2 IS STILL NOT
 # COMPLETE**; both escalated questions are restated unchanged.
-version = "0.40.2"
+version = "0.41.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
-repository = "https://github.com/docushell/ethos-engine"
-authors = ["ethos-engine maintainers"]
+repository = "https://github.com/docushell/ethos-parser"
+authors = ["ethos-parser maintainers"]
 
 [workspace.dependencies]
 # Dependencies are constrained by deny.toml: permissive licences only, no AGPL, no network.
@@ -617,10 +617,10 @@ serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 # internal
-engine-core = { path = "crates/engine-core", version = "0.40.2" }
-engine-pdf = { path = "crates/engine-pdf", version = "0.40.2" }
-engine-office = { path = "crates/engine-office", version = "0.40.2" }
-engine-grounding = { path = "crates/engine-grounding", version = "0.40.2" }
+ethos-parser-core = { path = "crates/ethos-parser-core", version = "0.41.0" }
+ethos-parser-pdf = { path = "crates/ethos-parser-pdf", version = "0.41.0" }
+ethos-parser-office = { path = "crates/ethos-parser-office", version = "0.41.0" }
+ethos-parser-grounding = { path = "crates/ethos-parser-grounding", version = "0.41.0" }
 
 [profile.release]
 strip = "symbols"

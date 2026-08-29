@@ -1,22 +1,22 @@
-# ethos-engine — Python SDK
+# ethos-parser — Python SDK
 
-A thin Python surface over the `engine` CLI (**v1.2-S2**). Three functions, stdlib only, and
+A thin Python surface over the `ethos-parser` CLI (**v1.2-S2**). Three functions, stdlib only, and
 **not on PyPI** — this slice does not publish it.
 
 ```python
-import ethos_engine
+import ethos_parser
 
-representation = ethos_engine.extract("contract.pdf")
-grounding = ethos_engine.ground(representation)
+representation = ethos_parser.extract("contract.pdf")
+grounding = ethos_parser.ground(representation)
 
 node_id = representation["representation"]["nodes"][0]["id"]   # minted by the engine
-node = ethos_engine.node_get(representation, node_id)
+node = ethos_parser.node_get(representation, node_id)
 ```
 
 | function | shells out to | returns |
 | --- | --- | --- |
-| `extract(pdf_path)` | `engine extract <path>` | `DocumentRepresentation v0` |
-| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `extract(pdf_path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `node_get(representation, node_id)` | nothing — the checks are ported | that artifact's node record |
 
 ## It cannot diverge from what the CLI prints
@@ -44,10 +44,10 @@ returns it as an opaque handle, and re-validates it on the way back in.**
   `None` and never `{}`. An edited artifact raises `FingerprintMismatch` *before* any lookup
   happens, because its payload no longer hashes to its own declared digest.
 
-`node_get` is the one function with no subcommand behind it — `engine node-get` does not exist
+`node_get` is the one function with no subcommand behind it — `ethos-parser node-get` does not exist
 and this slice does not add it, since MCP already carries the tool. So its checks are ported:
-`src/ethos_engine/_c14n.py` is c14n v1 in Python, running the same parity vectors
-`crates/engine-core/src/c14n.rs` runs.
+`src/ethos_parser/_c14n.py` is c14n v1 in Python, running the same parity vectors
+`crates/ethos-parser-core/src/c14n.rs` runs.
 
 ## What is not here
 
@@ -64,11 +64,11 @@ The same three functions as callable tools, behind an **optional extra** so the 
 still pulls nothing:
 
 ```bash
-pip install 'ethos-engine[langchain]'
+pip install 'ethos-parser[langchain]'
 ```
 
 ```python
-from ethos_engine.langchain import tools
+from ethos_parser.langchain import tools
 
 llm_with_tools = llm.bind_tools(tools())      # or a LangGraph ToolNode
 ```
@@ -85,7 +85,7 @@ a summary in `.content` — counts, and nothing a pipeline would bind to:
 
 A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
 version is arranged against. The summaries are MCP's own and the test compares them **byte for
-byte** against what `engine mcp` emits; the argument schemas are the ones `tools/list` advertises,
+byte** against what `ethos-parser mcp` emits; the argument schemas are the ones `tools/list` advertises,
 verbatim, so all three adapters have one wire shape. `node_get`'s summary names the kind and never
 the id.
 
@@ -95,15 +95,15 @@ LangGraph adapter: a `StructuredTool` is already what LangGraph binds.
 
 ## Installing and running
 
-The `engine` binary is a prerequisite; nothing here downloads or vendors one.
+The `ethos-parser` binary is a prerequisite; nothing here downloads or vendors one.
 
 ```bash
 cargo build --release --locked                 # from the repository root
 pip install -e 'packages/python[dev]'
-ETHOS_ENGINE=target/release/engine pytest packages/python
+ETHOS_PARSER=target/release/ethos-parser pytest packages/python
 ```
 
-`ETHOS_ENGINE` is checked **first and authoritatively** — a path named there and not present is
-an error, not a reason to go looking for some other build — then `engine` on `PATH`. That is the
+`ETHOS_PARSER` is checked **first and authoritatively** — a path named there and not present is
+an error, not a reason to go looking for some other build — then `ethos-parser` on `PATH`. That is the
 precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is the same: resolving
 to a binary nobody chose means returning artifacts from a parser nobody chose.

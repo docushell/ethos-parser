@@ -2,7 +2,7 @@
 
 > **Status: superseded. The rule is now in the tree and running.** v1-S8 revived this patch, found
 > that both of the failures recorded below have a single cause, fixed it, and shipped the result as
-> `crates/engine-pdf/src/stroke_ruled.rs` at engine **0.10.0**.
+> `crates/ethos-parser-pdf/src/stroke_ruled.rs` at engine **0.10.0**.
 >
 > **The cause was not in the band preconditions this file defends — it was one line in `extract`,
 > which discarded every non-horizontal segment before the rule ever saw one.** So "where are the
@@ -144,7 +144,7 @@ git apply docs/attic/stroke-ruled-v1/stroke-ruled-v1.patch
 Then measure, which is the only way to know whether any of the above still holds:
 
 ```bash
-cargo test -p engine-pdf --lib accuracy --locked -- --nocapture
+cargo test -p ethos-parser-pdf --lib accuracy --locked -- --nocapture
 ```
 
 **The fixture corpora are not found automatically from an arbitrary worktree.** `fixtures/manifest.json`
@@ -160,13 +160,13 @@ lint to silence: it is the slice's one real incompleteness. The other two rules 
 refusals into a declared limitation — `ruled-table-candidate-refused`,
 `unruled-table-candidate-refused` — and this one never got that wiring, so a page whose ruling
 lines imply a grid the ink does not explain is refused **silently**. Anyone reviving this should
-wire it through `crates/engine-pdf/src/limitations.rs` rather than reach for `#[allow(dead_code)]`;
+wire it through `crates/ethos-parser-pdf/src/limitations.rs` rather than reach for `#[allow(dead_code)]`;
 standing rule 3 wants the disclosure either way.
 
 The canary failures live in a different target, which `--lib` cannot reach:
 
 ```bash
-cargo test -p engine-pdf --test extraction --locked
+cargo test -p ethos-parser-pdf --test extraction --locked
 ```
 
 Expect four failures there —
@@ -175,9 +175,14 @@ Expect four failures there —
 `reading_the_structure_tree_changes_no_earlier_slices_answer`. They are the point, not an
 oversight: they are what says 1040 stopped being silent.
 
-The patch adds `crates/engine-pdf/src/stroke_ruled.rs` — the 348-line module that **is** the rule —
-and modifies `content.rs`, `extract.rs`, `tables.rs` and `lib.rs` in `engine-pdf` plus `profile.rs`
-and `lib.rs` in `engine-core`. `git apply --check` first; `git apply -R` backs it out. The six
+> **The bundled `stroke-ruled-v1.patch` predates the `ethos-engine` → `ethos-parser` rename and
+> still names the old `crates/engine-*` paths. It is kept byte-for-byte as it was written, because
+> rewriting an archived patch would make it claim to apply to a tree that did not exist when it was
+> authored. The prose below uses today's crate names; the patch does not.**
+
+The patch adds `crates/ethos-parser-pdf/src/stroke_ruled.rs` — the 348-line module that **is** the rule —
+and modifies `content.rs`, `extract.rs`, `tables.rs` and `lib.rs` in `ethos-parser-pdf` plus `profile.rs`
+and `lib.rs` in `ethos-parser-core`. `git apply --check` first; `git apply -R` backs it out. The six
 pre-image blob hashes in the patch header are the real applicability test — they match `683031b`
 today, and when they stop matching the module is the part worth keeping.
 

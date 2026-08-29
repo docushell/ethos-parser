@@ -1,4 +1,4 @@
-# Copyright 2026 The ethos-engine maintainers
+# Copyright 2026 The ethos-parser maintainers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 edits.** In this framework that is ``ToolMessage.artifact`` versus ``ToolMessage.content``, and
 these tests are that sentence as executables.
 
-**MCP is the oracle here, not this file's own opinion.** `engine mcp` already decided both the
+**MCP is the oracle here, not this file's own opinion.** `ethos-parser mcp` already decided both the
 argument schemas and the summary wording, so the assertions below compare against what the server
 actually advertises and emits rather than against strings retyped from it. A second adapter that
 drifted from the first would fail here rather than in a reviewer's memory.
@@ -30,9 +30,9 @@ import subprocess
 
 import pytest
 
-import ethos_engine
-from ethos_engine import FingerprintMismatch, NodeNotFound
-from ethos_engine.langchain import TOOL_SCHEMAS, tools
+import ethos_parser
+from ethos_parser import FingerprintMismatch, NodeNotFound
+from ethos_parser.langchain import TOOL_SCHEMAS, tools
 
 #: The same list `mcp.rs`, `mcp_stdio.rs`, the Node SDK and `test_handle_law.py` ban.
 BANNED_ARGUMENT_NAMES = [
@@ -69,7 +69,7 @@ TRUST_STATE_WORDS = [
 
 
 def mcp(engine_binary, calls):
-    """Speak a session to `engine mcp` and return its results, so MCP can be the oracle."""
+    """Speak a session to `ethos-parser mcp` and return its results, so MCP can be the oracle."""
     lines = [
         json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params})
         for i, (method, params) in enumerate(calls, start=1)
@@ -92,7 +92,7 @@ def by_name():
 
 @pytest.fixture(scope="module")
 def representation(fixture_pdf):
-    return ethos_engine.extract(fixture_pdf)
+    return ethos_parser.extract(fixture_pdf)
 
 
 def call(tool, args):
@@ -114,7 +114,7 @@ def test_the_three_tools_are_content_and_artifact(by_name):
 
 def test_extract_puts_the_artifact_in_the_artifact(by_name, fixture_pdf):
     message = call(by_name["extract"], {"path": str(fixture_pdf)})
-    assert message.artifact == ethos_engine.extract(fixture_pdf), (
+    assert message.artifact == ethos_parser.extract(fixture_pdf), (
         "the artifact must be the object the SDK returned, not a re-serialization of it"
     )
     assert isinstance(message.content, str)
@@ -122,12 +122,12 @@ def test_extract_puts_the_artifact_in_the_artifact(by_name, fixture_pdf):
 
 def test_ground_and_node_get_put_the_artifact_in_the_artifact(by_name, representation):
     grounding = call(by_name["ground"], {"representation": representation})
-    assert grounding.artifact == ethos_engine.ground(representation)
+    assert grounding.artifact == ethos_parser.ground(representation)
     assert grounding.artifact["artifact_type"] == "ethos.grounding.v1"
 
     minted = representation["representation"]["nodes"][0]["id"]
     node = call(by_name["node_get"], {"representation": representation, "node_id": minted})
-    assert node.artifact == ethos_engine.node_get(representation, minted)
+    assert node.artifact == ethos_parser.node_get(representation, minted)
     assert node.artifact["id"] == minted, "the id lives here, and only here"
 
 
@@ -136,7 +136,7 @@ def test_ground_and_node_get_put_the_artifact_in_the_artifact(by_name, represent
 
 @pytest.mark.parametrize("pdf_name", ["markdown-two-blocks", "off-page-and-offset-box"])
 def test_the_summaries_are_the_ones_mcp_emits(by_name, engine_binary, repo_root, pdf_name):
-    """Byte-for-byte against `engine mcp`, on a document where nothing is omitted and one where
+    """Byte-for-byte against `ethos-parser mcp`, on a document where nothing is omitted and one where
     everything is.
 
     This is what stops the second adapter inventing a richer sentence than the first — and it is
@@ -144,7 +144,7 @@ def test_the_summaries_are_the_ones_mcp_emits(by_name, engine_binary, repo_root,
     equals the engine's own `omission.nodes_omitted`.
     """
     pdf = repo_root / "fixtures" / "engine" / pdf_name / "document.pdf"
-    representation = ethos_engine.extract(pdf)
+    representation = ethos_parser.extract(pdf)
 
     from_mcp = mcp(
         engine_binary,
@@ -183,7 +183,7 @@ def test_no_summary_carries_a_locator(by_name, representation, fixture_pdf):
 def test_node_get_names_the_kind_the_artifact_names(by_name, representation):
     """The kind is a category, not a handle — and it is spelled the way the **artifact** spells it.
 
-    `engine mcp` prints Rust's `Debug` of the enum (`TextRun`); the artifact carries the serde
+    `ethos-parser mcp` prints Rust's `Debug` of the enum (`TextRun`); the artifact carries the serde
     name (`text_run`). This adapter reports what the artifact says, because reshaping it into the
     other spelling would be the adapter inventing a name for a thing it did not read.
     """
@@ -236,7 +236,7 @@ def test_an_edited_representation_fails_at_the_fingerprint(by_name, representati
 def test_a_document_the_engine_cannot_read_is_a_tool_error(by_name, tmp_path):
     not_a_pdf = tmp_path / "document.pdf"
     not_a_pdf.write_bytes(b"this is not a PDF")
-    with pytest.raises(ethos_engine.EngineFailed):
+    with pytest.raises(ethos_parser.EngineFailed):
         call(by_name["extract"], {"path": str(not_a_pdf)})
 
 
@@ -253,7 +253,7 @@ def test_the_argument_schemas_are_the_ones_mcp_advertises(engine_binary):
     assert {tool["name"] for tool in advertised} == set(TOOL_SCHEMAS)
     for tool in advertised:
         assert TOOL_SCHEMAS[tool["name"]] == tool["inputSchema"], (
-            "the LangChain schema for `{}` has drifted from what `engine mcp` advertises".format(
+            "the LangChain schema for `{}` has drifted from what `ethos-parser mcp` advertises".format(
                 tool["name"]
             )
         )
@@ -283,9 +283,9 @@ def test_the_surfaces_this_slice_did_not_wrap_are_absent(by_name):
 
 
 def test_importing_the_sdk_does_not_import_langchain():
-    """`import ethos_engine` must still pull nothing — the extra is an extra."""
+    """`import ethos_parser` must still pull nothing — the extra is an extra."""
     probe = (
-        "import sys, ethos_engine;"
+        "import sys, ethos_parser;"
         "print('langchain_core' in sys.modules or 'pydantic' in sys.modules)"
     )
     completed = subprocess.run(

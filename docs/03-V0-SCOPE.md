@@ -137,7 +137,7 @@ like everything else and **do not count toward the 15**.
 Plus **37 engine-authored CC0 fixtures**, the first added at M5: a PDF with unusable font metrics,
 exercising the geometry-omission path. Each exists because the Ethos corpus has no case for it, and
 the set has grown with every slice that needed one — the count here is the manifest's
-`counts.engine_owned`, which `crates/engine-pdf/tests/robustness.rs` asserts against the array
+`counts.engine_owned`, which `crates/ethos-parser-pdf/tests/robustness.rs` asserts against the array
 length. **The 15-fixture oracle criterion is unchanged** — it is the Ethos conformance corpus, and
 engine-owned fixtures are additional test assets, never part of that count. The manifest says so in
 the `engine` root's own note: *"Never counted toward the 15-fixture oracle criterion."*
@@ -162,7 +162,7 @@ Two of these are known-hostile and both are load-bearing:
 **Every line is a CI job, not a judgement call.** Closed at M7, and closed the way the sentence
 above always meant: each line below names the job in `.github/workflows/ci.yml` that proves it, so
 a reviewer can see *which criterion* is green rather than inferring it from one undifferentiated
-`cargo test`. `crates/engine-cli/tests/v0_exit_criteria.rs` asserts that every job named here
+`cargo test`. `crates/ethos-parser-cli/tests/v0_exit_criteria.rs` asserts that every job named here
 exists, that no job exists without a criterion, that no `--skip` appears anywhere in the workflow,
 and that **no job's test filter matches zero tests** — a filter naming a renamed test would make
 its job print `ok. 0 passed` and go green having checked nothing.
@@ -217,18 +217,18 @@ cheapest honest form of two of these.
 | --- | --- |
 | `v0-happy-path` | `oracle_agrees_on_all_ethos_owned_fixtures`, `refused_fixtures_fail_closed_rather_than_producing_an_artifact`, `manifest_declares_fifteen_ethos_owned_fixtures` |
 | `v0-double-run` | every `*byte_identical*` test, plus the two diagnostics and library-level double-run tests |
-| `v0-oracle` | the whole `engine-cli --test oracle` target, against a built `ethos` binary |
+| `v0-oracle` | the whole `ethos-parser-cli --test oracle` target, against a built `ethos` binary |
 | `v0-artifact-identity` | `the_artifact_carries_a_full_identity_envelope` (×2), `the_default_profile_is_pinned`, `artifact_identity_round_trips_through_c14n`, `the_profile_schema_example_is_the_real_profile` |
 | `v0-coordinates` | `every_geometry_bearing_artifact_declares_its_coordinate_system` and the profile/schema literals |
 | `v0-no-confidence` | `ci/forbidden-tokens.sh confidence` |
-| `v0-c14n` | `engine-core`'s c14n, float-rejection and quantize suites |
+| `v0-c14n` | `ethos-parser-core`'s c14n, float-rejection and quantize suites |
 | `v0-locators` | `every_run_carries_a_native_locator`, `no_source_line_derives_a_box_from_the_font_size`, and the measured/absent metric pair |
-| `v0-l1-gate` | the whole `engine-pdf --test capabilities` target |
+| `v0-l1-gate` | the whole `ethos-parser-pdf --test capabilities` target |
 | `v0-exit-codes` | the three CLI exit tests, `the_three_exit_codes_are_distinguishable`, and the two library-level distinguishability tests |
 | `v0-classify-bound` | `the_sampler_is_bounded_on_a_492_page_document` + the counter and flat-cost tests, `--exact --test-threads=1` |
 | `v0-fail-closed` | unknown operator (three tests), unknown magic, and the c14n float refusals |
-| `v0-fixture-mutation` | the whole `engine-pdf --test robustness` target, `--nocapture` so the coverage report reaches the log |
-| `v0-office-mutation` | the whole `engine-office --test robustness` target, `--nocapture` for the same reason. The sixteen office packages are in no manifest, so `v0-fixture-mutation` cannot reach them (v2-S13) |
+| `v0-fixture-mutation` | the whole `ethos-parser-pdf --test robustness` target, `--nocapture` so the coverage report reaches the log |
+| `v0-office-mutation` | the whole `ethos-parser-office --test robustness` target, `--nocapture` for the same reason. The sixteen office packages are in no manifest, so `v0-fixture-mutation` cannot reach them (v2-S13) |
 | `v0-fuzz-smoke` | `cargo fuzz build` on **all three** targets, then 60s each with `-timeout=10` on the two PDF ones. `office_read` is built and not run — v2-S12 measured a per-push office campaign and declined it, and v2-S12.1 added the build because nothing else compiles it |
 | `deny-policy-is-enforced` | `cargo deny check licenses`, then the AGPL probe requiring exit 4 |
 | `v0-no-verify` | `ci/forbidden-tokens.sh verification` |
@@ -260,7 +260,7 @@ advertised `Sample(8)` does **not** bound cost, because a Phase-3 rescan walks e
 `Full` **434 ms**: asking for one page costs the same as asking for all of them. Cost scales at
 roughly 0.4–0.55 ms/page on top of parse.
 
-State ethos-engine's own cost as *"~0.5 ms per sampled page, plus document parse,"* make the sample
+State ethos-parser's own cost as *"~0.5 ms per sampled page, plus document parse,"* make the sample
 count a pinned profile field, and keep classification **in-process** — if it ever shells out,
 fork/exec alone consumes the entire budget.
 
@@ -268,7 +268,7 @@ fork/exec alone consumes the entire budget.
 
 | # | Risk | Mitigation |
 | --- | --- | --- |
-| 1 | **`DocumentRepresentation v0` is a target, not a shipped type.** ethos-engine will be its first implementation, so it risks diverging from what DocuShell eventually needs | Emit it, validate against the companion document's field list, **treat the first implementation as the reference and plan a review round**. Every uncertain field carries `TODO(re-read DocumentRepresentation v0 field list)`. This is an accepted, explicit decision — not something to discover in review (memo §16.13) |
+| 1 | **`DocumentRepresentation v0` is a target, not a shipped type.** ethos-parser will be its first implementation, so it risks diverging from what DocuShell eventually needs | Emit it, validate against the companion document's field list, **treat the first implementation as the reference and plan a review round**. Every uncertain field carries `TODO(re-read DocumentRepresentation v0 field list)`. This is an accepted, explicit decision — not something to discover in review (memo §16.13) |
 | 2 | **`lopdf`'s ~4% open-failure rate** on a corpus PDFium handles | Declare it; keep PDFium/Ethos available for documents it rejects; **measure the rate on a real corpus**, not 26 fixtures |
 | 3 | **Multi-column reading order has no stable rule yet** | v0 shipped single-column plus an explicit limitation rather than a cliff-shaped heuristic. **Closed at v1-S5**: the rule cuts on geometric gutters, and `two-column-14-lines`/`-15-lines` hold it to producing the same order across the one-line edit that moves pdf-inspector's |
 | 4 | **Ink-box work is the only unbounded item in v0** | Time-box it. Typed absence is an acceptable v0 answer for hard fonts |

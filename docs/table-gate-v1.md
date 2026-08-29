@@ -112,7 +112,7 @@ pinned-versus-not comparison has nothing left to say once the second list is emp
 invite someone to add a document to the wrong side of it.
 
 **What it cost, stated because the warning that predicted it is above.**
-`fixtures/manifest.json`'s `counts` drive `crates/engine-pdf/tests/robustness.rs`, and nine new
+`fixtures/manifest.json`'s `counts` drive `crates/ethos-parser-pdf/tests/robustness.rs`, and nine new
 entries — the cfpb pin plus eight `gate` documents — moved the mutation corpus from **55 fixtures
 and 318 mutants** to **64 fixtures and 363 mutants**. `EXPECTED_INAPPLICABLE` went from 12 pairs to
 **21**, and every one of the nine additions is the same `unknown-operator`-on-a-compressed-content-
@@ -374,7 +374,7 @@ that decides it.**
 **Keeping and declaring was the posture until this slice, and what it is worth is measurable.**
 The declaration already exists: every table carries its `LocatorCheck`, and on those nine it said
 `Mismatch` with the faults enumerated. **No surface this repository ships reads it.**
-`engine_core::markdown::plan_tables` and `engine_core::html::plan_tables` project **every** table
+`ethos_parser_core::markdown::plan_tables` and `ethos_parser_core::html::plan_tables` project **every** table
 in `payload.tables`, branching only on `rows` and `columns`, and consult no check anywhere. So a
 consumer of either projection received nine GFM grids of up to 103 × 22 and received no warning at
 all. A disclosure that no reader of the thing being disclosed about can see is a disclosure in
@@ -437,7 +437,7 @@ than asserted-about:
 **And one shipped fixture changes its job.** `ruled-table-overlap` existed to prove the engine
 emits a self-contradicting grid and says so; it now proves the engine refuses one and says why. Its
 row in `fixtures/README.md` is rewritten rather than left standing, two tests in
-`crates/engine-pdf/tests/extraction.rs` moved with it, and
+`crates/ethos-parser-pdf/tests/extraction.rs` moved with it, and
 `tables::tests::the_cross_check_still_sees_two_rectangles_claiming_one_slot` holds the check itself
 under test now that no artifact can. That is a real loss of an end-to-end instance and it is
 recorded here rather than absorbed.

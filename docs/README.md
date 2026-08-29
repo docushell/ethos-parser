@@ -1,4 +1,4 @@
-# ethos-engine — implementation documentation
+# ethos-parser — implementation documentation
 
 **Status:** **v1.2 is complete at 0.19.0; v2 reads eight formats at 0.37.0, and v2's format row
 is closed.** v1.1 is complete. v1 is
@@ -26,7 +26,7 @@ representation nodes, plus a coverage census of what did not make it. `docs/01-C
 refused a Markdown projection for the whole of v1 on Workbench rule 8; the map is what makes that
 objection payable.
 
-**v1.2 is ADOPTION, and S1 is its first adapter: `engine mcp`, MCP over stdio.** Three tools —
+**v1.2 is ADOPTION, and S1 is its first adapter: `ethos-parser mcp`, MCP over stdio.** Three tools —
 `extract`, `ground`, `node_get` — over newline-delimited JSON-RPC on a pipe, with no HTTP, no
 socket and no async runtime, so `deny.toml`'s network bans hold. The whole slice turns on one
 sentence in [`12-V12-SCOPE.md`](12-V12-SCOPE.md) §2: MCP tools are model-controlled, so **the
@@ -54,7 +54,7 @@ written down as a named divergence rather than approximated.
 **S4 makes both SDKs callable from LangChain, and the split is the whole slice.** Three tools per
 language over `response_format="content_and_artifact"`: the artifact carries the SDK object, and
 `content` carries MCP's counts and nothing a pipeline would bind to — compared **byte-for-byte**
-against what `engine mcp` emits, so the two adapters cannot drift into two sentences about one
+against what `ethos-parser mcp` emits, so the two adapters cannot drift into two sentences about one
 document. The argument schemas are MCP's own, verbatim. LangChain is an optional extra and an
 optional peer on a subpath, so the default import still pulls nothing. No LangGraph adapter (the
 memo refused one), no trust state, no `verify` tool, no `capabilities.langchain`.
@@ -65,7 +65,7 @@ nothing else"*, so it cannot name its own producer, and the schema requires one 
 a field asserted rather than measured; and their boxes are loose em boxes that §5.3 says must be
 declared, with nowhere in the schema to declare them. The predicted blocker — an unknown coordinate
 origin — **dissolved**: their space and this engine's visible box are the same box. The refusal is
-pinned by `engine-grounding/tests/liteparse_refusal.rs` so relaxing either schema fact reopens it.
+pinned by `ethos-parser-grounding/tests/liteparse_refusal.rs` so relaxing either schema fact reopens it.
 
 **v2 is office formats, and it reads eight of them** — DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and
 EPUB, with **CSV an argued refusal rather than a reader**. Its gate is *a DOCX quote and an
@@ -86,20 +86,20 @@ made that decision S1, ahead of any reader.
 **verifier's** contract — the oracle agrees with the pinned Ethos CLI on this exact schema — so an
 engine-only revision would fork what the engine does not own. **And the measurement resized S2:**
 `DocumentRepresentation::seal` refuses a node whose parent is not a declared page, so a page-less
-document cannot become a representation at all. The page assumption is in `engine-core`, not in
+document cannot become a representation at all. The page assumption is in `ethos-parser-core`, not in
 grounding, and reaching v2's gate is upstream of the schema question S0 asked.
 
-**S2 read the first format and paid for the finding.** `engine-office` is the fifth crate, `engine
+**S2 read the first format and paid for the finding.** `ethos-parser-office` is the fifth crate, `ethos-parser
 extract` reads a `.docx`, and `check_structure` now splits on the **locator family**: a paginated
 address still needs its declared page, a page-less one needs a part id, `pages` must be empty, and a
 page-less node with a measured box is refused outright. `DocxLocator` is part + paragraph + run and
 nothing else. `ethos.grounding.v1`, `mcp.rs` and both SDKs are **untouched** — and `node_get`
 resolves a DOCX run anyway, which is what one IR and one serializer buys.
 
-**S3 read the second format, and it is the one that used the shape S2 built.** `engine extract`
+**S3 read the second format, and it is the one that used the shape S2 built.** `ethos-parser extract`
 reads an `.xlsx`; `XlsxLocator` is part + sheet + row + column, with the **column kept as the
 letters the file wrote** because `B` → `2` is arithmetic the workbook never performed. A workbook is
-one part per *sheet*, so it is the first artifact with more than one — and `engine-core` needed no
+one part per *sheet*, so it is the first artifact with more than one — and `ethos-parser-core` needed no
 change for it, because the part-id ↔ part-name rule is a bijection and ordinals count per parent.
 The sheet-to-part binding is resolved through `xl/_rels/workbook.xml.rels` rather than guessed from
 position, since a workbook that has had a sheet deleted has `sheet1.xml` and `sheet3.xml` and the
@@ -230,9 +230,9 @@ moved; this is the roadmap row after it (`02-ROADMAP.md`), and it is the first w
 
 **What v0.1 added**, all three from that roadmap row:
 
-- **Citation verification as a declared capability.** `engine verify` spawns the pinned Ethos CLI
+- **Citation verification as a declared capability.** `ethos-parser verify` spawns the pinned Ethos CLI
   and relays its report bytes **verbatim** — byte-identical to running `ethos verify` yourself.
-  The engine still does not verify: `engine_core::verifier` has no type for a report, a claim or a
+  The engine still does not verify: `ethos_parser_core::verifier` has no type for a report, a claim or a
   result, so there is nothing that could re-derive one. `--fail-on-ungrounded` exits 1 with the
   report; a missing verifier exits 2 with no report and a named error.
 - **Encoding-issue detection.** A font that cannot map a code drops its run and declares
@@ -246,15 +246,15 @@ The verifier's identity and the repair policy are both `Profile` fields, so `pro
 again — a verifier swap and a repair-policy change are now as fingerprint-visible as a backend
 swap.
 
-`engine-pdf` opens a PDF once and both classifies it (M2) and extracts position-aware text runs
+`ethos-parser-pdf` opens a PDF once and both classifies it (M2) and extracts position-aware text runs
 from it (M3): an exhaustive operator table that fails closed, `PdfLocator` on every run, measured
 or typed-absent ink boxes, synthesized-character flags, and the ligature caveat on the wire. As of
 M4 every artifact also carries the **L1 gate** — declared capabilities, named limitations, per-page
 processing state, a coverage summary that reconciles, and a terminal state where **partial is not a
-degraded success**. As of M5 `engine extract` emits **`DocumentRepresentation v0`** — the canonical
+degraded success**. As of M5 `ethos-parser extract` emits **`DocumentRepresentation v0`** — the canonical
 evidence record, with a fingerprint over its own payload and geometry deliberately outside it — and
-`engine ground` projects that record into `ethos.grounding.v1`, validated against a pinned snapshot
-of Ethos's own schema. As of M6 `engine grounding-check` validates a grounding artifact's structure
+`ethos-parser ground` projects that record into `ethos.grounding.v1`, validated against a pinned snapshot
+of Ethos's own schema. As of M6 `ethos-parser grounding-check` validates a grounding artifact's structure
 and its binding to source bytes, and **agrees with the Ethos CLI on every fixture that reaches
 one**.
 
@@ -265,7 +265,7 @@ M7 added no capability. It closed v0 instead:
   `v0_exit_criteria.rs` fails if a box is ticked against a job nobody wrote — or if a `--skip`
   reappears anywhere in the workflow.
 - **The public API is a list**, not whatever happened to be `pub`. See
-  [`PUBLIC-API.md`](PUBLIC-API.md). `engine-pdf`'s parsing machinery is `pub(crate)`, and
+  [`PUBLIC-API.md`](PUBLIC-API.md). `ethos-parser-pdf`'s parsing machinery is `pub(crate)`, and
   narrowing it exposed dead code the compiler had been unable to see.
 - **`--diagnostics`** exists: opt-in, stderr-only, outside every fingerprint.
 - **Fuzz and mutation layers.** `cargo-fuzz` on the PDF entry point, and every fixture in the
@@ -320,8 +320,8 @@ diagnostic naming what was missing; M6 replaced the panic with the comparison it
 If you find yourself adding `--skip` to get a green build, stop: that test is the only thing
 proving this engine and the verifier read an artifact the same way.
 
-**`engine-core` is closed to format concepts.** All PDF work lives in `engine-pdf`, which depends
-on `engine-core` and never the other way round. A test scans `engine-core`'s sources and fails if a
+**`ethos-parser-core` is closed to format concepts.** All PDF work lives in `ethos-parser-pdf`, which depends
+on `ethos-parser-core` and never the other way round. A test scans `ethos-parser-core`'s sources and fails if a
 PDF import, a float outside `quantize`, or the token `confidence` appears.
 
 Then, as needed:

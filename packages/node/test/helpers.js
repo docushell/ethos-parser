@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ function workspaceVersion() {
   return match[1];
 }
 
-/** `engine --version`, or `null` if it will not run. */
+/** `ethos-parser --version`, or `null` if it will not run. */
 function binaryVersion(path) {
   const result = spawnSync(path, ["--version"], { encoding: "utf8" });
   if (result.error || result.status !== 0) return null;
@@ -67,7 +67,7 @@ function binaryVersion(path) {
 /**
  * Find a binary that is **this workspace's**, and refuse one that is not.
  *
- * The version check is not decoration. A stale `target/release/engine` is preferred over nothing
+ * The version check is not decoration. A stale `target/release/ethos-parser` is preferred over nothing
  * at all and answers every question plausibly, so a suite that took the first file it found would
  * compare the SDK against a parser from six minor versions ago and go green — it would still
  * prove the SDK does not alter what the CLI prints, but about the wrong CLI. That is a false
@@ -77,26 +77,26 @@ function binaryVersion(path) {
 function locateBinary() {
   const want = workspaceVersion();
 
-  const pinned = process.env.ETHOS_ENGINE;
+  const pinned = process.env.ETHOS_PARSER;
   if (pinned) {
     // An explicit pin is authoritative in both directions: it is never silently overridden, and a
     // pin that is the wrong build is an error rather than a reason to look elsewhere.
     const got = binaryVersion(pinned);
     if (got !== want) {
       throw new Error(
-        `ETHOS_ENGINE=${JSON.stringify(pinned)} reports ${got ?? "nothing"} but this workspace ` +
-          `is ${want}. Rebuild it, or point ETHOS_ENGINE at a build of this tree.`,
+        `ETHOS_PARSER=${JSON.stringify(pinned)} reports ${got ?? "nothing"} but this workspace ` +
+          `is ${want}. Rebuild it, or point ETHOS_PARSER at a build of this tree.`,
       );
     }
     return pinned;
   }
 
   const candidates = [
-    join(REPO_ROOT, "target", "release", "engine"),
-    join(REPO_ROOT, "target", "debug", "engine"),
+    join(REPO_ROOT, "target", "release", "ethos-parser"),
+    join(REPO_ROOT, "target", "debug", "ethos-parser"),
   ];
   for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const onPath = join(dir, "engine");
+    const onPath = join(dir, "ethos-parser");
     if (isFile(onPath)) candidates.push(onPath);
   }
 
@@ -110,14 +110,14 @@ function locateBinary() {
   throw new Error(
     `no \`engine\` binary at ${want}. Tried, in order:\n${tried.join("\n") || "  (nothing)"}\n\n` +
       "    cargo build --locked\n\n" +
-      "or point ETHOS_ENGINE at a build of this tree. This is a failure and not a skip: a green " +
+      "or point ETHOS_PARSER at a build of this tree. This is a failure and not a skip: a green " +
       "run against a parser from another version would prove something about the wrong engine.",
   );
 }
 
 /** Pin the binary for the whole run, the way a caller would. */
 export const engineBinary = locateBinary();
-process.env.ETHOS_ENGINE = engineBinary;
+process.env.ETHOS_PARSER = engineBinary;
 
 if (!existsSync(FIXTURE_PDF)) {
   throw new Error(`fixture missing: ${FIXTURE_PDF}`);
@@ -133,7 +133,7 @@ export function cli(...args) {
   const result = spawnSync(engineBinary, args, { maxBuffer: Infinity });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(`engine ${args.join(" ")} exited ${result.status}: ${result.stderr}`);
+    throw new Error(`ethos-parser ${args.join(" ")} exited ${result.status}: ${result.stderr}`);
   }
   const out = result.stdout;
   return out.length && out[out.length - 1] === 0x0a ? out.subarray(0, out.length - 1) : out;

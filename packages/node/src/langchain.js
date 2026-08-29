@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@
  *
  * A box in `content` is a locator a model can edit and then cite. That is the failure this whole
  * version is arranged to prevent, and it is why the summary strings below are copied from
- * `engine-cli/src/mcp.rs` rather than written afresh.
+ * `ethos-parser-cli/src/mcp.rs` rather than written afresh.
  *
  * # It is not a third implementation
  *
  * Every tool calls `./index.js` — the same functions a shell would reach through the CLI. Nothing
- * here spawns `engine`, and nothing here talks to MCP. `packages/python/src/ethos_engine/
+ * here spawns `ethos-parser`, and nothing here talks to MCP. `packages/python/src/ethos_parser/
  * langchain.py` is the contract, exactly as the Python SDK is the contract for `./index.js`; the
  * only differences are the ones the frameworks force.
  *
@@ -70,7 +70,7 @@ try {
   ({ tool } = await import("@langchain/core/tools"));
 } catch (cause) {
   throw new Error(
-    "`ethos-engine/langchain` needs @langchain/core, which is an optional peer so that the " +
+    "`ethos-parser/langchain` needs @langchain/core, which is an optional peer so that the " +
       "default import pulls nothing. Install it with:\n\n" +
       "    npm install @langchain/core\n\n" +
       "This is a named failure rather than a degraded import: a tools() that returned an empty " +
@@ -80,7 +80,7 @@ try {
 }
 
 /**
- * The argument schemas, **verbatim from what `engine mcp` advertises**.
+ * The argument schemas, **verbatim from what `ethos-parser mcp` advertises**.
  *
  * One wire shape across the three adapters, and `test/langchain.test.js` asserts these against
  * `tools/list` rather than against a reviewer's memory. That is also where the geometry ban is
@@ -168,7 +168,7 @@ const IMPLEMENTATIONS = {
     // elements. Counting geometry rows instead would re-encode `GeometryPresence::is_groundable`
     // out here, and a count derived from a different question than the one being asked is a count
     // that goes wrong the first time a second absence variant appears. `test/langchain.test.js`
-    // pins this string against the one `engine mcp` emits, which uses the engine's own
+    // pins this string against the one `ethos-parser mcp` emits, which uses the engine's own
     // `omission.nodes_omitted`.
     const omitted = nodeCount(representation) - artifact.elements.length;
     return [

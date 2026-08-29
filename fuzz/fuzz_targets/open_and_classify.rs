@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use engine_core::Profile;
-use engine_pdf::Document;
+use ethos_parser_core::Profile;
+use ethos_parser_pdf::Document;
 
 fuzz_target!(|data: &[u8]| {
     // The default profile, so what is fuzzed is what ships. A profile with the sample count
@@ -35,7 +35,7 @@ fuzz_target!(|data: &[u8]| {
     let profile = Profile::default();
 
     if let Ok(doc) = Document::open_bytes(data, &profile) {
-        if let Ok(classification) = engine_pdf::classify(&doc, &profile) {
+        if let Ok(classification) = ethos_parser_pdf::classify(&doc, &profile) {
             // Canonicalization is on the path too: it is where integers are range-checked and
             // where a value that survived the parser can still be rejected. Skipping it would
             // leave the last gate in the chain unfuzzed.

@@ -19,7 +19,7 @@ version numbers get invented — every delta from the research folds into a row 
 | Ver | Theme | Contents | Gate |
 | --- | --- | --- | --- |
 | **v0** | Honest PDF core | classify (reason codes on two orthogonal axes, counts, no confidence, three exit codes) · position-aware text runs · measured ink box or typed absence with declared semantics · `synthesized` flags · single-column order · format detection · error taxonomy · c14n/quanta/ids · capability declarations · `ethos.grounding.v1` · `grounding-check` · CLI + lib · fuzz + mutation tests | Validator agrees byte-identically with `ethos grounding check` on all 15 fixtures |
-| **v0.1** | Verify + robustness — **shipped as 0.2.0** | shell out to the Ethos CLI as a declared capability · encoding-issue detection · xref repair-or-refuse | An ungrounded claim exits 1 with a report; no silent skip. **Met**: `engine verify --fail-on-ungrounded`, bytes relayed verbatim, verifier pinned in the profile |
+| **v0.1** | Verify + robustness — **shipped as 0.2.0** | shell out to the Ethos CLI as a declared capability · encoding-issue detection · xref repair-or-refuse | An ungrounded claim exits 1 with a report; no silent skip. **Met**: `ethos-parser verify --fail-on-ungrounded`, bytes relayed verbatim, verifier pinned in the profile |
 | **v1** | **The DocuShell replacement gate** | tables (ruled + unruled) with locator cross-check · vector path data driving ruled detection · full element vocabulary incl. Header/Footer/Caption · multi-column with a stable rule · tagged-PDF consumption + `mcid` + structure tree · forms and annotations as typed, distinguishable nodes · DPI screenshots · security findings (hidden / off-page) · images · annotated PDF | Fabrication rate **0** · cross-check diagnostics emitted · an honest table number on the twelve-PDF set, measured at **70‰** with a **0‰..590‰ band and ten of twelve at zero** (v2-S19; 64‰ on the earlier four-PDF set). The **> 0.489** chase is **parked** — see below. **v1 is not complete**, and decision **#18** that would close it is written and undecided |
 | **v1.1** | Safe Markdown | Markdown + **Anchor Map** · HTML · hyphenation / dot-leaders / drop-caps as export-only cosmetics | A Markdown-quoted citation verifies end-to-end; coverage completeness asserted |
 | **v1.2** | Adoption | **MCP server** (first adapter) · Python + Node SDKs · LangChain tool · optional `liteparse → ethos.grounding.v1` adapter | Locators survive every adapter round-trip |
@@ -109,6 +109,6 @@ forced decision in `00-NORTH-STAR.md` §2.
 
 Each row above is a **scope** document plus a **milestones** document, on the pattern `03`/`05` set
 for v0. A version gets that pair before it gets code — v2 had both while having none, and now has
-`engine-office` reading eight formats under them. Nothing past
+`ethos-parser-office` reading eight formats under them. Nothing past
 v2 has an implementation document, and v2.2, v3 and v4 should not get one until v2's gate is in
 sight.

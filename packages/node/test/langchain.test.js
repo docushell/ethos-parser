@@ -1,4 +1,4 @@
-// Copyright 2026 The ethos-engine maintainers
+// Copyright 2026 The ethos-parser maintainers
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
  * edits.** In this framework that is `ToolMessage.artifact` versus `ToolMessage.content`, and
  * these tests are that sentence as executables.
  *
- * **MCP is the oracle here, not this file's own opinion.** `engine mcp` already decided both the
+ * **MCP is the oracle here, not this file's own opinion.** `ethos-parser mcp` already decided both the
  * argument schemas and the summary wording, so the assertions below compare against what the
  * server actually advertises and emits rather than against strings retyped from it.
  *
@@ -88,7 +88,7 @@ try {
 
 const options = skip ? { skip } : {};
 
-/** Speak a session to `engine mcp` and return its results, so MCP can be the oracle. */
+/** Speak a session to `ethos-parser mcp` and return its results, so MCP can be the oracle. */
 function mcp(calls) {
   const lines = calls.map(([method, params], i) =>
     JSON.stringify({ jsonrpc: "2.0", id: i + 1, method, params }),
@@ -160,7 +160,7 @@ test("ground and node_get put the artifact in the artifact", options, async () =
 
 for (const name of ["markdown-two-blocks", "off-page-and-offset-box"]) {
   test(`the summaries are the ones MCP emits (${name})`, options, async () => {
-    // Byte-for-byte against `engine mcp`, on a document where nothing is omitted and one where
+    // Byte-for-byte against `ethos-parser mcp`, on a document where nothing is omitted and one where
     // everything is. This is what stops the second adapter inventing a richer sentence than the
     // first — and it is also the proof that `ground`'s omitted count, computed out here as
     // nodes-minus-elements, equals the engine's own `omission.nodes_omitted`.
@@ -210,7 +210,7 @@ test("no summary carries a locator", options, async () => {
 
 test("node_get names the kind the artifact names", options, async () => {
   // The kind is a category, not a handle — and it is spelled the way the artifact spells it.
-  // `engine mcp` prints Rust's `Debug` of the enum (`TextRun`); the artifact carries the serde
+  // `ethos-parser mcp` prints Rust's `Debug` of the enum (`TextRun`); the artifact carries the serde
   // name (`text_run`). This adapter reports what the artifact says, because reshaping it into the
   // other spelling would be the adapter inventing a name for a thing it did not read.
   const representation = extract(FIXTURE_PDF);
@@ -293,7 +293,7 @@ test("the argument schemas are the ones MCP advertises", options, () => {
     assert.deepEqual(
       sdk.TOOL_SCHEMAS[tool.name],
       tool.inputSchema,
-      `the LangChain schema for \`${tool.name}\` has drifted from what \`engine mcp\` advertises`,
+      `the LangChain schema for \`${tool.name}\` has drifted from what \`ethos-parser mcp\` advertises`,
     );
   }
 });
@@ -329,7 +329,7 @@ test("the surfaces this slice did not wrap are absent", options, () => {
 test("the default import does not reach langchain", () => {
   // No `options`: this one holds whether or not the peer is installed, and it is the promise S2
   // and S3 made — the default install pulls nothing. The tools live on a subpath precisely so
-  // that `import "ethos-engine"` never touches the peer.
+  // that `import "ethos-parser"` never touches the peer.
   const source = readFileSync(join(PACKAGE_ROOT, "src", "index.js"), "utf8");
   assert.equal(source.includes("langchain"), false, "the default entry point mentions langchain");
 

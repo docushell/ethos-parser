@@ -53,7 +53,7 @@ the owner asked for the next roadmap row, and nothing in it closes v1.
 
 ## S1 — MCP over stdio
 
-- **Status: done.** `engine mcp` at **0.15.0**. Three tools, no new crate, no new dependency, and
+- **Status: done.** `ethos-parser mcp` at **0.15.0**. Three tools, no new crate, no new dependency, and
   `deny.toml`'s network bans untouched.
 
 - **Goal:** the first adapter, and the one §16.7 puts first — reachable from every host on its list
@@ -76,7 +76,7 @@ cost the ban to save a few dozen lines.
 
 | tool | argument | returns |
 | --- | --- | --- |
-| `extract` | `path` | `DocumentRepresentation v0`, byte-identical to `engine extract` |
+| `extract` | `path` | `DocumentRepresentation v0`, byte-identical to `ethos-parser extract` |
 | `ground` | `representation` | `ethos.grounding.v1` |
 | `node_get` | `representation`, `node_id` | the node record from **that** artifact |
 
@@ -111,7 +111,7 @@ names, so the rule is enforced against the wire rather than against a reviewer's
 
 ### Where the locators live
 
-`structuredContent` carries the canonical artifact — the same bytes `engine extract` prints, parsed
+`structuredContent` carries the canonical artifact — the same bytes `ethos-parser extract` prints, parsed
 as JSON. `content` carries a **short summary**: counts, and nothing else. No box, no id, no cell.
 
 That split is §16.7's, and it is the difference between a locator a pipeline can bind and a locator
@@ -125,16 +125,16 @@ statelessness change suits a deterministic engine exactly, and it means the hand
 back door: there is no server-side table of "documents I have seen" whose keys a model could
 enumerate.
 
-- **In:** `engine-cli/src/mcp.rs` (protocol plumbing only — the parsing lives in the library, as it
-  does for every other subcommand); the `engine mcp` subcommand; `0.15.0` and the moved profile
+- **In:** `ethos-parser-cli/src/mcp.rs` (protocol plumbing only — the parsing lives in the library, as it
+  does for every other subcommand); the `ethos-parser mcp` subcommand; `0.15.0` and the moved profile
   hash; `12`/`13`; CHANGELOG; README.
 
 - **Out:** HTTP or SSE MCP, Tokio, TLS, sockets. A Python or Node SDK. A LangChain tool. A
   liteparse mapper. `markdown`/`html`/`verify` tools. `capabilities.mcp`. A fifth crate. A tag.
 
 - **Acceptance tests:**
-  - [x] `engine mcp` answers `initialize` and `tools/list`, and `Cargo.lock` contains no `tokio`
-  - [x] `extract` through MCP is **byte-identical** to `engine extract` on the same document
+  - [x] `ethos-parser mcp` answers `initialize` and `tools/list`, and `Cargo.lock` contains no `tokio`
+  - [x] `extract` through MCP is **byte-identical** to `ethos-parser extract` on the same document
   - [x] `node_get` with a minted id returns that node; a forged id is an **error**, not an empty
         result
   - [x] `node_get` on a representation whose payload was edited fails the fingerprint check
@@ -181,27 +181,27 @@ They are two callers of one binary, not layers.
 
 | function | shells out to | returns |
 | --- | --- | --- |
-| `extract(pdf_path)` | `engine extract <path>` | `DocumentRepresentation v0` |
-| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `extract(pdf_path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `node_get(representation, node_id)` | **nothing** | the node record from **that** artifact |
 
 `ground` takes the artifact `extract` returned — the object itself, or a path to bytes this engine
 wrote — which is what the MCP tool of the same name takes. **It does not take a quote, and it does
-not take a page**, because `engine ground` takes neither: it projects a representation into
+not take a page**, because `ethos-parser ground` takes neither: it projects a representation into
 `ethos.grounding.v1`, and a locator-shaped argument would be the corollary violation in its purest
 form.
 
-`node_get` has **no `engine node-get` subcommand** and this slice did not add one. MCP already
+`node_get` has **no `ethos-parser node-get` subcommand** and this slice did not add one. MCP already
 carries the tool; a third CLI verb would exist for symmetry, which is not a reason. So its checks
 are **ported**, in the order `mcp.rs` runs them:
 
-1. the value is a representation — `artifact_type` under `ethos.engine.representation.`;
+1. the value is a representation — `artifact_type` under `ethos.parser.representation.`;
 2. `representation` is re-canonicalized and re-hashed and must equal `representation_c14n_sha256`
    — an artifact edited on the way through is refused **before any lookup happens**;
 3. `node_id` is looked up among **that artifact's own nodes**, and a miss raises.
 
-That is why `src/ethos_engine/_c14n.py` exists: it is c14n v1 in Python, ~100 lines, running
-`engine-core/src/c14n.rs`'s **own parity vectors**. A fingerprint that were merely *nearly* the
+That is why `src/ethos_parser/_c14n.py` exists: it is c14n v1 in Python, ~100 lines, running
+`ethos-parser-core/src/c14n.rs`'s **own parity vectors**. A fingerprint that were merely *nearly* the
 engine's would be worse than none — it would accept an artifact the engine refuses, or refuse one
 the engine minted, and either way a caller would be told something false about a document. The
 load-bearing proof is not the vectors but the whole artifact: `extract`'s output, re-canonicalized
@@ -230,26 +230,26 @@ claims, and a function that exists because it was cheap is a surface to keep hon
 of that name would look like this package had an opinion about whether a claim is supported.
 `07-VERIFY-BOUNDARY.md` is exactly what an SDK's convenience must not bend.
 
-- **In:** `packages/python/` (`pyproject.toml`, `src/ethos_engine/`, tests, README); `0.16.0` and
+- **In:** `packages/python/` (`pyproject.toml`, `src/ethos_parser/`, tests, README); `0.16.0` and
   the moved profile hash; `12`/`13`; CHANGELOG; README; `docs/README.md`.
 
 - **Out:** PyO3, maturin, a native extension, a fifth crate. Any runtime dependency. An
-  `engine node-get` CLI verb. `markdown`/`html`/`verify` Python functions. An MCP Python client.
+  `ethos-parser node-get` CLI verb. `markdown`/`html`/`verify` Python functions. An MCP Python client.
   `capabilities.python`. A Node SDK, a LangChain tool, a liteparse mapper. Publication to PyPI. A
   tag.
 
 - **Acceptance tests:**
-  - [x] `packages/python/` exists and `import ethos_engine` works
+  - [x] `packages/python/` exists and `import ethos_parser` works
   - [x] Runtime dependencies are **empty** — asserted both from `pyproject.toml` and by walking
         every `import` statement in the package against `sys.stdlib_module_names`
-  - [x] `extract(pdf)` re-canonicalizes to `engine extract`'s stdout **byte for byte**
-  - [x] `ground` matches `engine ground` from the object and from a path
+  - [x] `extract(pdf)` re-canonicalizes to `ethos-parser extract`'s stdout **byte for byte**
+  - [x] `ground` matches `ethos-parser ground` from the object and from a path
   - [x] `node_get` with a minted id returns that node; a forged id **raises**; an edited payload
         **raises** at the fingerprint
   - [x] No public signature names `page`, `bbox`, `x`, `y`, `width`, `height`, `row` or `column`
   - [x] No `markdown` / `html` / `verify` / `mcp` Python API
-  - [x] The c14n port matches `engine-core`'s own parity vectors, and rejects floats at every depth
-  - [x] `ETHOS_ENGINE` is authoritative; a missing binary is a **named failure**, never a skip
+  - [x] The c14n port matches `ethos-parser-core`'s own parity vectors, and rejects floats at every depth
+  - [x] `ETHOS_PARSER` is authoritative; a missing binary is a **named failure**, never a skip
   - [x] No PyO3, no fifth crate, no Tokio; `cargo deny check` still passes
   - [x] Workspace **0.16.0**, profile hash
         `sha256:1b7a4208734b9ed52f1c0b2b725322bc854ffac229c019c01226203c67c5a81a`
@@ -306,25 +306,25 @@ asserted from `package.json` and again by reading every `import` specifier in th
 
 | function | shells out to | returns |
 | --- | --- | --- |
-| `extract(pdfPath)` | `engine extract <path>` | `DocumentRepresentation v0` |
-| `ground(representation)` | `engine ground <path>` | `ethos.grounding.v1` |
+| `extract(pdfPath)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `nodeGet(representation, nodeId)` | **nothing** | the node record from **that** artifact |
 
 `ground` takes the artifact `extract` returned — the object itself, or a path to bytes this engine
 wrote — which is what Python's `ground` and the MCP tool take. **It does not take a quote and it
-does not take a page**, because `engine ground` takes neither. When handed an object it writes
+does not take a page**, because `ethos-parser ground` takes neither. When handed an object it writes
 **c14n bytes** to a temp file, not `JSON.stringify` output: a second serialization is the one thing
 this package exists not to have. It does **not** repeat the fingerprint check in JavaScript — the
 engine runs it, and the SDK surfaces the engine's own refusal with its stderr intact.
 
-`nodeGet` has **no `engine node-get` subcommand** and this slice did not add one. Its checks are
+`nodeGet` has **no `ethos-parser node-get` subcommand** and this slice did not add one. Its checks are
 ported in the order `mcp.rs` and Python run them: the value is a representation; the payload is
 re-canonicalized and re-hashed and must equal `representation_c14n_sha256`, **before any lookup**;
 `nodeId` is looked up among that artifact's own nodes, and a miss throws.
 
 ### c14n, ported a second time — and where JavaScript cannot follow
 
-`src/c14n.js` runs `engine-core/src/c14n.rs`'s **own parity vectors**, as `_c14n.py` does. Two
+`src/c14n.js` runs `ethos-parser-core/src/c14n.rs`'s **own parity vectors**, as `_c14n.py` does. Two
 hazards are specific to this language and both are handled rather than hoped:
 
 - **Key order.** `Array.prototype.sort` compares UTF-16 code units, which disagrees with Rust's
@@ -365,7 +365,7 @@ opinion about whether a claim is supported. No MCP client: MCP is a process, thi
   CHANGELOG; README; `docs/README.md`.
 
 - **Out:** napi, neon, node-gyp, prebuild, any native addon. TypeScript, a bundler, Jest, Vitest,
-  a generated `.d.ts`. Any runtime dependency. An `engine node-get` CLI verb.
+  a generated `.d.ts`. Any runtime dependency. An `ethos-parser node-get` CLI verb.
   `markdown`/`html`/`verify` JS functions. An MCP client. `capabilities.node`. Publication to npm.
   A LangChain tool, a liteparse mapper. A tag.
 
@@ -373,15 +373,15 @@ opinion about whether a claim is supported. No MCP client: MCP is a process, thi
   - [x] `packages/node/` exists and the package resolves through its own `exports` map
   - [x] Runtime dependencies are **empty** — asserted from `package.json` (`dependencies`,
         `optionalDependencies`, `peerDependencies`) and by reading every `import` specifier
-  - [x] `extract(pdf)` re-canonicalizes to `engine extract`'s stdout **byte for byte**
-  - [x] `ground` matches `engine ground` from the object and from a path
+  - [x] `extract(pdf)` re-canonicalizes to `ethos-parser extract`'s stdout **byte for byte**
+  - [x] `ground` matches `ethos-parser ground` from the object and from a path
   - [x] `nodeGet` with a minted id returns that node; a forged id **throws**; an edited payload
         **throws** at the fingerprint
   - [x] No exported parameter names a coordinate, read off `Function.prototype.toString`
   - [x] No `markdown` / `html` / `verify` / `mcp` JS API
-  - [x] The c14n port matches `engine-core`'s own parity vectors, rejects non-integers at every
+  - [x] The c14n port matches `ethos-parser-core`'s own parity vectors, rejects non-integers at every
         depth, sorts by code point rather than code unit, and refuses a lone surrogate
-  - [x] `ETHOS_ENGINE` is authoritative; a missing binary is a **named failure**, never a skip
+  - [x] `ETHOS_PARSER` is authoritative; a missing binary is a **named failure**, never a skip
   - [x] No napi/neon, no fifth crate, no Tokio; `cargo deny check` still passes
   - [x] Workspace **0.17.0**, Python `__version__` **0.17.0**, `package.json` **0.17.0**, profile
         hash `sha256:83cd55301d2423d54033e449b2bcdbd07b5a5c926c441dc456cb93edc7788774`
@@ -396,7 +396,7 @@ opinion about whether a claim is supported. No MCP client: MCP is a process, thi
 
 ## S4 — LangChain tools
 
-- **Status: done.** `ethos_engine.langchain` and `ethos-engine/langchain` at **0.18.0**. Three
+- **Status: done.** `ethos_parser.langchain` and `ethos-parser/langchain` at **0.18.0**. Three
   tools per language, no new crate, no Rust changed but the version, and **neither SDK's empty
   runtime install moved**.
 
@@ -429,7 +429,7 @@ contract could change, and it should break loudly rather than silently downgrade
 | `node_get` | ``1 node, kind `{kind}`.`` | the node record |
 
 **MCP is the oracle for those strings, not this slice's opinion.** The suites compare `content`
-byte-for-byte against what `engine mcp` emits on the same document, on one fixture where nothing
+byte-for-byte against what `ethos-parser mcp` emits on the same document, on one fixture where nothing
 is omitted and one where everything is. That is what stops a second adapter inventing a richer
 sentence than the first — and it is also the proof that `ground`'s omitted count, computed out
 here as **nodes minus elements**, equals the engine's own `omission.nodes_omitted`. Counting
@@ -439,12 +439,12 @@ first time a second absence variant appears.
 
 `node_get`'s summary names the **kind** and never the id: a kind is a category, an id is a handle,
 and a handle in the one channel a model can rewrite is the hazard itself. The kind is spelled the
-way the **artifact** spells it (`text_run`), not the way `engine mcp` prints Rust's `Debug`
+way the **artifact** spells it (`text_run`), not the way `ethos-parser mcp` prints Rust's `Debug`
 (`TextRun`) — reshaping it would be the adapter inventing a name for a thing it did not read.
 
 ### One wire shape, checked against the wire
 
-The three argument schemas are **plain JSON Schema, verbatim from what `engine mcp` advertises**,
+The three argument schemas are **plain JSON Schema, verbatim from what `ethos-parser mcp` advertises**,
 and a test in each language asserts them against `tools/list` rather than against a reviewer's
 memory. That is where the geometry ban lives too: no `page`, no `bbox`, no `x`/`y`, no row/column
 pair, in any of them.
@@ -460,10 +460,10 @@ three adapters be compared object to object, and it keeps the Node package needi
 
 | package | how LangChain arrives | subpath |
 | --- | --- | --- |
-| `packages/python` | optional extra `[langchain]`; `dependencies` stays `[]` | `ethos_engine.langchain` |
-| `packages/node` | optional peer `@langchain/core`; `dependencies` stays absent | `ethos-engine/langchain` |
+| `packages/python` | optional extra `[langchain]`; `dependencies` stays `[]` | `ethos_parser.langchain` |
+| `packages/node` | optional peer `@langchain/core`; `dependencies` stays absent | `ethos-parser/langchain` |
 
-`import ethos_engine` and `import "ethos-engine"` still reach nothing but the stdlib, and a test in
+`import ethos_parser` and `import "ethos-parser"` still reach nothing but the stdlib, and a test in
 each language asserts it by reading the import graph of the **default entry point only**. Importing
 the subpath without the dependency is a **named** failure carrying the install command — in JS via
 a dynamic `import` inside a try/catch at module load, so it fails exactly where Python's
@@ -484,18 +484,18 @@ tell a model its guess was merely unlucky.
 
 ### A false green the slice found and closed
 
-Both SDK suites preferred `target/release/engine` over `target/debug/engine` and took the first
+Both SDK suites preferred `target/release/ethos-parser` over `target/debug/ethos-parser` and took the first
 file that existed. On a tree with a stale release build that was a **`0.11.0`** binary, and every
 S2 and S3 assertion passed against it: the byte-identity checks compare the SDK against the CLI
 using the same binary, so they are self-consistent whichever one it is. They proved what they
 claim, about the wrong engine.
 
-Both locators now read `engine --version` and refuse a binary that is not this workspace's — an
-explicit `ETHOS_ENGINE` pin errors rather than being silently overridden, and the search skips a
+Both locators now read `ethos-parser --version` and refuse a binary that is not this workspace's — an
+explicit `ETHOS_PARSER` pin errors rather than being silently overridden, and the search skips a
 build from another version and names what it found. Measured, not feared: it is what tripped this
-slice's first `engine mcp` call.
+slice's first `ethos-parser mcp` call.
 
-- **In:** `packages/python/src/ethos_engine/langchain.py` + the `[langchain]` extra;
+- **In:** `packages/python/src/ethos_parser/langchain.py` + the `[langchain]` extra;
   `packages/node/src/langchain.js` + the `./langchain` export and optional peer; the test-harness
   version guard in both suites; `0.18.0` and the moved profile hash; both SDK version pins;
   `12`/`13`; CHANGELOG; README; `docs/README.md`.
@@ -508,16 +508,16 @@ slice's first `engine mcp` call.
 - **Acceptance tests:**
   - [x] Python `dependencies` still `[]`; Node `dependencies` still absent; `@langchain/core` is
         an **optional** peer and `langchain-core` an extra
-  - [x] `import ethos_engine` / `import "ethos-engine"` reaches no framework, asserted off the
+  - [x] `import ethos_parser` / `import "ethos-parser"` reaches no framework, asserted off the
         default entry point's import graph
   - [x] Three tools per language: `extract`, `ground`, `node_get`
   - [x] `artifact` is the SDK object; `content` is MCP's counts, **byte-for-byte against
-        `engine mcp`** on an omitting and a non-omitting document
+        `ethos-parser mcp`** on an omitting and a non-omitting document
   - [x] No summary carries `bbox`, `[`, `x0`, `origin`, `sha256:`, the **real** minted id or the
         **real** fingerprint — read off the artifact rather than hardcoded
   - [x] Forged `node_id` raises; an edited representation raises at the fingerprint; an unreadable
         document raises
-  - [x] The argument schemas **equal** the ones `engine mcp` advertises; none names a coordinate
+  - [x] The argument schemas **equal** the ones `ethos-parser mcp` advertises; none names a coordinate
   - [x] No trust-state word on a result, summary, description or schema; `status` is `success`
   - [x] No LangGraph dependency in either language
   - [x] Workspace **0.18.0**, both SDKs and `package.json` **0.18.0**, profile hash
@@ -536,7 +536,7 @@ slice's first `engine mcp` call.
 
 - **Status: done — and the answer is NO ADAPTER.** `0.19.0`. No mapper, no subcommand, no foreign
   parser in the tree. The refusal is pinned by
-  `crates/engine-grounding/tests/liteparse_refusal.rs`.
+  `crates/ethos-parser-grounding/tests/liteparse_refusal.rs`.
 
 - **Goal:** map a foreign parser's output into the grounding shape, **if it is worth it**.
 
@@ -608,7 +608,7 @@ requires a non-empty name and version, that no property anywhere in the schema d
 semantics, and that `additionalProperties: false` leaves no room to add one. Relax any of those and
 the test fails, and S5 is reopened **deliberately**.
 
-- **In:** `crates/engine-grounding/tests/liteparse_refusal.rs`; the REFUSE row and the measurement
+- **In:** `crates/ethos-parser-grounding/tests/liteparse_refusal.rs`; the REFUSE row and the measurement
   in `06-STEAL-REFUSE.md`; `0.19.0` and the moved profile hash; both SDK version pins; `12`/`13`;
   CHANGELOG; README; `docs/README.md`.
 
@@ -621,7 +621,7 @@ the test fails, and S5 is reopened **deliberately**.
 - **Acceptance tests:**
   - [x] No `ethos.grounding.v1` is emitted on a foreign path, because there is no foreign path
   - [x] No `DocumentRepresentation` is produced from foreign bytes
-  - [x] `project()` and `engine ground` are **untouched** — no diff in `engine-grounding/src`
+  - [x] `project()` and `ethos-parser ground` are **untouched** — no diff in `ethos-parser-grounding/src`
   - [x] The refusal is pinned to the schema: `producer` requires a non-empty name and version; no
         property declares box semantics; `additionalProperties: false` on the artifact, `element`
         and `span`; `coordinate_system` admits no `unknown` origin

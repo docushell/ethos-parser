@@ -32,7 +32,7 @@ M5. Skipping ahead means rewriting.
   MSRV 1.88) with the four empty crates from `04-ARCHITECTURE.md` §1; `deny.toml` (permissive
   licences only, no AGPL, no network crates); Apache-2.0 `LICENSE` + `NOTICE` reserved for the
   vendored CMaps; `fixtures/manifest.json` referencing the Ethos corpus by path and `sha256`;
-  `crates/engine-cli/tests/oracle.rs` with one fixture (`synthetic/simple-text`), failing; CI running
+  `crates/ethos-parser-cli/tests/oracle.rs` with one fixture (`synthetic/simple-text`), failing; CI running
   `build`, `test`, `clippy -D warnings`, `fmt --check`, `cargo deny check`, plus a job that **proves**
   the AGPL gate rejects.
 
@@ -41,7 +41,7 @@ M5. Skipping ahead means rewriting.
   does not duplicate.
 
 - **Artifacts / APIs:** `fixtures/manifest.json`;
-  `crates/engine-cli/tests/oracle.rs::oracle_agrees_on_simple_text`; the `engine` binary failing
+  `crates/ethos-parser-cli/tests/oracle.rs::oracle_agrees_on_simple_text`; the `ethos-parser` binary failing
   closed with exit 2; CI green except the one test that is meant to fail.
 
 - **Acceptance tests:**
@@ -57,9 +57,9 @@ M5. Skipping ahead means rewriting.
     same exclusion CI encodes.
   - `cargo build --workspace --locked` succeeds; `clippy -D warnings` and `fmt --check` clean.
   - `cargo deny check` passes, and the AGPL probe **fails with exit code 4 and names
-    `engine-core`** — proving the gate fired for *that* reason, not merely that cargo-deny was
+    `ethos-parser-core`** — proving the gate fired for *that* reason, not merely that cargo-deny was
     unhappy. Any non-zero exit would also match a config typo.
-  - `crates/engine-cli/tests/oracle.rs` **fails** with a message naming what is missing (no
+  - `crates/ethos-parser-cli/tests/oracle.rs` **fails** with a message naming what is missing (no
     implementation yet), not with a panic, a skip, or `todo!()`.
   - The oracle harness locates the `ethos` binary and **errors loudly if absent** — never skips.
   - **`ETHOS_BIN` is authoritative, not a hint.** Set to a non-existent path, the harness fails hard
@@ -93,7 +93,7 @@ M5. Skipping ahead means rewriting.
 - **Goal:** `01-CONTRACT.md` expressed as Rust types with the canonicalization that makes them
   byte-stable. After M1 the artifact shape stops being negotiable and starts being a compile error.
 
-- **In:** `engine-core`: artifact identity (`artifact_type`, `schema_version`, `parser_version`,
+- **In:** `ethos-parser-core`: artifact identity (`artifact_type`, `schema_version`, `parser_version`,
   `profile_sha256`); the `Profile` type and its hash; `coordinate_system`; c14n v1 (UTF-8, no
   whitespace, keys sorted explicitly at write time, minimal escaping, **integers only**, idempotent);
   `quantize(pts, 100)` with round-half-away-from-zero and `NaN`/`±Inf`/overflow as errors; `QRect` as
@@ -104,7 +104,7 @@ M5. Skipping ahead means rewriting.
   the DocuShell review round closes the `TODO(re-read DocumentRepresentation v0 field list)` markers.
   Any PDF concept. Any grounding projection.
 
-- **Artifacts / APIs:** `engine_core::{c14n_bytes, quantize, QRect, Profile, DerivationClass,
+- **Artifacts / APIs:** `ethos_parser_core::{c14n_bytes, quantize, QRect, Profile, DerivationClass,
   ArtifactIdentity, CoordinateSystem}`; `docs/draft-schemas/*.draft.json`.
 
 - **Acceptance tests:**
@@ -121,7 +121,7 @@ M5. Skipping ahead means rewriting.
     lowercase `\u00xx`.
   - **Profile sensitivity**: mutating each profile field in turn changes `profile_sha256`, asserted
     field by field.
-  - **`grep -ri confidence`** over `engine-core`'s public API returns nothing. Enforced as a test
+  - **`grep -ri confidence`** over `ethos-parser-core`'s public API returns nothing. Enforced as a test
     that scans `src/**` with comments stripped — prose arguing the rule is fine, an identifier is
     not — plus a self-test proving the comment stripper works, so the scan cannot pass vacuously.
   - Round-trip: every artifact type serializes, canonicalizes, and re-parses to an identical value.
@@ -163,8 +163,8 @@ M5. Skipping ahead means rewriting.
   the caller routes. OCR itself. Multi-column *handling* (the reason code is emitted; the reading
   order is still single-column until v1).
 
-- **Artifacts / APIs:** `engine_pdf::classify(&Document, &Profile) -> Classification`;
-  `engine classify <pdf>` emitting the classification artifact.
+- **Artifacts / APIs:** `ethos_parser_pdf::classify(&Document, &Profile) -> Classification`;
+  `ethos-parser classify <pdf>` emitting the classification artifact.
 
 - **Acceptance tests:**
   - **Bounded cost, the load-bearing test**, in two parts:
@@ -238,8 +238,8 @@ M5. Skipping ahead means rewriting.
 - **Out:** Multi-column reading order. Tables. Any box derived from a font size. Any operator handled
   by "ignore and continue." Underline/strikeout inference. Markdown.
 
-- **Artifacts / APIs:** `engine_pdf::extract(&Document, &Profile) -> Vec<Node>` with typed locators;
-  `engine extract <pdf>`.
+- **Artifacts / APIs:** `ethos_parser_pdf::extract(&Document, &Profile) -> Vec<Node>` with typed locators;
+  `ethos-parser extract <pdf>`.
 
 - **Acceptance tests:**
   - **`"` and `'` show-text operators are handled**, with a fixture proving text is not lost. This is
@@ -290,7 +290,7 @@ M5. Skipping ahead means rewriting.
 - **Out:** Any capability declared `true` that is not tested. Any limitation that exists only in a doc
   comment. Repairing anything.
 
-- **Artifacts / APIs:** `engine_core::{Capabilities, Limitation, PageState, CoverageSummary}`;
+- **Artifacts / APIs:** `ethos_parser_core::{Capabilities, Limitation, PageState, CoverageSummary}`;
   capability + limitation blocks in every emitted artifact.
 
 - **Acceptance tests:**
@@ -330,15 +330,15 @@ M5. Skipping ahead means rewriting.
   type, processing-run and processor/profile identities, representation fingerprint,
   capability/limitation declarations, ordered typed nodes with stable IDs, required `NativeLocator`,
   optional structural locator, optional geometry, per-page state, coverage summary, diagnostics; the
-  `engine-grounding` adapter projecting it to `ethos.grounding.v1`; the geometry-absent omission rule
+  `ethos-parser-grounding` adapter projecting it to `ethos.grounding.v1`; the geometry-absent omission rule
   with its declared count; **one engine-authored CC0 fixture with unusable font metrics**, the only
   addition to the corpus beyond the Ethos manifest, because Ethos has no fixture for this case.
 
 - **Out:** `tables` (v0 emits `capabilities.tables: false` and no table array). Any grounding field
   outside the schema — it is `additionalProperties: false`. Any PDF concept inside
-  `engine-grounding`.
+  `ethos-parser-grounding`.
 
-- **Artifacts / APIs:** `engine extract` → representation JSON; `engine ground <representation>` →
+- **Artifacts / APIs:** `ethos-parser extract` → representation JSON; `ethos-parser ground <representation>` →
   `ethos.grounding.v1` JSON.
 
 - **Acceptance tests:**
@@ -375,7 +375,7 @@ M5. Skipping ahead means rewriting.
 
 - **Review checklist:**
   - [ ] Grounding output contains exactly the schema's fields and nothing else
-  - [ ] No PDF type reachable from `engine-grounding`
+  - [ ] No PDF type reachable from `ethos-parser-grounding`
   - [ ] Node IDs are stable within a profile and documented as **not** globally stable
   - [ ] `TODO(re-read DocumentRepresentation v0 field list)` markers resolved or still explicitly open
   - [ ] Representation fingerprint and source fingerprint are distinct fields with distinct meanings
@@ -399,7 +399,7 @@ M5. Skipping ahead means rewriting.
   is necessary and not sufficient — Ethos's parser enforces id uniqueness, reference resolution,
   page ordering, boxes inside their page, capability/array agreement and offset validity, none of
   which JSON Schema expresses, and a schema-only checker would disagree with the oracle it is
-  required to match. The engine mirrors the parser. This is still nowhere near verification.)*; the `ethos.grounding_validation.v1` report shape; `crates/engine-cli/tests/oracle.rs` extended to
+  required to match. The engine mirrors the parser. This is still nowhere near verification.)*; the `ethos.grounding_validation.v1` report shape; `crates/ethos-parser-cli/tests/oracle.rs` extended to
   all 15 fixtures; the double-run byte-identity harness.
 
 - **Out:** **Any verification semantics whatsoever.** `grounding-check` validates structure and
@@ -407,13 +407,13 @@ M5. Skipping ahead means rewriting.
   does not re-derive anything from an Ethos report. Reimplementing verifier semantics is how a second
   authority is born by accident.
 
-- **Artifacts / APIs:** `engine grounding-check <file> [--source-artifact <pdf>]` emitting
+- **Artifacts / APIs:** `ethos-parser grounding-check <file> [--source-artifact <pdf>]` emitting
   `ethos.grounding_validation.v1`: `structure` (`valid`|`invalid`), `source_binding`
   (`matched`|`mismatched`|`not_checked`), `representation_sha256`, `counts`
   (`{pages, elements, spans, tables}`).
 
 - **Acceptance tests:**
-  - **Oracle agreement across all 15 fixtures**: for each, `engine grounding-check` and
+  - **Oracle agreement across all 15 fixtures**: for each, `ethos-parser grounding-check` and
     `ethos grounding check <file> --source-artifact <pdf>` agree **byte-identically** on `structure`,
     `source_binding`, `representation_sha256`, and `counts`. Any disagreement fails CI with a diff.
   - **`source_binding` trichotomy**: `matched` with the correct PDF; `mismatched` with a different
@@ -455,8 +455,8 @@ M5. Skipping ahead means rewriting.
 
 - **Out:** Any new capability. Any performance claim. Any published benchmark table. SDKs, MCP, WASM.
 
-- **Artifacts / APIs:** `engine {classify|extract|ground|grounding-check}`; the frozen
-  `engine-core` / `engine-pdf` / `engine-grounding` public API; a tagged v0.
+- **Artifacts / APIs:** `ethos-parser {classify|extract|ground|grounding-check}`; the frozen
+  `ethos-parser-core` / `ethos-parser-pdf` / `ethos-parser-grounding` public API; a tagged v0.
 
 - **Acceptance tests:**
   - **Every line of `03-V0-SCOPE.md` §5 is a green CI job.** Not a review judgement — a job.
@@ -488,7 +488,7 @@ M5. Skipping ahead means rewriting.
 
 - **What M7 actually changed**, for the record, since "freeze and prove" reads like a no-op:
   - `--diagnostics`, opt-in, stderr-only, structurally outside every fingerprint
-  - `engine-pdf`'s parsing machinery narrowed to `pub(crate)`; the narrowing surfaced five dead
+  - `ethos-parser-pdf`'s parsing machinery narrowed to `pub(crate)`; the narrowing surfaced five dead
     items the compiler could not previously see, two of which were genuinely unread state
   - a fixture-mutation suite over all 23 manifest fixtures, with survivors pinned and triaged —
     one triage finding was a mutation that "applied" to the two NIST benchmarks by matching bytes

@@ -12,7 +12,7 @@ makes a fixture change a visible event in this repo.
 | --- | --- | --- | --- |
 | `conformance` | `../ethos/fixtures` | `ETHOS_FIXTURES` | The 15-fixture conformance corpus. **The M6 oracle criterion counts exactly these** |
 | `benchmark` | `../ethos/benchmarks/gate-zero/corpus` | `ETHOS_BENCH_CORPUS` | Large real-world PDFs that M2's acceptance names. Not part of the oracle count |
-| `engine` | `fixtures/engine` | `ETHOS_ENGINE_FIXTURES` | CC0 PDFs authored **here**, for behaviours the Ethos corpus does not cover. Never part of the oracle count |
+| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | CC0 PDFs authored **here**, for behaviours the Ethos corpus does not cover. Never part of the oracle count |
 
 The second root exists because M2's load-bearing acceptance tests name documents the conformance
 corpus does not contain. The bounded-cost A/B needs a 492-page PDF (`nist-sp-800-53r5`); the
@@ -48,7 +48,7 @@ Two entries are worth knowing before you debug against them:
 ## Engine-owned fixtures
 
 The manifest marks every entry with an `owner`. The 15 conformance entries are `ethos`; **37** are
-`engine` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
+`ethos-parser` — authored here, under CC0, by `engine/make_fixtures.py`, each for a behaviour the Ethos
 corpus genuinely cannot cover. The manifest's `counts.engine_owned` is the number a test checks;
 this table names the ones whose reason for existing is not obvious from the fixture itself.
 

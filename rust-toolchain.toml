@@ -1,6 +1,6 @@
 # Pinned toolchain: the same compiler everywhere — CI, release builds, and local dev.
 #
-# 1.88.0, not Ethos's 1.87.0. `lopdf` 0.42 requires >= 1.88, and ethos-engine is a separate
+# 1.88.0, not Ethos's 1.87.0. `lopdf` 0.42 requires >= 1.88, and ethos-parser is a separate
 # workspace precisely so that conflict does not have to be resolved (docs/04-ARCHITECTURE.md §5).
 #
 # Bumping this is an output-affecting change: it belongs in the profile, and the determinism

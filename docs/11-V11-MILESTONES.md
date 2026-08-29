@@ -150,23 +150,23 @@ roadmap row, and nothing in it closes v1.
   and the artifact's own doc comment says so, because a map that claimed exact bytes and delivered
   normalized ones would be the subtlest possible lie.
 
-- **Decision 8: where the code lives.** Anchor-map types and the projection are in **`engine-core`** —
-  it is a projection of the representation and has nothing to do with PDF. `engine-pdf` does not
-  learn Markdown. `engine-grounding` does not grow a Markdown schema. `engine-cli` gains
-  `engine markdown` as a thin call. **No fifth crate** (`04-ARCHITECTURE.md` §1).
+- **Decision 8: where the code lives.** Anchor-map types and the projection are in **`ethos-parser-core`** —
+  it is a projection of the representation and has nothing to do with PDF. `ethos-parser-pdf` does not
+  learn Markdown. `ethos-parser-grounding` does not grow a Markdown schema. `ethos-parser-cli` gains
+  `ethos-parser markdown` as a thin call. **No fifth crate** (`04-ARCHITECTURE.md` §1).
 
-- **Decision 9: the CLI takes a representation, not a PDF.** `engine markdown <representation.json>`,
-  the same shape as `engine ground`, which also reads the file `engine extract` writes. One input
+- **Decision 9: the CLI takes a representation, not a PDF.** `ethos-parser markdown <representation.json>`,
+  the same shape as `ethos-parser ground`, which also reads the file `ethos-parser extract` writes. One input
   kind, documented, rather than a subcommand that silently means two different things. The
   fingerprint is checked before anything is projected, exactly as `ground` does: a representation
   that does not hash to its declared digest is not a record this engine will speak for.
 
 - **The verify golden, which is the whole point of the slice.** Not a unit test — the real binaries:
 
-  1. `engine extract` a fixture → representation
-  2. `engine ground` it → `ethos.grounding.v1`
-  3. `engine markdown` the same representation → `ethos.markdown.v1`
-  4. lift a substring out of a **`source`** segment, make it a `quote` claim → `engine verify`
+  1. `ethos-parser extract` a fixture → representation
+  2. `ethos-parser ground` it → `ethos.grounding.v1`
+  3. `ethos-parser markdown` the same representation → `ethos.markdown.v1`
+  4. lift a substring out of a **`source`** segment, make it a `quote` claim → `ethos-parser verify`
      reports it **grounded**
   5. lift a substring that touches a **`syntax`** segment → the verifier does **not** ground it
 
@@ -179,18 +179,18 @@ roadmap row, and nothing in it closes v1.
 
   Nothing is re-derived from the report (`07-VERIFY-BOUNDARY.md`). The engine asks and relays.
 
-- **In:** `engine-core/src/markdown.rs` (types + projection); `markdown_rule` and
-  `capabilities.markdown` on the profile; schema; `engine markdown`; PUBLIC-API; the verify golden.
+- **In:** `ethos-parser-core/src/markdown.rs` (types + projection); `markdown_rule` and
+  `capabilities.markdown` on the profile; schema; `ethos-parser markdown`; PUBLIC-API; the verify golden.
 
 - **Out:** GFM tables, task lists, `![]()`, HTML. Font-based heading detection. Any change to
   `extract`, the detectors, overlay or rasters. A Markdown quality comparison. A fifth crate.
 
 - **Acceptance tests:**
-  - [x] `engine markdown` on `simple-text` writes `ethos.markdown.v1`; two runs byte-identical
+  - [x] `ethos-parser markdown` on `simple-text` writes `ethos.markdown.v1`; two runs byte-identical
   - [x] The map tiles the markdown string — property test over generated segment lists **and** an
         exhaustive assert on the real fixtures
   - [x] `source_chars_emitted + source_chars_dropped == source_chars_in_representation`
-  - [x] A `source` substring grounds through `engine verify`; a `syntax`-touching substring does not
+  - [x] A `source` substring grounds through `ethos-parser verify`; a `syntax`-touching substring does not
   - [x] No CLI path prints Markdown without a map — asserted, not assumed
   - [x] `capabilities.markdown: true` has a named proof test; a profile without `markdown_rule`
         fails closed
@@ -300,7 +300,7 @@ roadmap row, and nothing in it closes v1.
   the citation pointed at nothing and the test would pass without the Anchor Map having
   demonstrated anything.
 
-- **In:** GFM tables and tagged lists in `engine-core/src/markdown.rs`; `node_ids` on
+- **In:** GFM tables and tagged lists in `ethos-parser-core/src/markdown.rs`; `node_ids` on
   `TableCellRecord` and the seal-time check that they resolve; `structural_erasures` on the
   artifact; `markdown-blocks-v1`; `markdown-table-spans-flattened` replacing
   `markdown-table-structure-not-projected`; two fixtures; schema, PUBLIC-API, CHANGELOG.
@@ -364,7 +364,7 @@ says so by leaving the second hyphen alone.
 guard. A page whose last body line ends in a soft hyphen and whose footer is the next node in
 reading order projected `Rates may be recalcu-` + `Confidential draft` as
 **`recalcuConfidential`** — a word on no page, welded from two streams the document itself declared
-separate (PDF 32000 §14.8.2.2; `engine-pdf`'s binding rule is *artifact wins*).
+separate (PDF 32000 §14.8.2.2; `ethos-parser-pdf`'s binding rule is *artifact wins*).
 
 That also broke a promise rule 1 makes out loud: artifacts are kept in the projection *so a
 consumer that wants them gone drops them itself, knowing it did*, and the per-run `source` segment
@@ -448,7 +448,7 @@ the verifier find nothing and refuse every quote. Two runs 30 points apart in th
 what makes the question askable at all.
 
 - **In:** `hyphen_tail`, `on_different_lines`, `is_page_artifact` and `Emit::joined_source` in
-  `engine-core/src/markdown.rs`; `hyphenation-rejoin-dropped-v1`; `markdown-blocks-v2`; `0.13.0`
+  `ethos-parser-core/src/markdown.rs`; `hyphenation-rejoin-dropped-v1`; `markdown-blocks-v2`; `0.13.0`
   and the moved profile hash; the `markdown-hyphen-break` fixture and its verify golden; schema,
   PUBLIC-API, CHANGELOG.
 
@@ -572,8 +572,8 @@ No `<html>`, `<head>`, `<body>` or doctype, and no indentation. Those are bytes 
 the map would tile them honestly as `syntax`, but they would sit inside quotes a consumer is
 likely to lift. Embedding a fragment is one concatenation; unwrapping a document is a parse.
 
-- **In:** `engine-core/src/html.rs`; `html_rule` and `capabilities.html` on the profile;
-  `engine html`; `SlotRole` on the shared table plan so a merge can be carried; the shared
+- **In:** `ethos-parser-core/src/html.rs`; `html_rule` and `capabilities.html` on the profile;
+  `ethos-parser html`; `SlotRole` on the shared table plan so a merge can be carried; the shared
   `census`; `html.draft.json` and its guard; `0.14.1` and the moved profile hash; PUBLIC-API,
   CHANGELOG, README.
 

@@ -354,62 +354,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-cli"
-version = "0.40.2"
-dependencies = [
- "clap",
- "engine-core",
- "engine-grounding",
- "engine-office",
- "engine-pdf",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "engine-core"
-version = "0.40.2"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "engine-grounding"
-version = "0.40.2"
-dependencies = [
- "engine-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "engine-office"
-version = "0.40.2"
-dependencies = [
- "engine-core",
- "flate2",
- "quick-xml",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "engine-pdf"
-version = "0.40.2"
-dependencies = [
- "engine-core",
- "lopdf",
- "rayon",
- "serde",
- "serde_json",
- "skrifa",
- "unicode-normalization",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -423,6 +367,62 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "ethos-parser-cli"
+version = "0.41.0"
+dependencies = [
+ "clap",
+ "ethos-parser-core",
+ "ethos-parser-grounding",
+ "ethos-parser-office",
+ "ethos-parser-pdf",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "ethos-parser-core"
+version = "0.41.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "ethos-parser-grounding"
+version = "0.41.0"
+dependencies = [
+ "ethos-parser-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ethos-parser-office"
+version = "0.41.0"
+dependencies = [
+ "ethos-parser-core",
+ "flate2",
+ "quick-xml",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ethos-parser-pdf"
+version = "0.41.0"
+dependencies = [
+ "ethos-parser-core",
+ "lopdf",
+ "rayon",
+ "serde",
+ "serde_json",
+ "skrifa",
+ "unicode-normalization",
 ]
 
 [[package]]

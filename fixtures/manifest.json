@@ -13,7 +13,7 @@
     },
     "engine": {
       "default": "fixtures/engine",
-      "env": "ETHOS_ENGINE_FIXTURES",
+      "env": "ETHOS_PARSER_FIXTURES",
       "note": "CC0 fixtures authored in this repo, for behaviours the Ethos corpus does not cover. Never counted toward the 15-fixture oracle criterion."
     },
     "gate": {

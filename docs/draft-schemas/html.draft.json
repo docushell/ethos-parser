@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ethos-engine:draft-schema:html:0",
-  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §12 (which DECLINES to define a projection at all, on Workbench rule 8) and docs/10-V11-SCOPE.md §4 (the four laws this artifact is built to satisfy instead). Written from crates/engine-core/src/html.rs. A PROJECTION, not the record: the representation is the evidence, this is derived from it and is deliberately lossy, and `coverage` is where it says how. SECOND projection, deliberately not a rendering of the first — see `html_rule`.",
+  "$id": "urn:ethos-parser:draft-schema:html:0",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §12 (which DECLINES to define a projection at all, on Workbench rule 8) and docs/10-V11-SCOPE.md §4 (the four laws this artifact is built to satisfy instead). Written from crates/ethos-parser-core/src/html.rs. A PROJECTION, not the record: the representation is the evidence, this is derived from it and is deliberately lossy, and `coverage` is where it says how. SECOND projection, deliberately not a rendering of the first — see `html_rule`.",
   "title": "ethos.html.v1",
   "description": "An HTML projection of a DocumentRepresentation, carried TOGETHER WITH the Anchor Map that inverts it back to representation nodes, a coverage census of every source character that did not reach it, and a second census of the structure the projection could not carry (v1.1-S4). It obeys the same four laws as `ethos.markdown.v1` and exists for one reason that artifact cannot serve: GFM has no `rowspan`, so the Markdown projection must expand a merged cell and count the slots that costs, while `<td rowspan>` carries the merge the document actually drew. The consumer's rule is one line: a quote that touches a `syntax` byte is not invertible.",
   "type": "object",
