@@ -36,6 +36,8 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
+mod common;
+
 // -------------------------------------------------------------------------------------------
 // Harness
 // -------------------------------------------------------------------------------------------
@@ -265,7 +267,7 @@ fn a_grounded_claim_relays_the_verifier_bytes_verbatim() {
 
     // The report really is a verifier's, and really did ground the claim — otherwise this test
     // would pass just as well on two identically-empty outputs.
-    let v: Value = serde_json::from_slice(&mine.stdout).expect("the report is JSON");
+    let v: Value = common::verification_report(&mine.stdout);
     assert_eq!(
         v["all_evidence_grounded"], true,
         "the fixture's own text must actually ground: {v}"
@@ -322,7 +324,7 @@ fn an_ungrounded_claim_under_the_gate_exits_one_with_a_real_report() {
         "the report is still relayed verbatim on the failing path"
     );
 
-    let v: Value = serde_json::from_slice(&mine.stdout).expect("a real report, not an invention");
+    let v: Value = common::verification_report(&mine.stdout);
     assert_eq!(v["all_evidence_grounded"], false);
     assert!(
         v["checks"].as_array().is_some_and(|c| !c.is_empty()),
@@ -330,7 +332,7 @@ fn an_ungrounded_claim_under_the_gate_exits_one_with_a_real_report() {
     );
 
     // And nothing was added. Every key at the top level is one the verifier itself wrote.
-    let theirs_v: Value = serde_json::from_slice(&theirs.stdout).unwrap();
+    let theirs_v: Value = common::verification_report(&theirs.stdout);
     assert_eq!(v, theirs_v, "the engine invented no field and dropped none");
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -357,7 +359,7 @@ fn an_ungrounded_claim_without_the_gate_still_writes_its_report() {
     );
     assert_eq!(mine.stdout, theirs.stdout);
 
-    let v: Value = serde_json::from_slice(&mine.stdout).unwrap();
+    let v: Value = common::verification_report(&mine.stdout);
     assert_eq!(
         v["all_evidence_grounded"], false,
         "the report says what it found even when the exit code does not"

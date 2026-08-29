@@ -43,6 +43,8 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
+mod common;
+
 // -------------------------------------------------------------------------------------------
 // Harness
 // -------------------------------------------------------------------------------------------
@@ -906,7 +908,7 @@ fn a_markdown_quote_verifies_end_to_end() {
             "the relay itself succeeds whatever the verdict: {}",
             String::from_utf8_lossy(&out.stderr)
         );
-        serde_json::from_slice(&out.stdout).expect("the verifier's report is JSON")
+        common::verification_report(&out.stdout)
     };
 
     // **The verifier's own field, read and not re-derived** (`docs/07-VERIFY-BOUNDARY.md`).
@@ -1075,7 +1077,7 @@ fn a_quote_from_a_gfm_cell_verifies_end_to_end() {
             "the relay itself succeeds whatever the verdict: {}",
             String::from_utf8_lossy(&out.stderr)
         );
-        serde_json::from_slice(&out.stdout).expect("the verifier's report is JSON")
+        common::verification_report(&out.stdout)
     };
 
     // **The verifier's own field, read and not re-derived** (`docs/07-VERIFY-BOUNDARY.md`).
@@ -1272,7 +1274,7 @@ fn the_joined_word_does_not_ground_and_both_halves_do() {
             "the relay itself succeeds whatever the verdict: {}",
             String::from_utf8_lossy(&out.stderr)
         );
-        serde_json::from_slice(&out.stdout).expect("the verifier's report is JSON")
+        common::verification_report(&out.stdout)
     };
 
     // **The verifier's own field, read and not re-derived** (`docs/07-VERIFY-BOUNDARY.md`).
