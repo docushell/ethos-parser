@@ -2547,7 +2547,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:5b176111b4934f1c37982574a36f61bf4235154e8bb91103d68a09dc5292722b"
+            "sha256:95d80a02dc36acc43ac427ebb40ad13f9897caf92132ecbbf9402ee42b60df89"
         );
     }
 
