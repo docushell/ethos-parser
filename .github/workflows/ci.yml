@@ -527,6 +527,19 @@ jobs:
     name: v0-fuzz-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # **Installing nightly is not the same as using it**, and this job spent every run it ever
+    # had proving the difference. `dtolnay/rust-toolchain@nightly` sets the rustup *default*,
+    # and `rust-toolchain.toml` outranks the default on every cargo invocation — the same
+    # mechanism the `check` job documents above. `fuzz/` carries no toolchain file of its own,
+    # so rustup walks up to the root pin and hands `cargo fuzz` a stable 1.88.0, which rejects
+    # `-Zsanitizer=address` as a nightly-only option and fails before a single input is run.
+    #
+    # `RUSTUP_TOOLCHAIN` outranks the toolchain file, so it is what actually selects nightly
+    # here. Set on the job rather than on the three cargo steps: a fourth step added later
+    # would silently inherit the bug otherwise, which is precisely how `office_read` came to
+    # sit in the tree with nothing compiling it.
+    env:
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@v4
 
