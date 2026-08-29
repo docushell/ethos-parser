@@ -565,12 +565,26 @@ jobs:
       # missing: `cargo build --workspace` excludes `fuzz/`, so before v2-S12.1 nothing in the
       # repository compiled `office_read` at all. It could have stopped building and every job
       # would have stayed green.
+      # **`cargo fuzz` defaults `--target` to its own binary's triple, not the runner's.**
+      # `taiki-e/install-action` installs a prebuilt through cargo-binstall and the Linux
+      # prebuilt is musl-linked, so `cargo fuzz` asked for `x86_64-unknown-linux-musl` on a gnu
+      # host and the build died twice over: ASan refuses a statically linked libc ("sanitizer is
+      # incompatible with statically linked libc"), and no musl std is installed to compile
+      # against ("can't find crate for `core`"). Neither error mentions the target, which is why
+      # this took a second look to find.
+      #
+      # Read from `rustc -vV` rather than written out here, so it follows the runner instead of
+      # pinning a triple that a later `runs-on` change would quietly invalidate.
+      - name: Resolve the host triple
+        run: |
+          echo "FUZZ_TARGET=$(rustc -vV | sed -n 's/^host: //p')" >> "$GITHUB_ENV"
+
       - name: Build the fuzz targets
         working-directory: fuzz
         run: |
-          cargo fuzz build open_and_classify
-          cargo fuzz build open_and_extract
-          cargo fuzz build office_read
+          cargo fuzz build open_and_classify --target "$FUZZ_TARGET"
+          cargo fuzz build open_and_extract --target "$FUZZ_TARGET"
+          cargo fuzz build office_read --target "$FUZZ_TARGET"
 
       - name: Seed the corpora
         run: |
@@ -579,11 +593,11 @@ jobs:
 
       - name: Fuzz open_and_classify
         working-directory: fuzz
-        run: cargo fuzz run open_and_classify -- -max_total_time=60 -timeout=10 -max_len=65536
+        run: cargo fuzz run open_and_classify --target "$FUZZ_TARGET" -- -max_total_time=60 -timeout=10 -max_len=65536
 
       - name: Fuzz open_and_extract
         working-directory: fuzz
-        run: cargo fuzz run open_and_extract -- -max_total_time=60 -timeout=10 -max_len=65536
+        run: cargo fuzz run open_and_extract --target "$FUZZ_TARGET" -- -max_total_time=60 -timeout=10 -max_len=65536
 
       # A crash file is the whole point of the job, so make it retrievable rather than only
       # visible as a red tick.
