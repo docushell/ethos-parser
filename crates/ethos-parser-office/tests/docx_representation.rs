@@ -41,7 +41,8 @@ fn fixture(name: &str) -> Vec<u8> {
 /// **The gate sentence, executable.** A known phrase is on a node, addressed by part/paragraph/run.
 #[test]
 fn a_quote_resolves_to_a_node_addressed_by_the_document_itself() {
-    let sealed = ethos_parser_office::read(&fixture("simple-paragraphs")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("simple-paragraphs")).expect("the fixture reads");
     let payload = sealed.payload();
 
     let node = payload
@@ -110,7 +111,10 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
     let sealed = ethos_parser_office::read(&fixture("simple-paragraphs")).expect("reads");
     let payload = sealed.payload();
 
-    assert_eq!(payload.source.media_type, ethos_parser_office::DOCX_MEDIA_TYPE);
+    assert_eq!(
+        payload.source.media_type,
+        ethos_parser_office::DOCX_MEDIA_TYPE
+    );
     assert_eq!(
         payload.identity.profile_sha256,
         Profile::docx_v0().profile_sha256().expect("a digest")
@@ -270,7 +274,8 @@ fn a_zip_without_the_main_part_is_a_named_refusal() {
 fn a_truncated_package_is_refused() {
     let full = fixture("simple-paragraphs");
     for cut in [8, full.len() / 2, full.len() - 4] {
-        let error = ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
+        let error =
+            ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
         assert!(
             !error.to_string().is_empty(),
             "every refusal is named, never a silent empty document"

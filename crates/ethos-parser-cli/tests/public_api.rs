@@ -691,7 +691,8 @@ fn the_cli_has_no_library_target() {
          target here would be a second place for behaviour to live (docs/04-ARCHITECTURE.md §1)."
     );
 
-    let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).expect("ethos-parser-cli manifest");
+    let manifest =
+        std::fs::read_to_string(dir.join("Cargo.toml")).expect("ethos-parser-cli manifest");
     assert!(
         !manifest.contains("[lib]"),
         "ethos-parser-cli's manifest declares a [lib] target"

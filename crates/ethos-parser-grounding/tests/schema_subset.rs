@@ -560,7 +560,10 @@ fn the_subset_validator_is_test_only() {
         }
     }
     let mut code = String::new();
-    walk(&repo_root().join("crates/ethos-parser-grounding/src"), &mut code);
+    walk(
+        &repo_root().join("crates/ethos-parser-grounding/src"),
+        &mut code,
+    );
     assert!(code.len() > 500, "the source scan found almost nothing");
 
     for banned in [

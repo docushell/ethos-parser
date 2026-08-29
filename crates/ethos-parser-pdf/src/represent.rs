@@ -548,7 +548,8 @@ mod tests {
 
         // One measured text run, one annotation: the combination every fixture in
         // the tree happens to avoid.
-        let measured = GeometryPresence::Measured(ethos_parser_core::QRect::new(0, 0, 10, 10).unwrap());
+        let measured =
+            GeometryPresence::Measured(ethos_parser_core::QRect::new(0, 0, 10, 10).unwrap());
         let by_kind = GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind);
         assert!(measured.is_groundable());
         assert!(!by_kind.is_groundable());

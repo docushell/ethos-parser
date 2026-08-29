@@ -321,8 +321,8 @@ fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
 fn tool_ground(args: &Value) -> Result<(String, Value), Failure> {
     let repr = representation_arg(args)?;
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
-    let bytes =
-        ethos_parser_grounding::to_canonical_bytes(&projection.source).map_err(|e| Failure::from(&e))?;
+    let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
+        .map_err(|e| Failure::from(&e))?;
     let summary = format!(
         "{} element(s) with a measured box; {} omitted for having none.",
         projection.source.elements.len(),

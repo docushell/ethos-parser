@@ -580,7 +580,10 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
     let mut compared = 0usize;
 
     for fixture in all_fixtures() {
-        let original_digest = format!("sha256:{}", ethos_parser_core::sha256_hex_bytes(&fixture.bytes));
+        let original_digest = format!(
+            "sha256:{}",
+            ethos_parser_core::sha256_hex_bytes(&fixture.bytes)
+        );
         let deep = !matches!(fixture.root.as_str(), "benchmark" | "gate");
 
         for mutation in Mutation::ALL {

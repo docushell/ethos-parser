@@ -370,8 +370,8 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
     // Opened once. M3's `extract` will take this same handle rather than reopening
     // (docs/04-ARCHITECTURE.md §2.1) — two loads can disagree, and a classifier that saw a
     // different object graph from the extractor is a silent divergence with no diagnostic.
-    let result =
-        Document::open(&args.path, &profile).and_then(|doc| ethos_parser_pdf::classify(&doc, &profile));
+    let result = Document::open(&args.path, &profile)
+        .and_then(|doc| ethos_parser_pdf::classify(&doc, &profile));
 
     match &result {
         Ok(classification) => match classification.to_canonical_bytes() {

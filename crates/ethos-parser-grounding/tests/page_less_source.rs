@@ -242,8 +242,8 @@ fn a_page_less_representation_is_refused_by_project() {
     let sealed = DocumentRepresentation::seal(payload, vec![geometry])
         .expect("v2-S2 made this constructible");
 
-    let projection =
-        ethos_parser_grounding::project(&sealed).expect("since schema 1.1.0 a page-less source projects");
+    let projection = ethos_parser_grounding::project(&sealed)
+        .expect("since schema 1.1.0 a page-less source projects");
     let artifact = &projection.source;
     assert_eq!(artifact.schema_version, "1.1.0");
     assert!(artifact.pages.is_empty(), "no page was synthesized");

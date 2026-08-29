@@ -45,7 +45,8 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// The package's own `content.xml`, inflated. **Never the generator's source.**
 fn content_of(bytes: &[u8]) -> String {
-    let part = ethos_parser_office::zip::read_entry(bytes, "content.xml").expect("the part inflates");
+    let part =
+        ethos_parser_office::zip::read_entry(bytes, "content.xml").expect("the part inflates");
     String::from_utf8(part).expect("the part is UTF-8")
 }
 
@@ -95,7 +96,8 @@ fn all_text(sealed: &ethos_parser_core::DocumentRepresentation) -> String {
 /// **The slice's sentence, executable.** A known title is on a node, addressed by the file.
 #[test]
 fn a_title_resolves_to_a_node_addressed_by_the_document_itself() {
-    let sealed = ethos_parser_office::read(&fixture("presentation-pages")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("presentation-pages")).expect("the fixture reads");
 
     let node = sealed
         .payload()
@@ -737,7 +739,8 @@ fn regions_declared(bytes: &[u8]) -> usize {
 /// verbatim so the mutated package is still one the reader will consent to read.
 fn repack(original: &[u8], content: &str) -> Vec<u8> {
     let media = String::from_utf8(
-        ethos_parser_office::zip::read_entry(original, "mimetype").expect("the type entry is there"),
+        ethos_parser_office::zip::read_entry(original, "mimetype")
+            .expect("the type entry is there"),
     )
     .expect("utf-8");
     let manifest = String::from_utf8(

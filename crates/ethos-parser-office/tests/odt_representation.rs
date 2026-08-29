@@ -160,7 +160,8 @@ fn a_text_document_declares_no_pages_and_carries_no_page_number() {
 /// citation after a footnote would name the wrong paragraph.
 #[test]
 fn the_block_count_advances_through_regions_that_are_not_read() {
-    let sealed = ethos_parser_office::read(&fixture("text-unread-parts")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("text-unread-parts")).expect("the fixture reads");
 
     let addressed: Vec<(u32, u32, &str)> = sealed
         .payload()
@@ -365,7 +366,10 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
     let sealed = ethos_parser_office::read(&fixture("text-paragraphs")).expect("the fixture reads");
     let payload = sealed.payload();
 
-    assert_eq!(payload.source.media_type, ethos_parser_office::ODT_MEDIA_TYPE);
+    assert_eq!(
+        payload.source.media_type,
+        ethos_parser_office::ODT_MEDIA_TYPE
+    );
     assert_eq!(
         payload.source.media_type, "application/vnd.oasis.opendocument.text",
         "spelled out, so a rename of the constant cannot change what goes on the wire"
@@ -459,7 +463,8 @@ fn two_reads_of_one_document_produce_identical_bytes() {
 /// **A14, both halves.** Package entries that were not read, and regions of the part that was.
 #[test]
 fn unread_entries_and_unread_regions_are_declared_with_counts() {
-    let sealed = ethos_parser_office::read(&fixture("text-unread-parts")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("text-unread-parts")).expect("the fixture reads");
     let limitation = sealed
         .payload()
         .assurance
@@ -657,7 +662,8 @@ fn the_odf_siblings_are_not_claimed_as_text() {
         // None of these packages reads: the two that have a reader carry a manifest declaring
         // nothing, and the third has no reader at all. What differs is the **cause**, and the
         // cause is the whole point of this test.
-        let error = ethos_parser_office::read(&archive).expect_err("none of them reads as a document");
+        let error =
+            ethos_parser_office::read(&archive).expect_err("none of them reads as a document");
         let text = error.to_string();
         if !claimed_by_ods && !claimed_by_odp {
             assert!(
@@ -787,7 +793,8 @@ fn a_manifest_that_declares_the_content_part_twice_is_refused() {
             ("content.xml", "not xml, because it is ciphertext"),
         ],
     );
-    let error = ethos_parser_office::read(&archive).expect_err("a contradictory manifest is refused");
+    let error =
+        ethos_parser_office::read(&archive).expect_err("a contradictory manifest is refused");
     assert!(
         error.to_string().contains("more than once"),
         "and it is refused for the contradiction rather than for the ciphertext: {error}"
@@ -893,7 +900,8 @@ fn a_zip_that_is_no_office_format_names_every_one_it_is_not() {
 fn a_truncated_document_is_refused() {
     let full = fixture("text-paragraphs");
     for cut in [8, full.len() / 2, full.len() - 4] {
-        let error = ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
+        let error =
+            ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
         assert!(!error.to_string().is_empty());
     }
 }

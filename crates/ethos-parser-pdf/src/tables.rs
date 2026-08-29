@@ -259,7 +259,9 @@ pub struct TaggedCellRecord {
 /// no box because the tree names none, and inventing one is exactly the fabrication this rule may
 /// not commit.
 pub const TAGGED_TABLE_GEOMETRY: ethos_parser_core::GeometryPresence =
-    ethos_parser_core::GeometryPresence::Absent(ethos_parser_core::GeometryAbsence::NotReportedByStructureTree);
+    ethos_parser_core::GeometryPresence::Absent(
+        ethos_parser_core::GeometryAbsence::NotReportedByStructureTree,
+    );
 
 /// The locator cross-check a tagged table carries: `NotApplicable`, always (v2-S24).
 ///

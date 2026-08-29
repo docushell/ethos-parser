@@ -509,7 +509,10 @@ fn multi_column_order_is_read_and_single_column_is_left_alone() {
         a.assurance.capabilities.multi_column_reading_order,
         "v1-S5 claims multi-column reading order"
     );
-    assert_eq!(a.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+    assert_eq!(
+        a.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
 
     // Half one: the content stream writes the right column first, and the artifact does not.
     let texts: Vec<&str> = a.runs().map(|r| r.text.as_str()).collect();
@@ -521,7 +524,8 @@ fn multi_column_order_is_read_and_single_column_is_left_alone() {
 
     // The retired declaration. Gone, not reworded.
     assert!(
-        !codes(&a.assurance.limitations).contains(&ethos_parser_core::codes::MULTI_COLUMN_READING_ORDER),
+        !codes(&a.assurance.limitations)
+            .contains(&ethos_parser_core::codes::MULTI_COLUMN_READING_ORDER),
         "this profile reads this document in the right order, so it must not carry a limitation \
          saying it does not: {:?}",
         codes(&a.assurance.limitations)
@@ -565,12 +569,10 @@ fn multi_column_order_is_read_and_single_column_is_left_alone() {
         conformance("synthetic/two-columns/document.pdf"),
         &Profile::default(),
     );
-    assert!(
-        !codes(&c.assurance.limitations).contains(&ethos_parser_core::codes::MULTI_COLUMN_READING_ORDER)
-    );
-    assert!(
-        codes(&c.assurance.limitations).contains(&ethos_parser_core::codes::READING_ORDER_GEOMETRIC_ONLY)
-    );
+    assert!(!codes(&c.assurance.limitations)
+        .contains(&ethos_parser_core::codes::MULTI_COLUMN_READING_ORDER));
+    assert!(codes(&c.assurance.limitations)
+        .contains(&ethos_parser_core::codes::READING_ORDER_GEOMETRIC_ONLY));
 }
 
 // -------------------------------------------------------------------------------------------
@@ -611,7 +613,9 @@ fn partial_processing_is_terminal_and_cannot_look_whole() {
 
     // The gap names a limitation the artifact actually declares.
     assert!(a.assurance.every_gap_names_a_declared_limitation());
-    assert!(codes(&a.assurance.limitations).contains(&ethos_parser_core::codes::RESOURCE_LIMIT_PAGES));
+    assert!(
+        codes(&a.assurance.limitations).contains(&ethos_parser_core::codes::RESOURCE_LIMIT_PAGES)
+    );
 
     // And the run list is honest about which pages it covers.
     assert_eq!(a.pages.len(), 1);
@@ -759,7 +763,9 @@ fn a_budget_that_does_not_bind_is_not_blamed_for_the_sample_bound() {
     }
 
     // And the limitation list agrees: no resource-limit declaration, because none applied.
-    assert!(!codes(&c.assurance.limitations).contains(&ethos_parser_core::codes::RESOURCE_LIMIT_PAGES));
+    assert!(
+        !codes(&c.assurance.limitations).contains(&ethos_parser_core::codes::RESOURCE_LIMIT_PAGES)
+    );
     assert!(c.assurance.every_gap_names_a_declared_limitation());
 }
 

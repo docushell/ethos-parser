@@ -147,8 +147,8 @@ fn an_unknown_operator_produces_no_artifact() {
 
     let doc = Document::open_bytes(&mutant, &profile)
         .expect("the document is still structurally valid — only the operator changed");
-    let e =
-        ethos_parser_pdf::extract(&doc, &profile).expect_err("an unknown operator must stop the parse");
+    let e = ethos_parser_pdf::extract(&doc, &profile)
+        .expect_err("an unknown operator must stop the parse");
 
     assert_eq!(e.code(), "unsupported", "got {e}");
     assert!(
@@ -745,7 +745,10 @@ fn the_artifact_round_trips_through_c14n() {
 #[test]
 fn the_artifact_carries_a_full_identity_envelope() {
     let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
-    assert_eq!(a.identity.artifact_type, ethos_parser_pdf::EXTRACT_ARTIFACT_TYPE);
+    assert_eq!(
+        a.identity.artifact_type,
+        ethos_parser_pdf::EXTRACT_ARTIFACT_TYPE
+    );
     assert_eq!(
         a.identity.schema_version,
         ethos_parser_pdf::EXTRACT_SCHEMA_VERSION
@@ -754,7 +757,10 @@ fn the_artifact_carries_a_full_identity_envelope() {
         a.identity.profile_sha256,
         Profile::default().profile_sha256().unwrap()
     );
-    assert_eq!(a.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+    assert_eq!(
+        a.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
     assert_eq!(a.source.media_type, "application/pdf");
 }
 
@@ -822,8 +828,14 @@ fn two_columns_reads_column_major_under_the_new_rule() {
          instead of the stream"
     );
 
-    assert_eq!(a.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
-    assert_ne!(a.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V0);
+    assert_eq!(
+        a.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
+    assert_ne!(
+        a.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V0
+    );
 
     // Still not a table. S2's discriminator is asserted properly in its own test; this is the
     // cheap guard that nobody "fixed" two-columns by making it a 2x2 grid.
@@ -845,7 +857,10 @@ fn two_columns_reads_column_major_under_the_new_rule() {
 fn one_added_line_does_not_reorder_the_page() {
     let read = |name: &str| -> Vec<String> {
         let a = extract_ok(engine_fx(name));
-        assert_eq!(a.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+        assert_eq!(
+            a.reading_order_rule,
+            ethos_parser_core::READING_ORDER_RULE_V1
+        );
         assert!(
             a.pages.iter().all(|p| p.tables.is_empty()),
             "{name} must not be read as a table, or the runs become one atom and this test \
@@ -1772,7 +1787,12 @@ fn a_grid_of_form_field_boxes_is_not_a_table() {
         .map(|p| {
             p.objects
                 .iter()
-                .filter(|o| matches!(o.attributes, ethos_parser_core::NodeAttributes::FormField(_)))
+                .filter(|o| {
+                    matches!(
+                        o.attributes,
+                        ethos_parser_core::NodeAttributes::FormField(_)
+                    )
+                })
                 .count()
         })
         .sum();
@@ -2290,7 +2310,10 @@ fn reading_the_structure_tree_changes_no_earlier_slices_answer() {
     // column-major, and the point of the test is unchanged — S3 did not do that, the geometric
     // rule did. `/K` order is still not a sorter, and `structure.rs` still contains no sort.
     let two = extract_ok(conformance("synthetic/two-columns/document.pdf"));
-    assert_eq!(two.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+    assert_eq!(
+        two.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
     let texts: Vec<&str> = runs(&two).iter().map(|r| r.text.as_str()).collect();
     assert_eq!(
         texts,
@@ -2337,7 +2360,12 @@ fn a_form_fields_value_is_a_node_and_never_a_text_run() {
         .pages
         .iter()
         .flat_map(|p| p.objects.iter())
-        .filter(|o| matches!(o.attributes, ethos_parser_core::NodeAttributes::FormField(_)))
+        .filter(|o| {
+            matches!(
+                o.attributes,
+                ethos_parser_core::NodeAttributes::FormField(_)
+            )
+        })
         .collect();
     assert_eq!(
         fields.len(),
@@ -2395,7 +2423,12 @@ fn an_annotations_contents_is_a_node_and_never_a_text_run() {
         .pages
         .iter()
         .flat_map(|p| p.objects.iter())
-        .filter(|o| matches!(o.attributes, ethos_parser_core::NodeAttributes::Annotation(_)))
+        .filter(|o| {
+            matches!(
+                o.attributes,
+                ethos_parser_core::NodeAttributes::Annotation(_)
+            )
+        })
         .collect();
     assert_eq!(annots.len(), 2);
 
@@ -2442,7 +2475,9 @@ fn a_hidden_annotation_is_still_a_node_carrying_its_flag() {
         .iter()
         .flat_map(|p| p.objects.iter())
         .filter(|o| match &o.attributes {
-            ethos_parser_core::NodeAttributes::Annotation(x) => x.flags.contains(&"hidden".to_string()),
+            ethos_parser_core::NodeAttributes::Annotation(x) => {
+                x.flags.contains(&"hidden".to_string())
+            }
             _ => false,
         })
         .collect();
@@ -2479,7 +2514,12 @@ fn an_orphan_widget_is_declared_rather_than_repaired() {
         .pages
         .iter()
         .flat_map(|p| p.objects.iter())
-        .filter(|o| matches!(o.attributes, ethos_parser_core::NodeAttributes::FormField(_)))
+        .filter(|o| {
+            matches!(
+                o.attributes,
+                ethos_parser_core::NodeAttributes::FormField(_)
+            )
+        })
         .collect();
     assert_eq!(fields.len(), 1, "an orphan is emitted, never skipped");
     assert_eq!(fields[0].text, "Orphaned value");
@@ -2543,7 +2583,12 @@ fn form_fields_never_feed_the_table_detectors() {
         .map(|p| {
             p.objects
                 .iter()
-                .filter(|o| matches!(o.attributes, ethos_parser_core::NodeAttributes::FormField(_)))
+                .filter(|o| {
+                    matches!(
+                        o.attributes,
+                        ethos_parser_core::NodeAttributes::FormField(_)
+                    )
+                })
                 .count()
         })
         .sum();
@@ -2565,7 +2610,9 @@ fn form_fields_never_feed_the_table_detectors() {
         .iter()
         .flat_map(|p| p.objects.iter())
         .filter(|o| match &o.attributes {
-            ethos_parser_core::NodeAttributes::FormField(f) => f.value == ethos_parser_core::FieldValue::Absent,
+            ethos_parser_core::NodeAttributes::FormField(f) => {
+                f.value == ethos_parser_core::FieldValue::Absent
+            }
             _ => false,
         })
         .count();
@@ -2618,7 +2665,10 @@ fn reading_forms_changes_no_earlier_slices_answer() {
         texts,
         vec!["Left top", "Left bottom", "Right top", "Right bottom"]
     );
-    assert_eq!(two.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+    assert_eq!(
+        two.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
 }
 
@@ -2820,7 +2870,10 @@ fn off_page_text_is_flagged_against_the_visible_box() {
 
     let flagged: Vec<&str> = r
         .iter()
-        .filter(|x| x.findings.contains(&ethos_parser_core::TextFinding::OffPage))
+        .filter(|x| {
+            x.findings
+                .contains(&ethos_parser_core::TextFinding::OffPage)
+        })
         .map(|x| x.text.as_str())
         .collect();
     assert_eq!(
@@ -2893,7 +2946,10 @@ fn observing_images_changes_no_earlier_slices_answer() {
         texts,
         vec!["Left top", "Left bottom", "Right top", "Right bottom"]
     );
-    assert_eq!(two.reading_order_rule, ethos_parser_core::READING_ORDER_RULE_V1);
+    assert_eq!(
+        two.reading_order_rule,
+        ethos_parser_core::READING_ORDER_RULE_V1
+    );
     assert!(two.pages.iter().all(|p| p.tables.is_empty()));
     assert!(
         two.pages.iter().all(|p| p.images.is_empty()),
@@ -2996,7 +3052,8 @@ fn a_page_that_crops_still_parses_and_keeps_one_coordinate_frame() {
     // The crop box is still read, and is still what off-page is measured against. This run is
     // outside it, so it carries the finding — and it is still here, with its box, in the artifact.
     assert!(
-        r[0].findings.contains(&ethos_parser_core::TextFinding::OffPage),
+        r[0].findings
+            .contains(&ethos_parser_core::TextFinding::OffPage),
         "text in the cropped-away margin is outside the VISIBLE box and says so"
     );
     assert_eq!(r[0].text, "Near the top");
@@ -3141,7 +3198,9 @@ fn a_whitespace_run_reports_no_ink_rather_than_a_box_around_nothing() {
     assert!(r[0].text.trim().is_empty(), "the first run is whitespace");
     assert_eq!(
         r[0].geometry,
-        ethos_parser_core::GeometryPresence::Absent(ethos_parser_core::GeometryAbsence::NoInkToMeasure),
+        ethos_parser_core::GeometryPresence::Absent(
+            ethos_parser_core::GeometryAbsence::NoInkToMeasure
+        ),
         "a run of spaces has nothing to measure — and that is NOT the same as a reader that \
          could not measure, which is what `not_reported_by_reader` would claim"
     );
@@ -3234,7 +3293,9 @@ fn five_conformance_documents_keep_every_box_they_had() {
         assert!(
             runs.iter().all(|r| !matches!(
                 r.geometry,
-                ethos_parser_core::GeometryPresence::Absent(ethos_parser_core::GeometryAbsence::NoInkToMeasure)
+                ethos_parser_core::GeometryPresence::Absent(
+                    ethos_parser_core::GeometryAbsence::NoInkToMeasure
+                )
             )),
             "{name} has no whitespace-only run, so nothing in it may change"
         );

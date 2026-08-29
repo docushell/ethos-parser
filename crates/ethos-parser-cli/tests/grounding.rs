@@ -478,7 +478,9 @@ fn every_emitted_box_is_the_measured_box() {
         engine_fx("measured-ink-box"),
     ] {
         let repr = represent(&path);
-        let g = ethos_parser_grounding::project(&repr).expect("projects").source;
+        let g = ethos_parser_grounding::project(&repr)
+            .expect("projects")
+            .source;
 
         let by_id: std::collections::BTreeMap<&str, [i64; 4]> = repr
             .payload()
@@ -686,7 +688,8 @@ fn ethos_parser_grounding_has_no_pdf_concept() {
     }
 
     let manifest =
-        std::fs::read_to_string(repo_root().join("crates/ethos-parser-grounding/Cargo.toml")).unwrap();
+        std::fs::read_to_string(repo_root().join("crates/ethos-parser-grounding/Cargo.toml"))
+            .unwrap();
     assert!(
         !manifest.contains("ethos-parser-pdf"),
         "ethos-parser-grounding must not depend on ethos-parser-pdf"

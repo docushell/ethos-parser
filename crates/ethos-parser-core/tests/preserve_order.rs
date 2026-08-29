@@ -137,12 +137,18 @@ fn the_profile_hash_is_unaffected_by_map_flavour() {
 
     // The profile hash is the engine's identity. It must not depend on a feature flag chosen
     // by some unrelated crate three levels down a consumer's dependency graph.
-    let a = ethos_parser_core::Profile::default().profile_sha256().unwrap();
-    let b = ethos_parser_core::Profile::default().profile_sha256().unwrap();
+    let a = ethos_parser_core::Profile::default()
+        .profile_sha256()
+        .unwrap();
+    let b = ethos_parser_core::Profile::default()
+        .profile_sha256()
+        .unwrap();
     assert_eq!(a, b);
 
     // Round-tripping through a parsed (insertion-ordered) value must not move it either.
-    let bytes = ethos_parser_core::Profile::default().canonical_bytes().unwrap();
+    let bytes = ethos_parser_core::Profile::default()
+        .canonical_bytes()
+        .unwrap();
     let reparsed: Value = serde_json::from_slice(&bytes).unwrap();
     let recanonicalized = c14n_bytes(&reparsed).unwrap();
     assert_eq!(bytes, recanonicalized);

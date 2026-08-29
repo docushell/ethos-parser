@@ -234,7 +234,10 @@ pub fn unruled_candidate_refused(refusals: &[(u32, crate::unruled::Refusal)]) ->
     for (page, r) in refusals {
         detail.push_str(&format!("\n  - page {page}: {}", r.detail()));
     }
-    Limitation::document(ethos_parser_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED, detail)
+    Limitation::document(
+        ethos_parser_core::codes::UNRULED_TABLE_CANDIDATE_REFUSED,
+        detail,
+    )
 }
 
 /// Pages where the **ruled** rule built a candidate lattice and refused it (v1-S7b).
@@ -270,7 +273,10 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
             pages.join(", ")
         ));
     }
-    Limitation::document(ethos_parser_core::codes::RULED_TABLE_CANDIDATE_REFUSED, detail)
+    Limitation::document(
+        ethos_parser_core::codes::RULED_TABLE_CANDIDATE_REFUSED,
+        detail,
+    )
 }
 
 /// Pages where the **stroke-ruled** rule built a candidate band and refused it (v1-S8).

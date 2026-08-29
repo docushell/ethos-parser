@@ -243,7 +243,10 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
     let sealed = ethos_parser_office::read(&fixture("deck-slides")).expect("the fixture reads");
     let payload = sealed.payload();
 
-    assert_eq!(payload.source.media_type, ethos_parser_office::PPTX_MEDIA_TYPE);
+    assert_eq!(
+        payload.source.media_type,
+        ethos_parser_office::PPTX_MEDIA_TYPE
+    );
     assert_eq!(
         payload.identity.profile_sha256,
         Profile::pptx_v0().profile_sha256().expect("a digest")
@@ -323,7 +326,8 @@ fn text_is_what_the_slide_says_it_is() {
 /// **A14, both halves.** Parts that were not read, and shapes on the slides that were.
 #[test]
 fn parts_and_shapes_this_slice_does_not_read_are_declared_with_counts() {
-    let sealed = ethos_parser_office::read(&fixture("deck-unread-parts")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("deck-unread-parts")).expect("the fixture reads");
     let limitation = sealed
         .payload()
         .assurance
@@ -499,7 +503,8 @@ fn a_zip_without_a_presentation_part_is_a_named_refusal() {
 fn a_truncated_deck_is_refused() {
     let full = fixture("deck-slides");
     for cut in [8, full.len() / 2, full.len() - 4] {
-        let error = ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
+        let error =
+            ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
         assert!(!error.to_string().is_empty());
     }
 }

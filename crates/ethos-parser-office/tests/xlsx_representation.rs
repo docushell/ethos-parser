@@ -234,7 +234,10 @@ fn the_artifact_declares_its_own_profile_and_its_own_media_type() {
     let sealed = ethos_parser_office::read(&fixture("workbook-cells")).expect("the fixture reads");
     let payload = sealed.payload();
 
-    assert_eq!(payload.source.media_type, ethos_parser_office::XLSX_MEDIA_TYPE);
+    assert_eq!(
+        payload.source.media_type,
+        ethos_parser_office::XLSX_MEDIA_TYPE
+    );
     assert_eq!(
         payload.identity.profile_sha256,
         Profile::xlsx_v0().profile_sha256().expect("a digest")
@@ -377,7 +380,8 @@ fn an_empty_cell_is_not_a_node() {
 /// **A14.** Parts that carry text and were not read are counted and named.
 #[test]
 fn parts_this_slice_does_not_read_are_declared_with_a_count() {
-    let sealed = ethos_parser_office::read(&fixture("workbook-unread-parts")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("workbook-unread-parts")).expect("the fixture reads");
     let limitation = sealed
         .payload()
         .assurance
@@ -562,7 +566,8 @@ fn a_zip_without_a_workbook_part_is_a_named_refusal() {
 fn a_truncated_workbook_is_refused() {
     let full = fixture("workbook-cells");
     for cut in [8, full.len() / 2, full.len() - 4] {
-        let error = ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
+        let error =
+            ethos_parser_office::read(&full[..cut]).expect_err("a truncated archive is refused");
         assert!(!error.to_string().is_empty());
     }
 }

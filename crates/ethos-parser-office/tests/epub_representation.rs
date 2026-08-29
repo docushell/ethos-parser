@@ -67,7 +67,11 @@ fn locators(sealed: &ethos_parser_core::DocumentRepresentation) -> Vec<EpubLocat
         .collect()
 }
 
-fn text_at(sealed: &ethos_parser_core::DocumentRepresentation, part: &str, block: u32) -> Option<String> {
+fn text_at(
+    sealed: &ethos_parser_core::DocumentRepresentation,
+    part: &str,
+    block: u32,
+) -> Option<String> {
     sealed
         .payload()
         .nodes
@@ -133,7 +137,8 @@ fn a_block_resolves_to_a_node_addressed_by_the_package_itself() {
 fn the_spine_states_the_order_and_the_archive_does_not() {
     let bytes = fixture("book-spine");
 
-    let names = ethos_parser_office::zip::entry_names(&bytes).expect("the archive lists its entries");
+    let names =
+        ethos_parser_office::zip::entry_names(&bytes).expect("the archive lists its entries");
     let archive_order: Vec<&String> = names
         .iter()
         .filter(|n| n.ends_with(".xhtml"))
@@ -475,7 +480,8 @@ fn the_clean_publication_declares_no_erasure_and_the_other_declares_every_kind()
     // **Exact counts, not just the words.** An adversarial review of this slice injected wrong
     // multipliers into four of these counters and every "the message names this category" check
     // still passed — so each number is pinned to what the fixture actually contains.
-    let detail = a14_detail(&ethos_parser_office::read(&fixture("book-unread-parts")).expect("reads"));
+    let detail =
+        a14_detail(&ethos_parser_office::read(&fixture("book-unread-parts")).expect("reads"));
     for (what, expected) in [
         // rendition2.opf, images/cover.svg, images/pic.png, toc.ncx, style/book.css
         ("5 entry(ies)", "the entries no reader opened"),
@@ -525,7 +531,8 @@ fn an_encrypted_spine_document_is_refused_and_an_obfuscated_font_is_not() {
         "META-INF/encryption.xml",
         &encryption_declaring("OEBPS/fonts/x.otf"),
     );
-    let sealed = ethos_parser_office::read(&font_only).expect("a clear-text publication still reads");
+    let sealed =
+        ethos_parser_office::read(&font_only).expect("a clear-text publication still reads");
     assert!(!sealed.payload().nodes.is_empty());
 
     let content_encrypted = with_entry(
@@ -744,7 +751,8 @@ fn encryption_declaring(uri: &str) -> String {
 /// A minimal writer rather than a dependency: `deny.toml` bans a ZIP crate, and the OCF rule this
 /// has to honour — first entry, uncompressed — is three lines.
 fn with_entry(original: &[u8], name: &str, body: &str) -> Vec<u8> {
-    let names = ethos_parser_office::zip::entry_names(original).expect("the archive lists its entries");
+    let names =
+        ethos_parser_office::zip::entry_names(original).expect("the archive lists its entries");
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     let mut replaced = false;
     for existing in &names {

@@ -159,7 +159,8 @@ fn project_is_reachable_and_canonical_from_the_library() {
         .expect("the fingerprint survives the round trip");
 
     let projection = ethos_parser_grounding::project(&reparsed).expect("projects");
-    let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source).expect("canonicalizes");
+    let bytes =
+        ethos_parser_grounding::to_canonical_bytes(&projection.source).expect("canonicalizes");
     let v = parse_canonical(&bytes);
 
     assert_eq!(v["artifact_type"], "ethos.grounding.v1");
@@ -185,7 +186,8 @@ fn grounding_check_is_reachable_and_canonical_from_the_library() {
         ethos_parser_grounding::to_canonical_bytes(&projection.source).expect("canonicalizes");
 
     // With the source: the binding is answered.
-    let matched = ethos_parser_grounding::grounding_check(&grounding, Some(&source)).expect("checks");
+    let matched =
+        ethos_parser_grounding::grounding_check(&grounding, Some(&source)).expect("checks");
     let v = parse_canonical(&matched.to_canonical_bytes().expect("canonicalizes"));
     assert_eq!(v["structure"], "valid");
     assert_eq!(v["source_binding"], "matched");
@@ -199,7 +201,8 @@ fn grounding_check_is_reachable_and_canonical_from_the_library() {
 
     // A different document: mismatched, and non-zero.
     let other = std::fs::read(conformance("synthetic/two-lines/document.pdf")).expect("readable");
-    let mismatched = ethos_parser_grounding::grounding_check(&grounding, Some(&other)).expect("checks");
+    let mismatched =
+        ethos_parser_grounding::grounding_check(&grounding, Some(&other)).expect("checks");
     let v = parse_canonical(&mismatched.to_canonical_bytes().expect("canonicalizes"));
     assert_eq!(v["source_binding"], "mismatched");
     assert_ne!(
@@ -230,7 +233,8 @@ fn the_whole_happy_path_runs_inside_one_process() {
     let projection = ethos_parser_grounding::project(&repr).expect("projects");
     let grounding =
         ethos_parser_grounding::to_canonical_bytes(&projection.source).expect("canonicalizes");
-    let report = ethos_parser_grounding::grounding_check(&grounding, Some(&source)).expect("checks");
+    let report =
+        ethos_parser_grounding::grounding_check(&grounding, Some(&source)).expect("checks");
 
     assert_eq!(report.exit_code(), 0, "the happy path ends valid and bound");
 

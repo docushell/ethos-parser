@@ -927,7 +927,10 @@ fn a_surviving_mutant_never_claims_to_be_the_original() {
     let mut checked = 0usize;
 
     for fixture in all_fixtures() {
-        let original_digest = format!("sha256:{}", ethos_parser_core::sha256_hex_bytes(&fixture.bytes));
+        let original_digest = format!(
+            "sha256:{}",
+            ethos_parser_core::sha256_hex_bytes(&fixture.bytes)
+        );
 
         for mutation in Mutation::ALL {
             let Some(mutant) = mutation.apply(&fixture.bytes) else {

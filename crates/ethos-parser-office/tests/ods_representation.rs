@@ -44,7 +44,8 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// The package's own `content.xml`, inflated. **Never the generator's source.**
 fn content_of(bytes: &[u8]) -> String {
-    let part = ethos_parser_office::zip::read_entry(bytes, "content.xml").expect("the part inflates");
+    let part =
+        ethos_parser_office::zip::read_entry(bytes, "content.xml").expect("the part inflates");
     String::from_utf8(part).expect("the part is UTF-8")
 }
 
@@ -60,7 +61,11 @@ fn locators(sealed: &ethos_parser_core::DocumentRepresentation) -> Vec<OdsLocato
         .collect()
 }
 
-fn text_at(sealed: &ethos_parser_core::DocumentRepresentation, row: u32, column: u32) -> Option<String> {
+fn text_at(
+    sealed: &ethos_parser_core::DocumentRepresentation,
+    row: u32,
+    column: u32,
+) -> Option<String> {
     sealed
         .payload()
         .nodes
@@ -571,7 +576,8 @@ fn regions_declared(bytes: &[u8]) -> usize {
 /// has to honour — first entry, uncompressed — is three lines.
 fn repack(original: &[u8], content: &str) -> Vec<u8> {
     let media = String::from_utf8(
-        ethos_parser_office::zip::read_entry(original, "mimetype").expect("the type entry is there"),
+        ethos_parser_office::zip::read_entry(original, "mimetype")
+            .expect("the type entry is there"),
     )
     .expect("utf-8");
     let manifest = String::from_utf8(

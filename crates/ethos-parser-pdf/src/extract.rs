@@ -926,7 +926,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         let Some(result) = outcome else {
             page_states.push(PageStateEntry {
                 index: page_number,
-                state: PageState::Quarantined(ethos_parser_core::codes::RESOURCE_LIMIT_PAGES.to_string()),
+                state: PageState::Quarantined(
+                    ethos_parser_core::codes::RESOURCE_LIMIT_PAGES.to_string(),
+                ),
             });
             continue;
         };

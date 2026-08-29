@@ -84,7 +84,8 @@ fn all_text(sealed: &ethos_parser_core::DocumentRepresentation) -> String {
 /// **The slice's sentence, executable.** A known phrase is on a node, addressed by the stream.
 #[test]
 fn a_paragraph_resolves_to_a_node_addressed_by_the_stream_itself() {
-    let sealed = ethos_parser_office::read(&fixture("rich-text-paragraphs")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("rich-text-paragraphs")).expect("the fixture reads");
 
     let node = sealed
         .payload()
@@ -170,7 +171,8 @@ fn the_locator_carries_one_field_and_refuses_a_page_by_name() {
 /// container id — and a locator that answers `names_a_part` false is checked on that instead.
 #[test]
 fn the_address_names_no_part_and_every_node_shares_one_container() {
-    let sealed = ethos_parser_office::read(&fixture("rich-text-paragraphs")).expect("the fixture reads");
+    let sealed =
+        ethos_parser_office::read(&fixture("rich-text-paragraphs")).expect("the fixture reads");
     let payload = sealed.payload();
 
     let containers: BTreeSet<&str> = payload.nodes.iter().map(|n| n.parent.as_str()).collect();
@@ -396,8 +398,9 @@ fn the_clean_stream_declares_no_erasure_and_the_other_declares_two_kinds() {
         "the clean stream carries only what the reader consumes, so it erases nothing"
     );
 
-    let detail =
-        a14_detail(&ethos_parser_office::read(&fixture("rich-text-unread-destinations")).expect("reads"));
+    let detail = a14_detail(
+        &ethos_parser_office::read(&fixture("rich-text-unread-destinations")).expect("reads"),
+    );
     assert!(detail.contains("destination(s)"), "{detail}");
     assert!(detail.contains("byte(s) above 0x7F"), "{detail}");
     assert!(
