@@ -1,0 +1,14 @@
+#!/bin/sh
+# Add the DCO trailer when it is absent, so `git commit` behaves like `git commit -s`.
+#
+# `format.signOff` only applies to `git format-patch`, not `git commit`, so no configuration
+# signs every commit -- this hook is the mechanism. `commit-msg` still validates the result and
+# is the check that actually fails a bad commit.
+#
+# `--in-place --trailer` rather than `>>`: appending raw text to a subject-only message puts the
+# trailer in the subject paragraph, where git does not parse it. interpret-trailers opens the
+# blank line when one is needed and joins an existing trailer block when one is there.
+MSG_FILE="$1"
+git interpret-trailers --parse < "$MSG_FILE" | grep -q '^Signed-off-by:' && exit 0
+git interpret-trailers --in-place \
+  --trailer "Signed-off-by: $(git config user.name) <$(git config user.email)>" "$MSG_FILE"

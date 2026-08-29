@@ -334,6 +334,26 @@ Emit a confidence float or any single field meaning "this document is good." Del
 headers, footers, or low-confidence content without a record. Invent a coordinate, identifier,
 fingerprint, or pagination. Verify a citation. Publish a competitor bake-off table.
 
+## Contributing
+
+Every commit needs a `Signed-off-by` trailer, and the `dco` job in
+`.github/workflows/ci.yml` enforces it across the pushed or proposed range using
+`.github/scripts/check_dco.py`. This is the same rule, and the same
+`git interpret-trailers` parse, that the Ethos repository applies.
+
+The hooks are tracked rather than copied, so one command points git at them and they stay
+in sync with the repository:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.githooks/prepare-commit-msg` adds the trailer when it is missing, so a plain `git commit`
+behaves like `git commit -s`. `.githooks/commit-msg` then validates the result and is the
+check that actually fails a bad commit — it catches a missing sign-off and one stranded
+outside the trailer block by a blank line. Git parses trailers only in the final paragraph,
+so keep `Signed-off-by` and any `Co-Authored-By` adjacent with no blank line between them.
+
 ## Licence
 
 Apache-2.0, matching Ethos. `NOTICE` is reserved for the vendored Adobe CMap data (BSD-3-Clause). No

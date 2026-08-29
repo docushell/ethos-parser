@@ -5,9 +5,10 @@
 #
 # # Why this exists
 #
-# `.github/workflows/ci.yml` has never run. This repository has no remote and no tag, so every
-# "green" any record in `CHANGELOG.md` claims is a local partial run — somebody's `cargo test`,
-# with whichever checks they happened to remember. `cargo fmt --all --check` was red from v2-S14
+# `.github/workflows/ci.yml` did not run at all until 0.41.0, when this repository gained a
+# remote at `docushell/ethos-parser`. Every "green" any record in `CHANGELOG.md` claims before
+# that is a local partial run — somebody's `cargo test`, with whichever checks they happened to
+# remember — and this script is still what makes green a fact BEFORE a push rather than after. `cargo fmt --all --check` was red from v2-S14
 # until v2-S18 repaired it, across four slices that each recorded a green, because nothing ran it.
 #
 # A script rather than a paragraph in a record, for the reason `ci/forbidden-tokens.sh` already

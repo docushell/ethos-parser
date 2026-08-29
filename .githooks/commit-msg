@@ -1,0 +1,12 @@
+#!/bin/sh
+# DCO guard (mirrors the Ethos rule this repository's CI enforces).
+#
+# Catches both failure modes: a missing Signed-off-by, and one stranded outside the
+# trailer block by a blank line. `git interpret-trailers --parse` reads the block the
+# same way .github/scripts/check_dco.py does, so local and CI agree.
+git interpret-trailers --parse < "$1" | grep -q '^Signed-off-by:' || {
+  echo "commit-msg: no Signed-off-by in the trailer block." >&2
+  echo "  Use 'git commit -s', and keep every trailer in the final" >&2
+  echo "  paragraph with no blank line between them." >&2
+  exit 1
+}

@@ -676,3 +676,20 @@ jobs:
         run: |
           git checkout -- crates/ethos-parser-core/Cargo.toml
           git diff --exit-code
+
+  # DCO (mirrors the Ethos rule): every commit in the pushed or proposed range carries a
+  # Signed-off-by trailer. `.githooks/commit-msg` enforces the same thing locally through the
+  # same `git interpret-trailers` parse, so a commit that passes the hook passes here.
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: check DCO sign-offs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 .github/scripts/check_dco.py "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          else
+            python3 .github/scripts/check_dco.py "${{ github.event.before }}" "${{ github.sha }}"
+          fi

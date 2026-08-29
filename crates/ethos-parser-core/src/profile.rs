@@ -2367,7 +2367,8 @@ mod tests {
              Moved a FIFTIETH time at v2-S18 (0.34.3), on `parser_version` alone. The slice that \
              made the gate real: `cargo fmt --all --check` had exited NON-ZERO at every commit \
              since v2-S14, under four consecutive records each claiming a green, because \
-             `.github/workflows/ci.yml` HAS NEVER RUN — no remote, no tag, 85 commits — so every \
+             `.github/workflows/ci.yml` HAD NEVER RUN — no remote, no tag, 85 commits at that \
+             point — so every \
              green this repository has ever recorded was a local partial run with whichever \
              checks somebody remembered. Four formatting sites repaired, three clippy warnings in \
              `crates/*/tests/` repaired (the third invisible until the first two were, because \

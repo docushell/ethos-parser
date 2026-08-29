@@ -33,7 +33,8 @@
 //! and the job is green — with every box still ticked and every job still present.
 //!
 //! The last row is v2-S18's, and it answers a failure the rows above it cannot reach, because
-//! every one of them assumes CI runs. **It never has.** This repository has no remote and no tag,
+//! every one of them assumes CI runs. **It did not, until 0.41.0 gave this repository a remote
+//! at `docushell/ethos-parser`.** Before that there was no remote and no tag,
 //! so every green any record claims was produced by hand with whichever checks somebody
 //! remembered — and `cargo fmt --all --check` was red for four slices underneath four such
 //! claims. `ci/gate.sh` is the answer to that, and a convenience script nobody checked against
@@ -853,8 +854,9 @@ const GATE_SKIPS: [&str; 3] = [
 
 /// **`ci/gate.sh` runs what CI runs, and nothing CI does not.**
 ///
-/// `ci.yml` has never executed — no remote, no tag, 85 commits — so `ci/gate.sh` is the only
-/// thing in this repository that can make "green" a fact rather than a claim. That makes the
+/// `ci.yml` did not execute at all until 0.41.0 gave this repository a remote — no remote, no
+/// tag, 85 commits — and `ci/gate.sh` remains the only thing that can make "green" a fact
+/// rather than a claim *before* a push, which is when it matters. That makes the
 /// script's *fidelity* the whole value: a local gate that runs a subset manufactures exactly the
 /// confidence that let `cargo fmt --all --check` stay red across four slices that each recorded
 /// a green.
