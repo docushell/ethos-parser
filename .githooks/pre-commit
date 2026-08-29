@@ -1,0 +1,19 @@
+#!/bin/sh
+# Ethos Parser Git Identity Safety Guard
+
+REQUIRED_EMAIL="hello@docushell.com"
+REQUIRED_NAME="docushell-dev"
+
+# Ensure repository local identity is always set
+git config --local user.email "$REQUIRED_EMAIL"
+git config --local user.name "$REQUIRED_NAME"
+
+CURRENT_EMAIL=$(git config --local user.email)
+CURRENT_NAME=$(git config --local user.name)
+
+if [ "$CURRENT_EMAIL" != "$REQUIRED_EMAIL" ] || [ "$CURRENT_NAME" != "$REQUIRED_NAME" ]; then
+    echo "[IDENTITY GUARD ERROR] Local git config identity mismatch!"
+    echo "Expected: $REQUIRED_EMAIL ($REQUIRED_NAME)"
+    echo "Got: $CURRENT_EMAIL ($CURRENT_NAME)"
+    exit 1
+fi
