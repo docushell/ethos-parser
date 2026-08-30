@@ -3,8 +3,9 @@
 One page, deliberately. Nine versions, one line each. No new version numbers get invented — every
 change from research folds into a row that already exists.
 
-Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2. **v2.2, v3 and v4
-stay one line each**, which is what "one page" protects.
+Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2, and **v2.2 has a
+scope document for its first half** (decision #19). **v3 and v4 stay one line each**, which is what
+"one page" protects.
 
 ---
 
@@ -18,7 +19,7 @@ stay one line each**, which is what "one page" protects.
 | **v1.1** | Safe Markdown | Markdown and HTML, each with an anchor map · hyphenation and similar cosmetics as export-only | A Markdown-quoted citation verifies end to end |
 | **v1.2** | Adoption | MCP server · Python and Node SDKs · LangChain tools | Locators survive every adapter round trip |
 | **v2** | Office formats | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, EPUB · CSV argued and refused · one shared record and one serializer · embedded assets counted | A DOCX quote and an XLSX cell both **bind** to an address the file states, with **no synthesised pages**. **Met** |
-| **v2.2** | Accessibility | Auto-tagging, writing Tagged PDF | A tag this engine writes is one it can read back and ground against |
+| **v2.2** | Layout and accessibility | **Geometric block structure** — the reading-order cut's own column bands, emitted per node as `Computed` layout · then auto-tagging, writing Tagged PDF | Both halves: a region is emitted wherever the cut divided a page and nowhere else, **and** a tag this engine writes is one it can read back and ground against |
 | **v3** | Assist | Propose-only VLM · dual-read and review · formula and chart enrichment as `Recognized` or `Proposed` | Assist on and assist off produce byte-identical grounded artifacts |
 | **v4** | OCR lane | Deterministic ONNX OCR in-process · an HTTP OCR contract · its own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | An OCR fingerprint is provably incomparable with a born-digital parse |
 
@@ -49,6 +50,8 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | Item | Why not |
 | --- | --- |
 | PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* improves grounding; tag *generation* does not, which is why v2.2 writes tags and stops there |
+| **Declared document splits (D1)** | **Refused on measurement, not principle.** Of five candidate signals three declare navigation or numbering rather than a boundary, and the two that would be honest occur **0** times across all 45 PDF fixtures. A detector with no positive case is an assertion. [`17-D1-SCOPE.md`](17-D1-SCOPE.md) §8 has both reopening conditions |
+| **A role, heading or paragraph read off a region** | A region is *where*, never *what*. P14 — and the whole reason layout and structure are separate axes in decision #19 |
 | Chart descriptions **as evidence** | A description is `Proposed`. It can exist and can never be cited |
 | Any mode that rewrites the evidence | The artifact is the record |
 | A public confidence float, at any version | See [`01-CONTRACT.md`](01-CONTRACT.md) §9 |
@@ -75,6 +78,11 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v1.1? | [`10-V11-SCOPE.md`](history/10-V11-SCOPE.md) / [`11-V11-MILESTONES.md`](history/11-V11-MILESTONES.md) — complete |
 | What is v1.2? | [`12-V12-SCOPE.md`](history/12-V12-SCOPE.md) / [`13-V12-MILESTONES.md`](history/13-V12-MILESTONES.md) — complete |
 | What is v2? | [`14-V2-SCOPE.md`](history/14-V2-SCOPE.md) / [`15-V2-MILESTONES.md`](history/15-V2-MILESTONES.md) — S0 through S24 done, gate met |
+| What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S1 done |
+| Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
-past v2 has one, and v2.2, v3 and v4 should not get one until v2's successor is in sight.
+past v2 had one until decision #19, which put v2.2's first half in sight by meeting v2. **v3 and v4
+still should not get one**, and v2.2's own milestones document waits until its second half is
+scoped — a scope document for work in progress is a plan, and one for work not yet started is a
+guess.

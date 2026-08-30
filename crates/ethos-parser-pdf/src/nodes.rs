@@ -97,6 +97,12 @@ pub struct TextRun {
     pub locator: PdfLocator,
     /// Measured ink box, or a typed reason there is none.
     pub geometry: GeometryPresence,
+    /// Which region of its page the reading-order cut placed this run in (D4-S2).
+    ///
+    /// Set after detection and **before** `reorder_page`, which moves whole runs, so the value
+    /// travels with its run and needs no index fixing of its own. `None` on a page the cut did
+    /// not divide.
+    pub region: Option<u32>,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -231,6 +237,7 @@ mod tests {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         TextRun {
             id: alloc.next(IdKind::Span).unwrap(),
+            region: None,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

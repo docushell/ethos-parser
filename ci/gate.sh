@@ -35,11 +35,20 @@
 # step added to the `check` job is neither listed here nor excluded there, and fails the test.
 #
 #   * **The oracle build** (`check` → "Build the oracle", and the two steps around it). CI
-#     compiles `docushell/ethos` into `ethos-oracle/target`. Locally the suite resolves a sibling
-#     checkout at `../ethos/target/release/ethos` on its own, so no environment pin is needed;
-#     building it here would write into a tree this repository does not own. If that binary is
-#     absent the oracle tests fail loudly rather than skipping — `docs/04-ARCHITECTURE.md` §4 —
-#     which is the correct signal and needs no help from this script.
+#     compiles `docushell/ethos` at `ETHOS_ORACLE_REF` into `ethos-oracle/target`. Building it
+#     here would write into a tree this repository does not own, so this script locates one
+#     instead of producing one — see the `ETHOS_BIN` block below. If none is found the oracle
+#     tests fail loudly rather than skipping — `docs/04-ARCHITECTURE.md` §4 — which is the
+#     correct signal and is left alone.
+#
+#     **This paragraph used to say the suite resolved a sibling checkout "on its own, so no
+#     environment pin is needed", and that was wrong.** `VerifierBinary::resolve` does try
+#     `../ethos/target/release/ethos`, but relative to the *caller's working directory*, and
+#     `cargo test` runs each test binary with the **crate** directory as its cwd — so the
+#     candidate becomes `crates/ethos/target/release/ethos` and is never found. Nine tests in
+#     `html_cli`, `markdown_cli` and `verify_relay` therefore failed on every local run, for a
+#     reason unrelated to whatever the developer had changed. A gate that is red for everybody
+#     all the time is a gate people learn to skip.
 #
 #   * **The toolchain-pin tripwire** (`check` → "Assert the toolchain pin is in force"). It exists
 #     because a CI runner installs a toolchain from the workflow and could disagree with
@@ -77,6 +86,21 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # export is equivalent. It reaches the three steps CI sets it on — clippy, build and test — and
 # the two it does not are `fmt` and `deny`, neither of which compiles anything.
 export RUSTFLAGS="-D warnings"
+
+# Point the oracle tests at a verifier, the way CI's `check` job does with its own checkout.
+#
+# Three rules, in this order. An operator's own `ETHOS_BIN` wins and is never second-guessed —
+# `VerifierBinary::resolve` treats an explicit pin as authoritative and so does this. Otherwise
+# the sibling `ethos-oracle` checkout is used, which is where CI puts `ETHOS_ORACLE_REF` and is
+# the *pinned* ref rather than whatever `main` happens to be; a plain `../ethos` clone is
+# deliberately NOT consulted, because docs/07-VERIFY-BOUNDARY.md §4 requires a verifier swap to
+# be visible and "whatever main was that afternoon" is exactly the invisible swap. Absent both,
+# nothing is exported and the oracle tests fail by name.
+if [ -z "${ETHOS_BIN:-}" ] && [ -x ../ethos-oracle/target/release/ethos ]; then
+  ETHOS_BIN="$(cd ../ethos-oracle/target/release && pwd)/ethos"
+  export ETHOS_BIN
+  printf 'gate: oracle at %s (%s)\n' "$ETHOS_BIN" "$("$ETHOS_BIN" --version 2>/dev/null || echo '?')"
+fi
 
 step=0
 total=7

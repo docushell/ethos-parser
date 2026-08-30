@@ -441,6 +441,7 @@ fn text_node(alloc: &mut IdAllocator, parent: &ethos_parser_core::NodeId) -> Nod
             findings: Vec::new(),
             font_id: "F1".into(),
             font_size: 2400,
+            region: None,
         }),
     }
 }

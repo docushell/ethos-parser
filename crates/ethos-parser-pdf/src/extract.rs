@@ -385,6 +385,10 @@ fn extract_page(
                 synthesized,
                 font_id: shown.font_id,
                 font_size: quantize(shown.font_size, QUANTUM_PER_POINT).map_err(quantize_err)?,
+                // D4-S2. No cut has run yet — this page's runs are still being read off the
+                // content stream, and the rule needs the whole page plus its accepted tables.
+                // Filled in below, where `arrange_page` is called.
+                region: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -588,11 +592,22 @@ fn extract_page(
                 })
                 .collect();
             let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
-            reorder_page(
-                &mut runs,
-                &mut tables,
-                &crate::reading_order::order(&geometry, &boxes),
-            );
+            let arranged = crate::reading_order::arrange_page(&geometry, &boxes);
+
+            // D4-S2. **Before `reorder_page`, deliberately.** `arranged.regions` is indexed by
+            // stream position, which is what `runs` is in right now; `reorder_page` then moves
+            // whole runs, so each region travels with the run it describes and no index has to be
+            // fixed afterwards. Doing this after the move would mean re-deriving the mapping the
+            // move already performed.
+            //
+            // `regions` is empty on a page the cut did not divide, so `zip` does nothing at all
+            // there — no pass over `runs`, and no allocation was taken to say "no regions". That
+            // is the common page, and the engine's run time is linear in what it emits.
+            for (run, region) in runs.iter_mut().zip(&arranged.regions) {
+                run.region = *region;
+            }
+
+            reorder_page(&mut runs, &mut tables, &arranged.order);
         }
 
         // v2-S24. Emit the tagged tables collected above, now that `runs` is in its final order.
@@ -1756,19 +1771,43 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V1
+            ethos_parser_core::READING_ORDER_RULE_V2,
+            "D4-S2 moved the default to the id that promises the region field"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V2,
+            "gutter-columns-v2",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **The older ids keep their exact spellings.** `single-column-v1` means content-stream
+        // order and `gutter-columns-v1` means the same cut without the regions; artifacts exist
+        // under both, and a spelling that moved under them would make an old artifact and a new
+        // one look comparable while they promise different fields.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V1,
             "gutter-columns-v1",
-            "the id is data on every artifact; changing the string is an identity event"
-        );
-        assert_ne!(
-            ethos_parser_core::READING_ORDER_RULE_V1,
-            ethos_parser_core::READING_ORDER_RULE_V0,
-            "two rules that order runs differently must not share an id"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
+        for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V2,
+                ethos_parser_core::READING_ORDER_RULE_V1,
+            ),
+            (
+                ethos_parser_core::READING_ORDER_RULE_V1,
+                ethos_parser_core::READING_ORDER_RULE_V0,
+            ),
+            (
+                ethos_parser_core::READING_ORDER_RULE_V2,
+                ethos_parser_core::READING_ORDER_RULE_V0,
+            ),
+        ] {
+            assert_ne!(
+                a, b,
+                "two rules a consumer must tell apart cannot share an id"
+            );
+        }
     }
 
     /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
@@ -1836,6 +1875,7 @@ mod tests {
             .iter()
             .map(|&(x, y, text)| TextRun {
                 id: alloc.next(IdKind::Span).expect("ids"),
+                region: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,
@@ -1935,6 +1975,81 @@ mod tests {
                 cell.run_indices
             );
         }
+    }
+
+    /// **D4-S2: the region is attached before the renumber, and this is the only thing that says
+    /// so.**
+    ///
+    /// `arrange_page` returns regions indexed by **stream** position, and `reorder_page` then
+    /// moves whole `TextRun` values into reading order. Assigning one line later — after the move
+    /// — would label every run with the region belonging to whatever run used to sit at its index,
+    /// and the artifact would still be well-formed: every run would carry a plausible region, the
+    /// count would be right, the numbers would be contiguous, and nothing downstream would
+    /// disagree. A mislabelled page is indistinguishable from a correct one **on the wire**, which
+    /// is why the check has to live here against the permutation rather than against an artifact.
+    ///
+    /// The guard is the one `cell_text_survives_the_reordering` uses: a fixture that does not
+    /// actually reorder proves nothing, because the two orders coincide.
+    #[test]
+    fn the_region_follows_its_own_run_through_the_reordering() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+        assert_ne!(
+            order,
+            (0..runs.len()).collect::<Vec<_>>(),
+            "the fixture must actually reorder, or stream and reading order coincide and this \
+             test cannot tell a correct assignment from a late one"
+        );
+
+        let geometry: Vec<crate::reading_order::RunGeometry> = runs
+            .iter()
+            .map(|r| crate::reading_order::RunGeometry {
+                x: r.locator.origin_x,
+                y: r.locator.origin_y,
+                advance: r.locator.advance,
+            })
+            .collect();
+        let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
+        let arranged = crate::reading_order::arrange_page(&geometry, &boxes);
+        assert!(
+            !arranged.regions.is_empty(),
+            "this page divides, or there is no region to follow"
+        );
+
+        // Remember which TEXT each region belongs to, before anything moves. Text is the handle
+        // that survives the permutation; an index is exactly what does not.
+        let expected: Vec<(String, Option<u32>)> = runs
+            .iter()
+            .zip(&arranged.regions)
+            .map(|(r, region)| (r.text.clone(), *region))
+            .collect();
+
+        for (run, region) in runs.iter_mut().zip(&arranged.regions) {
+            run.region = *region;
+        }
+        reorder_page(&mut runs, &mut tables, &arranged.order);
+
+        for run in &runs {
+            let (_, want) = expected
+                .iter()
+                .find(|(text, _)| *text == run.text)
+                .expect("reordering is a permutation, so every text survives it");
+            assert_eq!(
+                run.region, *want,
+                "`{}` came out of the reordering carrying region {:?}, but the cut put it in \
+                 {:?} — the assignment is running on the wrong side of `reorder_page`",
+                run.text, run.region, want
+            );
+        }
+
+        // And the fixture is worth having: the table's column and the loose column really did
+        // land in different regions, so a swap would have been visible above.
+        let distinct: std::collections::BTreeSet<Option<u32>> =
+            runs.iter().map(|r| r.region).collect();
+        assert_eq!(
+            distinct.len(),
+            2,
+            "the grid and the column beside it are two regions, got {distinct:?}"
+        );
     }
 
     /// The atom argument the claim rests on, asserted separately from its consequence.

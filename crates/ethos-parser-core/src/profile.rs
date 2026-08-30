@@ -75,6 +75,45 @@ pub const READING_ORDER_RULE_V0: &str = "single-column-v1";
 /// of them is a new id rather than a quiet redefinition of this one.
 pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 
+/// The same cut, now reporting the regions it made (D4-S2).
+///
+/// # What changed, and what did not
+///
+/// **The rule did not.** Every constant is where `gutter-columns-v1` put it, the recursion is the
+/// same recursion, and the order a page comes out in is byte-identical — the fifteen ordering
+/// tests in the `reading_order` module were not edited to make that true. What changed is that the
+/// cut stops discarding its own grouping: each text run carries the 1-based region it landed in,
+/// as [`crate::TextRunAttributes::region`], absent where the cut made no division.
+///
+/// # Why the id moves anyway
+///
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V2`] settled this repository's answer when
+/// it moved an id nothing had ever published under: *two builds in this repository's own history
+/// producing different bytes under one id* is the state a rule id exists to make impossible, and
+/// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
+/// states the general form — **anything that can change a byte of output belongs in the profile,
+/// or it is a bug** — and a rule id is how this particular knob reaches the profile.
+///
+/// So the reasoning is the opposite of [`READING_ORDER_RULE_V0`]'s. That id kept its spelling
+/// because its *meaning* never changed while a different rule appeared beside it. This one moves
+/// because its meaning did widen, even though its ordering did not: an artifact naming
+/// `gutter-columns-v1` promises no region field, and one naming `gutter-columns-v2` promises the
+/// field wherever a page divided. A consumer that cannot tell those apart cannot tell an
+/// undivided page from an older build.
+///
+/// # Why a version bump and not a new name
+///
+/// The mirror of [`READING_ORDER_RULE_V1`]'s "why it is not `single-column-v2`". That id refused a
+/// bump because it read *different evidence*. This reads exactly the same evidence — whitespace in
+/// page space — and reports more of what it found, which is what a version bump means.
+///
+/// # No second id for the regions
+///
+/// [`crate::HTML_RULE_BLOCKS_V2`] is separate from the Markdown rule because those two can move
+/// independently. The order and the regions cannot: one cut emits both, and a change to the cut
+/// changes both together. Two ids for one rule would claim a precision that does not exist.
+pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
+
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
 /// One id covering both because they are one pass over one content stream, reading the same
@@ -1074,7 +1113,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V1.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V2.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V2.to_string(),
@@ -1952,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.41.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v1","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.42.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2543,11 +2582,21 @@ mod tests {
              profiles are the ones the rename actually touched — their `BackendIdentity.name` \
              went `engine-office` -> `ethos-parser-office`, so a DOCX, XLSX, PPTX, ODT, ODS, \
              ODP, RTF or EPUB artifact moves for two reasons where a PDF artifact moves for \
-             one. Nothing about what any document says changed. See CHANGELOG \"0.41.0\"."
+             one. Nothing about what any document says changed. See CHANGELOG \"0.41.0\".\n\n\
+             Moved a SIXTY-EIGHTH time at 0.42.0 (D4-S2), and this one is the first widening of what a \
+             text run SAYS since v1-S6.1: `reading_order_rule` goes `gutter-columns-v1` -> \
+             `gutter-columns-v2`, and nothing else in this vector moves. The cut is unchanged \
+             — same constants, same recursion, and the fifteen ordering tests were not edited \
+             — so two artifacts either side of this hash list the same runs in the same \
+             sequence. What differs is that the newer one carries the regions the cut made, as \
+             `TextRunAttributes::region`, wherever a page divided. That is why the id moved \
+             rather than staying put on the grounds that the order held: an artifact naming \
+             `-v1` promises no such field, and a reader who could not tell the two apart could \
+             not tell an undivided page from an older build. `docs/16-D4-SCOPE.md` §10."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:95d80a02dc36acc43ac427ebb40ad13f9897caf92132ecbbf9402ee42b60df89"
+            "sha256:5dc96b088ccb00d3b11bbbd7b807caf1d1da6f5b7678d1293703d5849faf5edf"
         );
     }
 

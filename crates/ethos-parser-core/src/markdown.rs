@@ -698,6 +698,7 @@ pub(crate) fn hyphen_tail<'a>(
         || heading_level(next).is_some()
         || list_role(next).is_some()
         || is_page_artifact(head) != is_page_artifact(next)
+        || region_of(head) != region_of(next)
         || !on_different_lines(head, next)
     {
         return None;
@@ -735,6 +736,35 @@ fn is_page_artifact(node: &crate::Node) -> bool {
         node.structural_locator,
         Some(crate::StructuralLocator::PdfArtifact(_))
     )
+}
+
+/// The reading-order region a run landed in, or `None` for a node that has none (D4-S3).
+///
+/// # Why the join needs it
+///
+/// The same reason it needs [`is_page_artifact`], one boundary over. The bottom of one column and
+/// the top of the next are **adjacent in reading order, on the same page, on different
+/// baselines**, and neither is a heading, a list item, a cell or page furniture — so every other
+/// clause of [`hyphen_tail`] passes and a trailing hyphen welds the two columns together.
+/// `a_hyphen_is_not_joined_across_a_column_boundary` is that defect, measured: `recalcu-` at the
+/// foot of the left column and `Confidential` at the head of the right produced
+/// **`recalcuConfidential`**, a word the page draws nowhere.
+///
+/// # Where, never what
+///
+/// This reads the region as a **boundary** and nothing else. It does not ask which region, does
+/// not order them, and derives no heading, paragraph or column name from one — comparing two runs
+/// for inequality is the whole use. A region is where text sits; what text *is* comes from the
+/// structure tree or from nowhere (`docs/16-D4-SCOPE.md` §3, checklist P14).
+///
+/// `None` for every non-run node and for every run on a page the cut did not divide, so two such
+/// nodes compare equal and the join behaves exactly as it did before D4 — which is what
+/// `two_runs_in_one_region_still_join` and the untouched hyphen tests assert.
+fn region_of(node: &crate::Node) -> Option<u32> {
+    match &node.attributes {
+        crate::NodeAttributes::TextRun(a) => a.region,
+        _ => None,
+    }
 }
 
 /// Whether two runs sit on different baselines — the test for "broken across a line".
@@ -1782,6 +1812,7 @@ pub(crate) mod tests {
                 findings: Vec::new(),
                 font_id: "F1".into(),
                 font_size: 2400,
+                region: None,
             }),
         }
     }
@@ -2103,6 +2134,63 @@ pub(crate) mod tests {
     /// It also broke `to_markdown` rule 1 out loud: artifacts are kept *so a consumer that wants
     /// them gone drops them itself, knowing it did*, and the per-run `source` segment is the only
     /// handle for that. One segment over body text and a footer removes it.
+    /// Put two runs in different reading-order regions, keeping everything else joinable.
+    fn in_regions(repr: &DocumentRepresentation, regions: &[u32]) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for (node, region) in payload.nodes.iter_mut().zip(regions) {
+            if let NodeAttributes::TextRun(a) = &mut node.attributes {
+                a.region = Some(*region);
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
+    /// **D4-S3: a column boundary is a block boundary this join could not see.**
+    ///
+    /// Exactly the defect [`is_page_artifact`] was added for, one boundary over. The bottom of
+    /// column one and the top of column two are adjacent in reading order, on the same page, on
+    /// different baselines, and neither is a heading, a list item, a cell or page furniture — so
+    /// every other clause of [`hyphen_tail`] passes and the two weld together. `recalcu-` at the
+    /// foot of the left column and `Confidential` at the head of the right column projected as
+    /// **`recalcuConfidential`**, a word the page draws nowhere and that no citation can ground.
+    ///
+    /// The region says where the cut put each run, so the join can decline. **It is used as a
+    /// boundary and never as a role** — nothing here reads a heading, a paragraph or a column
+    /// name out of it, which is the line `docs/16-D4-SCOPE.md` §3 draws and P14 forbids crossing.
+    #[test]
+    fn a_hyphen_is_not_joined_across_a_column_boundary() {
+        let repr = in_regions(
+            &repr_of_lines(&["Rates may be recalcu-", "Confidential draft"]),
+            &[1, 2],
+        );
+        let a = artifact_of(repr);
+        assert!(
+            !a.markdown.contains("recalcuConfidential"),
+            "a word welded across a column gutter is on no page, got {:?}",
+            a.markdown
+        );
+        assert_eq!(
+            a.markdown, "Rates may be recalcu-\n\nConfidential draft\n",
+            "each column keeps its own text, and the left column keeps the hyphen the page drew"
+        );
+        assert!(a.coverage.balances());
+    }
+
+    /// The guard is about the *boundary*, not about the field being present.
+    ///
+    /// Two runs in the SAME region join exactly as they always did — the clause added for the
+    /// column boundary must not become a blanket refusal on any document the cut divided.
+    #[test]
+    fn two_runs_in_one_region_still_join() {
+        let a = artifact_of(in_regions(&repr_of_lines(&["hyphen-", "ated"]), &[1, 1]));
+        assert!(
+            a.markdown.contains("hyphenated"),
+            "a hyphen broken within one column still closes up, got {:?}",
+            a.markdown
+        );
+        assert!(a.coverage.balances());
+    }
+
     #[test]
     fn a_page_artifact_is_not_joined_onto_body_text() {
         let repr = repr_of_lines(&["Rates may be recalcu-", "Confidential draft"]);
