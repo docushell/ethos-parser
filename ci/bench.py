@@ -24,6 +24,20 @@ for the bytes, not for the parse — but it means the measurement is sensitive t
 consumer drains stdout. Every timing run therefore writes to `/dev/null`, and a pipe is never in
 the measured path.
 
+# Peak memory is measured too, and it is the ceiling
+
+Throughput is linear in emitted bytes; **memory is where this stops working.** Across the gate
+corpus peak RSS runs 6.4x to 7.8x the artifact and roughly 300x the *input* — `nist-sp-800-161r1`
+is 4.6 MB in and peaks at 1.65 GB — because `canonical_bytes_of` returns one `Vec<u8>` holding the
+whole artifact while the nodes it was built from are still alive. Extrapolated, the largest gate
+document needs several gigabytes for a 7.5 MB PDF.
+
+None of that was visible from inside the process: `Diagnostics::resident_bytes` is `Some` only on
+Linux and `None` on the platform this repository is developed on, which is a correct typed absence
+for the artifact and a useless one for a gate. So the harness measures it from outside, and the
+number is REPORTED rather than gated — the allocator decides when to return pages, so it is
+noisier than wall time and a threshold on it would fire on the weather.
+
 # Size is measured once, because the contract says it may be
 
 Two runs over one document produce identical bytes, so artifact size needs one run and not
@@ -65,8 +79,50 @@ def fixtures() -> list[pathlib.Path]:
     return sorted(CORPUS.glob("*.pdf"))
 
 
-def measure(pdf: pathlib.Path, repeat: int) -> tuple[int, int]:
-    """`(median wall_micros, artifact bytes)` for one document."""
+def peak_rss_bytes(pdf: pathlib.Path) -> int | None:
+    """Peak resident set size of one `extract`, or `None` where the platform will not say.
+
+    # Why this is measured here and not read off `--diagnostics`
+
+    `Diagnostics::resident_bytes` is `Some` on Linux, from `/proc/self/statm`, and `None`
+    everywhere else — a typed absence the engine takes deliberately rather than carry platform
+    code or a dependency for. That absence is correct for the artifact and useless for a gate: on
+    macOS, which is where this repository is developed, the engine's own instrument cannot see
+    memory at all, so the scaling below went unmeasured until something outside the process looked.
+
+    `/usr/bin/time` reports it on both platforms and needs nothing installed: `-l` on BSD/macOS
+    prints "maximum resident set size" in BYTES, `-v` on GNU prints "Maximum resident set size" in
+    KILOBYTES. Both spellings are parsed, the unit difference is applied, and anything else returns
+    `None` rather than a number nobody took.
+
+    # What it is for
+
+    Throughput is linear in emitted bytes; peak memory is the ceiling. Measured across the gate
+    corpus, RSS runs about 6.4x to 7.8x the artifact and roughly 300x the INPUT — so a 7.5 MB PDF
+    needs several gigabytes, and the wall is memory long before it is time.
+    """
+    for flag, to_bytes in (("-l", 1), ("-v", 1024)):
+        try:
+            done = subprocess.run(
+                ["/usr/bin/time", flag, str(BINARY), "extract", str(pdf)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except OSError:
+            return None
+        if done.returncode != 0:
+            continue
+        for raw in done.stderr.decode(errors="replace").splitlines():
+            low = raw.lower()
+            if "maximum resident set size" in low:
+                digits = [t for t in low.replace(":", " ").split() if t.isdigit()]
+                if digits:
+                    return int(digits[0]) * to_bytes
+    return None
+
+
+def measure(pdf: pathlib.Path, repeat: int) -> tuple[int, int, int | None]:
+    """`(median wall_micros, artifact bytes, peak rss bytes or None)` for one document."""
     times = []
     for _ in range(repeat):
         with open("/dev/null", "wb") as sink:
@@ -95,24 +151,32 @@ def measure(pdf: pathlib.Path, repeat: int) -> tuple[int, int]:
         total += len(chunk)
     if sized.wait() != 0:
         raise RuntimeError(f"extract failed on {pdf.name}")
-    return int(statistics.median(times)), total
+    return int(statistics.median(times)), total, peak_rss_bytes(pdf)
 
 
-def emit(repeat: int) -> list[tuple[str, int, int]]:
+def emit(repeat: int) -> list[tuple[str, int, int, int | None]]:
     rows = []
     for pdf in fixtures():
-        micros, size = measure(pdf, repeat)
-        rows.append((pdf.stem, micros, size))
+        micros, size, rss = measure(pdf, repeat)
+        rows.append((pdf.stem, micros, size, rss))
     return rows
 
 
-def read_baseline(path: pathlib.Path) -> dict[str, tuple[int, int]]:
+def read_baseline(path: pathlib.Path) -> dict[str, tuple[int, int, int | None]]:
+    """Rows from a recorded run. A three-column baseline predates the RSS column and still reads.
+
+    Kept tolerant on purpose: a baseline is a record of what a machine did, and refusing to read
+    one taken last week because a column was added since would throw away the only evidence a
+    comparison has.
+    """
     out = {}
     for line in path.read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        name, micros, size = line.split("\t")
-        out[name] = (int(micros), int(size))
+        parts = line.split("\t")
+        name, micros, size = parts[0], int(parts[1]), int(parts[2])
+        rss = int(parts[3]) if len(parts) > 3 and parts[3] not in ("", "-") else None
+        out[name] = (micros, size, rss)
     return out
 
 
@@ -151,23 +215,30 @@ def main() -> int:
     rows = emit(args.repeat)
 
     if not args.check:
-        print("# fixture\twall_micros_median\tartifact_bytes")
-        for name, micros, size in rows:
-            print(f"{name}\t{micros}\t{size}")
+        print("# fixture\twall_micros_median\tartifact_bytes\tpeak_rss_bytes")
+        for name, micros, size, rss in rows:
+            print(f"{name}\t{micros}\t{size}\t{rss if rss is not None else '-'}")
         return 0
 
     base = read_baseline(args.check)
     failed = False
     print(f"# comparing against {args.check}, tolerance {args.tolerance:.0%}")
-    for name, micros, size in rows:
+    for name, micros, size, rss in rows:
         if name not in base:
             print(f"NEW      {name}: {micros}us {size}B — not in the baseline")
             continue
-        was_micros, was_size = base[name]
+        was_micros, was_size, was_rss = base[name]
         drift = (micros - was_micros) / was_micros if was_micros else 0.0
         # A size change is reported at any magnitude and gates at none: the artifact growing is a
         # contract change, and a contract change is a decision somebody made on purpose.
         size_note = "" if size == was_size else f"  artifact {was_size}B -> {size}B"
+        # Peak memory is REPORTED and gates at nothing. It is the ceiling rather than the speed,
+        # it is noisier than wall time because the allocator decides when to return pages, and a
+        # baseline taken before the column existed has nothing to compare against.
+        if rss is not None and was_rss:
+            size_note += f"  rss {was_rss // 1_000_000}MB -> {rss // 1_000_000}MB"
+        elif rss is not None:
+            size_note += f"  rss {rss // 1_000_000}MB"
         if drift > args.tolerance:
             failed = True
             print(f"SLOWER   {name}: {was_micros}us -> {micros}us ({drift:+.1%}){size_note}")
