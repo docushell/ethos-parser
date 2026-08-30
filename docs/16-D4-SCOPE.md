@@ -2,13 +2,14 @@
 
 **Scope authority for D4.** Slices are in §9 and every D4 PR belongs to exactly one.
 
-**There is no milestones document yet, deliberately.** [`02-ROADMAP.md`](02-ROADMAP.md) pairs one
-with each *version*, and D4 is not a version — it is a proposal waiting for the row §7 argues it
-belongs to. The pair gets written when the owner confirms that row, for the same reason v2.2, v3
-and v4 have one line each and no documents.
+**This is the first half of v2.2**, by decision #19 of 2026-08-30. §7 is the argument the owner
+accepted. No version number was invented: v2.2 already existed, and this is the half of it nobody
+had scoped.
 
-**D4 has no roadmap row yet, and §7 is the argument for where it belongs.** That placement is the
-owner's to confirm; nothing here invents a version number.
+**There is no milestones document, deliberately.** [`02-ROADMAP.md`](02-ROADMAP.md) pairs one with
+each *version*, and v2.2's second half — auto-tagging — is not started. A milestones document
+covering half a version would be a plan for the half in progress and a guess for the other. It gets
+written when auto-tagging does.
 
 ---
 
@@ -143,7 +144,8 @@ show that is not done.
 
 ## 7. Where this belongs on the roadmap
 
-**Recommended: the first slice of v2.2, and not a new row.**
+**DECIDED 2026-08-30 — decision #19: the first half of v2.2, and not a new row.** v2.2 is renamed
+*layout and accessibility*, and its gate now has two clauses. The argument the owner accepted:
 
 v2.2 is auto-tagging — *writing* Tagged PDF, gated on *"a tag this engine writes is one it can read
 back and ground against"*. **You cannot write a tag for an untagged document without first deciding
@@ -156,7 +158,13 @@ meaning; v2.2 would later attach names to those regions and must justify each na
 Shipping D4 first means the geometric half is on the wire and measurable **before** anything starts
 naming it — and if v2.2 never happens, D4 is still worth its own bytes.
 
-**This is a placement, not a decision anyone here may take.** Decision #2 governs.
+**What the decision carries with it**, accepted rather than discovered later: the rule id moves to
+`gutter-columns-v2` (§10), so `profile_sha256` moves and every golden regenerates. Contract §2
+requires exactly that — *anything that can change a byte of output belongs in the profile, or it is
+a bug.*
+
+**The second half stays unscoped.** Auto-tagging gets its milestones document when somebody starts
+it, not now.
 
 ## 8. Known limitation, declared rather than discovered later
 
