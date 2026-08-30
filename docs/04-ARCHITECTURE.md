@@ -1,8 +1,7 @@
 # 04 — Architecture
 
-**Status:** bootstrap authority · **Baseline:** the bootstrap research pass, now off-tree
-(`reference/README.md`) · **Scope:** v0 only
-**Rule:** if this document and `01-CONTRACT.md` disagree, the contract is right and this is a bug.
+**Rule:** if this document and [`01-CONTRACT.md`](01-CONTRACT.md) disagree, the contract is right and
+this is a bug.
 
 ---
 
@@ -10,193 +9,134 @@
 
 ```
 ethos-parser/
-├── Cargo.toml              # workspace, MSRV 1.88, resolver 2
-├── rust-toolchain.toml     # channel = "1.88.0"
-├── deny.toml               # permissive-only licences, no network crates
-├── NOTICE                  # reserved for the Adobe CMaps, which never landed
+├── Cargo.toml              # workspace, MSRV 1.88
+├── deny.toml               # permissive licences only, no network crates
 ├── crates/
-│   ├── ethos-parser-core/        # representation types, c14n, quanta, ids, capabilities, profile
-│   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, Annex D encodings
-│   ├── ethos-parser-office/      # eight office formats, from v2-S2's DOCX to v2-S9's EPUB
-│   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1 + the validator
-│   └── ethos-parser-cli/
-│       ├── src/            # nine subcommands; §2 below lists the v0 four
-│       └── tests/oracle.rs # byte-identical agreement with `ethos grounding check`
+│   ├── ethos-parser-core/        # representation types, canonical JSON, quanta, ids, capabilities, profile
+│   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, encoding tables
+│   ├── ethos-parser-office/      # eight office formats
+│   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
+│   └── ethos-parser-cli/         # nine subcommands; tests/oracle.rs lives here
 ├── vendor/README.md        # what is carried, and what deliberately is not
-├── fixtures/               # manifest referencing three corpus roots (read-only)
-└── docs/                   # this tree
+├── fixtures/               # a manifest referencing four corpus roots
+└── docs/
 ```
 
-**This tree was four crates, a `vendor/cmaps/` and four subcommands until v2-S13.3**, and every one
-of those was false. `ethos-parser-office` joined the workspace at v2-S2 and was never drawn here.
-`vendor/cmaps/ # 168 Adobe .bcmap + NOTICE` described files that were never obtained: `vendor/`
-holds one tracked file, and `vendor/README.md` calls their absence *"a deviation from the milestone
-text"* and argues it. `ethos-parser-pdf`'s comment said *"lopdf + vendored CMaps"* for the same reason —
-what it actually carries is the PDF 32000-1 Annex D encoding tables, written out in
-`crates/ethos-parser-pdf/src/encoding.rs` as `const fn` builders the compiler bakes into `.rodata`.
+**A crate exists when a boundary needs enforcing** — not when a module gets large. That is why
+`ethos-parser-office` was added rather than a DOCX module going into `ethos-parser-pdf`, and why
+`engine-ocr` does not exist yet.
 
-**The oracle test lives with the CLI, not at the workspace root.** Memo §16.12 sketches
-`tests/oracle.rs` at the root, but cargo only builds integration tests for *packages*, and this is a
-virtual workspace — a root `tests/` directory would be silently ignored, which is the worst possible
-failure for a harness whose job is to fail loudly. `crates/ethos-parser-cli/tests/` is also where it
-belongs on the merits: the oracle drives the CLI and compares against another CLI. Ethos does the
-same (`crates/ethos-cli/tests/verify.rs`).
+**The oracle test lives with the CLI, not at the workspace root.** Cargo only builds integration
+tests for packages, so a root `tests/` directory in a virtual workspace would be silently ignored —
+the worst possible failure for a harness whose job is to fail loudly. It also belongs there on the
+merits: the oracle drives one CLI and compares against another.
 
-**Four crates, not six — DECIDED (2026-08-12), and five since v2-S2.** Memo §16.12 says "six
-crates, deliberately small" and then lists four; the tree it lists is right and the prose is a slip.
-The decision that stands is the *reason* rather than the number: a crate exists when a boundary
-needs enforcing, which is why `ethos-parser-office` was added at v2-S2 rather than a `docx` module going
-into `ethos-parser-pdf`. The heading counted four until v2-S13.3. `core` owns everything the
-contract defines, `pdf` owns everything one format needs, `grounding` owns the projection and its
-validator, `cli` owns argument parsing and exit codes.
-
-**A fifth crate before a second format is speculative structure.** Revisit only when office or OCR
-needs a real home — `ethos-parser-office`, `engine-ocr` — and not before. "This module is getting large" is
-not a reason to add a crate.
-
-**v2-S2 is that revisit, and `ethos-parser-office` exists.** DOCX is the second format, so the crate stops
-being speculative and starts being the only place OOXML may live. `engine-ocr` is still hypothetical
-and still refused on the same rule.
-
-**Crate boundaries as rules, not preferences:**
+### Crate boundaries, as rules rather than preferences
 
 | Crate | May depend on | Must never contain |
 | --- | --- | --- |
-| `ethos-parser-core` | nothing in this workspace | Any PDF concept. No `lopdf`, no operator, no page-tree type. **And no OOXML concept**: no zip, no XML reader, no part name it parses (v2-S2) |
-| `ethos-parser-pdf` | `ethos-parser-core` | Any grounding or verification concept. **Any office concept** — a DOCX reader in here is what the fifth crate exists to prevent |
-| `ethos-parser-office` | `ethos-parser-core` | Any PDF concept, any grounding concept. It reads **eight formats** and emits the shared representation: the OOXML packages — documents (v2-S2), workbooks (v2-S3), presentations (v2-S4) — the OpenDocument family — text (v2-S5), spreadsheets (v2-S6), presentations (v2-S7) — **RTF (v2-S8), which is a byte stream and not a package at all**, and **EPUB (v2-S9), a ZIP of documents whose order lives in a spine rather than in the archive**. The seven packages share the ZIP reader and the XML plumbing and nothing else |
-| `ethos-parser-grounding` | `ethos-parser-core` | Any **format** concept — it projects the *representation*, never a document |
-| `ethos-parser-cli` | all four | Any logic. It parses arguments, calls the library, maps errors to exit codes |
+| `ethos-parser-core` | nothing in this workspace | Any PDF concept — no `lopdf`, no operator, no page-tree type. And no office concept: no zip, no XML reader, no part name it parses |
+| `ethos-parser-pdf` | `ethos-parser-core` | Any grounding, verification or office concept |
+| `ethos-parser-office` | `ethos-parser-core` | Any PDF or grounding concept. It reads eight formats into the shared representation; the seven package formats share the ZIP reader and the XML plumbing and nothing else |
+| `ethos-parser-grounding` | `ethos-parser-core` | Any **format** concept at all — it projects the *representation*, never a document |
+| `ethos-parser-cli` | all four | Any logic. It parses arguments, calls the library, and maps errors to exit codes |
 
-The `ethos-parser-grounding` row is what keeps the second format cheap, and v2-S2 is where that got
-tested rather than asserted: **`mcp.rs`, both SDKs, the LangChain tools and `ethos-parser-grounding` were
-all unchanged** by the arrival of DOCX. What did change is `ethos-parser-core`'s page-parent invariant,
-which is the cost §6 did not predict — see the note there.
-
-**"Any PDF concept" means machinery, not vocabulary — clarified at M5**, because the rule as
-written forbids something the contract requires. `01-CONTRACT.md` §5.1 defines `NativeLocator` as
-a **discriminated union with a `PdfLocator` variant**, and that union is part of the artifact
-contract, which `ethos-parser-core` owns. This document's own header says the contract wins where the
-two disagree, so the line is:
+**"Any PDF concept" means machinery, not vocabulary.** The contract defines `NativeLocator` as a
+discriminated union with a `PdfLocator` variant, and `ethos-parser-core` owns the contract, so the
+line is:
 
 | In `ethos-parser-core` | Verdict |
 | --- | --- |
-| `lopdf`, a content-stream operator, a page tree, a font program, an xref table | **Forbidden.** This is machinery: it makes the crate know how to read one format |
-| A contract-defined locator variant carrying integers (`PdfLocator { page, origin_x, … }`), a format name as a string (`BackendIdentity { name: "lopdf" }`) | **Permitted.** This is data and a discriminant. Nothing here can parse anything |
+| `lopdf`, a content-stream operator, a page tree, a font program, an xref table | **Forbidden** — machinery, which teaches the crate to read one format |
+| A contract-defined locator variant carrying integers, or a format name as a string | **Permitted** — data and a discriminant. Nothing here can parse anything |
 
-`ethos-parser-grounding` is held to the **stronger** rule, and it is a rule rather than a hope: the
-projection addresses pages by node id, so it never reads a locator at all, and
-`ethos_parser_grounding_has_no_pdf_concept` fails if the crate so much as mentions `NativeLocator`.
-That is what actually keeps the second format a variant — hiding the type in `ethos-parser-pdf` would
-have kept the letter of the old wording while leaving the projection free to match on it.
+`ethos-parser-grounding` is held to the **stronger** rule, and it is enforced rather than hoped for:
+the projection addresses pages by node id, so it never reads a locator, and a test fails if the crate
+so much as mentions `NativeLocator`. That is what actually keeps adding a format cheap — hiding the
+type in `ethos-parser-pdf` would have kept the letter of the rule while leaving the projection free
+to match on it.
 
-## 2. CLI surface — v0
+**This held up when it was tested.** When DOCX arrived, `ethos-parser-grounding`, the MCP server and
+both SDKs were untouched. What did move was a `ethos-parser-core` invariant — see §6.
 
-**Four subcommands at v0. Nine now, and this table is v0's record rather than today's surface.**
-The four below are what v0 froze and they are left at four deliberately: rewriting them would erase
-what v0 committed to, and this section's own heading scopes it. What arrived afterwards, each
-argued in the scope document of the version that added it: `verify` at v0.1, `overlay` at v1-S6,
-`markdown` at v1.1-S1, `html` at v1.1-S4 and `mcp` at v1.2-S1. `enum Command` in
+## 2. CLI surface
+
+**This section is v0's record, not today's surface.** v0 froze four subcommands and they are left at
+four deliberately; rewriting them would erase what v0 committed to. The five that came later were
+each argued in the scope document of the version that added them: `verify` at v0.1, `overlay` at
+v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1. `enum Command` in
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
-Until v2-S13.3 this sentence read simply *"Four subcommands"*, and `docs/PUBLIC-API.md` pointed
-here for *"the CLI's four subcommands"* — so two documents agreed with each other and neither
-agreed with the binary.
-
-**The CLI is a thin shell over the library** so the two cannot diverge; every subcommand is a
-library call plus argument parsing plus an exit-code mapping, and that rule binds all nine rather
-than the four tabulated here.
+**The CLI is a thin shell over the library**, so the two cannot diverge. Every subcommand is a
+library call plus argument parsing plus an exit-code mapping — and that rule binds all nine, not just
+the four below.
 
 | Command | Input | Output | Exit codes |
 | --- | --- | --- | --- |
-| `ethos-parser classify <pdf>` | PDF | Classification artifact: per-page counts (1-indexed), reason codes on two axes, derived boolean | 0 simple · 1 needs-attention · **2 could-not-read** |
-| `ethos-parser extract <pdf>` | PDF | `DocumentRepresentation v0` | 0 ok · 2 could-not-read |
-| `ethos-parser ground <representation>` | representation JSON | `ethos.grounding.v1` artifact | 0 ok · 2 refused |
-| `ethos-parser grounding-check <grounding.json> [--source-artifact <pdf>]` | grounding JSON (+ optional source) | `ethos.grounding_validation.v1` report | 0 valid · 1 invalid · 2 could-not-read |
+| `classify <pdf>` | PDF | Per-page counts, reason codes on two axes, a derived boolean | 0 simple · 1 needs attention · 2 could not read |
+| `extract <pdf>` | PDF | `DocumentRepresentation v0` | 0 ok · 2 could not read |
+| `ground <representation>` | representation JSON | `ethos.grounding.v1` | 0 ok · 2 refused |
+| `grounding-check <grounding.json> [--source-artifact <pdf>]` | grounding JSON | A validation report | 0 valid · 1 invalid · 2 could not read |
 
-**`--source-artifact` mirrors the Ethos CLI deliberately.** The oracle test runs
-`ethos grounding check <file> --source-artifact <pdf>` and compares; matching the flag name keeps the
-harness readable and the comparison obvious.
+`--source-artifact` mirrors the Ethos CLI deliberately: the oracle runs both with the same flag, which
+keeps the comparison obvious.
 
-**Default output is byte-identical across runs.** Volatile diagnostics (timings, memory, host,
-paths) are opt-in behind `--diagnostics` and excluded from the fingerprint — so a default invocation
-produces identical *files*, not merely identical payloads.
+**Default output is byte-identical across runs.** Volatile diagnostics are opt-in behind
+`--diagnostics` and excluded from the fingerprint, so a default invocation produces identical
+*files*, not merely identical payloads.
 
-### 2.1 Single document load
+### 2.1 One document load
 
 `classify` and `extract` in one invocation **parse the document once and share it**. This is a
 correctness rule before it is a performance one: two loads can disagree, and a classifier that saw a
-different object graph from the extractor is a silent divergence with no diagnostic. Borrowed from
-pdf-inspector, which gets this right (checklist P11).
+different object graph from the extractor is a silent divergence with no diagnostic.
 
-Practically: the library exposes an opened-document handle; `classify` and `extract` take it by
-reference; only `ethos-parser-cli` decides when to open. Nothing below the CLI opens a file.
+In practice the library exposes an opened-document handle, `classify` and `extract` take it by
+reference, and **only the CLI decides when to open a file.** Nothing below the CLI opens one.
 
 ## 3. Profile as identity
 
-The **profile** is the pinned set of every knob that can change output. Its `sha256` goes in every
-artifact (`01-CONTRACT.md` §2), and it is the mechanism that gives OCR isolation, backend isolation,
-and comparability for free — with no machinery beyond one hash.
+The profile is the pinned set of every knob that can change output. Its `sha256` goes in every
+artifact, and it is what gives OCR isolation, backend isolation and comparability for free — with no
+machinery beyond one hash.
 
-The profile must include, at minimum:
-
-- engine build identity and `parser_version`
-- backend identity and version (`lopdf x.y.z`)
-- classify sample count `N`
-- quantum (100 per point) and coordinate origin
-- the enabled capability set
-- the reading-order rule version
-- vendored CMap data version
-- later: OCR engine identity, model `sha256`, execution envelope (runtime, CPU feature level,
-  threads, DPI)
+It must include at least: engine build identity and `parser_version`; backend identity and version;
+the classify sample count; the quantum and coordinate origin; the enabled capability set; the
+reading-order rule version; the vendored data version; and later, the OCR engine identity, model
+hash and execution envelope.
 
 **The test that keeps this honest:** changing any profile field must change `profile_sha256`, and a
-test asserts it field by field. A knob that does not move the hash is a silent-drift bug waiting to
-happen. IDs are stable only within a representation produced by the same pinned profile — a profile
-change creates a new representation plus a mapping, never a pretence that node IDs are globally
-stable.
+test asserts that field by field. A knob that does not move the hash is a silent-drift bug waiting to
+happen.
+
+Ids are stable only within a representation produced by the same pinned profile. A profile change
+creates a new representation plus a mapping — never a pretence that node ids are globally stable.
 
 ## 4. Fixtures and the oracle
 
-**Fixtures are read-only, and they live in the Ethos tree.** `ethos-parser/fixtures/` holds a
-manifest that references them by path and `sha256`; it does not copy them and it never modifies them.
-Copying invites drift; a hash-pinned manifest makes a fixture change a visible event in this repo.
+**Fixtures are referenced, not copied.** `fixtures/manifest.json` names each one by path and
+`sha256`. Copying invites drift; a hash-pinned manifest makes a fixture change a visible event.
 
-**Three roots, each independently overridable.** (*Two* until v2-S13.3, which was true when
-`engine` did not exist as a root and has not been since M3.) `conformance` (`ETHOS_FIXTURES`, default
-`../ethos/fixtures`) holds the 15 the M6 criterion counts. `benchmark` (`ETHOS_BENCH_CORPUS`,
-default `../ethos/benchmarks/gate-zero/corpus`) holds the large real-world PDFs M2's acceptance
-names — the 492-page bounded-cost A/B document is not in `fixtures/` and never was. And `engine`
-(`ETHOS_PARSER_FIXTURES`, default `fixtures/engine`) holds what this repository authors itself,
-described below. Separate roots keep benchmark and engine-owned documents from inflating the 15.
+**Four roots, each independently overridable** — conformance, benchmark, engine-owned and the table
+gate corpus. Separate roots keep benchmark and engine-owned documents from inflating the 15 the
+oracle criterion counts. See [`fixtures/README.md`](../fixtures/README.md).
 
-**One exception, and it is enumerated rather than open.** Where the Ethos corpus has no fixture for a
-behaviour this engine must test, the engine authors its own under CC0, stores it here, and marks it
-`owner: "engine"` in the manifest. **Today that is thirty-seven**, and the manifest's own
-`counts.engine_owned` is where the number lives so this paragraph cannot drift from it again.
+**Engine-owned fixtures are enumerated, not open.** Where the Ethos corpus has no fixture for a
+behaviour this engine must test, the engine authors one under CC0 and marks it in the manifest with a
+note saying which behaviour upstream could not cover. `counts.engine_owned` in the manifest is where
+the number lives, so no prose can drift from it. Adding another needs the same justification — the
+upstream corpus genuinely cannot cover it — not merely convenience.
 
-This sentence said *"exactly one: the **absent-font-metrics** fixture"* from M5 until v2-S13.3, and
-it was true for exactly as long as M5 lasted. The exception is still enumerated rather than open —
-every one of the thirty-seven carries `owner: "engine"` and a `notes` field saying which behaviour
-the Ethos corpus could not cover — but "exactly one" had become the kind of number a reader trusts
-and then finds thirty-six counterexamples to. `docs/03-V0-SCOPE.md` §4 was repaired the same way at
-v2-S12.1, which is how this one was found. Adding a thirty-eighth needs the same justification —
-the Ethos corpus genuinely cannot cover it — not merely convenience.
-
-**The oracle is `ethos grounding check`.** For v0, the engine's `grounding-check` is a
-reimplementation of the **JSON Schema validator only** — never the verifier — and it has a
-deterministic external oracle to agree with:
+**The oracle is `ethos grounding check`.** The engine's own `grounding-check` reimplements the
+validator only, never the verifier, and it has a deterministic external oracle to agree with:
 
 ```bash
 ethos grounding check <file> --source-artifact <pdf>
 ```
 
-`crates/ethos-parser-cli/tests/oracle.rs` runs both, across all 15 fixtures, and asserts byte-identical agreement on
-`structure`, `source_binding`, `representation_sha256`, and `counts`. This is a CI job, not a claim.
-
-**The Ethos binary is a test-time dependency, not a runtime one.** Its absence fails the oracle test
-loudly; it never degrades to a skip. The engine itself does not invoke Ethos at v0 — that is v0.1,
-and it arrives as a *declared capability* (`07-VERIFY-BOUNDARY.md`).
+`crates/ethos-parser-cli/tests/oracle.rs` runs both across all 15 fixtures and asserts byte-identical
+agreement on structure, source binding, representation hash and counts. **The Ethos binary is a
+test-time dependency, and its absence fails the test loudly — it never degrades to a skip.**
 
 **Test layers, all of them cheap:**
 
@@ -205,94 +145,77 @@ and it arrives as a *declared capability* (`07-VERIFY-BOUNDARY.md`).
 | Golden artifacts per fixture | Any change to emitted bytes, intended or not |
 | Double-run byte identity | Nondeterminism: map ordering, timestamps, addresses, float drift |
 | Oracle agreement | Divergence from the verifier's reading of the same artifact |
-| `cargo-fuzz` on the PDF entry point | Panics, hangs, and fail-open paths on malformed input (from Anydoc, checklist A11) |
+| `cargo-fuzz` on the entry points | Panics, hangs and fail-open paths on malformed input |
 | Mutation testing over fixtures | Assertions that pass for the wrong reason |
-| Profile-field sensitivity test | A knob that does not move `profile_sha256` |
+| Profile-field sensitivity | A knob that does not move `profile_sha256` |
 | `cargo deny` | Licence and dependency-posture regressions |
 
 ## 5. Dependency posture
 
 | Layer | Decision | Why |
 | --- | --- | --- |
-| **Object / xref layer** | **Depend on `lopdf`** | The commodity part. Requires Rust ≥ 1.88, which is why this workspace pins 1.88 and Ethos's 1.87 pin stops mattering — a concrete win of the sibling decision |
-| **Encoding tables** — 168 Adobe `.bcmap` CMaps, glyph-name and Korea1 tables | **Vendor**, with the Adobe BSD-3-Clause NOTICE reproduced | They are *data*, they do not churn, and regenerating them is pure cost |
-| **Content-stream interpreter, classification, layout** | **Clean-room**, using pdf-inspector as architectural reference only | See below |
-| **Font metrics** | `ttf-parser` over the embedded font program | For measured ink boxes; FontDescriptor fallback; typed absence beyond that |
-| **PDFium** | Not in v0. If ever, **caller-provided** and `sha256`-pinned, via an explicit ADR | Never a build-time download |
-| **AGPL, anywhere** | **Forbidden.** `deny.toml` enforces | Forced decision #14 |
-| **Network crates** | **Forbidden** in v0 | Nothing in the happy path reaches the network |
+| **Object and xref layer** | Depend on `lopdf` | The commodity part |
+| **Encoding tables** | Vendor as data, with attribution | They do not churn, and regenerating them is pure cost |
+| **Content-stream interpreter, classification, layout** | **Clean-room** | See below |
+| **Font metrics** | `ttf-parser` over the embedded font program | For measured ink boxes, with a descriptor fallback and typed absence beyond that |
+| **PDFium** | Not present. If ever, caller-provided and hash-pinned under an explicit ADR | Never a build-time download |
+| **AGPL, anywhere** | **Forbidden**, enforced by `cargo deny` | Decision #14 |
+| **Network crates** | **Forbidden** | Nothing in the happy path reaches the network |
 
-**Why pdf-inspector is reference-only and not a dependency**, since this decision gets re-litigated:
-the parts worth wrapping are exactly the parts that would have to be un-wrapped. `TextItem.height` is
-literally the same variable as `font_size`; `y` is a baseline the JSON never labels; the classifier's
-confidence contradicts its own counts (TEXT-BASED at 50% with zero text pages). Depending on the
-crate means inheriting types whose fields mean something other than their names, in a project whose
-entire product is not doing that. Its MIT licence gives us the code to read either way, and upstream
-moved 0.1.8 → 1.14.x in months. Reference-only is the cheaper path, and the `"`-operator silent drop
-(checklist P6) makes it the safer one.
+**Why another parser is reference-only rather than a dependency**, since this gets re-litigated: the
+parts worth wrapping are exactly the parts that would have to be un-wrapped. In the surveyed
+codebase, `height` is literally the same variable as the font size, `y` is a baseline the JSON never
+labels, and the classifier's confidence contradicts its own counts. Depending on it means inheriting
+types whose fields mean something other than their names, in a project whose entire product is not
+doing that. Its licence lets us read the code either way.
 
-**What that leaves as the transferable ideas:** rectangle detection, encoding-issue detection, the
-single-document-load rule, and the `mcid` bridge. Take those; write them.
+**What that leaves as transferable ideas:** rectangle detection, encoding-issue detection, the
+one-document-load rule, and the marked-content bridge. Take those; write them.
 
-**And on LiteParse's PDFium packaging** — build-time download from a vendor fork, by tag, with no
-checksum, `vendor/` absent so the build is network-dependent by default (checklist L31). The one
-transferable idea is **runtime dynamic loading via `libloading`** rather than link-time binding.
-Everything else is what not to do.
+## 6. How later lanes plug in without contaminating what exists
 
-## 6. How later lanes plug in without contaminating v0
+The point of the contract's type system is that later versions need **no new mechanism**, only new
+values.
 
-The point of the type system chosen in `01-CONTRACT.md` is that v4 and v3 need **no new
-mechanism**, only new values.
-
-| Lane | Plugs in as | v0 impact |
+| Lane | Plugs in as | Impact on what exists |
 | --- | --- | --- |
-| **OCR (v4)** | A node source that authors `Recognized` nodes **only on canvases where the deterministic reader found no text layer at all**, under its own profile (`ethos-ocr-v1`) | None. `DerivationClass` already exists; `profile_sha256` already isolates. No v0 type changes |
-| **HTTP OCR (v4)** | An implementation of the same node-source trait, behind `POST /ocr` (LiteParse's contract, `confidence` accepted as a diagnostic and never filtered on) | None |
-| **Assist / VLM (v3)** | Authors `Proposed` nodes only. Never overwrites. Never citable | None |
-| **Second format (v2)** | A new `NativeLocator` variant + adapter profile + fixtures + inspection behaviour | None — provided `ethos-parser-grounding` never learned about pages |
-| **Second backend** | A trait seam modelled on Ethos's `EthosPdfBackend` 3-method shape, with backend identity in the profile | Design the seam in v0; implement one side |
+| **OCR (v4)** | A node source authoring `Recognized` nodes only where the deterministic reader found no text layer, under its own profile | None. The derivation class exists and the profile hash already isolates |
+| **Assist (v3)** | Authors `Proposed` nodes only. Never overwrites, never citable | None |
+| **A new format (v2)** | A new locator variant, adapter profile, fixtures and inspection behaviour | None downstream — provided `ethos-parser-grounding` never learned about pages |
+| **A second backend** | A trait seam with backend identity in the profile | Design the seam early; implement one side |
 
-**The second-format row, paid at v2-S2.** The row said a new format costs a `NativeLocator`
-variant, an adapter profile, fixtures and inspection behaviour, and "None" downstream. That was
-right about downstream — `ethos-parser-grounding`, `mcp.rs` and both SDKs are untouched — and it missed
-one line item: **`ethos-parser-core`'s invariant that every node's parent is a declared page**, which S2
-had to split by locator family. The row is otherwise exactly what a second format cost.
+**What the new-format row cost when it was actually paid.** It was right about downstream: grounding,
+MCP and both SDKs were untouched. It missed one line item — **`ethos-parser-core`'s invariant that
+every node's parent is a declared page**, which had to be split by locator family. The page
+assumption was never in grounding; it was in the contract types, where a page-less document could not
+become a representation at all.
 
-**The precondition, verified at v2-S1 — and it points at the wrong crate.**
-`ethos-parser-grounding` never learned what a page *is*: it reads no locator, derives no geometry, and
-addresses pages by id, which `ethos_parser_grounding_has_no_pdf_concept` enforces. But the assumption that
-**every node has a page parent** lives in `ethos-parser-core`: `DocumentRepresentation::check_structure`
-refuses a node whose parent is not a declared page, on both construction paths, so a page-less
-document cannot become a representation at all. That is permitted by §1's M5 line — a contract
-invariant is not format machinery — and it is the sentence v2 has to revisit, so "None" in the row
-above is the cost to *grounding*, not the cost to the version.
-`crates/ethos-parser-grounding/tests/page_less_source.rs` measures it; `14-V2-SCOPE.md` §5 records it.
-
-**Rule 7 enforcement, designed now, implemented when assist exists:** give every lane a **declared
-processor identity** in the processing run. A run whose drafting model and representation processor
-share an identity is **rejected mechanically**, not caught in review. This is cheaper than the
-byte-diff CI it supplements, and it is the precondition that makes a VLM lane safe to build at all.
+**The processor-identity rule, designed now and implemented when assist exists:** every lane declares
+its processor identity in the processing run, and a run whose drafting model and representation
+processor share an identity is **rejected mechanically** rather than caught in review. That is
+cheaper than the byte-diff CI it supplements, and it is the precondition that makes a model-assist
+lane safe to build at all.
 
 ## 7. What this architecture refuses
 
-- **No verification code, type, or field anywhere in the tree at v0.** Not a stub, not a feature flag,
-  not a `TODO`-shaped module. See `07-VERIFY-BOUNDARY.md`
-- **No crate wrapping a competitor's parser as the grounded PDF core**
-- **No build-time network access.** Not for PDFium, not for CMaps, not for models
-- **No logic in `ethos-parser-cli`.** If a behaviour can only be exercised through the CLI, it is in the
-  wrong crate and the library is incomplete
-- **No PDF concept in `ethos-parser-core` or `ethos-parser-grounding`**
+- **No verification code, type or field anywhere in the tree** — not a stub, not a feature flag, not
+  a `TODO`-shaped module.
+- **No crate wrapping a competitor's parser as the grounded PDF core.**
+- **No build-time network access.** Not for a renderer, not for data, not for models.
+- **No logic in `ethos-parser-cli`.** If a behaviour can only be exercised through the CLI, it is in
+  the wrong crate and the library is incomplete.
+- **No PDF concept in `ethos-parser-core` or `ethos-parser-grounding`.**
 
 ---
 
 ## PR review checklist
 
-- [ ] Crate boundaries respected — no PDF type in `core` or `grounding`, no logic in `cli`
+- [ ] Crate boundaries respected — no format type in `core` or `grounding`, no logic in `cli`
 - [ ] One document load per invocation; nothing below the CLI opens a file
-- [ ] New knob ⇒ added to the profile ⇒ profile-sensitivity test updated
+- [ ] A new knob is added to the profile, and the sensitivity test updated
 - [ ] Fixtures referenced by hash-pinned manifest, never copied or modified
-- [ ] Oracle test still green across all 15 fixtures; failure is loud, never a skip
+- [ ] Oracle test green across all 15 fixtures; failure is loud, never a skip
 - [ ] `cargo deny` green — no AGPL, no network crates
-- [ ] New dependency justified against §5, with a licence named
+- [ ] A new dependency is justified against §5, with a licence named
 - [ ] No verification concept has appeared
-- [ ] Default invocation still produces byte-identical files across two runs
+- [ ] A default invocation still produces byte-identical files across two runs

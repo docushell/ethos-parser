@@ -1,7 +1,7 @@
 # ethos-parser — Python SDK
 
-A thin Python surface over the `ethos-parser` CLI (**v1.2-S2**). Three functions, stdlib only, and
-**not on PyPI** — this slice does not publish it.
+Three functions over the `ethos-parser` CLI. Standard library only, no runtime dependencies, and
+not on PyPI yet.
 
 ```python
 import ethos_parser
@@ -13,55 +13,43 @@ node_id = representation["representation"]["nodes"][0]["id"]   # minted by the e
 node = ethos_parser.node_get(representation, node_id)
 ```
 
-| function | shells out to | returns |
+| Function | Runs | Returns |
 | --- | --- | --- |
-| `extract(pdf_path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `extract(path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
 | `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `node_get(representation, node_id)` | nothing — the checks are ported | that artifact's node record |
 
-## It cannot diverge from what the CLI prints
+## Why it wraps the CLI
 
-`extract` and `ground` run the subcommands a shell would run and hand back the bytes those
-subcommands printed, parsed as JSON. There is no second serialization anywhere in this package,
-so there is nowhere for an artifact to change: `tests/test_cli_surface.py` re-canonicalizes what
-`extract` returned and compares it byte for byte against the CLI's stdout.
+`extract` and `ground` run the same subcommands you would run in a shell and hand back exactly what
+those subcommands printed, parsed as JSON. There is no second serializer in this package, so there
+is nowhere for the two to drift apart. A test re-canonicalizes what `extract` returned and compares
+it byte for byte against the CLI's stdout.
 
-That is also why there is no native extension. PyO3 would reach the library by a second path,
-which is a second thing that can disagree with the first — plus a wheel matrix and a fifth build
-surface, for a saving nobody has measured a need for.
+That is also why there is no PyO3 extension. A native binding would reach the engine by a second
+path, and a second path is a second thing that can disagree with the first — plus a wheel matrix, for
+a speed-up nobody has measured a need for.
 
-## The handle law
+## Locators are handles, not arguments
 
-`docs/12-V12-SCOPE.md` §3, unchanged from the MCP adapter: **the engine mints every locator,
-returns it as an opaque handle, and re-validates it on the way back in.**
+The engine mints every locator, returns it as an opaque id, and re-validates it on the way back in.
 
-- **A locator is returned, never accepted as prose.** No function here takes a page, a box, an
-  `x`/`y`, a width, a height or a row/column pair — not optionally, not keyword-only, not behind
-  a flag. A test reads the signatures and fails on those names.
-- **A handle travels back as the bytes that were handed out.** `node_get` takes a node id string
-  copied out of a representation the engine returned.
-- **A handle the engine did not mint fails closed.** `node_get` raises `NodeNotFound`, never
-  `None` and never `{}`. An edited artifact raises `FingerprintMismatch` *before* any lookup
-  happens, because its payload no longer hashes to its own declared digest.
+- **No function here takes a coordinate.** No page, no box, no `x`/`y`, no row/column pair — not
+  optionally, not keyword-only, not behind a flag. A test reads the signatures and fails on those
+  names.
+- **`node_get` takes an id you copied out of a representation the engine returned.**
+- **A forged id fails closed.** `node_get` raises `NodeNotFound`, never `None` and never `{}`. An
+  edited artifact raises `FingerprintMismatch` *before* any lookup happens, because its payload no
+  longer hashes to its own declared digest.
 
-`node_get` is the one function with no subcommand behind it — `ethos-parser node-get` does not exist
-and this slice does not add it, since MCP already carries the tool. So its checks are ported:
-`src/ethos_parser/_c14n.py` is c14n v1 in Python, running the same parity vectors
-`crates/ethos-parser-core/src/c14n.rs` runs.
+`node_get` is the one function with no subcommand behind it, so its checks are ported:
+`src/ethos_parser/_c14n.py` runs the same parity vectors as the Rust implementation.
 
-## What is not here
+`markdown`, `html` and `verify` are deliberately not wrapped.
 
-`markdown` and `html` exist on the CLI and are not wrapped: neither proves anything this slice
-claims, and a function that exists because it was cheap is a surface to keep honest forever.
-`verify` is absent for a stronger reason — it relays the pinned Ethos CLI, and
-`docs/07-VERIFY-BOUNDARY.md` is the boundary a host's convenience must not bend. There is no MCP
-client here either: MCP is a process, this is a library, and they are two callers of one binary
-rather than layers.
+## LangChain tools
 
-## LangChain tools (v1.2-S4)
-
-The same three functions as callable tools, behind an **optional extra** so the default install
-still pulls nothing:
+An optional extra, so the plain install still pulls nothing:
 
 ```bash
 pip install 'ethos-parser[langchain]'
@@ -73,29 +61,26 @@ from ethos_parser.langchain import tools
 llm_with_tools = llm.bind_tools(tools())      # or a LangGraph ToolNode
 ```
 
-**Locators travel in the tool `artifact`, never in `content`.** Each tool declares
+**Locators travel in the tool's `artifact`, never in `content`.** Each tool declares
 `response_format="content_and_artifact"`, so a `ToolMessage` carries the record in `.artifact` and
-a summary in `.content` — counts, and nothing a pipeline would bind to:
+only counts in `.content`:
 
-| tool | `content` | `artifact` |
+| Tool | `content` | `artifact` |
 | --- | --- | --- |
 | `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
 | `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
 | `node_get` | ``1 node, kind `{kind}`.`` | the node record |
 
-A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
-version is arranged against. The summaries are MCP's own and the test compares them **byte for
-byte** against what `ethos-parser mcp` emits; the argument schemas are the ones `tools/list` advertises,
-verbatim, so all three adapters have one wire shape. `node_get`'s summary names the kind and never
-the id.
+A box in `content` is a locator the model can edit and then cite, which is the whole hazard. The
+summaries are MCP's own, compared byte for byte in a test, so the three adapters cannot drift into
+three different sentences about one document.
 
-A forged id, an edited payload or an unreadable document **raises** — MCP's `isError: true` in this
-framework's currency. No tool sets trust state, there is no `verify` tool, and there is no
-LangGraph adapter: a `StructuredTool` is already what LangGraph binds.
+There is no `verify` tool and no LangGraph adapter — a `StructuredTool` is already what LangGraph
+binds.
 
-## Installing and running
+## Running the tests
 
-The `ethos-parser` binary is a prerequisite; nothing here downloads or vendors one.
+The `ethos-parser` binary is a prerequisite; nothing here downloads one.
 
 ```bash
 cargo build --release --locked                 # from the repository root
@@ -103,7 +88,8 @@ pip install -e 'packages/python[dev]'
 ETHOS_PARSER=target/release/ethos-parser pytest packages/python
 ```
 
-`ETHOS_PARSER` is checked **first and authoritatively** — a path named there and not present is
-an error, not a reason to go looking for some other build — then `ethos-parser` on `PATH`. That is the
-precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is the same: resolving
-to a binary nobody chose means returning artifacts from a parser nobody chose.
+`ETHOS_PARSER` is checked first and taken literally — a path named there that does not exist is an
+error, not a reason to go hunting for some other build. Then `ethos-parser` on `PATH`, then the
+workspace `target/`. The suite also refuses a binary whose version does not match `Cargo.toml`,
+because a stale build answers every question plausibly and would make a byte-identity check go green
+about the wrong engine.

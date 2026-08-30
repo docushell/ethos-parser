@@ -1,7 +1,7 @@
 # ethos-parser — Node SDK
 
-A thin Node surface over the `ethos-parser` CLI (**v1.2-S3**). Three functions, `node:` builtins only,
-and **not published** — `private: true`, and this slice does not change that.
+Three functions over the `ethos-parser` CLI. `node:` builtins only, no runtime dependencies, and not
+published (`private: true`).
 
 ```js
 import { extract, ground, nodeGet } from "ethos-parser";
@@ -13,69 +13,57 @@ const nodeId = representation.representation.nodes[0].id;   // minted by the eng
 const node = nodeGet(representation, nodeId);
 ```
 
-| function | shells out to | returns |
+| Function | Runs | Returns |
 | --- | --- | --- |
-| `extract(pdfPath)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
+| `extract(path)` | `ethos-parser extract <path>` | `DocumentRepresentation v0` |
 | `ground(representation)` | `ethos-parser ground <path>` | `ethos.grounding.v1` |
 | `nodeGet(representation, nodeId)` | nothing — the checks are ported | that artifact's node record |
 
-## This is not a second design
+## It is the Python SDK in another language
 
-[`packages/python/`](../python/) shipped the same three functions at v1.2-S2 and **it is the
-contract**. If this package disagreed with it about a signature, an error name, or what `ground`
-accepts, this package would be the one that is wrong. The differences are the two the languages
-force — `nodeGet` rather than `node_get`, and classes that throw rather than raise — and nothing
-else. A test pins both SDKs to the same version string.
+[`packages/python/`](../python/) is the contract. If this package disagreed with it about a
+signature, an error name, or what `ground` accepts, this package would be the one that is wrong. The
+only differences are the ones JavaScript forces — `nodeGet` rather than `node_get`, classes that
+throw rather than exceptions that raise. A test pins both to the same version string.
 
-## It cannot diverge from what the CLI prints
+## Why it wraps the CLI
 
-`extract` and `ground` run the subcommands a shell would run and hand back the bytes those
-subcommands printed, parsed with `JSON.parse`. There is no second serialization anywhere in this
-package, so there is nowhere for an artifact to change: `test/cli-surface.test.js`
-re-canonicalizes what `extract` returned and compares it byte for byte against the CLI's stdout.
+`extract` and `ground` run the same subcommands you would run in a shell and hand back exactly what
+those subcommands printed, parsed with `JSON.parse`. There is no second serializer here, so there is
+nowhere for the two to drift apart — a test re-canonicalizes what `extract` returned and compares it
+byte for byte against the CLI's stdout.
 
-That is also why there is no native addon. napi or neon would reach the library by a second path,
-which is a second thing that can disagree with the first — plus a prebuild matrix across
-platforms and ABI versions, for a saving nobody has measured a need for.
+That is also why there is no native addon. napi or neon would reach the engine by a second path, and
+a second path is a second thing that can disagree with the first — plus a prebuild matrix across
+platforms and ABI versions.
 
-## The handle law
+## Locators are handles, not arguments
 
-`docs/12-V12-SCOPE.md` §3, unchanged from MCP and Python: **the engine mints every locator,
-returns it as an opaque handle, and re-validates it on the way back in.**
+The engine mints every locator, returns it as an opaque id, and re-validates it on the way back in.
 
-- **A locator is returned, never accepted as prose.** No function here takes a page, a box, an
-  `x`/`y`, a width, a height or a row/column pair — not optionally, not in an options object, not
-  behind a flag. A test reads the parameter names out of `Function.prototype.toString` and fails
-  on those names.
-- **A handle travels back as the bytes that were handed out.** `nodeGet` takes a node id string
-  copied out of a representation the engine returned.
-- **A handle the engine did not mint fails closed.** `nodeGet` throws `NodeNotFound`, never `null`
-  and never `{}`. An edited artifact throws `FingerprintMismatch` *before* any lookup happens,
-  because its payload no longer hashes to its own declared digest.
+- **No function here takes a coordinate.** No page, no box, no `x`/`y`, no row/column pair — not
+  optionally, not in an options object, not behind a flag. A test reads the parameter names out of
+  `Function.prototype.toString` and fails on those names.
+- **`nodeGet` takes an id you copied out of a representation the engine returned.**
+- **A forged id fails closed.** `nodeGet` throws `NodeNotFound`, never `null` and never `{}`. An
+  edited artifact throws `FingerprintMismatch` *before* any lookup happens, because its payload no
+  longer hashes to its own declared digest.
 
-`nodeGet` is the one function with no subcommand behind it — `ethos-parser node-get` does not exist and
-this slice does not add it, since MCP already carries the tool. So its checks are ported, and
-[`src/c14n.js`](src/c14n.js) is c14n v1 in JavaScript, running the same parity vectors
-`crates/ethos-parser-core/src/c14n.rs` and `packages/python/src/ethos_parser/_c14n.py` run.
+[`src/c14n.js`](src/c14n.js) runs the same parity vectors as the Rust and Python implementations,
+sorting keys by code point because JavaScript's default sort compares UTF-16 units and disagrees
+with Rust above the BMP.
 
-**One thing JavaScript cannot follow, stated rather than papered over.** The language has a single
-number type, so `JSON.parse("1.0")` yields the same value as `JSON.parse("1")` and no port can
-separate them — the Rust and Python c14n reject float-*shaped* text and this one cannot. What all
-three reject identically is a value that is genuinely not a whole number: `1.5` throws at every
-depth. The unreachable half costs nothing in practice, because the engine never prints `1.0`.
+**One thing JavaScript cannot do, stated rather than papered over.** It has a single number type, so
+`JSON.parse("1.0")` and `JSON.parse("1")` give the same value and no port can tell them apart. Rust
+and Python reject float-*shaped* text; this one cannot. All three reject a value that genuinely is
+not a whole number — `1.5` throws everywhere — and the engine never prints `1.0`, so the gap costs
+nothing in practice.
 
-## What is not here
+`markdown`, `html` and `verify` are deliberately not wrapped.
 
-`markdown` and `html` exist on the CLI and are not wrapped: neither proves anything this slice
-claims, and a function that exists because it was cheap is a surface to keep honest forever.
-`verify` is absent for a stronger reason — it relays the pinned Ethos CLI, and
-`docs/07-VERIFY-BOUNDARY.md` is the boundary a host's convenience must not bend. There is no MCP
-client here either: MCP is a process, this is a library.
+## LangChain tools
 
-## LangChain tools (v1.2-S4)
-
-The same three functions as callable tools, behind an **optional peer** so the default import still
-pulls nothing:
+An optional peer, so the plain import still pulls nothing:
 
 ```bash
 npm install @langchain/core
@@ -87,33 +75,27 @@ import { tools } from "ethos-parser/langchain";
 const withTools = model.bindTools(tools());   // or a LangGraph ToolNode
 ```
 
-**Locators travel in the tool `artifact`, never in `content`.** Each tool declares
+**Locators travel in the tool's `artifact`, never in `content`.** Each tool declares
 `responseFormat: "content_and_artifact"`, so a `ToolMessage` carries the record in `.artifact` and
-a summary in `.content` — counts, and nothing a pipeline would bind to:
+only counts in `.content`:
 
-| tool | `content` | `artifact` |
+| Tool | `content` | `artifact` |
 | --- | --- | --- |
 | `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
 | `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
 | `node_get` | ``1 node, kind `{kind}`.`` | the node record |
 
-A box in `content` is a locator a model can edit and then cite, which is the hazard the whole
-version is arranged against. The summaries are MCP's own and the test compares them **byte for
-byte** against what `ethos-parser mcp` emits; the argument schemas are the ones `tools/list` advertises,
-verbatim — including `node_id` rather than `nodeId`, because the tool argument is the wire and one
-wire has one name.
+A box in `content` is a locator the model can edit and then cite, which is the whole hazard. The
+summaries and argument schemas are MCP's own, verbatim — including `node_id` rather than `nodeId`,
+because the tool argument is the wire and one wire has one name.
 
-A forged id, an edited payload or an unreadable document **throws** — MCP's `isError: true` in this
-framework's currency. No tool sets trust state, there is no `verify` tool, and there is no
-LangGraph adapter: a bindable tool is already what LangGraph binds.
+Importing `ethos-parser/langchain` without the peer fails with the install command in the message.
+There is no `verify` tool and no LangGraph adapter.
 
-Importing `ethos-parser/langchain` without the peer is a named failure carrying the install
-command; the tests skip with that same command when it is absent.
+## Running the tests
 
-## Running it
-
-The `ethos-parser` binary is a prerequisite; nothing here downloads or vendors one. The core suite has
-nothing to install — no runtime dependency means no lockfile and no `npm install`.
+The `ethos-parser` binary is a prerequisite; nothing here downloads one. The core suite has nothing
+to install — no runtime dependency means no lockfile and no `npm install`.
 
 ```bash
 cargo build --release --locked && ETHOS_PARSER=target/release/ethos-parser node --test packages/node
@@ -125,12 +107,8 @@ The LangChain tests need the optional peer and skip with the install command wit
 npm install --no-save @langchain/core
 ```
 
-`ETHOS_PARSER` is checked **first and authoritatively** — a path named there and not present is an
-error, not a reason to go looking for some other build — then `ethos-parser` on `PATH`. That is the
-precedent `VerifierBinary::resolve` sets for `ETHOS_BIN`, and the reason is the same: resolving to
-a binary nobody chose means returning artifacts from a parser nobody chose.
-
-The suite additionally checks `ethos-parser --version` against `Cargo.toml` and refuses a binary from
-another version. A stale `target/release/ethos-parser` would otherwise be preferred over nothing and
-answer every question plausibly — and a byte-identity check that compares the SDK against the CLI
-using the same stale binary is self-consistent, so it would go green about the wrong engine.
+`ETHOS_PARSER` is checked first and taken literally — a path named there that does not exist is an
+error, not a reason to go hunting for some other build. Then `ethos-parser` on `PATH`, then the
+workspace `target/`. The suite also refuses a binary whose version does not match `Cargo.toml`,
+because a stale build answers every question plausibly and would make a byte-identity check go green
+about the wrong engine.

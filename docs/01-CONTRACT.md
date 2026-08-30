@@ -1,326 +1,265 @@
 # 01 — The contract
 
-**Status:** bootstrap authority · frozen before implementation (north-star decision #2)
-**Scope:** what an ethos-parser artifact must contain, for any version, in any format
+**Status:** bootstrap authority · frozen before implementation (decision #2)
+**Scope:** what an ethos-parser artifact must contain, in any version, for any format
 
 ---
 
-## 1. Why this document comes first
+## 1. Why this comes first
 
-Forced decision #2: **freeze the verify contract before implementing the engine.** The reason is not
-process hygiene. It is that a parser built first and a contract written afterwards produces a
-contract shaped like that parser's accidents — its rounding, its coordinate origin, its idea of what
-a "line" is. Then the verifier inherits them, and a rule that exists because of a 2026 lopdf quirk
-becomes a permanent semantic.
+Decision #2 freezes the verify contract before the engine is built. The reason is not process
+hygiene. A parser built first and a contract written afterwards produces a contract shaped like that
+parser's accidents — its rounding, its coordinate origin, its idea of what a "line" is. The verifier
+then inherits them, and a rule that exists because of one library's quirk becomes a permanent
+semantic.
 
-So: this document defines the artifact. `04-ARCHITECTURE.md` defines the code that produces it. If
-the two ever disagree, this one is right and the code is a bug.
+So this document defines the artifact and [`04-ARCHITECTURE.md`](04-ARCHITECTURE.md) defines the code
+that produces it. **If the two disagree, this one is right and the code is a bug.**
 
-**What "frozen" means here:** the *rules* below are frozen. The exact JSON field names of
-`DocumentRepresentation v0` are a **DRAFT** target held against a spec nobody has implemented yet
-(north-star §4, risk #1 in `03-V0-SCOPE.md`). Where a field name is uncertain this document says
-`TODO(re-read DocumentRepresentation v0 field list)` rather than inventing one.
-
-**M1 re-read status.** The companion was re-read against every marker. What it settles is now used
-verbatim; what it does not is stated as a divergence rather than guessed at.
-
-| Settled by the companion — now used | Where |
-| --- | --- |
-| `NativeLocator` (required), `StructuralLocator` (where the kind defines one), `RenderedLocator`/geometry (optional, "for inspection") | §5.1 |
-| `TableCellPosition(row, column, rowspan, colspan, parent table node ID)`, **zero-indexed**, span of 1 = not merged | §5.4, v1 |
-| `ProcessingRun` / `StageRun` carrying processor/adapter/build/profile identities | §7 |
-| Node fields: stable id, kind, parent, ordinal, text/value, attributes | M5 |
-| Source identity vs representation identity as two distinct hashes | §2, `ArtifactBinding` |
-| "capability-limited" as the outcome name for a claim binding to unprocessed content | §7 |
-| Locator-consistency result recorded as a **typed diagnostic with a check version**, never silently repaired | §5.4 |
-| Absence expressed as an absent field, never an implied `1.0` | §9.1 |
-
-| Still open — engine-local, pending DocuShell review | Where |
-| --- | --- |
-| A name for *why* geometry is absent. The companion models geometry as an optional field and never names an absence variant | §5.2 |
-
-Nothing here blocks M2–M4. The divergence is additive and projects down cleanly.
-
-**Source of truth for the target shape:**
-`docushell-repo/docs/FUTURE_DOCUMENT_AI_TRUST_INFRASTRUCTURE_ARCHITECTURE.md`, "Minimum canonical
-document representation." Read-only. Never edited from this repo.
+What "frozen" means: the *rules* below are frozen. Exact JSON field names are held against the
+DocuShell companion spec, and where one is still unsettled this document says so rather than
+inventing a name.
 
 ---
 
 ## 2. Artifact identity
 
-Every artifact the engine emits — classification, representation, grounding — carries the same four
-identity fields, at the top level, before any payload.
+Every artifact — classification, representation, grounding — carries the same four fields at the top
+level, before any payload.
 
-| Field | Type | Rule |
-| --- | --- | --- |
-| `artifact_type` | string const | Names the shape exactly. E.g. `ethos.grounding.v1`. A reader that does not recognise it **fails closed** (§8) |
-| `schema_version` | string const | Semantic version of *this artifact shape*. Changes when the shape changes, independent of the parser |
-| `parser_version` | string | The engine build that produced it. Distinct from `schema_version`: the same shape can be emitted by many builds |
-| `profile_sha256` | `sha256:<64 hex>` | Hash of the pinned configuration profile — every knob that can change output. **This is the identity that matters** |
+| Field | Rule |
+| --- | --- |
+| `artifact_type` | Names the shape exactly, e.g. `ethos.grounding.v1`. A reader that does not recognise it **fails closed** (§8) |
+| `schema_version` | The version of *this shape*. Moves when the shape moves, independently of the parser |
+| `parser_version` | The engine build that produced it. One shape can be emitted by many builds |
+| `profile_sha256` | Hash of the pinned profile — every knob that can change output. **This is the identity that matters** |
 
 **Profile-as-identity is the load-bearing idea.** Two artifacts are comparable if and only if their
-`profile_sha256` matches. This is what makes an OCR'd document non-comparable with a born-digital
-parse by contract rather than by convention (§6), what makes a backend swap visible, and what makes
-"we changed the sample count" a fingerprint event instead of a silent drift. It costs one hash and
-buys every isolation property the roadmap needs.
+`profile_sha256` matches. That single hash is what makes an OCR'd document non-comparable with a
+born-digital parse *by contract* rather than by convention, what makes a backend swap visible, and
+what turns "we changed the sample count" into a fingerprint event instead of a silent drift.
 
-The profile must include, at minimum: engine build identity, backend identity and version, the
-classify sample count `N`, the quantum (`100` per point), the coordinate origin, the enabled
-capability set, and — when they exist — the OCR engine identity, model hash, and execution envelope.
-Anything that can change a byte of output belongs in the profile or is a bug.
+The profile must include at least: engine build identity, backend identity and version, the classify
+sample count, the quantum (100 per point), the coordinate origin, the enabled capability set, and —
+once they exist — the OCR engine identity, model hash and execution envelope. **Anything that can
+change a byte of output belongs in the profile, or it is a bug.**
 
-Two further identities, both required, and they are not the same thing (DocuShell spec, "For any
-format, retain two different identities"):
+Two further identities are required, and they are not the same thing:
 
-- **Source identity** — `sha256` of the exact original bytes. What was read.
-- **Representation identity** — `sha256` of the canonical evidence produced under the pinned
-  profile. What was produced. Ethos's grounding validator names this `representation_sha256`.
+- **Source identity** — `sha256` of the exact original bytes. *What was read.*
+- **Representation identity** — `sha256` of the canonical record produced under the pinned profile.
+  *What was produced.* The verifier calls this `representation_sha256`.
 
 ---
 
-## 3. Coordinate system — declared on the wire, always
+## 3. Coordinate system — always declared on the wire
 
-An artifact that cannot be interpreted without its source file is not evidence. LiteParse documents
-its coordinate space (viewport, top-left, 72 DPI, CropBox→MediaBox) **only in Rust doc comments and
-TS JSDoc** — a consumer reading the raw JSON has to infer it (checklist L21). That is the failure to
-avoid.
-
-Every artifact carrying geometry declares:
+An artifact you cannot interpret without also having the source file is not evidence. Every artifact
+carrying geometry declares:
 
 ```json
 "coordinate_system": { "unit": "centipoint", "origin": "top-left" }
 ```
 
-Both values are consts in `ethos.grounding.v1` today. Rules:
-
-- **Never omit it**, even when the value is the only one the engine supports. A const today is a
+- **Never omit it**, even when the value is the only one the engine supports. A constant today is a
   discriminator tomorrow.
-- **Never let it be implied by the format.** PDF's native origin is bottom-left; the artifact's is
-  top-left; the transform is the engine's job and the declaration is how a reader knows it happened.
-- **A rotated page declares its rotation** (`0 | 90 | 180 | 270`) per page, and geometry is expressed
-  in the declared system after rotation is applied. Fixture: `synthetic/rotation-90`.
-- **A second coordinate system needs a new enum value, not a new default.** Adding one is a
+- **Never let the format imply it.** PDF's native origin is bottom-left and the artifact's is
+  top-left. The transform is the engine's job, and the declaration is how a reader knows it happened.
+- **A rotated page declares its rotation** (`0 | 90 | 180 | 270`), and geometry is expressed after
+  rotation is applied.
+- **A second coordinate system needs a new enum value, never a new default** — and that is a
   `schema_version` change.
 
-## 4. Canonicalization and integer quanta
+## 4. Canonical JSON and integer quanta
 
-The engine adopts Ethos's c14n v1 wholesale (`ethos/docs/determinism-contract.md` §2, implemented in
-`ethos-core/src/c14n.rs`). It is a solved problem; re-solving it is pure risk.
+The engine adopts the verifier's canonical-JSON rules wholesale. It is a solved problem; re-solving
+it is pure risk.
 
 | Rule | Detail |
 | --- | --- |
 | **Encoding** | UTF-8, no whitespace between tokens |
-| **Key order** | Sorted by Unicode code point, explicitly at write time — never relying on map iteration order (a `serde_json/preserve_order` feature unification anywhere in the graph would otherwise break every fingerprint silently) |
-| **Escaping** | Minimal: `"`, `\`, and U+0000–U+001F only. No `\uXXXX` for non-ASCII. **No Unicode normalization** — extracted text is preserved exactly as extracted |
-| **Numbers** | **Integers only.** Base-10, no leading zeros, no `+`, no exponent, \|n\| ≤ 2^53−1. Any non-integer number anywhere in a canonical value is a hard error |
-
-**On `-0`.** The rule is about *output*: canonical output never contains `-0`, which falls out of
-integers being the only representation — `i64` has no negative zero, and `quantize(-0.0)` returns
-`0`. It is **not** an input-normalization rule. JSON text `-0` parses as the float `-0.0`, and c14n
-rejects it as a non-integer rather than folding it to `0`. Ethos behaves identically. Folding would
-mean silently accepting a float, which is the one thing this layer exists to refuse.
+| **Key order** | Sorted by Unicode code point, explicitly at write time — never by map iteration order, because a `preserve_order` feature unification anywhere in the dependency graph would otherwise break every fingerprint silently |
+| **Escaping** | Minimal: `"`, `\`, and U+0000–U+001F only. **No Unicode normalization** — extracted text is preserved exactly as extracted |
+| **Numbers** | **Integers only.** Base-10, no leading zeros, no `+`, no exponent, \|n\| ≤ 2^53−1. Any non-integer anywhere in a canonical value is a hard error |
 | **Arrays** | Order is semantic. Element order *is* reading order |
 | **Idempotence** | `c14n(parse(c14n(v))) == c14n(v)`, property-tested |
 
-**Floats do not exist in canonical output.** Geometry is quantized to integer centipoints —
-`quantize(pts, 100)`, round-half-away-from-zero, with `NaN`, `±Inf`, overflow and a zero quantum as
-errors rather than saturating values.
+**Floats do not exist in canonical output.** Geometry is quantized to integer centipoints, rounding
+half away from zero, with `NaN`, `±Inf`, overflow and a zero quantum all errors rather than
+saturating values.
 
-**One measured divergence from Ethos, in the engine's favour.** Ethos computes the rounding as
-`(x + 0.5).floor()`, which double-rounds above `2^52` — an exact integer product returns one quantum
-too large, and `MAX_SAFE_INT` (which §4 declares canonical) is refused outright. The engine uses
-`f64::round`, IEEE `roundToIntegralTiesToAway`: the same rule, computed exactly. An exhaustive
-knife-edge sweep of `[0, 2·10^6)` finds **one** disagreement, `0.49999999999999994`, where the
-engine returns `0` — correct, since the value is below one half. No decimal literal reaches it, and
-across all ten million `0.001`-step literals in `[0, 10000)` points the two agree everywhere. So the
-divergence lives only where Ethos is arithmetically wrong, and page geometry cannot get there. LiteParse emits `f32` throughout with a lossy round-trip and no fixed
-precision (checklist L22); that is the shape to refuse.
+**On `-0`:** the rule is about *output*, and it falls out of integers being the only representation.
+It is not an input-normalization rule — the JSON text `-0` parses as a float and is rejected as a
+non-integer rather than folded to `0`. Folding would mean silently accepting a float, which is the
+one thing this layer exists to refuse.
 
-**Canonical exclusions.** Volatile data — timings, memory, host, source paths — lives under a
-`diagnostics` object that is excluded from the fingerprint and off by default. Nothing inside the
-payload may be runtime-dependent. Ethos property-tests this by asserting no diagnostics-class field
-name appears in payload; do the same.
+**Volatile data is excluded.** Timings, memory, host and source paths live under a `diagnostics`
+object that is outside the fingerprint and off by default. Nothing inside the payload may be
+runtime-dependent.
 
-**Geometry is excluded from the fingerprint** — deliberately, and it is worth understanding why
-before someone "fixes" it. Rectangle dimensions are preserved for display and inspection but are not
-fingerprint-critical, because text is anchored by **stable origin locators**, not by boxes. This is
-the same asymmetry §5 describes: two independent PDF stacks agree on character origin to 0.001 pt
-and disagree on height by 6.174 pt. Fingerprinting the boxes would make the artifact identity
-hostage to the least reliable number in it.
+**Geometry is excluded from the fingerprint**, deliberately — worth understanding before someone
+"fixes" it. Text is anchored by stable origin locators, not by boxes, and two independent PDF stacks
+agree on character origin to 0.001 pt while disagreeing on height by 6.174 pt. Fingerprinting the
+boxes would make artifact identity hostage to the least reliable number in it.
 
 ---
 
 ## 5. Locators — origins are identity, boxes are inspection
 
-`DocumentRepresentation v0` settles this and the measurements agree with it: **`NativeLocator` is
-required; `RenderedLocator`/geometry is optional and "for inspection."**
-
 ### 5.1 The three locator kinds
 
-| Locator | Required? | What it is | v0 |
-| --- | --- | --- | --- |
-| **`NativeLocator`** | **Always, on every node** | The format-native address. For PDF: page + character origin (x, baseline y) + advance width, in integer centipoints | **yes** |
-| `StructuralLocator` | Where the node kind defines one | Structure-tree address: tagged-PDF role path, `mcid`, table row/col | v0 emits `mcid` only; full structural addressing is v1 |
-| `RenderedLocator` / geometry | Optional | An ink box, for humans and crops | v0: measured from font metrics, or typed absence |
+| Locator | Required? | What it is |
+| --- | --- | --- |
+| **`NativeLocator`** | **Always, on every node** | The format's own address. For PDF: page, character origin, advance width, in integer centipoints |
+| `StructuralLocator` | Where the node kind defines one | Structure-tree address: role path, `mcid`, table row and column |
+| `RenderedLocator` / geometry | Optional | An ink box, for humans and crops |
 
-`NativeLocator` is a **discriminated union**. Adding a format adds a variant — `PdfLocator`,
-`DocxLocator`, `XlsxLocator`, `PptxLocator`, `ImageLocator`, `EmailLocator` — plus an adapter
-profile, fixtures, and inspection behaviour. It does not change the source, run, artifact, candidate,
-or verification models. v0 ships `PdfLocator` and nothing else.
+`NativeLocator` is a discriminated union. Adding a format adds a variant plus an adapter profile,
+fixtures and inspection behaviour. It does not change the source, run, artifact or verification
+models.
 
-**A rendered page/bbox is never substituted for the native source address**, unless an approved
-format profile defines that rendering as authoritative. No such profile exists in v0.
+**A rendered page or box is never substituted for the native address**, unless an approved format
+profile declares that rendering authoritative. No such profile exists.
 
 ### 5.2 Typed absence
 
-A missing box is a **type**, never a sentinel and never a substitute.
+A missing box is a **type**, never a sentinel and never a substitute. Four variants say *why* the
+geometry is not there:
 
-- Where font metrics are unavailable, emit `GeometryPresence::Absent(NotReportedByReader)` **and**
-  declare the capability limit (§7). **Three** sibling variants exist — `NotApplicableToKind`,
-  `NoInkToMeasure` and `CapabilityNotEnabled` — and only `NotReportedByReader` counts toward the
-  limitation, because a node kind that never has geometry is not a gap in what the engine could do.
-  (This said *"Two sibling variants"* from M1 until v2-S13.5. `NoInkToMeasure` arrived at
-  **v1-S6.2** — a node that draws no ink has nothing to measure, which is a third answer and not
-  the same as being unable to measure — and `derivation.rs` calls it *"the variant this type's own
-  documentation promised and did not have"*. This is that documentation.)
+| Variant | Meaning |
+| --- | --- |
+| `NotReportedByReader` | The reader could not measure it. **Only this one counts toward the capability limitation** |
+| `NotApplicableToKind` | This kind of node never has geometry |
+| `NoInkToMeasure` | The node draws nothing, so there is nothing to measure |
+| `CapabilityNotEnabled` | The profile has it switched off |
 
-  **`TODO(re-read DocumentRepresentation v0 field list)` — re-read, still open, and now precise.**
-  The companion settles the locator names (`NativeLocator` required, `StructuralLocator` where the
-  kind defines one, `RenderedLocator`/geometry optional "for inspection") and it settles that
-  absence is expressed as an **absent field** — *"A processor that reports no uncertainty produces
-  an absent field, never an implied `1.0`."* What it does **not** do is name a variant for *why*
-  geometry is absent; its model is "optional field, omitted".
+Hard rules:
 
-  So this is a real divergence, not a missing lookup. Typed absence carries strictly more
-  information than an omitted field, and it projects down to one cleanly (all **four** variants
-  serialize to "no geometry" on the DocuShell wire — three until v1-S6.2 added `NoInkToMeasure`,
-  and this said three until v2-S13.5). v0 keeps the richer type and does not invent a
-  competing *field name*. Pending DocuShell review — tracked in `docs/README.md`.
-- **Never `height = font_size`.** pdf-inspector's `TextItem.height` is literally the same variable as
-  `font_size` (checklist P5). A font-size-derived box is closer to invented than measured, and
-  Workbench rule 3 forbids inventing a coordinate.
+- **Never `height = font_size`.** A font-size-derived box is closer to invented than measured, and
+  inventing a coordinate is forbidden. (One surveyed parser's `height` field is literally the same
+  variable as its font size.)
 - **Never a zero box, a null island, or a page-sized box** as a stand-in.
-- The consequence is stated, not hidden: without geometry on some nodes, **crops and highlight
-  rendering cannot be driven by ethos-parser v0** for those nodes. PDFium/Ethos keeps the crop lane.
+- **The consequence is stated, not hidden.** Without geometry on some nodes, crops and highlight
+  rendering cannot be driven by this engine for those nodes.
+
+**One open divergence from the DocuShell companion spec.** It models geometry as a plain optional
+field and never names a variant for *why* it is absent. Typed absence carries strictly more
+information and all four variants serialize down to "no geometry" on their wire cleanly, so this
+engine keeps the richer type without inventing a competing field name. Pending review; blocks
+nothing.
 
 ### 5.3 Declared box semantics
 
-When a box *is* emitted, the artifact says **what kind of box it is**. LiteParse's bbox is a union of
-`FPDFText_GetLooseCharBox` — em boxes, ascent-to-descent, not ink — sold as "precise positioning,"
-with nothing in the output saying which it is (checklist L18). For a line of `acme` the box is as
-tall as if it contained `Ãj`. Right for line grouping, wrong for a citation highlight.
+When a box *is* emitted, the artifact says **what kind of box it is**.
 
-v0 emits **measured ink boxes only** — ascent/descent from the embedded font program via
-`ttf-parser`, falling back to the FontDescriptor's `/Ascent`, `/Descent`, `/FontBBox` — and declares
-them as such. If a future version emits loose boxes, it declares those separately.
+The failure to avoid: a surveyed parser emits loose em boxes — ascent-to-descent, not ink — sold as
+"precise positioning", with nothing in the output saying which they are. For a line reading `acme`,
+the box is as tall as if it contained `Ãj`. That is right for line grouping and wrong for a citation
+highlight, and a consumer cannot tell which it got.
 
-### 5.4 The cross-check (v1, designed now)
+This engine emits **measured ink boxes only**, from the embedded font program or the font
+descriptor, and declares them as such. A future version emitting loose boxes declares those
+separately.
+
+### 5.4 The geometric/structural cross-check
 
 Where a node has both a geometric and a structural address, **derive them independently and test them
 against each other**: overlapping cell regions, a cell outside its parent table, a grid that does not
-tile the table area. *"A single locator can only be trusted or not; a pair can be tested."*
+tile the table area.
 
-Result is a **typed diagnostic with a check version**, never a silent repair. This is v1 work, but
-the contract must not foreclose it: nodes carry both address kinds where both exist, from v0 onward,
-even while nothing cross-checks them yet.
+*A single locator can only be trusted or not; a pair can be tested.*
+
+The result is a **typed diagnostic carrying a check version**, never a silent repair. Nodes carry
+both address kinds wherever both exist, even in versions where nothing cross-checks them yet.
 
 ---
 
 ## 6. Derivation classes
 
-Every node declares how it came to exist. This is the axis that lets OCR and assist exist later
+Every node declares how it came to exist. This is the axis that lets OCR and model assist exist later
 without laundering into born-digital certainty.
 
 | Class | Meaning | May author | Notes |
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
 | **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, ink boxes from font metrics | The rule's version is part of the profile |
-| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4. Own profile. **May author nodes only on canvases where the deterministic reader found no text layer at all** |
-| **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence. Never overwrites another class |
+| **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4, own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
+| **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence |
 
 Four hard rules:
 
-1. **Nothing overwrites `Extracted`.** Not merged, not preferred, not reconciled. LiteParse merges
-   OCR into the native text stream discriminated only by an omittable nullable field
-   (checklist L24); that is the bug.
-2. **`Proposed` overwrites nothing.** Not `Computed`, not `Recognized`, not another `Proposed` — a
+1. **Nothing overwrites `Extracted`.** Not merged, not preferred, not reconciled. A surveyed parser
+   merges OCR into the native text stream, discriminated only by an omittable nullable field. That is
+   the bug.
+2. **`Proposed` overwrites nothing** — not `Computed`, not `Recognized`, not another `Proposed`. A
    suggestion may sit beside evidence and may never replace it, including replacing an earlier
-   suggestion a reviewer may already have seen. This was previously stated only in the table row
-   above, and the first implementation enforced rule 1 while missing this one entirely; it is
-   numbered here because that is where an implementer reads.
+   suggestion a reviewer may already have seen. This is numbered separately because the first
+   implementation enforced rule 1 and missed this one entirely.
 3. **`Proposed` is never citable.** A chart description or a formula guess can exist in the tree and
    can never be the source of a verified quote.
 4. **Different classes mean different profiles.** An OCR run has a different `profile_sha256`, so its
-   output is non-comparable with a born-digital parse *by contract*, with no new machinery.
+   output is non-comparable with a born-digital parse by contract, with no new machinery.
 
-Rules 1 and 2 are the whole of `DerivationClass::may_be_overwritten_by`. The v4 constraint that
-`Recognized` may author **only** where the deterministic reader found no text layer is deliberately
-*not* encoded there: it governs where a node may be placed, not which classes may replace which, and
-inventing a class-pair rule for it would be a rule this contract does not state.
+Rules 1 and 2 are the whole of the overwrite rule. The v4 constraint in the `Recognized` row governs
+*where* a node may be placed, not which classes may replace which, so it is deliberately not encoded
+as a class-pair rule.
 
 ---
 
 ## 7. Capabilities and limitations — the L1 gate
 
-L1's achievement condition names capability declarations explicitly: *"a versioned processor/profile
-produced a representation with declared capabilities and an extraction-assurance state."* **An
-artifact without them has not reached L1.** They are not polish and they are not documentation.
+L1's achievement condition names capability declarations explicitly. **An artifact without them has
+not reached L1.** They are not polish and not documentation.
 
 Every artifact declares:
 
-- **Capabilities** — what this profile can do. `ethos.grounding.v1` requires `spans`, `char_offsets`,
-  `tables` as booleans. The representation's set is richer.
-- **Limitations** — what it could not do *on this document*, named. v0 must declare **multi-column
-  reading order** explicitly, because v0 ships single-column order and a two-column document will be
-  read in the wrong order (§`03-V0-SCOPE.md`).
-- **Per-page processing state** and a **coverage summary** reconciling authorized / processed /
-  failed / unsupported / quarantined pages.
+- **Capabilities** — what this profile can do.
+- **Limitations** — what it could not do *on this document*, each one named.
+- **Per-page processing state**, and a **coverage summary** reconciling authorized, processed,
+  failed, unsupported, quarantined and not-attempted pages.
 
 **Partial processing is a first-class outcome with its own terminal state.** A representation where
 some pages failed may still support claims binding to pages that succeeded — but the gap must be
-visible to every consumer. A verification over a partially processed document must never render as a
-clean verification of the whole document. And a claim binding to a failed, unsupported, or
-quarantined page returns an explicit capability-limited or indeterminate result: **absence of
-extractable content is never evidence of absence in the source** (Workbench rule 4).
+visible to every consumer, and a verification over a partly processed document must never render as
+a clean verification of the whole document. A claim binding to a failed, unsupported or quarantined
+page returns an explicit capability-limited result: **absence of extractable content is never
+evidence of absence in the source.**
 
-### 7.1 Wire spellings, pinned at M4
+### 7.1 Wire spellings
 
-Callers match on these, so they are named here rather than left to the implementation. DRAFT
-schemas: `docs/draft-schemas/limitation.draft.json` and `coverage.draft.json`.
+Callers match on these, so they are named here rather than left to the implementation.
 
 | Field | Shape |
 | --- | --- |
 | `assurance` | The envelope, on every classification and representation |
-| `assurance.capabilities` | The producing profile's capability set, repeated on the artifact |
-| `assurance.limitations[]` | `{code, detail, scope}`; `scope` is `{kind: profile\|document\|page, value?}` |
-| `assurance.coverage` | `pages_authorized` and five disposition buckets |
+| `assurance.capabilities` | The producing profile's capability set |
+| `assurance.limitations[]` | `{code, detail, scope}`, where `scope` is `{kind: profile\|document\|page, value?}` |
+| `assurance.coverage` | `pages_authorized` plus five disposition buckets |
 | `assurance.page_states[]` | `{index, state}` for **every** authorized page, 1-based |
 | `assurance.terminal_state` | `complete` \| `partial` \| `refused` |
 
-Four rules the shape enforces, each with a test rather than a convention behind it:
+Four rules, each with a test rather than a convention behind it:
 
-1. **No capability `true` without a named proof test**, and **no capability `false` without a
-   declared limitation.** Both are exhaustiveness-gated: adding a capability without covering it
-   fails to compile.
-2. **Every authorized page appears in `page_states`**, including the ones deliberately never
-   looked at. Emitting only the exceptions would make "absent from the list" imply "processed",
-   which is a sentinel by omission.
-3. **A page state's reason is a limitation code, not prose.** The prose lives once, in the
-   matching `Limitation`, so "every gap names a declared limitation" is checkable.
-4. **The terminal state is derived from the page states, never asserted alongside them.** An
-   artifact cannot claim `complete` while carrying a page nobody read.
+1. **No capability `true` without a named proof test, and no capability `false` without a declared
+   limitation.** Both are exhaustiveness-gated, so adding a capability without covering it fails to
+   compile.
+2. **Every authorized page appears in `page_states`**, including ones deliberately never looked at.
+   Listing only the exceptions would make "absent from the list" imply "processed" — a sentinel by
+   omission.
+3. **A page state's reason is a limitation code, not prose.** The prose lives once, in the matching
+   limitation, so "every gap names a declared limitation" is checkable.
+4. **The terminal state is derived from the page states, never asserted alongside them.** An artifact
+   cannot claim `complete` while carrying a page nobody read.
 
-`refused` is modelled and **not reachable from a v0 artifact**: a hard open failure exits 2 with a
-named error and no body, because a body would be a representation of a document nobody read. The
-variant exists so a caller has a name for that outcome and does not reach for `partial`, which
-means something materially different — refusal is "I read nothing", partial is "I read some of it
-and here is exactly which".
+`refused` is modelled but unreachable from a v0 artifact: a hard failure exits 2 with a named error
+and no body, because a body would be a representation of a document nobody read. The variant exists
+so a caller has a name for that outcome and does not reach for `partial`, which means something
+materially different — **refused is "I read nothing", partial is "I read some of it, and here is
+exactly which"**.
 
-`not_attempted` is the fifth disposition bucket and it is load-bearing. Bounded classification
-samples `N` pages and stops (§`03-V0-SCOPE.md` §1 item 5), so a 492-page document at `N = 8` has
-484 pages that were never observed. Folding them into `processed` would claim observations nobody
-made; folding them into `failed` would claim failures that never happened.
+`not_attempted` is load-bearing. Bounded classification samples N pages and stops, so a 492-page
+document at N=8 has 484 pages nobody observed. Folding them into `processed` would claim observations
+nobody made; folding them into `failed` would claim failures that never happened.
 
 ---
 
@@ -330,77 +269,73 @@ The engine fails closed and says why. It never fails open, and it never fails si
 
 | Situation | Behaviour |
 | --- | --- |
-| **Unrecognised content-stream operator** | Hard error naming the operator. pdf-inspector omits the `"` show-text operator from its match: the text vanishes and surrounding runs merge with corrupt geometry, output still well-formed, undetectable downstream (checklist P6). Enumerate the operator set explicitly; anything outside it stops the parse |
+| **Unrecognised content-stream operator** | Hard error naming the operator. The operator set is enumerated explicitly; anything outside it stops the parse |
 | **Unknown `artifact_type` or `schema_version`** | Refuse to read. Never best-effort parse an unrecognised shape |
-| **Missing capability for a requested operation** | Explicit capability-limited result. Never a stub, never a default, never a skip |
-| **A number that will not quantize** (`NaN`, `±Inf`, overflow) | Error. Never saturate, never clamp |
-| **Malformed xref / broken trailer** | Refuse, **except one bounded class decided at v0.1** — see §8.1. Every other malformation still exits 2 with a named error and no body |
-| **Encrypted / password-protected source** | Distinct exit code. Never the same signal as "this document is complex" |
+| **Missing capability for a requested operation** | An explicit capability-limited result. Never a stub, never a default, never a skip |
+| **A number that will not quantize** | Error. Never saturate, never clamp |
+| **Malformed cross-reference table or trailer** | Refuse, except the one bounded class in §8.1 |
+| **Encrypted or password-protected source** | A distinct exit code. Never the same signal as "this document is complex" |
 
-**Three outcomes get three exit codes** (§`03-V0-SCOPE.md` for the mapping). LiteParse's
-`is-complex` predicate returns 1 for password-protected, invalid-header, corrupt-header **and**
-missing-file, identically to "complex" — a predicate that cannot distinguish *"hard"* from *"I could
-not open this"* (checklist L16). Fail closed with an *indistinguishable* signal is still a defect.
+The measured case for the operator rule: a surveyed parser omits the `"` show-text operator from its
+match. The text vanishes, surrounding runs merge with corrupt geometry, and the output is still
+well-formed — undetectable downstream.
 
-### 8.1 The one repair — decided at v0.1
+**Three outcomes get three exit codes.** Another surveyed parser returns the same code for
+password-protected, invalid header, corrupt header **and** missing file as it does for "complex" — a
+predicate that cannot tell *hard* from *I could not open this*. **Failing closed with an
+indistinguishable signal is still a defect.**
 
-**Decision: repair, bounded and declared.** v0 refused 19-byte cross-reference entries where PDF
-32000-1 §7.5.4 requires exactly 20 — roughly **1 valid document in 26** on Ethos's own corpus,
-against a backend (PDFium) that repairs it — and deferred repair-or-refuse to v0.1. This is that
-decision, and it is the **only** repair this engine performs.
+### 8.1 The one repair
+
+**Decision: repair, bounded and declared.** This is the only repair the engine performs.
+
+v0 refused cross-reference entries of 19 bytes where the spec requires exactly 20 — roughly one valid
+document in 26 on the conformance corpus, against a backend that repairs it.
 
 | | |
 | --- | --- |
-| **The class** | Every entry in the table is exactly `dddddddddd ddddd [nf]\n` — 19 bytes, the specified trailing space missing |
+| **The class** | Every entry in the table is 19 bytes, the specified trailing space missing |
 | **The repair** | Pad each entry to 20 bytes, then parse normally. Nothing else is altered |
-| **The knob** | `Profile::xref_repair`, `{"mode":"pad-19-to-20-v1"}` by default, `{"mode":"refuse"}` restores v0 exactly |
+| **The knob** | `Profile::xref_repair`, defaulting to `pad-19-to-20-v1`; setting `refuse` restores v0 exactly |
 | **The declaration** | Every artifact from a repaired open carries `xref-entry-padded`, document-scoped, with the entry count |
 
-**Why a repair is admissible here at all.** §7 already says a repair is *"a recorded event or it is
-a fabrication"*, and this one is recorded three ways: in the profile hash, so a repairing build's
-artifacts are non-comparable with a refusing build's; in a per-document limitation, so a reader
-knows this document needed it; and in that limitation's detail, which states what was changed.
-Nothing is silent.
+**Why a repair is admissible at all.** §10 says a repair is a recorded event or it is a fabrication.
+This one is recorded three ways: in the profile hash, so a repairing build's artifacts are
+non-comparable with a refusing build's; in a per-document limitation; and in that limitation's
+detail, which states what was changed. Nothing is silent.
 
-**Why it is safe, which is a stronger claim than "it works."** Padding grows the file, so bytes
-move — and a cross-reference entry *is* a byte offset. Moving a byte an offset points at would
-convert a refusal into the one outcome this project refuses outright: a document that parses into
-the wrong objects and produces a well-formed artifact that is silently wrong. The repair is
-therefore attempted only when **nothing an offset points at can move**:
+**Why it is safe — a stronger claim than "it works".** Padding grows the file, so bytes move, and a
+cross-reference entry *is* a byte offset. Moving a byte that an offset points at would turn a refusal
+into the one outcome this project refuses outright: a document that parses into the wrong objects and
+produces a well-formed artifact that is silently wrong. So the repair runs only when nothing an
+offset points at can move:
 
-1. exactly one `xref` keyword table;
+1. exactly one cross-reference table;
 2. the trailer declares no `/Prev`, so no incremental-update chain reaches into moved bytes;
 3. `startxref` names that table's own start offset;
 4. **every** entry matches the 19-byte class — a mixed-stride table is worse repaired than refused;
-5. every in-use offset precedes the table, so the table is last and only its own tail, the
-   trailer, `startxref` and `%%EOF` move — none of which is addressed by offset.
+5. every in-use offset precedes the table, so only its own tail, the trailer, `startxref` and `%%EOF`
+   move, none of which is addressed by offset.
 
-Any precondition failing means the original parse error is reported unchanged. The repair is also a
-**fallback**: the document is parsed as written first, so a well-formed file never reaches it, and
-magic and encryption are answered before it — neither is ever repaired.
+Any precondition failing reports the original parse error unchanged. The repair is a fallback — the
+document is parsed as written first, so a well-formed file never reaches it — and encryption and
+magic-number failures are answered before it.
 
-**What was rejected.** General recovery, PDFium-style. A reader that repairs whatever it can is
-useful and is not this: it makes "the engine read it" stop implying "the document said it", and the
-whole artifact contract rests on that implication. One named class with published preconditions can
-be argued with; a recovery heuristic cannot.
-
-**The consequence, in the open.** `synthetic/table-regular-grid` now opens, so the oracle partition
-moved from 11 compared / 4 refused to **12 compared / 3 refused**, and `docs/03-V0-SCOPE.md` §4,
-`docs/07-VERIFY-BOUNDARY.md` Stage 0 and `fixtures/README.md` all moved with it in the same change.
+**What was rejected: general recovery.** A reader that repairs whatever it can is useful, and it is
+not this. It makes "the engine read it" stop implying "the document said it", and the whole artifact
+contract rests on that implication. One named class with published preconditions can be argued with;
+a recovery heuristic cannot.
 
 ---
 
 ## 9. No public confidence field
 
-Workbench **rule 9**: *"Confidence is not a gate. Routing on a threshold presents an uncalibrated
-number as a safety control."*
-
 **No artifact this engine emits contains a public confidence float, score, grade, or any single field
 summarising quality.** Not in classify, not in the representation, not in the grounding artifact.
-Grep for it in review.
+A CI grep enforces it.
 
-The measured case, produced by the exact feature under consideration — pdf-inspector on
-`fixtures/synthetic/simple-text`:
+The measured case, produced by the exact feature under consideration — a surveyed parser on a plain
+text-based PDF:
 
 ```
 Type: TEXT-BASED (extractable text)
@@ -409,190 +344,145 @@ Pages with text: 0            ← its own evidence disagrees with its verdict
 OCR recommended: NO
 ```
 
-Two routing rules a reasonable engineer would write, both wrong on this corpus: `confidence ≥ 0.7 →
-trust text extraction` sends a plainly text-based PDF to OCR; `type == TEXT_BASED → skip OCR` skips
-OCR on a document the detector itself says has no text. LiteParse, the more honest codebase,
-satisfies rule 9 by construction — no confidence field anywhere in its complexity output — and that
-is the shape to copy.
+Two routing rules a reasonable engineer would write, both wrong on this document: *confidence ≥ 0.7
+means trust text extraction* sends a plainly text-based PDF to OCR, and *type is TEXT_BASED so skip
+OCR* skips OCR on a document the detector itself says has no text.
 
-**What replaces it:** counts and named reasons. `pages_with_text` / `pages_sampled`, per page,
-1-indexed. Reason codes on two orthogonal axes. A boolean derived from the reason list, never the
-other way round. The caller owns the policy; the engine owns the observation.
+**What replaces it:** counts and named reasons. Pages with text over pages sampled, per page. Reason
+codes on two independent axes. A boolean derived from the reason list, never the other way round.
+**The caller owns the policy; the engine owns the observation.**
 
-### 9.1 The one place uncertainty is permitted, and why v0 has none
+### 9.1 The one place uncertainty is permitted
 
-`DocumentRepresentation v0` allows an optional node confidence plus optional character-ranged
-low-confidence spans, because a *recognition* processor genuinely has uncertainty and hiding it at
-node granularity makes a reviewer re-read a whole paragraph to find four doubtful characters. Its own
-rules: uncertainty is **processor-owned, never verifier-owned**; it must never appear in a
-verification report, alter a deterministic result state, or blend into a combined score; scores are
-ordinal unless a profile proves otherwise; and **absence is not confidence** — a processor reporting
-no uncertainty emits an absent field, never an implied `1.0`.
+The companion spec allows an optional node confidence plus character-ranged low-confidence spans,
+because a *recognition* processor genuinely has uncertainty, and hiding it at node granularity makes
+a reviewer re-read a paragraph to find four doubtful characters. Its rules: uncertainty is
+processor-owned and never verifier-owned; it must never appear in a verification report, alter a
+deterministic result, or blend into a combined score; and **absence is not confidence** — a processor
+reporting no uncertainty emits an absent field, never an implied `1.0`.
 
-**ethos-parser v0 has no uncertainty to report.** Every node is `Extracted` by a deterministic
-reader; there is no recognition step. So the field is **absent**, which the spec explicitly permits,
-and §9's prohibition stands unqualified for v0 through v2. When the OCR lane lands at v4, it may
-populate span-level uncertainty as a **diagnostic** — accepted if a server sends it, recorded, and
-**never filtered on**. LiteParse drops text below 0.3 and again below 0.1, silently, in two different
-places (checklist L23). That is the bug not to inherit.
+**This engine has no uncertainty to report.** Every node is `Extracted` by a deterministic reader,
+with no recognition step, so the field is absent and §9's prohibition stands unqualified. When the
+OCR lane lands at v4 it may populate span-level uncertainty as a **diagnostic** — recorded, and never
+filtered on. The bug not to inherit: a surveyed parser drops text below 0.3 and again below 0.1,
+silently, in two different places.
 
 ---
 
 ## 10. Synthesized-character honesty
 
 Some characters in a parser's output were never in the document. A reader that inserts a space
-between two runs because they looked like separate words has authored content. If that is not
-flagged, a verifier will one day match a quote against a space the source does not contain.
-
-LiteParse's `trailing_space_generated` — *"whether the trailing source space was synthesized by
-PDFium rather than represented by a real space glyph"* — is the single best honesty field in the four
-projects surveyed (checklist L6). Adopt the idea, generalise the name.
+between two runs because they looked like separate words has authored content. Unflagged, a verifier
+will one day match a quote against a space the source does not contain.
 
 | Rule | Detail |
 | --- | --- |
-| **Every synthesized character is flagged at emission** | Not reconstructed later, not inferred from spacing. Flagged where it is created |
-| **Glyph codes travel with the text** | `char_codes` alongside the string, with the ligature caveat declared: ligature expansion yields more scalars than codes, so the arrays are not 1:1 and the artifact says so (checklist L7). Fixture: `synthetic/ligature-fi-embedded-font` |
-| **A repair is a recorded event or it is a fabrication** | LiteParse "repairs orphaned widgets in memory" and always flattens widgets — an undeclared document mutation (checklist L13). Any normalization the engine performs is declared in the profile and visible in the artifact |
-| **Hyphenation rejoin, if performed, is `Computed` and reversible** | The source bytes are recoverable from the artifact. Fixture: `synthetic/hyphenated-line-break` |
+| **Every synthesized character is flagged at emission** | Where it is created — not reconstructed later, not inferred from spacing |
+| **Glyph codes travel with the text** | `char_codes` alongside the string, with the ligature caveat declared: ligature expansion yields more scalars than codes, so the arrays are not 1:1 and the artifact says so |
+| **A repair is a recorded event or it is a fabrication** | Any normalization the engine performs is declared in the profile and visible in the artifact. A surveyed parser silently repairs orphaned widgets in memory and always flattens widgets — an undeclared document mutation |
+| **Hyphenation rejoin, if performed, is `Computed` and reversible** | The source bytes stay recoverable from the artifact |
 
 ---
 
-## 11. Grounding adapter — `ethos.grounding.v1`
+## 11. The grounding adapter — `ethos.grounding.v1`
 
-The engine's canonical emit is `DocumentRepresentation v0`. The **grounding adapter** projects it
-into `ethos.grounding.v1`, the shape today's Ethos verifier consumes. This mapping is what makes the
-v0 oracle test possible (`05-MILESTONES.md` M6).
+The canonical emit is `DocumentRepresentation v0`. The grounding adapter projects it into
+`ethos.grounding.v1`, the shape the verifier consumes. That mapping is what makes the oracle test
+possible.
 
-**Target shape** — read from `ethos/schemas/ethos-grounding-source.schema.json`, `$id`
-`urn:ethos:schema:grounding-source:1`. `additionalProperties: false` throughout, so the adapter emits
-exactly these fields and nothing else.
+The target schema is `additionalProperties: false` throughout, so the adapter emits exactly these
+fields and nothing else:
 
-| Field | Required | Shape | Engine source |
-| --- | --- | --- | --- |
-| `artifact_type` | ✓ | const `ethos.grounding.v1` | literal |
-| `schema_version` | ✓ | const `1.0.0` | literal |
-| `source` | ✓ | `{media_type: "application/pdf", sha256: "sha256:<64hex>"}` | source identity (§2) |
-| `producer` | ✓ | `{name, version}` | engine name + `parser_version` |
-| `capabilities` | ✓ | `{spans: bool, char_offsets: bool, tables: bool}` | capability set (§7). **v0: `tables: false`** |
-| `coordinate_system` | ✓ | `{unit: "centipoint", origin: "top-left"}` | §3 |
-| `pages` | ✓ | `[{id, index≥1, width, height, rotation ∈ {0,90,180,270}}]` | per page, integer centipoints, **1-indexed** |
-| `elements` | ✓ | `[{id, page, bbox, kind, text?}]` | typed nodes; `kind` matches `^[a-z0-9][a-z0-9_-]*$` |
-| `spans` | optional | `[{id, page, bbox, text, element?, char_start?, char_end?}]` | text runs |
-| `tables` | optional | `[{id, page, bbox, cells:[{row, col, row_span, col_span, bbox, text}]}]` | **not emitted in v0** |
+| Field | Required | Shape |
+| --- | --- | --- |
+| `artifact_type` | ✓ | const `ethos.grounding.v1` |
+| `schema_version` | ✓ | `1.0.0` paginated, `1.1.0` page-less |
+| `source` | ✓ | `{media_type, sha256}` |
+| `producer` | ✓ | `{name, version}` |
+| `capabilities` | ✓ | `{spans, char_offsets, tables}` |
+| `coordinate_system` | ✓ | `{unit: "centipoint", origin: "top-left"}` |
+| `pages` | ✓ | `[{id, index≥1, width, height, rotation}]`, **1-indexed** — empty for page-less documents |
+| `elements` | ✓ | `[{id, page, bbox, kind, text?}]` |
+| `spans` | optional | `[{id, page, bbox, text, element?, char_start?, char_end?}]` |
+| `tables` | optional | `[{id, page, bbox, cells:[…]}]` |
 
-**`bbox` is `[x0, y0, x1, y1]`** — left, top, right, bottom — in integer centipoints, matching
-Ethos's `QRect`. Not `[x, y, w, h]`. The schema enforces `x1 ≥ 1` and `y1 ≥ 1`.
+**`bbox` is `[x0, y0, x1, y1]`** — left, top, right, bottom — in integer centipoints. Not
+`[x, y, w, h]`.
 
-**Zero-area boxes: the engine is stricter than the oracle, deliberately.** Ethos's `QRect::new`
-(`ethos-core/src/geom.rs:87`) rejects only `x0 > x1 || y0 > y1`, so a **degenerate `x0 == x1` box is
-accepted** on the grounding path; the non-positive-area rejection at `crop_element.rs:284` is on the
-*crop* path and does not run here. The grounding schema does not exclude it either. So a zero-area
-box is not a shared error — it is something ethos-parser refuses to *emit* while Ethos would accept
-it. State it that way round, and never as "matching Ethos's fail-closed behaviour."
+**On zero-area boxes, the engine is deliberately stricter than the oracle.** The verifier's rectangle
+constructor rejects only inverted boxes, so a degenerate `x0 == x1` box is accepted on the grounding
+path, and the schema does not exclude it either. So this is not a shared error — it is something this
+engine refuses to *emit* while the verifier would accept it. State it that way round, never as
+"matching the verifier's fail-closed behaviour". **A future stricter emission rule must be checked
+against this direction before it lands: the engine may refuse to emit what the oracle tolerates,
+never the reverse.**
 
-Implemented at M1: `ethos_parser_core::QRect::new` requires `x1 > x0 && y1 > y0`, and `serde`
-deserialization goes through the same constructor so a degenerate rectangle cannot enter through the
-wire either.
+**Three things the adapter confronts honestly, none of them a bug in the adapter:**
 
-This asymmetry is safe for the M6 oracle test because that test compares `structure`,
-`source_binding`, `representation_sha256` and `counts` — not per-box validity — and because being
-stricter means the engine never produces an artifact Ethos would reject. **A future stricter
-*emission* rule must be checked against this direction before it lands:** the engine may refuse to
-emit what the oracle tolerates, never the reverse.
+1. **The target shape has no confidence field anywhere.** §9 is satisfied by the schema itself.
 
-**Three things the adapter must confront honestly, and none of them is a bug in the adapter:**
-
-1. **`ethos.grounding.v1` has no confidence field anywhere.** Confirmed against the schema. Good —
-   §9 is satisfied by the target shape itself.
-2. **`bbox` is required on every element and span**, but §5.2 says a node with no measurable font
-   metrics gets typed absence. These conflict. **DECIDED (2026-08-12): omit from grounding, count and
-   declare.** Honesty and schema validity both survive; fabricating a box would sacrifice the first
-   and violating the schema would sacrifice the second.
+2. **`bbox` is required on every element, but §5.2 gives some nodes typed absence.** These conflict.
+   **Decided: omit from grounding, count and declare.** Fabricating a box would sacrifice honesty;
+   violating the schema would sacrifice validity. This way both survive.
 
    | Layer | Behaviour |
    | --- | --- |
-   | `DocumentRepresentation v0` | **Node stays.** Geometry is typed absence; `NativeLocator` still present |
-   | `ethos.grounding.v1` | **Node omitted.** Declared limitation + count. Never `[0,0,0,0]`, never `height = font_size` |
-   | Future | Ethos owners: optional `bbox` where a native address exists. Open, and it does not block v0 |
+   | `DocumentRepresentation v0` | **Node stays.** Geometry is typed absence; the native locator is still present |
+   | `ethos.grounding.v1` | **Node omitted**, with a declared limitation and a count. Never `[0,0,0,0]`, never `height = font_size` |
 
-   Two constraints this decision imposes, both enforced at M5:
-   **omission is only ever for missing measurable geometry** — never because a classifier disliked a
-   page, never as a quality filter; and the omit-plus-count path needs **its own fixture with absent
-   metrics**, not just `simple-text`.
+   Two constraints this imposes: **omission is only ever for missing measurable geometry** — never
+   because a classifier disliked a page, never as a quality filter — and the omit-and-count path needs
+   its own fixture with absent metrics. The type that makes this enforceable takes a *measurement
+   state* rather than a boolean, so the omission path is unreachable from a quality judgement by
+   construction rather than by review.
 
-   M1 built the type that makes this enforceable: `GeometryPresence::is_groundable()` takes a
-   measurement state, not a boolean or a reason code, so the omission path is unreachable from a
-   quality judgement by construction rather than by review.
+3. **The grounding shape is lossy relative to the representation.** It carries no derivation class, no
+   `mcid`, no structural locator, no synthesized flags, no per-page coverage. That is expected — it is
+   a verifier's input, not the canonical record. **The representation is the record; the grounding
+   artifact is a projection.** Never treat a grounding round-trip as proof the representation is
+   intact.
 
-   `TODO(confirm with Ethos owners whether a geometry-absent span should be representable in a future
-   grounding schema revision. Open; does not block M0–M4.)`
-3. **The grounding shape is lossy relative to `DocumentRepresentation v0`.** It carries no derivation
-   class, no `mcid`, no structural locator, no synthesized flags, no per-page coverage state. That is
-   expected — it is a verifier's input, not the canonical record. **The representation is the record;
-   the grounding artifact is a projection.** Never treat a grounding round-trip as proof the
-   representation is intact.
-
-**Validation oracle** — `ethos/schemas/ethos-grounding-validation-report.schema.json`, artifact type
-`ethos.grounding_validation.v1`:
-
-| Field | Values |
-| --- | --- |
-| `structure` | `valid` \| `invalid` |
-| `source_binding` | `matched` \| `mismatched` \| `not_checked` |
-| `representation_sha256` | `sha256:<64hex>` |
-| `counts` | `{pages, elements, spans, tables}` |
-
-M6's exit criterion is agreement with `ethos grounding check <file> --source-artifact <pdf>` on
-exactly these four. **Measured at M6, and moved at v0.1:** **12** of the 15 Ethos-owned fixtures
-reach a grounding artifact and agree; the other **3** cannot be opened by this backend at all and
-are asserted to fail closed instead. The twelfth is `synthetic/table-regular-grid`, which §8.1's
-bounded xref repair opens — the partition moved because the engine's behaviour did, and both
-lists are derived from a live walk rather than hardcoded, so neither can go stale quietly.
-Because every fixture in that corpus yields typed-absent geometry, all 12 agreeing artifacts are
-`1 page / 0 elements / 0 spans` — so the element, span and table rules are compared against the
-oracle using a **benchmark** document, not one of the 15.
+**The validation oracle** reports `structure` (valid/invalid), `source_binding`
+(matched/mismatched/not_checked), `representation_sha256`, and `counts` of pages, elements, spans and
+tables. Agreement on exactly those four is the oracle criterion. Measured: 12 of the 15 conformance
+fixtures reach a grounding artifact and agree; the other 3 cannot be opened by this backend and are
+asserted to fail closed. Both lists come from a live walk rather than a hardcoded set, so neither can
+go stale quietly.
 
 ---
 
 ## 12. What this contract deliberately does not do
 
-- **It does not verify.** No claim input, no verdict output, no `grounded` field, no `evidence_tier`.
-  The engine's happy path terminates at a *validated* artifact, not a *verified* one
-  (`07-VERIFY-BOUNDARY.md`).
+- **It does not verify.** No claim input, no verdict output, no `grounded` field, no evidence tier.
+  The happy path ends at a *validated* artifact, not a *verified* one.
 - **It does not describe a customer output schema, an extraction candidate, a resolved business
-  value, a semantic assessment, a policy decision, or a reviewer decision.** Those are separate
-  versioned resources that *reference* representation nodes. Keeping them out is what lets
-  re-extraction and re-verification happen without reparsing, and what stops a model transcript from
-  becoming the document record.
-- **It does not define a Markdown projection.** Workbench rule 8: retrieval operates on the evidence
-  record itself; any projection between what is ranked and what is cited is where a locator dies
-  silently. Markdown ships at v1.1 *with* the Anchor Map or not at all.
-- **It does not promise global identifiers.** IDs are stable only within a representation created by
-  the same pinned profile. A parser upgrade creates a new representation plus a mapping/diff — it
-  does not pretend node IDs are permanently global.
-- **It does not claim performance.** No "fastest," no "#1," no inherited latency figure. See
-  `03-V0-SCOPE.md` §6.
+  value, a semantic assessment, or a reviewer decision.** Those are separate versioned resources that
+  *reference* representation nodes. Keeping them out is what lets re-extraction and re-verification
+  happen without reparsing, and what stops a model transcript from becoming the document record.
+- **It does not define a Markdown projection.** Retrieval operates on the evidence record itself, and
+  any projection between what is ranked and what is cited is where a locator dies silently. Markdown
+  ships at v1.1 **with** the anchor map or not at all.
+- **It does not promise global identifiers.** Ids are stable only within a representation created by
+  the same pinned profile. A parser upgrade creates a new representation plus a mapping, rather than
+  pretending node ids are permanently global.
+- **It does not claim performance.** No "fastest", no "#1", no inherited latency figure.
 
 ---
 
 ## PR review checklist
 
-- [ ] Every emitted artifact carries `artifact_type`, `schema_version`, `parser_version`,
-      `profile_sha256`
-- [ ] `coordinate_system` present on every artifact carrying geometry, never implied
-- [ ] No float appears anywhere in canonical output; c14n rejects non-integers as a hard error
-- [ ] Object keys sorted explicitly at write time, not by map iteration order
+- [ ] Every artifact carries `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`
+- [ ] `coordinate_system` is present wherever there is geometry, never implied
+- [ ] No float appears in canonical output; non-integers are a hard error
+- [ ] Object keys are sorted explicitly at write time, not by map iteration order
 - [ ] Every node has a `NativeLocator`
 - [ ] No box is derived from a font size; absent metrics produce typed absence plus a declared limit
-- [ ] Every node declares a derivation class; nothing but `Extracted` is produced in v0
-- [ ] Every nested object in a hashed type denies unknown fields — `serde`'s
-      `deny_unknown_fields` is **not recursive**, and a dropped nested knob re-hashes to the
-      unmodified digest
-- [ ] Capabilities and limitations present; per-page state and coverage summary present
-- [ ] Unknown operator / unknown artifact type / unquantizable number all fail closed with a named
-      error
+- [ ] Every node declares a derivation class
+- [ ] Every nested object in a hashed type denies unknown fields — `deny_unknown_fields` is **not**
+      recursive, and a dropped nested knob re-hashes to the unmodified digest
+- [ ] Capabilities, limitations, per-page state and coverage summary are all present
+- [ ] Unknown operator, unknown artifact type and unquantizable number all fail closed by name
 - [ ] `grep -ri confidence` over emitted artifacts and their types returns nothing public
-- [ ] Synthesized characters are flagged at the point of creation
-- [ ] Grounding adapter emits exactly the schema's fields (`additionalProperties: false`) with
-      `bbox` as `[x0, y0, x1, y1]`
-- [ ] No verification concept has leaked in: no claim, no verdict, no `grounded`, no `evidence_tier`
+- [ ] Synthesized characters are flagged where they are created
+- [ ] The grounding adapter emits exactly the schema's fields, with `bbox` as `[x0, y0, x1, y1]`
+- [ ] No verification concept has leaked in: no claim, no verdict, no `grounded`, no evidence tier
