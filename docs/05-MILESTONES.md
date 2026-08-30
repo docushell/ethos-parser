@@ -1,518 +1,282 @@
 # 05 — v0 milestones
 
-**Status:** **all seven complete — v0 shipped at v0.1.0** · **This is the code-review map.** Every
-v0 PR belonged to exactly one milestone. Kept as the historical record and as the acceptance list
-each milestone was actually held to; work after this is versions, not M-numbers
-(`02-ROADMAP.md`).
+**All seven complete. v0 shipped at 0.1.0 and is frozen.** This is the historical record and the
+acceptance list each milestone was actually held to. Work after this is versions, not M-numbers.
 
-**Start at M0.** Do not start M1 until M0's acceptance tests are green. The order is not a
-suggestion — M1 freezes the types M3 emits, M4 declares what M5 projects, and M6 cannot exist before
-M5. Skipping ahead means rewriting.
+The order was not a suggestion: M1 froze the types M3 emits, M4 declared what M5 projects, and M6
+could not exist before M5.
 
-| ID | Milestone | Gist | State |
-| --- | --- | --- | --- |
-| **M0** | Repo skeleton + toolchain + deny + failing oracle harness | The harness exists and fails honestly | done |
-| **M1** | Contract types + c14n / quanta + `schema_version` on the wire | The artifact shape, frozen in code | done |
-| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | Observation without judgement | done |
-| **M3** | Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags | The evidence itself | done |
-| **M4** | Capabilities + typed absence + explicit multi-column limitation | The L1 gate | done |
-| **M5** | `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter | The canonical record and its projection | done |
-| **M6** | `grounding-check` validator + double-run byte identity on the corpus | Agreement with the oracle | done |
-| **M7** | CLI + library freeze + v0 exit criteria green | v0 | **done** |
+| ID | Milestone | Gist |
+| --- | --- | --- |
+| **M0** | Repo skeleton, toolchain, dependency policy, a failing oracle harness | The harness exists and fails honestly |
+| **M1** | Contract types, canonical JSON, quanta, versions on the wire | The artifact shape, frozen in code |
+| **M2** | Classify: reason codes, two axes, counts, three exit codes, bounded sampling | Observation without judgement |
+| **M3** | Extract: text runs, locators, font ids, fail-closed operators, synthesized flags | The evidence itself |
+| **M4** | Capabilities, typed absence, declared limitations | The L1 gate |
+| **M5** | The representation, and the grounding projection | The canonical record and what a verifier reads |
+| **M6** | The `grounding-check` validator, and double-run byte identity | Agreement with the oracle |
+| **M7** | CLI and library freeze, exit criteria green | v0 |
 
 ---
 
-## M0 — Repo skeleton, toolchain, deny, failing oracle harness
+## M0 — Skeleton and a failing harness
 
-- **Goal:** A workspace that builds, a licence posture that is enforced rather than intended, and a
-  test that fails for the right reason. The first commit contains the oracle test and one fixture,
-  **failing**. Nothing else belongs in week one.
+**Goal:** a workspace that builds, a licence posture that is enforced rather than intended, and a
+test that fails for the right reason. **The first commit contained the oracle test and one fixture,
+failing.** Nothing else belonged in week one.
 
-- **In:** `git init`; `rust-toolchain.toml` pinned to `1.88.0`; workspace `Cargo.toml` (resolver 2,
-  MSRV 1.88) with the four empty crates from `04-ARCHITECTURE.md` §1; `deny.toml` (permissive
-  licences only, no AGPL, no network crates); Apache-2.0 `LICENSE` + `NOTICE` reserved for the
-  vendored CMaps; `fixtures/manifest.json` referencing the Ethos corpus by path and `sha256`;
-  `crates/ethos-parser-cli/tests/oracle.rs` with one fixture (`synthetic/simple-text`), failing; CI running
-  `build`, `test`, `clippy -D warnings`, `fmt --check`, `cargo deny check`, plus a job that **proves**
-  the AGPL gate rejects.
+**In:** pinned toolchain; the workspace and its empty crates; `deny.toml` (permissive licences only,
+no AGPL, no network crates); the fixture manifest referencing the Ethos corpus by path and hash; the
+oracle test with one fixture, failing; CI running build, test, clippy, fmt, `cargo deny`, plus a job
+that **proves** the AGPL gate rejects.
 
-- **Out:** Any parsing. Any type beyond what the harness needs to compile. Vendoring the CMap data
-  (that is M3's, when there is something to decode). Fixture *copies* — the manifest references, it
-  does not duplicate.
+**Out:** any parsing; any type beyond what the harness needed to compile; fixture *copies*.
 
-- **Artifacts / APIs:** `fixtures/manifest.json`;
-  `crates/ethos-parser-cli/tests/oracle.rs::oracle_agrees_on_simple_text`; the `ethos-parser` binary failing
-  closed with exit 2; CI green except the one test that is meant to fail.
+**What it was held to:**
 
-- **Acceptance tests:**
-  - **The M0 gate, stated exactly** — these two together, because a bare `cargo test --workspace`
-    exits non-zero at M0 *by design* and asserting otherwise would be a contradiction:
-    - `cargo test --workspace --locked -- --skip oracle_agrees_on_simple_text` is **green**
-      *(historical: this exclusion was the M0 gate and was deleted at M6, when the test began
-      running the real comparison. The gate today is the bare command.)*
-    - the unskipped `oracle_agrees_on_simple_text` **fails** with the named M1–M6 diagnostic
-    <br>**Do not resolve this by making the bare command green.** Every mechanical route —
-    `#[ignore]`, deleting the test, weakening it to a `return` — destroys the milestone, and the
-    test's own diagnostic forbids it in as many words. The exclusion is the gate, and it is the
-    same exclusion CI encodes.
-  - `cargo build --workspace --locked` succeeds; `clippy -D warnings` and `fmt --check` clean.
-  - `cargo deny check` passes, and the AGPL probe **fails with exit code 4 and names
-    `ethos-parser-core`** — proving the gate fired for *that* reason, not merely that cargo-deny was
-    unhappy. Any non-zero exit would also match a config typo.
-  - `crates/ethos-parser-cli/tests/oracle.rs` **fails** with a message naming what is missing (no
-    implementation yet), not with a panic, a skip, or `todo!()`.
-  - The oracle harness locates the `ethos` binary and **errors loudly if absent** — never skips.
-  - **`ETHOS_BIN` is authoritative, not a hint.** Set to a non-existent path, the harness fails hard
-    rather than falling back to another binary. Resolving silently to a verifier nobody chose is
-    worse than finding none: the operator believes they know which one answered. (The repo build is
-    0.6.0 and the binary on `PATH` is 0.5.0 — the fallback would have been *stale*, not merely
-    different.)
-  - `fixtures/manifest.json` hashes verify against the Ethos tree; a mutated hash fails the check.
-  - An absent or wrong fixture corpus fails with a named error, never a skip.
+- The gate was stated as two conditions, because a bare `cargo test` exited non-zero at M0 *by
+  design*: the suite green with the oracle test excluded, **and** that test failing with a named
+  diagnostic. **Resolving it by making the bare command green was forbidden** — `#[ignore]`, deleting
+  the test, or weakening it to a `return` each destroys the milestone, and the test's own diagnostic
+  said so.
+- The AGPL probe fails with **exit code 4 naming the crate**, proving the gate fired for *that*
+  reason. Any non-zero exit would also match a config typo.
+- The oracle harness locates the verifier binary and **errors loudly if absent** — never skips. And
+  `ETHOS_BIN` is authoritative rather than a hint: set to a non-existent path, the harness fails hard
+  rather than falling back. Resolving silently to a verifier nobody chose is worse than finding none,
+  because the operator believes they know which one answered — and the fallback binary was in fact a
+  *stale* version, not merely a different one.
+- A mutated fixture hash fails the check; an absent corpus fails by name.
+- Env-dependent behaviour is tested through a parameterised function, never by mutating process env,
+  which races the threaded test harness and corrupts sibling tests.
 
-- **Review checklist:**
-  - [ ] Toolchain pinned to `1.88.0` in a committed file, not in CI config alone
-  - [ ] `deny.toml` denies AGPL **and** network-capable crates, and the denial is tested
-  - [ ] No fixture bytes copied into this repo; manifest references + hashes only
-  - [ ] The Ethos tree is untouched (`git -C ../ethos status` clean)
-  - [ ] The failing test fails with a diagnostic, not a `todo!()` panic
-  - [ ] No `src/` file contains logic yet
-  - [ ] **Every negative-path acceptance criterion has a committed test**, not prose. The
-        `ETHOS_BIN` hard-fail and the mutated-hash detection are branches; an assertion nobody has
-        watched fail is an assertion nobody has tested
-  - [ ] Env-dependent behaviour is tested through a parameterised function, never by mutating
-        process env — `set_var` races the threaded test harness and corrupts sibling tests
-  - [ ] The manifest's declared counts are validated against its own array
+## M1 — Contract types, canonical JSON, quanta
 
-- **Depends on:** nothing.
+**Goal:** the contract expressed as Rust types with the canonicalization that makes them byte-stable.
+**After M1 the artifact shape stopped being negotiable and started being a compile error.**
 
----
+**In:** artifact identity; the profile type and its hash; the coordinate system; canonical JSON;
+`quantize` with the error cases; the rectangle type; derivation classes; typed-absence variants; the
+error taxonomy; draft schemas.
 
-## M1 — Contract types, c14n / quanta, `schema_version` on the wire
+**Out:** production schemas under a shipped path; any PDF concept; any grounding projection.
 
-- **Goal:** `01-CONTRACT.md` expressed as Rust types with the canonicalization that makes them
-  byte-stable. After M1 the artifact shape stops being negotiable and starts being a compile error.
+**What it was held to:**
 
-- **In:** `ethos-parser-core`: artifact identity (`artifact_type`, `schema_version`, `parser_version`,
-  `profile_sha256`); the `Profile` type and its hash; `coordinate_system`; c14n v1 (UTF-8, no
-  whitespace, keys sorted explicitly at write time, minimal escaping, **integers only**, idempotent);
-  `quantize(pts, 100)` with round-half-away-from-zero and `NaN`/`±Inf`/overflow as errors; `QRect` as
-  `[x0, y0, x1, y1]`; stable-ID ordering discipline; `DerivationClass`; typed-absence variants; the
-  error taxonomy; DRAFT JSON Schemas under `docs/draft-schemas/`.
+- **Canonical-JSON idempotence**, property-tested.
+- **Float rejection**: any non-integer number anywhere in a canonical value is a hard error, not a
+  rounding — including nested in arrays and objects.
+- **Key ordering** by code point, holding even with a `preserve_order` feature forced on in the
+  dependency graph. **The test first proves the feature is actually active**, by asserting plain
+  serialization emits insertion order; otherwise it passes vacuously under a map that sorts for free,
+  which is worse than having no test.
+- **Quantize vectors**, including `-0.0 → 0`, with `NaN`, infinity and overflow all erroring.
+- **Profile sensitivity**: mutating each profile field in turn changes the hash, asserted field by
+  field. And separately, **the default profile is pinned by bytes and digest** — the first proves a
+  change is *detectable*, the second proves it was *intended*.
+- **No confidence token** in the public API, enforced by a scan with comments stripped, plus a
+  self-test proving the comment stripper works so the scan cannot pass vacuously.
+- **Every nested object in a hashed type denies unknown fields.** The derive does not recurse, and
+  guarding only the outer struct leaves a dropped nested knob re-hashing to the unmodified digest.
+- **A rule stated over a pair of values is tested as a matrix, not from one side.** A function that
+  ignores an argument passes every single-sided test.
 
-- **Out:** Production JSON Schemas under a shipped `schemas/` path — DRAFT under `docs/` only, until
-  the DocuShell review round closes the `TODO(re-read DocumentRepresentation v0 field list)` markers.
-  Any PDF concept. Any grounding projection.
+## M2 — Classify
 
-- **Artifacts / APIs:** `ethos_parser_core::{c14n_bytes, quantize, QRect, Profile, DerivationClass,
-  ArtifactIdentity, CoordinateSystem}`; `docs/draft-schemas/*.draft.json`.
+**Goal:** a classifier that reports what it saw and refuses to render a verdict. **The caller owns
+the policy; the engine owns the observation.**
 
-- **Acceptance tests:**
-  - **c14n idempotence**, property-tested: `c14n(parse(c14n(v))) == c14n(v)` over generated values.
-  - **Float rejection**: any non-integer number anywhere in a canonical value is a hard error, not a
-    rounding. Includes nested arrays and objects.
-  - **Key ordering** is by Unicode code point and holds even with `serde_json/preserve_order` enabled
-    in the dependency graph — test with the feature forced on. **The test must first prove the
-    feature is actually active**, by asserting plain `serde_json` emits insertion order; otherwise it
-    passes vacuously under a `BTreeMap` that sorts for free, which is worse than having no test.
-  - **Quantize vectors**: `0.005 → 1`, `0.004 → 0`, `-0.005 → -1`, `612.0 → 61200`, `-0.0 → 0`;
-    `NaN`, `INFINITY`, and `1e17` all error.
-  - **Escaping**: no Unicode normalization; non-ASCII is emitted literally; `U+0000–U+001F` becomes
-    lowercase `\u00xx`.
-  - **Profile sensitivity**: mutating each profile field in turn changes `profile_sha256`, asserted
-    field by field.
-  - **`grep -ri confidence`** over `ethos-parser-core`'s public API returns nothing. Enforced as a test
-    that scans `src/**` with comments stripped — prose arguing the rule is fine, an identifier is
-    not — plus a self-test proving the comment stripper works, so the scan cannot pass vacuously.
-  - Round-trip: every artifact type serializes, canonicalizes, and re-parses to an identical value.
-  - **The default profile is pinned** by bytes and digest, so a profile change is a deliberate act
-    rather than a discovery. Distinct from the sensitivity test: that proves a change is
-    *detectable*, this proves it was *intended*.
+**In:** two independent reason enums — OCR-need and layout-hard; per-page counts, 1-indexed; the
+derived boolean; bounded sampling with the sample count as a pinned profile field; three exit codes;
+content-based format detection.
 
-- **Review checklist:**
-  - [ ] Keys sorted explicitly at write time, not via map iteration order
-  - [ ] No `f32`/`f64` in any serialized type — check the derives, not just the fields
-  - [ ] `QRect` is `[x0, y0, x1, y1]`, not `[x, y, w, h]`; ordering is validated at construction
-  - [ ] Every profile-relevant knob is in `Profile`, and the sensitivity test covers it
-  - [ ] Typed absence is a variant, never `Option<T>` standing in for "we did not measure"
-  - [ ] **Every** nested object in a hashed type denies unknown fields. `deny_unknown_fields` does
-        not recurse, and guarding only the outer struct leaves a dropped nested knob re-hashing to
-        the unmodified digest
-  - [ ] A rule stated over a pair of values is tested as a matrix, not from one side. A function
-        that ignores an argument passes every single-sided test
-  - [ ] Schemas are DRAFT, under `docs/draft-schemas/`, and say so in `$comment`
-  - [ ] Uncertain field names carry `TODO(re-read DocumentRepresentation v0 field list)`
-  - [ ] No public confidence field, score, grade, or quality summary
+**Out:** any confidence float; any single verdict field; any routing decision; OCR itself;
+multi-column *handling* — the reason code exists, the reading order stayed single-column until v1.
 
-- **Depends on:** M0.
+**What it was held to:**
 
----
+- **Bounded cost, the load-bearing test, in two parts.** A counter asserting pages scanned equals the
+  sample bound, measured on a 492-page document as **8 scanned**. And timing that is flat in page
+  count: 246× the pages for 1.7× the classify time.
 
-## M2 — Classify: reason codes, two axes, counts, three exit codes, bounded sampling
+  The two phases are timed **separately**, and that is a measurement rather than a concession: the
+  backend parses the whole object graph eagerly, so total cost is parse plus sample-count times
+  per-page, and the parse term scales with bytes. Measured: open 16/48/431 ms against classify
+  14/21/25 ms for 2/80/492 pages.
+- **Three exit codes, one fixture each, all distinguishable** — including a missing file. Assert the
+  codes, not the messages.
+- **Axis independence**: a fixture producing a layout reason and no OCR reason emits an empty
+  OCR-need list. The chosen fixture is a tax form — heavy ruling lines with crisp born-digital text —
+  which is also why it is *not* the exit-0 case: it fires layout reasons, so it exits 1. **Suppressing
+  a true layout reason to make a document line up with a doc example is exactly the tuning this
+  project refuses**, so the fixture choice changed instead.
+- **Boolean derivation** from the reason lists, with a property test showing the boolean carries no
+  information the lists do not.
+- **The simplest fixture's behaviour is recorded, not tuned to match anyone.** One competitor calls it
+  text-based with zero text pages; another calls it text-free and demands OCR. Neither is the target.
+  Measured here: one page, one text operator, 11 text bytes, no imagery, **no reasons on either axis**
+  — because short text without competing content is a short page, not a sparse one.
+- **The reasons with no sound detector are never emitted, and the artifact says so.** Silence would
+  let a caller read an empty list as evidence of absence. An acronym-dense document is asserted
+  **not** to be reported as textless — the compounding-garble trap.
+- **Unknown magic bytes fail closed** with a named error and exit 2.
 
-- **Goal:** A classifier that reports what it saw and refuses to render a verdict. The caller owns
-  the policy; the engine owns the observation.
+## M3 — Extract
 
-- **In:** Two orthogonal reason enums — OCR-need (`scanned`, `no-text`, `sparse-text`,
-  `embedded-images`, `garbled`, `vector-text`, `annotation-text`) and layout-hard (`multi-column`,
-  `table-likely`, `dense-graphics`); per-page counts (`pages_with_text` / `pages_sampled`),
-  **1-indexed**; the derived boolean; bounded sampling with `N` (default 8) as a pinned profile
-  field; the three exit codes; content-based format detection by magic bytes.
+**Goal:** the evidence itself. Position-aware text runs whose origins are trustworthy, whose boxes are
+measured or absent, and whose parse **stops rather than silently drops content**.
 
-- **Out:** Any confidence float. Any single verdict field. Any routing decision — the engine reports,
-  the caller routes. OCR itself. Multi-column *handling* (the reason code is emitted; the reading
-  order is still single-column until v1).
+**In:** content-stream interpretation with the operator set **enumerated explicitly**; text runs
+carrying origin, advance, font id, font size, page and marked-content id; a native locator on every
+run; measured ink boxes from the embedded font program with a descriptor fallback; encoding tables;
+synthesized flags; glyph codes with the ligature caveat; single-column reading order as a versioned
+computed rule.
 
-- **Artifacts / APIs:** `ethos_parser_pdf::classify(&Document, &Profile) -> Classification`;
-  `ethos-parser classify <pdf>` emitting the classification artifact.
+**Out:** multi-column reading order; tables; any box derived from a font size; any operator handled by
+"ignore and continue"; Markdown.
 
-- **Acceptance tests:**
-  - **Bounded cost, the load-bearing test**, in two parts:
-    - **Counter (mandatory)**: `pages_content_scanned == min(N, page_count)` and never approaches
-      `page_count`. Measured on `nist-sp-800-53r5`: **492 pages, 8 scanned.** This is the exact
-      class of bug pdf-inspector has at `detector.rs:431-447`, where `Pages(1)` costs the same as
-      `Full`.
-    - **Timing**: classify time must be flat in total page count. Measured against `nist-sp-800-63b`:
-      **246× the pages for 1.7× the classify time.**
-    <br>**Corrected after measurement:** this line originally demanded the 492-page document
-    complete within 20% of a short control *in total*. It cannot, and the reason is not the
-    sampler — `lopdf` parses the whole object graph eagerly, so total cost is
-    `O(parse) + O(N × per-page)` and the parse term scales with bytes. Measured (release, best of
-    3): open 16 / 48 / 431 ms against classify 14 / 21 / 25 ms for 2 / 80 / 492 pages. The phases
-    are therefore timed separately, which is also what `03-V0-SCOPE.md` §6 actually claims:
-    *"~0.5 ms per sampled page, plus document parse."*
-  - **Three exit codes, one fixture each, all distinguishable**: `synthetic/simple-text` → **0**;
-    `failure/image-only-or-blank-page` (fires `no-text`) → **1**; `failure/password-protected` →
-    **2**; `failure/invalid-header` → **2**; `synthetic/table-regular-grid` (19-byte xref) → **2**;
-    a missing file → **2**. Assert the codes, not the messages.
-    <br>**Corrected after measurement:** this line originally named `irs-form-1040-2025` as the
-    exit-0 case. It is not — it fires `table-likely` and `dense-graphics`, so under the derivation
-    rule it is exit **1**. Suppressing a true layout reason to make a doc line come out right is
-    exactly the tuning this project refuses, so the fixture choice changed instead. `irs-form-1040`
-    is now the axis-independence case, which it serves better: heavy ruling lines with crisp
-    born-digital text, so the layout axis fires and the OCR axis stays empty.
-  - **Axis independence**: a fixture producing `table-likely` and no OCR-need reason emits an empty
-    OCR-need list. `table-likely` never appears in the OCR-need axis.
-  - **Boolean derivation**: `needs_attention == !ocr_reasons.is_empty() || !layout_reasons.is_empty()`,
-    and removing the boolean from the artifact loses no information (property test over fixtures).
-  - **Page indexing**: a round-trip test pins 1-based indexing. `synthetic/two-lines` and
-    `nist-sp-800-63b` both assert page 1 is `1`.
-  - **`simple-text` behaviour is recorded, not tuned to match anyone.** pdf-inspector calls it
-    TEXT-BASED with zero text pages; LiteParse calls it `no-text` and demands OCR. Neither is the
-    target. **Measured here:** one page, one text-showing operator, 11 text bytes, no imagery, and
-    therefore **no reasons on either axis** — because short text without competing content is a
-    short page, not a sparse one. Golden pins every count.
-  - **The `garbled` and `multi-column` reasons are never emitted, and the artifact says so.** No
-    sound detector exists for either, so silence would let a caller read an empty list as evidence
-    of absence. Both are declared in `not_detected` with the reason why, and an acronym-dense
-    document (`nist-sp-800-53r5`, full of `AC-2`/`SC-7`) is asserted **not** to be reported as
-    textless — the LiteParse compounding-garble trap.
-  - **No confidence**: `grep -ri confidence` over the classify artifact and its types returns nothing.
-  - **Unknown magic** fails closed with a named error and exit **2**.
+**What it was held to:**
 
-- **Review checklist:**
-  - [ ] Sampling actually stops at `N` — no later phase rescans all pages
-  - [ ] `N` is a profile field and changing it moves `profile_sha256`
-  - [ ] Two axes are separate types, not one enum with a comment
-  - [ ] Exit codes 0/1/2 are distinguishable for every failure mode, including missing file
-  - [ ] No threshold in the code produces a *routing decision* — thresholds may produce *reason codes*
-  - [ ] Classification runs in-process; nothing forks or spawns
-  - [ ] Page indices are 1-based everywhere, including internal types
+- **Both quote-form show-text operators are handled**, with a fixture proving text is not lost. This
+  is the disqualifying defect in a surveyed parser: the operator is absent from its match, the text
+  vanishes silently, and surrounding runs merge with corrupt geometry.
+- **An unknown operator fails closed** with a named error and exit 2. A stream containing an undefined
+  operator must not produce a well-formed artifact.
+- **Horizontal scaling is applied** to advance width, with a fixture. A surveyed parser does not
+  implement it anywhere, so its widths are wrong on any document that uses it.
+- **No box is derived from a font size.** A font with unavailable metrics produces typed absence,
+  never a fallback box.
+- **Synthesized characters are flagged where created**, and the flag survives canonicalization.
+- **The ligature caveat is declared, not silently reconciled** — expansion yields more scalars than
+  codes, so the arrays are not 1:1 and the artifact says so.
+- **Determinism**: extracting twice produces byte-identical output for every fixture that opens.
 
-- **Depends on:** M1.
+## M4 — Capabilities and the L1 gate
 
----
+**Goal:** close the L1 gate. **An artifact that does not declare its capabilities has not reached
+"extracted", regardless of how good its text is.**
 
-## M3 — Extract: text runs, `NativeLocator`, font ids, fail-closed operators, synthesized flags
+**In:** capability declarations per profile; limitation declarations per document; per-page processing
+state; the coverage summary; the partial-processing terminal state.
 
-- **Goal:** The evidence itself. Position-aware text runs whose origins are trustworthy, whose boxes
-  are measured or absent, and whose parse stops rather than silently drops content.
+**Out:** any capability declared `true` that is not tested; any limitation that exists only in a doc
+comment; repairing anything.
 
-- **In:** Content-stream interpretation with the operator set **enumerated explicitly**; text runs
-  carrying origin (x, baseline y) + advance + font id + font size + page + `mcid`; `NativeLocator`
-  (`PdfLocator` variant) on every run; measured ink boxes via `ttf-parser` over the embedded font
-  program with FontDescriptor `/Ascent` `/Descent` `/FontBBox` fallback; vendored Adobe CMaps
-  (168 `.bcmap` + NOTICE) for encoding; `synthesized` flags; `char_codes` with the ligature caveat;
-  single-column reading order as a versioned `Computed` rule.
+**What it was held to:**
 
-- **Out:** Multi-column reading order. Tables. Any box derived from a font size. Any operator handled
-  by "ignore and continue." Underline/strikeout inference. Markdown.
+- **Every declared capability has a passing test.** A capability asserted `true` with no test is a
+  build failure.
+- **Partial processing is terminal and visible.** A document with one failed page produces a coverage
+  summary showing the gap, and the artifact is **not** presentable as complete.
+- **Absence is never `1.0`.** A processor reporting no uncertainty emits an absent field.
+- **Capability-limited beats negative.** A query against an unprocessed page returns
+  capability-limited, never "not present" — **absence of extractable content is never evidence of
+  absence in the source.**
+- Changing the capability set changes the profile hash.
 
-- **Artifacts / APIs:** `ethos_parser_pdf::extract(&Document, &Profile) -> Vec<Node>` with typed locators;
-  `ethos-parser extract <pdf>`.
+## M5 — The representation and the grounding projection
 
-- **Acceptance tests:**
-  - **`"` and `'` show-text operators are handled**, with a fixture proving text is not lost. This is
-    the disqualifying pdf-inspector defect (checklist P6): the `"` operator is absent from its
-    operator match, its text vanishes silently, and surrounding runs merge with corrupt geometry.
-  - **Unknown operator fails closed** with a named error and exit **2** — a fuzz-generated stream
-    containing an undefined operator must not produce a well-formed artifact.
-  - **`Tz` (horizontal text scaling) is applied** to advance width, with a fixture. pdf-inspector
-    does not implement it anywhere in its tree, so its widths are wrong on any document using it.
-  - **No box is derived from a font size**: a test asserts no code path sets height from `font_size`,
-    and a font with unavailable metrics produces **typed absence**, never a fallback box.
-  - **Synthesized characters flagged**: a fixture where an inter-run space is inserted asserts the
-    flag at the character, and the flag survives canonicalization.
-  - **Ligature caveat**: `synthetic/ligature-fi-embedded-font` round-trips with the
-    scalars ≠ `char_codes` mismatch declared in the artifact, not silently reconciled.
-  - **Hyphenation**: `synthetic/hyphenated-line-break` — if a rejoin is performed it is `Computed`,
-    reversible, and the source bytes are recoverable.
-  - **Rotation**: `synthetic/rotation-90` produces geometry in the declared coordinate system after
-    rotation, with `rotation: 90` on the page.
-  - **`table-regular-grid` exits 2** with a named xref error (19-byte entries where PDF 32000-1
-    §7.5.4 requires 20), and the failure is a **declared limitation**, not a crash.
-  - **Determinism**: extracting twice produces byte-identical output for every fixture that opens.
+**Goal:** the canonical record, and the projection a verifier consumes. This is where the engine's
+output first became something another system can read.
 
-- **Review checklist:**
-  - [ ] The operator set is an explicit, exhaustive match — no `_ => continue`, no `_ => {}`
-  - [ ] Every text run has a `NativeLocator`
-  - [ ] Ink boxes come from measured metrics; the absence path is a type, not a sentinel
-  - [ ] Synthesized characters are flagged **where created**, not reconstructed later
-  - [ ] Reading-order rule carries a version, and that version is in the profile
-  - [ ] CMap data is vendored with the Adobe BSD-3-Clause NOTICE reproduced
-  - [ ] No text is dropped anywhere without a typed diagnostic — grep for silent `continue`
-  - [ ] `mcid` is captured where present and typed-absent where not
+**In:** the full representation — identities, processing run, ordered typed nodes with stable ids, a
+required native locator, optional structural locator and geometry, per-page state, coverage; the
+grounding adapter; the geometry-absent omission rule with its declared count; **one engine-authored
+CC0 fixture with unusable font metrics**, because the upstream corpus has no fixture for that case.
 
-- **Depends on:** M1. (M2 and M3 can proceed in parallel after M1; both need M1's types.)
+**Out:** tables; any grounding field outside the schema; any PDF concept inside the grounding crate.
+
+**What it was held to:**
+
+- **Schema conformance with no additional properties**, and a field-exact projection.
+- **A zero-area box is a hard error in the engine** — stricter than the oracle, which accepts a
+  degenerate one. **Stricter-on-emission is the safe direction and the only one permitted.**
+- **Geometry-absent nodes are omitted from the grounding artifact and counted** in a declared
+  limitation, with the representation still holding the node and its locator. No node is ever emitted
+  with a fabricated box.
+- **A dedicated absent-metrics fixture exercises that path.** The simplest fixture does not test it
+  and must not stand in for it.
+- **Omission is only ever for missing measurable geometry**, and this is structural rather than
+  reviewed: the omission path is reachable only from the typed-absence variant. **The call site takes
+  a typed absence, not a boolean** — so it cannot be reached from a quality judgement.
+- **Lossiness is asserted, not assumed.** A test documents that derivation class, marked-content id,
+  structural locator, synthesized flags and coverage state do **not** survive the projection, so
+  nobody later mistakes a grounding round trip for proof the representation is intact.
+
+## M6 — The validator, and agreement with the oracle
+
+**Goal:** the engine's validator and the verifier's read the same artifact and say the same thing,
+byte for byte, across the whole corpus.
+
+**In:** `grounding-check` implementing **structure and source-byte binding only**; the report shape;
+the oracle harness extended to all 15 fixtures; the double-run byte-identity harness.
+
+The scope line originally said "JSON Schema validation only" and that was corrected here: the schema
+is necessary and not sufficient. Id uniqueness, reference resolution, page ordering, boxes inside
+their page, capability agreement and offset validity are none of them expressible in JSON Schema, and
+**a schema-only checker would disagree with the oracle it is required to match.** The engine mirrors
+the parser. This is still nowhere near verification.
+
+**Out:** **any verification semantics whatsoever.** No claims, no `grounded`, no evidence tier,
+nothing re-derived from a verifier report.
+
+**What it was held to:**
+
+- **Oracle agreement across all 15 fixtures**, byte-identical on structure, source binding,
+  representation hash and counts. Any disagreement fails CI with a diff.
+- **The source-binding trichotomy**: matched, mismatched, and not-checked, one test each.
+- **Double-run byte identity** over the whole path, producing identical **files** rather than merely
+  identical payloads.
+- **Oracle absence is loud.** With the verifier unavailable the test fails by name — never skips,
+  never passes vacuously, never emits a stub report.
+- **Exit codes keep "invalid" and "could not read" apart**, where the verifier collapses them. Both
+  agree on zero versus non-zero, which is what a shell predicate reads.
+
+## M7 — Freeze
+
+**Goal:** v0. The public surface is what it will be, the exit criteria are green as CI jobs, and the
+fuzz and mutation layers are running.
+
+**In:** the four subcommands finalized with their exit-code mapping; the library API reviewed and
+frozen; `--diagnostics` as opt-in with volatile data outside every fingerprint; a fuzz target; mutation
+testing over every fixture; the scope document's exit-criteria checklist green line by line.
+
+**Out:** any new capability; any performance claim; any published benchmark table.
+
+**What it was held to:**
+
+- **Every line of the v0 exit criteria is a green CI job.** Not a review judgement — a job, and a test
+  checks the mapping in both directions.
+- **The CLI is a thin shell**: every subcommand behaviour is reachable through the library, proved by
+  library-level tests that never invoke the binary.
+- **The public API is a deliberate list**, not whatever happened to be public. A test fails if the list
+  and the exports disagree.
+- **No performance number appears anywhere without a committed harness producing it.**
+
+**What M7 actually changed**, since "freeze and prove" reads like a no-op:
+
+- `--diagnostics`: opt-in, stderr-only, structurally outside every fingerprint.
+- The PDF crate's parsing machinery narrowed to crate-private — which surfaced five dead items the
+  compiler could not previously see, two of them genuinely unread state.
+- A fixture-mutation suite with survivors pinned and triaged. One triage finding: a mutation that
+  "applied" to two benchmark documents by matching bytes inside a compressed stream, **which would
+  have gone green while proving nothing**.
+- The content interpreter now discards partial output on refusal. Nothing downstream was ever wrong,
+  but the guarantee belonged to the call site rather than to the type, and **the test meant to cover
+  it passed for the wrong reason**.
 
 ---
 
-## M4 — Capabilities, typed absence, explicit multi-column limitation
+## Standing rules
 
-- **Goal:** Close the **L1 gate**. An artifact that does not declare its capabilities has not reached
-  "extracted," regardless of how good its text is.
+These applied to every PR in every milestone, and they are the ones that get violated under deadline
+pressure.
 
-- **In:** Capability declarations per profile; limitation declarations per document; per-page
-  processing state; the coverage summary reconciling authorized / processed / failed / unsupported /
-  quarantined pages; the partial-processing terminal state; the **explicit multi-column limitation**;
-  the `lopdf` xref limitation with its declared failure mode.
-
-- **Out:** Any capability declared `true` that is not tested. Any limitation that exists only in a doc
-  comment. Repairing anything.
-
-- **Artifacts / APIs:** `ethos_parser_core::{Capabilities, Limitation, PageState, CoverageSummary}`;
-  capability + limitation blocks in every emitted artifact.
-
-- **Acceptance tests:**
-  - **Every declared capability has a passing test.** A capability asserted `true` with no test is a
-    build failure — enumerate capabilities in a test that maps each to its proof.
-  - **`synthetic/two-columns` declares the multi-column limitation**, and its golden asserts the
-    *declaration*, not correct reading order.
-  - **Partial processing is terminal and visible**: a document with one failed page produces a
-    coverage summary showing the gap, and the artifact is **not** presentable as complete.
-  - **Absence is never `1.0`**: a processor reporting no uncertainty emits an **absent field**, never
-    an implied full-confidence value. Asserted by schema and by test.
-  - **`failure/memory-limit-simulated`** produces a declared limitation plus a coverage gap, not a
-    partial artifact silently presented as whole.
-  - **Capability-limited beats negative**: a query against an unprocessed page returns
-    capability-limited, never "not present." Absence of extractable content is never evidence of
-    absence in the source.
-  - Changing the capability set changes `profile_sha256`.
-
-- **Review checklist:**
-  - [ ] No capability is `true` without a named test proving it
-  - [ ] Limitations appear **in the artifact**, not only in docs
-  - [ ] Coverage summary is present on every representation, including fully successful ones
-  - [ ] Partial processing has its own terminal state and cannot be mistaken for success
-  - [ ] Typed absence is used everywhere a measurement was not taken
-  - [ ] No repair, normalization, or fill-in happens without being declared
-
-- **Depends on:** M3.
-
----
-
-## M5 — `DocumentRepresentation v0` emit + `ethos.grounding.v1` adapter
-
-- **Goal:** The canonical record and the projection a verifier consumes. This is where the engine's
-  output first becomes something another system can read.
-
-- **In:** `DocumentRepresentation v0` — schema version, source `ArtifactRef` + fingerprint + media
-  type, processing-run and processor/profile identities, representation fingerprint,
-  capability/limitation declarations, ordered typed nodes with stable IDs, required `NativeLocator`,
-  optional structural locator, optional geometry, per-page state, coverage summary, diagnostics; the
-  `ethos-parser-grounding` adapter projecting it to `ethos.grounding.v1`; the geometry-absent omission rule
-  with its declared count; **one engine-authored CC0 fixture with unusable font metrics**, the only
-  addition to the corpus beyond the Ethos manifest, because Ethos has no fixture for this case.
-
-- **Out:** `tables` (v0 emits `capabilities.tables: false` and no table array). Any grounding field
-  outside the schema — it is `additionalProperties: false`. Any PDF concept inside
-  `ethos-parser-grounding`.
-
-- **Artifacts / APIs:** `ethos-parser extract` → representation JSON; `ethos-parser ground <representation>` →
-  `ethos.grounding.v1` JSON.
-
-- **Acceptance tests:**
-  - **Schema conformance**: emitted grounding artifacts validate against
-    `ethos/schemas/ethos-grounding-source.schema.json` with **no additional properties**.
-  - **Field-exact projection**: `artifact_type == "ethos.grounding.v1"`,
-    `schema_version == "1.0.0"`, `source.media_type == "application/pdf"`,
-    `source.sha256` matches the fixture bytes, `coordinate_system == {centipoint, top-left}`,
-    `capabilities.tables == false`.
-  - **`bbox` is `[x0, y0, x1, y1]`** in integer centipoints, with `x1 > x0` and `y1 > y0`. A
-    zero-area box is a hard error **in the engine** — note this is *stricter* than the oracle, which
-    accepts `x0 == x1` (`ethos-core/src/geom.rs:87` rejects only `x0 > x1`). Stricter-on-emission is
-    the safe direction and the only one permitted; see `01-CONTRACT.md` §11.
-  - **Pages are 1-indexed**, and `rotation ∈ {0, 90, 180, 270}` with `synthetic/rotation-90`
-    asserting `90`.
-  - **Geometry-absent nodes are omitted from the grounding artifact and counted** in a declared
-    limitation. No node is emitted with a fabricated box — assert the count is non-zero on a fixture
-    that triggers it, and that the representation still contains the node with its `NativeLocator`.
-  - **A dedicated absent-metrics fixture exists and exercises the omit-plus-count path.** A PDF whose
-    font provides no usable ascent/descent and no `/FontBBox`. `simple-text` does not test this and
-    must not be the fixture that stands in for it. Authored under CC0 into this repo's own fixture
-    set — this is the one case where the corpus grows beyond the Ethos manifest, because Ethos has no
-    fixture for it.
-  - **Omission is only ever for missing measurable geometry.** Asserted structurally: the omission
-    path is reachable only from the typed-absence variant, and a test proves that a node with
-    measured geometry is never omitted for any other reason — not a classifier reason code, not a
-    quality judgement, not a page state. `grep` the omission call site: it takes a typed absence, not
-    a boolean.
-  - **Lossiness is asserted, not assumed**: a test documents that derivation class, `mcid`,
-    structural locator, synthesized flags, and coverage state do **not** survive the projection —
-    so nobody later mistakes a grounding round-trip for proof the representation is intact.
-  - **Determinism**: representation and grounding artifacts are byte-identical across two runs for
-    every fixture.
-
-- **Review checklist:**
-  - [ ] Grounding output contains exactly the schema's fields and nothing else
-  - [ ] No PDF type reachable from `ethos-parser-grounding`
-  - [ ] Node IDs are stable within a profile and documented as **not** globally stable
-  - [ ] `TODO(re-read DocumentRepresentation v0 field list)` markers resolved or still explicitly open
-  - [ ] Representation fingerprint and source fingerprint are distinct fields with distinct meanings
-  - [ ] Geometry omission is declared with a count, never silent
-  - [ ] The omission call site takes a **typed absence**, not a boolean or a reason code — so it
-        cannot be reached by a quality judgement
-  - [ ] The absent-metrics fixture is CC0, authored here, and documented as engine-owned in
-        `fixtures/manifest.json`
-
-- **Depends on:** M4.
-
----
-
-## M6 — `grounding-check` validator + double-run byte identity
-
-- **Goal:** Agreement with the oracle. The engine's validator and Ethos's read the same artifact and
-  say the same thing, byte for byte, across the whole corpus.
-
-- **In:** `grounding-check` implementing **structure and source-byte binding only**, via
-  `--source-artifact`. *(Corrected at M6: this line said "JSON Schema validation only". The schema
-  is necessary and not sufficient — Ethos's parser enforces id uniqueness, reference resolution,
-  page ordering, boxes inside their page, capability/array agreement and offset validity, none of
-  which JSON Schema expresses, and a schema-only checker would disagree with the oracle it is
-  required to match. The engine mirrors the parser. This is still nowhere near verification.)*; the `ethos.grounding_validation.v1` report shape; `crates/ethos-parser-cli/tests/oracle.rs` extended to
-  all 15 fixtures; the double-run byte-identity harness.
-
-- **Out:** **Any verification semantics whatsoever.** `grounding-check` validates structure and
-  binding. It does not check claims, does not emit `grounded`, does not compute `evidence_tier`, and
-  does not re-derive anything from an Ethos report. Reimplementing verifier semantics is how a second
-  authority is born by accident.
-
-- **Artifacts / APIs:** `ethos-parser grounding-check <file> [--source-artifact <pdf>]` emitting
-  `ethos.grounding_validation.v1`: `structure` (`valid`|`invalid`), `source_binding`
-  (`matched`|`mismatched`|`not_checked`), `representation_sha256`, `counts`
-  (`{pages, elements, spans, tables}`).
-
-- **Acceptance tests:**
-  - **Oracle agreement across all 15 fixtures**: for each, `ethos-parser grounding-check` and
-    `ethos grounding check <file> --source-artifact <pdf>` agree **byte-identically** on `structure`,
-    `source_binding`, `representation_sha256`, and `counts`. Any disagreement fails CI with a diff.
-  - **`source_binding` trichotomy**: `matched` with the correct PDF; `mismatched` with a different
-    PDF; `not_checked` with no `--source-artifact`. One test each.
-  - **`structure: invalid`** on a deliberately malformed grounding artifact, with the engine and
-    Ethos agreeing it is invalid.
-  - **Double-run byte identity**: the full `classify → extract → ground → grounding-check` path over
-    the corpus, twice, produces byte-identical **files** — not merely identical payloads. Volatile
-    diagnostics are off by default.
-  - **Oracle absence is loud**: with the `ethos` binary unavailable, the test **fails** with a named
-    error. It never skips, never passes vacuously, never emits a stub report.
-  - Exit codes: **0** valid *(and matched, or not checked)*, **1** invalid structure *or a source
-    that does not bind*, **2** could-not-read. Ethos returns 2 for the middle two; the engine keeps
-    them apart and both agree on zero-versus-non-zero, which is what a shell predicate reads.
-
-- **Review checklist:**
-  - [ ] `grounding-check` contains no verification logic — grep for claim, verdict, `grounded`,
-        `evidence_tier`
-  - [ ] Oracle failure is loud and never degrades to a skip
-  - [ ] Byte identity asserted on files, not on parsed values
-  - [ ] All 15 fixtures are in the harness, including the ones that exit 2
-  - [ ] Nothing is re-derived from an Ethos report — reports would be relayed verbatim if relayed at
-        all (and at v0, they are not)
-
-- **Depends on:** M5.
-
----
-
-## M7 — CLI, library freeze, v0 exit criteria green
-
-- **Goal:** v0. The public surface is what it will be, the exit criteria are green as CI jobs, and
-  the fuzz and mutation layers are running.
-
-- **In:** The four subcommands finalized with their exit-code mapping; the library API surface
-  reviewed and frozen; `--diagnostics` as opt-in with volatile data excluded from fingerprints;
-  `cargo-fuzz` target on the PDF entry point; mutation testing over every fixture; the classification
-  bound test wired into CI; README and `docs/` cross-links updated; `03-V0-SCOPE.md` §5 checklist
-  green line by line.
-
-- **Out:** Any new capability. Any performance claim. Any published benchmark table. SDKs, MCP, WASM.
-
-- **Artifacts / APIs:** `ethos-parser {classify|extract|ground|grounding-check}`; the frozen
-  `ethos-parser-core` / `ethos-parser-pdf` / `ethos-parser-grounding` public API; a tagged v0.
-
-- **Acceptance tests:**
-  - **Every line of `03-V0-SCOPE.md` §5 is a green CI job.** Not a review judgement — a job.
-  - **CLI is a thin shell**: every subcommand behaviour is reachable through the library, proved by
-    library-level tests that do not invoke the binary.
-  - **`cargo-fuzz`** runs clean over the corpus seed set; a discovered panic is a release blocker.
-  - **Mutation testing** covers every fixture; surviving mutants are triaged, and any survivor
-    indicating an assertion that passes for the wrong reason is fixed.
-  - **Classification bound test** in CI: 500-page at N=8 within 20% of 8-page at similar bytes/page.
-  - **`grep -ri confidence`** over the whole tree's public surface returns nothing.
-  - **No verification code exists** anywhere in the tree — asserted by a grep test in CI, not by
-    inspection.
-  - **`cargo deny check`** green.
-  - Double-run byte identity green across the corpus.
-
-- **Review checklist:**
-  - [x] Public API reviewed deliberately — every exported item is intended to be supported.
-        `docs/PUBLIC-API.md` is the list; `public_api.rs` fails if the two disagree
-  - [x] No performance number appears in README or docs without a committed harness producing it.
-        The README's only quantitative claim is the bound-test counter, which
-        `v0-classify-bound` prints
-  - [x] No competitor comparison, ranking, or bake-off table anywhere
-  - [x] Every `03-V0-SCOPE.md` §5 item maps to a named CI job — and `v0_exit_criteria.rs` checks
-        the mapping in both directions
-  - [x] Version and `parser_version` are consistent at **0.1.0**. **Not tagged:** tagging is a
-        decider step, so the freeze is in-tree and the tag is a separate deliberate act
-  - [x] `07-VERIFY-BOUNDARY.md` still describes reality — re-read at M7; nothing
-        verification-shaped shipped, and the `v0-no-verify` grep is now a job
-
-- **What M7 actually changed**, for the record, since "freeze and prove" reads like a no-op:
-  - `--diagnostics`, opt-in, stderr-only, structurally outside every fingerprint
-  - `ethos-parser-pdf`'s parsing machinery narrowed to `pub(crate)`; the narrowing surfaced five dead
-    items the compiler could not previously see, two of which were genuinely unread state
-  - a fixture-mutation suite over all 23 manifest fixtures, with survivors pinned and triaged —
-    one triage finding was a mutation that "applied" to the two NIST benchmarks by matching bytes
-    inside a Flate stream, which would have gone green while proving nothing
-  - `Interpreter::run` now discards partial output on refusal. Nothing downstream was ever wrong,
-    but the guarantee was the call site's rather than the type's, and the test meant to cover it
-    passed for the wrong reason
-  - workspace 0.0.0 → 0.1.0, which moves `profile_sha256` by design
-
-- **Depends on:** M6.
-
----
-
-## Cross-milestone standing rules
-
-These apply to every PR in every milestone. They are repeated here because they are the ones that get
-violated under deadline pressure.
-
-1. **No public confidence field, ever** — `01-CONTRACT.md` §9
-2. **No box derived from a font size** — typed absence instead
-3. **No silent drop** — no text, no operator, no page, no character disappears without a typed
-   diagnostic
-4. **No invented coordinate, identifier, fingerprint, or pagination** — Workbench rule 3
-5. **Fail closed, and distinguishably** — three exit codes, named errors
-6. **Byte identity is a test, not an aspiration** — two runs, identical files
-7. **The Ethos tree is read-only** — contracts, fixtures, and the CLI oracle; never an edit
-8. **No verification code in this repo at v0** — `07-VERIFY-BOUNDARY.md`
+1. **No public confidence field, ever.**
+2. **No box derived from a font size** — typed absence instead.
+3. **No silent drop.** No text, operator, page or character disappears without a typed diagnostic.
+4. **No invented coordinate, identifier, fingerprint or page number.**
+5. **Fail closed, and distinguishably** — three exit codes, named errors.
+6. **Byte identity is a test, not an aspiration.**
+7. **The Ethos tree is read-only.**
+8. **No verification code in this repository.**
