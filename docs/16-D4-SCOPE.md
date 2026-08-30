@@ -179,7 +179,7 @@ The limitation is declared on the artifact, not only here.
 | Slice | Theme | State |
 | --- | --- | --- |
 | **S0** | This document and the milestones | done |
-| **S1** | `order` returns regions beside the permutation; ordering byte-identical; no wire change | |
+| **S1** | `arrange_page` returns regions beside the permutation; ordering byte-identical; no wire change | done |
 | **S2** | `region` on `Node`, absent where no cut; schema, fixtures and goldens | |
 | **S3** | Markdown and HTML project region boundaries; anchor map still tiles | |
 | **S4** | The declared limitation, and `ci/bench.py --check` green against the S0 baseline | |

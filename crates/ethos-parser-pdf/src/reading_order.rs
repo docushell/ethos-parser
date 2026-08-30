@@ -212,6 +212,106 @@ pub struct RunGeometry {
     pub advance: Option<i64>,
 }
 
+/// What one page's cut produced: the order, and the regions it made getting there (D4-S1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Arrangement {
+    /// A permutation of `0..runs.len()`, exactly as [`order`] returns it.
+    pub order: Vec<usize>,
+    /// Per run **in stream order**, the 1-based region the cut placed it in.
+    ///
+    /// `None` on every run of a page the cut did not divide — which is the overwhelmingly common
+    /// single-column case, and is a real answer rather than a missing one. `docs/16-D4-SCOPE.md`
+    /// §4 is why absence carries it instead of `Some(1)` on every run: a field that never varies
+    /// informs nobody, and the profile's reading-order rule already says which rule ran.
+    ///
+    /// Indexed by stream position, **not** by position in [`Self::order`], so a caller may apply
+    /// the two independently and in either order.
+    pub regions: Vec<Option<u32>>,
+}
+
+/// Which column band each atom ended in.
+///
+/// # A region is what the **vertical** cut separated, and nothing finer
+///
+/// The recursion alternates axes, so its leaves are much smaller than its columns: within a band,
+/// [`horizontal_cut`] cuts at the widest gap *and every gap tied with it*, and body text set with
+/// uniform leading has every baseline gap tied. Numbering the leaves would therefore put one
+/// region on **every line** of a multi-column page — a line number wearing a block's name, at a
+/// cost paid on every node.
+///
+/// So a horizontal cut passes its region **through** to the blocks it makes, and only a vertical
+/// cut opens new ones. Two atoms share a region exactly when no vertical cut ever separated them,
+/// which is the fact `docs/16-D4-SCOPE.md` §3 promised: *where does this sit*, at the granularity
+/// the rule is named for.
+struct Regions {
+    /// An opaque band identity per atom. Distinctness is all that is required of these — the
+    /// numbers a caller sees are assigned in [`Self::per_run`], from the finished order.
+    of_atom: Vec<u32>,
+    /// Bands opened so far.
+    opened: u32,
+}
+
+impl Regions {
+    fn new(atoms: usize) -> Self {
+        Self {
+            of_atom: vec![0; atoms],
+            opened: 0,
+        }
+    }
+
+    /// Open a band, returning its identity.
+    fn open(&mut self) -> u32 {
+        self.opened += 1;
+        self.opened
+    }
+
+    /// Record that a leaf group belongs to the band it was reached through.
+    fn assign(&mut self, group: &[usize], band: u32) {
+        for &a in group {
+            self.of_atom[a] = band;
+        }
+    }
+
+    /// Number the bands 1..n **in reading order**, per run.
+    ///
+    /// The identities handed out by [`Self::open`] ascend in the order bands are *entered*, which
+    /// is not the order they are read once a band subdivides — and some are never assigned to
+    /// anything, because a band that splits further has no atoms of its own. Numbering here, off
+    /// the finished order, is what makes the sequence both dense and ascending without either
+    /// property having to be argued from the shape of the recursion.
+    ///
+    /// **One region means no division**, and every run comes back `None`: a page whose vertical
+    /// cut refused is one region by definition, and saying so on every node would be noise on the
+    /// common case rather than evidence.
+    ///
+    /// A table is one atom, so a table's runs all share its region — the cut saw the grid as a
+    /// single object and this reports what the cut saw.
+    fn per_run(&self, atoms: &[Atom], runs: usize, order: &[usize]) -> Vec<Option<u32>> {
+        let mut band = vec![0u32; runs];
+        for (i, atom) in atoms.iter().enumerate() {
+            for &m in &atom.members {
+                band[m] = self.of_atom[i];
+            }
+        }
+
+        let mut out = vec![None; runs];
+        let mut region = 0u32;
+        let mut previous: Option<u32> = None;
+        for &r in order {
+            if previous != Some(band[r]) {
+                region += 1;
+                previous = Some(band[r]);
+            }
+            out[r] = Some(region);
+        }
+
+        if region < 2 {
+            return vec![None; runs];
+        }
+        out
+    }
+}
+
 /// An indivisible unit of page content.
 ///
 /// **A cut never runs through one.** The whole of decision 6 lives in this type: a table's runs
@@ -252,19 +352,46 @@ struct Atom {
 /// **The identity permutation is a real answer**, not a fallback state: it is what a single-column
 /// page means under this rule.
 pub fn order(runs: &[RunGeometry], tables: &[QuantRect]) -> Vec<usize> {
+    arrange_page(runs, tables).order
+}
+
+/// The reading order of one page **and the regions the cut made getting there** (D4-S1).
+///
+/// [`order`] is this function with the second half dropped, and is kept because every test of the
+/// ordering was written against it: the claim *"D4 did not move reading order"* is a `diff` of
+/// those tests' subject, not a rewrite of them.
+///
+/// # Why the regions were worth keeping
+///
+/// The cut already computes them. `arrange_columns` and `arrange_blocks` divide the page and then
+/// return a flat permutation, discarding which side of each gutter a run ended on — so a consumer
+/// receives the runs of a two-column page in the right sequence and cannot tell the page had two
+/// columns. Nothing new is measured here and no constant moves; this is the same recursion,
+/// reporting what it already decided (`docs/16-D4-SCOPE.md` §2).
+pub fn arrange_page(runs: &[RunGeometry], tables: &[QuantRect]) -> Arrangement {
     if runs.len() < 2 {
-        return (0..runs.len()).collect();
+        return Arrangement {
+            order: (0..runs.len()).collect(),
+            regions: vec![None; runs.len()],
+        };
     }
 
     let atoms = atomize(runs, tables);
-    let arranged = arrange(&atoms);
+    let mut regions = Regions::new(atoms.len());
+    let arranged = arrange(&atoms, &mut regions);
 
     let mut out = Vec::with_capacity(runs.len());
     for a in arranged {
         out.extend_from_slice(&atoms[a].members);
     }
     debug_assert_eq!(out.len(), runs.len(), "reordering is a permutation");
-    out
+
+    let regions = regions.per_run(&atoms, runs.len(), &out);
+    debug_assert_eq!(regions.len(), runs.len(), "every run is answered for");
+    Arrangement {
+        order: out,
+        regions,
+    }
 }
 
 /// Group the page's runs into atoms: one per table, one per loose run.
@@ -350,21 +477,41 @@ fn extent(run: &RunGeometry) -> (i64, i64) {
 /// returns the identity — content-stream order, untouched. That is decision 10 and it is what
 /// makes the change safe for the corpus: a single-column page is byte-identical before and after
 /// this slice apart from the profile hash and the rule id.
-fn arrange(atoms: &[Atom]) -> Vec<usize> {
+fn arrange(atoms: &[Atom], regions: &mut Regions) -> Vec<usize> {
     let index: Vec<usize> = (0..atoms.len()).collect();
-    arrange_columns(atoms, &index, 0)
+    let whole = regions.open();
+    arrange_columns(atoms, &index, 0, regions, whole)
 }
 
-fn arrange_columns(atoms: &[Atom], block: &[usize], depth: usize) -> Vec<usize> {
+/// `band` is the region this group was reached through — a fresh one per accepted column, and the
+/// caller's own everywhere else (D4-S1).
+fn arrange_columns(
+    atoms: &[Atom],
+    block: &[usize],
+    depth: usize,
+    regions: &mut Regions,
+    band: u32,
+) -> Vec<usize> {
     if block.len() < 2 || depth >= MAX_CUT_DEPTH {
+        regions.assign(block, band);
         return block.to_vec();
     }
     match vertical_cut(atoms, block) {
+        // **The one place a region is born.** Each band is opened inside the closure rather than
+        // ahead of the loop, so identities are handed out in the order `collect` drives them.
         Some(bands) => bands
             .iter()
-            .flat_map(|b| arrange_blocks(atoms, b, depth + 1))
+            .flat_map(|b| {
+                let opened = regions.open();
+                arrange_blocks(atoms, b, depth + 1, regions, opened)
+            })
             .collect(),
-        None => block.to_vec(),
+        // No gutter met the rule, so this whole group is one region — the same decision the
+        // returned order expresses.
+        None => {
+            regions.assign(block, band);
+            block.to_vec()
+        }
     }
 }
 
@@ -372,8 +519,15 @@ fn arrange_columns(atoms: &[Atom], block: &[usize], depth: usize) -> Vec<usize> 
 ///
 /// Reached only from inside an accepted vertical cut, which is why a horizontal gutter cannot
 /// reorder a page that never split into columns.
-fn arrange_blocks(atoms: &[Atom], band: &[usize], depth: usize) -> Vec<usize> {
+fn arrange_blocks(
+    atoms: &[Atom],
+    band: &[usize],
+    depth: usize,
+    regions: &mut Regions,
+    region: u32,
+) -> Vec<usize> {
     if band.len() < 2 || depth >= MAX_CUT_DEPTH {
+        regions.assign(band, region);
         return band.to_vec();
     }
     match horizontal_cut(atoms, band) {
@@ -385,11 +539,17 @@ fn arrange_blocks(atoms: &[Atom], band: &[usize], depth: usize) -> Vec<usize> {
         // apart line by line instead, and lines of a two-column page emitted top to bottom are
         // **row-major** — reading across the gutter, which is the interleaving this slice exists
         // to end.
+        // **The region passes through.** Stacked blocks within one column are one column, and
+        // numbering them apart would put a region on every line of ordinary body text — see
+        // [`Regions`]. A block that splits into columns opens new ones on the way back up.
         Some(blocks) => blocks
             .iter()
-            .flat_map(|b| arrange_columns(atoms, b, depth + 1))
+            .flat_map(|b| arrange_columns(atoms, b, depth + 1, regions, region))
             .collect(),
-        None => band.to_vec(),
+        None => {
+            regions.assign(band, region);
+            band.to_vec()
+        }
     }
 }
 
@@ -568,6 +728,167 @@ mod tests {
             run(7_200, 6_000),  // Left top
             run(7_200, 8_800),  // Left bottom
         ]
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // D4-S1: the regions the cut made. Nothing below may change the order — the tests above are
+    // the subject of that claim and none of them was touched.
+    // ---------------------------------------------------------------------------------------
+
+    /// **The claim S1 exists to make.** Every ordering assertion in this module calls [`order`],
+    /// and [`order`] is now [`arrange_page`] with the regions dropped — so the tests above are
+    /// evidence about the new code path rather than about a retired one.
+    #[test]
+    fn keeping_the_regions_did_not_move_the_order() {
+        let cases: Vec<(Vec<RunGeometry>, Vec<QuantRect>)> = vec![
+            (two_columns(), vec![]),
+            (vec![run(7_200, 7_200), run(7_200, 9_600)], vec![]),
+            (
+                vec![
+                    run(7_200, 7_200),
+                    run(22_000, 7_200),
+                    run(7_200, 9_600),
+                    run(22_000, 9_600),
+                ],
+                vec![QuantRect {
+                    x0: 6_000,
+                    y0: 6_000,
+                    x1: 30_000,
+                    y1: 11_000,
+                }],
+            ),
+            (vec![], vec![]),
+        ];
+        for (runs, tables) in cases {
+            assert_eq!(
+                arrange_page(&runs, &tables).order,
+                order(&runs, &tables),
+                "the two entry points must not disagree about reading order"
+            );
+        }
+    }
+
+    /// A page the rule never divided reports **no** region, rather than one region.
+    ///
+    /// `docs/16-D4-SCOPE.md` §4: a value on every node of the common case is a field that never
+    /// varies, and the profile's reading-order rule already says which rule ran.
+    #[test]
+    fn a_page_the_cut_never_divided_reports_no_region() {
+        let single = vec![run(7_200, 7_200), run(7_200, 9_600), run(7_200, 12_000)];
+        assert_eq!(
+            arrange_page(&single, &[]).regions,
+            vec![None, None, None],
+            "no gutter met the rule, so there is no division to report"
+        );
+
+        // Below the two-run floor, and the empty page.
+        assert_eq!(arrange_page(&single[..1], &[]).regions, vec![None]);
+        assert_eq!(arrange_page(&[], &[]).regions, Vec::<Option<u32>>::new());
+    }
+
+    /// Two columns come back as two regions, numbered in reading order rather than stream order.
+    #[test]
+    fn each_column_is_its_own_region_numbered_in_reading_order() {
+        let page = arrange_page(&two_columns(), &[]);
+        // `two_columns` draws the RIGHT column first, and reading order is left column first.
+        assert_eq!(page.order, vec![2, 3, 0, 1]);
+        assert_eq!(
+            page.regions,
+            vec![Some(2), Some(2), Some(1), Some(1)],
+            "regions are indexed by stream position and numbered by reading position: the two \
+             runs the stream drew first are the ones read second"
+        );
+
+        // The invariant that makes the field usable: reading the regions in reading order gives a
+        // sequence that never decreases.
+        let seen: Vec<u32> = page
+            .order
+            .iter()
+            .map(|&i| page.regions[i].expect("a divided page answers for every run"))
+            .collect();
+        assert!(
+            seen.windows(2).all(|w| w[0] <= w[1]),
+            "regions must ascend in reading order, got {seen:?}"
+        );
+    }
+
+    /// **Lines are not regions**, and this is the test that says so.
+    ///
+    /// The first draft numbered the recursion's leaves. Within a column [`horizontal_cut`] cuts at
+    /// the widest gap *and every gap tied with it*, and body text set with uniform leading has
+    /// every baseline gap tied at exactly the leading — so every line came back as its own region,
+    /// on every node, of every multi-column page. A region would have been a line number wearing a
+    /// block's name.
+    ///
+    /// Five evenly-leaded lines per column is the shape that found it.
+    #[test]
+    fn stacked_lines_within_one_column_are_one_region() {
+        let mut runs = Vec::new();
+        for line in 0..5 {
+            let y = 6_000 + line * 1_200; // 12pt leading, well past BLOCK_GUTTER_MIN
+            runs.push(run(7_200, y)); // left column
+            runs.push(run(22_000, y)); // right column
+        }
+        let page = arrange_page(&runs, &[]);
+        let distinct: std::collections::BTreeSet<Option<u32>> =
+            page.regions.iter().copied().collect();
+        assert_eq!(
+            distinct.len(),
+            2,
+            "two columns of five lines is two regions, not ten — got {:?}",
+            page.regions
+        );
+
+        let left: Vec<Option<u32>> = page.regions.iter().step_by(2).copied().collect();
+        let right: Vec<Option<u32>> = page.regions.iter().skip(1).step_by(2).copied().collect();
+        assert!(
+            left.iter().all(|r| *r == left[0]) && right.iter().all(|r| *r == right[0]),
+            "every line of a column shares that column's region"
+        );
+        assert_ne!(left[0], right[0], "the two columns are different regions");
+    }
+
+    /// A table is one atom, so its runs share one region — the cut saw one object and this says so.
+    #[test]
+    fn a_tables_runs_all_share_one_region() {
+        let runs = vec![
+            run(7_200, 7_200),
+            run(22_000, 7_200),
+            run(7_200, 9_600),
+            run(22_000, 9_600),
+            // A loose run below the table, far enough down to be its own block.
+            run(7_200, 30_000),
+        ];
+        let table = QuantRect {
+            x0: 6_000,
+            y0: 6_000,
+            x1: 30_000,
+            y1: 11_000,
+        };
+        let page = arrange_page(&runs, &[table]);
+        let inside: Vec<Option<u32>> = page.regions[..4].to_vec();
+        assert!(
+            inside.iter().all(|r| *r == inside[0]),
+            "the grid's four runs are one atom and must not be split across regions, got {inside:?}"
+        );
+    }
+
+    /// Every run of a divided page is answered for, and no region number is skipped.
+    ///
+    /// A gap in the sequence would read as a block that was dropped, which is the one failure here
+    /// that no count downstream would catch.
+    #[test]
+    fn regions_are_dense_and_total() {
+        let page = arrange_page(&two_columns(), &[]);
+        let mut got: Vec<u32> = page.regions.iter().filter_map(|r| *r).collect();
+        assert_eq!(got.len(), page.regions.len(), "every run is answered for");
+        got.sort_unstable();
+        got.dedup();
+        assert_eq!(
+            got,
+            (1..=got.len() as u32).collect::<Vec<_>>(),
+            "regions are 1-based and contiguous"
+        );
     }
 
     #[test]
