@@ -1928,6 +1928,82 @@ mod tests {
     /// text on a page that moved, which is the one failure here that no artifact would show — a
     /// cell claiming text it does not contain.
     #[test]
+    /// **D4-S2: the region is attached before the renumber, and this is the only thing that says
+    /// so.**
+    ///
+    /// `arrange_page` returns regions indexed by **stream** position, and `reorder_page` then
+    /// moves whole `TextRun` values into reading order. Assigning one line later — after the move
+    /// — would label every run with the region belonging to whatever run used to sit at its index,
+    /// and the artifact would still be well-formed: every run would carry a plausible region, the
+    /// count would be right, the numbers would be contiguous, and nothing downstream would
+    /// disagree. A mislabelled page is indistinguishable from a correct one **on the wire**, which
+    /// is why the check has to live here against the permutation rather than against an artifact.
+    ///
+    /// The guard is the one `cell_text_survives_the_reordering` uses: a fixture that does not
+    /// actually reorder proves nothing, because the two orders coincide.
+    #[test]
+    fn the_region_follows_its_own_run_through_the_reordering() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+        assert_ne!(
+            order,
+            (0..runs.len()).collect::<Vec<_>>(),
+            "the fixture must actually reorder, or stream and reading order coincide and this \
+             test cannot tell a correct assignment from a late one"
+        );
+
+        let geometry: Vec<crate::reading_order::RunGeometry> = runs
+            .iter()
+            .map(|r| crate::reading_order::RunGeometry {
+                x: r.locator.origin_x,
+                y: r.locator.origin_y,
+                advance: r.locator.advance,
+            })
+            .collect();
+        let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
+        let arranged = crate::reading_order::arrange_page(&geometry, &boxes);
+        assert!(
+            !arranged.regions.is_empty(),
+            "this page divides, or there is no region to follow"
+        );
+
+        // Remember which TEXT each region belongs to, before anything moves. Text is the handle
+        // that survives the permutation; an index is exactly what does not.
+        let expected: Vec<(String, Option<u32>)> = runs
+            .iter()
+            .zip(&arranged.regions)
+            .map(|(r, region)| (r.text.clone(), *region))
+            .collect();
+
+        for (run, region) in runs.iter_mut().zip(&arranged.regions) {
+            run.region = *region;
+        }
+        reorder_page(&mut runs, &mut tables, &arranged.order);
+
+        for run in &runs {
+            let (_, want) = expected
+                .iter()
+                .find(|(text, _)| *text == run.text)
+                .expect("reordering is a permutation, so every text survives it");
+            assert_eq!(
+                run.region, *want,
+                "`{}` came out of the reordering carrying region {:?}, but the cut put it in \
+                 {:?} — the assignment is running on the wrong side of `reorder_page`",
+                run.text, run.region, want
+            );
+        }
+
+        // And the fixture is worth having: the table's column and the loose column really did
+        // land in different regions, so a swap would have been visible above.
+        let distinct: std::collections::BTreeSet<Option<u32>> =
+            runs.iter().map(|r| r.region).collect();
+        assert_eq!(
+            distinct.len(),
+            2,
+            "the grid and the column beside it are two regions, got {distinct:?}"
+        );
+    }
+
+    #[test]
     fn cell_text_survives_the_reordering() {
         let (mut runs, mut tables, order) = a_table_beside_a_column();
 

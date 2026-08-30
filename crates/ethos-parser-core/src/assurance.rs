@@ -645,7 +645,17 @@ impl Capabilities {
                  advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
                  rather than a measured width and judges gutters against that floor. No extent is \
                  ever derived from a font size. Where the rule finds no gutter it reorders \
-                 nothing, which is what a single-column page means and not a failure to look.",
+                 nothing, which is what a single-column page means and not a failure to look. \
+                 THE `region` FIELD, added at D4-S2, is that same cut reporting where it put \
+                 each run, and it says less than its name may suggest. A region is opened by a \
+                 VERTICAL cut only, so a region boundary is a COLUMN boundary: runs stacked \
+                 within one column share one region however many paragraphs, headings or blank \
+                 lines separate them on the page, and a region is therefore NOT a paragraph, a \
+                 heading, a section or anything a role could be read from — roles come from the \
+                 structure tree or from nowhere. The number is also a FLAT ordinal over a cut \
+                 that recurses, so it says two runs are in different regions and never why the \
+                 boundary between them exists or how deeply it nests. Where the field is ABSENT \
+                 the cut made no division, which is not the same claim as `single column`.",
             ));
         } else {
             out.push(Limitation::profile(

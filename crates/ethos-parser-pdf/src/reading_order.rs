@@ -293,6 +293,16 @@ impl Regions {
     /// A table is one atom, so a table's runs all share its region — the cut saw the grid as a
     /// single object and this reports what the cut saw.
     fn per_run(&self, atoms: &[Atom], runs: usize, order: &[usize]) -> Vec<Option<u32>> {
+        // **Decide before allocating.** [`Self::open`] is called once for the page and then once
+        // per band of an accepted vertical cut, and a cut yields at least two bands — so a page
+        // the cut never divided has opened exactly one, and one is the whole test. An earlier
+        // draft built both vectors below and threw them away here, which put two allocations and
+        // two passes over every run on the single-column page that is most of every corpus, in
+        // order to return nothing.
+        if self.opened < 2 {
+            return Vec::new();
+        }
+
         let mut band = vec![0u32; runs];
         for (i, atom) in atoms.iter().enumerate() {
             for &m in &atom.members {

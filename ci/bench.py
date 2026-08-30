@@ -128,6 +128,19 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    # A gate on one sample is not a gate. `--repeat 1` makes "median" a synonym for "whichever
+    # run happened", and it fired: a slice measured at +26% on the smallest fixture was, over
+    # eleven runs, +0.7% — the whole excursion was one descheduled sample on a 15 ms document.
+    # Recording a baseline with `--repeat 1` is allowed, because a baseline is a record rather
+    # than a verdict; checking against one is not.
+    if args.check and args.repeat < 3:
+        print(
+            f"engine: --check needs --repeat 3 or more, got {args.repeat}. The median of one "
+            f"sample is that sample, and this instrument's tolerance assumes a median.",
+            file=sys.stderr,
+        )
+        return 2
+
     if not BINARY.exists():
         print(
             f"engine: no release binary at {BINARY}. Run `cargo build --release --locked` first.",
