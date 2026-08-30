@@ -37,7 +37,7 @@
 //!
 //! # Why it lives in `ethos-parser-core`
 //!
-//! Because it must be reachable as a **library** call — `docs/05-MILESTONES.md`'s thin-shell rule
+//! Because it must be reachable as a **library** call — `docs/history/05-MILESTONES.md`'s thin-shell rule
 //! applies to `ethos-parser verify` exactly as it applies to the other eight subcommands, and
 //! `ethos-parser-cli` exports nothing. `ethos-parser-core` is the only crate every other one depends on, and
 //! this module keeps the crate's rules: it holds no PDF concept and no verification concept. It
@@ -71,7 +71,7 @@ pub const RELAY_REFUSED: i32 = 1;
 /// A missing binary, a spawn failure, or any child status the engine does not have a meaning
 /// for. Deliberately the same code the other subcommands use for could-not-read: a caller
 /// distinguishing "the check failed" from "the check did not run" is the whole point of keeping
-/// 1 and 2 apart (`docs/03-V0-SCOPE.md` §3.1).
+/// 1 and 2 apart (`docs/history/03-V0-SCOPE.md` §3.1).
 pub const RELAY_UNAVAILABLE: i32 = 2;
 
 /// A resolved verifier binary, with the identity that pins it.

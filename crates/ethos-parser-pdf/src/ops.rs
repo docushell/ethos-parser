@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The content-stream operator set, enumerated (`docs/05-MILESTONES.md` M3).
+//! The content-stream operator set, enumerated (`docs/history/05-MILESTONES.md` M3).
 //!
 //! # Why an enum and not a string match
 //!

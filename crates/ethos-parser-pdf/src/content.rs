@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The content-stream interpreter (`docs/05-MILESTONES.md` M3).
+//! The content-stream interpreter (`docs/history/05-MILESTONES.md` M3).
 //!
 //! # Exhaustive dispatch, and what that buys
 //!
@@ -107,7 +107,7 @@ pub struct ImagePlacement {
 /// One axis-aligned rectangle a page's path operators drew, in **user space**.
 ///
 /// v1-S1. Captured because a ruled table is a table the document *drew*: the ruling lines are
-/// evidence, not an inference about layout. `docs/08-V1-SCOPE.md` §5 is why that distinction is
+/// evidence, not an inference about layout. `docs/history/08-V1-SCOPE.md` §5 is why that distinction is
 /// worth a slice boundary.
 ///
 /// Held as `f64` here and quantized on the way to the artifact, exactly as a glyph origin is —
@@ -536,7 +536,7 @@ impl<'a> Interpreter<'a> {
             // --- path construction: interpreted as of v1-S1 ---------------------------------
             //
             // These were acknowledged-skips through v0.1. A ruled table is a table the document
-            // *drew*, so the ruling lines are evidence and have to be read (`docs/08-V1-SCOPE.md`
+            // *drew*, so the ruling lines are evidence and have to be read (`docs/history/08-V1-SCOPE.md`
             // §5). Only axis-aligned geometry is captured, and only after a painting operator
             // says ink reached the page.
             Rectangle => {
@@ -1067,7 +1067,7 @@ mod tests {
     #[test]
     fn a_curve_is_never_flattened_into_ruling_lines() {
         // Tessellating a Bezier would manufacture straight edges for a table drawn with curves —
-        // the clearest possible case of inventing geometry (docs/09-V1-MILESTONES.md S1).
+        // the clearest possible case of inventing geometry (docs/history/09-V1-MILESTONES.md S1).
         let fonts = no_fonts();
         let mut i = Interpreter::new(&fonts);
         i.run(&ops("40 80 m 140 80 l 140 120 40 120 40 80 c h S"))

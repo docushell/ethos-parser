@@ -173,7 +173,7 @@ fn a_near_miss_is_refused_without_naming_a_pdf_header() {
 ///
 /// **The EPUB half of this test moved to `epub_cli.rs` at v2-S9**, which reads it. What stays is
 /// the format nothing in this engine speaks: a `.csv` cannot be told from prose without a reader,
-/// so it takes the true-unknown-bytes path — argued in `docs/15-V2-MILESTONES.md` S10 rather than
+/// so it takes the true-unknown-bytes path — argued in `docs/history/15-V2-MILESTONES.md` S10 rather than
 /// guessed at here, because a detector that sniffed commas would claim every comma file.
 ///
 /// **Strengthened at v2-S10, not replaced.** The CSV half asserted exit 2 and empty stdout and

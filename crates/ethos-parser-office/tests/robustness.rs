@@ -420,7 +420,7 @@ enum Mutation {
     /// artifact binds to the mutant's digest, so nothing claims to be the original — which is
     /// exactly the property `a_surviving_mutant_never_claims_to_be_the_original` exists to hold.
     /// Whether `zip.rs` should verify CRC-32 is a real question about a hand-rolled reader, and it
-    /// is recorded in `docs/15-V2-MILESTONES.md` S13 rather than answered here.
+    /// is recorded in `docs/history/15-V2-MILESTONES.md` S13 rather than answered here.
     MainPartByteFlipped,
     /// The first four bytes overwritten, so content-based detection has nothing to recognise.
     ///
@@ -861,7 +861,7 @@ const EXPECTED_INAPPLICABLE: [&str; 44] = [
 /// **No mutant panics, and every refusal is named.**
 ///
 /// The load-bearing test. A panic here is a release blocker; an unnamed refusal is a caller that
-/// cannot route the failure, which `docs/03-V0-SCOPE.md` §3.1 exists to prevent. v2-S9's first
+/// cannot route the failure, which `docs/history/03-V0-SCOPE.md` §3.1 exists to prevent. v2-S9's first
 /// adversarial finding was a panic in the percent-decoder reachable from a crafted `href`, and the
 /// review record says it survived to review precisely because office code was unexercised this
 /// way.
@@ -902,7 +902,7 @@ fn no_mutant_panics_and_every_refusal_is_named() {
     );
     assert!(
         panics.is_empty(),
-        "{} mutant(s) panicked. A panic is a release blocker (docs/05-MILESTONES.md M7): the \
+        "{} mutant(s) panicked. A panic is a release blocker (docs/history/05-MILESTONES.md M7): the \
          engine must refuse damaged input with a named error, never crash on it.\n  {}",
         panics.len(),
         panics.join("\n  ")

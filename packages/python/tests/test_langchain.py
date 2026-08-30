@@ -14,7 +14,7 @@
 
 """The LangChain tools — v1.2-S4, and the split is the whole slice.
 
-`docs/12-V12-SCOPE.md` §3: **locators live in the artifact, never in the prose a model reads and
+`docs/history/12-V12-SCOPE.md` §3: **locators live in the artifact, never in the prose a model reads and
 edits.** In this framework that is ``ToolMessage.artifact`` versus ``ToolMessage.content``, and
 these tests are that sentence as executables.
 

@@ -1354,7 +1354,7 @@ mod tests {
             f1 <= GATE_PERMILLE,
             "macro cell-F1 is {f1}‰, which CLEARS the {GATE_PERMILLE}‰ gate. That is the good \
              outcome and it must not pass silently: update `docs/table-gate-v1.md`, tick S7 in \
-             `docs/09-V1-MILESTONES.md` and `docs/08-V1-SCOPE.md` §4, and invert this assertion \
+             `docs/history/09-V1-MILESTONES.md` and `docs/history/08-V1-SCOPE.md` §4, and invert this assertion \
              to a floor."
         );
     }

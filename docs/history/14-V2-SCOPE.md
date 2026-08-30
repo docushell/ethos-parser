@@ -27,7 +27,7 @@ The gate is stated in the north star and the roadmap in the same words:
 
 > A DOCX quote and an XLSX cell both ground; **no synthesised pages**
 
-The second clause is not a footnote — it is the whole hazard, and [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md)
+The second clause is not a footnote — it is the whole hazard, and [`06-STEAL-REFUSE.md`](../06-STEAL-REFUSE.md)
 already refuses the shortest path to it (row **L30**): converting office files to PDF **invents
 pagination**, and that is a refusal rather than a fallback.
 

@@ -1209,7 +1209,7 @@ EPUB_PACKAGE_WITH_UNREAD = f"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 # The navigation document: a table of contents AND a page-list naming the pages of a print
-# edition. The page-list is the construct docs/14-V2-SCOPE.md §3 forbids minting pages from, and
+# edition. The page-list is the construct docs/history/14-V2-SCOPE.md §3 forbids minting pages from, and
 # it is here so the test that `pages` is empty is not vacuous.
 EPUB_NAV = f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="{XHTML_NS}" xmlns:epub="{EPUB_NS}">

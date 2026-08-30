@@ -544,7 +544,7 @@ set it owns *and* the owner chooses to resume. **Fabrication 0 still binds. v1 i
 
 **Decision #18 in the north star — written and undecided — is what closes this slice.**
 
-The method lives in [`table-gate-v1.md`](table-gate-v1.md): corpus, formula, join rule, whitespace
+The method lives in [`table-gate-v1.md`](../table-gate-v1.md): corpus, formula, join rule, whitespace
 rule, engine version, profile hash, and why a score computed here is not comparable to the published
 number it is named after.
 

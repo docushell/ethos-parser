@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * The handle law in Node — `docs/12-V12-SCOPE.md` §3, as executables.
+ * The handle law in Node — `docs/history/12-V12-SCOPE.md` §3, as executables.
  *
  * | handed to `nodeGet` | expected |
  * | --- | --- |

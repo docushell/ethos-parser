@@ -140,7 +140,7 @@ jobs:
         run: cargo deny check
 
   # -----------------------------------------------------------------------------------------
-  # docs/03-V0-SCOPE.md §5 — every exit criterion, as its own named job
+  # docs/history/03-V0-SCOPE.md §5 — every exit criterion, as its own named job
   # -----------------------------------------------------------------------------------------
   #
   # M7's acceptance is that §5 is CI, not prose: a reviewer must be able to see *which line* is
@@ -319,14 +319,14 @@ jobs:
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
         # No `--skip`, here or anywhere. An exclusion added to make a criterion green would
-        # delete the criterion (docs/05-MILESTONES.md M6).
+        # delete the criterion (docs/history/05-MILESTONES.md M6).
         run: ${{ matrix.run }}
 
   # -----------------------------------------------------------------------------------------
   # v0.1 gates — the roadmap row after v0 (docs/02-ROADMAP.md)
   # -----------------------------------------------------------------------------------------
   #
-  # Deliberately a SEPARATE matrix from `v0-exit-criteria`. That one is docs/03-V0-SCOPE.md §5,
+  # Deliberately a SEPARATE matrix from `v0-exit-criteria`. That one is docs/history/03-V0-SCOPE.md §5,
   # one entry per criterion, and `v0_exit_criteria.rs::every_matrix_job_is_claimed_by_a_criterion`
   # asserts every entry there is named by a §5 line. v0.1's gates are not §5 criteria — v0 is
   # frozen and its map does not move — so they live here and the two stay legible apart.
@@ -393,7 +393,7 @@ jobs:
         run: ${{ matrix.run }}
 
   # -----------------------------------------------------------------------------------------
-  # v1-S1 gates — the first slice of v1 (docs/09-V1-MILESTONES.md)
+  # v1-S1 gates — the first slice of v1 (docs/history/09-V1-MILESTONES.md)
   # -----------------------------------------------------------------------------------------
   #
   # A third matrix, for the same reason v0.1 got a second one: v0's §5 map is frozen and does not

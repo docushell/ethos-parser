@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! M3 acceptance (`docs/05-MILESTONES.md`).
+//! M3 acceptance (`docs/history/05-MILESTONES.md`).
 //!
 //! Fixtures resolve through `fixtures/manifest.json`'s three roots exactly as the oracle harness
 //! resolves them. **A missing corpus is a failure, never a skip.**
@@ -588,7 +588,7 @@ fn every_run_carries_a_native_locator() {
     // **The old floor counted the wrong thing.** `total > 10` counts *runs*, and one small
     // fixture produces more than ten of them — so fifty-four of the fifty-five could have stopped
     // opening or stopped extracting and this gate, which `.github/workflows/ci.yml`'s
-    // `v0-locators` names and `docs/03-V0-SCOPE.md` §5 cites, would have stayed green on the
+    // `v0-locators` names and `docs/history/03-V0-SCOPE.md` §5 cites, would have stayed green on the
     // strength of one document. The quantity that matters is how many fixtures reached the
     // assertions, and forty-four do at v2-S13.1 — the same forty-four
     // `an_injected_unknown_operator_stops_the_parse` counts in `tests/robustness.rs`.
@@ -846,7 +846,7 @@ fn two_columns_reads_column_major_under_the_new_rule() {
 ///
 /// pdf-inspector decides multi-column on `min_lines < 15`: fourteen lines on a page come out
 /// row-interleaved and fifteen come out column-major, so a one-line edit reorders the whole
-/// document (`docs/03-V0-SCOPE.md` §3.2). These two fixtures are that edit. They are the same
+/// document (`docs/history/03-V0-SCOPE.md` §3.2). These two fixtures are that edit. They are the same
 /// page but for one line in the left column, they sit on either side of that boundary, and they
 /// must read the same way.
 ///
@@ -888,7 +888,7 @@ fn one_added_line_does_not_reorder_the_page() {
 
 /// **S2 × S5.** Reordering a two-column page does not make it a table.
 ///
-/// This is the interaction `docs/09-V1-MILESTONES.md` S5 decision 7 names. Before this slice,
+/// This is the interaction `docs/history/09-V1-MILESTONES.md` S5 decision 7 names. Before this slice,
 /// `two-columns` was refused by the alignment rule because its runs arrived right-column-first,
 /// which is not row-major. The reordering could have looked like a fix for that — and it is not
 /// one. Column-major is `Left top, Left bottom, Right top, Right bottom`; row-major would be
@@ -1221,7 +1221,7 @@ fn pdf_with_only_unmappable_text() -> Vec<u8> {
 }
 
 // -------------------------------------------------------------------------------------------
-// v1-S1 — ruled tables (docs/09-V1-MILESTONES.md S1)
+// v1-S1 — ruled tables (docs/history/09-V1-MILESTONES.md S1)
 // -------------------------------------------------------------------------------------------
 
 /// **The ruled golden.** A 3×3 grid the document drew, with one merge and one empty cell.

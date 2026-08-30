@@ -236,7 +236,7 @@ with each other and neither agreeing with the binary. Repaired at v2-S13.3.
 
 ## The thin-shell mapping
 
-`docs/03-V0-SCOPE.md` §1 item 19 and `docs/04-ARCHITECTURE.md` §2 both require that the CLI be a
+`docs/history/03-V0-SCOPE.md` §1 item 19 and `docs/04-ARCHITECTURE.md` §2 both require that the CLI be a
 thin shell — that **every subcommand behaviour be reachable through the library**. This table is
 that mapping, and the right-hand column is what a caller writes instead of spawning a process.
 

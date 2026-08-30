@@ -16,7 +16,7 @@
 //!
 //! # The format that could have had a page, and does not
 //!
-//! `docs/14-V2-SCOPE.md` §3's law has always been *"no page this engine did not read from the
+//! `docs/history/14-V2-SCOPE.md` §3's law has always been *"no page this engine did not read from the
 //! file"* rather than "no page ever", and every format before this one failed the reading half by
 //! construction. A DOCX has no page until a renderer picks one. A slide is a **part**. An ODT's
 //! `<text:soft-page-break/>` is a word processor's arithmetic. A `<draw:page>` is structure. RTF's
@@ -90,7 +90,7 @@
 //!   space; this reader turns it into a space. That is a real difference for a book set in
 //!   Chinese, Japanese or Korean, and it is **not** approximated here: the correct rule needs the
 //!   computed `white-space` value and the scripts on both sides, and this reader reads no style
-//!   sheet. Recorded in `docs/15-V2-MILESTONES.md` S9 as the widest gap this slice knowingly
+//!   sheet. Recorded in `docs/history/15-V2-MILESTONES.md` S9 as the widest gap this slice knowingly
 //!   leaves.
 //!
 //! **No style sheet is read at all**, which is the general case those three are instances of. A
@@ -364,7 +364,7 @@ pub fn unread_entries(entry_names: &[String], read: &[String]) -> u32 {
 ///
 /// Names are resolved against [`NS_CONTAINER`] rather than suffix-matched. `rootfile` and
 /// `full-path` are names other vocabularies use, and both feed an **address** — the rule
-/// `docs/15-V2-MILESTONES.md` S5 states, and the one `ods.rs` re-argues for `table:name`.
+/// `docs/history/15-V2-MILESTONES.md` S5 states, and the one `ods.rs` re-argues for `table:name`.
 fn read_container(part: &[u8]) -> Result<Vec<String>, EngineError> {
     let mut reader = new_ns_reader(part, CONTAINER_PART)?;
     let mut rootfiles: Vec<String> = Vec::new();

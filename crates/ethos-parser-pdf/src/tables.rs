@@ -18,7 +18,7 @@
 //!
 //! A ruling line is **evidence in the document**: the author drew it. An alignment cluster is an
 //! **inference about the document**: the author drew nothing and a detector decided. Those deserve
-//! different derivation classes and different tests, so `docs/09-V1-MILESTONES.md` puts them in
+//! different derivation classes and different tests, so `docs/history/09-V1-MILESTONES.md` puts them in
 //! different slices. Nothing here looks at text alignment. A table with no rules is not found, and
 //! the artifact says the detector looked.
 //!
@@ -793,7 +793,7 @@ impl Lattice {
         let ys = cluster(rects.iter().flat_map(|r| [r.y0, r.y1]));
         // Two lines in each axis bound one face — but **one face is not a table**. A lone
         // rectangle is an underline, a highlight, a text-box border; calling it a 1x1 table would
-        // find one on most pages in existence, and `docs/09-V1-MILESTONES.md` S1 names "a
+        // find one on most pages in existence, and `docs/history/09-V1-MILESTONES.md` S1 names "a
         // fabricated 1x1 table around the page" as a thing this must not do. A grid needs at
         // least two faces.
         if xs.len() < 2 || ys.len() < 2 {

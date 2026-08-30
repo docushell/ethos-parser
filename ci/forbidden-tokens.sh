@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Two of `docs/03-V0-SCOPE.md` §5's lines are greps, so they are a grep — run by CI as the jobs
+# Two of `docs/history/03-V0-SCOPE.md` §5's lines are greps, so they are a grep — run by CI as the jobs
 # `v0-no-confidence` and `v0-no-verify`.
 #
 #   ci/forbidden-tokens.sh confidence     # §5: `grep -ri confidence` returns nothing

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! **§5 is CI, and that is checked** (`docs/05-MILESTONES.md` M7 acceptance 1).
+//! **§5 is CI, and that is checked** (`docs/history/05-MILESTONES.md` M7 acceptance 1).
 //!
-//! `docs/03-V0-SCOPE.md` §5 opens with *"Every line is a CI job, not a judgement call."* That
+//! `docs/history/03-V0-SCOPE.md` §5 opens with *"Every line is a CI job, not a judgement call."* That
 //! sentence is itself a judgement call unless something verifies it, so this does:
 //!
 //! | Assertion | Catches |
@@ -28,7 +28,7 @@
 //!
 //! The `--skip` and zero-filter rows are the ways this scheme goes hollow while still looking
 //! complete. Six milestones ran with a deliberate `--skip` on the oracle test, which M6 removed;
-//! re-adding one deletes the criterion in the process (`docs/05-MILESTONES.md` M6). And a filter
+//! re-adding one deletes the criterion in the process (`docs/history/05-MILESTONES.md` M6). And a filter
 //! naming a test that was since renamed selects nothing at all, so libtest prints `ok. 0 passed`
 //! and the job is green — with every box still ticked and every job still present.
 //!
@@ -65,7 +65,7 @@ fn read(rel: &str) -> String {
 
 /// The `## 5.` … `## 6.` slice of the scope document, checklist only.
 fn section_5() -> String {
-    let doc = read("docs/03-V0-SCOPE.md");
+    let doc = read("docs/history/03-V0-SCOPE.md");
     let start = doc
         .find("## 5. Exit criteria")
         .expect("03-V0-SCOPE.md must have a §5");
@@ -626,7 +626,7 @@ fn every_matrix_job_is_claimed_by_a_criterion() {
 
 /// **The v0.1 gates exist**, and v0's map is untouched by them.
 ///
-/// v0 is frozen: `docs/03-V0-SCOPE.md` §5 is fifteen criteria and stays fifteen. The roadmap row
+/// v0 is frozen: `docs/history/03-V0-SCOPE.md` §5 is fifteen criteria and stays fifteen. The roadmap row
 /// after it — verification by shell-out, encoding detection, the xref decision — gets its own
 /// matrix, and this is what stops that matrix quietly emptying out. Without it, deleting a v0.1
 /// job would fail nothing at all, because §5 does not mention them and never should.
@@ -651,7 +651,7 @@ fn the_v01_gates_exist() {
     assert_eq!(
         v0.len(),
         14,
-        "docs/03-V0-SCOPE.md §5's matrix is fifteen criteria across fourteen entries (fuzz and \
+        "docs/history/03-V0-SCOPE.md §5's matrix is fifteen criteria across fourteen entries (fuzz and \
          mutation share a line); v0 is frozen and this number does not move for v0.1 work"
     );
 }
@@ -751,7 +751,7 @@ fn the_fuzz_target_and_seed_corpus_are_present() {
 
         // The engine entry point this target is for. `office_read` reads packages through the
         // office router; everything else drives the PDF one, which is the stricter default and
-        // the one `docs/03-V0-SCOPE.md` §5 names.
+        // the one `docs/history/03-V0-SCOPE.md` §5 names.
         let entry = if target == "office_read" {
             "ethos_parser_office::read"
         } else {
@@ -759,7 +759,7 @@ fn the_fuzz_target_and_seed_corpus_are_present() {
         };
         assert!(
             src.contains(entry),
-            "{target} must drive `{entry}` (docs/03-V0-SCOPE.md §5); it does not"
+            "{target} must drive `{entry}` (docs/history/03-V0-SCOPE.md §5); it does not"
         );
 
         // `cargo fuzz` builds what `fuzz/Cargo.toml` declares as a `[[bin]]`, so a target file

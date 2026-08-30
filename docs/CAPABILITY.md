@@ -27,7 +27,7 @@ Everything below runs locally, with no network and no renderer.
 | **Format detection** | Decided by reading bytes at offset 0, never by file name or extension. Bytes that state no known format are refused by naming what was looked for, and nothing else. A `.csv`, a letter and a log line all get byte-identical stderr | `extract` |
 | **Tables** | Row/column model with spans and cell occupancy, four named detection rules (`ruled-rects-v3`, `unruled-align-v1`, `stroke-ruled-v1`, `tagged-tables-v1`), and a cross-check between what the geometry says and what the document's own tags say. Where the two disagree structurally, the rule refuses the grid rather than emitting it | `extract` |
 | **Fabrication** | **0** across the twelve-document labelled set. Measured every run, not asserted | `table-gate-v1.md` |
-| **Table accuracy** | Cell-level F1 of about **7%** on those twelve documents. Read the shape with it: ten of the twelve score zero, and two documents supply the whole average | `table-gate-v1.md` |
+| **Table accuracy** | Stated as a capability, not an average: the engine reads the tables a document **declares** (157 of 172 gold tables; combined cell-slot recall **502‰**) and **detects** ruled tables where the producer drew them (geometric macro F1 **70‰**, band 0‰–590‰, median 0‰ — ten of twelve score zero). It emits nothing where neither holds | `table-gate-v1.md` |
 | **Fuzzing** | Three `cargo-fuzz` targets covering the PDF entry points and the office router. One campaign ran 3.8M executions under AddressSanitizer and found nothing. Mutation testing damages every PDF fixture six ways and every office package twelve | `fuzz/` |
 | **Determinism** | Two runs over one document produce identical bytes, in every format | CI |
 
@@ -39,7 +39,7 @@ Some of these are *not yet*. Others are refusals no version reverses. The middle
 
 | Claim | Kind | Why |
 | --- | --- | --- |
-| **"v1 is complete"** | not yet | The table gate is measured and missed at about 7%, and the decision that would close v1 is written but undecided |
+| **"v1 is complete"** | done | Closed on decision #18: v1 states the table capability and the band rather than a single macro. Fabrication is 0, the method is pinned in `table-gate-v1.md`, and the geometric chase stays parked |
 | **OCR, or a scan read as extracted text** | not yet — v4 | Recognition is a different class of derivation and needs its own trust ladder. An OCR fingerprint must be provably incomparable with a born-digital parse before that lane can exist |
 | **CSV** | refusal, with named reopening conditions | A CSV parse would not fabricate content — every character would be real. Exactly one field would be false: the record would claim the file *is* a CSV when nobody measured that, and there is nowhere in the record to mark a field as asserted rather than measured. Reopens if either the record gains that distinction, or someone builds a format predicate with a measured false-positive rate |
 | **Converting office files to PDF to get pages** | refusal | It invents pagination. A DOCX has no pages, and a page on a Word citation measures the printer rather than the document. Not as a fallback, not behind a flag |

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! M2 acceptance (`docs/05-MILESTONES.md`).
+//! M2 acceptance (`docs/history/05-MILESTONES.md`).
 //!
 //! Every bullet in M2's acceptance list is a test here. Fixtures resolve through
 //! `fixtures/manifest.json`'s two roots exactly as the oracle harness resolves them; **a missing
@@ -150,7 +150,7 @@ fn pages_content_scanned_is_always_min_of_n_and_page_count() {
 /// `lopdf` parses the whole object graph eagerly. Total time is `O(parse) + O(N × per-page)`, and
 /// no amount of bounded sampling makes the parse term disappear.
 ///
-/// So this measures the two phases separately, which is what `docs/03-V0-SCOPE.md` §6 actually
+/// So this measures the two phases separately, which is what `docs/history/03-V0-SCOPE.md` §6 actually
 /// claims: *"~0.5 ms per sampled page, plus document parse"*. Measured here (release, best of 3):
 ///
 /// | document | pages | MB | open | classify |
@@ -208,7 +208,7 @@ fn classify_cost_is_flat_in_total_page_count() {
 
 /// Every outcome gets its own code, and no two collapse.
 ///
-/// The fixture choices are **measured, not assumed**. `docs/05-MILESTONES.md` originally named
+/// The fixture choices are **measured, not assumed**. `docs/history/05-MILESTONES.md` originally named
 /// `irs-form-1040-2025` as the exit-0 case; it is not — it fires `table-likely` and
 /// `dense-graphics`, so under the derivation rule it is exit 1. Suppressing a true layout reason
 /// to make a doc line come out right would be exactly the tuning this project refuses, so the

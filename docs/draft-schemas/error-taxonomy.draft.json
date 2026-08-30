@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ethos-parser:draft-schema:error-taxonomy:0",
-  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §8, docs/03-V0-SCOPE.md §1 item 13. Six variants, borrowed in shape from Anydoc (parity checklist A5).",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §8, docs/history/03-V0-SCOPE.md §1 item 13. Six variants, borrowed in shape from Anydoc (parity checklist A5).",
   "title": "Engine error taxonomy (DRAFT)",
   "description": "The point is that a caller can ROUTE on the kind. 'This document is encrypted' and 'this document is complex' must never arrive as the same signal — the defect LiteParse's single exit code has, where password-protected, invalid-header, corrupt-header and missing-file all exit 1 identically to 'complex'. Failing closed with an indistinguishable signal is still a defect.",
   "type": "object",

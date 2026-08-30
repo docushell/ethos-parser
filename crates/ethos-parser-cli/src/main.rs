@@ -142,7 +142,7 @@ enum Command {
     /// model the citation authority in one step. Every locator is minted by the engine inside an
     /// artifact, travels back as an opaque handle, and is re-validated against that artifact on
     /// the way in — a handle this engine did not mint is an error, never a best guess. See
-    /// `docs/12-V12-SCOPE.md` §3.
+    /// `docs/history/12-V12-SCOPE.md` §3.
     ///
     /// Exit codes: **0** the stream closed cleanly · **2** stdin or stdout failed.
     Mcp,
@@ -417,7 +417,7 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // `report.bin` still reads and a `.docx` full of something else does not, because an
     // extension is a claim anybody can make and a magic number is one only the file can.
     //
-    // One subcommand and one artifact type, per `docs/14-V2-SCOPE.md` §4: there is no
+    // One subcommand and one artifact type, per `docs/history/14-V2-SCOPE.md` §4: there is no
     // `ethos.parser.docx.v0`, and every downstream path — c14n, fingerprint, `node_get` — is
     // unchanged. What differs is the profile the reader runs under, which is what makes the two
     // artifacts provably non-comparable.
@@ -494,7 +494,7 @@ pub(crate) fn representation_for_bytes(
     // counted, no line is measured, no extension is read, and no signature is looked for past
     // byte 0. Comma-separated text cannot be told from prose without a reader, and a detector that
     // guessed would claim every comma file — so this engine refuses to name a format it did not
-    // measure rather than naming one it cannot. `docs/15-V2-MILESTONES.md` S10 argues it in full.
+    // measure rather than naming one it cannot. `docs/history/15-V2-MILESTONES.md` S10 argues it in full.
     //
     // A **truncated** PDF is deliberately not here: it aimed at the PDF reader, so the PDF
     // reader's own message is the honest cause for it, down to the zero-byte case.
@@ -526,9 +526,9 @@ pub(crate) fn representation_for_bytes(
 /// pass. The moment this message differs between two such files, something measured one of them.
 ///
 /// It names what was **looked for** rather than what the file might be. Naming a format would be
-/// an invented identifier (**A4**, and `docs/14-V2-SCOPE.md`'s standing rule 4): nobody measured
+/// an invented identifier (**A4**, and `docs/history/14-V2-SCOPE.md`'s standing rule 4): nobody measured
 /// this file to be a CSV, a log or a letter, and `SourceIdentity` has two fields and no room to
-/// record that a type was asserted rather than read — which is `docs/13-V12-MILESTONES.md`'s
+/// record that a type was asserted rather than read — which is `docs/history/13-V12-MILESTONES.md`'s
 /// v1.2-S5 finding, that *an identity that can be asserted is an identity that can disagree with
 /// what it describes*.
 ///
@@ -551,7 +551,7 @@ fn no_format_stated() -> EngineError {
 /// Print a sealed representation as canonical JSON, or map the failure to an exit code.
 ///
 /// Shared by both readers so the two cannot drift in how they emit: **one serializer**, which is
-/// `docs/14-V2-SCOPE.md` §4's whole point.
+/// `docs/history/14-V2-SCOPE.md` §4's whole point.
 fn emit_representation(
     result: Result<ethos_parser_core::DocumentRepresentation, EngineError>,
 ) -> ExitCode {

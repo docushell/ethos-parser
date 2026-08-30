@@ -56,7 +56,7 @@
 //! A presentation is a drawing, so the question is neither of those. **There is nothing for a
 //! frame to float over**: the frame *is* the shape, and the shape is what this reader addresses.
 //! So the first rendition becomes nodes — ODT's outcome — and the second is a declared erasure,
-//! and the reason is not ODT's. See `docs/15-V2-MILESTONES.md` S7 for the three-format table.
+//! and the reason is not ODT's. See `docs/history/15-V2-MILESTONES.md` S7 for the three-format table.
 //!
 //! # What is read, and what is counted (**A14**)
 //!
@@ -308,7 +308,7 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                 let entering_region = match element {
                     // **The speaker's stream is a second stream.** Splicing it into the slide's
                     // text would be A14 inverted — a silent extra rather than a silent drop — so
-                    // it is counted and named instead. `docs/15-V2-MILESTONES.md` S7 records that
+                    // it is counted and named instead. `docs/history/15-V2-MILESTONES.md` S7 records that
                     // whether notes are evidence is a question this slice does not answer.
                     Structure::Notes | Structure::Odf(Element::Region) => true,
                     // The shape's one rendition slot. A second `<draw:text-box>` is a **second**
@@ -692,7 +692,7 @@ fn advance(cursor: u32, what: &str) -> Result<u32, EngineError> {
 ///
 /// `None` is not the empty string. A page or a shape that states no name has stated none, and
 /// `""` would be this reader inventing a value to stand in for an absent one — which is the
-/// typed-absence discipline `docs/14-V2-SCOPE.md` §3 applies to geometry, in a smaller place.
+/// typed-absence discipline `docs/history/14-V2-SCOPE.md` §3 applies to geometry, in a smaller place.
 fn draw_name(
     reader: &NsReader<&[u8]>,
     start: &BytesStart<'_>,

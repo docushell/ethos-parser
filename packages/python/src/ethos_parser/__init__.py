@@ -16,7 +16,7 @@
 
 # What this is, and the one property it is arranged to have
 
-`docs/13-V12-MILESTONES.md` S2 asks for "a thin Python surface over the same library or CLI, **so
+`docs/history/13-V12-MILESTONES.md` S2 asks for "a thin Python surface over the same library or CLI, **so
 it cannot diverge from what the CLI prints**". This package spends one process spawn to make that
 a tautology rather than a promise: :func:`extract` and :func:`ground` run the same subcommands a
 shell would run and hand back the bytes those subcommands printed, parsed as JSON. There is no
@@ -28,7 +28,7 @@ surface, for a saving nobody has measured a need for.
 
 # The handle law, which decides these three signatures
 
-`docs/12-V12-SCOPE.md` §3, carried here unchanged from MCP: **the engine mints every locator,
+`docs/history/12-V12-SCOPE.md` §3, carried here unchanged from MCP: **the engine mints every locator,
 returns it as an opaque handle, and re-validates it on the way back in.** In Python that means:
 
 - **A locator is returned, never accepted as prose.** No public function here takes a page, a

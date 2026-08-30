@@ -14,7 +14,7 @@
 
 //! **The CLI is a thin shell** — proved without the CLI.
 //!
-//! `docs/05-MILESTONES.md` M7: *"every subcommand behaviour is reachable through the library,
+//! `docs/history/05-MILESTONES.md` M7: *"every subcommand behaviour is reachable through the library,
 //! proved by library-level tests that do not invoke the binary."* Nothing in this file spawns a
 //! process. `CARGO_BIN_EXE_ethos-parser` does not appear, and
 //! `no_test_in_this_file_spawns_the_binary` asserts that about the source rather than trusting it.
@@ -246,7 +246,7 @@ fn the_whole_happy_path_runs_inside_one_process() {
     );
 }
 
-/// **Every artifact carrying geometry declares its `coordinate_system`** — `docs/03-V0-SCOPE.md`
+/// **Every artifact carrying geometry declares its `coordinate_system`** — `docs/history/03-V0-SCOPE.md`
 /// §5, and the CI job `v0-coordinates`.
 ///
 /// The qualifier is load-bearing in both directions, so both are asserted. An artifact with boxes

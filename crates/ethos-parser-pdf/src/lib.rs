@@ -98,7 +98,7 @@ pub use represent::{to_representation, PROCESSOR_NAME};
 /// The crate name, asserted by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "ethos-parser-pdf";
 
-/// Process exit codes (`docs/03-V0-SCOPE.md` §3.1).
+/// Process exit codes (`docs/history/03-V0-SCOPE.md` §3.1).
 ///
 /// **Three outcomes, three codes, never collapsed.** LiteParse's own README predicate
 /// (`lit is-complex doc.pdf --quiet && lit parse …`) returns 1 for password-protected,

@@ -16,7 +16,7 @@
 //!
 //! # What this reads, and why it is so little
 //!
-//! `<w:p>` and `<w:r>` and `<w:t>`. That is the whole reader, and `docs/15-V2-MILESTONES.md` S2
+//! `<w:p>` and `<w:r>` and `<w:t>`. That is the whole reader, and `docs/history/15-V2-MILESTONES.md` S2
 //! is explicit that it should be: the gate is *a quote resolves to a node*, and one paragraph of
 //! runs proves that. Styles, numbering, fields, drawings, comments, track-changes and embedded
 //! workbooks are all real OOXML and all absent — **and counted**, because a reader that silently
@@ -32,7 +32,7 @@
 //!
 //! # No layout, anywhere
 //!
-//! Nothing here computes a position, and nothing could: `docs/14-V2-SCOPE.md` §3 forbids a
+//! Nothing here computes a position, and nothing could: `docs/history/14-V2-SCOPE.md` §3 forbids a
 //! locator that addresses a rendering, and a paragraph does not know what page it falls on until
 //! something lays it out. The ordinals below are positions in the XML, which is a fact the file
 //! states about itself.

@@ -42,7 +42,7 @@
 //! pagination."* A soft page break is a record of somebody else's rendering — it moves when the
 //! font stack, the paper size or the producing application changes, and a document saved by two
 //! editors carries two different sets. Reading it would put a page number in the evidence that is
-//! a measurement of a word processor, which is exactly the citation `docs/14-V2-SCOPE.md` §3
+//! a measurement of a word processor, which is exactly the citation `docs/history/14-V2-SCOPE.md` §3
 //! exists to refuse. `pages` is `[]`, and [`ethos_parser_core::OdtLocator`] has no room for one.
 //!
 //! # What a paragraph's text is, and what it is not
@@ -106,7 +106,7 @@
 //!   reviewer's remark in the record as though the document said it.
 //! - `<text:tracked-changes>` — the record of what a revision **deleted**. Reading it would put
 //!   text the document no longer states into the evidence, which is the second-authority problem
-//!   `docs/14-V2-SCOPE.md` §7 refuses in another form.
+//!   `docs/history/14-V2-SCOPE.md` §7 refuses in another form.
 //! - A second or later `<draw:text-box>` inside one `<draw:frame>`. ODF frames hold *alternative*
 //!   renditions of one object, of which a consumer uses the first it can process; reading all of
 //!   them would emit one displayed phrase at two citable addresses, which is the mirror of a
@@ -713,7 +713,7 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                         push_stated(&mut open, "\n", &mut skips, &mut text_bytes)?
                     }
                     // Read and refused in one line, which is the whole of this format's argument
-                    // with `docs/14-V2-SCOPE.md` §3: the producing application's page break is
+                    // with `docs/history/14-V2-SCOPE.md` §3: the producing application's page break is
                     // seen, recognised, and not turned into a `PageRecord`. It contributes no
                     // character either — it is a layout mark, not text the document states.
                     Element::SoftPageBreak => {}

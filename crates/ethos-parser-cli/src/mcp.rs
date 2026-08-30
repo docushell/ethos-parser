@@ -16,7 +16,7 @@
 //!
 //! # Why this host, and why it is also the hazard
 //!
-//! `docs/12-V12-SCOPE.md` §2 puts MCP first and says why: it is the only host whose native return
+//! `docs/history/12-V12-SCOPE.md` §2 puts MCP first and says why: it is the only host whose native return
 //! type carries a locator under an **enforced** schema (`outputSchema` + `structuredContent`),
 //! where every other host on the list is effectively `Dict[str, Any]`. One server
 //! reaches all of them — including the ones whose licences this repository refuses — without
@@ -36,7 +36,7 @@
 //!
 //! §16.7's mitigation is structural rather than advisory — **the engine mints every locator,
 //! returns it as an opaque handle, and re-validates it on the way back in** — and
-//! `docs/12-V12-SCOPE.md` §3 makes it three obligations:
+//! `docs/history/12-V12-SCOPE.md` §3 makes it three obligations:
 //!
 //! 1. **Mint.** Every locator a caller sees came out of an artifact this engine already emits.
 //!    No tool here computes a page, a box or a cell.
@@ -428,7 +428,7 @@ mod tests {
     /// **The handle law, checked against the wire rather than against memory.**
     ///
     /// A tool that grew a `bbox` argument "for convenience" would let a model author a locator the
-    /// engine then trusts, which `docs/12-V12-SCOPE.md` §3 forbids and which no amount of prose in
+    /// engine then trusts, which `docs/history/12-V12-SCOPE.md` §3 forbids and which no amount of prose in
     /// a description would prevent.
     #[test]
     fn no_tool_argument_names_a_coordinate() {

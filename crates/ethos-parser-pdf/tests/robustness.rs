@@ -14,7 +14,7 @@
 
 //! Fixture mutation: every fixture in the manifest, mechanically damaged, six ways.
 //!
-//! `docs/03-V0-SCOPE.md` §5 requires mutation tests covering every fixture. This is the
+//! `docs/history/03-V0-SCOPE.md` §5 requires mutation tests covering every fixture. This is the
 //! Anydoc-style version of that — damage the *inputs* and assert the engine's response — not
 //! source-level mutation, which asks a different question (are the assertions load-bearing?) and
 //! answers it far more slowly.
@@ -45,7 +45,7 @@
 //! Each case runs under `catch_unwind` so one panic names its own fixture and mutant instead of
 //! taking down the run at the first bad byte. The release profile is `panic = "abort"`, so this
 //! is a test-build affordance for triage, never a runtime strategy: a panic reaching a caller is
-//! a release blocker either way (`docs/05-MILESTONES.md` M7).
+//! a release blocker either way (`docs/history/05-MILESTONES.md` M7).
 
 use std::collections::BTreeSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -444,7 +444,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// and whose behaviour it does not own, and re-weakening `flip-tail-byte` to resurrect the five
 /// survivors would trade v2-S21's real repair for a coverage number. There is nothing
 /// engine-owned to delete; the deletion is of the *claim* that this corpus covers it, made here.
-/// See `docs/15-V2-MILESTONES.md` S23.
+/// See `docs/history/15-V2-MILESTONES.md` S23.
 ///
 /// An entry appearing here that is not `junk-after-eof` is a fail-closed path that stopped firing
 /// — triage it before pinning it. An entry disappearing is a path that started firing, which is
@@ -521,7 +521,7 @@ const EXPECTED_SURVIVORS: [&str; 60] = [
 /// **No mutant panics, and every refusal is named.**
 ///
 /// The load-bearing test. A panic here is a release blocker; an unnamed refusal is a caller that
-/// cannot route the failure, which `docs/03-V0-SCOPE.md` §3.1 exists to prevent.
+/// cannot route the failure, which `docs/history/03-V0-SCOPE.md` §3.1 exists to prevent.
 #[test]
 fn no_mutant_panics_and_every_refusal_is_named() {
     let mut panics: Vec<String> = Vec::new();
@@ -555,7 +555,7 @@ fn no_mutant_panics_and_every_refusal_is_named() {
     assert!(cases > 100, "only {cases} mutants ran; coverage collapsed");
     assert!(
         panics.is_empty(),
-        "{} mutant(s) panicked. A panic is a release blocker (docs/05-MILESTONES.md M7): the \
+        "{} mutant(s) panicked. A panic is a release blocker (docs/history/05-MILESTONES.md M7): the \
          engine must refuse damaged input with a named error, never crash on it.\n  {}",
         panics.len(),
         panics.join("\n  ")
@@ -687,7 +687,7 @@ fn the_surviving_mutants_are_the_pinned_ones() {
 /// **An injected unknown operator stops the parse**, on every fixture that accepts the injection
 /// and whose original extracts.
 ///
-/// `docs/03-V0-SCOPE.md` §1 item 7 is specific: an unrecognised operator stops the parse with a
+/// `docs/history/03-V0-SCOPE.md` §1 item 7 is specific: an unrecognised operator stops the parse with a
 /// named error. The unit test in `extraction.rs` proves the interpreter does that for a
 /// hand-built stream; this proves it end to end, on real documents, through the whole open →
 /// extract path.

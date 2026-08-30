@@ -109,7 +109,7 @@ pub struct SourceIdentity {
 ///
 /// **No run id and no timestamp.** Either would make two runs over identical bytes under an
 /// identical profile produce different artifacts, and byte identity across runs is a test here
-/// (`docs/05-MILESTONES.md`, standing rule 6). A run's identity *is* its inputs.
+/// (`docs/history/05-MILESTONES.md`, standing rule 6). A run's identity *is* its inputs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessingRun {
@@ -177,7 +177,7 @@ pub enum NativeLocator {
     /// **Every field is something the file contains.** `word/document.xml` is a part name from
     /// the package; the paragraph and run ordinals are the positions of the `<w:p>` and `<w:r>`
     /// elements in that part's own document order. Nothing here is laid out, and nothing here
-    /// could be: `docs/14-V2-SCOPE.md` §3 forbids a locator that addresses a *rendering*, and a
+    /// could be: `docs/history/14-V2-SCOPE.md` §3 forbids a locator that addresses a *rendering*, and a
     /// DOCX has no page until a renderer decides where one falls.
     ///
     /// There is no page, no box, no `x`/`y`, and no room to add one — the struct denies unknown
@@ -191,7 +191,7 @@ pub enum NativeLocator {
     ///
     /// There is no page, no bbox, no column width and no print range. A spreadsheet's "page" is
     /// something a printer decides, not something the workbook states, so it is exactly the
-    /// rendering `docs/14-V2-SCOPE.md` §3 forbids a locator from addressing.
+    /// rendering `docs/history/14-V2-SCOPE.md` §3 forbids a locator from addressing.
     Xlsx(XlsxLocator),
     /// A text run's address inside an OOXML presentation: part, shape, paragraph, run (v2-S4).
     ///
@@ -207,7 +207,7 @@ pub enum NativeLocator {
     /// **The first v2 format that is not OOXML**, and the first whose file *does* contain
     /// something spelled as a page: `<text:soft-page-break/>` marks where the producing
     /// application's own layout broke the page, and `style:master-page` states a paper size. Both
-    /// are a rendering the producer performed — which is exactly what `docs/14-V2-SCOPE.md` §3
+    /// are a rendering the producer performed — which is exactly what `docs/history/14-V2-SCOPE.md` §3
     /// forbids a locator from addressing — so neither reaches this variant and neither becomes a
     /// `PageRecord`.
     Odt(OdtLocator),
@@ -239,7 +239,7 @@ pub enum NativeLocator {
     /// package: the address names a part, and `check_structure` checks that one part id means one
     /// part name. An `.rtf` is a single brace-group byte stream with no parts, no manifest and no
     /// name for itself — so this variant carries **one** field, and the invariant grew a third
-    /// case rather than this locator growing an invented part name. `docs/14-V2-SCOPE.md` §3's
+    /// case rather than this locator growing an invented part name. `docs/history/14-V2-SCOPE.md` §3's
     /// second obligation is *"absent, not invented"*, and a constant standing in for a part the
     /// format does not have is the small version of the page-sized box it forbids.
     Rtf(RtfLocator),
@@ -388,7 +388,7 @@ pub struct DocxLocator {
 ///
 /// # Four fields, and each one is a string the package wrote
 ///
-/// `docs/14-V2-SCOPE.md` §3 names "a cell, a sheet" as things a v2 locator may address, and this
+/// `docs/history/14-V2-SCOPE.md` §3 names "a cell, a sheet" as things a v2 locator may address, and this
 /// is that address. Nothing here is laid out and nothing here could be: a workbook has no page
 /// until a printer decides where one falls, and a column's *width* is a rendering instruction
 /// rather than part of a cell's name.
@@ -455,7 +455,7 @@ pub struct XlsxLocator {
 ///
 /// Nor is there a `p:sldSz`-derived width and height. A slide states a size in EMUs, but a size
 /// is not a page, nothing here measured anything against it, and a `PageRecord` minted from it is
-/// the invented pagination `docs/14-V2-SCOPE.md` §3 exists to refuse.
+/// the invented pagination `docs/history/14-V2-SCOPE.md` §3 exists to refuse.
 ///
 /// # Why the shape is a position and its id is not the address
 ///
@@ -566,7 +566,7 @@ pub struct OdtLocator {
 ///
 /// A `.ods` states paper size in a `<style:page-layout>` and may carry `<text:soft-page-break/>`
 /// inside a cell's own paragraph. Both are the producing application's print arithmetic — the
-/// thing `docs/14-V2-SCOPE.md` §3 forbids addressing — so neither is here, `pages` is `[]`, and
+/// thing `docs/history/14-V2-SCOPE.md` §3 forbids addressing — so neither is here, `pages` is `[]`, and
 /// `deny_unknown_fields` is what stops a print page arriving later as a fifth field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -685,7 +685,7 @@ pub struct OdpLocator {
 ///
 /// So there is no `part` here, and filling one in was the tempting move: a constant would have let
 /// `check_structure`'s part-id bijection run unchanged. It would also have been a string the
-/// document does not contain, which is `docs/14-V2-SCOPE.md` §3's *"absent, not invented"* in a
+/// document does not contain, which is `docs/history/14-V2-SCOPE.md` §3's *"absent, not invented"* in a
 /// smaller place than the page-sized box that obligation is usually about. The invariant grew a
 /// third case instead — see [`NativeLocator::names_a_part`].
 ///
@@ -966,7 +966,7 @@ pub struct PdfTaggedLocator {
     /// **Present only when the map actually changed something**, so its presence is the signal
     /// that a custom type was in play. A `/RoleMap` is the document telling us what its custom
     /// types mean; applying it is reading the file, and guessing without one would not be
-    /// (`docs/09-V1-MILESTONES.md` S3, decision 8).
+    /// (`docs/history/09-V1-MILESTONES.md` S3, decision 8).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub standard_role_path: Option<Vec<String>>,
     /// The innermost element's `/ID`, when it declares one.
@@ -1124,7 +1124,7 @@ pub enum NodeAttributes {
     /// its [`CellValueType`] is ECMA-376's list, in which `SharedString` names a workbook-only
     /// table and `percentage` and `currency` do not exist at all. Reusing it would leave one
     /// variant permanently unreachable and two ODF types unsayable — a shape that either blanks
-    /// fields or invents a mapping, and `docs/14-V2-SCOPE.md` §8 refuses both.
+    /// fields or invents a mapping, and `docs/history/14-V2-SCOPE.md` §8 refuses both.
     OfficeOdfCell(OfficeOdfCellAttributes),
     /// An OpenDocument presentation shape's facts (v2-S7).
     ///
@@ -1556,7 +1556,7 @@ pub struct OfficeParagraphAttributes {
 ///
 /// The two elements ODF uses for a block of text, and the distinction is the file's own: a
 /// `<text:h>` is a heading and a `<text:p>` is not, stated by the element name rather than
-/// inferred from a font size — which `docs/14-V2-SCOPE.md` §9's second standing rule forbids.
+/// inferred from a font size — which `docs/history/14-V2-SCOPE.md` §9's second standing rule forbids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -1656,7 +1656,7 @@ pub enum CellTextSource {
 /// `office:value-type` is a different, overlapping list with `percentage` and `currency` in it and
 /// no shared-string index anywhere. Mapping one onto the other would need a translation table this
 /// engine would then have to defend, and reusing the type with `SharedString` unreachable and
-/// `text_source` half-meaningless is the "blank those fields" shape `docs/14-V2-SCOPE.md` §8
+/// `text_source` half-meaningless is the "blank those fields" shape `docs/history/14-V2-SCOPE.md` §8
 /// refuses: a new format is a new **value**, and a value it cannot express needs its own type.
 ///
 /// **Nothing here is a rendering.** ODF stores a cell's typed value in an attribute
@@ -1797,7 +1797,7 @@ pub struct EpubBlockAttributes {
     ///
     /// **The file's own word for it, not a role this reader inferred.** A closed enum would need a
     /// mapping from twenty-odd flow elements onto a smaller vocabulary, and every such mapping is
-    /// a claim this engine would then have to defend — `docs/14-V2-SCOPE.md` §9's second standing
+    /// a claim this engine would then have to defend — `docs/history/14-V2-SCOPE.md` §9's second standing
     /// rule forbids deriving a role, and naming the element is the honest alternative to deriving
     /// one. Carried as a `String` for the reason [`TextRunAttributes::font_id`] is: it is a name
     /// the document states.
@@ -1895,7 +1895,7 @@ pub struct Node {
     /// the two it is is decided by [`Self::native_locator`] and checked in `check_structure`, so
     /// the two cannot disagree: a PDF node's parent is a declared [`PageRecord`], and a page-less
     /// node's parent is a [`crate::IdKind::Part`] id that every node in that part shares.
-    /// `docs/14-V2-SCOPE.md` §3 is why this is not simply "a page, and DOCX gets a fake one".
+    /// `docs/history/14-V2-SCOPE.md` §3 is why this is not simply "a page, and DOCX gets a fake one".
     pub parent: NodeId,
     /// Position among the nodes sharing this parent, **1-based**, in reading order.
     pub ordinal: u32,
@@ -2134,7 +2134,7 @@ impl DocumentRepresentation {
     /// until v2-S13.5; rule 4 arrived with RTF at v2-S8 and was numbered into the list without
     /// the count above it moving:
     ///
-    /// 1. **`pages` is empty.** `docs/14-V2-SCOPE.md` §3: a non-empty `pages` on a document whose
+    /// 1. **`pages` is empty.** `docs/history/14-V2-SCOPE.md` §3: a non-empty `pages` on a document whose
     ///    nodes have no page is the defect the law exists to catch — an A4 record minted so the
     ///    old invariant would pass.
     /// 2. **No mixing.** A document is paginated or it is not. One of each would be a record
@@ -2301,7 +2301,7 @@ impl DocumentRepresentation {
             }
 
             // A paginated node is parented by a declared page; a page-less one by a part. The
-            // PDF branch is **unchanged**, message included: `docs/14-V2-SCOPE.md` §3 adds a
+            // PDF branch is **unchanged**, message included: `docs/history/14-V2-SCOPE.md` §3 adds a
             // second family rather than loosening the first.
             let page = if node.native_locator.is_paginated() {
                 let Some(page) = pages_by_id.get(node.parent.as_str()) else {
@@ -2343,7 +2343,7 @@ impl DocumentRepresentation {
                 // **The no-invented-geometry law, mechanised.** A box is validated against the
                 // page that contains it, so a node with no page has nothing to validate against
                 // — and a rectangle nobody can check is exactly the fabrication
-                // `docs/14-V2-SCOPE.md` §3 refuses. Absence is the only honest presence here.
+                // `docs/history/14-V2-SCOPE.md` §3 refuses. Absence is the only honest presence here.
                 (GeometryPresence::Measured(_), None) => {
                     return Err(Self::malformed(format!(
                         "node `{}` has a page-less address and a measured box. There is no page \
@@ -2396,7 +2396,7 @@ impl DocumentRepresentation {
     /// a citation to nothing, and it fails in the least visible way available: the Markdown
     /// projection would emit that cell's bytes as a `source` segment addressing a node the
     /// consumer cannot look up, which is precisely the silently-dead locator
-    /// `docs/10-V11-SCOPE.md` §2 exists to prevent.
+    /// `docs/history/10-V11-SCOPE.md` §2 exists to prevent.
     ///
     /// Checked here rather than in the projection because it is a property of the **record**, and
     /// a record that cannot satisfy it should never be sealed.

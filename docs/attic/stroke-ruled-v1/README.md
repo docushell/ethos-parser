@@ -30,7 +30,7 @@
 >
 > **The patch is kept for the record, not for reuse.** It no longer applies to HEAD, and the
 > measurement below is only checkable against `683031b`. Current account:
-> `docs/table-gate-v1.md` and `docs/09-V1-MILESTONES.md` S8.
+> `docs/table-gate-v1.md` and `docs/history/09-V1-MILESTONES.md` S8.
 
 ---
 
@@ -214,7 +214,7 @@ found that way and are now written into them: the fixture-path resolution, and t
 pages 22, 24 and 25. The problem is *which regions become bands*, and step 5 is stricter than the
 documents are tidy: one row of a real worksheet ruled three cells instead of four and lost the
 whole table. Every remaining tightening or loosening considered was a threshold fitted to these
-four documents, which `docs/08-V1-SCOPE.md` §3 forbids, so the attempt stopped rather than tune.
+four documents, which `docs/history/08-V1-SCOPE.md` §3 forbids, so the attempt stopped rather than tune.
 
 The fuller record is `docs/table-gate-v1.md`: page 13's exact baselines and x-coordinates (enough
 to write a unit test with no corpus at all), the per-page table of all nine missed cfpb tables, and

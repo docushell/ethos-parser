@@ -85,7 +85,7 @@ pub enum Decoder {
 /// Through v1-S6 the width came from whichever *decoder* the font happened to get, so a simple
 /// font that shipped a `/ToUnicode` with a two-byte codespace had its codes read in pairs. That
 /// destroyed text on every real document in the corpus and on none of the fixtures — see
-/// `docs/09-V1-MILESTONES.md` S6.1. The kind is read from the document's own `/Subtype`, which was
+/// `docs/history/09-V1-MILESTONES.md` S6.1. The kind is read from the document's own `/Subtype`, which was
 /// already parsed and simply never reached the decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FontKind {

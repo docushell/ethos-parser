@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! `ExtractArtifact` → `DocumentRepresentation v0` (`docs/05-MILESTONES.md` M5).
+//! `ExtractArtifact` → `DocumentRepresentation v0` (`docs/history/05-MILESTONES.md` M5).
 //!
 //! # Why this is a conversion and not a replacement
 //!

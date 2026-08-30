@@ -14,7 +14,7 @@
 
 //! **A quote resolves to a node, and nothing on the way there is a page** (v2-S2).
 //!
-//! `docs/15-V2-MILESTONES.md` S2's gate, run against the fixtures this repository authored. Under
+//! `docs/history/15-V2-MILESTONES.md` S2's gate, run against the fixtures this repository authored. Under
 //! v2-S1's decision (b) that sentence does **not** mean `ethos.grounding.v1`: it means the run is
 //! in the representation, addressed by something the file contains, and reachable by the id the
 //! engine minted for it.

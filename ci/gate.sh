@@ -57,7 +57,7 @@
 #   * **Every matrix entry in `v0-exit-criteria`, `v01-gates`, `v1s1-gates`, `v1s7-table-gate`,
 #     and the `v0-office-mutation` job.** These re-run subsets of `cargo test --workspace` under a
 #     criterion's own name, so a reviewer can see *which line* is green rather than one
-#     undifferentiated tick (`docs/05-MILESTONES.md` M7). Step 6 runs the superset, so running
+#     undifferentiated tick (`docs/history/05-MILESTONES.md` M7). Step 6 runs the superset, so running
 #     them again buys a label and not a check. **Two are not subsets and are therefore steps 1 and
 #     2**: `v0-no-confidence` and `v0-no-verify` are greps over source text that no test executes.
 #

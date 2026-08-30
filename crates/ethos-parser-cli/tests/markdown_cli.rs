@@ -379,7 +379,7 @@ fn no_cli_path_emits_markdown_without_its_map() {
             .iter()
             .all(|f| matches!(*f, "--help" | "--version" | "--diagnostics")),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
-         is the one thing this version exists to prevent (docs/10-V11-SCOPE.md law 1), so a new \
+         is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
          flag here is a deliberate decision that needs its own evidence."
     );
 
@@ -637,7 +637,7 @@ fn a_document_with_no_table_and_no_list_projects_exactly_as_it_did_at_s1() {
 /// The whole slice in one test. `extract` still emits `hyphen-` and `ated` as two `Extracted`
 /// runs — `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is that half, and it is
 /// a *policy*, because telling a soft break-hyphen from a compound one needs a dictionary. What
-/// changes here is the projection: `docs/10-V11-SCOPE.md` §5 puts a cosmetic in the export or
+/// changes here is the projection: `docs/history/10-V11-SCOPE.md` §5 puts a cosmetic in the export or
 /// nowhere.
 ///
 /// So the assertions come in pairs. The Markdown reads `hyphenated`; the two runs the map names
@@ -1160,7 +1160,7 @@ fn a_quote_from_a_gfm_cell_verifies_end_to_end() {
 /// the cosmetic having been examined at all.
 ///
 /// **`recalculated` is never asserted grounded, and that is not a gap.** It is what
-/// `docs/10-V11-SCOPE.md` §5 buys: the export may repair, the evidence record may not, and the
+/// `docs/history/10-V11-SCOPE.md` §5 buys: the export may repair, the evidence record may not, and the
 /// map names the two strings that *are* citable.
 #[test]
 fn the_joined_word_does_not_ground_and_both_halves_do() {

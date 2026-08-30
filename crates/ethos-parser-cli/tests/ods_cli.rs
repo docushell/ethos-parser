@@ -147,7 +147,7 @@ fn two_runs_over_one_spreadsheet_produce_identical_bytes() {
 
 /// **An unimplemented ODF sibling is refused as OpenDocument, not as a missing PDF header.**
 ///
-/// The defect `docs/15-V2-MILESTONES.md` S5 recorded and deferred here. Before this slice `is_odt`
+/// The defect `docs/history/15-V2-MILESTONES.md` S5 recorded and deferred here. Before this slice `is_odt`
 /// correctly declined an `.odp`, nothing else claimed it, and it fell through to the PDF reader —
 /// which refused it with *"expected a PDF header (%PDF-) at byte 0"*. Correct outcome, wrong cause.
 ///

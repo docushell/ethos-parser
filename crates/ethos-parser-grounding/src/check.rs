@@ -187,7 +187,7 @@ impl ValidationReport {
     ///
     /// **The engine is finer, never contradictory.** Both agree on zero-versus-non-zero, which
     /// is what a shell predicate reads. Where they differ, the engine keeps its own three-code
-    /// taxonomy (`docs/03-V0-SCOPE.md` §3.1): 1 is "I read it and the answer is no", 2 is "I
+    /// taxonomy (`docs/history/03-V0-SCOPE.md` §3.1): 1 is "I read it and the answer is no", 2 is "I
     /// could not read it". Collapsing those is the LiteParse defect this project exists to
     /// refuse — a caller cannot tell a failing check from an unreadable file. Ethos maps both to
     /// its `EXIT_USAGE`, which is a fair choice for a tool whose 1 already means *ungrounded*;

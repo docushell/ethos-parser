@@ -1,5 +1,11 @@
 # The v1 table gate, and how it is computed
 
+> **v1 closed on this document, 2026-08-30.** Decision #18 in
+> [`00-NORTH-STAR.md`](00-NORTH-STAR.md) settled what v1 publishes: the **capability plus the
+> band**, never the macro on its own. Everything below is the method and the evidence behind that
+> decision; it is the source every reader-facing table number is quoted from. The geometric chase
+> stays parked, and the 489‰ comparator is still somebody else's score on their own corpus.
+
 **Measured, and MISSED.** Macro cell-slot F1 is **70‰** over twelve documents, against a published
 comparator of 489‰. **That comparator is not a live shipping floor** — the chase for it is parked,
 and parking it is not a pass.

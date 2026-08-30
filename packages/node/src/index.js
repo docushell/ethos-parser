@@ -25,7 +25,7 @@
  *
  * # What this is, and the one property it is arranged to have
  *
- * `docs/13-V12-MILESTONES.md` S3 asks for "the same surface for Node, on the same terms", and
+ * `docs/history/13-V12-MILESTONES.md` S3 asks for "the same surface for Node, on the same terms", and
  * S2's terms are that the surface **cannot diverge from what the CLI prints**. This package
  * spends one process spawn to make that a tautology rather than a promise: `extract` and
  * `ground` run the same subcommands a shell would run and hand back the bytes those subcommands
@@ -38,7 +38,7 @@
  *
  * # The handle law, which decides these three signatures
  *
- * `docs/12-V12-SCOPE.md` §3, carried here unchanged from MCP and Python: **the engine mints every
+ * `docs/history/12-V12-SCOPE.md` §3, carried here unchanged from MCP and Python: **the engine mints every
  * locator, returns it as an opaque handle, and re-validates it on the way back in.**
  *
  * - **A locator is returned, never accepted as prose.** No exported function here takes a page, a
