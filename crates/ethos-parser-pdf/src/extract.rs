@@ -1928,6 +1928,55 @@ mod tests {
     /// text on a page that moved, which is the one failure here that no artifact would show — a
     /// cell claiming text it does not contain.
     #[test]
+    fn cell_text_survives_the_reordering() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+
+        // The floor, because a reorder that never happened proves nothing: `reorder_page` returns
+        // early on the identity permutation, and every assertion below would then pass against a
+        // page nothing touched.
+        assert_ne!(
+            order,
+            (0..runs.len()).collect::<Vec<_>>(),
+            "the fixture must actually reorder, or this guard reads nothing"
+        );
+
+        let before: Vec<(Vec<usize>, String)> = tables[0]
+            .cells
+            .iter()
+            .map(|c| (c.run_indices.clone(), c.text.clone()))
+            .collect();
+        assert!(
+            before.iter().any(|(idx, _)| idx.len() > 1),
+            "at least one cell must hold two runs, or concatenation is untested"
+        );
+        assert!(
+            before.iter().any(|(idx, _)| !idx.is_empty()),
+            "a table whose cells hold no runs would assert nothing about text"
+        );
+
+        reorder_page(&mut runs, &mut tables, &order);
+
+        for (cell, (was, text)) in tables[0].cells.iter().zip(&before) {
+            assert_eq!(&cell.text, text, "the reorder must not rewrite cell text");
+            assert!(
+                cell.run_indices.windows(2).all(|w| w[0] < w[1]),
+                "a cell's remapped indices must stay strictly ascending: {:?} was {was:?}",
+                cell.run_indices
+            );
+            let rebuilt: String = cell
+                .run_indices
+                .iter()
+                .map(|&i| runs[i].text.as_str())
+                .collect();
+            assert_eq!(
+                &rebuilt, text,
+                "cell text must still be the runs it addresses, after the page moved: \
+                 indices {:?} were {was:?}",
+                cell.run_indices
+            );
+        }
+    }
+
     /// **D4-S2: the region is attached before the renumber, and this is the only thing that says
     /// so.**
     ///
@@ -2001,56 +2050,6 @@ mod tests {
             2,
             "the grid and the column beside it are two regions, got {distinct:?}"
         );
-    }
-
-    #[test]
-    fn cell_text_survives_the_reordering() {
-        let (mut runs, mut tables, order) = a_table_beside_a_column();
-
-        // The floor, because a reorder that never happened proves nothing: `reorder_page` returns
-        // early on the identity permutation, and every assertion below would then pass against a
-        // page nothing touched.
-        assert_ne!(
-            order,
-            (0..runs.len()).collect::<Vec<_>>(),
-            "the fixture must actually reorder, or this guard reads nothing"
-        );
-
-        let before: Vec<(Vec<usize>, String)> = tables[0]
-            .cells
-            .iter()
-            .map(|c| (c.run_indices.clone(), c.text.clone()))
-            .collect();
-        assert!(
-            before.iter().any(|(idx, _)| idx.len() > 1),
-            "at least one cell must hold two runs, or concatenation is untested"
-        );
-        assert!(
-            before.iter().any(|(idx, _)| !idx.is_empty()),
-            "a table whose cells hold no runs would assert nothing about text"
-        );
-
-        reorder_page(&mut runs, &mut tables, &order);
-
-        for (cell, (was, text)) in tables[0].cells.iter().zip(&before) {
-            assert_eq!(&cell.text, text, "the reorder must not rewrite cell text");
-            assert!(
-                cell.run_indices.windows(2).all(|w| w[0] < w[1]),
-                "a cell's remapped indices must stay strictly ascending: {:?} was {was:?}",
-                cell.run_indices
-            );
-            let rebuilt: String = cell
-                .run_indices
-                .iter()
-                .map(|&i| runs[i].text.as_str())
-                .collect();
-            assert_eq!(
-                &rebuilt, text,
-                "cell text must still be the runs it addresses, after the page moved: \
-                 indices {:?} were {was:?}",
-                cell.run_indices
-            );
-        }
     }
 
     /// The atom argument the claim rests on, asserted separately from its consequence.
