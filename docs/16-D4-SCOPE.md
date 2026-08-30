@@ -36,6 +36,14 @@ run of paragraphs, because nothing else on the wire says where anything begins o
 The engine measured this page's structure and then refused to say so. That is the gap, and it is
 not a detection problem: the measurement already happened.
 
+**One sentence above overstated what D4 closes, and S3 measured it.** A region opens only on a
+*vertical* cut, so a region boundary is a **column** boundary — it does not separate paragraphs
+within a column, and the flat-run-of-paragraphs problem survives D4 for a single-column untagged
+document. What D4 closes is narrower and real: a consumer can now tell which column a run sits in,
+and the projections stop welding words across a gutter. Paragraph structure without tags is not
+this version's to claim, and §9 records why the visible-separator version of S3 was refused rather
+than shipped.
+
 ## 3. The distinction this version exists to hold
 
 **Layout is where text sits. Structure is what text means.** ADE and the parsers around it conflate
@@ -53,13 +61,22 @@ Anything more is a claim about meaning, and meaning comes from the tree or from 
 
 ## 4. What lands on the wire
 
-One optional field on [`Node`](../crates/ethos-parser-core/src/representation.rs), beside `ordinal`:
+One optional field on [`TextRunAttributes`](../crates/ethos-parser-core/src/representation.rs):
 
 ```rust
-/// Which region of its parent the reading-order cut placed this node in, 1-based, in reading order.
+/// Which region of its page the reading-order cut placed this run in, 1-based, in reading order.
 #[serde(skip_serializing_if = "Option::is_none")]
 pub region: Option<u32>,
 ```
+
+**On the attributes, not on `Node` — corrected during S2.** This document first put it beside
+`ordinal`, reasoning that both are positional facts from one rule. `Node`'s own type says
+otherwise: `attributes` is *"facts only this node's kind has"*, and only runs are cut atoms. A
+form field, an annotation and an image would carry a field that is structurally always absent.
+Two consequences confirm the correction — the office readers use entirely separate attribute
+variants, so they need no `region: None` **and cannot acquire a region by accident**, which is a
+stronger guarantee than a convention; and the edit touches one production construction site
+instead of twenty-one.
 
 | Value | Means |
 | --- | --- |
@@ -68,7 +85,7 @@ pub region: Option<u32>,
 
 Four decisions are packed into that, and each is load-bearing.
 
-**Beside `ordinal`, inside the fingerprint.** `NodeGeometry` sits outside the digest on purpose —
+**Inside the fingerprint.** `NodeGeometry` sits outside the digest on purpose —
 boxes are the least reliable number in the record and identity must not be hostage to them. A
 region is not a box. It comes from the same cut that produces `ordinal`, which *is* fingerprinted,
 and the two can never disagree because one rule emits both. Putting the region outside the digest
@@ -121,8 +138,9 @@ second from the first.
 - **Not a nesting tree.** The cut recurses — `arrange_columns` and `arrange_blocks` call each other
   to `MAX_CUT_DEPTH` — so the honest full answer is a *path*, and a flat ordinal is a projection of
   it. §8 records that as the known limitation, with what would justify widening it.
-- **Not applicable to office formats.** They have no cut. The field is absent there, permanently,
-  and the profile says why.
+- **Not applicable to office formats.** They have no cut, and after S2 they cannot express one:
+  their nodes carry `OfficeRun`, `OfficeCell` and the other variants, none of which has this
+  field. The profile says why, and the type system makes it unnecessary to say twice.
 
 ## 6. Performance, which is the priority this version was scoped under
 
@@ -188,12 +206,29 @@ The limitation is declared on the artifact, not only here.
 | --- | --- | --- |
 | **S0** | This document and the milestones | done |
 | **S1** | `arrange_page` returns regions beside the permutation; ordering byte-identical; no wire change | done |
-| **S2** | `region` on `Node`, absent where no cut; schema, fixtures and goldens | |
-| **S3** | Markdown and HTML project region boundaries; anchor map still tiles | |
-| **S4** | The declared limitation, and `ci/bench.py --check` green against the S0 baseline | |
+| **S2** | `region` on `TextRunAttributes`, absent where no cut; rule id to `gutter-columns-v2`; schemas | done |
+| **S3** | The projections stop joining a word **across** a region boundary | done |
+| **S4** | The declared limitation, and `ci/bench.py --check` green against the S1 baseline | |
 
 S1 lands the whole mechanism behind no wire change at all, so the claim *reading order did not
 move* is provable by `diff` before anything downstream can be blamed for it.
+
+**S3 turned out smaller and better than this document first described it.** The plan was to project
+visible block boundaries. Two findings killed that and replaced it with something worth more. A
+region opens only on a *vertical* cut, so a region boundary is a **column** boundary and nothing
+else — it does not separate paragraphs within a column, which is what a Markdown reader would
+assume a new block meant. And any visible separator is a P14 trap: GFM `---` directly after a
+paragraph line is a **setext heading underline**, and `<hr>` is defined as a *thematic* break, a
+claim that the two sides are about different subjects. Both derive a semantic claim from a
+geometric fact.
+
+What the projections do instead is **refuse a wrong join**. `hyphen_tail` guards against welding a
+hyphenated word across a page, a heading, a list item, a cell, and page furniture — and a column
+gutter was a boundary none of those clauses could see. `recalcu-` at the foot of the left column and
+`Confidential` at the head of the right projected as `recalcuConfidential`, a word the page draws
+nowhere and no citation can ground. The region is read as a boundary, never as a role, so no syntax
+is invented and P14 is not approached. Both projections share `hyphen_tail`, so HTML is fixed by the
+same clause.
 
 ## 10. Identity
 

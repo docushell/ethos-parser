@@ -64,8 +64,8 @@
             },
             "reading_order_rule": {
               "type": "string",
-              "examples": ["gutter-columns-v1", "single-column-v1"],
-              "$comment": "On the artifact so a reader need not fetch the profile. `gutter-columns-v1` (v1-S5) orders nodes by whitespace in page space: a two-column document reads column-major, and a page with no gutter is not reordered. `single-column-v1` means content-stream order, so a multi-column document is in the WRONG ORDER — which a profile naming it declares in assurance.limitations rather than hiding. Two artifacts under the two ids can list the same runs in a different sequence, so this string is part of reading them."
+              "examples": ["gutter-columns-v2", "gutter-columns-v1", "single-column-v1"],
+              "$comment": "On the artifact so a reader need not fetch the profile. `gutter-columns-v2` (D4-S2) and `gutter-columns-v1` (v1-S5) order nodes by whitespace in page space: a two-column document reads column-major, and a page with no gutter is not reordered. `single-column-v1` means content-stream order, so a multi-column document is in the WRONG ORDER — which a profile naming it declares in assurance.limitations rather than hiding. Two artifacts under the two ids can list the same runs in a different sequence, so this string is part of reading them."
             }
           }
         },
@@ -178,7 +178,8 @@
           }
         },
         "font_id": { "type": "string" },
-        "font_size": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints. NEVER used as a box height." }
+        "font_size": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints. NEVER used as a box height." },
+        "region": { "type": "integer", "minimum": 1, "$comment": "D4-S2. Which region of its page the reading-order cut placed this run in, 1-based, in reading order. WHERE text sits, never WHAT it is: not a paragraph, a heading or a column name, and no role may be read from it (P14 — roles come from the structure tree or from nowhere). ABSENT means the cut made no division, which is not the same claim as 'single column'; the profile's reading_order_rule says which rule ran, and under `single-column-v1` no cut runs at all. Absent on almost every page, which is why it is omitted rather than emitted as null." }
       }
     },
 

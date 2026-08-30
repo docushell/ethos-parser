@@ -234,6 +234,10 @@ pub fn to_representation(
                         .collect(),
                     font_id: run.font_id.clone(),
                     font_size: run.font_size,
+                    // D4-S2. Assigned by `gutter-columns-v2` during extraction and carried
+                    // through `reorder_page` on the run itself. Absent where the cut made no
+                    // division, which is most pages.
+                    region: run.region,
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
                     findings: run.findings.clone(),

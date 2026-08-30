@@ -385,6 +385,10 @@ fn extract_page(
                 synthesized,
                 font_id: shown.font_id,
                 font_size: quantize(shown.font_size, QUANTUM_PER_POINT).map_err(quantize_err)?,
+                // D4-S2. No cut has run yet — this page's runs are still being read off the
+                // content stream, and the rule needs the whole page plus its accepted tables.
+                // Filled in below, where `arrange_page` is called.
+                region: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -588,11 +592,22 @@ fn extract_page(
                 })
                 .collect();
             let boxes: Vec<crate::tables::QuantRect> = tables.iter().map(|t| t.rect).collect();
-            reorder_page(
-                &mut runs,
-                &mut tables,
-                &crate::reading_order::order(&geometry, &boxes),
-            );
+            let arranged = crate::reading_order::arrange_page(&geometry, &boxes);
+
+            // D4-S2. **Before `reorder_page`, deliberately.** `arranged.regions` is indexed by
+            // stream position, which is what `runs` is in right now; `reorder_page` then moves
+            // whole runs, so each region travels with the run it describes and no index has to be
+            // fixed afterwards. Doing this after the move would mean re-deriving the mapping the
+            // move already performed.
+            //
+            // `regions` is empty on a page the cut did not divide, so `zip` does nothing at all
+            // there — no pass over `runs`, and no allocation was taken to say "no regions". That
+            // is the common page, and the engine's run time is linear in what it emits.
+            for (run, region) in runs.iter_mut().zip(&arranged.regions) {
+                run.region = *region;
+            }
+
+            reorder_page(&mut runs, &mut tables, &arranged.order);
         }
 
         // v2-S24. Emit the tagged tables collected above, now that `runs` is in its final order.
@@ -1756,19 +1771,43 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V1
+            ethos_parser_core::READING_ORDER_RULE_V2,
+            "D4-S2 moved the default to the id that promises the region field"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V2,
+            "gutter-columns-v2",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **The older ids keep their exact spellings.** `single-column-v1` means content-stream
+        // order and `gutter-columns-v1` means the same cut without the regions; artifacts exist
+        // under both, and a spelling that moved under them would make an old artifact and a new
+        // one look comparable while they promise different fields.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V1,
             "gutter-columns-v1",
-            "the id is data on every artifact; changing the string is an identity event"
-        );
-        assert_ne!(
-            ethos_parser_core::READING_ORDER_RULE_V1,
-            ethos_parser_core::READING_ORDER_RULE_V0,
-            "two rules that order runs differently must not share an id"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
+        for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V2,
+                ethos_parser_core::READING_ORDER_RULE_V1,
+            ),
+            (
+                ethos_parser_core::READING_ORDER_RULE_V1,
+                ethos_parser_core::READING_ORDER_RULE_V0,
+            ),
+            (
+                ethos_parser_core::READING_ORDER_RULE_V2,
+                ethos_parser_core::READING_ORDER_RULE_V0,
+            ),
+        ] {
+            assert_ne!(
+                a, b,
+                "two rules a consumer must tell apart cannot share an id"
+            );
+        }
     }
 
     /// **v2-S9.1: a wrapped erasure count is a silent drop presented as a success.**
@@ -1836,6 +1875,7 @@ mod tests {
             .iter()
             .map(|&(x, y, text)| TextRun {
                 id: alloc.next(IdKind::Span).expect("ids"),
+                region: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,

@@ -1471,6 +1471,30 @@ pub struct TextRunAttributes {
     pub font_id: String,
     /// Font size in integer centipoints. **Never used as a box height.**
     pub font_size: i64,
+    /// Which region of its page the reading-order cut placed this run in, 1-based, in reading
+    /// order (D4-S2).
+    ///
+    /// # Where, never what
+    ///
+    /// A region is a position in a partition the rule measured from whitespace. It is **not** a
+    /// paragraph, a heading, a section or a column name, and nothing downstream may read a role
+    /// from it — that is `docs/06-STEAL-REFUSE.md` P14, and roles come from the document's own
+    /// structure tree ([`super::PdfTaggedLocator::role_path`]) or from nowhere.
+    ///
+    /// # Absent means the cut made no division
+    ///
+    /// Not "single column" — those coincide on almost every real page and are not the same claim.
+    /// Absent covers four states: no gutter met the rule, fewer than two runs, the capability is
+    /// off, or the format has no cut. A node cannot tell them apart and does not need to: the
+    /// profile's `reading_order_rule` already names which rule ran, and unlike a missing ink box
+    /// none of the four can differ between two runs of one artifact. That is why this is a bare
+    /// `Option` where [`crate::GeometryPresence`] is a typed absence —
+    /// `docs/16-D4-SCOPE.md` §4 argues it against that precedent.
+    ///
+    /// Absent on the overwhelmingly common single-column page, where `skip_serializing_if` makes
+    /// it cost nothing: the engine's run time is linear in the bytes it emits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<u32>,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -2692,6 +2716,7 @@ mod tests {
                 findings: Vec::new(),
                 font_id: "F1".into(),
                 font_size: 2400,
+                region: None,
             }),
         }
     }

@@ -38,8 +38,9 @@
     },
     "reading_order_rule": {
       "type": "string",
-      "$comment": "`gutter-columns-v1` since v1-S5: runs are ordered by whitespace in page space, so a two-column document reads column-major and a page showing no gutter keeps content-stream order untouched. Nothing counts lines — pdf-inspector's rule flips on min_lines < 15, so a one-line edit reorders a whole page, and the two-column-14-lines/-15-lines fixture pair exists to hold this rule to the opposite. `single-column-v1` is v0's value and still legal: content-stream order with no reordering, which leaves a multi-column document visibly wrong and declares it.",
+      "$comment": "`gutter-columns-v2` since D4-S2 and `gutter-columns-v1` since v1-S5, which are one cut under two ids — the second reports the regions it made and the first discards them: runs are ordered by whitespace in page space, so a two-column document reads column-major and a page showing no gutter keeps content-stream order untouched. Nothing counts lines — pdf-inspector's rule flips on min_lines < 15, so a one-line edit reorders a whole page, and the two-column-14-lines/-15-lines fixture pair exists to hold this rule to the opposite. `single-column-v1` is v0's value and still legal: content-stream order with no reordering, which leaves a multi-column document visibly wrong and declares it.",
       "examples": [
+        "gutter-columns-v2",
         "gutter-columns-v1",
         "single-column-v1"
       ]

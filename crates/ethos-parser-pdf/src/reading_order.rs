@@ -219,10 +219,15 @@ pub struct Arrangement {
     pub order: Vec<usize>,
     /// Per run **in stream order**, the 1-based region the cut placed it in.
     ///
-    /// `None` on every run of a page the cut did not divide — which is the overwhelmingly common
-    /// single-column case, and is a real answer rather than a missing one. `docs/16-D4-SCOPE.md`
-    /// §4 is why absence carries it instead of `Some(1)` on every run: a field that never varies
-    /// informs nobody, and the profile's reading-order rule already says which rule ran.
+    /// **Empty when the cut made no division**, which is the overwhelmingly common single-column
+    /// case — not a vector of `None` the same length as `runs`. Empty is a real answer rather than
+    /// a missing one, and it is the answer that costs nothing: a caller `zip`s this against its
+    /// runs and does no work at all on a page that did not split, with no allocation taken to say
+    /// so. `docs/16-D4-SCOPE.md` §4 and §6.
+    ///
+    /// Otherwise it is exactly `runs.len()` long and every entry is `Some`. There is no page on
+    /// which some runs have a region and others do not: the cut partitions the page or it does
+    /// not touch it.
     ///
     /// Indexed by stream position, **not** by position in [`Self::order`], so a caller may apply
     /// the two independently and in either order.
@@ -280,9 +285,10 @@ impl Regions {
     /// the finished order, is what makes the sequence both dense and ascending without either
     /// property having to be argued from the shape of the recursion.
     ///
-    /// **One region means no division**, and every run comes back `None`: a page whose vertical
-    /// cut refused is one region by definition, and saying so on every node would be noise on the
-    /// common case rather than evidence.
+    /// **One region means no division**, and the result is empty: a page whose vertical cut
+    /// refused is one region by definition, and saying so on every node would be noise on the
+    /// common case rather than evidence. Empty rather than a full vector of `None` so the common
+    /// page costs neither the allocation nor the caller's pass over it.
     ///
     /// A table is one atom, so a table's runs all share its region — the cut saw the grid as a
     /// single object and this reports what the cut saw.
@@ -306,7 +312,7 @@ impl Regions {
         }
 
         if region < 2 {
-            return vec![None; runs];
+            return Vec::new();
         }
         out
     }
@@ -351,7 +357,13 @@ struct Atom {
 ///
 /// **The identity permutation is a real answer**, not a fallback state: it is what a single-column
 /// page means under this rule.
-pub fn order(runs: &[RunGeometry], tables: &[QuantRect]) -> Vec<usize> {
+/// **Test-only since D4-S2**, when extraction moved to [`arrange_page`] to pick up the regions.
+///
+/// Kept rather than deleted, and kept as the subject of every ordering test in this module. Those
+/// fifteen tests assert on ordering *alone*, and rewriting them to reach through an `Arrangement`
+/// would mean the claim "D4 did not move reading order" was made by tests D4 had edited.
+#[cfg(test)]
+pub(crate) fn order(runs: &[RunGeometry], tables: &[QuantRect]) -> Vec<usize> {
     arrange_page(runs, tables).order
 }
 
@@ -372,7 +384,7 @@ pub fn arrange_page(runs: &[RunGeometry], tables: &[QuantRect]) -> Arrangement {
     if runs.len() < 2 {
         return Arrangement {
             order: (0..runs.len()).collect(),
-            regions: vec![None; runs.len()],
+            regions: Vec::new(),
         };
     }
 
@@ -387,7 +399,14 @@ pub fn arrange_page(runs: &[RunGeometry], tables: &[QuantRect]) -> Arrangement {
     debug_assert_eq!(out.len(), runs.len(), "reordering is a permutation");
 
     let regions = regions.per_run(&atoms, runs.len(), &out);
-    debug_assert_eq!(regions.len(), runs.len(), "every run is answered for");
+    debug_assert!(
+        regions.is_empty() || regions.len() == runs.len(),
+        "regions answer for every run or for none"
+    );
+    debug_assert!(
+        regions.iter().all(Option::is_some),
+        "a divided page has no unanswered run"
+    );
     Arrangement {
         order: out,
         regions,
@@ -775,15 +794,15 @@ mod tests {
     #[test]
     fn a_page_the_cut_never_divided_reports_no_region() {
         let single = vec![run(7_200, 7_200), run(7_200, 9_600), run(7_200, 12_000)];
-        assert_eq!(
-            arrange_page(&single, &[]).regions,
-            vec![None, None, None],
-            "no gutter met the rule, so there is no division to report"
+        assert!(
+            arrange_page(&single, &[]).regions.is_empty(),
+            "no gutter met the rule, so there is no division to report — and reporting it as a \
+             vector of `None` per run would allocate on the common page to say nothing"
         );
 
         // Below the two-run floor, and the empty page.
-        assert_eq!(arrange_page(&single[..1], &[]).regions, vec![None]);
-        assert_eq!(arrange_page(&[], &[]).regions, Vec::<Option<u32>>::new());
+        assert!(arrange_page(&single[..1], &[]).regions.is_empty());
+        assert!(arrange_page(&[], &[]).regions.is_empty());
     }
 
     /// Two columns come back as two regions, numbered in reading order rather than stream order.
@@ -851,25 +870,38 @@ mod tests {
     /// A table is one atom, so its runs share one region — the cut saw one object and this says so.
     #[test]
     fn a_tables_runs_all_share_one_region() {
+        // A 2x2 grid on the left, and a column of text to its right with a real gutter between.
+        // The page therefore splits, which is the only way a region exists at all — an earlier
+        // draft put a loose run *below* the table, and that page does not split, so the assertion
+        // ran against an empty vector and proved nothing.
         let runs = vec![
             run(7_200, 7_200),
-            run(22_000, 7_200),
+            run(14_000, 7_200),
             run(7_200, 9_600),
-            run(22_000, 9_600),
-            // A loose run below the table, far enough down to be its own block.
-            run(7_200, 30_000),
+            run(14_000, 9_600),
+            run(30_000, 7_200),
+            run(30_000, 9_600),
         ];
         let table = QuantRect {
             x0: 6_000,
             y0: 6_000,
-            x1: 30_000,
+            x1: 20_000,
             y1: 11_000,
         };
         let page = arrange_page(&runs, &[table]);
-        let inside: Vec<Option<u32>> = page.regions[..4].to_vec();
         assert!(
-            inside.iter().all(|r| *r == inside[0]),
-            "the grid's four runs are one atom and must not be split across regions, got {inside:?}"
+            !page.regions.is_empty(),
+            "this fixture must split, or the assertions below hold vacuously"
+        );
+
+        let grid: Vec<Option<u32>> = page.regions[..4].to_vec();
+        assert!(
+            grid.iter().all(|r| *r == grid[0]),
+            "the grid's four runs are one atom and must not be split across regions, got {grid:?}"
+        );
+        assert_ne!(
+            grid[0], page.regions[4],
+            "the column beside the table is a different region"
         );
     }
 
