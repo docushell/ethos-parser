@@ -215,7 +215,7 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
 ///
 /// Read as data. An unmapped custom type is emitted as itself and never guessed at — deciding
 /// that `/Foo` means `/P` because it looks like a paragraph is the same inference this module
-/// exists to avoid (`docs/09-V1-MILESTONES.md` S3, decision 8).
+/// exists to avoid (`docs/history/09-V1-MILESTONES.md` S3, decision 8).
 fn read_role_map(doc: &lopdf::Document, root: &Dictionary) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let Ok(obj) = root.get(b"RoleMap") else {

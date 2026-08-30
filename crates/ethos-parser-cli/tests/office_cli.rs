@@ -14,7 +14,7 @@
 
 //! `ethos-parser extract` reads a DOCX, and every path that would have needed a page refuses (v2-S2).
 //!
-//! **One subcommand, one artifact type** (`docs/14-V2-SCOPE.md` §4). There is no
+//! **One subcommand, one artifact type** (`docs/history/14-V2-SCOPE.md` §4). There is no
 //! `ethos.parser.docx.v0` and no `ethos-parser extract-docx`: dispatch is by content, the record is the
 //! same shape, and `node_get` over MCP works on it without having been taught a second format —
 //! which is the practical form of the one-IR claim.

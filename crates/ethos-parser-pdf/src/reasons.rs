@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The two reason axes (`docs/03-V0-SCOPE.md` §1 items 2–3).
+//! The two reason axes (`docs/history/03-V0-SCOPE.md` §1 items 2–3).
 //!
 //! Reason codes rather than a confidence score, taken from LiteParse (parity checklist L1, L2).
 //! The difference between the two is the difference between an observation a caller can write

@@ -5,7 +5,7 @@
 # Both are stdlib. A wheel that pulled `requests` or `pydantic` to hand back bytes the CLI
 # already printed would be adding a place for those bytes to change.
 #
-# There is no PyO3, no maturin and no native extension. `docs/13-V12-MILESTONES.md` S2 asks for
+# There is no PyO3, no maturin and no native extension. `docs/history/13-V12-MILESTONES.md` S2 asks for
 # "a thin Python surface over the same library or CLI, so it cannot diverge from what the CLI
 # prints"; wrapping the CLI makes that a tautology instead of a promise, at the cost of one
 # process spawn. A native module would be a fifth build surface and a wheel matrix, and it would

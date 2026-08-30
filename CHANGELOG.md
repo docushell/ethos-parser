@@ -12,9 +12,9 @@ working, not a regression.
 
 Entries through 0.1.0 are grouped by **milestone** rather than by version, because a milestone was
 the unit of work that had acceptance criteria. The per-slice reasoning behind each entry lives in the
-milestone documents ([`05`](docs/05-MILESTONES.md), [`09`](docs/09-V1-MILESTONES.md),
-[`11`](docs/11-V11-MILESTONES.md), [`13`](docs/13-V12-MILESTONES.md),
-[`15`](docs/15-V2-MILESTONES.md)); this file records what changed.
+milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
+[`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
+[`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
 
 ---
 

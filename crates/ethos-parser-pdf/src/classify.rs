@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Classification: counts and named reasons, never a verdict (`docs/03-V0-SCOPE.md` §1).
+//! Classification: counts and named reasons, never a verdict (`docs/history/03-V0-SCOPE.md` §1).
 //!
 //! # What this does not produce
 //!

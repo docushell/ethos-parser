@@ -22,7 +22,7 @@
 //!
 //! pdf-inspector decides multi-column on `min_lines < 15`. Fourteen lines per column come out
 //! row-interleaved and fifteen come out column-major, so **adding one line to a document
-//! reorders the whole page** (`docs/03-V0-SCOPE.md` §3.2). That is a cliff, and a cliff cannot
+//! reorders the whole page** (`docs/history/03-V0-SCOPE.md` §3.2). That is a cliff, and a cliff cannot
 //! sit under a determinism contract: two documents differing by a sentence are not two documents
 //! that should disagree about what reading order means.
 //!
@@ -427,7 +427,7 @@ fn vertical_cut(atoms: &[Atom], block: &[usize]) -> Option<Vec<Vec<usize>>> {
 /// **The sweep sorts to find the cut, not to produce the answer.** Without this the sorted order
 /// leaks: a group the recursion then declines to cut is returned exactly as the sweep left it, so
 /// a block with no columns in it comes back sorted by y — a global y-then-x sort of the page,
-/// arrived at by accident, and the precise thing `docs/09-V1-MILESTONES.md` S5 decision 10 forbids.
+/// arrived at by accident, and the precise thing `docs/history/09-V1-MILESTONES.md` S5 decision 10 forbids.
 /// It is worth being concrete about what that cost: on a real two-column booklet it turned pages
 /// that were already column-major in the content stream into line-by-line row-major reading, which
 /// is *worse* than doing nothing at all.

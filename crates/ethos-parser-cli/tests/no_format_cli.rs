@@ -35,7 +35,7 @@
 //! file nobody measured to be one — an invented identifier, which standing rule 4 forbids — and
 //! `SourceIdentity` is `deny_unknown_fields` with two fields and **no room to say "asserted"**. So
 //! a caller-supplied `--format csv` would not break **A4**'s rule; it would break A4's *guarantee*,
-//! with nowhere in the artifact to record that it had. That is `docs/13-V12-MILESTONES.md`'s
+//! with nowhere in the artifact to record that it had. That is `docs/history/13-V12-MILESTONES.md`'s
 //! v1.2-S5 finding word for word — *an identity that can be asserted is an identity that can
 //! disagree with what it describes* — which was decisive enough there to refuse a whole
 //! integration.
@@ -303,7 +303,7 @@ fn the_exit_contract_did_not_move_with_the_message() {
 /// directly — so a `.csv` handed to it is still refused for having no `%PDF-` header. This slice
 /// did not change that, deliberately: `classify` is the **PDF classifier**, and a caller who ran
 /// it named the PDF reader by naming the subcommand, which is the same argument that keeps the
-/// truncated-PDF message where it is. The divergence is recorded in `docs/15-V2-MILESTONES.md`
+/// truncated-PDF message where it is. The divergence is recorded in `docs/history/15-V2-MILESTONES.md`
 /// S10 rather than closed in passing.
 ///
 /// This test exists so the divergence cannot quietly change in either direction without a note.
@@ -324,7 +324,7 @@ fn classify_still_answers_as_the_pdf_classifier_and_the_divergence_is_named() {
     assert!(
         stderr.contains("%PDF-"),
         "`classify` is the PDF classifier and still names the PDF header. If this changed, say so \
-         in docs/15-V2-MILESTONES.md S10 rather than here: {stderr}"
+         in docs/history/15-V2-MILESTONES.md S10 rather than here: {stderr}"
     );
 
     let _ = std::fs::remove_dir_all(&dir);

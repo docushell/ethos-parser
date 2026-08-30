@@ -16,7 +16,7 @@
 //!
 //! **An `EngineError` is a pass.** The engine is expected to refuse almost everything the fuzzer
 //! produces — that is what fail-closed means. The only failure this target can report is a
-//! **panic**, which is a release blocker (`docs/05-MILESTONES.md` M7).
+//! **panic**, which is a release blocker (`docs/history/05-MILESTONES.md` M7).
 //!
 //! `classify` runs on whatever opens, because the bug class worth hunting lives past the parse:
 //! an index into a page list, a slice of a content stream, an arithmetic conversion on a number

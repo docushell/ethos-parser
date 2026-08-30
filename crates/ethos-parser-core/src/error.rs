@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The error taxonomy (`docs/01-CONTRACT.md` §8, `docs/03-V0-SCOPE.md` §1 item 13).
+//! The error taxonomy (`docs/01-CONTRACT.md` §8, `docs/history/03-V0-SCOPE.md` §1 item 13).
 //!
 //! Six variants, borrowed in shape from Anydoc (checklist A5). The point is that a caller can
 //! *route* on the variant: "this document is encrypted" and "this document is complex" must

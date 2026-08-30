@@ -175,7 +175,7 @@ pub mod codes {
     /// The alignment rule built a candidate lattice on some page and **refused** it.
     ///
     /// Document-scoped and conditional — only present when it actually happened. This is the
-    /// near-miss disclosure (`docs/09-V1-MILESTONES.md` S2, decision 7): columns that almost
+    /// near-miss disclosure (`docs/history/09-V1-MILESTONES.md` S2, decision 7): columns that almost
     /// align, a gutter under the floor, or a lattice whose faces are mostly empty produce no
     /// table, and without this the artifact could not distinguish "no grid was implied here"
     /// from "a grid was implied and judged incoherent".
@@ -221,7 +221,7 @@ pub mod codes {
     pub const MEASURED_INK_BOXES_NOT_EMITTED: &str = "measured-ink-boxes-not-emitted";
     /// [`crate::Capabilities::multi_column_reading_order`] is false: order is single-column.
     ///
-    /// **The limitation v0 had to declare explicitly** (`docs/03-V0-SCOPE.md` §3.2). A two-column
+    /// **The limitation v0 had to declare explicitly** (`docs/history/03-V0-SCOPE.md` §3.2). A two-column
     /// document was read in the wrong order and the artifact said so, rather than silently
     /// producing interleaved text.
     ///
@@ -431,7 +431,7 @@ impl Limitation {
     ///
     /// Order on the wire must not depend on the order code happened to append in, or two runs
     /// that observed the same gaps would produce different bytes — and byte identity is a test
-    /// here, not an aspiration (`docs/05-MILESTONES.md`, standing rule 6).
+    /// here, not an aspiration (`docs/history/05-MILESTONES.md`, standing rule 6).
     pub fn normalize(list: &mut Vec<Self>) {
         list.sort();
         list.dedup();

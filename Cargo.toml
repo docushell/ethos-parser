@@ -89,7 +89,7 @@ exclude = ["fuzz"]
 # **0.11.0 is the first version of v1.1**, and it adds an OUTPUT: `ethos.markdown.v1`, a Markdown
 # projection that is always paired with an Anchor Map inverting it back to representation nodes.
 # The profile grows `markdown_rule` and `capabilities.markdown`, so the hash moves. See
-# docs/10-V11-SCOPE.md and docs/11-V11-MILESTONES.md.
+# docs/history/10-V11-SCOPE.md and docs/history/11-V11-MILESTONES.md.
 #
 # **0.12.0 projects BLOCKS**: `markdown_rule` moves from `markdown-linear-v1` to
 # `markdown-blocks-v1`, so a table comes out as a GFM grid and a tagged list as list items. Both
@@ -137,7 +137,7 @@ exclude = ["fuzz"]
 #
 # Nothing but the version moves, the THIRD time that has happened after v1-S7b (0.9.0) and
 # v1.2-S1 (0.15.0). An SDK is an adopter, not a parse capability, and `capabilities.python` would
-# put a flag on every artifact that no consumer can act on (docs/12-V12-SCOPE.md §7). The hash
+# put a flag on every artifact that no consumer can act on (docs/history/12-V12-SCOPE.md §7). The hash
 # moves on `parser_version` alone, because a version claiming otherwise is the one lie that field
 # cannot afford.
 #
@@ -155,11 +155,11 @@ exclude = ["fuzz"]
 # Nothing but the version moves, the FOURTH time, after v1-S7b (0.9.0), v1.2-S1 (0.15.0) and
 # v1.2-S2 (0.16.0). A language binding is an adopter, not a parse capability, so there is no
 # `capabilities.node` for the reason there is no `capabilities.python` and no `capabilities.mcp`
-# (docs/12-V12-SCOPE.md §7).
+# (docs/history/12-V12-SCOPE.md §7).
 #
 # **0.18.0 is v1.2-S4, LangChain tools, and it adds no Rust either.** Three callable tools per
 # language, each one calling the SDK that already exists — nothing spawns `ethos-parser` a third way and
-# nothing here speaks MCP. The slice is one sentence from docs/12-V12-SCOPE.md §3: LOCATORS LIVE
+# nothing here speaks MCP. The slice is one sentence from docs/history/12-V12-SCOPE.md §3: LOCATORS LIVE
 # IN THE ARTIFACT, NEVER IN THE PROSE A MODEL READS AND EDITS. MCP says that with
 # `structuredContent` vs `content`; LangChain says it with a tool's `artifact` vs its `content`,
 # and `response_format="content_and_artifact"` is what makes the two sides real.
@@ -170,7 +170,7 @@ exclude = ["fuzz"]
 #
 # Nothing but the version moves, the FIFTH time, after v1-S7b (0.9.0) and v1.2-S1/S2/S3. A
 # framework binding is an adopter, not a parse capability, so there is no `capabilities.langchain`
-# for the reason there is no `capabilities.node` (docs/12-V12-SCOPE.md §7).
+# for the reason there is no `capabilities.node` (docs/history/12-V12-SCOPE.md §7).
 #
 # **0.19.0 is v1.2-S5, and the slice's answer is NO.** S5 asked for a `liteparse ->
 # ethos.grounding.v1` adapter "IF IT IS WORTH IT". It is not, for two reasons that are properties of
@@ -230,7 +230,7 @@ exclude = ["fuzz"]
 # what "one IR, one serializer" buys.
 #
 # v1 itself is STILL not done — the S7 cell gate is measured and MISSED at 64‰ — so this is not
-# 1.0.0 and will not be until docs/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
+# 1.0.0 and will not be until docs/history/09-V1-MILESTONES.md S7 is green. v1.1 started because the owner
 # asked for the next roadmap row, not because the gate cleared.
 #
 # **0.22.0 is v2-S3: a workbook's CELL binds, and the coordinate_system question closes.** XLSX
@@ -397,7 +397,7 @@ exclude = ["fuzz"]
 # table and no name for itself. So `RtfLocator` carries ONE field and `check_structure`'s page-less
 # invariant grew a FOURTH rule — a part-less format's nodes all share one container id — rather than
 # this reader inventing a constant part name so the old bijection would pass. A string the document
-# does not contain is `docs/14-V2-SCOPE.md` §3's "absent, not invented" in a smaller place than the
+# does not contain is `docs/history/14-V2-SCOPE.md` §3's "absent, not invented" in a smaller place than the
 # page-sized box that obligation is usually about.
 #
 # THE PAGE, SAID OUT LOUD. An ODT hides its page in `<text:soft-page-break/>` and an ODP in a
@@ -433,7 +433,7 @@ exclude = ["fuzz"]
 # publications enter the representation — OCF's `mimetype`, `META-INF/container.xml`, a package
 # document's manifest and spine, and the spine's XHTML blocks.
 #
-# THE FIRST FORMAT WHOSE FILE MAY GENUINELY NAME PAGES. `docs/14-V2-SCOPE.md` §3's law has always
+# THE FIRST FORMAT WHOSE FILE MAY GENUINELY NAME PAGES. `docs/history/14-V2-SCOPE.md` §3's law has always
 # been "no page THIS ENGINE DID NOT READ FROM THE FILE" rather than "no page ever", and every
 # format before this one failed the reading half by construction: a DOCX has no page until a
 # renderer picks one, a slide is a PART, an ODT's break is a word processor's arithmetic, a draw
@@ -493,7 +493,7 @@ exclude = ["fuzz"]
 # THE REASON IS ONE FIELD, NOT THE PARSE. A CSV parse of arbitrary text fabricates NOTHING. What
 # would be false is `SourceIdentity.media_type` saying `text/csv` about a file nobody measured to
 # be one — an invented identifier — and `SourceIdentity` is `deny_unknown_fields` with two fields
-# and no room to say "asserted". `docs/13-V12-MILESTONES.md` settled that at v1.2-S5: an identity
+# and no room to say "asserted". `docs/history/13-V12-MILESTONES.md` settled that at v1.2-S5: an identity
 # that can be asserted is an identity that can disagree with what it describes.
 #
 # THE ARGUMENT IS MECHANIZED, not asserted: a `.csv` and a letter containing a shopping list get
@@ -505,7 +505,7 @@ exclude = ["fuzz"]
 # S10 is done and **v2's FORMAT ROW IS CLOSED**: eight formats read, one argued refusal, and every
 # split from S4 to S9 was made against a measurement. **v2 is NOT complete** — the gate sentence's
 # verb and the undelivered embedded-assets obligation are both escalated to the owner and written
-# down in `docs/15-V2-MILESTONES.md` S10. v1 is STILL missed at 64‰ and the 0.489 chase is STILL
+# down in `docs/history/15-V2-MILESTONES.md` S10. v1 is STILL missed at 64‰ and the 0.489 chase is STILL
 # parked.
 #
 # **0.29.1 is v2-S10.2: the docs that stopped describing the code. NO BEHAVIOUR CHANGE.** Sixteen

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ethos-parser:draft-schema:coverage:0",
-  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §7 (per-page state, coverage summary, partial processing as a first-class outcome); docs/05-MILESTONES.md M4. Written from crates/ethos-parser-core/src/assurance.rs. Holds the whole assurance envelope, because the coverage summary is only meaningful next to the page states it was tallied from and the terminal state derived from it.",
+  "$comment": "DRAFT — not a shipped contract. Authority: docs/01-CONTRACT.md §7 (per-page state, coverage summary, partial processing as a first-class outcome); docs/history/05-MILESTONES.md M4. Written from crates/ethos-parser-core/src/assurance.rs. Holds the whole assurance envelope, because the coverage summary is only meaningful next to the page states it was tallied from and the terminal state derived from it.",
   "title": "Assurance envelope — coverage, page state, terminal state (DRAFT)",
   "description": "The extraction-assurance state every classify/extract artifact embeds. L1's achievement condition names capability declarations explicitly, so an artifact without this block has not reached 'extracted' regardless of how good its text is.",
   "$ref": "#/$defs/assurance",

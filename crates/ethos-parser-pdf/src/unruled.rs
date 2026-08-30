@@ -896,7 +896,7 @@ mod tests {
 
     #[test]
     fn no_box_is_derived_from_a_font_size() {
-        // The standing rule (`docs/09-V1-MILESTONES.md`, rule 2). The padding is a declared
+        // The standing rule (`docs/history/09-V1-MILESTONES.md`, rule 2). The padding is a declared
         // constant, so identical origins must give identical boxes whatever the type size — and
         // this module never receives a font size at all, which is the real guarantee.
         //

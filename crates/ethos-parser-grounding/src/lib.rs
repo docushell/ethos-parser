@@ -80,7 +80,7 @@ pub const GROUNDING_SCHEMA_VERSION: &str = "1.0.0";
 /// eight page-less media types whose elements carry the producer's native
 /// locator string in place of the page/bbox pair, with `pages: []` — a
 /// page-less source states no page, and synthesizing one is what
-/// `docs/14-V2-SCOPE.md` §3 refuses. A PDF artifact keeps `1.0.0` and its
+/// `docs/history/14-V2-SCOPE.md` §3 refuses. A PDF artifact keeps `1.0.0` and its
 /// exact bytes.
 pub const GROUNDING_SCHEMA_VERSION_PAGE_LESS: &str = "1.1.0";
 
@@ -120,7 +120,7 @@ mod grounded_box {
     /// [`GeometryPresence`]. There is no `GroundedBox::new(x0, y0, x1, y1)` and no way to write
     /// one outside this module, so the omission decision takes a **measurement state** by
     /// construction — never a boolean, never a classifier reason code, never a page state. That
-    /// is what `docs/01-CONTRACT.md` §11 requires, and what `docs/05-MILESTONES.md` M5's review
+    /// is what `docs/01-CONTRACT.md` §11 requires, and what `docs/history/05-MILESTONES.md` M5's review
     /// checklist asks a reviewer to grep for. There is nothing to grep: the type system says it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct GroundedBox(QRect);

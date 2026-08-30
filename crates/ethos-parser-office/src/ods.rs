@@ -853,7 +853,7 @@ fn value_type(
 /// One attribute, matched on its **resolved namespace** and local name.
 ///
 /// Not a suffix match. `name`, `formula` and `value-type` all feed either an address or a declared
-/// fact, and `docs/15-V2-MILESTONES.md` S5 states the rule this follows: a suffix match is
+/// fact, and `docs/history/15-V2-MILESTONES.md` S5 states the rule this follows: a suffix match is
 /// acceptable where it can only select content, and not where it selects an address.
 ///
 /// The matcher itself moved to [`crate::xml`] at v2-S7, unchanged, so the presentation reader asks

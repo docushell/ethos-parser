@@ -16,7 +16,7 @@
 
 # The one thing this slice is for
 
-`docs/12-V12-SCOPE.md` §3, the corollary about where locators travel: **locators live in the
+`docs/history/12-V12-SCOPE.md` §3, the corollary about where locators travel: **locators live in the
 artifact, never in the prose a model reads and edits.** MCP says that with `structuredContent`
 versus `content`; LangChain says it with a tool's ``artifact`` versus its ``content``, and the
 parser memo §16.7's LangChain row names that split directly. So these tools are

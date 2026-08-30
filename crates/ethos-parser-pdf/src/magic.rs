@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Content-based format detection (`docs/03-V0-SCOPE.md` §1 item 12).
+//! Content-based format detection (`docs/history/03-V0-SCOPE.md` §1 item 12).
 //!
 //! **The extension is not authority.** A file named `.pdf` containing HTML is HTML, and a
 //! classifier that trusts the name reports on a document it never read. Taken from Anydoc
@@ -86,7 +86,7 @@ pub fn check_pdf_magic(bytes: &[u8]) -> Result<(), EngineError> {
 ///
 /// False for everything else — a `.csv`, a letter, a log line, a PNG — and that is the whole point.
 /// Those bytes state **no** format, and telling them they are a broken PDF names a cause they never
-/// had. `ethos-parser extract` refuses them without opening a reader; see `docs/15-V2-MILESTONES.md` S10.
+/// had. `ethos-parser extract` refuses them without opening a reader; see `docs/history/15-V2-MILESTONES.md` S10.
 ///
 /// [`MAX_HEADER_OFFSET`] is still zero here: nothing is scanned for at any other offset.
 pub fn aims_at_the_pdf_reader(bytes: &[u8]) -> bool {

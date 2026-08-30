@@ -17,7 +17,7 @@
 //! # What this suite exists to establish
 //!
 //! The version gate is not "the protocol works". It is **the handle law**, from
-//! `docs/12-V12-SCOPE.md` §3 and memo §16.7: the engine mints every locator, hands it back as an
+//! `docs/history/12-V12-SCOPE.md` §3 and memo §16.7: the engine mints every locator, hands it back as an
 //! opaque handle, and re-validates it on the way in — and a handle it did not mint **fails
 //! closed**.
 //!
@@ -164,7 +164,7 @@ fn the_server_completes_a_hosts_opening_handshake() {
 
 /// **No tool argument names a coordinate**, read off the wire rather than off the source.
 ///
-/// The corollary of the handle law (`docs/12-V12-SCOPE.md` §3): a tool that grew a `bbox` argument
+/// The corollary of the handle law (`docs/history/12-V12-SCOPE.md` §3): a tool that grew a `bbox` argument
 /// would let the model author a locator the engine then trusts, and no wording in a description
 /// would stop it. The unit test in `mcp.rs` checks the table; this one checks what a host is
 /// actually told.

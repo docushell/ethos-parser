@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The public API freeze, as a test (`docs/05-MILESTONES.md` M7).
+//! The public API freeze, as a test (`docs/history/05-MILESTONES.md` M7).
 //!
 //! `docs/PUBLIC-API.md` claims to list every supported export. A document that claims that and is
 //! not checked becomes wrong on the first PR that adds a `pub use` — quietly, and in the direction

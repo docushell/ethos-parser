@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! M4 acceptance — the L1 gate (`docs/05-MILESTONES.md` M4, `docs/01-CONTRACT.md` §7).
+//! M4 acceptance — the L1 gate (`docs/history/05-MILESTONES.md` M4, `docs/01-CONTRACT.md` §7).
 //!
 //! An artifact that does not declare its capabilities has not reached "extracted," regardless of
 //! how good its text is. These tests hold the declarations to the same standard as the text:
@@ -357,7 +357,7 @@ fn every_true_capability_names_a_proof_test() {
             let name = p.proof_test.unwrap_or_else(|| {
                 panic!(
                     "`capabilities.{}` is claimed true with no proof test named. A capability \
-                     without a passing test is exactly what docs/05-MILESTONES.md M4 lists as \
+                     without a passing test is exactly what docs/history/05-MILESTONES.md M4 lists as \
                      out of scope.",
                     p.field
                 )

@@ -25,7 +25,7 @@
 //! That is why this slice touched an invariant. `check_structure`'s page-less shape checked that
 //! one part id means one part name — and there is no part name here to be a bijection between.
 //! Inventing a constant would have let the old check run unchanged and would have put a string in
-//! every citation that the document does not contain, which is `docs/14-V2-SCOPE.md` §3's
+//! every citation that the document does not contain, which is `docs/history/14-V2-SCOPE.md` §3's
 //! *"absent, not invented"* in a smaller place than usual. See
 //! [`ethos_parser_core::NativeLocator::names_a_part`].
 //!

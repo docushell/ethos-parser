@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The handle law in Python — `docs/12-V12-SCOPE.md` §3, as executables.
+"""The handle law in Python — `docs/history/12-V12-SCOPE.md` §3, as executables.
 
 | handed to :func:`ethos_parser.node_get` | expected |
 | --- | --- |

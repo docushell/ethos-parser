@@ -24,7 +24,7 @@
 //!
 //! # The one sentence
 //!
-//! **No format here has a page, and nothing here invents one.** `docs/14-V2-SCOPE.md` §3, made
+//! **No format here has a page, and nothing here invents one.** `docs/history/14-V2-SCOPE.md` §3, made
 //! mechanical in three places:
 //!
 //! - `payload.pages` is **empty**. There is no A4 record, no "72 DPI" default, and no renderer in
@@ -340,7 +340,7 @@ pub fn is_epub(bytes: &[u8]) -> bool {
 /// v2-S6, and [`is_odp`] joined at v2-S7 — and growing is the point. An `||` of the exact-type
 /// predicates answers `false` for every ODF format this engine does **not** implement, so a
 /// drawing (`.odg`) would fall through to the PDF reader and be refused for having no `%PDF-`
-/// header: fail-closed, and naming the wrong cause. `docs/15-V2-MILESTONES.md` S5 recorded that
+/// header: fail-closed, and naming the wrong cause. `docs/history/15-V2-MILESTONES.md` S5 recorded that
 /// as the one defect S5 deferred to S6, and this is the half of the fix that lives outside
 /// [`read`]. A prefix question stays right as the exact-type list changes; an `||` of it would
 /// have to be edited every time, and would be wrong in the window before someone remembered.
@@ -606,7 +606,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
             reading_order_rule: profile.reading_order_rule.clone(),
         },
         coordinate_system: profile.coordinate_system,
-        // **The empty vector is the whole point.** `docs/14-V2-SCOPE.md` §3: a page-less format
+        // **The empty vector is the whole point.** `docs/history/14-V2-SCOPE.md` §3: a page-less format
         // carries no pages, and a record put here so a node could name it would be the invented
         // pagination this version exists to refuse.
         pages: Vec::new(),
@@ -686,7 +686,7 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 // A cell has no ink box by construction, exactly as a `<w:r>` has none. Not
                 // `NotReportedByReader`: nothing tried to measure and failed, there is nothing
                 // to measure until something lays the sheet out, and laying it out is the
-                // invented pagination `docs/14-V2-SCOPE.md` §3 refuses.
+                // invented pagination `docs/history/14-V2-SCOPE.md` §3 refuses.
                 presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
             });
             nodes.push(Node {
@@ -1234,7 +1234,7 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
             node: id.clone(),
             // Nothing tried to measure and failed. A shape states `svg:x` and `svg:width` on the
             // draw page's own canvas, and this reader neither reads them nor converts them: they
-            // are a position in a drawing rather than an ink box, and `docs/14-V2-SCOPE.md` §3
+            // are a position in a drawing rather than an ink box, and `docs/history/14-V2-SCOPE.md` §3
             // refuses a rectangle nobody can check against a page.
             presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
         });
@@ -1395,7 +1395,7 @@ fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
             node: id.clone(),
             // Nothing tried to measure and failed. RTF states an indent in twips and a paper size
             // in `\paperw`, and neither is an ink box: they are instructions to a layout engine
-            // this crate does not run, and `docs/14-V2-SCOPE.md` §3 refuses a rectangle nobody can
+            // this crate does not run, and `docs/history/14-V2-SCOPE.md` §3 refuses a rectangle nobody can
             // check against a page.
             presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
         });
@@ -1557,7 +1557,7 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
                 node: id.clone(),
                 // Nothing tried to measure and failed. An XHTML block has no ink box until a
                 // reading system chooses a viewport and a font, and choosing one is the rendering
-                // `docs/14-V2-SCOPE.md` §3 refuses.
+                // `docs/history/14-V2-SCOPE.md` §3 refuses.
                 presence: GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
             });
             nodes.push(Node {

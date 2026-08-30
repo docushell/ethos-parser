@@ -48,7 +48,7 @@ const ETHOS_OWNED_FIXTURE_COUNT: usize = 15;
 /// leave the suite green, and leave three docs saying 11.
 const ORACLE_AGREED_COUNT: usize = 12;
 
-/// The fixture the first oracle comparison runs on (`docs/05-MILESTONES.md` M0).
+/// The fixture the first oracle comparison runs on (`docs/history/05-MILESTONES.md` M0).
 const M0_FIXTURE: &str = "synthetic/simple-text";
 
 // ---------------------------------------------------------------------------------------------

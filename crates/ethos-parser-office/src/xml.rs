@@ -299,7 +299,7 @@ pub(crate) fn attribute_value(
 /// One attribute, matched on its **resolved namespace** and local name (v2-S6, shared at v2-S7).
 ///
 /// Not a suffix match. Every caller here reads either an address component or a declared fact, and
-/// `docs/15-V2-MILESTONES.md` S5 states the rule: a suffix match is acceptable where it can only
+/// `docs/history/15-V2-MILESTONES.md` S5 states the rule: a suffix match is acceptable where it can only
 /// select content, and not where it selects an address. `name`, `value-type` and `formula` are
 /// local names other vocabularies use.
 ///

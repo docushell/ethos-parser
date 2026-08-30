@@ -8,7 +8,7 @@ v1.1 began because the owner asked for the next roadmap row, and nothing in it c
 
 Numbers quoted per slice below were measured on the **four-document** gate corpus current at the
 time. The corpus later grew to twelve and the macro reads 70‰;
-[`table-gate-v1.md`](table-gate-v1.md) has the current number. The per-slice figures are left as
+[`table-gate-v1.md`](../table-gate-v1.md) has the current number. The per-slice figures are left as
 measured, because rewriting them would erase the evidence that the number moved.
 
 | Slice | Theme | State |

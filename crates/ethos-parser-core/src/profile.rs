@@ -884,7 +884,7 @@ pub enum XrefRepair {
     /// in this crate at all: `ethos-parser-pdf` depends on `ethos-parser-core`, so importing it back would be
     /// a dependency cycle — which is why the check belongs on the `ethos-parser-pdf` side, where
     /// `xref.rs` already has both strings in scope. It is a real unguarded seam: changing
-    /// `XREF_REPAIR_V1` alone fails nothing today. Recorded in `docs/15-V2-MILESTONES.md` S13.5
+    /// `XREF_REPAIR_V1` alone fails nothing today. Recorded in `docs/history/15-V2-MILESTONES.md` S13.5
     /// rather than papered over.
     #[serde(rename = "pad-19-to-20-v1")]
     Pad19To20V1,
@@ -1589,7 +1589,7 @@ impl Profile {
     }
 }
 
-/// Convenience wrapper matching the API named in `docs/05-MILESTONES.md` M1.
+/// Convenience wrapper matching the API named in `docs/history/05-MILESTONES.md` M1.
 ///
 /// # Errors
 ///
@@ -2197,7 +2197,7 @@ mod tests {
              not move this profile and it did move an INVARIANT: `check_structure`'s page-less \
              shape grew a fourth rule, because its part-id bijection has no part name to be a \
              bijection between, and a constant standing in for a part the format lacks would have \
-             been `docs/14-V2-SCOPE.md` §3's invented value in a small place. `Profile::rtf_v0` \
+             been `docs/history/14-V2-SCOPE.md` §3's invented value in a small place. `Profile::rtf_v0` \
              carries the same inert `coordinate_system` the other six page-less profiles do — \
              seven formats now share that declaration and none of them emits a coordinate — and \
              its `capabilities.tables` is FALSE even though RTF writes `\\cell` and `\\row`, \
@@ -2205,7 +2205,7 @@ mod tests {
              detector inferred.\n\n\
              Moved a THIRTY-SECOND time at v2-S9 (0.28.0) on `parser_version` ALONE, and the \
              format behind it is the first that could have supplied a page FROM THE FILE. \
-             `docs/14-V2-SCOPE.md` §3's law has always been \"no page this engine did not read \
+             `docs/history/14-V2-SCOPE.md` §3's law has always been \"no page this engine did not read \
              from the file\" rather than \"no page ever\", and every format before this one \
              failed the reading half: a DOCX has no page until a renderer picks one, a slide is a \
              part, an ODT's break is a word processor's arithmetic, a draw page is structure, and \
@@ -2246,7 +2246,7 @@ mod tests {
              be false is `SourceIdentity.media_type` naming a CSV media type for a file nobody \
              measured to be one, and `SourceIdentity` is `deny_unknown_fields` with two fields and \
              no room to record that a type was ASSERTED rather than READ. \
-             `docs/13-V12-MILESTONES.md` settled that at v1.2-S5: an identity that can be asserted \
+             `docs/history/13-V12-MILESTONES.md` settled that at v1.2-S5: an identity that can be asserted \
              is an identity that can disagree with what it describes.\n\n\
              Moved a THIRTY-FIFTH time at v2-S10.2 (0.29.1) on `parser_version` ALONE, which is \
              the fourth time a PATCH release has moved it — v1-S6.1 (0.8.1), v1-S6.2 (0.8.2) and \

@@ -12,7 +12,7 @@ Every patch slice since v2-S9.1 has an acceptance box reading "no behaviour chan
 mechanically", and until v2-S16 each slice rebuilt this extractor by hand. Four were built and
 **three were wrong**, each in a way the others could not see, and the record carries four
 different absolute counts for one rule. This file exists so there is one instrument to disagree
-with rather than four to reconcile. `docs/15-V2-MILESTONES.md` S15's correction notes derive it.
+with rather than four to reconcile. `docs/history/15-V2-MILESTONES.md` S15's correction notes derive it.
 
 # One pass, two line-aligned renderings, and neither alone is sufficient
 

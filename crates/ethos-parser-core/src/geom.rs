@@ -208,7 +208,7 @@ impl From<QRect> for [i64; 4] {
 mod tests {
     use super::*;
 
-    // Vectors from `docs/05-MILESTONES.md` M1. These are normative: they are also Ethos's own
+    // Vectors from `docs/history/05-MILESTONES.md` M1. These are normative: they are also Ethos's own
     // vectors, so matching them is what makes the two implementations interchangeable.
     #[test]
     fn quantize_vectors_are_normative() {

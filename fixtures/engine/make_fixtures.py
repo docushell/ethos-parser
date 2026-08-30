@@ -136,7 +136,7 @@ def two_column_stream(left_lines: int, right_lines: int) -> str:
 
     v1-S5's anti-cliff pair. pdf-inspector decides multi-column on `min_lines < 15`: fourteen
     lines on a page come out row-interleaved and fifteen come out column-major, so a one-line
-    edit reorders the whole document (docs/03-V0-SCOPE.md 3.2). Seven lines per column is
+    edit reorders the whole document (docs/history/03-V0-SCOPE.md 3.2). Seven lines per column is
     fourteen; adding one line to the left column is fifteen. A port of that rule would read the
     two files in different orders, and `gutter-columns-v1` must read them in the same one.
 

@@ -210,7 +210,7 @@ cannot tell you the classification bound still holds, only that nothing failed.
 ### 5.1 What each job actually runs
 
 Named tests, not "the suite". Where a criterion has both a grep and a test behind it, the grep is
-the job — `docs/05-MILESTONES.md` M7 asks for a job per line, and a grep over `crates/*/src` is the
+the job — `docs/history/05-MILESTONES.md` M7 asks for a job per line, and a grep over `crates/*/src` is the
 cheapest honest form of two of these.
 
 | Job | Runs |

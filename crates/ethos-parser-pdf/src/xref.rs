@@ -28,7 +28,7 @@
 //! `lopdf` requires the specified stride and refuses the whole document. PDFium repairs it. On
 //! the Ethos conformance corpus this is roughly one valid document in twenty-six —
 //! `synthetic/table-regular-grid` is the known case, and v0 refused it as a declared limitation
-//! with the repair-or-refuse call deferred to v0.1 (`docs/03-V0-SCOPE.md` §4).
+//! with the repair-or-refuse call deferred to v0.1 (`docs/history/03-V0-SCOPE.md` §4).
 //!
 //! **v0.1 decides: repair, bounded and declared.** `docs/01-CONTRACT.md` §12 is the written
 //! decision; this module is its implementation.

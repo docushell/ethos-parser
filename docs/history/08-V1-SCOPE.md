@@ -81,7 +81,7 @@ Three rules bind every slice:
 | **S7** | The accuracy gate, and declaring v1 done | **measured and MISSED — open** |
 
 **S7 is open, the number is written down, and the chase for it is parked.** The gate metric exists,
-is documented in [`table-gate-v1.md`](table-gate-v1.md), runs in CI, and reruns to the same value.
+is documented in [`table-gate-v1.md`](../table-gate-v1.md), runs in CI, and reruns to the same value.
 v2-S19's band shows the macro was never the right summary: 0‰..590‰, median 0‰, ten of twelve
 documents at zero.
 

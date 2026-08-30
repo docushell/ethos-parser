@@ -165,15 +165,24 @@ bucket. A gap is never dressed up as a success.
 
 Version 0.41.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
-**Table extraction is the open gap, and the number is a miss.** Cell-level F1 is about **7%** across
-twelve tagged documents, against a 49% comparator. Read that with its shape, not on its own: ten of
-the twelve score exactly zero because the detector finds no table at all on them, and two documents
-supply the entire average. What it really shows is that the ruled-table rule works where a document
-drew actual lines and produces nothing where it did not. Fabricated cells: **0**, measured on every
-run. The method is in [`docs/table-gate-v1.md`](docs/table-gate-v1.md).
+**Tables, stated as a capability rather than as an average.** The engine does four things, and the
+fourth is the one to read first:
 
-The 49% figure is somebody else's score on their own corpus. It is not quoted here as ours, and it
-is no longer being chased.
+- It **reads the tables a document declares** in its structure tree.
+- It **detects ruled tables** where the producer actually drew the rules.
+- It **emits nothing** where neither holds.
+- It **fabricates nothing** — 0 cells, measured on every run, not asserted.
+
+The numbers, on twelve tagged public documents (2,068 pages, 172 tagged tables, 15,755 tagged cell
+slots). Reading the tables a document declares recovers **157 of the 172** gold tables and takes
+combined cell-slot recall to **502‰**. The geometric detectors alone score a macro cell-slot F1 of
+**70‰** — but the band is 0‰–590‰ with a median of 0‰, and **ten of the twelve score exactly zero**,
+because those documents never drew a grid to detect. Two documents supply that entire average, which
+is why the band is printed here and the macro is not offered on its own.
+
+That shape is the honest finding: the geometric rules work where a producer drew the grid and produce
+nothing where it did not. The method, the per-document table and the caveats are in
+[`docs/table-gate-v1.md`](docs/table-gate-v1.md) — quote table numbers from there or not at all.
 
 For the full honest inventory, read [`docs/CAPABILITY.md`](docs/CAPABILITY.md).
 

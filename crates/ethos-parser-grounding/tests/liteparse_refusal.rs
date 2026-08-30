@@ -14,7 +14,7 @@
 
 //! **Why there is no `liteparse → ethos.grounding.v1` adapter** (v1.2-S5).
 //!
-//! `docs/13-V12-MILESTONES.md` S5 asks for a foreign parser's output mapped into the grounding
+//! `docs/history/13-V12-MILESTONES.md` S5 asks for a foreign parser's output mapped into the grounding
 //! shape — **"if it is worth it"** — under one standing constraint: *whatever it maps is not
 //! `Extracted`*. S5 was implemented as far as the evidence allows and the answer is **no**, for
 //! two reasons that are properties of `ethos.grounding.v1` itself rather than of any one document.

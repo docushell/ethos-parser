@@ -70,7 +70,7 @@
 //! with the hyphen verbatim — `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is
 //! the standing test — because a rule that tells a soft break-hyphen from a real compound one
 //! ("well-known" split across lines) needs a dictionary, and this project does not guess in the
-//! record. `docs/10-V11-SCOPE.md` §5 puts cosmetics in the export or nowhere.
+//! record. `docs/history/10-V11-SCOPE.md` §5 puts cosmetics in the export or nowhere.
 //!
 //! So there is a quote that reads perfectly and does not ground: **`hyphenated`**, which no
 //! element of `ethos.grounding.v1` contains. That is the correct answer and not a verifier defect
@@ -228,7 +228,7 @@ pub enum SegmentKind {
 /// # Bytes, not characters, and the field names say so
 ///
 /// The consumer's job is to slice the string it was given. Every language's slice takes bytes or
-/// takes chars, and saying which — here, in the artifact, and in `docs/11-V11-MILESTONES.md` — is
+/// takes chars, and saying which — here, in the artifact, and in `docs/history/11-V11-MILESTONES.md` — is
 /// the difference between a map and a hint. Integers, like every other number this project emits
 /// (§4: no float appears in canonical output).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -675,7 +675,7 @@ pub(crate) struct ListRole {
 ///
 /// # This rejoins nothing in the representation
 ///
-/// `docs/10-V11-SCOPE.md` §5: a cosmetic is export-only. `extract` still emits `hyphen-` and
+/// `docs/history/10-V11-SCOPE.md` §5: a cosmetic is export-only. `extract` still emits `hyphen-` and
 /// `ated` as two `Extracted` runs with the hyphen verbatim, and
 /// `hyphenated_line_breaks_are_not_rejoined_and_that_is_the_policy` is the test that keeps it that
 /// way. **A quote of the joined word therefore does not ground** — no element contains it — which

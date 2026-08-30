@@ -214,7 +214,7 @@ pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
 
 /// The document-scoped limitation for pages where the alignment rule refused a candidate grid.
 ///
-/// **The near-miss disclosure** (`docs/09-V1-MILESTONES.md` S2, decision 7). Columns that almost
+/// **The near-miss disclosure** (`docs/history/09-V1-MILESTONES.md` S2, decision 7). Columns that almost
 /// line up must not become a table — but a reader who sees only `tables: []` cannot tell that
 /// case from a page with nothing grid-shaped on it at all. This says which pages the alignment
 /// rule looked hard at, and which precondition each one failed.

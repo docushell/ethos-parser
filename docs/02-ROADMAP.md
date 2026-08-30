@@ -66,15 +66,15 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 
 | Question | Document |
 | --- | --- |
-| What is v0, exactly? | [`03-V0-SCOPE.md`](03-V0-SCOPE.md) |
-| How does v0 get built, and in what order? | [`05-MILESTONES.md`](05-MILESTONES.md) |
+| What is v0, exactly? | [`03-V0-SCOPE.md`](history/03-V0-SCOPE.md) |
+| How does v0 get built, and in what order? | [`05-MILESTONES.md`](history/05-MILESTONES.md) |
 | What shape must every artifact have? | [`01-CONTRACT.md`](01-CONTRACT.md) |
 | Can I borrow feature X from parser Y? | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) |
 | Where does verification live? | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) |
-| What is v1, and did its gate clear? | [`08-V1-SCOPE.md`](08-V1-SCOPE.md) / [`09-V1-MILESTONES.md`](09-V1-MILESTONES.md) — measured and **missed** |
-| What is v1.1? | [`10-V11-SCOPE.md`](10-V11-SCOPE.md) / [`11-V11-MILESTONES.md`](11-V11-MILESTONES.md) — complete |
-| What is v1.2? | [`12-V12-SCOPE.md`](12-V12-SCOPE.md) / [`13-V12-MILESTONES.md`](13-V12-MILESTONES.md) — complete |
-| What is v2? | [`14-V2-SCOPE.md`](14-V2-SCOPE.md) / [`15-V2-MILESTONES.md`](15-V2-MILESTONES.md) — S0 through S24 done, gate met |
+| What is v1, and did its gate clear? | [`08-V1-SCOPE.md`](history/08-V1-SCOPE.md) / [`09-V1-MILESTONES.md`](history/09-V1-MILESTONES.md) — measured and **missed** |
+| What is v1.1? | [`10-V11-SCOPE.md`](history/10-V11-SCOPE.md) / [`11-V11-MILESTONES.md`](history/11-V11-MILESTONES.md) — complete |
+| What is v1.2? | [`12-V12-SCOPE.md`](history/12-V12-SCOPE.md) / [`13-V12-MILESTONES.md`](history/13-V12-MILESTONES.md) — complete |
+| What is v2? | [`14-V2-SCOPE.md`](history/14-V2-SCOPE.md) / [`15-V2-MILESTONES.md`](history/15-V2-MILESTONES.md) — S0 through S24 done, gate met |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
 past v2 has one, and v2.2, v3 and v4 should not get one until v2's successor is in sight.

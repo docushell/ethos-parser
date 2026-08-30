@@ -94,7 +94,7 @@ pub enum IdKind {
     ///
     /// The page-less answer to what `Page` is for a PDF, and deliberately not a `Page`: a DOCX
     /// has no page, and minting one so ordinals had somewhere to live is exactly the invented
-    /// pagination `docs/14-V2-SCOPE.md` §3 refuses. A part is something the file itself contains
+    /// pagination `docs/history/14-V2-SCOPE.md` §3 refuses. A part is something the file itself contains
     /// — `word/document.xml` — and every page-less node names it in its own locator, so the
     /// artifact says which part a part id means without a second declaration list.
     Part,

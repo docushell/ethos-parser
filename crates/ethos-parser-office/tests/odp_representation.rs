@@ -441,7 +441,7 @@ fn non_displayed_character_data_is_absent_from_every_block_and_is_declared() {
 /// A presentation is a drawing, and there is nothing for a frame to float over — the frame **is**
 /// the shape this reader addresses. So the first rendition becomes nodes and the second is one
 /// declared erasure, which is ODT's outcome reached by neither ODT's nor ODS's argument. The
-/// three-format table is in `docs/15-V2-MILESTONES.md` S7.
+/// three-format table is in `docs/history/15-V2-MILESTONES.md` S7.
 #[test]
 fn the_first_rendition_is_the_shape_and_the_second_is_declared() {
     let bytes = fixture("presentation-unread-parts");

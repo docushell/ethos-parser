@@ -287,7 +287,7 @@ pub struct TableCellRecord {
     /// way it is real runs concatenated, never re-decoded and never placed.
     ///
     /// **Never a novel string.** A cell enclosing no run carries an empty one, because that is
-    /// what the document put there — `docs/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
+    /// what the document put there — `docs/history/09-V1-MILESTONES.md` S1's fabrication-0 criterion.
     pub text: String,
     /// The nodes [`Self::text`] is the concatenation of, in reading order (v1.1-S2).
     ///

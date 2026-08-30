@@ -103,7 +103,7 @@ two different sentences about the same document.
 **v1.2 is complete.** S5's *"if it is worth it"* was measured, and the answer is no adapter: that
 parser's output cannot name its own producer, and its boxes are loose em boxes this schema cannot
 declare. Both walls are in `ethos.grounding.v1` itself, so no adapter could clear them per document.
-[`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) carries the measurement, and a test pins the refusal.
+[`06-STEAL-REFUSE.md`](../06-STEAL-REFUSE.md) carries the measurement, and a test pins the refusal.
 
 ## 7. Identity
 

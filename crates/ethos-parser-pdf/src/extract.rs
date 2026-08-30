@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Extraction: the evidence itself (`docs/05-MILESTONES.md` M3).
+//! Extraction: the evidence itself (`docs/history/05-MILESTONES.md` M3).
 //!
 //! Takes the **same [`Document`] handle** [`crate::classify`] takes. Nothing here reopens a file:
 //! two loads can disagree, and a classifier that saw a different object graph from the extractor
@@ -1342,7 +1342,7 @@ pub(crate) fn per_page_table_diagnostics(
 /// tests beside them (`one_added_line_does_not_reorder_the_page`,
 /// `ordinals_and_ids_follow_the_reading_order_on_a_reordered_page`) assert order, not cell text.
 /// The property is argued above and **unpinned**; naming the gap is the honest form until a slice
-/// writes the test, and `docs/15-V2-MILESTONES.md` S13.5 records it.
+/// writes the test, and `docs/history/15-V2-MILESTONES.md` S13.5 records it.
 fn reorder_page(
     runs: &mut Vec<TextRun>,
     tables: &mut [crate::tables::DetectedTable],
