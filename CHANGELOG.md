@@ -18,6 +18,84 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.42.0] — the cut stops discarding its own grouping
+
+`gutter-columns-v1` divided a page into column bands, subdivided each band, and then returned only
+the permutation. So a consumer received the runs of a two-column page in the right order and could
+not tell the page had two columns: the engine measured the page's structure and then declined to
+say so.
+
+**This is the first half of v2.2**, by decision #19. Auto-tagging is the second half, and it was
+always going to need this one first — you cannot write a tag for an untagged document without first
+deciding where its blocks are. No version number was invented; v2.2 already existed and this is the
+half nobody had scoped. [`docs/16-D4-SCOPE.md`](docs/16-D4-SCOPE.md) is the scope.
+
+### Added
+
+- **`region` on every text run** — which region of its page the reading-order cut placed it in,
+  1-based in reading order, on `TextRunAttributes`. **Layout is where text sits; structure is what
+  text means.** A region is `Computed` from whitespace this engine measured and is never a
+  paragraph, a heading, a section or anything a role can be read from — roles keep coming from the
+  document's own structure tree or from nowhere. That separation is the capability, and it is the
+  thing model-based extractors conflate by construction.
+- **`ci/bench.py`** — median wall time and artifact size over the gate corpus, reusing the engine's
+  own `--diagnostics` rather than a clock of its own. It exists because local performance was a
+  priority nothing measured. Its first finding: **the engine is linear in what it emits**, flat at
+  0.015 s/MB of output across every large gate document, while cost per megabyte of *input* varies
+  more than threefold. `nist-sp-800-53Ar5` is 7.5 MB in and 932 MB out, and that expansion is the
+  run time.
+
+### Changed
+
+- **`reading_order_rule` moves `gutter-columns-v1` → `gutter-columns-v2`**, so `profile_sha256`
+  moves. **The cut did not change** — same constants, same recursion, and the fifteen ordering tests
+  were not edited — so two artifacts either side list the same runs in the same sequence. The id
+  moves because the artifact gained a field: one naming `-v1` promises no region, and a reader who
+  could not tell them apart could not tell an undivided page from an older build.
+- **Markdown and HTML stop joining a hyphenated word across a column gutter.** `hyphen_tail`
+  already declined to weld across a page, a heading, a list item, a cell and page furniture; a
+  column boundary was one no clause could see. `recalcu-` at the foot of the left column and
+  `Confidential` at the head of the right projected as **`recalcuConfidential`**, a word the page
+  draws nowhere and no citation can ground. Both projections share the guard, so one clause fixes
+  each.
+- `reading-order-geometric-only` now also declares what a region does **not** say: it is a column
+  band, so runs stacked in one column share a region however many paragraphs separate them; it is a
+  flat ordinal over a recursive cut, so it never says why a boundary exists or how deeply it nests;
+  and absent means no division, which is not the same claim as single-column.
+
+### Fixed
+
+- **`$defs/text_run_attributes` forbade `findings`**, a field the engine has emitted since v1-S6,
+  under `additionalProperties: false`. Two committed fixtures produce it. The published schema said
+  the engine's own output was invalid, and no test validates an artifact against these drafts.
+
+### Refused
+
+- **Declared document splits (D1)**, on measurement rather than principle. Of five candidate
+  signals three declare navigation or numbering rather than a boundary — an outline is a bookmark,
+  page labels are numbering, an attachment is a separate file. The two that would be honest do not
+  occur: across all 45 PDF fixtures `/Collection`, `/EmbeddedFiles`, `/PageLabels`, `/Part` and
+  `/DocumentFragment` appear **0** times, and all eight gate documents declare exactly one top-level
+  structure element. A detector with no positive case is an assertion.
+  [`docs/17-D1-SCOPE.md`](docs/17-D1-SCOPE.md) carries both reopening conditions.
+- **A visible block separator in the projections.** A region boundary is a *column* boundary, and
+  GFM `---` after a paragraph line is a setext heading underline while `<hr>` is by definition a
+  *thematic* break. Both would read a semantic claim off a geometric fact.
+
+### Notes
+
+- **What this does not close.** A region opens only on a vertical cut, so paragraph structure on an
+  untagged single-column page is still unavailable — recorded in `CAPABILITY.md`'s Cannot table
+  rather than left implied.
+- **Throughput**, on a quiet machine at `--repeat 3`: all eight gate documents within +3.9% / −2.1%
+  against artifact growth of 0.03% to 2.1%. The undivided page allocates nothing.
+- `ci/gate.sh` now locates the pinned oracle, so nine tests in `html_cli`, `markdown_cli` and
+  `verify_relay` stop failing locally for a reason unrelated to anyone's change. The header's claim
+  that the built-in fallback worked was wrong: it resolves against the caller's working directory,
+  and `cargo test` sets that to the crate root.
+
+---
+
 ## [0.41.0] — the engine becomes `ethos-parser`
 
 Renamed from `ethos-engine`, and the name was wrong in two ways that only get more expensive to fix.
