@@ -179,6 +179,13 @@
         },
         "font_id": { "type": "string" },
         "font_size": { "type": "integer", "minimum": 0, "$comment": "Integer centipoints. NEVER used as a box height." },
+        "findings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["invisible-render-mode", "off-page"] },
+          "$comment": "v1-S6. What was OBSERVED about this run, never a judgement about it: `invisible-render-mode` means the run was drawn in text rendering mode 3 or 7, which is how an OCR layer is laid under a scan AND how text is hidden from a reader — this profile reports the mode and does not decide which it is looking at. `off-page` means the origin lies outside /CropBox, or /MediaBox where no crop box is declared, after /Rotate. Findings are ADDITIVE: a node carrying one is still emitted with its text, origin and locator intact, and no finding removes anything. Sorted and deduplicated, so two artifacts about one run cannot differ by the order two observations happened in. Omitted when empty, which is almost every run. The same code appears in assurance.limitations as a document-level count; the two are one observation seen twice.",
+          "description": "Observations about this run. Never a reason to drop it."
+        },
         "region": { "type": "integer", "minimum": 1, "$comment": "D4-S2. Which region of its page the reading-order cut placed this run in, 1-based, in reading order. WHERE text sits, never WHAT it is: not a paragraph, a heading or a column name, and no role may be read from it (P14 — roles come from the structure tree or from nowhere). ABSENT means the cut made no division, which is not the same claim as 'single column'; the profile's reading_order_rule says which rule ran, and under `single-column-v1` no cut runs at all. Absent on almost every page, which is why it is omitted rather than emitted as null." }
       }
     },
