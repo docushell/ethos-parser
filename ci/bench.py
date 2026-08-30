@@ -34,9 +34,16 @@ document needs several gigabytes for a 7.5 MB PDF.
 
 None of that was visible from inside the process: `Diagnostics::resident_bytes` is `Some` only on
 Linux and `None` on the platform this repository is developed on, which is a correct typed absence
-for the artifact and a useless one for a gate. So the harness measures it from outside, and the
-number is REPORTED rather than gated — the allocator decides when to return pages, so it is
-noisier than wall time and a threshold on it would fire on the weather.
+for the artifact and a useless one for a gate. So the harness measures it from outside, with
+`/usr/bin/time` wrapping the SAME runs the timing loop already makes — so it costs no extra process
+and is medianed over exactly the samples wall time is.
+
+**Medianed, because one sample of this is not a measurement.** The first draft took a single
+unreplicated RSS reading beside `repeat` medianed timings. On a 1.3 GB document that reading moved
+16% run to run, which is wide enough to manufacture a regression or hide one; on a 230 MB document
+it moves about 2.6%, so the noise grows with the allocation and the small fixtures never showed it.
+The number is still REPORTED rather than gated — the allocator decides when to return pages — but
+it is now the same kind of number as the one beside it.
 
 # Size is measured once, because the contract says it may be
 
@@ -74,68 +81,85 @@ CORPUS = ROOT / "fixtures" / "gate"
 DEFAULT_TOLERANCE = 0.10
 
 
+def _time_flag() -> str:
+    """`-l` on BSD/macOS, `-v` on GNU. Probed once rather than guessed from the platform name."""
+    for flag in ("-l", "-v"):
+        try:
+            done = subprocess.run(
+                ["/usr/bin/time", flag, "true"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except OSError:
+            return "-l"
+        if done.returncode == 0 and "resident set size" in done.stderr.decode(errors="replace").lower():
+            return flag
+    return "-l"
+
+
+TIME_FLAG = _time_flag()
+
+
 def fixtures() -> list[pathlib.Path]:
     """The gate corpus, in a fixed order so two runs' rows line up."""
     return sorted(CORPUS.glob("*.pdf"))
 
 
-def peak_rss_bytes(pdf: pathlib.Path) -> int | None:
-    """Peak resident set size of one `extract`, or `None` where the platform will not say.
+def rss_from_time_report(stderr: str) -> int | None:
+    """Peak RSS out of a `/usr/bin/time` report, or `None` where the platform will not say.
 
-    # Why this is measured here and not read off `--diagnostics`
-
-    `Diagnostics::resident_bytes` is `Some` on Linux, from `/proc/self/statm`, and `None`
-    everywhere else — a typed absence the engine takes deliberately rather than carry platform
-    code or a dependency for. That absence is correct for the artifact and useless for a gate: on
-    macOS, which is where this repository is developed, the engine's own instrument cannot see
-    memory at all, so the scaling below went unmeasured until something outside the process looked.
-
-    `/usr/bin/time` reports it on both platforms and needs nothing installed: `-l` on BSD/macOS
-    prints "maximum resident set size" in BYTES, `-v` on GNU prints "Maximum resident set size" in
-    KILOBYTES. Both spellings are parsed, the unit difference is applied, and anything else returns
-    `None` rather than a number nobody took.
-
-    # What it is for
-
-    Throughput is linear in emitted bytes; peak memory is the ceiling. Measured across the gate
-    corpus, RSS runs about 6.4x to 7.8x the artifact and roughly 300x the INPUT — so a 7.5 MB PDF
-    needs several gigabytes, and the wall is memory long before it is time.
+    BSD/macOS `-l` prints "maximum resident set size" in BYTES; GNU `-v` prints "Maximum resident
+    set size" in KILOBYTES. Both spellings are read and the unit difference applied. Anything else
+    returns `None` rather than a number nobody took.
     """
-    for flag, to_bytes in (("-l", 1), ("-v", 1024)):
-        try:
-            done = subprocess.run(
-                ["/usr/bin/time", flag, str(BINARY), "extract", str(pdf)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-        except OSError:
-            return None
-        if done.returncode != 0:
-            continue
-        for raw in done.stderr.decode(errors="replace").splitlines():
-            low = raw.lower()
-            if "maximum resident set size" in low:
-                digits = [t for t in low.replace(":", " ").split() if t.isdigit()]
-                if digits:
-                    return int(digits[0]) * to_bytes
+    for raw in stderr.splitlines():
+        low = raw.lower()
+        if "maximum resident set size" in low:
+            digits = [t for t in low.replace(":", " ").split() if t.isdigit()]
+            if digits:
+                # GNU spells it "Maximum" and reports kilobytes; BSD spells it "maximum" and
+                # reports bytes. The capital is the only discriminator either tool offers.
+                return int(digits[0]) * (1024 if "Maximum resident" in raw else 1)
     return None
 
 
 def measure(pdf: pathlib.Path, repeat: int) -> tuple[int, int, int | None]:
     """`(median wall_micros, artifact bytes, peak rss bytes or None)` for one document."""
-    times = []
+    times: list[int] = []
+    rss: list[int] = []
+    # `/usr/bin/time` wraps the SAME runs the timing loop already makes, so peak memory costs no
+    # extra process and is medianed over exactly the samples wall time is. An earlier draft took
+    # one unreplicated RSS sample beside `repeat` medianed timings; on a 1.3 GB document that
+    # single sample moved 16% run to run, which is a measurement nobody can act on.
     for _ in range(repeat):
         with open("/dev/null", "wb") as sink:
             done = subprocess.run(
-                [str(BINARY), "extract", "--diagnostics", str(pdf)],
+                ["/usr/bin/time", TIME_FLAG, str(BINARY), "extract", "--diagnostics", str(pdf)],
                 stdout=sink,
                 stderr=subprocess.PIPE,
                 check=True,
             )
-        # The diagnostics line is the last thing on stderr; anything before it is an omission
-        # note, which is a fact about the document rather than about this run.
-        line = done.stderr.decode().strip().splitlines()[-1]
-        times.append(int(json.loads(line)["wall_micros"]))
+        err = done.stderr.decode(errors="replace")
+        # The diagnostics line is found by SHAPE, not by position: `/usr/bin/time` appends its own
+        # report after the child exits, so "the last line" stopped being the engine's line the
+        # moment this was wrapped. Anything else on stderr is an omission note, which is a fact
+        # about the document rather than about this run.
+        for raw in err.splitlines():
+            raw = raw.strip()
+            if not raw.startswith("{"):
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if "wall_micros" in obj:
+                times.append(int(obj["wall_micros"]))
+                break
+        else:
+            raise RuntimeError(f"no diagnostics line from extract on {pdf.name}")
+        peak = rss_from_time_report(err)
+        if peak is not None:
+            rss.append(peak)
 
     # Counted in chunks rather than with `subprocess.run(capture_output=True)`. The largest gate
     # artifact is most of a gigabyte, and a harness that needs a gigabyte of its own to weigh one
@@ -151,7 +175,8 @@ def measure(pdf: pathlib.Path, repeat: int) -> tuple[int, int, int | None]:
         total += len(chunk)
     if sized.wait() != 0:
         raise RuntimeError(f"extract failed on {pdf.name}")
-    return int(statistics.median(times)), total, peak_rss_bytes(pdf)
+    median_rss = int(statistics.median(rss)) if len(rss) == repeat else None
+    return int(statistics.median(times)), total, median_rss
 
 
 def emit(repeat: int) -> list[tuple[str, int, int, int | None]]:
