@@ -208,7 +208,7 @@ The limitation is declared on the artifact, not only here.
 | **S1** | `arrange_page` returns regions beside the permutation; ordering byte-identical; no wire change | done |
 | **S2** | `region` on `TextRunAttributes`, absent where no cut; rule id to `gutter-columns-v2`; schemas | done |
 | **S3** | The projections stop joining a word **across** a region boundary | done |
-| **S4** | The declared limitation, and `ci/bench.py --check` green against the S1 baseline | |
+| **S4** | The declared limitation, and `ci/bench.py --check` green against the S1 baseline | done |
 
 S1 lands the whole mechanism behind no wire change at all, so the claim *reading order did not
 move* is provable by `diff` before anything downstream can be blamed for it.
