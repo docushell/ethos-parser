@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # For `v0-fuzz-smoke` and nothing else — every other job carries
+  # `if: github.event_name != 'schedule'`. Monday 06:00 UTC.
+  schedule:
+    - cron: "0 6 * * 1"
 
 # Least privilege. Both jobs check out a second repository and job 1 compiles and executes it,
 # so the token this workflow carries should be able to do nothing but read.
@@ -33,6 +37,8 @@ env:
 
 jobs:
   check:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: build · test · clippy · fmt · deny
     runs-on: ubuntu-latest
     # 90 rather than 45, because 45 was never a measurement. The `test` step reached CI for the
@@ -162,6 +168,13 @@ jobs:
   #   oracle  — additionally build `ethos`, the slowest step, needed only where a test runs it
   #   rust    — install the pinned toolchain; false for the two criteria that are greps
   v0-exit-criteria:
+    # Budget (v2-S14). These matrices re-run tests `check` has already run — their product is
+    # the per-criterion LABEL, not extra coverage, and a label is only read during review. So
+    # they run on pull requests and are skipped on pushes to main, where `check` is the gate.
+    # `if:` rather than deletion, deliberately: `v0_exit_criteria.rs` asserts this matrix is
+    # exactly fourteen entries and that every §5-named job exists in this file. A skipped job
+    # keeps both true and bills nothing.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -335,6 +348,8 @@ jobs:
   # the one suite that spawns a verifier, and its whole subject is that absence is loud rather
   # than skipped.
   v01-gates:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -400,6 +415,8 @@ jobs:
   # grow to accommodate later work. `v0_exit_criteria.rs` scopes its "every entry is claimed by a
   # criterion" assertion to the `v0-exit-criteria` block precisely so these can exist.
   v1s1-gates:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -472,6 +489,8 @@ jobs:
   # failed. When the gate is cleared, `the_cell_gate_is_measured_and_its_verdict_is_recorded`
   # inverts to a floor assertion and this comment goes with it.
   v1s7-table-gate:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -512,6 +531,46 @@ jobs:
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
         run: ${{ matrix.run }}
 
+  # Which paths a pull request touched, so `v0-fuzz-smoke` can run on parser changes and sit out
+  # a docs-only PR. A `git diff` rather than a third-party path-filter action: it is five seconds,
+  # it adds no supply-chain surface to a workflow whose whole posture is `contents: read`, and it
+  # reads the same way the DCO check below does.
+  #
+  # Always runs, and reports `false` on any event that is not a pull request. That keeps
+  # `v0-fuzz-smoke`'s condition a plain OR instead of needing `always()` to survive a skipped
+  # dependency.
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parser: ${{ steps.filter.outputs.parser }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change reach the parser?
+        id: filter
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "parser=false" >> "$GITHUB_OUTPUT"
+            echo "not a pull request; the fuzz smoke runs on its weekly schedule instead"
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          files="$(git diff --name-only "$base" "$head")"
+          echo "$files"
+          # `fuzz/` builds against the engine sources, so anything under crates/ can break a
+          # target, and the manifests/toolchain decide what it is built with.
+          if echo "$files" | grep -qE '^(crates/|fuzz/|Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)'; then
+            echo "parser=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "parser=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # -----------------------------------------------------------------------------------------
   # §5: `cargo-fuzz` target exists and runs clean on the corpus
   # -----------------------------------------------------------------------------------------
@@ -529,6 +588,14 @@ jobs:
   # `fuzz/` is excluded from the workspace, so this compiles a separate crate against the same
   # engine sources and `cargo deny check` never sees `libfuzzer-sys`.
   v0-fuzz-smoke:
+    # Budget (v2-S14). 120 seconds of fuzzing cost ~7 billed minutes a run, because the job
+    # installs nightly and cargo-fuzz and builds three targets before it executes an input. Its
+    # own comment above calls it a panic gate rather than a campaign, so it runs weekly, and on
+    # any pull request that actually reaches the engine. `if:` rather than deletion:
+    # `v0_exit_criteria.rs::every_named_job_exists_in_the_workflow` requires this id to be here,
+    # because §5 names it.
+    needs: changes
+    if: github.event_name == 'schedule' || needs.changes.outputs.parser == 'true'
     name: v0-fuzz-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -632,6 +699,8 @@ jobs:
   # No corpus checkout: `fixtures/office/` is engine-owned and committed here, unlike the Ethos
   # conformance corpus. Nothing to clone, so this is the cheapest job in the file.
   v0-office-mutation:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: v0-office-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -663,6 +732,8 @@ jobs:
   # It uses the same cargo-deny version and the same invocation as the gate above, so what is
   # proven here is what actually runs on a PR.
   deny-policy-is-enforced:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: deny rejects AGPL (proof, not assumption)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -713,6 +784,8 @@ jobs:
   # Signed-off-by trailer. `.githooks/commit-msg` enforces the same thing locally through the
   # same `git interpret-trailers` parse, so a commit that passes the hook passes here.
   dco:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
