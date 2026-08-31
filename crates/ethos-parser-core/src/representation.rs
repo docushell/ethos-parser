@@ -2597,25 +2597,23 @@ impl DocumentRepresentation {
         // walk. A parsed artifact has no cache and takes the full pass, and a test
         // pins the two routes byte-equal.
         if let Some(payload_bytes) = &self.payload_c14n {
+            // The four small members are canonicalized into owned buffers; the payload — 82% of
+            // the artifact on a gate document — is BORROWED from the cache rather than cloned
+            // into the argument. An emit path that exists to avoid walking the payload twice was
+            // copying it instead, which is a full-artifact allocation at peak for nothing.
+            let artifact_type =
+                crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?;
+            let schema_version =
+                crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?;
+            let digest = crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256)
+                .map_err(malformed)?;
+            let geometry = crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?;
             return crate::c14n::canonical_object(vec![
-                (
-                    "artifact_type",
-                    crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?,
-                ),
-                (
-                    "schema_version",
-                    crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?,
-                ),
-                ("representation", payload_bytes.clone()),
-                (
-                    "representation_c14n_sha256",
-                    crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256)
-                        .map_err(malformed)?,
-                ),
-                (
-                    "geometry",
-                    crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?,
-                ),
+                ("artifact_type", artifact_type.as_slice()),
+                ("schema_version", schema_version.as_slice()),
+                ("representation", payload_bytes.as_slice()),
+                ("representation_c14n_sha256", digest.as_slice()),
+                ("geometry", geometry.as_slice()),
             ])
             .map_err(malformed);
         }

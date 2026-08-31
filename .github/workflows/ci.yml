@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # For `v0-fuzz-smoke` and nothing else — every other job carries
+  # `if: github.event_name != 'schedule'`. Monday 06:00 UTC.
+  schedule:
+    - cron: "0 6 * * 1"
 
 # Least privilege. Both jobs check out a second repository and job 1 compiles and executes it,
 # so the token this workflow carries should be able to do nothing but read.
@@ -33,8 +37,17 @@ env:
 
 jobs:
   check:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: build · test · clippy · fmt · deny
     runs-on: ubuntu-latest
+    # This job RUNS the whole suite, so it is runtime-bound and wants workspace crates optimized;
+    # Cargo.toml defaults them to 0 for the compile-bound labelling jobs (the table there says
+    # why). Job-level rather than on `test` alone, so clippy, build and test share one set of
+    # artifacts instead of recompiling the workspace at a second opt-level.
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: 2
+      CARGO_PROFILE_TEST_OPT_LEVEL: 2
     # 90 rather than 45, because 45 was never a measurement. The `test` step reached CI for the
     # first time in this repository's history on 8e2b4e1 — every earlier run died at `fmt`
     # before it — and took 41m26s of a 44m22s job, clearing the old ceiling by 38 seconds on a
@@ -70,8 +83,20 @@ jobs:
           toolchain: "1.88.0"
           components: rustfmt, clippy
 
+      # `key:` is a cache-buster, and it is load-bearing rather than decorative. rust-cache's key
+      # does NOT hash Cargo.toml's profile section, so when v2-S14 moved dependencies to
+      # `opt-level = 3` the key stayed byte-identical (`...-4129e3df-b139dc84`), every job
+      # restored a cache full of UNOPTIMIZED dependency artifacts, and the post step reported
+      # `Cache up-to-date.` — a GitHub cache entry cannot be overwritten, so it never refreshed.
+      # The result was every job recompiling every dependency, every run, for good: run
+      # 33358797372 had `v1s1-paths` at 199s against a 41s baseline.
+      #
+      # Bump this string whenever a profile change alters how dependencies are compiled. `fuzz`
+      # below is deliberately NOT bumped: `fuzz/` is excluded from the workspace and carries its
+      # own manifest, so the root profile does not reach it and its cache stays valid.
       - uses: Swatinem/rust-cache@v2
         with:
+          key: deps-opt3
           # The oracle builds into ethos-oracle/target, outside the default `.` workspace, so
           # without this it is the one expensive step the cache never covers.
           workspaces: |
@@ -162,6 +187,13 @@ jobs:
   #   oracle  — additionally build `ethos`, the slowest step, needed only where a test runs it
   #   rust    — install the pinned toolchain; false for the two criteria that are greps
   v0-exit-criteria:
+    # Budget (v2-S14). These matrices re-run tests `check` has already run — their product is
+    # the per-criterion LABEL, not extra coverage, and a label is only read during review. So
+    # they run on pull requests and are skipped on pushes to main, where `check` is the gate.
+    # `if:` rather than deletion, deliberately: `v0_exit_criteria.rs` asserts this matrix is
+    # exactly fourteen entries and that every §5-named job exists in this file. A skipped job
+    # keeps both true and bills nothing.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -181,6 +213,10 @@ jobs:
             corpus: true
             oracle: true
             rust: true
+            # The only §5 entry that runs long enough for optimized workspace crates to pay for
+            # their own compile — it emits every artifact twice. The other thirteen are
+            # compile-bound and take Cargo.toml's opt-level 0.
+            optimize: true
             run: cargo test --workspace --locked -- byte_identical two_runs_with_diagnostics_still_produce_identical_artifacts two_library_runs_produce_identical_bytes
 
           - id: v0-oracle
@@ -306,6 +342,7 @@ jobs:
           # One cache per criterion would evict itself constantly; they compile the same
           # workspace, so they share.
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: Build the oracle
         if: matrix.oracle
@@ -315,6 +352,9 @@ jobs:
       - name: ${{ matrix.id }} — ${{ matrix.criterion }}
         env:
           RUSTFLAGS: "-D warnings"
+          # Unset on an entry means 0 — the compile-bound default. See Cargo.toml.
+          CARGO_PROFILE_DEV_OPT_LEVEL: ${{ matrix.optimize && 2 || 0 }}
+          CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.optimize && 2 || 0 }}
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
@@ -335,6 +375,8 @@ jobs:
   # the one suite that spawns a verifier, and its whole subject is that absence is loud rather
   # than skipped.
   v01-gates:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -378,6 +420,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: Build the verifier
         if: matrix.oracle
@@ -400,6 +443,8 @@ jobs:
   # grow to accommodate later work. `v0_exit_criteria.rs` scopes its "every entry is claimed by a
   # criterion" assertion to the `v0-exit-criteria` block precisely so these can exist.
   v1s1-gates:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -444,6 +489,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: ${{ matrix.id }} — ${{ matrix.gate }}
         env:
@@ -472,8 +518,15 @@ jobs:
   # failed. When the gate is cleared, `the_cell_gate_is_measured_and_its_verdict_is_recorded`
   # inverts to a floor assertion and this comment goes with it.
   v1s7-table-gate:
+    # Budget (v2-S14), for the reason given on `v0-exit-criteria` above.
+    if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
+    # The one labelling job that is runtime-bound rather than compile-bound: `accuracy::` is the
+    # 236.6s-vs-44.9s suite Cargo.toml's table measures. It buys back far more than the compile.
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: 2
+      CARGO_PROFILE_TEST_OPT_LEVEL: 2
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -504,6 +557,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: ${{ matrix.id }} — ${{ matrix.gate }}
         env:
@@ -511,6 +565,46 @@ jobs:
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
         run: ${{ matrix.run }}
+
+  # Which paths a pull request touched, so `v0-fuzz-smoke` can run on parser changes and sit out
+  # a docs-only PR. A `git diff` rather than a third-party path-filter action: it is five seconds,
+  # it adds no supply-chain surface to a workflow whose whole posture is `contents: read`, and it
+  # reads the same way the DCO check below does.
+  #
+  # Always runs, and reports `false` on any event that is not a pull request. That keeps
+  # `v0-fuzz-smoke`'s condition a plain OR instead of needing `always()` to survive a skipped
+  # dependency.
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parser: ${{ steps.filter.outputs.parser }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this change reach the parser?
+        id: filter
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "parser=false" >> "$GITHUB_OUTPUT"
+            echo "not a pull request; the fuzz smoke runs on its weekly schedule instead"
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          files="$(git diff --name-only "$base" "$head")"
+          echo "$files"
+          # `fuzz/` builds against the engine sources, so anything under crates/ can break a
+          # target, and the manifests/toolchain decide what it is built with.
+          if echo "$files" | grep -qE '^(crates/|fuzz/|Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)'; then
+            echo "parser=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "parser=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # -----------------------------------------------------------------------------------------
   # §5: `cargo-fuzz` target exists and runs clean on the corpus
@@ -529,6 +623,14 @@ jobs:
   # `fuzz/` is excluded from the workspace, so this compiles a separate crate against the same
   # engine sources and `cargo deny check` never sees `libfuzzer-sys`.
   v0-fuzz-smoke:
+    # Budget (v2-S14). 120 seconds of fuzzing cost ~7 billed minutes a run, because the job
+    # installs nightly and cargo-fuzz and builds three targets before it executes an input. Its
+    # own comment above calls it a panic gate rather than a campaign, so it runs weekly, and on
+    # any pull request that actually reaches the engine. `if:` rather than deletion:
+    # `v0_exit_criteria.rs::every_named_job_exists_in_the_workflow` requires this id to be here,
+    # because §5 names it.
+    needs: changes
+    if: github.event_name == 'schedule' || needs.changes.outputs.parser == 'true'
     name: v0-fuzz-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -632,6 +734,8 @@ jobs:
   # No corpus checkout: `fixtures/office/` is engine-owned and committed here, unlike the Ethos
   # conformance corpus. Nothing to clone, so this is the cheapest job in the file.
   v0-office-mutation:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: v0-office-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -645,6 +749,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       # --nocapture so the coverage report reaches the log, for the same reason
       # `v0-fixture-mutation` carries it: a mutation job that printed only "ok" would be
@@ -663,6 +768,8 @@ jobs:
   # It uses the same cargo-deny version and the same invocation as the gate above, so what is
   # proven here is what actually runs on a PR.
   deny-policy-is-enforced:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     name: deny rejects AGPL (proof, not assumption)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -713,6 +820,8 @@ jobs:
   # Signed-off-by trailer. `.githooks/commit-msg` enforces the same thing locally through the
   # same `git interpret-trailers` parse, so a commit that passes the hook passes here.
   dco:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
