@@ -956,25 +956,68 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         // that hole. The global counters then advance by replaying the same number
         // of allocations the page made, which also reproduces the sequential
         // MAX_SAFE_INT refusal at the same page it would always have fired.
-        let bases = [
+        // Five counters read once, then indexed by a `match` rather than searched (v2-S15).
+        //
+        // This was an array of `(kind, base)` pairs behind `find(..).expect("kind is listed")`:
+        // a linear scan per id — five comparisons each, ~5x10^5 on a page with 10^5 runs — to
+        // read a value already in scope.
+        //
+        // The `expect` it replaced was **not** unreachable, and the compiler is what said so.
+        // `IdKind` has eight variants; this path mints five. `Page`, `Element` and `Part` were
+        // never in that array, so `expect("kind is listed")` was the branch they took — a message
+        // asserting an invariant that three of the eight cases violate by construction. Writing
+        // it as a `match` forced them into the open. They still cannot be rebased here (there is
+        // no page-local counter for them to be rebased against), so they still panic — but the
+        // panic now names the real condition instead of claiming the kind was not listed.
+        let [span_base, table_base, image_base, field_base, annot_base] = [
             IdKind::Span,
             IdKind::Table,
             IdKind::Image,
             IdKind::FormField,
             IdKind::Annotation,
         ]
-        .map(|kind| (kind, alloc.count(kind)));
-        let base = |kind: IdKind| {
-            bases
-                .iter()
-                .find(|(k, _)| *k == kind)
-                .map(|(_, b)| *b)
-                .expect("kind is listed")
+        .map(|kind| alloc.count(kind));
+        let base = |kind: IdKind| match kind {
+            IdKind::Span => span_base,
+            IdKind::Table => table_base,
+            IdKind::Image => image_base,
+            IdKind::FormField => field_base,
+            IdKind::Annotation => annot_base,
+            // Not minted per page, so there is no page-local ordinal to rebase. Enumerated rather
+            // than swept into a `_` arm: a sixth rebased kind added later must fail HERE, at the
+            // counter, rather than silently taking a zero base and colliding every id it rewrites.
+            IdKind::Page | IdKind::Element | IdKind::Part => panic!(
+                "{kind:?} is not rebased on the page path: extraction mints no page-local ids of \
+                 this kind, so there is no base to add. A new rebased kind needs a counter above."
+            ),
         };
+        // `strip_prefix` rather than `as_str()[kind.prefix().len()..]`. The byte slice assumes the
+        // id actually carries the prefix for the kind it is being rebased as, and one caller below
+        // does NOT derive `kind` from the id — it reads `object.attributes`, so a FormField
+        // attribute on an Annotation-minted id would slice at the wrong offset and then either
+        // parse the wrong number or panic inside `str` indexing. This makes the mismatch itself
+        // the reported condition instead of its downstream symptom.
+        //
+        // Both remaining panics are engine-invariant violations rather than document properties,
+        // and they stay panics deliberately: `EngineError` has no variant that means "this engine
+        // is wrong" — routing them through `Malformed` would blame the document for a bug in here.
+        // Widening the taxonomy is a decision for its own change; see the v2-S15 audit note.
         let rebase = |id: &ethos_parser_core::NodeId, kind: IdKind| {
-            let ordinal: u64 = id.as_str()[kind.prefix().len()..]
-                .parse()
-                .expect("engine-minted ids carry a decimal ordinal");
+            let rest = id.as_str().strip_prefix(kind.prefix()).unwrap_or_else(|| {
+                panic!(
+                    "id `{}` is being rebased as {kind:?}, whose prefix is `{}`, and does not \
+                     carry it — the kind was derived from the wrong place",
+                    id.as_str(),
+                    kind.prefix()
+                )
+            });
+            let ordinal: u64 = rest.parse().unwrap_or_else(|_| {
+                panic!(
+                    "engine-minted id `{}` carries `{rest}` after its prefix, which is not a \
+                     decimal ordinal",
+                    id.as_str()
+                )
+            });
             ethos_parser_core::NodeId::from_parts(kind, base(kind) + ordinal)
         };
         for run in &mut y.page.runs {

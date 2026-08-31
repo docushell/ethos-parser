@@ -149,25 +149,44 @@ impl Document {
         })
     }
 
+    /// The font cache, recovering the guard rather than propagating poison.
+    ///
+    /// These two call sites read `.expect("font cache lock is never poisoned: no panics while
+    /// held")` until v2-S15. The invariant was true and nothing enforced it: it holds only because
+    /// no caller currently panics inside the critical section, and it stops holding the first time
+    /// someone widens one. The failure that follows is out of all proportion to the cause — under
+    /// `panic = "unwind"` (every test and debug build) one panic while the lock is held poisons it
+    /// permanently, so every subsequent page panics HERE, turning one bad page into a whole
+    /// document of cascading failures with the blame on the cache.
+    ///
+    /// Poison carries no information this cache needs. The map is a memo of data that is
+    /// re-derivable by construction — the values are `Arc<Font>` and the worst case from
+    /// proceeding is parsing a font twice, which is already possible under the race two rayon
+    /// workers can lose on a cold entry. So recover the guard and carry on.
+    ///
+    /// `parking_lot::Mutex` would remove poisoning outright; it is a dependency, and this buys the
+    /// same thing for zero new crates (`docs/04-ARCHITECTURE.md` §5).
+    fn fonts(
+        &self,
+    ) -> std::sync::MutexGuard<'_, BTreeMap<(lopdf::ObjectId, String), Arc<crate::fonts::Font>>>
+    {
+        self.font_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// A cached parse of the font at `oid` under resource name `id`, if any page loaded it.
     pub(crate) fn cached_font(
         &self,
         oid: lopdf::ObjectId,
         id: &str,
     ) -> Option<Arc<crate::fonts::Font>> {
-        self.font_cache
-            .lock()
-            .expect("font cache lock is never poisoned: no panics while held")
-            .get(&(oid, id.to_string()))
-            .cloned()
+        self.fonts().get(&(oid, id.to_string())).cloned()
     }
 
     /// Record a parsed font for reuse by later pages.
     pub(crate) fn cache_font(&self, oid: lopdf::ObjectId, id: &str, font: Arc<crate::fonts::Font>) {
-        self.font_cache
-            .lock()
-            .expect("font cache lock is never poisoned: no panics while held")
-            .insert((oid, id.to_string()), font);
+        self.fonts().insert((oid, id.to_string()), font);
     }
 
     /// The one bounded repair, attempted only after a normal parse failed.
@@ -278,6 +297,50 @@ fn map_lopdf_error(e: lopdf::Error) -> EngineError {
 mod tests {
     use super::*;
     use crate::test_support::{bench_fixture, conformance_fixture};
+
+    /// **A poisoned font cache is still a usable font cache.**
+    ///
+    /// These two accessors carried `.expect("font cache lock is never poisoned")` until v2-S15.
+    /// Nothing enforced that invariant, and the consequence of it breaking was disproportionate:
+    /// one panic while the lock is held poisons it for the life of the `Document`, so under
+    /// `panic = "unwind"` every LATER page panics inside the cache rather than wherever the real
+    /// fault was.
+    ///
+    /// The poison here is induced the only way it can be — a panic while a guard is live, caught
+    /// so the test itself survives. What is asserted is that the reads and writes afterwards work
+    /// normally, because the cache is a memo of re-derivable data and poison tells it nothing.
+    #[test]
+    fn a_poisoned_font_cache_still_reads_and_writes() {
+        let bytes = conformance_fixture("synthetic/simple-text/document.pdf");
+        let doc = Document::open_bytes(&bytes, &Profile::default()).expect("opens");
+
+        // Poison it: panic with the guard held.
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = doc.font_cache.lock().expect("first lock is clean");
+            panic!("induced, to poison the cache");
+        }));
+        assert!(poisoned.is_err(), "the induced panic must have happened");
+        assert!(
+            doc.font_cache.is_poisoned(),
+            "the cache must actually be poisoned, or this test proves nothing"
+        );
+
+        // A read must be a miss rather than a panic. Before v2-S15 this line aborted.
+        assert!(
+            doc.cached_font((7, 0), "F1").is_none(),
+            "a miss on a poisoned cache is a miss, not a panic"
+        );
+
+        // And the real path — extraction loads and caches every font this document uses, so it
+        // goes through both accessors. Asserting the artifact rather than the accessors is what
+        // makes this a test of the engine surviving poison rather than of two one-line helpers.
+        let artifact = crate::extract::extract(&doc, &Profile::default())
+            .expect("a poisoned font cache must not fail an extract");
+        assert!(
+            !artifact.pages.is_empty(),
+            "the extract must still produce pages"
+        );
+    }
 
     #[test]
     fn a_non_pdf_is_unsupported_not_malformed() {
