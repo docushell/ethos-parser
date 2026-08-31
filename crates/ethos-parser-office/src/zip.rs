@@ -114,7 +114,7 @@ pub fn looks_like_zip(bytes: &[u8]) -> bool {
 /// the directory is what a conforming reader is required to trust.
 pub fn entry_names(archive: &[u8]) -> Result<Vec<String>, EngineError> {
     let mut names = Vec::new();
-    walk_central_directory(archive, |name, _| {
+    walk_central_directory(archive, |name, _, _| {
         names.push(name.to_string());
         Ok(std::ops::ControlFlow::Continue(()))
     })?;
@@ -208,16 +208,24 @@ fn read_entry_inner(
     want: &str,
     checksum: ChecksumCheck,
 ) -> Result<Vec<u8>, EngineError> {
-    let mut found: Option<(u16, u32, u32, u32)> = None;
-    walk_central_directory(archive, |name, header| {
+    // **One walk** (v2-S15). This called `walk_central_directory` for the header and then
+    // `found_local_offset` for the offset, and those are two full O(entries) traversals of the
+    // same directory for two fields of the same 46-byte record — so reading a part cost two
+    // scans, and a package of 2,370 entries paid ~4,700 header parses to retrieve one part. The
+    // offset sits in the header the first walk already had; it was being discarded by a thin
+    // adapter whose only job was to drop the third closure argument.
+    let mut found: Option<(u16, u32, u32, u32, usize)> = None;
+    walk_central_directory(archive, |name, header, local_offset| {
         if name != want {
             return Ok(std::ops::ControlFlow::Continue(()));
         }
-        found = Some(header);
+        let (method, crc, compressed, uncompressed) = header;
+        found = Some((method, crc, compressed, uncompressed, local_offset));
         Ok(std::ops::ControlFlow::Break(()))
     })?;
 
-    let Some((method, declared_crc, compressed_size, uncompressed_size)) = found else {
+    let Some((method, declared_crc, compressed_size, uncompressed_size, local_offset)) = found
+    else {
         return Err(EngineError::MissingPart {
             part: format!("`{want}` is not an entry of this package"),
         });
@@ -226,8 +234,8 @@ fn read_entry_inner(
         (method, compressed_size as usize, uncompressed_size as usize);
 
     // The local header repeats the name and carries its own extra field, whose length may differ
-    // from the central one — so the data offset is computed here, not taken from the directory.
-    let local_offset = found_local_offset(archive, want)?;
+    // from the central one — so the data offset is computed below from the LOCAL header rather
+    // than taken from the directory. Only the header's position comes from the directory.
     let local = archive
         .get(local_offset..)
         .ok_or_else(|| malformed("local header offset is past the end of the archive"))?;
@@ -332,32 +340,18 @@ fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineEr
     Ok(out)
 }
 
-/// The local-header offset the central directory records for `want`.
-fn found_local_offset(archive: &[u8], want: &str) -> Result<usize, EngineError> {
-    let mut offset = None;
-    walk_central_directory_full(archive, |name, _, local| {
-        if name == want {
-            offset = Some(local);
-            return Ok(std::ops::ControlFlow::Break(()));
-        }
-        Ok(std::ops::ControlFlow::Continue(()))
-    })?;
-    offset.ok_or_else(|| {
-        malformed(format!(
-            "`{want}` vanished between two reads of the central directory"
-        ))
-    })
-}
-
-fn walk_central_directory<F>(archive: &[u8], mut visit: F) -> Result<(), EngineError>
-where
-    F: FnMut(&str, (u16, u32, u32, u32)) -> Result<std::ops::ControlFlow<()>, EngineError>,
-{
-    walk_central_directory_full(archive, |name, header, _| visit(name, header))
-}
-
 /// Walk the central directory, handing each entry's name, sizes and local-header offset to `visit`.
-fn walk_central_directory_full<F>(archive: &[u8], mut visit: F) -> Result<(), EngineError>
+///
+/// There was a second, thinner `walk_central_directory` here whose whole body was
+/// `walk_central_directory_full(archive, |name, header, _| visit(name, header))` — one walker
+/// wrapping another to drop an argument. It cost a full second traversal per part read, because
+/// the caller that needed the offset had to go back for it through `found_local_offset`. Both are
+/// gone (v2-S15); a call site that does not want the offset binds `_`.
+///
+/// `found_local_offset` took the error `"vanished between two reads of the central directory"`
+/// with it. That condition was only ever reachable BECAUSE there were two reads, so removing the
+/// second read removes the race rather than leaving a message about one that can no longer occur.
+fn walk_central_directory<F>(archive: &[u8], mut visit: F) -> Result<(), EngineError>
 where
     F: FnMut(&str, (u16, u32, u32, u32), usize) -> Result<std::ops::ControlFlow<()>, EngineError>,
 {
