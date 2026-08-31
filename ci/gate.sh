@@ -103,7 +103,7 @@ if [ -z "${ETHOS_BIN:-}" ] && [ -x ../ethos-oracle/target/release/ethos ]; then
 fi
 
 step=0
-total=7
+total=8
 announce() {
   step=$((step + 1))
   printf '\n\033[1m[%d/%d] %s\033[0m\n' "$step" "$total" "$1"
@@ -129,6 +129,9 @@ cargo test --workspace --locked
 
 announce 'deny'
 cargo deny check
+
+announce 'sdk suites — node and python, the version guards that had never run'
+ci/sdk-suites.sh
 
 printf '\n\033[1;32mgate: all %d checks passed.\033[0m\n' "$total"
 printf 'Not run, by design: the oracle build, the toolchain tripwire, v0-fuzz-smoke,\n'

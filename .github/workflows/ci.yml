@@ -151,6 +151,34 @@ jobs:
         # that proves this engine and the verifier read an artifact the same way.
         run: cargo test --workspace --locked
 
+      # --- SDK guards -----------------------------------------------------------------------
+      #
+      # **These suites existed and had never run.** Both carry a test asserting their version
+      # against `[workspace.package] version` in Cargo.toml, and each file says so in a comment —
+      # and at v2-S15 the four numbers were 0.42.0 (Cargo), 0.36.1 (python `__init__.py`), 0.36.1
+      # (node `index.js`) and 0.36.3 (node `package.json`). Six minor versions of drift behind
+      # three guards, because nothing in this workflow had ever executed `node --test` or
+      # `pytest`. That is the same liveness failure as 0.31.1's "guards that were never there".
+      #
+      # One `ci/*.sh` invocation rather than two `run:` steps, because
+      # `the_local_gate_runs_what_ci_runs` compares this job against `ci/gate.sh` command by
+      # command and reads the script's commands as the lines beginning `cargo ` or `ci/`. A check
+      # both must run is therefore a script — the shape `ci/forbidden-tokens.sh` already uses.
+      #
+      # Run HERE rather than as their own job: both locators refuse a binary whose `--version`
+      # disagrees with the workspace, so the suites need a built engine, and `build` above has
+      # just produced one. A separate job would rebuild the workspace to re-derive it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: SDK suites (node + python)
+        run: ci/sdk-suites.sh
+
       # Installed rather than run via EmbarkStudios/cargo-deny-action, for two reasons:
       #   1. That action exposes no input to pin the cargo-deny version — its only version
       #      control is the action ref itself, which hides the tool version behind a tag.

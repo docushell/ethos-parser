@@ -1,6 +1,6 @@
 {
   "name": "ethos-parser",
-  "version": "0.36.3",
+  "version": "0.42.0",
   "description": "A thin Node surface over the ethos-parser CLI. Locators are minted by the engine, never composed by a caller.",
   "license": "Apache-2.0",
   "author": "ethos-parser maintainers",
