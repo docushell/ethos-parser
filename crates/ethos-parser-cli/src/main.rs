@@ -306,6 +306,42 @@ struct OverlayArgs {
     path: PathBuf,
 }
 
+/// A ceiling on the bytes one invocation will read off disk.
+///
+/// **There was none** until v2-S15: every entry point called `std::fs::read` on a caller-supplied
+/// path, so the whole file was resident before any check beyond the five-byte magic number ran.
+/// The office crate has had `zip::MAX_INFLATED_BYTES` since v2-S13 for exactly this reason; the
+/// path that reads the file in the first place had nothing.
+///
+/// 2 GiB is far above any document this engine is meant for and far below "whatever the caller
+/// names". It is a refusal by name rather than an allocation on the caller's behalf, which is the
+/// difference between a diagnosable exit 2 and an OOM kill with no stderr.
+///
+/// This bounds the SOURCE. The dominant cost of an extract is not the file — peak memory tracks
+/// page count at roughly 4.7 MiB per page, which is what `extract --max-pages` exists to bound.
+/// The two ceilings are complementary and neither subsumes the other.
+pub(crate) const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Read a caller-supplied file, refusing one that is over [`MAX_SOURCE_BYTES`].
+///
+/// `metadata` first, so an oversized file is refused without being read. The race between the
+/// stat and the read is real and deliberately not chased: a file that grows past the ceiling in
+/// between is still bounded by the read itself failing or by the ceiling being 2 GiB, and a
+/// `read`-then-check would have to allocate the thing it means to refuse.
+pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.is_file() && meta.len() > MAX_SOURCE_BYTES {
+            return Err(EngineError::ResourceLimit {
+                limit: format!("source bytes for `{}`", path.display()),
+                configured: MAX_SOURCE_BYTES.to_string(),
+            });
+        }
+    }
+    std::fs::read(path).map_err(|e| EngineError::Io {
+        detail: format!("{}: {e}", path.display()),
+    })
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let diag = cli.diagnostics;
@@ -441,13 +477,9 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // `ethos.parser.docx.v0`, and every downstream path — c14n, fingerprint, `node_get` — is
     // unchanged. What differs is the profile the reader runs under, which is what makes the two
     // artifacts provably non-comparable.
-    let head = match std::fs::read(&args.path) {
+    let head = match read_source(&args.path) {
         Ok(bytes) => bytes,
-        Err(e) => {
-            return fail(&EngineError::Io {
-                detail: format!("{}: {e}", args.path.display()),
-            })
-        }
+        Err(e) => return fail(&e),
     };
     // **One question, not six ordered ones** (v2-S3). Asking `is_docx` first and `is_xlsx`
     // second would make a package containing both main parts resolve to whichever line came
@@ -600,13 +632,9 @@ fn emit_representation(
 /// the representation and has nothing to do with PDF, so `ethos-parser-pdf` never learns Markdown
 /// (`docs/04-ARCHITECTURE.md` §1).
 fn run_markdown(args: MarkdownArgs) -> ExitCode {
-    let bytes = match std::fs::read(&args.path) {
+    let bytes = match read_source(&args.path) {
         Ok(b) => b,
-        Err(e) => {
-            return fail(&EngineError::Io {
-                detail: format!("{}: {e}", args.path.display()),
-            })
-        }
+        Err(e) => return fail(&e),
     };
 
     let repr: ethos_parser_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
@@ -681,13 +709,9 @@ fn run_mcp() -> ExitCode {
 /// rule: `docs/04-ARCHITECTURE.md` §1 puts no logic in the CLI, and the projection is a fact about
 /// the representation rather than about PDF, so `ethos-parser-pdf` never learns HTML either.
 fn run_html(args: HtmlArgs) -> ExitCode {
-    let bytes = match std::fs::read(&args.path) {
+    let bytes = match read_source(&args.path) {
         Ok(b) => b,
-        Err(e) => {
-            return fail(&EngineError::Io {
-                detail: format!("{}: {e}", args.path.display()),
-            })
-        }
+        Err(e) => return fail(&e),
     };
 
     let repr: ethos_parser_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
@@ -743,13 +767,9 @@ fn run_html(args: HtmlArgs) -> ExitCode {
 /// Thin, like every other subcommand: it reads bytes, calls the library, prints canonical bytes,
 /// and maps the outcome to an exit code. The projection itself lives in `ethos-parser-grounding`.
 fn run_ground(args: GroundArgs) -> ExitCode {
-    let bytes = match std::fs::read(&args.path) {
+    let bytes = match read_source(&args.path) {
         Ok(b) => b,
-        Err(e) => {
-            return fail(&EngineError::Io {
-                detail: format!("{}: {e}", args.path.display()),
-            })
-        }
+        Err(e) => return fail(&e),
     };
 
     let repr: ethos_parser_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
@@ -812,24 +832,16 @@ const PROJECTED: i32 = 0;
 /// report is the machine-readable part. Only an input that could not be read at all produces no
 /// report, because there is nothing to report about.
 fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
-    let grounding = match std::fs::read(&args.path) {
+    let grounding = match read_source(&args.path) {
         Ok(b) => b,
-        Err(e) => {
-            return fail(&EngineError::Io {
-                detail: format!("{}: {e}", args.path.display()),
-            })
-        }
+        Err(e) => return fail(&e),
     };
 
     let source = match &args.source_artifact {
         None => None,
-        Some(p) => match std::fs::read(p) {
+        Some(p) => match read_source(p) {
             Ok(b) => Some(b),
-            Err(e) => {
-                return fail(&EngineError::Io {
-                    detail: format!("{}: {e}", p.display()),
-                })
-            }
+            Err(e) => return fail(&e),
         },
     };
 

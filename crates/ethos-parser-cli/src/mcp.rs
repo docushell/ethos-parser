@@ -302,11 +302,9 @@ fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
     // Through the same router the CLI uses — a DOCX over MCP used to be handed
     // straight to the PDF reader and refused for lacking a `%PDF-` header, the
     // wrong-cause refusal three CLI slices had already retired for their formats.
-    let head = std::fs::read(std::path::Path::new(path)).map_err(|e| {
-        Failure::from(&ethos_parser_core::EngineError::Io {
-            detail: format!("{path}: {e}"),
-        })
-    })?;
+    // The same ceiling the CLI applies (v2-S15). MCP is a long-lived process handling untrusted
+    // documents repeatedly, so an unbounded read here is the one that matters most.
+    let head = crate::read_source(std::path::Path::new(path)).map_err(|e| Failure::from(&e))?;
     // The default profile: MCP exposes no knobs, so an artifact from this surface is the
     // unbounded one, exactly as it was before `extract --max-pages` existed.
     let artifact = crate::representation_for_bytes(&head, &ethos_parser_core::Profile::default())
@@ -381,7 +379,7 @@ fn representation_arg(args: &Value) -> Result<DocumentRepresentation, Failure> {
 
     let repr: DocumentRepresentation = match raw {
         Value::String(path) => {
-            let bytes = std::fs::read(path)
+            let bytes = crate::read_source(std::path::Path::new(path))
                 .map_err(|e| Failure::new(INVALID_PARAMS, format!("{path}: {e}")))?;
             serde_json::from_slice(&bytes)
         }
