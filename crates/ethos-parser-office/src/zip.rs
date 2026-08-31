@@ -428,11 +428,41 @@ fn find_eocd(archive: &[u8]) -> Result<usize, EngineError> {
     // 22 bytes fixed, plus a comment of at most 65535.
     let window = archive.len().min(22 + 0xFFFF);
     let start = archive.len() - window;
-    let found = archive[start..]
-        .windows(4)
-        .rposition(|w| w == EOCD_SIGNATURE)
-        .map(|at| start + at);
-    found.ok_or_else(|| {
+    let region = &archive[start..];
+
+    // **The last `PK\x05\x06` in the window is not necessarily the record** (v2-S15). The EOCD is
+    // followed by a comment of up to 65535 arbitrary bytes, and a comment containing the
+    // signature puts the LAST match inside the comment, past the real record. `rposition` alone
+    // then read comment bytes as the entry count and the directory offset.
+    //
+    // A conforming candidate identifies itself: its own declared comment length must place the
+    // end of the file exactly 22 + comment_len bytes later. So scan backwards and take the first
+    // candidate that agrees with the file it is in.
+    //
+    // **Falls back to the last match when none validates**, deliberately. This is a hardening on
+    // a path that already reads real packages, and refusing an archive the previous code accepted
+    // would be a worse defect than the one being fixed — the corpus is the instrument for that
+    // (`docs/04-ARCHITECTURE.md`), and all 404 office tests read unchanged either way.
+    let mut fallback: Option<usize> = None;
+    let mut end = region.len();
+    while end >= 4 {
+        let Some(rel) = region[..end].windows(4).rposition(|w| w == EOCD_SIGNATURE) else {
+            break;
+        };
+        let at = start + rel;
+        if fallback.is_none() {
+            fallback = Some(at);
+        }
+        if let Ok(comment_len) = u16_at(&archive[at..], 20) {
+            if at + 22 + comment_len as usize == archive.len() {
+                return Ok(at);
+            }
+        }
+        // Strictly before this candidate, so the scan terminates.
+        end = rel;
+    }
+
+    fallback.ok_or_else(|| {
         malformed(
             "no end-of-central-directory record. These bytes are not a ZIP container, or the \
              archive is truncated — either way there is nothing here to read a part out of.",
