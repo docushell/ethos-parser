@@ -145,6 +145,54 @@ export class EngineFailed extends EngineError {
 }
 
 /** The value handed in is not a `DocumentRepresentation` this package will read. */
+export class EngineTimeout extends EngineError {
+  /**
+   * The engine was still running when the wall clock ran out, and was killed.
+   *
+   * Separate from {@link EngineFailed} on purpose. A refusal is an ANSWER — the engine read the
+   * document and said no, with a reason on stderr and one of three exit codes — while a timeout
+   * is the absence of one. A caller retrying, alerting or falling back wants those in different
+   * branches, and "non-zero exit" would put "this PDF is encrypted" beside "this never came
+   * back".
+   *
+   * Until v2-S15 there was no timeout at any layer, so this was an unbounded hang.
+   */
+  constructor(commandArgs, ms, stderr) {
+    super(
+      `\`ethos-parser ${commandArgs.join(" ")}\` did not finish within ${ms} ms and was killed` +
+        (stderr.trim() ? `: ${stderr.trim()}` : ""),
+    );
+    this.name = "EngineTimeout";
+    this.commandArgs = [...commandArgs];
+    this.ms = ms;
+    this.stderr = stderr;
+  }
+}
+
+export class ArtifactTooLarge extends EngineError {
+  /**
+   * The engine printed more than {@link MAX_ARTIFACT_BYTES} of stdout.
+   *
+   * `maxBuffer: Infinity` was here until v2-S15, with a comment correctly criticising Node's
+   * one-megabyte default as "a size limit nobody chose" — and then drawing the wrong conclusion
+   * from it. The answer to an arbitrary default is a CHOSEN ceiling, not the absence of one:
+   * unbounded, the artifact is buffered, `.toString("utf8")` copies it, and `JSON.parse` builds a
+   * graph from it, so peak is several times the on-wire size with nothing bounding any of it.
+   *
+   * A truncated read would still arrive as the confusing JSON parse error that comment warned
+   * about, which is why this is its own named failure instead.
+   */
+  constructor(commandArgs, limit) {
+    super(
+      `\`ethos-parser ${commandArgs.join(" ")}\` produced more than ${limit} bytes of stdout. ` +
+        `Raise ETHOS_PARSER_MAX_BYTES if this document is genuinely that large.`,
+    );
+    this.name = "ArtifactTooLarge";
+    this.commandArgs = [...commandArgs];
+    this.limit = limit;
+  }
+}
+
 export class NotARepresentation extends EngineError {
   constructor(message) {
     super(message);
@@ -411,20 +459,73 @@ function onPath(name) {
   return null;
 }
 
+/**
+ * Wall clock for one engine invocation, in milliseconds. Override with `ETHOS_PARSER_TIMEOUT`
+ * (seconds, matching the Python SDK); `0` waits forever, which is what every version before
+ * v2-S15 did unconditionally.
+ *
+ * Ten minutes is chosen rather than derived, and deliberately far above any healthy run — the
+ * largest document in the corpus extracts in seconds, so this is not a performance budget. It is
+ * the line past which "slow" has become "never".
+ */
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Ceiling on one artifact's stdout, in bytes. Override with `ETHOS_PARSER_MAX_BYTES`.
+ *
+ * 512 MiB is far above any artifact this engine has produced and far below "unbounded". The
+ * number matters less than its existence: it is a decision, where `Infinity` was the absence of
+ * one.
+ */
+const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024;
+
+/** A numeric environment override, or the default. Refuses nonsense rather than falling back. */
+function numericEnv(name, fallback, scale = 1) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new EngineError(
+      `${name}=${JSON.stringify(raw)} is not a non-negative number. Use 0 for no limit.`,
+    );
+  }
+  return value === 0 ? 0 : value * scale;
+}
+
 /** Run a subcommand and return its stdout. A non-zero exit throws, never returns empty. */
 function run(commandArgs) {
   const engine = binary();
+  const timeoutMs = numericEnv("ETHOS_PARSER_TIMEOUT", DEFAULT_TIMEOUT_MS, 1000);
+  const maxBuffer = numericEnv("ETHOS_PARSER_MAX_BYTES", MAX_ARTIFACT_BYTES);
   const result = spawnSync(engine, commandArgs, {
     // No `env`: the engine is deterministic and handing it an environment this package composed
     // would be one more input nobody declared. `spawnSync` inherits `process.env` by default.
     //
-    // `maxBuffer: Infinity` because the default is one megabyte and a real document's
-    // representation is larger than that. Truncated stdout would arrive as a JSON parse error —
-    // a confusing failure standing in for a size limit nobody chose.
-    maxBuffer: Infinity,
+    // Two bounds, both chosen (v2-S15). Node's one-megabyte `maxBuffer` default is too small for
+    // a real representation, and `Infinity` was the previous answer to that — but unbounded means
+    // the artifact is buffered, copied by `.toString("utf8")` and then expanded by `JSON.parse`,
+    // several times the on-wire size with nothing bounding any of it. And with no `timeout`, a
+    // document that stalls the engine hung the caller with no exception to route.
+    maxBuffer: maxBuffer === 0 ? Infinity : maxBuffer,
+    ...(timeoutMs === 0 ? {} : { timeout: timeoutMs, killSignal: "SIGKILL" }),
   });
 
+  const stderrEarly = (result.stderr ?? Buffer.alloc(0)).toString("utf8");
+
+  // Order matters, and the order is ENOBUFS first. `spawnSync` reports BOTH bounds through
+  // `error`, and it kills the child with `killSignal` in BOTH cases — so with `killSignal:
+  // "SIGKILL"` set for the timeout, an over-large buffer also arrives carrying `signal ===
+  // "SIGKILL"`. Testing the signal before the code therefore reported every ArtifactTooLarge as
+  // an EngineTimeout; `bounds.test.js` caught exactly that. Dispatch on the specific `code` the
+  // condition sets, and treat the signal only as the fallback the timeout case needs.
   if (result.error) {
+    const code = result.error.code;
+    if (code === "ENOBUFS") {
+      throw new ArtifactTooLarge(commandArgs, maxBuffer);
+    }
+    if (code === "ETIMEDOUT" || result.signal === "SIGKILL") {
+      throw new EngineTimeout(commandArgs, timeoutMs, stderrEarly);
+    }
     throw new EngineNotFound(`\`${engine}\` could not be run: ${result.error.message}`);
   }
 

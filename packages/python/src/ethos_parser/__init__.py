@@ -75,6 +75,7 @@ __all__ = [
     "EngineError",
     "EngineFailed",
     "EngineNotFound",
+    "EngineTimeout",
     "FingerprintMismatch",
     "NodeNotFound",
     "NotARepresentation",
@@ -119,6 +120,35 @@ class EngineError(Exception):
 
 class EngineNotFound(EngineError):
     """No ``ethos-parser`` binary could be located, or the one pinned by ``ETHOS_PARSER`` is absent."""
+
+
+class EngineTimeout(EngineError):
+    """The engine was still running when the wall clock ran out, and was killed.
+
+    Distinct from :class:`EngineFailed` on purpose. A refusal is an answer — the engine read the
+    document and said no, with a reason on stderr and one of three exit codes. A timeout is the
+    absence of an answer, and a caller retrying, alerting or falling back wants to tell those
+    apart. Collapsing them into "non-zero exit" would put "this PDF is encrypted" and "this
+    process never came back" in the same branch.
+
+    Until v2-S15 there was no timeout at all, at any layer, so this condition was an unbounded
+    hang instead of an exception.
+    """
+
+    def __init__(self, args, seconds, stderr):
+        super().__init__(
+            "`ethos-parser {}` did not finish within {} seconds and was killed{}".format(
+                " ".join(str(a) for a in args),
+                seconds,
+                ": {}".format(stderr.strip()) if stderr.strip() else "",
+            )
+        )
+        #: The argument vector, under a name :class:`BaseException` does not already claim.
+        self.command_args = tuple(args)
+        #: The budget that expired, in seconds.
+        self.seconds = seconds
+        #: Whatever the engine had written to stderr before it was killed.
+        self.stderr = stderr
 
 
 class EngineFailed(EngineError):
@@ -339,18 +369,61 @@ def _binary():
     )
 
 
+#: Wall clock for one engine invocation, in seconds. Override with ``ETHOS_PARSER_TIMEOUT``; set
+#: it to ``0`` to wait forever, which is what every version before v2-S15 did unconditionally.
+#:
+#: Ten minutes is chosen rather than derived, and it is deliberately far above any healthy run:
+#: the largest document in the corpus extracts in seconds, so this is not a performance budget. It
+#: is the line past which "slow" has become "never", and a caller that has been blocked for ten
+#: minutes on one document is better served by an exception it can route than by a process it
+#: cannot see. The number is a choice, which is the point — the previous behaviour was no ceiling
+#: at all, and "no ceiling" is not a decision anybody made.
+_DEFAULT_TIMEOUT_SECONDS = 600
+
+
+def _timeout_seconds():
+    """The configured wall clock, or ``None`` for no limit."""
+    raw = os.environ.get("ETHOS_PARSER_TIMEOUT")
+    if raw is None:
+        return _DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        raise EngineError(
+            "ETHOS_PARSER_TIMEOUT={!r} is not a number of seconds. Set it to a positive value, "
+            "or to 0 to wait forever.".format(raw)
+        ) from None
+    if value < 0:
+        raise EngineError(
+            "ETHOS_PARSER_TIMEOUT={!r} is negative. Use 0 to wait forever.".format(raw)
+        )
+    return None if value == 0 else value
+
+
 def _run(args):
     """Run a subcommand and return its stdout. A non-zero exit is raised, never swallowed."""
     binary = _binary()
+    timeout = _timeout_seconds()
     try:
         # No `env=`: the engine is deterministic and handing it an environment this package
         # composed would be one more input nobody declared.
+        #
+        # `subprocess.run` with a timeout kills the child and reaps it before re-raising, which
+        # is the part a bare `TimeoutExpired` handler around `Popen` would have to do by hand —
+        # and forgetting it leaves the engine running after the caller has given up.
         completed = subprocess.run(
             [binary] + list(args),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired as e:
+        raise EngineTimeout(
+            args,
+            timeout,
+            (e.stderr or b"").decode("utf-8", errors="replace"),
+        ) from e
     except OSError as e:
         raise EngineNotFound("`{}` could not be run: {}".format(binary, e)) from e
 
