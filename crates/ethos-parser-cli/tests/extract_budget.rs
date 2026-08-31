@@ -164,7 +164,12 @@ fn a_budget_moves_the_profile_hash() {
     let bounded = representation(&extract(&["--max-pages", "2", fixture().to_str().unwrap()]));
     let unbounded = representation(&extract(&[fixture().to_str().unwrap()]));
 
-    let hash = |r: &serde_json::Value| r["identity"]["profile_sha256"].as_str().unwrap().to_string();
+    let hash = |r: &serde_json::Value| {
+        r["identity"]["profile_sha256"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
     assert_ne!(
         hash(&bounded),
         hash(&unbounded),
@@ -180,7 +185,11 @@ fn a_budget_moves_the_profile_hash() {
 /// the outcome it happened to produce.
 #[test]
 fn a_budget_larger_than_the_document_drops_nothing_but_is_still_a_different_profile() {
-    let r = representation(&extract(&["--max-pages", "99", fixture().to_str().unwrap()]));
+    let r = representation(&extract(&[
+        "--max-pages",
+        "99",
+        fixture().to_str().unwrap(),
+    ]));
     assert_eq!(page_count(&r), PAGES_IN_FIXTURE);
     assert!(
         !limitation_codes(&r).contains(&BUDGET_CODE.to_string()),
