@@ -209,6 +209,26 @@ struct ClassifyArgs {
 struct ExtractArgs {
     /// The PDF to extract.
     path: PathBuf,
+
+    /// Process at most N pages; the rest are quarantined and declared. Unbounded by default.
+    ///
+    /// **This is the only bound a caller has on how much memory one extract costs**, and until
+    /// v2-S15 there was none. Peak resident memory tracks PAGE COUNT rather than file size —
+    /// measured across the corpus at ~4.7 MiB per page, so `nist-sp-800-171r3` (120 pages,
+    /// 1.5 MB) peaks at 566 MiB while a 1.5 MB 28-page document peaks at 124 MiB. Every page's
+    /// extract is retained because it IS the artifact, so the only thing that bounds the cost is
+    /// admitting fewer pages. A host handing this untrusted input could not previously do that:
+    /// `page_budget` defaults to `Unlimited` and nothing on this command could lower it.
+    ///
+    /// The pages left out are not silently dropped. Each is quarantined with
+    /// `resource_limit_pages` and the artifact declares the limitation, which is the same
+    /// machinery `PageBudget::AtMost` has always driven — this flag only lets a caller reach it.
+    ///
+    /// Changing this changes `profile_sha256`, exactly as `classify --sample-pages` does, so a
+    /// bounded artifact and an unbounded one are correctly non-comparable rather than quietly
+    /// different.
+    #[arg(long, value_name = "N")]
+    max_pages: Option<u32>,
 }
 
 #[derive(clap::Args)]
@@ -452,7 +472,11 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // what the package is and is not, so an unread ZIP now fails closed for the cause it actually
     // has. This is the third time the same defect has been fixed for a different format, and it is
     // fixed here for the shape rather than for one more member of it.
-    emit_representation(representation_for_bytes(&head))
+    let mut profile = Profile::default();
+    if let Some(n) = args.max_pages {
+        profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
+    }
+    emit_representation(representation_for_bytes(&head, &profile))
 }
 
 /// Route bytes to the reader their own signatures name, and return the canonical
@@ -468,6 +492,7 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
 /// diverge again.
 pub(crate) fn representation_for_bytes(
     head: &[u8],
+    profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
     if ethos_parser_office::is_docx(head)
         || ethos_parser_office::is_xlsx(head)
@@ -502,8 +527,6 @@ pub(crate) fn representation_for_bytes(
         return Err(no_format_stated());
     }
 
-    let profile = Profile::default();
-
     // Opened once, exactly as `classify` opens it — and from the bytes the router
     // already read, so the file is read exactly once end to end. The same handle
     // serves both stages (docs/04-ARCHITECTURE.md §2.1); nothing below the CLI
@@ -513,9 +536,9 @@ pub(crate) fn representation_for_bytes(
     // M5 makes `DocumentRepresentation v0` the canonical record, and it is what `ethos-parser ground`
     // consumes. The stage artifact remains the library's return type, so M3's acceptance suite
     // still asserts on the thing the parser actually produces.
-    let doc = Document::open_bytes(head, &profile)?;
-    let extract = ethos_parser_pdf::extract(&doc, &profile)?;
-    ethos_parser_pdf::to_representation(&extract, &profile)
+    let doc = Document::open_bytes(head, profile)?;
+    let extract = ethos_parser_pdf::extract(&doc, profile)?;
+    ethos_parser_pdf::to_representation(&extract, profile)
 }
 
 /// The refusal for bytes that state no format at all (v2-S10).

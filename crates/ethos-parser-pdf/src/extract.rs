@@ -914,6 +914,40 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // page's counter deltas with the same saturating arithmetic in the same order,
     // and returns the FIRST page error in page order — the sequential loop's abort
     // point — so a failing document reports the same failure it always did.
+    //
+    // # Chunking this was measured and refused (v2-S15)
+    //
+    // A security review read this `collect()` as the tree's largest memory regression: it holds
+    // every page's yield at once where the pre-0.39.0 sequential loop streamed, so peak was said
+    // to scale with page count without bound. The first half is right and the conclusion does not
+    // follow, which is why the fix was built, measured, and then thrown away rather than shipped.
+    //
+    // Folding in batches of 32 — same order, same first-error-in-page-order, byte-identical over
+    // all 212 artifacts — moved peak RSS on `nist-sp-800-171r3` (120 pages) from 558.9 MiB to
+    // 563.6 MiB. Nothing, and slightly the wrong way.
+    //
+    // The reason is three lines below the fold: `pages.push(y.page)`. Every page's `PageExtract`
+    // is RETAINED, because it is the artifact — `pages` is returned at the bottom of this
+    // function. `PageYield` is that same `PageExtract` plus a dozen counters and three small
+    // refusal vectors, so bounding how many `PageYield`s are live bounds only the counters. The
+    // pages themselves are required output and no batching can drop them.
+    //
+    // What IS true, measured across the corpus at v2-S15:
+    //
+    //     pages   file     peak RSS
+    //         6   138K     17.6 MiB
+    //        28   1.5M    124.2 MiB
+    //        36   723K    219.1 MiB
+    //        59   944K    272.6 MiB
+    //        80   1.4M    411.6 MiB
+    //       120   1.5M    566.1 MiB
+    //
+    // ~4.7 MiB per page, and independent of file size — the two 1.5M documents differ 4.5x on
+    // page count alone. So the exposure is real and it is the ARTIFACT, not the parallelism. The
+    // bound that helps is therefore a ceiling on how many pages one extract will admit, which is
+    // what `--max-pages` and `PageBudget` are for, and not a smaller window onto the same
+    // retained set. Do not re-propose the batching without re-measuring: it costs complexity in
+    // the hottest loop here and bought 0 MiB.
     use rayon::prelude::*;
     let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
         .pages()

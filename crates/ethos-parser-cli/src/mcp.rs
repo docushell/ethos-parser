@@ -307,7 +307,10 @@ fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
             detail: format!("{path}: {e}"),
         })
     })?;
-    let artifact = crate::representation_for_bytes(&head).map_err(|e| Failure::from(&e))?;
+    // The default profile: MCP exposes no knobs, so an artifact from this surface is the
+    // unbounded one, exactly as it was before `extract --max-pages` existed.
+    let artifact = crate::representation_for_bytes(&head, &ethos_parser_core::Profile::default())
+        .map_err(|e| Failure::from(&e))?;
 
     let summary = format!(
         "{} page(s), {} node(s). Locators are in the artifact.",
