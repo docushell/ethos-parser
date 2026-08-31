@@ -309,13 +309,22 @@ fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineEr
             configured: MAX_INFLATED_BYTES.to_string(),
         });
     }
-    let mut out = Vec::with_capacity(declared);
+    // **Grow into the declared size; do not reserve it** (v2-S15). `declared` comes from the
+    // central directory, which is attacker-controlled up to `MAX_INFLATED_BYTES` — so
+    // `with_capacity(declared)` let a two-kilobyte part that merely CLAIMS 256 MiB allocate
+    // 256 MiB before inflate produced a byte. The length check below refuses that part, but only
+    // after the allocation, and this runs once per part read: a workbook is one part per sheet, so
+    // forty sheets each declaring the cap reserved ten gigabytes across a read that returns
+    // nothing. The ceiling meant to bound the damage was setting the size of each allocation.
+    //
+    // `read_to_end` doubles from a small start, so declining to trust the declaration costs a
+    // handful of reallocations on a genuinely large part and 64 KiB on a hostile one.
+    let mut out = Vec::with_capacity(declared.min(64 * 1024));
     // Bounded by `MAX_INFLATED_BYTES + 1`, not by the declared size — this comment said "the
-    // declared size plus one byte" until v2-S13.5 and never matched the line below it.
-    // `with_capacity(declared)` is a capacity HINT, not a ceiling. So a part declaring a few bytes
-    // that inflates to 200 MiB is held to the 256 MiB cap rather than to its own declaration, and
-    // the caller's length check is what refuses it afterwards. The one extra byte is what makes a
-    // stream that overruns the cap detectable instead of silently truncated at it.
+    // declared size plus one byte" until v2-S13.5 and never matched the line below it. So a part
+    // declaring a few bytes that inflates to 200 MiB is held to the 256 MiB cap rather than to its
+    // own declaration, and the caller's length check is what refuses it afterwards. The one extra
+    // byte is what makes a stream that overruns the cap detectable instead of silently truncated.
     flate2::read::DeflateDecoder::new(data)
         .take(MAX_INFLATED_BYTES + 1)
         .read_to_end(&mut out)
