@@ -622,6 +622,33 @@ ethos-parser-pdf = { path = "crates/ethos-parser-pdf", version = "0.42.0" }
 ethos-parser-office = { path = "crates/ethos-parser-office", version = "0.42.0" }
 ethos-parser-grounding = { path = "crates/ethos-parser-grounding", version = "0.42.0" }
 
+# Tests are the CI budget, and they were compiling unoptimized.
+#
+# Two separate effects, measured at v2-S14 on `accuracy::` — the table gate, the most expensive
+# suite in the tree — with dependencies warm and only workspace crates rebuilt:
+#
+#     workspace  deps  |  workspace compile  |  accuracy::
+#             0     0  |               8s    |    236.6s
+#             0     3  |               8s    |     44.9s
+#             2     2  |              27s    |     15.8s
+#
+# Optimizing DEPENDENCIES is 5.3x and free: `Swatinem/rust-cache` restores them, so the cost is
+# paid on a cache miss rather than per job. That is this block.
+#
+# Optimizing WORKSPACE crates buys the remaining 3x and triples their compile — and workspace
+# crates are the half rust-cache deliberately discards, because they change every commit. So the
+# nineteen labelling jobs, which are compile-bound and barely run a test, would pay that three
+# times over to save seconds. The first attempt at this set both and CI measured the result: the
+# two heavy jobs won 54 minutes and the nineteen light ones gave back 48.
+#
+# So workspace opt-level stays 0 here, and the three runtime-bound jobs raise it for themselves
+# through `CARGO_PROFILE_*` in .github/workflows/ci.yml. Local `cargo build` stays fast too.
+#
+# `debug-assertions` is untouched and stays ON, so overflow checks and every `debug_assert!`
+# still run. This buys wall-clock, not laxity.
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 strip = "symbols"
 lto = true

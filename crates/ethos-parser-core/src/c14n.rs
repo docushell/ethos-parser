@@ -198,10 +198,19 @@ pub fn sha256_hex(value: &Value) -> Result<String, C14nError> {
 /// would have done, so the output is byte-identical to serializing the whole
 /// struct — a property the caller's tests pin.
 ///
+/// # Values are BORROWED, and that is the whole point of the signature
+///
+/// The payload is the largest thing in the artifact — 82% of it on a gate
+/// document — and the caller holds it already, cached from `seal`. Taking
+/// `Vec<u8>` by value made the one caller `clone()` that payload to hand it
+/// over, so an emit path whose entire reason for existing is *not* walking the
+/// payload twice was copying it instead. Borrowing removes a full-artifact
+/// allocation from the peak with no change to a single emitted byte.
+///
 /// # Errors
 ///
 /// [`C14nError`] on a duplicate key.
-pub fn canonical_object(mut fields: Vec<(&str, Vec<u8>)>) -> Result<Vec<u8>, C14nError> {
+pub fn canonical_object(mut fields: Vec<(&str, &[u8])>) -> Result<Vec<u8>, C14nError> {
     fields.sort_by(|a, b| a.0.cmp(b.0));
     if let Some(pair) = fields.windows(2).find(|pair| pair[0].0 == pair[1].0) {
         return Err(C14nError::new(format!(

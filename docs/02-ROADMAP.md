@@ -51,6 +51,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | --- | --- |
 | PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* improves grounding; tag *generation* does not, which is why v2.2 writes tags and stops there |
 | **Declared document splits (D1)** | **Refused on measurement, not principle.** Of five candidate signals three declare navigation or numbering rather than a boundary, and the two that would be honest occur **0** times across all 45 PDF fixtures. A detector with no positive case is an assertion. [`17-D1-SCOPE.md`](17-D1-SCOPE.md) §8 has both reopening conditions |
+| **Role-path interning** | **Refused on evidence, not on honesty** — [decision 20](00-NORTH-STAR.md)'s carve-out admits it. It saves 5.98% of a `nist-sp-800-218` artifact and **0.33% of the same artifact compressed**: DEFLATE already back-references the repeated arrays, from outside the contract at no schema cost. [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) §5 says where the bytes actually are — 72.25% of the artifact is JSON syntax and key names |
 | **A role, heading or paragraph read off a region** | A region is *where*, never *what*. P14 — and the whole reason layout and structure are separate axes in decision #19 |
 | Chart descriptions **as evidence** | A description is `Proposed`. It can exist and can never be cited |
 | Any mode that rewrites the evidence | The artifact is the record |
@@ -80,6 +81,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v2? | [`14-V2-SCOPE.md`](history/14-V2-SCOPE.md) / [`15-V2-MILESTONES.md`](history/15-V2-MILESTONES.md) — S0 through S24 done, gate met |
 | What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S1 done |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
+| Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
 past v2 had one until decision #19, which put v2.2's first half in sight by meeting v2. **v3 and v4
