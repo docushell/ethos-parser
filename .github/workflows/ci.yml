@@ -41,6 +41,13 @@ jobs:
     if: github.event_name != 'schedule'
     name: build · test · clippy · fmt · deny
     runs-on: ubuntu-latest
+    # This job RUNS the whole suite, so it is runtime-bound and wants workspace crates optimized;
+    # Cargo.toml defaults them to 0 for the compile-bound labelling jobs (the table there says
+    # why). Job-level rather than on `test` alone, so clippy, build and test share one set of
+    # artifacts instead of recompiling the workspace at a second opt-level.
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: 2
+      CARGO_PROFILE_TEST_OPT_LEVEL: 2
     # 90 rather than 45, because 45 was never a measurement. The `test` step reached CI for the
     # first time in this repository's history on 8e2b4e1 — every earlier run died at `fmt`
     # before it — and took 41m26s of a 44m22s job, clearing the old ceiling by 38 seconds on a
@@ -194,6 +201,10 @@ jobs:
             corpus: true
             oracle: true
             rust: true
+            # The only §5 entry that runs long enough for optimized workspace crates to pay for
+            # their own compile — it emits every artifact twice. The other thirteen are
+            # compile-bound and take Cargo.toml's opt-level 0.
+            optimize: true
             run: cargo test --workspace --locked -- byte_identical two_runs_with_diagnostics_still_produce_identical_artifacts two_library_runs_produce_identical_bytes
 
           - id: v0-oracle
@@ -328,6 +339,9 @@ jobs:
       - name: ${{ matrix.id }} — ${{ matrix.criterion }}
         env:
           RUSTFLAGS: "-D warnings"
+          # Unset on an entry means 0 — the compile-bound default. See Cargo.toml.
+          CARGO_PROFILE_DEV_OPT_LEVEL: ${{ matrix.optimize && 2 || 0 }}
+          CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.optimize && 2 || 0 }}
           ETHOS_FIXTURES: ${{ github.workspace }}/ethos-oracle/fixtures
           ETHOS_BENCH_CORPUS: ${{ github.workspace }}/ethos-oracle/benchmarks/gate-zero/corpus
           ETHOS_BIN: ${{ github.workspace }}/ethos-oracle/target/release/ethos
@@ -493,6 +507,11 @@ jobs:
     if: github.event_name == 'pull_request'
     name: ${{ matrix.id }}
     runs-on: ubuntu-latest
+    # The one labelling job that is runtime-bound rather than compile-bound: `accuracy::` is the
+    # 236.6s-vs-44.9s suite Cargo.toml's table measures. It buys back far more than the compile.
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: 2
+      CARGO_PROFILE_TEST_OPT_LEVEL: 2
     timeout-minutes: 45
     strategy:
       fail-fast: false
