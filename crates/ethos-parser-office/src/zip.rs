@@ -125,7 +125,15 @@ pub fn entry_names(archive: &[u8]) -> Result<Vec<String>, EngineError> {
 ///
 /// Read from the local file header at **offset 0**, not from the central directory.
 ///
-/// `None` when the bytes do not begin with a local file header, or when the header is truncated.
+/// `None` when the bytes do not begin with a local file header, or when the header is long enough
+/// to read but its declared name runs past the end.
+///
+/// **Truncation is not one case.** Bytes too short to hold the fixed 30-byte header — a nine-byte
+/// file starting `PK\x03\x04` — come back `Err(Malformed)` from `u16_at`, not `None`; only a name
+/// that overruns yields `None`. This line said "or when the header is truncated" until v2-S15,
+/// which described neither branch correctly. `Err` is the better answer for the first case and it
+/// is kept: a file that announces a local header and then stops is malformed, and saying so is
+/// more use than reporting an absence.
 ///
 /// # Why this one reads the leading bytes when everything else reads the directory
 ///
