@@ -622,6 +622,29 @@ ethos-parser-pdf = { path = "crates/ethos-parser-pdf", version = "0.42.0" }
 ethos-parser-office = { path = "crates/ethos-parser-office", version = "0.42.0" }
 ethos-parser-grounding = { path = "crates/ethos-parser-grounding", version = "0.42.0" }
 
+# Tests are the CI budget, and they were compiling unoptimized.
+#
+# Measured at v2-S14 on `accuracy::` — the table gate, the most expensive suite in the tree:
+# 231.4s at opt-level 0 against 17.1s at opt-level 2, same fourteen tests, same verdicts. On CI
+# that suite is 29 billed minutes as `v1-table-gate` and the largest single component of
+# `check`'s 42-minute `test` step, which it pays for a second time.
+#
+# `dev` as well as `test`, and that is the half that does the work: `cargo test` builds the crate
+# under test with the `test` profile but every DEPENDENCY with `dev`, so optimizing `test` alone
+# leaves the decompression and font crates this engine leans on at opt-level 0. The measurement
+# above set both.
+#
+# `debug-assertions` is untouched and stays ON — it defaults from `dev` — so overflow checks and
+# every `debug_assert!` still run. This buys wall-clock, not laxity.
+#
+# The cost is local `cargo build`, which is slower now. That is the trade this repository should
+# want: a compile happens on one machine, a test run happens on every push.
+[profile.dev]
+opt-level = 2
+
+[profile.test]
+opt-level = 2
+
 [profile.release]
 strip = "symbols"
 lto = true
