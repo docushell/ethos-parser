@@ -83,8 +83,20 @@ jobs:
           toolchain: "1.88.0"
           components: rustfmt, clippy
 
+      # `key:` is a cache-buster, and it is load-bearing rather than decorative. rust-cache's key
+      # does NOT hash Cargo.toml's profile section, so when v2-S14 moved dependencies to
+      # `opt-level = 3` the key stayed byte-identical (`...-4129e3df-b139dc84`), every job
+      # restored a cache full of UNOPTIMIZED dependency artifacts, and the post step reported
+      # `Cache up-to-date.` — a GitHub cache entry cannot be overwritten, so it never refreshed.
+      # The result was every job recompiling every dependency, every run, for good: run
+      # 33358797372 had `v1s1-paths` at 199s against a 41s baseline.
+      #
+      # Bump this string whenever a profile change alters how dependencies are compiled. `fuzz`
+      # below is deliberately NOT bumped: `fuzz/` is excluded from the workspace and carries its
+      # own manifest, so the root profile does not reach it and its cache stays valid.
       - uses: Swatinem/rust-cache@v2
         with:
+          key: deps-opt3
           # The oracle builds into ethos-oracle/target, outside the default `.` workspace, so
           # without this it is the one expensive step the cache never covers.
           workspaces: |
@@ -330,6 +342,7 @@ jobs:
           # One cache per criterion would evict itself constantly; they compile the same
           # workspace, so they share.
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: Build the oracle
         if: matrix.oracle
@@ -407,6 +420,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: Build the verifier
         if: matrix.oracle
@@ -475,6 +489,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: ${{ matrix.id }} — ${{ matrix.gate }}
         env:
@@ -542,6 +557,7 @@ jobs:
             .
             ethos-oracle
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       - name: ${{ matrix.id }} — ${{ matrix.gate }}
         env:
@@ -733,6 +749,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: v0-exit-criteria
+          key: deps-opt3
 
       # --nocapture so the coverage report reaches the log, for the same reason
       # `v0-fixture-mutation` carries it: a mutation job that printed only "ok" would be
