@@ -58,6 +58,20 @@ field to every node is therefore a throughput change, and this column is where t
 One descheduled run should not be able to fail a gate, and one lucky run should not be able to
 pass one. The median of an odd `--repeat` is a measurement the machine actually took.
 
+# A baseline is only comparable to a run taken under the same conditions
+
+`--check` compares against a recorded file and has no way to know what the machine was doing when
+that file was written. Both directions of that have now bitten, on this corpus, in one afternoon:
+a busy machine turned a +0.7% document into a reported **+26%** regression, and a baseline recorded
+while several agent workflows were running made an unrelated change look like a **-40%**
+improvement — the same document and the same code measured 445,355 us into that baseline and
+276,118 us against a quiet machine, a 61% gap with no code between them.
+
+So `--check` is a REGRESSION WATCH within a session, not a verdict on a change. **To judge a
+change, A/B it back to back:** measure the tree, `git stash`, rebuild, measure again, restore.
+Same machine, same minute, same thermal state, medians on both sides. That is the only comparison
+here that has ever survived scrutiny, and it is cheap.
+
 # The tolerance is loose on purpose
 
 `--check` allows 10% by default. This is a laptop-grade instrument on a shared machine: thermal
