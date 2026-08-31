@@ -317,17 +317,29 @@ fn inflate(data: &[u8], declared: usize, name: &str) -> Result<Vec<u8>, EngineEr
             configured: MAX_INFLATED_BYTES.to_string(),
         });
     }
-    // **Grow into the declared size; do not reserve it** (v2-S15). `declared` comes from the
-    // central directory, which is attacker-controlled up to `MAX_INFLATED_BYTES` — so
-    // `with_capacity(declared)` let a two-kilobyte part that merely CLAIMS 256 MiB allocate
-    // 256 MiB before inflate produced a byte. The length check below refuses that part, but only
-    // after the allocation, and this runs once per part read: a workbook is one part per sheet, so
-    // forty sheets each declaring the cap reserved ten gigabytes across a read that returns
-    // nothing. The ceiling meant to bound the damage was setting the size of each allocation.
+    // **Reserve what the compressed bytes could actually produce, not what the directory
+    // claims** (v2-S15, corrected).
     //
-    // `read_to_end` doubles from a small start, so declining to trust the declaration costs a
-    // handful of reallocations on a genuinely large part and 64 KiB on a hostile one.
-    let mut out = Vec::with_capacity(declared.min(64 * 1024));
+    // `declared` comes from the central directory and is attacker-controlled up to
+    // `MAX_INFLATED_BYTES`, so `with_capacity(declared)` let a two-kilobyte part that merely
+    // CLAIMS 256 MiB allocate 256 MiB before inflate produced a byte. The length check below
+    // refuses that part, but only after the allocation, and this runs once per part read.
+    //
+    // The first fix for that was `declared.min(64 * 1024)` — grow by doubling instead of
+    // trusting the claim — and it was a 20x memory REGRESSION on honest files, measured:
+    // a workbook of sixteen 16 MiB sheets went from 19.5 MiB peak RSS to 392.2 MiB, scaling
+    // linearly with sheet count where it had been flat. `read_to_end` doubles from 64 KiB to
+    // 16 MiB in about nine steps, each allocating a new block and freeing the old, and RSS is a
+    // high-water mark that never comes back down. Trading one exact allocation for nine
+    // fragmenting ones costs more than the attack it prevents.
+    //
+    // `data.len()` — the compressed bytes — is the fix, because it is not a claim: those bytes are physically in the
+    // archive. DEFLATE's maximum expansion is 1032:1, so `compressed * 1032` is a sound ceiling
+    // on what this stream can possibly produce. An honest part reserves its exact size in one
+    // allocation and never doubles; the two-kilobyte part claiming 256 MiB reserves about two
+    // megabytes. Tighter than the 64 KiB clamp on hostile input AND exact on honest input.
+    const MAX_DEFLATE_RATIO: usize = 1032;
+    let mut out = Vec::with_capacity(declared.min(data.len().saturating_mul(MAX_DEFLATE_RATIO)));
     // Bounded by `MAX_INFLATED_BYTES + 1`, not by the declared size — this comment said "the
     // declared size plus one byte" until v2-S13.5 and never matched the line below it. So a part
     // declaring a few bytes that inflates to 200 MiB is held to the 256 MiB cap rather than to its
