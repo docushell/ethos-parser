@@ -22,8 +22,13 @@ The first two are properties of the design, testable from the first slice, and t
 negotiable. The third was always the last slice's problem, and it is now nobody's until the owner
 says otherwise.
 
-**Parking is not passing. v1 is not complete**, the number stays measured, and §3 still says how not
-to chase it.
+**Parking is not passing**, the number stays measured, and §3 still says how not to chase it.
+
+**Closed 2026-08-30 by decision #18.** This section read *"v1 is not complete"* for the eleven days
+between the amendment above and that decision, and the sentence is recorded here rather than removed
+because it was true when written. What changed is not the number — 70‰ still stands, with its band —
+but what v1 closes *on*: a capability statement plus a band, rather than a macro. The chase stays
+parked, and parking is what the decision records rather than what it leaves open.
 
 ## 2. What v1 is not
 

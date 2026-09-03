@@ -39,7 +39,7 @@ first that refuses a measured performance win on honesty grounds, and it names t
 | 7 | **v0 is the happy path only:** classify → extract → ground → grounding-check. No OCR, tables, Markdown, office formats, MCP, SDKs or verification. |
 | 8 | **Classify** uses reason codes on two independent axes (does it need OCR, is the layout hard), a boolean derived from those reasons, no confidence float, and three exit codes. |
 | 9 | **Open-source stance.** Ideas are borrowed, code is not: tables and tags from OpenDataLoader, the office IR and error taxonomy from Anydoc, rectangle and encoding handling from pdf-inspector, classify and forms ideas from LiteParse. None is a dependency for the grounded PDF core. |
-| 10 | **The v1 table bar, amended 2026-08-19: the chase is parked.** The original bar was a published 0.489 score. That number is somebody else's, on their corpus — same unit, different exam. It gates no slice and is not a shipping precondition. What still binds: **fabrication stays 0**, the method stays in `table-gate-v1.md`, and **v1 is not complete**. The chase resumes only if this repository acquires a labelled set it owns and chooses to resume it. |
+| 10 | **The v1 table bar, amended 2026-08-19: the chase is parked.** The original bar was a published 0.489 score. That number is somebody else's, on their corpus — same unit, different exam. It gates no slice and is not a shipping precondition. What still binds: **fabrication stays 0**, the method stays in `table-gate-v1.md`. The chase resumes only if this repository acquires a labelled set it owns and chooses to resume it.<br><br>**Superseded on v1's status by row 18** (2026-08-30), which closed v1 on a capability statement and a band. This row said *"v1 is not complete"* and is left standing as the record of the amendment that parked the chase — but **row 18 is where v1's status is stated**, and a second copy of it here is what let five documents drift. |
 | 11 | **OCR** is out until v4: a deterministic ONNX lane under its own profile, with any confidence value kept diagnostic and never used as a filter. Tesseract is never the default. |
 | 12 | **Optional agents** may assist later, emitting `Proposed` only. They never overwrite `Extracted`, and never share a processor identity with the evidence path. |
 | 13 | **Converting office files to PDF is forbidden.** It invents pagination. |
@@ -96,12 +96,13 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures and
 | **v1.1** | A Markdown-quoted citation verifies end to end | Safe Markdown, only with the anchor map |
 | **v1.2** | Locators survive every adapter round trip | MCP server, Python and Node SDKs, LangChain tools |
 | **v2** | A DOCX quote and an XLSX cell both bind to an address the file states, with no synthesised pages | Office formats through one shared record |
-| **v2.2** | A tag this engine writes is one it can read back and ground against | Auto-tagging |
+| **v2.2** | Both: a region is emitted wherever the cut divided a page and nowhere else, **and** a tag this engine writes is one it can read back and ground against | Layout and accessibility — geometric block structure, then auto-tagging (decision #19) |
 | **v3** | Assist on and assist off produce identical grounded artifacts | Propose-only VLM assist |
 | **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR under its own profile |
 
-Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2. v2.2, v3 and v4
-are still one line each, deliberately.
+Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2, and **v2.2's first
+half has a scope document** — [`16-D4-SCOPE.md`](16-D4-SCOPE.md), by decision #19. Its second half,
+v3 and v4 are still one line each, deliberately.
 
 ## 6. Reading order
 

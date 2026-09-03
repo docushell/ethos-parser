@@ -540,9 +540,14 @@ of this engine**; what twelve documents establish is the shape, which is bimodal
 **The chase is parked, and parking is not a pass.** 70‰ is this engine on twelve tagged PDFs this
 repository owns; 0.489 is a published score on their corpus. Same unit, different exam. Beating it is
 no longer a shipping precondition for any slice, and it resumes only if this repository has a labelled
-set it owns *and* the owner chooses to resume. **Fabrication 0 still binds. v1 is not complete.**
+set it owns *and* the owner chooses to resume. **Fabrication 0 still binds.**
 
-**Decision #18 in the north star — written and undecided — is what closes this slice.**
+**Decision #18 closed this slice on 2026-08-30**, and v1 with it. This paragraph read *"v1 is not
+complete"* and the line below it called #18 *"written and undecided"*; both were true when written and
+neither survived the decision. v1 closes on four capability clauses and a published band — the engine
+reads the tables a document declares, detects ruled tables where the producer drew the rules, emits
+nothing where neither holds, and fabricates nothing — not on the macro. See
+[`00-NORTH-STAR.md`](../00-NORTH-STAR.md) row 18, which is where v1's status is stated.
 
 The method lives in [`table-gate-v1.md`](../table-gate-v1.md): corpus, formula, join rule, whitespace
 rule, engine version, profile hash, and why a score computed here is not comparable to the published
