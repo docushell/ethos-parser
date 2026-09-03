@@ -366,6 +366,29 @@ fn extract_page(
                 ),
             };
 
+            // D4-S5. **A box the document draws off the page is measured, and un-emittable.**
+            // `seal` refuses a measured box outside its page on the grounds that it means the
+            // measurement or the transform is wrong. For a page extracted from a wider original it
+            // means neither — `01030000000029.pdf` sets `Tm` at x = −435.1181 pt against a media
+            // box starting at 0, and the engine transformed that faithfully to −43512. Six of two
+            // hundred DP-Bench documents did this and produced no artifact at all.
+            //
+            // Refused here rather than at the seal, and the difference is deliberate: the seal's
+            // invariant is what catches a genuine transform bug, and it keeps that job unchanged.
+            // This decides the narrower question the seal cannot see — whether the box is
+            // *reportable* — while the page is still in scope, and answers it with the same typed
+            // absence the rest of this function uses. The run keeps its text, its origin and its
+            // `OffPage` finding, which this engine already raised for this content against the
+            // visible box.
+            let geometry = match geometry {
+                ethos_parser_core::GeometryPresence::Measured(r) if !geom.contains(r) => {
+                    ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::MeasuredOffPage,
+                    )
+                }
+                g => g,
+            };
+
             let synthesized: Vec<SynthesizedChar> = shown
                 .synthesized_indices
                 .iter()
@@ -1720,6 +1743,30 @@ impl PageGeometry {
             // 0, and anything else is refused before reaching here.
             _ => (x - b.x0, b.y1 - y),
         }
+    }
+
+    /// Whether a quantized box lies inside this page, by **the seal's own predicate** (D4-S5).
+    ///
+    /// Deliberately a restatement rather than a near-miss.
+    /// `DocumentRepresentation::check_box_within_page` tests
+    /// `x0 < 0 || y0 < 0 || x1 > page.width || y1 > page.height` against a `PageRecord` whose
+    /// width and height are `quantize(display_width)` and `quantize(display_height)` — the two
+    /// lines that build it are in `page_record` above. This quantizes the same two fields the same
+    /// way and asks the same question, so a box this accepts is a box the seal accepts. A test
+    /// pins the agreement, because two spellings of one invariant is exactly the drift
+    /// `docs/06-STEAL-REFUSE.md` warns a second copy of a table produces.
+    ///
+    /// A dimension that will not quantize returns `false`: the box cannot be shown to be on a page
+    /// this engine cannot express, and claiming containment against a number it failed to compute
+    /// would be the fabrication the caller exists to avoid.
+    fn contains(&self, r: ethos_parser_core::QRect) -> bool {
+        let (Ok(w), Ok(h)) = (
+            quantize(self.display_width, QUANTUM_PER_POINT),
+            quantize(self.display_height, QUANTUM_PER_POINT),
+        ) else {
+            return false;
+        };
+        r.x0() >= 0 && r.y0() >= 0 && r.x1() <= w && r.y1() <= h
     }
 
     /// Map a point in the declared top-left system back into PDF user space (v1-S6).

@@ -414,6 +414,11 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
+/// The pinned set is **61** at D4-S5, and the extra one is not a mutation-behaviour change:
+/// `ink-past-the-media-box` was added to the corpus and survives `junk-after-eof` exactly as every
+/// other engine fixture does — bytes appended past `%%EOF` leave the cross-reference table
+/// resolving. The v2-S21 measurement above stands as recorded; only the population moved.
+///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
 /// - **The large documents were never a reader property at all.** `nist-sp-800-53Ar5`,
@@ -451,7 +456,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 60] = [
+const EXPECTED_SURVIVORS: [&str; 61] = [
     "absent-font-metrics/junk-after-eof",
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
@@ -468,6 +473,7 @@ const EXPECTED_SURVIVORS: [&str; 60] = [
     "horizontal-scaling-tz/junk-after-eof",
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
+    "ink-past-the-media-box/junk-after-eof",
     "invisible-render-mode/junk-after-eof",
     "irs-f1040sd-2025/junk-after-eof",
     "irs-form-1040-2025/junk-after-eof",
@@ -848,8 +854,8 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        64,
-        "the manifest should declare 64 fixtures across FOUR roots. v2-S19 moved this from 55: \
+        65,
+        "the manifest should declare 65 fixtures across FOUR roots. v2-S19 moved this from 55: \
          it added the `gate` root — eight tagged public documents committed to `fixtures/gate/` \
          so the table gate could be measured on twelve documents instead of four — and pinned \
          `cfpb-home-loan-toolkit.pdf` in `benchmark`, which had carried the largest share of the \

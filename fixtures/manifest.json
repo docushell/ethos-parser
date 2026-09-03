@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 37,
+    "engine_owned": 38,
     "gate": 8
   },
   "fixtures": [
@@ -442,6 +442,15 @@
       "sha256": "sha256:bc1ec00a9714ee50a10f68ba06ca2f047dd75be600c5b60371c1597e3076189c",
       "owner": "engine",
       "notes": "v1-S6 two-frame golden. /CropBox [50 50 250 150] strictly inside /MediaBox [0 0 300 200], a font with REAL ink metrics, and text at y=180 in the margin the crop box removes. Expect an artifact: page dimensions come from the MEDIA box, which is the frame every coordinate is expressed in. Reporting the crop box's size instead makes `seal` refuse the artifact \u2014 a measured box outside its declared page \u2014 so a cropping document stops parsing entirely. The only fixture where a MEASURED box lies outside the crop box."
+    },
+    {
+      "id": "ink-past-the-media-box",
+      "root": "engine",
+      "group": "engine",
+      "path": "ink-past-the-media-box/document.pdf",
+      "sha256": "sha256:94e623ce48fa9524c39d2b13d2cf71e4c400b870975433d44b5d8a8a23c39947",
+      "owner": "engine",
+      "notes": "A run with REAL ink metrics drawn at negative x, so its MEASURED box falls outside the /MediaBox — not the crop box (crop-box-smaller-than-media) and not around whitespace (whitespace-past-the-page-edge). The case six of two hundred DP-Bench documents met in the wild, each producing no artifact at all until D4-S5."
     },
     {
       "id": "simple-font-two-byte-tounicode",

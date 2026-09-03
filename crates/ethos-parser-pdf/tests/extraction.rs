@@ -3306,3 +3306,142 @@ fn five_conformance_documents_keep_every_box_they_had() {
         "five conformance documents carry this guarantee; {checked} were checked"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+
+/// **A box the document draws off the page is measured, and un-emittable — not a transform bug.**
+///
+/// `check_box_within_page` refuses an out-of-page box on the stated grounds that it *"means the
+/// measurement or the coordinate transform is wrong"*. v1-S6.2 met that error from one direction —
+/// a rectangle around whitespace — and answered it by not claiming a box. Six of the two hundred
+/// DP-Bench documents meet it from the other: `01030000000029.pdf` sets
+/// `9.9626 0 0 9.9626 -435.1181 674.3054 Tm` against `/MediaBox [0 0 510.236 737.008]`, and the
+/// engine reported `x0 = -43512` — that number, correctly transformed and quantized. The
+/// measurement was right and the document draws off-canvas, and each of the six produced **no
+/// artifact at all**.
+///
+/// Both halves are asserted, for the reason the whitespace test asserts both: a repair that took
+/// boxes away from text that IS on the page would be a different bug wearing this one's clothes.
+#[test]
+fn ink_the_document_draws_off_the_page_reports_why_rather_than_refusing_the_document() {
+    let a = extract_ok(engine_fx("ink-past-the-media-box"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 2);
+
+    assert_eq!(r[0].text, "Off the left edge");
+    assert_eq!(
+        r[0].geometry,
+        ethos_parser_core::GeometryPresence::Absent(
+            ethos_parser_core::GeometryAbsence::MeasuredOffPage
+        ),
+        "the box was measured and the DOCUMENT put it off the page — which is neither \
+         `not_reported_by_reader` (the reader did not fail) nor `no_ink_to_measure` (the run \
+         draws glyphs)"
+    );
+    assert!(
+        !r[0].geometry.is_declarable_limitation(),
+        "the document made this choice, so it is not charged to this reader"
+    );
+    assert!(
+        !r[0].geometry.is_groundable(),
+        "no page-relative rectangle exists, so it cannot enter `ethos.grounding.v1`"
+    );
+
+    assert_eq!(r[1].text, "On the page");
+    assert!(
+        r[1].geometry.measured().is_some(),
+        "the absence is per-run: content on the canvas still gets its box"
+    );
+
+    // And the document seals, which is the assertion that failed before the repair.
+    ethos_parser_pdf::to_representation(&a, &Profile::default())
+        .expect("a page that draws off-canvas still produces a representation");
+}
+
+/// **Nothing is dropped and nothing is clamped — the run is still evidence.**
+///
+/// The two forbidden answers to an out-of-page box are the reason this variant exists rather than
+/// either of them: clamping fabricates a coordinate the document does not contain, and dropping
+/// the run is a silent erasure. What the artifact keeps is asserted here, because "we kept it" is
+/// the whole claim and an absent box is the only thing that may be missing.
+#[test]
+fn an_off_page_run_keeps_its_text_its_origin_and_its_finding() {
+    let a = extract_ok(engine_fx("ink-past-the-media-box"));
+    let r = runs(&a);
+
+    // Found BY its absence, not by index. The preservation claim is only about the run this
+    // slice changed, and a test that reached for `r[0]` would keep passing if the absence
+    // stopped being produced at all — a guard reading its own subject wrongly, which is the
+    // v2-S13.1 defect.
+    let off = r
+        .iter()
+        .find(|x| {
+            x.geometry
+                == ethos_parser_core::GeometryPresence::Absent(
+                    ethos_parser_core::GeometryAbsence::MeasuredOffPage,
+                )
+        })
+        .expect("the fixture has a run whose measured box the document draws off the page");
+
+    assert_eq!(off.text, "Off the left edge");
+    assert!(
+        off.findings
+            .contains(&ethos_parser_core::TextFinding::OffPage),
+        "the engine already had a word for this content and raised it before deciding to \
+         refuse the document over the box"
+    );
+    assert!(
+        off.locator.origin_x < 0,
+        "the origin is negative and is reported as measured, not nudged to zero: clamping \
+         would fabricate a coordinate the document does not contain"
+    );
+    assert!(
+        !r[1]
+            .findings
+            .contains(&ethos_parser_core::TextFinding::OffPage),
+        "and the on-page run is not flagged, so the finding still means something"
+    );
+}
+
+/// **The producer's containment test and the seal's are one invariant, not two spellings.**
+///
+/// `PageGeometry::contains` restates `check_box_within_page`. Two copies of one rule is exactly
+/// what `docs/06-STEAL-REFUSE.md` warns goes stale, so the agreement is pinned rather than
+/// assumed: every box this extractor still calls `Measured` must survive the seal, on every
+/// fixture in the engine corpus at once. If `contains` were ever loosened relative to the seal,
+/// some fixture here would stop producing an artifact and say so.
+#[test]
+fn every_measured_box_this_reader_emits_survives_the_seal() {
+    let profile = Profile::default();
+    let root = engine_fx("ink-past-the-media-box")
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("the engine fixture root is two hops up from a document")
+        .to_path_buf();
+
+    let mut checked = 0;
+    let mut names: Vec<_> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("engine fixture root {}: {e}", root.display()))
+        .map(|d| d.expect("fixture dir").path())
+        .collect();
+    names.sort();
+    for dir in names {
+        let pdf = dir.join("document.pdf");
+        if !pdf.is_file() {
+            continue;
+        }
+        let Ok(doc) = Document::open(&pdf, &profile) else {
+            continue;
+        };
+        let Ok(a) = ethos_parser_pdf::extract(&doc, &profile) else {
+            continue;
+        };
+        ethos_parser_pdf::to_representation(&a, &profile)
+            .unwrap_or_else(|e| panic!("{dir:?} extracted but would not seal: {e}"));
+        checked += 1;
+    }
+    assert!(
+        checked > 20,
+        "the sweep must actually reach the corpus — it checked {checked}"
+    );
+}
