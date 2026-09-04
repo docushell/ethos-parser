@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v2");
+    assert_eq!(a["html_rule"], "html-blocks-v3");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
@@ -712,5 +712,32 @@ fn the_joined_word_is_not_citable_on_the_html_either() {
         joined["node_ids"].as_array().map(Vec::len),
         Some(2),
         "and the HTML map names both runs, exactly as the Markdown one does"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+
+/// **An EPUB's own heading element reaches the HTML projection too** (v2.2-S0).
+///
+/// `html.rs` and `markdown.rs` share one `heading_level`, so this is the same fact in the other
+/// syntax — and asserting it in both is the point rather than duplication: the two rule ids are
+/// separate precisely so they *can* move apart, and only a test in each says they did not.
+#[test]
+fn an_epubs_own_heading_element_projects_as_an_h_element() {
+    let dir = scratch("epub-heading-html");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/book-spine/book.epub"),
+    );
+    let a = html_of(&repr);
+    let html = a["html"].as_str().expect("html string");
+
+    assert!(
+        html.contains("<h1>Evidence, not extraction.</h1>"),
+        "the `<h1>` the publication declares must project as `<h1>`:\n{html}"
+    );
+    assert!(
+        !html.contains("<h1>Rows &amp; columns"),
+        "a `<p>` must NOT become a heading:\n{html}"
     );
 }

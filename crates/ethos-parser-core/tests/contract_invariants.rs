@@ -932,11 +932,11 @@ fn the_markdown_schema_pins_the_version_and_rule_the_code_emits() {
         .filter_map(serde_json::Value::as_str)
         .collect();
     assert!(
-        examples.contains(&ethos_parser_core::MARKDOWN_RULE_BLOCKS_V2),
+        examples.contains(&ethos_parser_core::MARKDOWN_RULE_BLOCKS_V3),
         "markdown.draft.json's `markdown_rule` examples are {examples:?}, none of which is the \
          rule this build emits ({}). A reader takes the example as the current answer, and the id \
          moved at v1.1-S2 and again at v1.1-S3.",
-        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V2
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V3
     );
 
     // The example artifact is a whole document, so its own `markdown_rule` has to agree too — an
@@ -944,7 +944,7 @@ fn the_markdown_schema_pins_the_version_and_rule_the_code_emits() {
     if let Some(example) = schema["examples"].as_array().and_then(|a| a.first()) {
         assert_eq!(
             example["markdown_rule"].as_str(),
-            Some(ethos_parser_core::MARKDOWN_RULE_BLOCKS_V2),
+            Some(ethos_parser_core::MARKDOWN_RULE_BLOCKS_V3),
             "the worked example names a different rule than the schema's own property does"
         );
         assert_eq!(
@@ -996,16 +996,16 @@ fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
         .filter_map(serde_json::Value::as_str)
         .collect();
     assert!(
-        examples.contains(&ethos_parser_core::HTML_RULE_BLOCKS_V2),
+        examples.contains(&ethos_parser_core::HTML_RULE_BLOCKS_V3),
         "html.draft.json's `html_rule` examples are {examples:?}, none of which is the rule this \
          build emits ({}).",
-        ethos_parser_core::HTML_RULE_BLOCKS_V2
+        ethos_parser_core::HTML_RULE_BLOCKS_V3
     );
 
     if let Some(example) = schema["examples"].as_array().and_then(|a| a.first()) {
         assert_eq!(
             example["html_rule"].as_str(),
-            Some(ethos_parser_core::HTML_RULE_BLOCKS_V2),
+            Some(ethos_parser_core::HTML_RULE_BLOCKS_V3),
             "the worked example names a different rule than the schema's own property does"
         );
         assert_eq!(
@@ -1022,7 +1022,7 @@ fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
     // artifact non-comparable each time either projection moved, which is the opposite of what a
     // rule id is for.
     assert_ne!(
-        ethos_parser_core::HTML_RULE_BLOCKS_V2,
-        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V2
+        ethos_parser_core::HTML_RULE_BLOCKS_V3,
+        ethos_parser_core::MARKDOWN_RULE_BLOCKS_V3
     );
 }

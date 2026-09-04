@@ -128,12 +128,13 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v1.1-S1 | `markdown-linear-v1` | a table's cell runs as consecutive paragraphs, no grid |
 /// | v1.1-S2 | `markdown-blocks-v1` | a GFM table, and a list item from a tagged `/L` |
 /// | v1.1-S3 | `markdown-blocks-v2` | a word broken across a line closed up in the export |
+/// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 ///
 /// A document with a table comes out differently under the first two; a document with a hyphenated
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V2: &str = "markdown-blocks-v2";
+pub const MARKDOWN_RULE_BLOCKS_V3: &str = "markdown-blocks-v3";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -573,14 +574,36 @@ pub fn normalize(s: &str) -> String {
     out
 }
 
-/// Heading level from a tagged role path, or `None` for anything that is not a heading.
+/// Heading level from what the **document declared**, or `None` for anything that is not a heading.
 ///
-/// Reads the document's own `/S` types — `H`, `H1` … `H6` — after its `/RoleMap` has been applied,
-/// which `crate::representation::PdfTaggedLocator` already carries as `standard_role_path`.
+/// Two sources, and the second was missing until v2.2-S0. A PDF's own `/S` types — `H`, `H1` … `H6`
+/// — after its `/RoleMap` has been applied, which `crate::representation::PdfTaggedLocator` already
+/// carries as `standard_role_path`; and an EPUB's own XHTML element name, which
+/// `crate::EpubBlockAttributes::element` carries verbatim.
 ///
 /// **No font size is consulted.** Checklist L29 is REFUSE, and a heading inferred from 14pt bold
-/// is a claim about layout that no code in this repository makes.
+/// is a claim about layout that no code in this repository makes. Neither source here is an
+/// inference: `<h1>` is the document saying *heading, level one* in as many words, exactly as `/H1`
+/// is, and both are `Extracted`. The rule this function keeps is not *"only PDFs have headings"* —
+/// it is *"a heading is a heading because the document said so"*, and the module header says
+/// precisely that.
+///
+/// # What this does NOT reach, and why each is a different job
+///
+/// **ODT, ODS and ODP.** `crate::OdfBlockKind` is `Paragraph | Heading` — the fact of a heading is
+/// on the wire and its **level is not**, because the ODT reader does not read `text:outline-level`.
+/// Emitting `#` for a block the file marks `outline-level="3"` would be a false claim about
+/// structure, so nothing is emitted, and the fix is upstream of this function: read the attribute,
+/// carry it, and this match arm follows. That slice also has to settle what an absent
+/// `text:outline-level` means in ODF before it can be honest about it.
+///
+/// **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
+/// and this function cannot see one to project. Resolving a style name to a level means reading
+/// `styles.xml` and following style inheritance, which is a reader slice of its own.
 pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
+    if let crate::NodeAttributes::EpubBlock(e) = &node.attributes {
+        return xhtml_heading_level(&e.element);
+    }
     let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() else {
         return None;
     };
@@ -594,6 +617,25 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
         "H4" => Some(4),
         "H5" => Some(5),
         "H6" => Some(6),
+        _ => None,
+    }
+}
+
+/// `h1` … `h6` to a level, and `None` for every other XHTML element name.
+///
+/// Exact match on the six names HTML defines, and exact is right rather than lenient: XHTML is XML,
+/// which is case-sensitive, and the EPUB reader's own `BLOCK_ELEMENTS` test is a byte comparison
+/// against lowercase — so an element that reaches the wire as a block was spelled `h1` in the file.
+/// **Not a prefix test**: `hgroup` starts with `h` and is not a heading, and an element this does
+/// not recognise projects as a paragraph rather than as a guess.
+fn xhtml_heading_level(element: &str) -> Option<u8> {
+    match element {
+        "h1" => Some(1),
+        "h2" => Some(2),
+        "h3" => Some(3),
+        "h4" => Some(4),
+        "h5" => Some(5),
+        "h6" => Some(6),
         _ => None,
     }
 }

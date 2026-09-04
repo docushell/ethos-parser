@@ -18,6 +18,58 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.43.0] — a heading the document declares reaches the projection
+
+`heading_level` read one source. A PDF's tagged `/H1`..`/H6` became `# ` and `<h1>`; an EPUB whose
+XHTML says `<h1>` in as many words became a paragraph. The reader had carried the element name for
+exactly this purpose since v2-S9 — *"XHTML has no such distinction, so it is left false and the
+element's own name is carried beside it instead"* ([`epub.rs`](crates/ethos-parser-office/src/epub.rs))
+— and the projection never read it.
+
+**This is not L29 arriving by the back door.** `<h1>` is the document stating a heading and its
+level, the same kind of statement `/H1` is, and both are `Extracted`. No font size is consulted here
+or anywhere else. The rule this repository keeps is not *"only PDFs have headings"* — it is *"a
+heading is a heading because the document said so"*, which is what
+[`markdown.rs`](crates/ethos-parser-core/src/markdown.rs)'s module header has always said.
+
+### Changed
+
+- **`markdown_rule` moves `markdown-blocks-v2` -> `markdown-blocks-v3`, and `html_rule` moves
+  `html-blocks-v2` -> `html-blocks-v3`.** The first time both move together. They are separate ids
+  so that they *can* move apart, which was never a promise that they always would: this change went
+  through `heading_level`, which both projections call. `profile_sha256` moves with them and on
+  `parser_version`, to `ecc17874`.
+- **No representation changes**, for any format. This is a projection rule, and the wire the
+  projections read did not move — so `ethos.parser.extract.v0` and `ethos.parser.representation.v0`
+  are byte-identical at equal version, and only `ethos.markdown.v1` and `ethos.html.v1` differ, only
+  for EPUB.
+
+### Not in this slice, and each for its own reason
+
+- **ODT, ODS and ODP.** `OdfBlockKind` is `Paragraph | Heading`: the *fact* of a heading is on the
+  wire and its **level is not**, because the reader does not read `text:outline-level`. Emitting `#`
+  for a block the file marks `outline-level="3"` would be a false claim about structure, so nothing
+  is emitted. Closing it means reading the attribute, carrying it, and settling what an absent
+  `text:outline-level` means in ODF — a reader slice with a wire change, not a projection fix.
+- **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
+  and the projection cannot see one. Resolving a style name to a level means reading `styles.xml`
+  and following style inheritance.
+
+**`docs/CAPABILITY.md` said "office documents project too" with no caveat and now carries one**, so
+the gap is stated where a reader looks rather than discovered by projecting a book.
+
+### Guards
+
+Neither projection had any test over an office representation at all, which is why this defect was
+invisible to a suite of 1 380: `an_epubs_own_heading_element_projects_as_a_heading` and
+`an_epubs_own_heading_element_projects_as_an_h_element` assert the `<h1>`, and both also assert that
+the same fixture's `<p>` and `<td>` do **not** become headings — a rule matching any element
+beginning with `h` passes the first assertion and fails the second.
+`adding_the_epub_source_leaves_tagged_pdf_headings_alone` covers the cheapest way for this to have
+gone wrong, which is the new arm shadowing the old one.
+
+---
+
 ## [0.42.0] — the cut stops discarding its own grouping
 
 `gutter-columns-v1` divided a page into column bands, subdivided each band, and then returned only
