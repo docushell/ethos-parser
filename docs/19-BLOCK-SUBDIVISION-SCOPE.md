@@ -148,7 +148,7 @@ than anything this document measured.
 
 ## 7. Three probes, before anything is scoped
 
-1. **The `StructElem` sibling probe.** A walk-order counter per structure element in `structure.rs`,
+1. ~~**The `StructElem` sibling probe.**~~ **RUN — see §9.** A walk-order counter per structure element in `structure.rs`,
    carried on the binding, would make two consecutive lines in different innermost elements a
    declared `P → P` boundary — the label §4.1 says does not exist today. **Gate question: does a
    producer emit one `/P` per paragraph, or one per line?** `element_id` is never populated and
@@ -179,3 +179,74 @@ branch where it is not.
    decision #18, and [`table-gate-v1.md`](table-gate-v1.md)'s method applied to a second question.
 4. **A band the rule cannot read says so** rather than being folded into an average.
 5. **Nothing is written into a PDF that cannot declare how it was derived.**
+
+---
+
+## 9. Probe 1, run: the `StructElem` sibling probe
+
+Run without touching the engine. `qpdf --qdf --object-streams=disable` exposes the structure tree,
+each `/S /P` element names its page and its MCIDs, and the engine's own artifact maps `(page, mcid)`
+to baselines — so element identity is recovered by joining the two rather than by putting it on the
+wire to find out whether it is worth putting on the wire.
+[`measurements/block-subdivision/structelem.py`](measurements/block-subdivision/structelem.py).
+
+### 9.1 — The answer is *producer-dependent*, which neither branch of the gate question allowed for
+
+The probe was framed as "one `/P` per paragraph, or one per line?" It is both, by document. The
+operative statistic is what fraction of consecutive line pairs cross a `/P` boundary — near 100%
+means per-line and the label is worthless; near `1/(lines per paragraph)` means it is real:
+
+| document | line pairs crossing a `/P` | lines per `/P` | usable? |
+| --- | --- | --- | --- |
+| `nist-sp-800-207` | **20.3%** | **3.63** | **yes** |
+| `irs-fw9` | 60.6% | 2.27 | no — a form; its "paragraphs" are field labels |
+| `irs-f1040sd-2025` | 67.8% | 0.92 | no |
+| `nist-sp-800-218` | **79.2%** | 1.32 | no — per-line |
+
+**One gate document in four tags paragraphs as paragraphs.** A first pass asked instead how many
+`/P` elements span one baseline (62.9%) and concluded per-line; that was the wrong statistic, since
+a one-line `/P` is usually a genuinely one-line paragraph. The corrected question is above.
+
+### 9.2 — What the real labels say, and it corrects §4 in both directions
+
+On `nist-sp-800-207`: **134 real P→P boundaries** and 718 mid-paragraph pairs.
+
+| T | recall of real P→P | fires mid-paragraph |
+| --- | --- | --- |
+| 1.15 | **64.9%** | 1.1% |
+| 1.40 | 61.2% | **0.0%** |
+| 1.60 | 59.7% | **0.0%** |
+| 1.80 | 54.5% | 0.0% |
+
+**Precision, which §5 recorded as unmeasurable, is measured and near-perfect.** No mid-paragraph
+pair fires at `T ≥ 1.25`. When the rule fires it is right; the proxy-based worry about false
+positives was an artifact of proxy labels.
+
+**And the ceiling is far worse than the heading set implied. 35.1% of real P→P boundaries sit at
+≤1.1× leading**, against 9.7% on the role-change set — the heading measurement was optimistic by
+3.6×, because headings are given space by template and paragraph breaks frequently are not. The
+honest ceiling on this document is **~65%**, not ~90%, and `nist-sp-800-207` is the document where
+the gap rule did *best* on the heading set (97.1%). This is the optimistic case.
+
+### 9.3 — Indent, measured on real labels for the first time
+
+Of the 47 invisible boundaries, **12 (25.5%)** indent the following line — against 20.7% of the
+visible ones, so on this document indent is only weakly complementary rather than the specific
+antidote §4.3 hoped for. Combined reach of `gap > 1.15 OR indent`: **73.9%**.
+
+That is consistent with §4.3 rather than against it: `nist-sp-800-207` is space-marked US federal
+publishing, and the DP-Bench documents where 78% of gap-invisible breaks are indented are
+indent-marked scholarly typesetting. **The convention is per-document, and a rule that does not
+decide which convention a band uses before testing it will be wrong on whichever half it did not
+pick.**
+
+### 9.4 — What this changes
+
+- The route **half-lives**. Real P→P labels exist, on one of four gate documents. Enough to correct
+  the numbers above; not enough to scope on, and decision #18's discipline forbids quoting a
+  one-document result as a corpus result.
+- **§4's recall figures are superseded for the population that matters**: ~65% ceiling, ~60% at
+  `T = 1.6`, ~0% false-fire — not 71.2%/9.7%.
+- Probes 2 and 3 stand. Probe 3 should now run against `nist-sp-800-207`'s real labels rather than
+  proxies, and the corpus question is sharper than it was: **the repository owns exactly one
+  document that can label this feature**, and acquiring more is now the binding constraint.
