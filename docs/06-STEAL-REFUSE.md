@@ -231,7 +231,9 @@ mode — a different, non-deterministic product.
 belongs with it: 0‰..590‰, median 0‰, ten of twelve at zero. 0.489 is their score on their corpus —
 same unit, different exam. It is no longer the floor the next slice must beat, and it resumes only if
 this repository has a labelled set it owns **and** the owner chooses to resume. v2-S19 built the set,
-so only the owner's half is outstanding. **Fabrication 0 still binds, and v1 is not complete.**
+so only the owner's half is outstanding. **Fabrication 0 still binds.** v1 itself is closed — decision
+#18 (2026-08-30) closed it on a capability statement and a band rather than on this macro, and
+parking the chase is what that decision records rather than what it leaves open.
 
 **What has not changed: 0.489 is never a claim to publish.** And read every other number in this
 landscape as configuration-dependent. Two publishers scored the same parser on the same corpus with

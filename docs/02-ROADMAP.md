@@ -15,7 +15,7 @@ scope document for its first half** (decision #19). **v3 and v4 stay one line ea
 | --- | --- | --- | --- |
 | **v0** | Honest PDF core | Classify · position-aware text runs · measured ink box or typed absence · synthesized flags · single-column order · format detection · error taxonomy · canonical JSON · capability declarations · grounding emit and check · CLI and library · fuzz and mutation tests | The validator agrees byte-identically with `ethos grounding check` on all 15 fixtures |
 | **v0.1** | Verify and robustness | Shell out to the Ethos CLI as a declared capability · encoding-issue detection · the bounded xref repair | An ungrounded claim exits 1 with a report, and nothing is silently skipped. **Met** |
-| **v1** | **The DocuShell replacement gate** | Tables, ruled and unruled, with a locator cross-check · vector paths driving ruled detection · full element vocabulary · multi-column reading order · tagged-PDF structure trees · forms and annotations as distinguishable nodes · images · security findings · annotated overlay | Fabrication **0** and an honest table number on the set this repo owns. Measured at 70‰ macro over twelve documents — **a miss**. **Not complete**; decision #18 is written and undecided |
+| **v1** | **The DocuShell replacement gate** | Tables, ruled and unruled, with a locator cross-check · vector paths driving ruled detection · full element vocabulary · multi-column reading order · tagged-PDF structure trees · forms and annotations as distinguishable nodes · images · security findings · annotated overlay | Fabrication **0** and an honest table number on the set this repo owns. Measured at 70‰ macro over twelve documents against the parked 0.489 comparator. **Closed** by decision #18 (2026-08-30) on a capability statement and a band, not on a macro — see [`00-NORTH-STAR.md`](00-NORTH-STAR.md) row 18 |
 | **v1.1** | Safe Markdown | Markdown and HTML, each with an anchor map · hyphenation and similar cosmetics as export-only | A Markdown-quoted citation verifies end to end |
 | **v1.2** | Adoption | MCP server · Python and Node SDKs · LangChain tools | Locators survive every adapter round trip |
 | **v2** | Office formats | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, EPUB · CSV argued and refused · one shared record and one serializer · embedded assets counted | A DOCX quote and an XLSX cell both **bind** to an address the file states, with **no synthesised pages**. **Met** |
@@ -32,7 +32,7 @@ not a summary of a detector.
 
 0.489 is a published score on somebody else's corpus. Same unit, different exam. The chase is parked
 until this repository has a labelled set it owns *and chooses to resume*; v2-S19 built the set, so
-the first half is met and the second half is the owner's (decision #18, undecided). The hybrid figure
+the first half is met and the second half is the owner's standing condition (decision #18, decided). The hybrid figure
 was never the target and still is not — it is a non-deterministic mode, and a determinism contract
 cannot sit under one. **Fabrication 0 still binds, and parking is not passing.**
 
@@ -75,11 +75,11 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What shape must every artifact have? | [`01-CONTRACT.md`](01-CONTRACT.md) |
 | Can I borrow feature X from parser Y? | [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) |
 | Where does verification live? | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) |
-| What is v1, and did its gate clear? | [`08-V1-SCOPE.md`](history/08-V1-SCOPE.md) / [`09-V1-MILESTONES.md`](history/09-V1-MILESTONES.md) — measured and **missed** |
+| What is v1, and did its gate clear? | [`08-V1-SCOPE.md`](history/08-V1-SCOPE.md) / [`09-V1-MILESTONES.md`](history/09-V1-MILESTONES.md) — measured, and **closed on a band by decision #18** |
 | What is v1.1? | [`10-V11-SCOPE.md`](history/10-V11-SCOPE.md) / [`11-V11-MILESTONES.md`](history/11-V11-MILESTONES.md) — complete |
 | What is v1.2? | [`12-V12-SCOPE.md`](history/12-V12-SCOPE.md) / [`13-V12-MILESTONES.md`](history/13-V12-MILESTONES.md) — complete |
 | What is v2? | [`14-V2-SCOPE.md`](history/14-V2-SCOPE.md) / [`15-V2-MILESTONES.md`](history/15-V2-MILESTONES.md) — S0 through S24 done, gate met |
-| What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S1 done |
+| What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S0–S4 done |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 | Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
 
