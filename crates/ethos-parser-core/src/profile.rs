@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V3`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V4`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V3`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V4`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -1054,7 +1054,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V3`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V4`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1065,7 +1065,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V3`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V4`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1116,8 +1116,8 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V2.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V3.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V3.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V4.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V4.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v3","markdown_rule":"markdown-blocks-v3","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.43.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.44.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2607,18 +2607,30 @@ mod tests {
              never emit. See CHANGELOG \"0.42.1\".\n\n\
              Moved a SEVENTIETH time at 0.43.0 (v2.2-S0), and it is the first time BOTH \
              projection ids move together: `markdown_rule` goes `markdown-blocks-v2` -> \
-             `markdown-blocks-v3` and `html_rule` goes `html-blocks-v2` -> `html-blocks-v3`. \
+             `markdown-blocks-v4` and `html_rule` goes `html-blocks-v2` -> `html-blocks-v4`. \
              They are separate ids so that they CAN move apart, which is not a promise that \
              they always will — this change went through `heading_level`, which both \
              projections call, so a document that differs under one differs under the other. \
              What differs: an EPUB whose XHTML declares `<h1>` projects `# ` and `<h1>` where \
              `-v2` projected a paragraph and `<p>`. No PDF artifact changes — the tagged \
              `/H1`..`/H6` path is untouched — and no representation changes at all, because \
-             this is a projection rule and the wire the projections read did not move."
+             this is a projection rule and the wire the projections read did not move.\n\n\
+             Moved a SEVENTY-FIRST time at 0.44.0 (v2.2-S1), and both projection ids move again \
+             together: `markdown-blocks-v3` -> `-v4` and `html-blocks-v3` -> `-v4`. The rule that \
+             changed is one both projections call, as at 0.43.0, so the pair moving in step is the \
+             same fact twice rather than two coincidences.\n\n\
+             What differs: a text run is no longer its own block. `nist-sp-800-207` projected as \
+             68 112 Markdown blocks averaging TWO characters — \"NIST Special Publication \
+             800-207\" arrived as forty of them — and now projects as 4 698 averaging 35. Runs \
+             join when the document itself put them in one marked-content sequence and either drew \
+             a space between them or drew no gap at all; anything else still breaks the block, \
+             because a missed join reads as two words the page drew and a wrong join invents one. \
+             **No representation changes** — this is a projection rule, and `extract` output is \
+             byte-identical at equal version."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:ecc17874f848108982ea2366f093f52d08ed2f78a18573abfb31b5df28728df3"
+            "sha256:4bf3acf91de326f98c7a59a2bb6de01def9ead31090876e560635b3754163218"
         );
     }
 

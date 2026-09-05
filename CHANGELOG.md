@@ -18,6 +18,77 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.44.0] — a text run was its own block, and 68 112 of them averaged two characters
+
+`nist-sp-800-207` projected as **68 112 Markdown blocks with a mean length of two characters**.
+"NIST Special Publication 800-207" arrived as forty of them. `<p>Y</p><p>arr</p><p>o</p><p>w</p>`
+is the same defect in HTML.
+
+Both projections were **correct for the purpose they document** — a quote binds, the anchor map
+tiles, and v1.1's gate holds — and unusable for the one their names imply. No consumer can read
+that: not a person, not a retriever, not a model.
+
+### Changed
+
+- **One block per marked-content sequence the document itself declared.** 68 112 → **4 698**
+  blocks, mean length 35. The grouping is the producer's own `BDC`/`MCID` marks, so joining
+  claims nothing this engine inferred.
+- **`markdown_rule` `markdown-blocks-v3` → `-v4` and `html_rule` `html-blocks-v3` → `-v4`**, both
+  again, because the change is in `heading_level`'s neighbour — a rule both projections call.
+  `profile_sha256` moves to `4bf3acf9`.
+- **No representation changes.** `extract` output is byte-identical at equal version; this is a
+  projection rule and the wire the projections read did not move.
+
+### The rule, and why its default is to break
+
+Four clauses. A space the page drew — in either run's bytes, **or as a whitespace-only run of its
+own** — joins with one `syntax` space. A line break inside one sequence joins with one.
+Ink-contiguity joins with nothing and coalesces into one `source` segment. **Anything else breaks
+the block**, which is `on_different_lines`' own posture: *a missed join reads as two words the page
+drew; a wrong join invents one.*
+
+`region` is in the key because 58 of 974 groups span two of them, and joining across one welds over
+a gutter — the clause `hyphen_tail` needed at D4-S3.
+
+### Two designs this rejected, both measured before anything shipped
+
+- **Reading absence as a group.** All 4 826 page-artifact runs on `nist-sp-800-207` carry
+  `mcid: None`; grouping them per page welds the vertical DOI stamp, the running head and the folio
+  across 156 pt of white space. `recalcuConfidential` again, 59 times per document.
+- **Joining by default and inserting a space on evidence.** The space this corpus most often draws
+  is a **run of its own**, dropped by the empty-text `continue` before any join state exists:
+  `...subject to backup` + ` ` + `withholding` becomes `backupwithholding`, 3 292 word-boundary
+  welds on one document. And `SynthesisReason::TjGap` does not cover the rest — it fires **zero**
+  times on four of the five gate documents.
+
+### Added
+
+- **`mcid-run-joins-v1`** — every join, counted. Declaring 14 863 list-item joins while committing
+  63 414 prose joins in silence was the asymmetry that made this mandatory. Not a `GFM_*` code:
+  GFM does not cause it.
+
+### Guards
+
+**No existing test could observe any of this** — every CLI engine fixture is locator-less and the
+shared unit builder hard-codes `mcid: 0`, so the whole suite passed unchanged while the output
+moved by a factor of fifteen. Eight tests now hold the rule, and four mutants were watched failing.
+One **survived at first**: the page-artifact test placed its runs 224 pt apart, so the gap clause
+broke them and the key was never consulted. Making them ink-contiguous put the key under test.
+
+### Unchanged, and checked rather than assumed
+
+The census balances and is numerically identical — every join byte is `syntax`. **No two adjacent
+`source` segments name different node ids**, still 0 of 171 418. A document that declares nothing
+projects byte-identically: `markdown-two-blocks` 2 → 2, `book-spine.epub` 10 → 10,
+`simple-paragraphs.docx` 4 → 4. Both projections report the same 63 414 joins, so they have not
+drifted.
+
+**No role is claimed.** This reports where the producer put a `BDC`; it decides nothing about where
+a block is. `docs/19-BLOCK-SUBDIVISION-SCOPE.md` §9 measured mcid as line-like, so block size is
+producer-dependent and the word "paragraph" appears nowhere in the rule.
+
+---
+
 ## [0.43.0] — a heading the document declares reaches the projection
 
 `heading_level` read one source. A PDF's tagged `/H1`..`/H6` became `# ` and `<h1>`; an EPUB whose
