@@ -133,6 +133,61 @@ is false in general. Here the run draws glyphs, the font supplies metrics, and t
 - `docs/draft-schemas/geometry.draft.json` enumerated **three**, having missed `no_ink_to_measure`
   (v1-S6.2) and `not_reported_by_structure_tree` (v2-S24). All six are declared.
 
+
+### What else this version carried, unbilled until now
+
+**0.42.1 shipped twenty-one commits and described one.** Everything above is the last of them. The
+other twenty landed between the 0.42.0 release commit and this one, and no `CHANGELOG` entry named
+any of them — so this section is the bill, written late, rather than a silent omission left to
+`git log`.
+
+**Robustness, and one repair of a repair.**
+
+- **A ZIP's declared uncompressed size was reserved before a byte was inflated**, so a hostile
+  header could ask for an allocation the archive never justifies. The first fix was itself a **20x
+  memory regression** and is repaired here too — the sequence is in the history because a fix that
+  costs twenty times the memory it saves is worth recording as a step, not smoothed away.
+- **A ZIP comment containing `PK\x05\x06` displaced the end-of-central-directory record**, so an
+  archive with those four bytes in its comment was read from the wrong place.
+- **A poisoned font cache aborted the run**, and an id rebase panicked on three of eight node
+  kinds.
+- **Every CLI entry point read the whole file before checking its size**, so a size ceiling that
+  existed was enforced after the memory had already been spent.
+- **Neither SDK had a timeout, and the Node SDK buffered stdout without limit.**
+
+**Bounds, including a new flag.**
+
+- **`extract --max-pages`** — memory tracked page count and no caller could bound it. **This is a
+  feature**, and it is what makes the version number below wrong.
+
+**A guard that had never executed.** Three SDK version guards existed and none of them ran; the
+number they were guarding had drifted **six minors**, with `0.36.1` sitting in a `0.42.0` tree.
+
+**Performance, all of it byte-identical at equal version.** The central directory was walked twice
+to read one part; the canonicalization emit path stopped cloning the payload to hand it over; the
+test suite was compiling unoptimized and the table gate paid **13.6x** for it; the dependency cache
+never refreshed, so the optimization it existed for never landed; peak RSS is medianed now, because
+one sample of it was not a measurement.
+
+**Documents.** [`docs/18-INTERNING-SCOPE.md`](docs/18-INTERNING-SCOPE.md) — role-path interning
+measured and refused — and decision 20, *a constant today is a discriminator tomorrow*.
+
+### The version number is wrong, and is left standing
+
+**0.42.1 should have been 0.43.0.** `--max-pages` is a feature; the ZIP end-of-central-directory
+repair widens the set of archives this engine accepts, which is a reader change by the precedent set
+at 0.33.0 and 0.38.0; and the font-cache repair changes which documents produce an artifact at all.
+The sentence *"a PATCH … no reader changed"* was true of the slice it was written about and false of
+the version it was attached to.
+
+**It is not renumbered**, and the reasoning is worth stating rather than assuming. Nothing here is
+tagged or published, so no consumer holds a `0.42.1` to be confused by; `0.43.0` is already claimed
+by the slice after this one; and `profile_sha256` `686e85cb` is pinned to the string `0.42.1` in
+`profile.rs`, so a renumber moves a digest to correct a label. **Recording that the label is wrong
+costs nothing and loses nothing. Moving it would spend a version to hide a mistake**, which is the
+opposite of what the version field is for.
+
+
 ---
 
 ## [0.42.0] — the cut stops discarding its own grouping

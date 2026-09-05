@@ -19,7 +19,7 @@ scope document for its first half** (decision #19). **v3 and v4 stay one line ea
 | **v1.1** | Safe Markdown | Markdown and HTML, each with an anchor map · hyphenation and similar cosmetics as export-only | A Markdown-quoted citation verifies end to end |
 | **v1.2** | Adoption | MCP server · Python and Node SDKs · LangChain tools | Locators survive every adapter round trip |
 | **v2** | Office formats | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, EPUB · CSV argued and refused · one shared record and one serializer · embedded assets counted | A DOCX quote and an XLSX cell both **bind** to an address the file states, with **no synthesised pages**. **Met** |
-| **v2.2** | Layout and accessibility | **Geometric block structure** — the reading-order cut's own column bands, emitted per node as `Computed` layout · then auto-tagging, writing Tagged PDF | Both halves: a region is emitted wherever the cut divided a page and nowhere else, **and** a tag this engine writes is one it can read back and ground against |
+| **v2.2** | Layout and accessibility | **Geometric block structure** — the reading-order cut's own column bands, emitted per node as `Computed` layout · then auto-tagging, writing Tagged PDF — **whose prerequisite is measured and open** ([`19`](19-BLOCK-SUBDIVISION-SCOPE.md)), and whose write half is refused by decisions 19 and 20 | Both halves: a region is emitted wherever the cut divided a page and nowhere else, **and** a tag this engine writes is one it can read back and ground against |
 | **v3** | Assist | Propose-only VLM · dual-read and review · formula and chart enrichment as `Recognized` or `Proposed` | Assist on and assist off produce byte-identical grounded artifacts |
 | **v4** | OCR lane | Deterministic ONNX OCR in-process · an HTTP OCR contract · its own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | An OCR fingerprint is provably incomparable with a born-digital parse |
 
@@ -30,7 +30,7 @@ twelve tagged PDFs this repository owns. Quote the band with it — 0‰..590‰
 at exactly zero, and removing one document drops the macro to 23‰. An average over mostly zeros is
 not a summary of a detector.
 
-0.489 is a published score on somebody else's corpus. Same unit, different exam. The chase is parked
+0.489 is a published score on somebody else's corpus, and in a different unit — TEDS, not cell-slot F1 ([`table-gate-v1.md`](table-gate-v1.md) §2). The chase is parked
 until this repository has a labelled set it owns *and chooses to resume*; v2-S19 built the set, so
 the first half is met and the second half is the owner's standing condition (decision #18, decided). The hybrid figure
 was never the target and still is not — it is a non-deterministic mode, and a determinism contract
@@ -82,6 +82,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S0–S4 done |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 | Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
+| Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured; **not yet scoped**, three probes named |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
 past v2 had one until decision #19, which put v2.2's first half in sight by meeting v2. **v3 and v4

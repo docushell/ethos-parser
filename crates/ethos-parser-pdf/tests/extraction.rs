@@ -3445,3 +3445,95 @@ fn every_measured_box_this_reader_emits_survives_the_seal() {
         "the sweep must actually reach the corpus — it checked {checked}"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// D4: the region reaches the wire
+// -------------------------------------------------------------------------------------------
+
+/// Every run's region, paired with its x origin, from a fixture's emitted representation.
+fn regions_and_x(fixture: &str) -> Vec<(Option<u32>, i64)> {
+    let a = extract_ok(engine_fx(fixture));
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    rep.payload()
+        .nodes
+        .iter()
+        .filter_map(|n| match (&n.attributes, &n.native_locator) {
+            (
+                ethos_parser_core::NodeAttributes::TextRun(t),
+                ethos_parser_core::NativeLocator::Pdf(p),
+            ) => Some((t.region, p.origin_x)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// **A divided page carries the regions the cut made, on the artifact** (D4-S2).
+///
+/// `arrange_page` computes the regions and `reorder_page` carries them on the run; the third hop —
+/// `represent.rs`'s `region: run.region` — puts them on the wire, and **nothing observed it**.
+/// Replacing that expression with `region: None` compiled and passed the entire workspace suite:
+/// D4's twenty-one in-module ordering tests assert on hand-constructed `RunGeometry` arrays and
+/// never reach a representation, and no test in any crate read `TextRunAttributes::region`. A
+/// feature shipped at 0.42.0 had one production line that no test could see.
+///
+/// **The column check is the load-bearing half.** Asserting only that a region is present passes a
+/// mutant that emits `Some(1)` for every run, which is a field with no information in it. Two
+/// columns must land in *different* regions, and `two-column-14-lines` draws its left column at
+/// x=4000 and its right at x=24000, so the partition is checkable against geometry the fixture
+/// states rather than against a number this test hardcodes.
+#[test]
+fn a_divided_page_carries_the_regions_the_cut_made() {
+    let runs = regions_and_x("two-column-14-lines");
+    assert!(!runs.is_empty(), "the fixture must produce runs");
+
+    let mut xs_by_region: std::collections::BTreeMap<u32, Vec<i64>> = Default::default();
+    for (region, x) in &runs {
+        let r = region.expect("a page the cut divided gives every run a region");
+        xs_by_region.entry(r).or_default().push(*x);
+    }
+    assert_eq!(
+        xs_by_region.len(),
+        2,
+        "a two-column page is two regions, not {}: {xs_by_region:?}",
+        xs_by_region.len()
+    );
+
+    // Column-major: every run of the first region sits left of every run of the second. This is
+    // what a mutant emitting one constant region cannot satisfy.
+    let (first, second) = (&xs_by_region[&1], &xs_by_region[&2]);
+    assert!(
+        first.iter().max() < second.iter().min(),
+        "region 1 must be the left column and region 2 the right: {xs_by_region:?}"
+    );
+}
+
+/// **A page the cut did not divide says so by absence** (D4-S2).
+///
+/// The other direction, and it is not redundant — though not for the reason first written here.
+/// **Three mutants were run against both tests, and only the third separates them:**
+///
+/// | mutant | `a_divided_page…` | this test |
+/// | --- | --- | --- |
+/// | `region: None` — the one that survived the whole suite | **fails** | passes |
+/// | `region: Some(1)` | **fails** | **fails** |
+/// | `region: run.region.or(Some(1))` | passes | **fails** |
+///
+/// This comment claimed the second row was the discriminating case; it is not, because one
+/// constant region collapses a two-column page to a single region and the divided test catches
+/// that on its own. The third is the real one: a region correct wherever the cut divided and
+/// invented everywhere else. **That is the mutant this test exists for**, and it is the shape a
+/// plausible bug would actually take.
+///
+/// `16-D4-SCOPE.md` §4 is explicit that absent means *"the cut made no division here"*, so a region
+/// on an undivided page is a claim the rule never made — `reading_order.rs` says the same at
+/// `Regions::per_run`: *"One region means no division."*
+#[test]
+fn an_undivided_page_carries_no_region() {
+    let runs = regions_and_x("markdown-two-blocks");
+    assert!(!runs.is_empty(), "the fixture must produce runs");
+    let present: Vec<_> = runs.iter().filter(|(r, _)| r.is_some()).collect();
+    assert!(
+        present.is_empty(),
+        "an undivided page must carry no region at all, found {present:?}"
+    );
+}
