@@ -118,7 +118,11 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// such an artifact. The id moves anyway, because the alternative is two builds in this
 /// repository's own history producing different bytes under one id, and *that* is the state a rule
 /// id exists to make impossible. A version that is cheap to move is exactly the one worth moving.
-pub const HTML_RULE_BLOCKS_V2: &str = "html-blocks-v2";
+/// `-v3` at v2.2-S0: `heading_level` gained its second source, so an EPUB whose XHTML declares
+/// `<h1>` now projects `<h1>` where `-v2` projected `<p>`. Both projection ids move together here
+/// and that is not a contradiction of them being separate — separate means they *can* move
+/// independently, and this change went through `heading_level`, which both of them call.
+pub const HTML_RULE_BLOCKS_V3: &str = "html-blocks-v3";
 
 // -------------------------------------------------------------------------------------------
 // The artifact

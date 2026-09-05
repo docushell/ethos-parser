@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v2");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v3");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -780,7 +780,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v2");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v3");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1336,5 +1336,67 @@ fn the_joined_word_does_not_ground_and_both_halves_do() {
          drew it: it drew `recalcu-` and `lated` on two lines. This is the cost of the S3 \
          cosmetic, and the correct answer — not a defect in the verifier. What the artifact owes \
          a consumer is that the map names the two strings that ARE citable, and it does."
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+
+/// **An EPUB's own heading element reaches the projection** (v2.2-S0).
+///
+/// `heading_level` read one source — a PDF's tagged `/H1`..`/H6` — so an EPUB whose XHTML says
+/// `<h1>` in as many words projected as a paragraph, and `docs/CAPABILITY.md`'s *"office documents
+/// project too"* carried no caveat saying so. The reader had always carried the element name for
+/// exactly this: *"XHTML has no such distinction, so it is left false and the element's own name is
+/// carried beside it instead"* (`crates/ethos-parser-office/src/epub.rs`).
+///
+/// This is not L29. `<h1>` is the document declaring a heading and its level, the same kind of
+/// statement `/H1` is, and no font size is consulted to reach it.
+#[test]
+fn an_epubs_own_heading_element_projects_as_a_heading() {
+    let dir = scratch("epub-heading");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/book-spine/book.epub"),
+    );
+    let a = markdown_of(&repr);
+    let md = a["markdown"].as_str().expect("markdown string");
+
+    assert!(
+        md.contains("# Evidence, not extraction."),
+        "the `<h1>` the publication declares must project as a heading:\n{md}"
+    );
+
+    // The other half, and the reason this is not just a `starts_with('h')` test: the same fixture
+    // carries `p`, `pre`, `td` and `li` blocks, and none of them is a heading. A rule that turned
+    // any element into one would pass the assertion above and be wrong about everything else.
+    assert!(
+        md.contains("Rows & columns bind to a block and never to a page."),
+        "a `<p>` must still be there:\n{md}"
+    );
+    assert!(
+        !md.contains("# Rows & columns"),
+        "a `<p>` must NOT become a heading:\n{md}"
+    );
+    assert!(
+        !md.contains("# Left cell"),
+        "a `<td>` must NOT become a heading:\n{md}"
+    );
+}
+
+/// **A tagged PDF's headings are untouched by the EPUB source being added.**
+///
+/// The two sources sit in one function, so the cheapest way for this change to have gone wrong is
+/// for the new arm to shadow the old one. `irs-fw9` is tagged and carries real `/H` roles.
+#[test]
+fn adding_the_epub_source_leaves_tagged_pdf_headings_alone() {
+    let dir = scratch("epub-heading-pdf");
+    let repr = extract_to(&dir, &repo_root().join("fixtures/gate/irs-fw9.pdf"));
+    let a = markdown_of(&repr);
+    let md = a["markdown"].as_str().expect("markdown string");
+
+    let headings = md.lines().filter(|l| l.starts_with('#')).count();
+    assert!(
+        headings > 0,
+        "a tagged PDF must still project its own headings: {headings}"
     );
 }
