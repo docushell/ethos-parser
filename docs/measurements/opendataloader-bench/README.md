@@ -30,20 +30,47 @@ cargo build --release                                                       # in
 cp docs/measurements/opendataloader-bench/pdf_parser_ethos_parser.py <bench>/src/
 # register in <bench>/src/engine_registry.py — and do NOT touch the existing `ethos` entry,
 # which is the Ethos verifier CLI, a different tool:
-#   ENGINES["ethos-parser"] = "0.44.0"
+#   ENGINES["ethos-parser"] = "0.46.0"
 #   _ENGINE_MODULES["ethos-parser"] = "pdf_parser_ethos_parser"
 
 ETHOS_BENCH=<bench> <bench>/.venv/bin/python docs/measurements/opendataloader-bench/score.py
 ```
 
-## What it measured at 0.44.0
+## What it measured at 0.46.0
 
 | metric | ethos-parser | what it means here |
 | --- | --- | --- |
-| **NID** reading order | **0.8471** | 200/200 documents, 0 empty predictions |
+| **NID** reading order | **0.8490** | 200/200 documents, 0 empty predictions |
 | **TEDS** table structure | **0.1038** | 5 of 42 at 0.945–0.980, **37 at zero** |
 | **MHS** heading hierarchy | **0.0000** | 0 of 200 documents carry `/StructTreeRoot` |
-| speed | **26 ms/document** | third fastest of fifteen engines measured |
+| speed | **~26 ms/document** | third fastest of fifteen engines measured |
+
+NID was 0.8471 at 0.44.0 and 0.45.0. Timing is quoted loosely on purpose: a run taken while this
+machine was loaded reported 34 ms, and an alternating A/B of the two builds over the 25 largest
+documents put 0.46.0 within ~2% of 0.45.0. **Quote a speed only from a quiet machine, or A/B it.**
+
+### The corpus is also a limitation census, and that is where the defects are
+
+`extract` over all 200 documents, counting which limitation codes fire on how many, is the most
+useful single thing this corpus produces — more useful than any of the three scores, because a
+score says *how well* and the census says *where*. At 0.46.0 the document-scoped ones read:
+
+| code | documents | |
+| --- | --- | --- |
+| `untagged-structure-tree-absent` | 200 (100%) | why MHS is 0, and L29 says it stays 0 |
+| `unruled-table-candidate-refused` | 199 | |
+| `geometry-absent-not-groundable` | **183** | 8 770 of 109 500 text nodes cannot be quoted — but only **130** for a reason that is this reader's: 5 592 are whitespace runs and 3 047 are drawn off their own page |
+| `non-text-nodes-not-projected` | 125 | |
+| `ruled-table-candidate-refused` | 57 | the TEDS zeros |
+| `composite-font-codes-from-tounicode` | 50 | |
+| `form-xobjects-not-descended` | 46 | new at 0.45.0 |
+| `broken-font-encoding` | 25 | |
+| `font-widths-absent` | **1** | **51 before 0.46.0**, and 50 of those were wrong |
+
+**That census is what found the composite-font defect.** `font-widths-absent` at 51 documents
+looked like an honest declaration until the files were checked: 50 of 50 had `/W` or `/DW` and the
+reader was looking for `/Widths`, which §9.7.4.3 never puts on a `/Type0`. Ungroundable text nodes
+fell 14 683 → 8 770 when that was repaired. See CHANGELOG "0.46.0".
 
 ### Two of the three are capped by decisions, not by effort
 
@@ -71,6 +98,14 @@ Two real defects, neither visible from inside this repository:
    0.8109 from that alone.
 2. **Every text run was its own block** — 68 112 blocks averaging two characters on
    `nist-sp-800-207`. Fixed at 0.44.0. NID 0.8109 → **0.8471**.
+3. **Form XObjects were drawn and counted nowhere** — 46 of 200 documents draw one. Fixed at
+   0.45.0. No score moved; the artifact stopped being silent, which is the point.
+4. **Every composite font's widths were read from the wrong key** — 50 of 50 documents and 72 of
+   72 fonts declared width-absent while the file supplied `/W` or `/DW`. Fixed at 0.46.0.
+   Ungroundable text nodes 14 683 → **8 770**; NID 0.8471 → **0.8490** as a side effect.
+
+Three of the four were invisible from inside this repository, and the fourth — the composite-font
+one — was invisible to 1 294 tests, because neither owned corpus contained a single CIDFont.
 
 **Use it as a bug-finder, not a scoreboard.** Both defects were found by running someone else's
 corpus through this engine and reading what came out; neither was visible in the gate corpus,

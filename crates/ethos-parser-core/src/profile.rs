@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.45.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.46.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2638,11 +2638,22 @@ mod tests {
              is `q /Xf1 Do Q` emitted zero nodes with `pages_failed: 0` and a consumer could not \
              tell it from a blank page. The profile-scoped `form-xobject-text-not-descended` is \
              untouched and never covered this: it rides on EVERY artifact this engine writes, \
-             including ones for documents holding no XObject at all."
+             including ones for documents holding no XObject at all.\n\n\
+             Moved a SEVENTY-THIRD time at 0.46.0 (v2.2-S3), on `parser_version` alone again, and \
+             this one is the largest CORRECTNESS move since 0.42.1. `load_widths` asked a /Type0 \
+             font dictionary for `/Widths` — a key PDF 32000-1 §9.7.4.3 never puts there, because \
+             a composite font's widths live on its descendant CIDFont as `/W` with `/DW` as the \
+             default — so every composite font reported an unknown advance while the document \
+             supplied a perfectly good one. What differs on the wire: those runs now carry an \
+             `advance`, and with an advance they carry a MEASURED ink box instead of a typed \
+             absence, so they reach `ethos.grounding.v1` where they used to be omitted from it. \
+             Measured on 200 documents: ungroundable text nodes 14 683 -> 8 770 of 109 500. No \
+             text is gained or lost and the node count is identical — only what can be expressed \
+             downstream changed, which is exactly the axis this engine exists on."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0a532bf7d0ed4270fad80796dd7a5cb4f1a60b34e456489d5429170db053e619"
+            "sha256:cf5ee039a7cff2870e95c796e1c2ede0a4caf1016198692e0f6da5c4b7d75fc7"
         );
     }
 

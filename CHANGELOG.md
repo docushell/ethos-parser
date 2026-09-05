@@ -18,6 +18,120 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.46.0] — a composite font's widths were read from a key the format never puts them on
+
+`load_widths` asked every font for `/Widths` and `/FirstChar`. That is the **simple** font shape.
+PDF 32000-1 §9.7.4.3 puts a composite font's widths on its **descendant CIDFont**, as `/W` spans
+with `/DW` as the default, and a `/Type0` dictionary carries no `/Widths` at all.
+
+So every composite font fell through to "no width information" and reported an **unknown advance**
+while the document supplied a perfectly good one. Measured on the 200-document
+`opendataloader-bench` corpus:
+
+| | |
+| --- | --- |
+| documents where a `/Type0` font was declared width-absent | **50** |
+| …of which the file carried `/W` or `/DW` | **50** |
+| composite fonts declared width-absent | **72** |
+| …matched by a descendant carrying `/W` or `/DW` | **72** |
+
+A 100% false-positive rate. The engine said "this document does not say" about a document that
+said it plainly, on one file in four.
+
+### What it cost, which is the part that matters
+
+No width means no ink box, and no ink box means the node is **omitted from
+`ethos.grounding.v1`** — that schema requires a bbox on every element, and fabricating one is
+forbidden. So a seventh of the corpus could not be quoted, which is the one thing this engine
+exists to make possible.
+
+| | before | after |
+| --- | --- | --- |
+| text nodes omitted from grounding | 14 683 of 109 500 (**13.41%**) | **8 770** (8.01%) |
+| documents declaring `font-widths-absent` | 51 | **1** |
+| NID on `opendataloader-bench` | 0.8471 | **0.8490** |
+
+**No text is gained or lost and the node count is identical** — 109 500 on both sides. Only what
+can be expressed downstream changed. NID moves as a side effect: measurable advances let 0.44.0's
+block assembly judge ink-contiguity it previously had to guess at.
+
+### The same misattribution, one layer along, found while writing this entry
+
+The number that belongs in the row above — *"…because the font gave no ascent/descent/BBox: 6 519
+→ 131"* — **was itself misattributed**, and this entry very nearly repeated it. `extract.rs`'s
+`_ =>` arm fills `NotReportedByReader` when EITHER the font metrics are missing OR the advance is,
+and the sentence beneath it said, of all of them, *"their font supplies no usable ascent/descent
+and no `/FontBBox`"*. A claim about ink envelopes, made over a bucket half of which was about
+widths.
+
+The two are separable with no new wire type — a run with no advance already carries
+`advance: None` — so `geometry-absent-not-groundable` now counts them apart. What the corpus
+actually holds, of the 8 770 still omitted:
+
+| | nodes | is this a gap in this reader? |
+| --- | --- | --- |
+| no ink envelope | **130** | **yes** — the real metrics gap |
+| no advance | **1** | yes |
+| nothing to measure — whitespace runs | 5 592 | no; there was never a box |
+| measured, and drawn off the page | 3 047 | no; the document's own choice (D4-S5) |
+
+So the reader's own limitation is **130 nodes in 109 500 — 0.12%**, where before this slice the
+artifact said 6 519 and named the wrong cause for **6 388** of them. Everything else omitted from
+grounding is a property of the documents.
+
+The one document still declaring `font-widths-absent` is a Type1 `Times-Roman` with no `/Widths` —
+a genuine standard-14 case, and the only place the AFM sentence was ever true. The message that
+was wrong 50 times in 51 is now right 1 time in 1.
+
+### Added
+
+- **`WidthSource::Cid`** — `/W` spans and `/DW`, keyed by CID. **Both** `/W` forms are read: `c [w1
+  w2 …]` and `c_first c_last w`. Both occur in the wild — 1 143 and 810 entries respectively on
+  that corpus — and a parser that implemented one would read the other's numbers as CIDs and build
+  silently wrong spans.
+- **`fixtures/engine/composite-font-cid-widths`** and **`composite-font-non-identity-cmap`**.
+  Manifest `engine_owned` 39 → 41, fixtures 66 → 68, pinned survivors 62 → 64.
+
+### Claimed only where the CID is knowable
+
+`/W` is keyed by CID; `advance_glyph_space` is handed a character **code**. The map between them is
+the `/Encoding` CMap, and this profile parses none — the standing
+`composite-font-codes-from-tounicode` interim. Under `Identity-H` and `Identity-V` the map is the
+identity by definition, so the code **is** the CID. Under anything else the advance stays absent,
+because a width looked up with the wrong key is a plausible number for the wrong glyph, and a
+plausible number is the one failure a consumer cannot detect.
+
+The restriction costs nothing measurable: **all 78** composite fonts on that corpus declare
+`Identity-H`. That is the claim `split_codes` already made in prose — *"right for Identity-H, which
+is what real documents overwhelmingly use"* — and this is the first slice to put a number on it.
+
+### Why 1 294 tests passed while this was true
+
+**`grep -rl CIDFontType fixtures/` matched nothing**, in either owned corpus. The composite-width
+path was exercised by no test at all. That is verbatim the argument v1-S6 used to justify
+`image-xobject-drawn` — *"the corpus contains NO image XObject anywhere, so without this the whole
+image path is untested"* — and it was available for four versions before anyone applied it here.
+
+Five mutants were watched failing, at two layers: the `/DW` default replaced with zero, the `/W`
+range made exclusive at its end, `Identity-V` dropped, the encoding refusal dropped, and the
+`/Type0` dispatch removed (the original defect, restored).
+
+**One of them found a defect in this slice's own test.** With `/DW 1000` in the fixture — which is
+also §9.7.4.3's value for an omitted key — a reader that ignored `/DW` entirely still produced the
+right number, and the mutant survived. The fixture now declares `/DW 900`. And the first draft of
+the unit test walked the span table with its own copy of the lookup, so the exclusive-range mutant
+survived there too; it now goes through `advance_glyph_space`. A guard that reads its own subject
+through a private copy of that subject is this repository's recurring defect, and writing one
+inside the slice that repairs an instance of it would have been a poor joke.
+
+### Changed
+
+- `geometry-absent-not-groundable` splits `NotReportedByReader` into "no ink envelope" and "no
+  advance". Prose and counts only; no new type reaches the wire.
+- `profile_sha256` moves to `cf5ee039`, on `parser_version` alone. No rule id moves.
+
+---
+
 ## [0.45.0] — a page whose whole content was one `Do` came out blank, and said so nowhere
 
 `extract` walks a page's `Do` operators and asks each XObject what it is. A `/Subtype /Image`

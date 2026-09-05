@@ -62,6 +62,7 @@ not obvious from the name:
 | `image-xobject-drawn`, `image-declared-not-drawn`, `form-xobject-text-drawn` | See below |
 | `invisible-render-mode` | Text under render mode 3: present, flagged, never filtered out |
 | `off-page-and-offset-box` | A media box whose origin is not `(0,0)`, plus a smaller crop box — the coordinate repair and the off-page finding in one page |
+| `composite-font-cid-widths`, `composite-font-non-identity-cmap` | A `/Type0` font whose widths live on its descendant CIDFont as `/W` and `/DW`, and the same descendant under a CMap this profile cannot read — see below |
 
 Why the upstream corpus cannot cover the table cases: **no fixture in it contains a single path
 operator**, so nothing there exercises ruled detection at all.
@@ -97,6 +98,33 @@ whose whole content is `q /Xf1 Do Q` came out empty with `pages_failed: 0`. The 
 this engine writes, including ones for documents containing no XObject at all: it states the
 policy, not the cost. `form-xobjects-not-descended` is document-scoped and carries a count, and the
 fixture asserts both halves — present here, absent on the two above.
+
+### The composite-font pair is about a shape neither corpus had
+
+Before v2.2-S3, `grep -rl CIDFontType fixtures/` matched **nothing** — in either owned corpus. So
+the composite-width path was exercised by no test at all, and `load_widths` spent its entire life
+asking a `/Type0` dictionary for `/Widths`, a key PDF 32000-1 §9.7.4.3 never puts there. 1 294
+tests passed while every composite font in existence reported an unknown advance.
+
+That is the same argument v1-S6 used for `image-xobject-drawn` — *"the corpus contains NO image
+XObject anywhere, so without this the whole image path is untested"* — and it is worth stating
+that the argument was available for four versions before anyone applied it here.
+
+| | `/Encoding` | `extract` |
+| --- | --- | --- |
+| `composite-font-cid-widths` | `/Identity-H` | advance **2880** centipoints, ink box **2880** wide |
+| `composite-font-non-identity-cmap` | `/UniJIS-UCS2-H` | text still `ABCE`, advance **absent** |
+
+The pair differs **only** in the encoding: same descendant, same `/W`, same `/DW`. `/W` is keyed
+by CID and the code→CID map is the `/Encoding` CMap, which this profile does not parse — so under
+Identity the code *is* the CID and the widths are readable, and under anything else a width would
+be a plausible number for the wrong glyph.
+
+`2880` is `500 + 750 + 900 + 250` glyph units at 12 pt, and the four numbers come from four
+different code paths: `/W`'s array form twice, then `/DW`, then `/W`'s range form. **`/DW` is 900
+and not 1000 on purpose** — 1000 is also §9.7.4.3's value for an omitted `/DW`, so at 1000 a
+mutant that ignored the key survived the fixture. The omitted case is covered by a unit test in
+`fonts.rs`, where a dictionary can be built without one.
 
 ## Regenerating
 

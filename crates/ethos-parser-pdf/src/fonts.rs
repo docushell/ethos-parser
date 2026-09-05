@@ -51,6 +51,41 @@ pub enum WidthSource {
         /// `/FontMatrix` scale for Type 3 fonts; `None` means the 1/1000 default.
         type3_scale_x: Option<f64>,
     },
+    /// `/W` and `/DW` from a composite font's DESCENDANT CIDFont, keyed by CID (v2.2-S3).
+    ///
+    /// **A `Type0` font never carries `/Widths`** — PDF 32000-1 §9.7.4.3 puts a composite font's
+    /// widths on the descendant, as `/W` spans with `/DW` as the default. Until v2.2-S3 this
+    /// module knew only the simple shape, so every composite font fell through to
+    /// [`Self::Absent`] and reported an unknown advance while the document supplied a perfectly
+    /// good one. Measured on the 200-document `opendataloader-bench` corpus: **50 of 50
+    /// documents and 72 of 72 composite fonts** were declared width-absent, and every one of them
+    /// had `/W` or `/DW` in the file. A 100% false-positive rate.
+    ///
+    /// The neighbouring reader already knew: [`crate::metrics::resolve_font_ink`] opens with
+    /// *"Type 0 fonts hold their descriptor on the descendant"* and walks `/DescendantFonts`
+    /// correctly for the ink envelope. The rule was in the tree, one file away, and had never
+    /// been applied to the second reader that needs it.
+    Cid {
+        /// `first_cid -> (last_cid, width)`, the spans `/W` names, in glyph space.
+        ///
+        /// A `BTreeMap` rather than a list because the lookup is per glyph on the innermost
+        /// extraction loop: `range(..=cid).next_back()` finds the last span beginning at or
+        /// before a CID in log time. Both `/W` forms land here — `c [w1 w2 …]` as one
+        /// single-CID span per width, and `c_first c_last w` as one span. Both occur in the
+        /// wild: 1 143 and 810 respectively on that corpus, so implementing one would have
+        /// silently mis-measured the other.
+        spans: BTreeMap<u32, (u32, f64)>,
+        /// `/DW`, the width of every CID `/W` does not name.
+        ///
+        /// **1000 when the document omits it, and that is reading rather than guessing**:
+        /// §9.7.4.3 states *"Default value: 1000"*, so an absent `/DW` is a declared value the
+        /// same way an absent `/Encoding` on a simple font declares the built-in one. The
+        /// distinction matters here because it is the difference between this variant and
+        /// [`Self::Absent`]: under an Identity CMap a composite font's advance is therefore
+        /// **never** unknown, which is why nothing falls through to `Absent` for width reasons
+        /// once the encoding is Identity.
+        default: f64,
+    },
     /// No width information in the document.
     ///
     /// The standard-14 fonts may legally omit `/Widths`, expecting the reader to supply built-in
@@ -220,6 +255,17 @@ impl Font {
     pub fn advance_glyph_space(&self, code: u32) -> Option<f64> {
         match &self.widths {
             WidthSource::Absent { .. } => None,
+            // v2.2-S3. The CID is the code, because `load_cid_widths` refuses to build this
+            // variant under any encoding where that is not true by definition. That refusal is
+            // what lets this arm be three lines instead of a CMap parser.
+            WidthSource::Cid { spans, default } => {
+                let width = spans
+                    .range(..=code)
+                    .next_back()
+                    .filter(|(_, (last, _))| code <= *last)
+                    .map_or(*default, |(_, (_, w))| *w);
+                Some(width / GLYPH_SPACE_UNITS)
+            }
             WidthSource::Widths {
                 first_char,
                 widths,
@@ -432,12 +478,137 @@ fn load_simple_encoding(
     Ok(SimpleEncoding::new(base, differences))
 }
 
+/// One number from a PDF object, integer or real.
+fn number(obj: Option<&lopdf::Object>) -> Option<f64> {
+    match obj? {
+        lopdf::Object::Integer(i) => Some(*i as f64),
+        lopdf::Object::Real(r) => Some(f64::from(*r)),
+        _ => None,
+    }
+}
+
+/// A composite font's widths, from its descendant CIDFont (v2.2-S3, PDF 32000-1 §9.7.4.3).
+///
+/// # Why this refuses every encoding but Identity
+///
+/// `/W` is keyed by **CID**, and `advance_glyph_space` is given a **character code**. The map
+/// between them is the CMap named by `/Encoding`, and this profile parses no CMaps — the standing
+/// interim [`Font::split_codes`] already declares as `composite-font-codes-from-tounicode`. Under
+/// `Identity-H` and `Identity-V` the map is the identity by definition (§9.7.4.2), so the code IS
+/// the CID and no CMap is needed. Under anything else the CID is unknown, and a width looked up
+/// with the wrong key is worse than no width: it is a plausible number, and this engine's whole
+/// posture is that a plausible number is the one failure a consumer cannot detect.
+///
+/// The restriction costs nothing measurable. All **78** composite fonts on the 200-document
+/// `opendataloader-bench` corpus declare `Identity-H` — which is the claim
+/// [`Font::split_codes`]'s comment already made in prose (*"right for Identity-H, which is what
+/// real documents overwhelmingly use"*) and that this is the first slice to put a number on.
+fn load_cid_widths(doc: &lopdf::Document, fd: &lopdf::Dictionary, id: &str) -> WidthSource {
+    let encoding = fd.get(b"Encoding").ok().and_then(|o| o.as_name().ok());
+    if !matches!(encoding, Some(b"Identity-H") | Some(b"Identity-V")) {
+        return WidthSource::Absent {
+            reason: format!(
+                "font /{id} (Type0{}) declares /Encoding {}, and this profile parses no CMaps, so \
+                 the mapping from character code to CID is unknown. `/W` is keyed by CID, so a \
+                 width read under this encoding would be a plausible number for the wrong glyph \
+                 — the one failure a consumer cannot detect. The advance is therefore reported \
+                 as ABSENT rather than guessed. **This is not the standard-14 case and nothing \
+                 here is waiting on vendored AFM tables**; that sentence belongs to a simple \
+                 font with no /Widths. Origins are unaffected — they come from the content \
+                 stream.",
+                base_font_suffix(fd),
+                encoding.map_or_else(
+                    || "no name this reader could read".to_string(),
+                    |n| format!("/{}", String::from_utf8_lossy(n))
+                ),
+            ),
+        };
+    }
+
+    let Some(descendant) = resolve_array(doc, fd.get(b"DescendantFonts").ok())
+        .and_then(|arr| arr.first().and_then(|o| resolve_dict(doc, Some(o))))
+    else {
+        return WidthSource::Absent {
+            reason: format!(
+                "font /{id} (Type0{}) declares an Identity encoding but no /DescendantFonts array \
+                 this reader could resolve, so there is no CIDFont to read /W or /DW from. \
+                 §9.7.4.1 requires exactly one descendant. The advance is ABSENT rather than \
+                 assumed, and the document is malformed rather than this profile limited.",
+                base_font_suffix(fd),
+            ),
+        };
+    };
+
+    // §9.7.4.3: `/DW` defaults to 1000 when the document omits it. Reading a normative default is
+    // reading the document, not guessing at it — the same standing as an absent `/Encoding` on a
+    // simple font meaning the built-in one. So from here the advance is always known.
+    let default = number(descendant.get(b"DW").ok()).unwrap_or(1000.0);
+
+    let mut spans: BTreeMap<u32, (u32, f64)> = BTreeMap::new();
+    if let Some(w) = resolve_array(doc, descendant.get(b"W").ok()) {
+        let mut i = 0usize;
+        while i < w.len() {
+            let Some(first) = number(w.get(i)) else { break };
+            let Ok(first) = u32::try_from(first as i64) else {
+                break;
+            };
+            // Form one: `c [w1 w2 … wn]` — consecutive CIDs from c. Form two:
+            // `c_first c_last w` — one width across a range. They interleave inside one array,
+            // so the shape of the NEXT object decides which this is; a parser that assumed one
+            // form would read the other's numbers as CIDs and silently produce garbage spans.
+            match w.get(i + 1) {
+                Some(lopdf::Object::Array(items)) => {
+                    for (k, item) in items.iter().enumerate() {
+                        if let Some(width) = number(Some(item)) {
+                            let cid = first.saturating_add(k as u32);
+                            spans.insert(cid, (cid, width));
+                        }
+                    }
+                    i += 2;
+                }
+                Some(_) => {
+                    let (Some(last), Some(width)) = (number(w.get(i + 1)), number(w.get(i + 2)))
+                    else {
+                        break;
+                    };
+                    let Ok(last) = u32::try_from(last as i64) else {
+                        break;
+                    };
+                    if last >= first {
+                        spans.insert(first, (last, width));
+                    }
+                    i += 3;
+                }
+                None => break,
+            }
+        }
+    }
+
+    WidthSource::Cid { spans, default }
+}
+
+/// `, BaseFontName` for a limitation detail, or nothing when the font declares none.
+fn base_font_suffix(fd: &lopdf::Dictionary) -> String {
+    fd.get(b"BaseFont")
+        .ok()
+        .and_then(|o| o.as_name().ok())
+        .map(|n| format!(", {}", String::from_utf8_lossy(n)))
+        .unwrap_or_default()
+}
+
 fn load_widths(
     doc: &lopdf::Document,
     fd: &lopdf::Dictionary,
     subtype: &str,
     id: &str,
 ) -> WidthSource {
+    // v2.2-S3. **The dispatch that was missing.** A composite font's widths live somewhere else
+    // entirely and are keyed by something else entirely; reading `/Widths` off a `Type0`
+    // dictionary asks a question the format never answers there.
+    if subtype == "Type0" {
+        return load_cid_widths(doc, fd, id);
+    }
+
     let first_char = fd.get(b"FirstChar").ok().and_then(|o| o.as_i64().ok());
     let widths = fd
         .get(b"Widths")
@@ -476,11 +647,7 @@ fn load_widths(
                 "font /{id} ({subtype}{}) carries no /Widths array. The standard-14 built-in AFM \
                  metrics are not vendored by this profile, so the advance is unknown rather than \
                  assumed. Origins are unaffected — they come from the content stream.",
-                fd.get(b"BaseFont")
-                    .ok()
-                    .and_then(|o| o.as_name().ok())
-                    .map(|n| format!(", {}", String::from_utf8_lossy(n)))
-                    .unwrap_or_default()
+                base_font_suffix(fd),
             ),
         },
     }
@@ -737,5 +904,170 @@ mod tests {
         );
         // WinAnsi 0x81 is unassigned.
         assert!(f.decode_code(0x81).is_err());
+    }
+    // --- v2.2-S3: the composite width table -------------------------------------------------
+
+    /// `/W` array elements, spelled the way the array reads.
+    ///
+    /// `/W [ 1 [500 750] 5 7 250 ]` becomes `vec![n(1), a(&[500, 750]), n(5), n(7), n(250)]`, so
+    /// a reader of these tests compares them against §9.7.4.3's two forms directly.
+    fn n(v: i64) -> lopdf::Object {
+        lopdf::Object::Integer(v)
+    }
+    fn a(v: &[i64]) -> lopdf::Object {
+        lopdf::Object::Array(v.iter().copied().map(n).collect())
+    }
+
+    /// A `/Type0` font and its descendant, as one `lopdf::Document`.
+    ///
+    /// Built here rather than as a fixture because two cases below cannot both be one:
+    /// `fixtures/engine/make_fixtures.py` gives every fixture exactly one font, and `/DW` present
+    /// and `/DW` absent are different fonts. The fixture proves the whole path end to end; these
+    /// prove the table.
+    fn widths_of(encoding: &str, dw: Option<i64>, w: Option<Vec<lopdf::Object>>) -> WidthSource {
+        let mut doc = lopdf::Document::with_version("1.7");
+        let mut desc = lopdf::Dictionary::new();
+        desc.set("Subtype", lopdf::Object::Name(b"CIDFontType2".to_vec()));
+        if let Some(dw) = dw {
+            desc.set("DW", lopdf::Object::Integer(dw));
+        }
+        if let Some(w) = w {
+            desc.set("W", lopdf::Object::Array(w));
+        }
+        let id = doc.add_object(desc);
+
+        let mut font = lopdf::Dictionary::new();
+        font.set("Type", lopdf::Object::Name(b"Font".to_vec()));
+        font.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+        font.set(
+            "Encoding",
+            lopdf::Object::Name(encoding.as_bytes().to_vec()),
+        );
+        font.set(
+            "DescendantFonts",
+            lopdf::Object::Array(vec![lopdf::Object::Reference(id)]),
+        );
+        load_cid_widths(&doc, &font, "F1")
+    }
+
+    /// **Both `/W` forms, and they interleave inside one array** (PDF 32000-1 §9.7.4.3).
+    ///
+    /// A parser that knew one form would read the other's numbers as CIDs and build silently
+    /// wrong spans — no error, no refusal, just a plausible advance for the wrong glyph. Both
+    /// occur in the wild: 1 143 array-form and 810 range-form entries across the 200-document
+    /// `opendataloader-bench` corpus.
+    #[test]
+    fn both_w_forms_are_read_and_may_interleave() {
+        let w = widths_of(
+            "Identity-H",
+            Some(900),
+            Some(vec![
+                n(1),
+                a(&[500, 750]),
+                n(5),
+                n(7),
+                n(250),
+                n(10),
+                a(&[111]),
+            ]),
+        );
+        assert!(matches!(w, WidthSource::Cid { .. }), "got {w:?}");
+
+        // **Through `advance_glyph_space`, not through a local copy of it.** The first draft of
+        // this test walked `spans` with its own `range(..=cid).next_back()` — a reimplementation
+        // of the lookup it exists to check, which a mutant making the range end EXCLUSIVE
+        // survived here and died only in the integration test. A guard that reads its own
+        // subject through a private copy of the subject is this repository's recurring defect,
+        // and writing one inside the slice that fixes an instance of it would be a poor joke.
+        let f = font_with(w, FontInk::Absent(GeometryAbsence::NotReportedByReader));
+        let at = |cid: u32| f.advance_glyph_space(cid).map(|a| a * GLYPH_SPACE_UNITS);
+        assert_eq!(at(1), Some(500.0), "array form, first entry");
+        assert_eq!(at(2), Some(750.0), "array form, second entry");
+        assert_eq!(at(3), Some(900.0), "named by neither, so /DW");
+        assert_eq!(at(5), Some(250.0), "range form, first CID");
+        assert_eq!(
+            at(7),
+            Some(250.0),
+            "range form, LAST CID — §9.7.4.3's range is INCLUSIVE at both ends"
+        );
+        assert_eq!(
+            at(8),
+            Some(900.0),
+            "one past the range is /DW again, not 250"
+        );
+        assert_eq!(
+            at(10),
+            Some(111.0),
+            "an array form AFTER a range form, in one array"
+        );
+    }
+
+    /// **§9.7.4.3's default is 1000, and reading it is reading the document.**
+    ///
+    /// The one case the fixture cannot express, and the one a mutant survived while `/DW` was
+    /// 1000 there: at that value an implementation that ignored the default entirely still
+    /// produced the right number. An absent `/DW` is a declared value the same way an absent
+    /// `/Encoding` on a simple font declares the built-in one — so this is not a guess, and a
+    /// composite font under an Identity CMap therefore has no width-absent case at all.
+    #[test]
+    fn the_spec_default_applies_when_dw_is_absent() {
+        let w = widths_of("Identity-H", None, Some(vec![n(1), a(&[500])]));
+        let WidthSource::Cid { spans, default } = &w else {
+            panic!("expected Cid widths, got {w:?}")
+        };
+        assert_eq!(*default, 1000.0, "§9.7.4.3: \"Default value: 1000\"");
+        assert_eq!(spans.len(), 1, "only what /W names is a span");
+
+        // And with no `/W` at all the font is still fully described.
+        let bare = widths_of("Identity-H", None, None);
+        let WidthSource::Cid { spans, default } = &bare else {
+            panic!("expected Cid widths, got {bare:?}")
+        };
+        assert!(spans.is_empty());
+        assert_eq!(*default, 1000.0);
+    }
+
+    /// **Anything but Identity refuses, and says why.**
+    ///
+    /// `/W` is keyed by CID; the code→CID map is the `/Encoding` CMap, and this profile parses
+    /// none. Returning widths anyway would produce a plausible number for the wrong glyph, which
+    /// is the single failure a consumer cannot detect. The reason must also NOT be the
+    /// standard-14 sentence — that was the wrong explanation printed on 50 of the 51 corpus
+    /// documents that printed it.
+    #[test]
+    fn a_cmap_this_profile_cannot_read_refuses_rather_than_guessing() {
+        for encoding in ["UniJIS-UCS2-H", "GBK-EUC-H", "90ms-RKSJ-H"] {
+            let w = widths_of(encoding, Some(900), Some(vec![n(1), a(&[500])]));
+            let WidthSource::Absent { reason } = &w else {
+                panic!("{encoding} is not Identity and must refuse, got {w:?}")
+            };
+            assert!(reason.contains(encoding), "the reason names it: {reason}");
+            assert!(
+                reason.contains("not the standard-14 case"),
+                "and disowns the AFM sentence: {reason}"
+            );
+        }
+        // Identity-V is Identity too — vertical writing does not change the CID mapping.
+        assert!(matches!(
+            widths_of("Identity-V", Some(900), None),
+            WidthSource::Cid { .. }
+        ));
+    }
+
+    /// A `/Type0` with no descendant is malformed, and says that rather than blaming a table.
+    #[test]
+    fn a_composite_font_with_no_descendant_is_named_as_malformed() {
+        let mut font = lopdf::Dictionary::new();
+        font.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+        font.set("Encoding", lopdf::Object::Name(b"Identity-H".to_vec()));
+        let doc = lopdf::Document::with_version("1.7");
+        let WidthSource::Absent { reason } = load_cid_widths(&doc, &font, "F1") else {
+            panic!("no descendant, no widths")
+        };
+        assert!(reason.contains("/DescendantFonts"), "{reason}");
+        assert!(
+            reason.contains("malformed rather than this profile limited"),
+            "the fault is the document's and the message says so: {reason}"
+        );
     }
 }

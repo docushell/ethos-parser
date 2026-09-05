@@ -2856,6 +2856,111 @@ fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
     }
 }
 
+/// **A composite font's widths come from its descendant, and the CID is the key** (v2.2-S3).
+///
+/// `load_widths` read `/Widths` and `/FirstChar` — the SIMPLE font shape. PDF 32000-1 §9.7.4.3
+/// puts a composite font's widths on the descendant CIDFont as `/W`, with `/DW` as the default,
+/// and a `/Type0` dictionary carries no `/Widths` at all. So every composite font fell through to
+/// `WidthSource::Absent` and reported an unknown advance while the document supplied a perfectly
+/// good one — measured on `opendataloader-bench`: **50 of 50 documents and 72 of 72 composite
+/// fonts**, every one of which had `/W` or `/DW` in the file. A 100% false-positive rate.
+///
+/// **The whole suite passed while that was true**, because neither owned corpus contained a
+/// single CIDFont — `grep -l CIDFontType fixtures/` matched nothing. This fixture is the shape
+/// that was missing, and its four glyphs take their widths from four different code paths.
+#[test]
+fn a_composite_font_takes_its_widths_from_the_descendant_cidfont() {
+    let a = extract_ok(engine_fx("composite-font-cid-widths"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 1, "one `Tj`, one run");
+
+    // Codes are two bytes because Identity-H says so, and each is its own CID.
+    assert_eq!(r[0].text, "ABCE");
+    assert_eq!(r[0].char_codes, vec![1, 2, 3, 5]);
+
+    // **The number that proves all four paths.** `/W [1 [500 750] 5 7 250]` and `/DW 900` give
+    // CID 1 -> 500 and CID 2 -> 750 from the ARRAY form, CID 3 -> 900 from the font's own `/DW`
+    // because `/W` names it nowhere, and CID 5 -> 250 from the RANGE form. At 12 pt that is
+    // 6.00 + 9.00 + 10.80 + 3.00 = 28.80 pt, and no two of the four widths are equal — so a
+    // reader that mis-sourced any single one lands on a different total.
+    //
+    // `/DW` is 900 rather than 1000 for a measured reason: 1000 is also §9.7.4.3's value when the
+    // key is absent, so at 1000 a mutant that replaced the default with zero SURVIVED this
+    // assertion. `the_spec_default_applies_when_dw_is_absent` in `fonts.rs` covers the omitted
+    // case, which a fixture built by this generator cannot express.
+    assert_eq!(
+        r[0].locator.advance,
+        Some(2_880),
+        "28.80 pt in centipoints: 500 + 750 + 900 + 250 glyph units at 12 pt"
+    );
+
+    // No width means no ink box means no grounding, which is what the defect actually cost.
+    let box_ = r[0]
+        .geometry
+        .measured()
+        .expect("with an advance and a descriptor the ink box is MEASURED");
+    // The box is as wide as the advance the widths produced. Asserting the number rather than
+    // just its presence: a box that existed but measured the wrong width would be the same
+    // silent-plausible failure one layer along.
+    assert_eq!(
+        box_.x1() - box_.x0(),
+        2_880,
+        "the measured box spans the 28.80 pt the four widths add up to"
+    );
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_pdf::limitations::FONT_WIDTHS_ABSENT),
+        "the document supplies widths; claiming otherwise was the defect"
+    );
+}
+
+/// **The refusal, and the reason it gives** (v2.2-S3).
+///
+/// The other half, and it is not optional: a reader that returned widths for every composite font
+/// would pass the test above and be wrong wherever the code is not the CID. `/W` is keyed by CID
+/// and the code→CID map is the `/Encoding` CMap, which this profile does not parse. Under a
+/// non-Identity CMap the CID is unknown, and a width looked up with the wrong key is a plausible
+/// number for the wrong glyph — the one failure a consumer cannot detect.
+///
+/// The fixture is the SAME descendant with the SAME `/W` and `/DW`, so the only difference is the
+/// encoding. And the reason matters as much as the refusal: before this slice the message blamed
+/// un-vendored standard-14 AFM tables, which cannot apply to an embedded composite subset — it
+/// was the wrong explanation on 50 of the 51 documents that printed it.
+#[test]
+fn a_composite_font_under_an_unparsed_cmap_refuses_rather_than_guessing() {
+    let a = extract_ok(engine_fx("composite-font-non-identity-cmap"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 1);
+
+    // The TEXT still decodes — `/ToUnicode` is authoritative for characters and says nothing
+    // about CIDs. Only the advance is unavailable, and only the advance is withheld.
+    assert_eq!(r[0].text, "ABCE", "refusing a width never costs the text");
+    assert_eq!(
+        r[0].locator.advance, None,
+        "the code is not the CID under this CMap, and nothing here can say what is"
+    );
+
+    let l = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_pdf::limitations::FONT_WIDTHS_ABSENT)
+        .expect("refused, and declared");
+    assert!(
+        l.detail.contains("UniJIS-UCS2-H") && l.detail.contains("code to CID"),
+        "the reason must name the encoding it could not read: {}",
+        l.detail
+    );
+    assert!(
+        l.detail.contains("not the standard-14 case"),
+        "and must say it is NOT the AFM case, which is what it wrongly claimed for every \
+         composite font before v2.2-S3: {}",
+        l.detail
+    );
+}
+
 /// Byte offset of `needle` at or after `from`.
 fn find(haystack: &[u8], needle: &[u8], from: usize) -> usize {
     haystack[from..]
