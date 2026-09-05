@@ -357,7 +357,31 @@ pub fn to_representation(
                 )
         })
         .count() as u32;
-    let ink_absent = unmeasurable + no_ink;
+    // D4-S5. A third reason, added for the reason v1-S6.2 split the first two: it is a different
+    // fact about this reader, and the sum would misreport it. `off_page` means the box WAS
+    // measured — the font supplied metrics and the run draws ink — and the document places it
+    // outside the page, so no page-relative rectangle exists to emit. Folding it into
+    // `unmeasurable` would charge this engine for the document's choice; folding it into `no_ink`
+    // would say the run draws nothing when it draws glyphs.
+    //
+    // It must be counted, not merely spelled: `check_structure` requires the geometry declaration
+    // whenever ANY node is non-groundable, so a document whose only absences were off-page boxes
+    // would seal with no limitation naming them and be refused — the annotation bug below, one
+    // reason over.
+    let off_page = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| {
+            n.kind == NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::MeasuredOffPage
+                    )
+                )
+        })
+        .count() as u32;
+    let ink_absent = unmeasurable + no_ink + off_page;
     let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
     // Nodes whose geometry is absent because their KIND has none — an annotation, a
     // form field, an image. `check_structure` requires the geometry declaration
@@ -393,6 +417,7 @@ pub fn to_representation(
         limitations.push(geometry_absent_limitation(
             unmeasurable,
             no_ink,
+            off_page,
             text_total,
             kind_absent,
         ));
@@ -476,9 +501,21 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
 fn geometry_absent_limitation(
     unmeasurable: u32,
     no_ink: u32,
+    off_page: u32,
     total: u32,
     kind_absent: u32,
 ) -> Limitation {
+    // D4-S5. The count of reasons is computed, not written, because writing it is how it goes
+    // stale — v2-S13.3 is a whole slice of statements that stopped being true, one of them a
+    // document claiming to hold seventeen decisions while holding fourteen. A sentence that says
+    // "two reasons" above three clauses is that defect in miniature. Conditional rather than
+    // always "three" so a document with no off-page box carries the sentence it always carried,
+    // byte for byte, and no golden moves for a case this slice did not change.
+    let (split_count, split_slices) = if off_page > 0 {
+        ("Three", "v1-S6.2, D4-S5")
+    } else {
+        ("Two", "v1-S6.2")
+    };
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
         format!(
@@ -489,15 +526,39 @@ fn geometry_absent_limitation(
              expressed downstream, not in what was read. A grounding artifact with fewer elements \
              than this record has nodes is therefore expected, and this is the count that \
              reconciles them.\n\n\
-             **Two reasons, split because they say different things about this reader** (v1-S6.2). \
+             **{split_count} reasons, split because they say different things about this reader** \
+             ({split_slices}). \
              {unmeasurable} node(s) could NOT be measured: their font supplies no usable \
              ascent/descent and no `/FontBBox`, which is a real gap in what this engine can do. \
              {no_ink} node(s) had NOTHING to measure: the run draws no ink — a run of spaces — so \
              no box exists to be missing. Only the first is a limitation of this reader. Before \
              they were split, an artifact reported their sum under a sentence that read as though \
              the reader had failed every time.",
-            unmeasurable + no_ink
-        ) + &kind_absent_clause(kind_absent),
+            unmeasurable + no_ink + off_page
+        ) + &off_page_clause(off_page)
+            + &kind_absent_clause(kind_absent),
+    )
+}
+
+/// The sentence for runs whose measured box the document draws off the page (D4-S5).
+///
+/// Its own clause, and empty at zero, for the reason [`kind_absent_clause`] is: a document that
+/// draws nothing off-page carries the sentence it always carried, byte for byte. Only a document
+/// that has some pays for the third reason — which is also why the two-reason sentence above is
+/// left standing rather than rewritten to say three.
+fn off_page_clause(off_page: u32) -> String {
+    if off_page == 0 {
+        return String::new();
+    }
+    format!(
+        "\n\n\
+         A further {off_page} node(s) WERE measured and are not on the page: the font supplied \
+         metrics, the run draws ink, and the document places the box outside its own page box, so \
+         no page-relative rectangle exists to report. This is a property of the document rather \
+         than a shortfall of this reader — a page extracted from a wider original is the case in \
+         practice — and it is neither clamped to fit nor dropped. Each of these runs is in the \
+         artifact with its text, its origin and an `off-page-text` finding; what is absent is the \
+         box, and `GeometryAbsence::MeasuredOffPage` is the reason."
     )
 }
 
@@ -569,7 +630,7 @@ mod tests {
 
         // And the declaration it produces names that population rather than
         // silently reporting zero text nodes.
-        let limitation = geometry_absent_limitation(0, 0, 1, kind_absent);
+        let limitation = geometry_absent_limitation(0, 0, 0, 1, kind_absent);
         assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
         assert!(
             limitation.detail.contains("their KIND has none"),
@@ -578,12 +639,47 @@ mod tests {
         );
     }
 
+    /// **The third reason gets its own clause, and the count of reasons follows it** (D4-S5).
+    ///
+    /// Two assertions, because the failure modes differ. A document with no off-page box must
+    /// carry the sentence it always carried — otherwise every golden in the corpus moves for a
+    /// case this slice did not change. A document with one must not say "Two reasons" above
+    /// three clauses, which is the v2-S13.3 defect: a statement that stopped being true.
+    #[test]
+    fn the_off_page_reason_is_counted_and_the_reason_count_follows_it() {
+        let none = geometry_absent_limitation(1, 0, 0, 1, 0);
+        assert!(
+            none.detail.contains("**Two reasons"),
+            "no off-page box means the v1-S6.2 sentence, verbatim: {}",
+            none.detail
+        );
+        assert!(!none.detail.contains("are not on the page"));
+
+        let some = geometry_absent_limitation(0, 0, 2, 3, 0);
+        assert!(
+            some.detail.starts_with("2 of 3 text node(s)"),
+            "an off-page box counts toward the omitted total: {}",
+            some.detail
+        );
+        assert!(
+            some.detail.contains("**Three reasons"),
+            "three clauses must be introduced as three: {}",
+            some.detail
+        );
+        assert!(
+            some.detail
+                .contains("2 node(s) WERE measured and are not on the page"),
+            "the third reason states its own count: {}",
+            some.detail
+        );
+    }
+
     /// The ink sentence's denominator counts TEXT nodes, because its numerator does.
     #[test]
     fn the_ink_sentence_counts_text_nodes_on_both_sides() {
         // One unmeasurable text run in a document that also holds two annotations:
         // the sentence is about text, so the total is 1, not 3.
-        let limitation = geometry_absent_limitation(1, 0, 1, 2);
+        let limitation = geometry_absent_limitation(1, 0, 0, 1, 2);
         assert!(
             limitation.detail.starts_with("1 of 1 text node(s)"),
             "the denominator was diluted by non-text nodes: {}",

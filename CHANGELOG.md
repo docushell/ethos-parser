@@ -67,6 +67,71 @@ the same fixture's `<p>` and `<td>` do **not** become headings — a rule matchi
 beginning with `h` passes the first assertion and fails the second.
 `adding_the_epub_source_leaves_tagged_pdf_headings_alone` covers the cheapest way for this to have
 gone wrong, which is the new arm shadowing the old one.
+## [0.42.1] — ink the document draws off its own page
+
+**Six of two hundred DP-Bench documents produced no artifact at all**, exiting 2 on the
+box-within-page check. The seal refuses an out-of-page box on the stated grounds that it *"means
+the measurement or the coordinate transform is wrong"*. For these six it means neither.
+
+`01030000000029.pdf` sets `9.9626 0 0 9.9626 -435.1181 674.3054 Tm` against
+`/MediaBox [0 0 510.236 737.008]`. The content stream itself places the text at x = −435.1181 pt,
+and the engine reported `x0 = -43512` centipoints — that number, correctly transformed and
+quantized. **The measurement was right and the transform was right**: the document draws an entire
+column off-canvas, because the page was extracted from a wider original. All six are that shape,
+and none is marginal — every off-page origin measured lands between −435 pt and −84 pt, never a
+boundary nudge at the page edge.
+
+**This is v1-S6.2 met from the other direction.** That slice found the same seal error over
+rectangles drawn around whitespace and answered it by not claiming a box; its note that *"no run
+with visible text is out of place anywhere"* was true of the two NIST documents in front of it and
+is false in general. Here the run draws glyphs, the font supplies metrics, and the box is real.
+
+### Fixed
+
+- **`GeometryAbsence::MeasuredOffPage`** — the box was measured and the **document** places it
+  outside its own page box, so no page-relative rectangle exists to report. The PDF reader decides
+  this while the page is still in scope, and the run keeps its text, its origin, its region and the
+  `off-page-text` finding this engine already raised for exactly that content before deciding to
+  refuse the document over the box. Nothing is clamped — that fabricates a coordinate the document
+  does not contain — and nothing is dropped, which would be a silent erasure.
+- **The absence is counted, not merely spelled.** `check_structure` requires the geometry
+  declaration whenever any node is non-groundable, so a document whose only absences were off-page
+  boxes would have sealed with no limitation naming them and been refused — the annotation defect
+  of 0.40.0, one reason over. `geometry-absent-not-groundable` now splits by three reasons where
+  v1-S6.2 split by two, and says "Three" only when the third is non-zero, so a document with no
+  off-page box carries the sentence it always carried, byte for byte.
+
+### Unchanged, deliberately
+
+- **The seal's invariant.** Its job is to catch an engine that computed a coordinate it cannot
+  justify. A reachable case that is not that is a reason to teach the producer a new spelling,
+  never to widen the one check standing between a transform bug and a plausible-looking artifact.
+- **Every artifact 0.42.0 could produce.** All eight gate documents are byte-identical across this
+  change, measured before the version moved: a box outside its page previously refused the whole
+  document, so no document that sealed under 0.42.0 has one. What changed is which documents seal
+  at all.
+- **No rule id and no capability flag.** `parser_version` moves and `profile_sha256` with it,
+  because `measured_off_page` is a value 0.42.0 could never emit and because "this engine could not
+  read that document" and "this engine refused it" are different facts about a build.
+
+### Added
+
+- **`fixtures/engine/ink-past-the-media-box`** — a run with real ink metrics at negative x. The
+  three neighbouring fixtures each stop one step short: `crop-box-smaller-than-media` puts a
+  measured box outside the *crop* box, `off-page-and-offset-box` puts an *origin* outside it, and
+  `whitespace-past-the-page-edge` puts a box outside the media box around *nothing*. Its second run
+  is on the page, so the absence is proved per-run rather than a page-wide give-up.
+- **`every_measured_box_this_reader_emits_survives_the_seal`** — `PageGeometry::contains` restates
+  `check_box_within_page`, and two spellings of one invariant is what goes stale. The sweep runs
+  every engine fixture through extract and seal, so a `contains` loosened relative to the seal
+  fails here. All three new guards were watched failing under a mutation that reverts the fix.
+
+### Documentation
+
+- `docs/01-CONTRACT.md` §5.2 said **four** absence variants and listed four; the code had five
+  before this change and has six now. Both the table and the count are current.
+- `docs/draft-schemas/geometry.draft.json` enumerated **three**, having missed `no_ink_to_measure`
+  (v1-S6.2) and `not_reported_by_structure_tree` (v2-S24). All six are declared.
 
 ---
 

@@ -2593,7 +2593,19 @@ mod tests {
              rather than staying put on the grounds that the order held: an artifact naming \
              `-v1` promises no such field, and a reader who could not tell the two apart could \
              not tell an undivided page from an older build. `docs/16-D4-SCOPE.md` §10.\n\n\
-             Moved a SIXTY-NINTH time at 0.43.0 (v2.2-S0), and it is the first time BOTH \
+             Moved a SIXTY-NINTH time at 0.42.1 (D4-S5), on `parser_version` alone. No rule id \
+             moves and no capability flag moves: the cut, the detectors and the projections are \
+             untouched, and every artifact this build writes for a document 0.42.0 could read is \
+             byte-identical to the one 0.42.0 wrote — measured across all eight gate documents \
+             before the version moved. What changed is which documents produce an artifact AT \
+             ALL. `GeometryAbsence::MeasuredOffPage` gives the PDF reader a spelling for a box \
+             it measured correctly and the document draws outside its own page, so six DP-Bench \
+             documents that exited 2 with no artifact now seal. The version moves because that \
+             is a real difference between two builds — a reader holding an artifact needs to \
+             know whether the absence of one is a document this engine could not read or a \
+             document it refused — and because a `measured_off_page` value is one 0.42.0 could \
+             never emit. See CHANGELOG \"0.42.1\".\n\n\
+             Moved a SEVENTIETH time at 0.43.0 (v2.2-S0), and it is the first time BOTH \
              projection ids move together: `markdown_rule` goes `markdown-blocks-v2` -> \
              `markdown-blocks-v3` and `html_rule` goes `html-blocks-v2` -> `html-blocks-v3`. \
              They are separate ids so that they CAN move apart, which is not a promise that \
