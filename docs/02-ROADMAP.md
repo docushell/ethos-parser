@@ -19,7 +19,7 @@ scope document for its first half** (decision #19). **v3 and v4 stay one line ea
 | **v1.1** | Safe Markdown | Markdown and HTML, each with an anchor map · hyphenation and similar cosmetics as export-only | A Markdown-quoted citation verifies end to end |
 | **v1.2** | Adoption | MCP server · Python and Node SDKs · LangChain tools | Locators survive every adapter round trip |
 | **v2** | Office formats | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF, EPUB · CSV argued and refused · one shared record and one serializer · embedded assets counted | A DOCX quote and an XLSX cell both **bind** to an address the file states, with **no synthesised pages**. **Met** |
-| **v2.2** | Layout and accessibility | **Geometric block structure** — the reading-order cut's own column bands, emitted per node as `Computed` layout · then auto-tagging, writing Tagged PDF — **whose prerequisite is measured and open** ([`19`](19-BLOCK-SUBDIVISION-SCOPE.md)), and whose write half is refused by decisions 19 and 20 | Both halves: a region is emitted wherever the cut divided a page and nowhere else, **and** a tag this engine writes is one it can read back and ground against |
+| **v2.2** | Layout and accessibility | **Geometric block structure** — the reading-order cut's own column bands, emitted per node as `Computed` layout · auto-tagging **refused** | **Closed at half by decision #21.** Clause one — a region is emitted wherever the cut divided a page and nowhere else — **met** at 0.42.0. Clause two — a tag this engine writes is one it can read back and ground against — **refused**: a `/P` written from a `Computed` cut reads back as `Extracted` and is uncorrectable |
 | **v3** | Assist | Propose-only VLM · dual-read and review · formula and chart enrichment as `Recognized` or `Proposed` | Assist on and assist off produce byte-identical grounded artifacts |
 | **v4** | OCR lane | Deterministic ONNX OCR in-process · an HTTP OCR contract · its own profile · per-page routing · never overwrites `Extracted` · confidence never filtered on | An OCR fingerprint is provably incomparable with a born-digital parse |
 
@@ -49,7 +49,8 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 
 | Item | Why not |
 | --- | --- |
-| PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* improves grounding; tag *generation* does not, which is why v2.2 writes tags and stops there |
+| PDF/UA export, accessibility studio | A different product for a different buyer. Tag *consumption* improves grounding; tag *generation* does not. **This row read "which is why v2.2 writes tags and stops there" until decision #21**, which refused the writing too — so tag generation is now out of scope at every level rather than bounded at one |
+| **Auto-tagging — writing Tagged PDF (v2.2's second half)** | **Refused on the format, not on effort** ([decision #21](00-NORTH-STAR.md)). `derivation` is a field on this engine's `Node` and a PDF structure element has no counterpart, so a `/P` written from a `Computed` cut reads back as `Extracted` and `may_be_overwritten_by` makes it **uncorrectable** — row 20's failure in a new place. Reopening needs a way for a written tag to declare it was `Computed`, on the wire; the format offers none |
 | **Declared document splits (D1)** | **Refused on measurement, not principle.** Of five candidate signals three declare navigation or numbering rather than a boundary, and the two that would be honest occur **0** times across all 45 PDF fixtures. A detector with no positive case is an assertion. [`17-D1-SCOPE.md`](17-D1-SCOPE.md) §8 has both reopening conditions |
 | **Role-path interning** | **Refused on evidence, not on honesty** — [decision 20](00-NORTH-STAR.md)'s carve-out admits it. It saves 5.98% of a `nist-sp-800-218` artifact and **0.33% of the same artifact compressed**: DEFLATE already back-references the repeated arrays, from outside the contract at no schema cost. [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) §5 says where the bytes actually are — 72.25% of the artifact is JSON syntax and key names |
 | **A role, heading or paragraph read off a region** | A region is *where*, never *what*. P14 — and the whole reason layout and structure are separate axes in decision #19 |
@@ -82,7 +83,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S0–S4 done |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 | Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
-| Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured; **not yet scoped**, three probes named |
+| Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured, three probes run; **not scoped, and decision #21 removed the consumer it was for** |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
 past v2 had one until decision #19, which put v2.2's first half in sight by meeting v2. **v3 and v4
