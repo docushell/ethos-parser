@@ -83,6 +83,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | What is v2.2's first half? | [`16-D4-SCOPE.md`](16-D4-SCOPE.md) — geometric block structure, S0–S4 done |
 | Why is there no D1? | [`17-D1-SCOPE.md`](17-D1-SCOPE.md) — measured and refused |
 | Why is the artifact not smaller? | [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) — measured and refused, and where the bytes are |
+| How does this engine score on a corpus it does not own? | [`measurements/opendataloader-bench/`](measurements/opendataloader-bench/) — an instrument, never a ranking (O26). NID 0.8471, TEDS 0.1038, MHS 0.0000 at 0.44.0, each with the caveat that makes it readable |
 | Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured, three probes run; **not scoped, and decision #21 removed the consumer it was for** |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
