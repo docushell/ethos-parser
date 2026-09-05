@@ -18,6 +18,62 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.46.1] — five of the six XHTML heading levels were reached by no test at all
+
+`xhtml_heading_level` maps `h1`…`h6` to levels 1…6, and always did. Replacing the **h2–h6** arms
+with `None` and running the whole workspace failed **zero** of roughly 1 300 tests.
+
+Every `<h2>`–`<h6>` in every EPUB could have projected as a paragraph — in both syntaxes — and the
+suite would have stayed green. That is 0.43.0's headline feature, verified at one level out of six.
+
+### Why the gap existed, which is the interesting part
+
+The **PDF** half of the same function has been guarded at every level since it shipped, by
+`a_heading_role_from_the_tree_projects_as_a_heading` — a hand-built representation, for the reason
+its own doc comment gives: *"no fixture in either corpus carries a heading role."*
+
+The **XHTML** half, added at v2.2-S0, got no such test. Its only coverage was one end-to-end
+assertion over `fixtures/office/book-spine/book.epub`, and that publication contains an `<h1>` and
+no other heading. So the coverage was as complete as the fixture happened to be — which is this
+repository's recurring defect wearing its politest face: not a guard that reads its subject
+wrongly, but a guard that reads only the part of its subject the corpus supplied.
+
+A fixture could not have closed it cleanly. Six levels through a real publication means a fixture
+edit, a digest move and a golden move for a fact none of those are about. The end-to-end path was
+already proved at `h1`; what was missing is that the **level follows the element**, and that is a
+mapping, so it is now tested as one.
+
+### Added
+
+- **Four tests**, two per projection: all six levels at their own depth, and the near misses that
+  the exact-match doc comment always promised and nothing checked — `hgroup` (which the comment
+  names), `h7`, `h0`, `h11`, `header`, `hr`, `h`, and `H1`/`H2` (XHTML is XML and case-sensitive,
+  so these are different elements and must not become headings).
+- **`epub_repr_of`**, the page-less test builder whose absence *was* the gap: with no way to make
+  an `EpubBlock` node, every test of that path had to go through a whole publication.
+
+Three mutants were watched failing in both projections: `h2`–`h6` to `None` (the exact defect that
+passed before), one level off by one (`h4` → 3), and an exact match replaced by a prefix test —
+which is what turns `hgroup` into a heading, the case the doc comment warns about.
+
+**The seal caught two errors in the new builder while it was being written**, and both were the
+invariant working rather than being in the way: a page-less node parented by an invented page id,
+and a payload whose geometry sidecar contradicted its own assurance block.
+
+### Fixed
+
+- A shipped error message in `representation.rs` loses a run of **eighteen stray spaces** mid-
+  sentence, carried since 0.42.1 — *"the payload does not declare `…`"* was rendering as
+  `declare` + 18 spaces + the code. Surfaced by hitting the error legitimately from a test.
+
+### Unchanged
+
+**Nothing this engine emits moves.** The mapping was already correct; only its coverage changed.
+`profile_sha256` moves to `fa7e5994` because `parser_version` is a profile field and a build is a
+build — the mechanism working, not a behaviour change.
+
+---
+
 ## [0.46.0] — a composite font's widths were read from a key the format never puts them on
 
 `load_widths` asked every font for `/Widths` and `/FirstChar`. That is the **simple** font shape.

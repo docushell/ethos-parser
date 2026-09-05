@@ -2575,6 +2575,139 @@ pub(crate) mod tests {
         assert!(a.coverage.balances());
     }
 
+    /// One EPUB block node, whose XHTML element name is the fact under test.
+    ///
+    /// The sibling of [`text_node`], and its absence is why the XHTML half of `heading_level` went
+    /// unguarded above level 1: with no builder for an `EpubBlock` node, every test of that
+    /// function had to go through a real publication, and the only publication in the corpus
+    /// carries nothing but `<h1>`.
+    fn epub_node(alloc: &mut IdAllocator, parent: &NodeId, ordinal: u32, element: &str) -> Node {
+        Node {
+            id: alloc.next(IdKind::Span).unwrap(),
+            kind: NodeKind::TextRun,
+            parent: parent.clone(),
+            ordinal,
+            text: format!("Text inside {element}"),
+            native_locator: NativeLocator::Epub(crate::EpubLocator {
+                part: "text/body.xhtml".into(),
+                block: ordinal,
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::EpubBlock(crate::EpubBlockAttributes {
+                element: element.into(),
+                linear: true,
+            }),
+        }
+    }
+
+    /// A page-less representation of EPUB blocks, one per element name.
+    pub(crate) fn epub_repr_of(elements: &[&str]) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        // **A part, not a page.** `seal` refuses a page-less node parented by a page id, in as
+        // many words: *"a page-less node is parented by the part it was read from, never by a
+        // page this engine invented for it."* Reaching for `IdKind::Page` here — the reflex, from
+        // every other builder in this module — produced exactly that refusal, which is the
+        // invariant doing its job on a test that was about to build a document no reader emits.
+        let root = alloc.next(IdKind::Part).unwrap();
+        let nodes: Vec<Node> = elements
+            .iter()
+            .enumerate()
+            .map(|(i, e)| epub_node(&mut alloc, &root, i as u32 + 1, e))
+            .collect();
+        // Page-less and box-less: an EPUB has no page and its blocks have no ink box, which is
+        // the shape v2-S24 taught the seal to accept. Building it with geometry would be building
+        // a document this reader never produces.
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Absent(crate::GeometryAbsence::NotApplicableToKind),
+            })
+            .collect();
+        // The seal requires the payload to DECLARE what the sidecar shows, because the sidecar
+        // sits outside the fingerprint: a record whose geometry contradicts its own assurance
+        // block is exactly what that check exists to refuse. Two invariants fired while this
+        // helper was being written, and both were the seal working rather than in the way.
+        let mut payload = payload(nodes, Vec::new());
+        payload.source.media_type = "application/epub+zip".into();
+        payload.assurance = crate::assurance::Assurance::new(
+            Capabilities::V0,
+            0,
+            Vec::new(),
+            vec![Limitation::document(
+                crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "every node here is an EPUB block, and an EPUB block has no ink box by \
+                 construction — there is nothing to measure until something lays the publication \
+                 out, and laying it out is invented pagination.",
+            )],
+        )
+        .unwrap();
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// **All six XHTML heading levels, and this is a table because a fixture cannot be one**
+    /// (v2.2-S4).
+    ///
+    /// The PDF half of `heading_level` was guarded at every level from the day it shipped, by
+    /// `a_heading_role_from_the_tree_projects_as_a_heading` — which is a hand-built
+    /// representation for the reason it states: *"no fixture in either corpus carries a heading
+    /// role"*. The XHTML half, added at v2.2-S0, got no such test. Its only coverage was one
+    /// end-to-end assertion over `fixtures/office/book-spine/book.epub`, and that publication
+    /// contains `<h1>` and nothing else.
+    ///
+    /// So five of the six arms were reached by nothing. **Measured rather than suspected**:
+    /// replacing `"h2"`..`"h6"` with `None` and running the whole workspace failed **zero** of
+    /// roughly 1 300 tests. Every `<h2>`–`<h6>` in every EPUB could have projected as a paragraph
+    /// and the suite would have stayed green — 0.43.0's headline feature, silently half-delivered.
+    ///
+    /// A fixture cannot close this the way a table can. Covering six levels through a publication
+    /// means six headings in a real EPUB, which is a fixture edit, a digest move and a golden
+    /// move for a fact that has nothing to do with any of them. The end-to-end path is already
+    /// proved at `h1` by `an_epubs_own_heading_element_projects_as_an_h_element`; what was missing
+    /// is that the LEVEL follows the element, and that is a mapping, so it is tested as one.
+    #[test]
+    fn every_xhtml_heading_level_projects_at_its_own_depth() {
+        let a = artifact_of(epub_repr_of(&["h1", "h2", "h3", "h4", "h5", "h6"]));
+        assert_eq!(
+            a.markdown,
+            "# Text inside h1\n\n\
+             ## Text inside h2\n\n\
+             ### Text inside h3\n\n\
+             #### Text inside h4\n\n\
+             ##### Text inside h5\n\n\
+             ###### Text inside h6\n",
+            "each level projects at its own depth; before v2.2-S4 only the first was checked"
+        );
+        assert!(a.coverage.balances());
+    }
+
+    /// **The near misses, which are the other half of an exact match** (v2.2-S4).
+    ///
+    /// `xhtml_heading_level`'s doc comment says the match is exact and not a prefix test, and
+    /// names `hgroup` as the reason. Nothing tested that either. XHTML is XML and therefore
+    /// case-sensitive, so `H1` is a different element from `h1` and must not become a heading —
+    /// and `h7` does not exist in any HTML specification.
+    ///
+    /// Each of these projects as a paragraph rather than as a guess, which is what the module
+    /// header means by *"a heading is a heading because the document said so"*.
+    #[test]
+    fn an_element_that_merely_looks_like_a_heading_stays_a_paragraph() {
+        for element in ["hgroup", "h7", "h0", "H1", "H2", "header", "hr", "h", "h11"] {
+            let a = artifact_of(epub_repr_of(&[element]));
+            assert_eq!(
+                a.markdown,
+                format!("Text inside {element}\n"),
+                "`{element}` is not one of the six names HTML defines and must not project as a \
+                 heading"
+            );
+            assert!(
+                !a.markdown.starts_with('#'),
+                "`{element}` produced a heading marker"
+            );
+        }
+    }
+
     /// **No font size is consulted.** The same text with no role is a paragraph, and the node's
     /// `font_size` is 2400 either way.
     #[test]

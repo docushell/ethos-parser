@@ -618,7 +618,8 @@ pub fn fingerprint(artifact: &HtmlArtifact) -> Result<Sha256Hex, EngineError> {
 mod tests {
     use super::*;
     use crate::markdown::tests::{
-        cell, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr, spanning,
+        cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
+        spanning,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -687,6 +688,44 @@ mod tests {
             "<h1>Chapter One</h1>\n<p>Body text</p>\n<h3>Sub</h3>\n"
         );
         assert_tiles(&a);
+    }
+
+    /// **All six XHTML heading levels reach this projection too** (v2.2-S4).
+    ///
+    /// The same fact as `markdown.rs`'s `every_xhtml_heading_level_projects_at_its_own_depth`, in
+    /// the other syntax, and asserting it in both is the point rather than duplication: the two
+    /// rule ids are separate precisely so they *can* move apart, and only a test in each says
+    /// they did not. That is the argument `an_epubs_own_heading_element_projects_as_an_h_element`
+    /// already makes in `html_cli.rs` — for `h1` alone, which was the whole gap.
+    ///
+    /// Both projections read one `heading_level`, so before v2.2-S4 a mutation to five of its six
+    /// XHTML arms went unnoticed by either. Measured: zero of ~1 300 tests failed.
+    #[test]
+    fn every_xhtml_heading_level_projects_as_its_own_h_element() {
+        let a = artifact_of(epub_repr_of(&["h1", "h2", "h3", "h4", "h5", "h6"]));
+        assert_eq!(
+            a.html,
+            "<h1>Text inside h1</h1>\n\
+             <h2>Text inside h2</h2>\n\
+             <h3>Text inside h3</h3>\n\
+             <h4>Text inside h4</h4>\n\
+             <h5>Text inside h5</h5>\n\
+             <h6>Text inside h6</h6>\n"
+        );
+        assert_tiles(&a);
+    }
+
+    /// An element that merely looks like a heading is a `<p>`, in this syntax as in the other.
+    #[test]
+    fn an_element_that_merely_looks_like_a_heading_is_a_paragraph_element() {
+        for element in ["hgroup", "h7", "H1", "header", "hr"] {
+            let a = artifact_of(epub_repr_of(&[element]));
+            assert_eq!(
+                a.html,
+                format!("<p>Text inside {element}</p>\n"),
+                "`{element}` is not one of the six names HTML defines"
+            );
+        }
     }
 
     /// **No font size is read here either.** L29 is REFUSE on both projections.

@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.46.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.46.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2649,11 +2649,18 @@ mod tests {
              absence, so they reach `ethos.grounding.v1` where they used to be omitted from it. \
              Measured on 200 documents: ungroundable text nodes 14 683 -> 8 770 of 109 500. No \
              text is gained or lost and the node count is identical — only what can be expressed \
-             downstream changed, which is exactly the axis this engine exists on."
+             downstream changed, which is exactly the axis this engine exists on.\n\n\
+             Moved a SEVENTY-FOURTH time at 0.46.1 (v2.2-S4), and this one changes NOTHING a \
+             reader can observe. The version moves because `parser_version` is a profile field \
+             and a build is a build; the slice is guards. `xhtml_heading_level`'s h2..h6 arms \
+             were reached by no test at all — replacing them with `None` failed zero of ~1 300 — \
+             so 0.43.0's declared-heading feature was verified at one level of six. It is now \
+             verified at all six in both projections, and the mapping was already correct, which \
+             is why nothing moves but the number."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:cf5ee039a7cff2870e95c796e1c2ede0a4caf1016198692e0f6da5c4b7d75fc7"
+            "sha256:fa7e5994daf67dde89b86572da6da158f13d2a0894a6c6e91c14a52c9f4cf3a1"
         );
     }
 

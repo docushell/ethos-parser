@@ -2474,7 +2474,10 @@ impl DocumentRepresentation {
 
         if (not_groundable > 0) != declared {
             return Err(Self::malformed(format!(
-                "{not_groundable} node(s) have no measurable ink box, but the payload {} declare                  `{}`. The geometry sidecar sits outside the fingerprint by design, so this                  agreement is what stops a record and its own projection contradicting each other.",
+                "{not_groundable} node(s) have no measurable ink box, but the payload {} declare \
+                 `{}`. The geometry sidecar sits outside the fingerprint by design, so this \
+                 agreement is what stops a record and its own projection contradicting each \
+                 other.",
                 if declared { "does" } else { "does not" },
                 crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
             )));
