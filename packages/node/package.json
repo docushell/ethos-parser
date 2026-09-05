@@ -29,6 +29,9 @@
       "optional": true
     }
   },
+  "devDependencies": {
+    "@langchain/core": ">=0.3 <2"
+  },
   "scripts": {
     "test": "node --test"
   },

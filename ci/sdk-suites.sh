@@ -61,7 +61,77 @@ if ! command -v node >/dev/null 2>&1; then
   echo "extra — it is what caught 0.36.1 sitting in a 0.42.0 tree. Install Node >= 18." >&2
   exit 1
 fi
-( cd packages/node && node --test )
+# The optional peer has to be INSTALLED or the half of this suite that covers it does not run.
+#
+# `@langchain/core` is an optional `peerDependency`, which is correct for consumers — importing
+# this package must pull nothing, and `the_default_import_does_not_reach_langchain` asserts it.
+# But `node --test` with no install step meant `import("@langchain/core/tools")` threw, the suite
+# took its documented skip, and **fourteen of eighty tests never ran while the run exited 0**. The
+# Python half installs its `[langchain]` extra thirty lines below and has always executed its
+# equivalents; the Node half never has. v1.2 ships "LangChain tools over both" and only one was
+# gated.
+#
+# It is a devDependency rather than an `npm install <spec>`: npm resolves a spec that is already an
+# OPTIONAL peer as "up to date" and installs nothing, exiting 0 while doing so — measured, on the
+# commit that added this. devDependencies are not installed for consumers, so the runtime contract
+# is unchanged and the published dependency surface does not move.
+if ! ( cd packages/node && npm install --no-audit --no-fund --loglevel=error ); then
+  echo >&2
+  echo "ci/sdk-suites.sh: \`npm install\` failed in packages/node." >&2
+  echo >&2
+  echo "  The Node suite needs \`@langchain/core\` — a devDependency here, an OPTIONAL peer for" >&2
+  echo "  consumers — or fourteen of its eighty tests skip and the run still exits 0. That is the" >&2
+  echo "  state this repository shipped in until 0.42.1, so the install is not optional here." >&2
+  echo >&2
+  echo "  Same posture as the Python half below: a missing dependency is a failure and never a" >&2
+  echo "  skip. If this is a registry or proxy problem rather than a real resolution failure," >&2
+  echo "  \`npm config get registry\` is the first thing to check — a registry that cannot be" >&2
+  echo "  reached fails here rather than silently producing a partial gate." >&2
+  exit 1
+fi
+
+# And the skip is now a failure, for the reason the Python block below gives about its own version
+# guard: a suite that quietly omits a third of itself is how it omitted a third of itself for six
+# minor versions. `node --test` reports skips on stdout and still exits 0, so the count is read.
+#
+# Written this way for two reasons, both of them defects the first draft of this guard had:
+#
+#   * The output is captured to a file rather than piped, because a pipeline takes the exit status
+#     of its LAST command — `node --test | sed` reports sed's success and swallows a real test
+#     failure. The status is read from the run itself.
+#   * The count is matched with `.*skipped[[:space:]]*\([0-9][0-9]*\)` rather than anchored at the
+#     start of the line. Node prefixes its summary with `ℹ`, a multi-byte character, so an anchored
+#     `^. skipped` matched nothing, the count parsed EMPTY, and `${x:-0}` turned that into zero —
+#     a guard that read its own subject wrongly and passed forever, which is the defect this whole
+#     block exists to remove. It was measured failing that way before it was measured working.
+node_log=$( mktemp )
+( cd packages/node && node --test ) > "$node_log" 2>&1
+node_status=$?
+cat "$node_log"
+node_skips=$( sed -n 's/.*skipped[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$node_log" | tail -1 )
+rm -f "$node_log"
+if [ "$node_status" -ne 0 ]; then
+  echo "ci/sdk-suites.sh: the Node suite failed." >&2
+  exit 1
+fi
+if [ -z "$node_skips" ]; then
+  echo "ci/sdk-suites.sh: could not read a skip count from the Node suite output." >&2
+  echo "  The guard cannot confirm every test ran, so it fails rather than assume they did." >&2
+  exit 1
+fi
+if [ "$node_skips" != "0" ]; then
+  echo >&2
+  echo "ci/sdk-suites.sh: ${node_skips} Node test(s) SKIPPED, and a skip here is a failure." >&2
+  echo >&2
+  echo "  The suite skips when \`@langchain/core\` cannot be imported. It is a devDependency, so" >&2
+  echo "  the \`npm install\` above should have supplied it — a skip means that install did not" >&2
+  echo "  do what it reported. npm exits 0 having installed nothing when it decides a package is" >&2
+  echo "  an optional peer it may ignore, which is exactly the state this guard exists to catch." >&2
+  echo >&2
+  echo "  Not a skip, because the tests it hides are the only coverage the Node LangChain adapter" >&2
+  echo "  has, and they were absent from every green this repository recorded before 0.42.1." >&2
+  exit 1
+fi
 
 printf '\n\033[1m[sdk 2/2] python — packages/python\033[0m\n'
 
