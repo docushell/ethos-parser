@@ -79,6 +79,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   image-declared-not-drawn   the SAME image declared in /Resources and never drawn. Classify
                              counts a resource; extract emits a node per `Do`. Zero nodes here
                              is the right answer and this fixture is what says so   [v1-S6]
+  form-xobject-text-drawn    the THIRD member of that pair: a /Subtype /Form XObject drawing text,
+                             painted with the same `Do`. It is neither an image node nor a text
+                             node — this profile does not descend — so the only thing that can say
+                             the text existed is a COUNT, and before v2.2-S2 there was none. The
+                             `Do` arm returned `None` and discarded the placement in silence
+                                                                                    [v2.2-S2]
   invisible-render-mode      a string drawn under `3 Tr`. The text must be PRESENT and flagged,
                              never filtered — checklist O21, the OpenDataLoader defect [v1-S6]
   off-page-and-offset-box    a /MediaBox whose origin is NOT (0,0), plus a /CropBox, plus one
@@ -180,6 +186,21 @@ def _image_object() -> bytes:
         b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
         b"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\n"
         b"stream\n%s\nendstream" % (len(IMAGE_STREAM), IMAGE_STREAM)
+    )
+
+
+def _form_object() -> bytes:
+    """Object 6 for the form-XObject fixture: a /Form that draws text (v2.2-S2).
+
+    Deliberately WELL-FORMED — /BBox, /Resources naming object 5, an uncompressed stream a
+    reviewer can read. A malformed form would also produce zero nodes, and then the fixture would
+    prove that a broken stream is skipped rather than that a working one is not descended into.
+    """
+    inner = b"BT /F1 12 Tf 1 0 0 1 0 6 Tm (Drawn inside the form) Tj ET"
+    return (
+        b"<< /Type /XObject /Subtype /Form /FormType 1 /BBox [0 0 220 24] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Length %d >>\nstream\n%s\nendstream"
+        % (len(inner), inner)
     )
 
 
@@ -775,6 +796,19 @@ FIXTURES = {
     # The SAME image, declared and never drawn. `Do` is what makes a node; a resource nobody
     # painted is a resource, and zero image nodes is the correct answer.
     "image-declared-not-drawn": "BT /F1 12 Tf 1 0 0 1 40 60 Tm (No Do here) Tj ET",
+    # v2.2-S2's golden. The same `Do` as `image-xobject-drawn`, on an XObject whose /Subtype is
+    # /Form rather than /Image. One sentence is drawn by the PAGE and one by the FORM, so the
+    # fixture holds both halves of the claim in one file: the page's sentence must be a node, the
+    # form's must not be, and the count is the only thing on the artifact that can tell a consumer
+    # the second one exists at all.
+    #
+    # The `q`/`Q` bracket and the `cm` are the image fixture's, unchanged. Nothing about the
+    # placement is the subject here — the /Subtype is — and keeping the surrounding operators
+    # identical is what makes the difference between the two fixtures readable by eye.
+    "form-xobject-text-drawn": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Drawn by the page) Tj ET "
+        "q 1 0 0 1 40 40 cm /Xf1 Do Q"
+    ),
     # v1-S6's HIDDEN-TEXT golden, and the whole of checklist O21 in one page. The second string
     # is drawn under `3 Tr` — invisible on screen, perfectly legible to anything reading the text
     # layer. It must come out of the engine PRESENT and FLAGGED. A reader that filtered it would
@@ -1018,6 +1052,11 @@ FONT_EXTRA = {
 IMAGE_OBJECTS = {
     "image-xobject-drawn": [_image_object()],
     "image-declared-not-drawn": [_image_object()],
+    # v2.2-S2. Object 6 again, and a /Form this time. Its /Resources names the page's own font
+    # object rather than a copy, so the text inside it is drawable by any reader that descends —
+    # this one does not, and the fixture is worth nothing if the reason is "the form was broken"
+    # instead of "the profile does not descend".
+    "form-xobject-text-drawn": [_form_object()],
 }
 
 FORM_OBJECTS = {
@@ -1128,6 +1167,7 @@ MEDIA = {
 RESOURCES_EXTRA = {
     "image-xobject-drawn": " /XObject << /Im1 6 0 R >>",
     "image-declared-not-drawn": " /XObject << /Im1 6 0 R >>",
+    "form-xobject-text-drawn": " /XObject << /Xf1 6 0 R >>",
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.

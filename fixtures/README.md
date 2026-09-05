@@ -59,7 +59,7 @@ not obvious from the name:
 | `tagged-structure-roles`, `tagged-rolemap`, `tagged-table-agrees`, `tagged-table-disagrees`, `tagged-cycle` | The four structural-locator states, role remapping, agreeing and disagreeing tagged grids, and a cycle that must be survived rather than spun on |
 | `form-field-value`, `annotation-contents`, `form-orphan-widget`, `form-xfa-stub` | A field value nothing draws, a hidden annotation that is still a node, a broken parent chain declared rather than repaired, and an XFA packet declared and never parsed |
 | `two-column-14-lines`, `two-column-15-lines` | The ±1-line pair — see below |
-| `image-xobject-drawn`, `image-declared-not-drawn` | See below |
+| `image-xobject-drawn`, `image-declared-not-drawn`, `form-xobject-text-drawn` | See below |
 | `invisible-render-mode` | Text under render mode 3: present, flagged, never filtered out |
 | `off-page-and-offset-box` | A media box whose origin is not `(0,0)`, plus a smaller crop box — the coordinate repair and the off-page finding in one page |
 
@@ -75,18 +75,28 @@ change its answer, and `gutter-columns-v1` must read both the same way.
 **Edit them together or not at all.** Changing the line count in one, or letting the columns creep
 closer than the 12 pt gutter floor, leaves a test that still passes while testing nothing.
 
-### The image pair answers two different questions
+### The `Do` trio answers three different questions
 
-Both carry the same image object in the same resource dictionary. The only difference is one `Do`
-operator:
+The first two carry the same image object in the same resource dictionary, and the only difference
+between them is one `Do` operator. The third writes that same `Do` and changes the `/Subtype`:
 
 | | `classify` | `extract` |
 | --- | --- | --- |
 | `image-xobject-drawn` | `embedded-images`, `image_count: 1` | one image node |
 | `image-declared-not-drawn` | `embedded-images`, `image_count: 1` | **zero** image nodes |
+| `form-xobject-text-drawn` | no image resource | **zero** image nodes, **zero** runs from the form, and `form-xobjects-not-descended` **count 1** |
 
 Classify counts the images a page's resources *declare*. Extract emits a node per image a page
 actually *paints*. Neither is wrong, and expecting them to agree means misreading one of them.
+
+The third is not a fourth image case; it is the one placement that produces **no node of any
+kind**. This profile does not descend into form XObjects, so the form's text is neither an image
+node nor a run — and until v2.2-S2 nothing on the artifact said the placement had happened. A page
+whose whole content is `q /Xf1 Do Q` came out empty with `pages_failed: 0`. The profile-scoped
+`form-xobject-text-not-descended` could not close that gap, because it rides on **every** artifact
+this engine writes, including ones for documents containing no XObject at all: it states the
+policy, not the cost. `form-xobjects-not-descended` is document-scoped and carries a count, and the
+fixture asserts both halves — present here, absent on the two above.
 
 ## Regenerating
 

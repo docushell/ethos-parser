@@ -509,6 +509,29 @@ pub fn text_finding(code: &str, count: u32) -> Limitation {
     Limitation::document(code, detail)
 }
 
+/// Form XObjects were drawn on THIS document and not descended into (v2.2-S2).
+///
+/// The sibling of [`inline_images_not_emitted`] and `xobject_name_unresolved`, and it should have
+/// existed with them. All three answer the same question — *did this reader lose something here?*
+/// — and form XObjects were the one case where the answer was only ever given about the engine
+/// rather than about the document: `FORM_XOBJECT_TEXT_NOT_DESCENDED` is profile-scoped and rides
+/// on every artifact, so a reader holding one learned that this profile never descends and never
+/// learned whether it had just needed to.
+pub fn form_xobjects_not_descended(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED,
+        format!(
+            "{count} form XObject(s) were drawn on this document with `Do` and NOT descended \
+             into, so any text they draw is absent from this artifact. The count is the point: a \
+             page whose entire content is `q /Xf1 Do Q` — the shape a page-slicing tool produces \
+             — otherwise emits zero nodes while `pages_failed` reads 0, and nothing tells a \
+             consumer whether the page was blank or unread. **A short run list on this document \
+             is a declared gap, not a sparse page.** The profile's \
+             `form-xobject-text-not-descended` states the policy; this states what it cost here."
+        ),
+    )
+}
+
 /// Inline images were drawn and are not nodes (v1-S6).
 pub fn inline_images_not_emitted(count: u32) -> Limitation {
     Limitation::document(

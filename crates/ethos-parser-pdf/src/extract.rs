@@ -215,6 +215,7 @@ struct PageYield {
     unresolved_field_parents: u32,
     inline_images: u32,
     unresolved_xobjects: u32,
+    undescended_xobjects: u32,
     composite_fonts: u32,
     findings_seen: std::collections::BTreeMap<&'static str, u32>,
     widths_absent: Vec<ethos_parser_core::Limitation>,
@@ -255,6 +256,7 @@ fn extract_page(
     let mut unresolved_field_parents: u32 = 0;
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
+    let mut undescended_xobjects: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
     let mut composite_fonts: u32 = 0;
@@ -786,25 +788,49 @@ fn extract_page(
         // `/Subtype`: emitting a node for an unlabelled stream would put a picture on the wire
         // the document never called one.
         let mut images = Vec::new();
-        if profile.capabilities.images {
-            for placement in &interp.images {
-                let Some(attributes) =
-                    crate::images::image_attributes(doc.inner(), placement.object)
-                else {
-                    continue;
-                };
-                let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
-                images.push(crate::nodes::ImageRecord {
-                    id: alloc.next(IdKind::Image)?,
-                    locator: ethos_parser_core::PdfImageLocator {
-                        page: page_number,
-                        object: placement.object.0,
-                        generation: u32::from(placement.object.1),
-                        rect: crate::images::painted_rect(corners),
-                    },
-                    attributes,
-                });
+        for placement in &interp.images {
+            let Some(attributes) = crate::images::image_attributes(doc.inner(), placement.object)
+            else {
+                // v2.2-S2. **Counted, not merely skipped.** `image_attributes` returns `None` for
+                // a `/Form` and for a stream with no readable `/Subtype`, and until now this
+                // `continue` was the end of it: the placement was discarded and the artifact said
+                // nothing. A page whose entire content is `q /Xf1 Do Q` — the shape a
+                // page-slicing tool produces, and 4 of 104 sampled OmniDocBench documents — then
+                // emitted zero nodes with `pages_failed: 0`, and a consumer could not tell it
+                // from a blank page.
+                //
+                // The profile-scoped `form-xobject-text-not-descended` does not close that: it is
+                // on EVERY artifact this engine writes, including documents with no XObject at
+                // all, so it says what the engine never does rather than what happened here. This
+                // is the same argument that already produced `unresolved_xobjects` and
+                // `inline_images` two arms away in `content.rs` — *"no image nodes" must not be
+                // able to mean "there were images and the reader lost them"* — applied to the one
+                // case it had not been.
+                undescended_xobjects = undescended_xobjects.saturating_add(1);
+                continue;
+            };
+            // **The capability gates the NODE, not the count above it**, and the order is the
+            // whole reason this loop is no longer wrapped in the `if`. What the counter declares
+            // is text this reader did not read; `capabilities.images` says whether this profile
+            // emits picture nodes. A profile that turned images off and inherited silence about
+            // form XObjects would be the identical hole one scope narrower — and it is the hole
+            // this slice exists to close, so it is not worth reopening for the profile that does
+            // not exist yet. No PDF profile ships with this false today, which is exactly why
+            // the branch has to be written down rather than discovered later.
+            if !profile.capabilities.images {
+                continue;
             }
+            let corners = placement.corners.map(|(x, y)| geom.to_top_left(x, y));
+            images.push(crate::nodes::ImageRecord {
+                id: alloc.next(IdKind::Image)?,
+                locator: ethos_parser_core::PdfImageLocator {
+                    page: page_number,
+                    object: placement.object.0,
+                    generation: u32::from(placement.object.1),
+                    rect: crate::images::painted_rect(corners),
+                },
+                attributes,
+            });
         }
 
         for run in &runs {
@@ -839,6 +865,7 @@ fn extract_page(
         unresolved_field_parents,
         inline_images,
         unresolved_xobjects,
+        undescended_xobjects,
         composite_fonts,
         findings_seen,
         widths_absent,
@@ -917,6 +944,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
+    let mut undescended_xobjects: u32 = 0;
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
     // v1-S6.1. Composite fonts whose code width came from `/ToUnicode` rather than from the
@@ -1134,6 +1162,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
+        undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
         composite_fonts = declare(composite_fonts, y.composite_fonts);
         for (code, n) in y.findings_seen {
             *findings_seen.entry(code).or_insert(0) += n;
@@ -1217,6 +1246,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     }
     if unresolved_xobjects > 0 {
         limitations.push(lim::xobject_name_unresolved(unresolved_xobjects));
+    }
+    if undescended_xobjects > 0 {
+        limitations.push(lim::form_xobjects_not_descended(undescended_xobjects));
     }
     if composite_fonts > 0 {
         limitations.push(lim::composite_font_codes_from_tounicode(composite_fonts));

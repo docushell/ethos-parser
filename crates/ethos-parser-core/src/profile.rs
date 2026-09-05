@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.44.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.45.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2626,11 +2626,23 @@ mod tests {
              a space between them or drew no gap at all; anything else still breaks the block, \
              because a missed join reads as two words the page drew and a wrong join invents one. \
              **No representation changes** — this is a projection rule, and `extract` output is \
-             byte-identical at equal version."
+             byte-identical at equal version.\n\n\
+             Moved a SEVENTY-SECOND time at 0.45.0 (v2.2-S2), and this one moves on \
+             `parser_version` ALONE. **No rule id moves, because no rule governs a limitation** — \
+             the profile names the rules that decide what an artifact contains, and the set of \
+             limitations it declares is not one of them. Saying so is the point: a reader who \
+             found only the version different could otherwise conclude nothing had changed. \
+             What differs: a `/Subtype /Form` XObject the page painted with `Do` now produces a \
+             document-scoped `form-xobjects-not-descended` carrying a count. Before this, the \
+             placement was discarded and the artifact said nothing, so a page whose whole content \
+             is `q /Xf1 Do Q` emitted zero nodes with `pages_failed: 0` and a consumer could not \
+             tell it from a blank page. The profile-scoped `form-xobject-text-not-descended` is \
+             untouched and never covered this: it rides on EVERY artifact this engine writes, \
+             including ones for documents holding no XObject at all."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:4bf3acf91de326f98c7a59a2bb6de01def9ead31090876e560635b3754163218"
+            "sha256:0a532bf7d0ed4270fad80796dd7a5cb4f1a60b34e456489d5429170db053e619"
         );
     }
 

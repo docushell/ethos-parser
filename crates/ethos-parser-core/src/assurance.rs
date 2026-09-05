@@ -241,6 +241,15 @@ pub mod codes {
     ///
     /// Same posture as [`INVISIBLE_RENDER_MODE_TEXT`]: counted, never removed.
     pub const OFF_PAGE_TEXT: &str = "off-page-text";
+    /// Form XObjects were drawn on this document and not descended into (v2.2-S2).
+    ///
+    /// **Document-scoped, where `form-xobject-text-not-descended` is profile-scoped**, and the
+    /// pair is the point. The profile one is on every artifact this engine writes — including
+    /// documents containing no XObject at all — so it states what the engine never does. This one
+    /// says it happened *here*, and how often. Without it a page whose whole content is
+    /// `q /Xf1 Do Q` emits zero nodes with `pages_failed: 0`, and nothing distinguishes it from a
+    /// blank page.
+    pub const FORM_XOBJECTS_NOT_DESCENDED: &str = "form-xobjects-not-descended";
     /// Low-contrast text is not detected, at any threshold (v1-S6).
     ///
     /// The leftover beside the two findings that did ship. Nothing in this profile reads colour:
