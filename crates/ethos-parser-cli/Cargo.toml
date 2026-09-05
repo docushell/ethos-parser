@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+publish.workspace = true
 # Deliberately names NO subcommand. This string listed the v0 four until v2-S18, by which
 # point there were nine — the third site of that drift after `main.rs` and
 # `ethos-parser-core/src/verifier.rs`, both repaired at v2-S13.5. Those two are prose that can

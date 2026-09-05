@@ -113,7 +113,7 @@ done
 A dry run of a crate whose dependencies are unpublished will fail on the version requirement. That
 is expected on a first release and is the reason 5.4 goes one at a time.
 
-**5.4 — Publish, one crate at a time, verifying between.** After each, wait for the index and check
+**5.4 — Remove the tripwire, then publish one crate at a time, verifying between.** `publish = false` in `[workspace.package]` (§6) must be flipped first, in a reviewed commit that does nothing else — it exists so that this step cannot be reached by accident. After each, wait for the index and check
 the next crate's dry run passes before continuing. **This is the irreversible step**; everything
 above can be abandoned without consequence and nothing below can.
 
@@ -131,16 +131,18 @@ Nothing in `.github/workflows/` publishes anything, and this document does not a
 change. A workflow that can publish is a workflow that can publish *by accident*, and the failure
 mode is the one §1 describes as permanent. The steps above are slow on purpose.
 
-**Nothing currently prevents an accidental `cargo publish` either**, and that is a decision the
-owner should take rather than one this document takes for them. One line in `[workspace.package]`:
+**An accidental `cargo publish` is refused.** `[workspace.package]` carries `publish = false` and
+each of the five crate manifests inherits it, so every crate answers:
 
-```toml
-publish = false
+```
+error: `ethos-parser-core` cannot be published.
+`package.publish` must be set to `true` or a non-empty list in Cargo.toml to publish.
 ```
 
-with `publish.workspace = true` in each of the five crate manifests, makes the "separate, deliberate
-act" `CHANGELOG.md` describes into a literal edit somebody has to make on purpose. **It is not added
-here** because it is a policy about publishability, and this document is a procedure.
+That was added the moment the owner asked for it and not before, because it is a policy about
+publishability rather than a procedure. **Removing it is step 5.4's first action** — a tracked edit
+somebody reviews, at the moment of release, rather than a sentence in a changelog that nothing
+enforces. The friction is the point.
 
 ## 7. If a release goes wrong
 

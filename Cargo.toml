@@ -600,6 +600,21 @@ license = "Apache-2.0"
 repository = "https://github.com/docushell/ethos-parser"
 authors = ["ethos-parser maintainers"]
 
+# **Publication is refused by default, and turning it on is the deliberate act.**
+#
+# `CHANGELOG.md` has said from its third line that nothing here is tagged or published and that a
+# release is "a separate, deliberate act". That was prose, and prose does not stop `cargo publish`.
+# Nothing did: every crate carries the `description` and `license` crates.io requires, `cargo
+# package` succeeds, and the names `ethos-parser-*` were one command away from being claimed
+# permanently by anybody who ran it in this directory.
+#
+# A publish is the one action in this repository that cannot be undone — `cargo yank` stops new
+# dependents resolving a version and leaves the number spent and the files downloadable, and there
+# is no unpublish. So the default is `false` and `docs/RELEASING.md` §5.4 says to remove it on
+# purpose, at the moment of release, as a tracked edit somebody reviews. **The friction is the
+# point**: it converts a sentence in a changelog into something a person has to mean.
+publish = false
+
 [workspace.dependencies]
 # Dependencies are constrained by deny.toml: permissive licences only, no AGPL, no network.
 # Additions are reviewed against docs/04-ARCHITECTURE.md §5.
