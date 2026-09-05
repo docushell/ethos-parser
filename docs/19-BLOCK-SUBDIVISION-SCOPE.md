@@ -155,7 +155,7 @@ than anything this document measured.
    `mcid` is line-like — a median of **one** baseline per mcid on five of six gate documents — so
    this is the only route to a real label on documents the repository already owns. Either answer is
    worth having, and it is an afternoon.
-2. **A `/Layout` attribute occurrence count over all 45 PDF fixtures.** `/SpaceBefore`, `/TextIndent`
+2. ~~**A `/Layout` attribute occurrence count over all 45 PDF fixtures.**~~ **RUN — see §10.** `/SpaceBefore`, `/TextIndent`
    and `/StartIndent` are the document declaring its own paragraph spacing, which beats an inferred
    threshold on this repository's own grounds. Decisive either way, exactly as `/Collection` was for
    D1: either they exist and declared beats measured, or they are 0 and that branch is cleanly
@@ -250,3 +250,62 @@ pick.**
 - Probes 2 and 3 stand. Probe 3 should now run against `nist-sp-800-207`'s real labels rather than
   proxies, and the corpus question is sharper than it was: **the repository owns exactly one
   document that can label this feature**, and acquiring more is now the binding constraint.
+
+---
+
+## 10. Probe 2, run: the documents do not declare their own spacing
+
+PDF 32000-1 §14.8.5 gives structure elements layout attributes under the `/Layout` owner —
+`/SpaceBefore`, `/SpaceAfter`, `/StartIndent`, `/EndIndent`, `/TextIndent`. Those are the document
+*stating* what §4 infers. Over **all 46 PDF fixtures in this repository** — 45 when
+[`17-D1-SCOPE.md`](17-D1-SCOPE.md) counted, plus `ink-past-the-media-box` added at 0.42.1 —
+after decompression:
+
+| Signal | Occurrences |
+| --- | --- |
+| `/SpaceBefore` | **0** |
+| `/SpaceAfter` | **0** |
+| `/StartIndent` | **0** |
+| `/EndIndent` | **0** |
+| `/TextIndent` | **0** |
+| `/ClassMap` | **0** |
+
+**Two ways this probe could have produced a false zero, and neither did.** Structure elements live
+in compressed object streams, so a grep over raw bytes finds nothing whatever a document contains —
+D1's "raw object occurrences" method is safe for catalog keys and is *not* safe here, so every file
+is expanded with `qpdf --qdf --object-streams=disable` first. And an element may name a `/C` class
+whose attributes sit in a `/ClassMap`; a probe reading only `/A` reports zero on any producer using
+classes. Both paths are counted, and the ClassMap path is empty because no fixture has one.
+
+**The positive control is what makes the zero worth anything.** The probe found **540** `/O /Layout`
+attribute dictionaries across six documents, so it demonstrably finds these when present. Every one
+carries the identical shape — `/BBox [...] /O /Layout /Placement /Block` — and they sit on exactly
+the roles where a bounding box is conventionally required:
+
+| role carrying a Layout dictionary | count | share of that role |
+| --- | --- | --- |
+| `/Link` | 342 | 23.5% |
+| `/Figure` | 123 | 74.5% |
+| `/Table` | 72 | 61.5% |
+| `/TextBox` | 2 | 2.0% |
+| `/DropCap` | 1 | 100% |
+| **`/P`** | **0** | **0% of 49,228** |
+
+**So the finding is not "these documents declare no layout." It is that they declare layout for
+figures, tables and links, and declare nothing at all for a paragraph.** Not one of 49,228 `/P`
+elements carries a declared rectangle, an indent or a space.
+
+### What this settles
+
+**The declared route is refused on evidence, in D1's exact shape.** The honest signal exists in the
+specification, and occurs zero times where it would matter — `/Collection`, `/EmbeddedFiles` and
+`/Part` all over again. And as with D1 this **strengthens** the measured cut rather than weakening
+it: the alternative was not dismissed on principle, it was tried and found absent, so an inferred
+boundary is not a shortcut past a declaration that was there for the taking.
+
+**Reopening condition.** A corpus whose producer emits `/Layout` spacing on `/P` elements. InDesign
+and LaTeX-derived PDFs are the plausible sources and this repository owns none; the check is one
+run of
+[`measurements/block-subdivision/layout_attrs.py`](measurements/block-subdivision/layout_attrs.py)
+against any new fixture, and it is worth running on every corpus this repository acquires, because a
+document that declares its own spacing turns the whole of §4 into a fallback.
