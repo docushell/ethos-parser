@@ -18,6 +18,71 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.45.0] — a page whose whole content was one `Do` came out blank, and said so nowhere
+
+`extract` walks a page's `Do` operators and asks each XObject what it is. A `/Subtype /Image`
+becomes a node. A `/Subtype /Form` returns `None` — this profile does not descend into form
+XObjects — and until now `None` was the end of it: the placement was discarded and **nothing on
+the artifact recorded that it had happened**.
+
+So a page whose entire content stream is `q /Xf1 Do Q`, which is the shape a page-slicing tool
+produces, extracted to zero nodes with `pages_failed: 0`. Nothing distinguished it from a page
+that draws nothing at all.
+
+### Added
+
+- **`form-xobjects-not-descended`**, document-scoped, carrying a count. It fires only on documents
+  that actually drew one, and says how many.
+- **`fixtures/engine/form-xobject-text-drawn`** — the third member of v1-S6's `Do` pair, and the
+  one placement that produces **no node of any kind**. It writes the same `Do` as
+  `image-xobject-drawn` and changes the `/Subtype`, so the pair isolates exactly that. The form is
+  deliberately well-formed, drawing its text through the page's own font object: a malformed one
+  would also produce zero nodes, and then the fixture would prove that a broken stream is skipped
+  rather than that a working one is not descended into. Manifest counts `engine_owned` 38 → 39,
+  fixtures 65 → 66, pinned survivors 61 → 62 (`junk-after-eof`, as every engine fixture does).
+
+### Why the limitation that already existed did not cover this
+
+`form-xobject-text-not-descended` is **profile-scoped**: it rides on every artifact this engine
+writes, including artifacts for documents containing no XObject at all. It states the policy and
+never what the policy cost on this document. Both are now emitted, and the fixture asserts the
+scopes apart — present on the form fixture, absent on the two image fixtures, while the
+profile-scoped one is on all three.
+
+This is the argument that already produced `unresolved_xobjects` and `inline_images`, two arms
+away in the same interpreter: *"no image nodes" must not be able to mean "there were images and
+the reader lost them".* Form XObjects were the one case it had not been applied to.
+
+### Changed
+
+- **The count is taken outside `capabilities.images`.** What it declares is text this reader did
+  not read, not a picture it declined to emit; the capability now gates only the node. No PDF
+  profile ships with that flag false, which is exactly why the branch is written down rather than
+  discovered later.
+- `profile_sha256` moves to `0a532bf7`. **No rule id moves, and that is worth stating**: the
+  profile names the rules that decide what an artifact contains, and the set of limitations it
+  declares is not one of them. A reader who found only `parser_version` different could otherwise
+  conclude nothing had changed.
+
+### Guards
+
+Two mutants were watched failing, and they fail at different assertions: a counter that never
+increments loses the document-scoped limitation, and a limitation pushed unconditionally
+(`> 0` → `>= 0`) survives the positive half and dies on the negative one. The negative half is
+what makes the positive one mean anything — a code that appeared on every document would be the
+profile-scoped one under a second name.
+
+`the_counter_list_is_complete` in `ethos-parser-office` caught the new accumulator on its own and
+demanded it be listed. That derivation was added at v2-S13.1 against a hand-list that had shipped
+short; this is the first real addition it has caught.
+
+### Not in this slice
+
+Descending into form XObjects. That is a reader change with its own resource-recursion, graphics-
+state and cycle questions, and the count is what makes its absence legible in the meantime.
+
+---
+
 ## [0.44.0] — a text run was its own block, and 68 112 of them averaged two characters
 
 `nist-sp-800-207` projected as **68 112 Markdown blocks with a mean length of two characters**.

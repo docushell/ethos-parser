@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 38,
+    "engine_owned": 39,
     "gate": 8
   },
   "fixtures": [
@@ -415,6 +415,15 @@
       "sha256": "sha256:fc51aae517900d58e78966431da613924692ecf4b3870a32d6a9297a1a59efff",
       "owner": "engine",
       "notes": "v1-S6, the other half of the images proof. The SAME image object declared in /Resources and never drawn. Expect ZERO image nodes with the capability still true: `Do` is what makes a placement. Classify still counts the declared resource and reports `embedded-images`, which is a different question honestly answered."
+    },
+    {
+      "id": "form-xobject-text-drawn",
+      "root": "engine",
+      "group": "engine",
+      "path": "form-xobject-text-drawn/document.pdf",
+      "sha256": "sha256:4dfd9e13271938665a2f4c1536624156530cd7ffbcdfc1947047b71faf94ea0f",
+      "owner": "engine",
+      "notes": "v2.2-S2 form-XObject golden, and the third member of the images pair. The same `Do` as `image-xobject-drawn` on an XObject whose /Subtype is /Form, drawing a well-formed text stream through the page's own font. Expect ONE text node \u2014 the sentence the page drew \u2014 zero image nodes, and a DOCUMENT-scoped `form-xobjects-not-descended` with count 1. Before v2.2-S2 the `Do` arm returned `None` and discarded the placement in silence, so a page whose whole content is `q /Xf1 Do Q` emitted nothing while `pages_failed` read 0 and only the profile-scoped `form-xobject-text-not-descended`, which rides on every artifact this engine writes, spoke for it."
     },
     {
       "id": "invisible-render-mode",

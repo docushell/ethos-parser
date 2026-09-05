@@ -2770,6 +2770,92 @@ fn an_image_is_a_node_with_a_placement_and_a_digest() {
     );
 }
 
+/// **A form XObject is counted on the document, not only refused in the profile** (v2.2-S2).
+///
+/// The third member of the `Do` family, and the one the pair above did not cover. `image-xobject-
+/// drawn` and `image-declared-not-drawn` differ in whether the `Do` is written; this fixture
+/// writes the same `Do` and changes the `/Subtype` to `/Form`. The result is neither an image node
+/// (this profile emits nodes for `/Image`) nor a text node (this profile does not descend), so the
+/// only thing on the artifact that can say the form's text existed is a count — and until v2.2-S2
+/// there was none. The `else` arm incremented nothing and the placement was discarded in silence.
+///
+/// **The two limitations are both here on purpose, and their scopes are the test.** The
+/// profile-scoped one rides on every artifact this engine writes, including artifacts for
+/// documents containing no XObject at all; asserting only that would pass on a blank page.
+#[test]
+fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
+    let a = extract_ok(engine_fx("form-xobject-text-drawn"));
+
+    // The page's own sentence is a node. The form's is not — and the fixture draws both through
+    // the SAME font object, so "the form was unreadable" is not available as an explanation.
+    let texts: Vec<&str> = runs(&a).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec!["Drawn by the page"],
+        "the page's text is read and the form's is not; a reader that descended would show both, \
+         and a reader that lost the page's would show neither"
+    );
+    assert_eq!(
+        a.pages.iter().map(|p| p.images.len()).sum::<usize>(),
+        0,
+        "a `/Form` is not a picture: emitting an image node for it would put something on the \
+         wire the document never called one"
+    );
+
+    let doc_scoped = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED)
+        .expect("the `Do` happened HERE, and the artifact has to say so");
+    assert_eq!(
+        doc_scoped.scope,
+        ethos_parser_core::LimitationScope::Document
+    );
+    assert!(
+        doc_scoped.detail.starts_with("1 form XObject(s)"),
+        "the COUNT is the whole content of this limitation, not its prose: {}",
+        doc_scoped.detail
+    );
+
+    // Present alongside, and different. Losing the distinction is how this defect survived.
+    assert!(
+        a.assurance.limitations.iter().any(|l| l.code
+            == ethos_parser_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED
+            && l.scope == ethos_parser_core::LimitationScope::Profile),
+        "the profile-scoped statement of policy stays where it was"
+    );
+
+    // **The negative half, which is what makes the positive one mean anything.** A document-scoped
+    // code that appeared on every document would be the profile-scoped one under a second name.
+    for name in [
+        "image-xobject-drawn",
+        "image-declared-not-drawn",
+        "markdown-two-blocks",
+    ] {
+        let other = extract_ok(engine_fx(name));
+        assert!(
+            !other
+                .assurance
+                .limitations
+                .iter()
+                .any(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED),
+            "{name} draws no form XObject and must not carry the count. \
+             `image-xobject-drawn` is the sharp case: it writes the same `Do`, and the only \
+             difference is the `/Subtype`"
+        );
+        assert!(
+            other
+                .assurance
+                .limitations
+                .iter()
+                .any(|l| l.code == ethos_parser_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED),
+            "{name} still carries the PROFILE-scoped one, which is exactly why it could not \
+             stand in for the document-scoped one"
+        );
+    }
+}
+
 /// Byte offset of `needle` at or after `from`.
 fn find(haystack: &[u8], needle: &[u8], from: usize) -> usize {
     haystack[from..]

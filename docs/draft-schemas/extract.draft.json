@@ -58,7 +58,7 @@
     },
     "assurance": {
       "$ref": "urn:ethos-parser:draft-schema:coverage:0",
-      "$comment": "The L1 gate (docs/01-CONTRACT.md §7): declared capabilities, limitations, per-page state, coverage, and terminal state. ABSORBS M3's `not_decoded` list, which no longer exists on the wire — absent font widths are now the document-scoped `font-widths-absent` limitation and undescended form XObjects the profile-scoped `form-xobject-text-not-descended`. It also carries the explicit multi-column reading-order limitation that synthetic/two-columns pins."
+      "$comment": "The L1 gate (docs/01-CONTRACT.md §7): declared capabilities, limitations, per-page state, coverage, and terminal state. ABSORBS M3's `not_decoded` list, which no longer exists on the wire — absent font widths are now the document-scoped `font-widths-absent` limitation, and undescended form XObjects are declared twice on purpose: the profile-scoped `form-xobject-text-not-descended` states that this engine never descends, and the document-scoped `form-xobjects-not-descended` carries how many this document drew. It also carries the explicit multi-column reading-order limitation that synthetic/two-columns pins."
     }
   },
   "$defs": {

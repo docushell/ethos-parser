@@ -24,6 +24,7 @@
         "backend-xref-strict-20-byte",
         "predefined-cmaps-not-vendored",
         "form-xobject-text-not-descended",
+        "form-xobjects-not-descended",
         "font-widths-absent",
         "garbled-reason-not-detected",
         "multi-column-reason-not-detected"
@@ -53,7 +54,7 @@
           "additionalProperties": false,
           "required": ["kind"],
           "properties": { "kind": { "const": "document" } },
-          "description": "True of this document under this profile. Declared only when it applies — `font-widths-absent`, `resource-limit-pages`."
+          "description": "True of this document under this profile. Declared only when it applies — `font-widths-absent`, `resource-limit-pages`. `form-xobjects-not-descended` is the sharpest illustration of why the two scopes are not interchangeable: it sits beside the profile-scoped `form-xobject-text-not-descended`, which rides on every artifact and states only that this engine never descends. The document-scoped one says it happened here, and how often."
         },
         {
           "type": "object",
