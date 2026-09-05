@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.42.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v2","markdown_rule":"markdown-blocks-v2","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.42.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2592,11 +2592,23 @@ mod tests {
              `TextRunAttributes::region`, wherever a page divided. That is why the id moved \
              rather than staying put on the grounds that the order held: an artifact naming \
              `-v1` promises no such field, and a reader who could not tell the two apart could \
-             not tell an undivided page from an older build. `docs/16-D4-SCOPE.md` §10."
+             not tell an undivided page from an older build. `docs/16-D4-SCOPE.md` §10.\n\n\
+             Moved a SIXTY-NINTH time at 0.42.1 (D4-S5), on `parser_version` alone. No rule id \
+             moves and no capability flag moves: the cut, the detectors and the projections are \
+             untouched, and every artifact this build writes for a document 0.42.0 could read is \
+             byte-identical to the one 0.42.0 wrote — measured across all eight gate documents \
+             before the version moved. What changed is which documents produce an artifact AT \
+             ALL. `GeometryAbsence::MeasuredOffPage` gives the PDF reader a spelling for a box \
+             it measured correctly and the document draws outside its own page, so six DP-Bench \
+             documents that exited 2 with no artifact now seal. The version moves because that \
+             is a real difference between two builds — a reader holding an artifact needs to \
+             know whether the absence of one is a document this engine could not read or a \
+             document it refused — and because a `measured_off_page` value is one 0.42.0 could \
+             never emit. See CHANGELOG \"0.42.1\"."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:5dc96b088ccb00d3b11bbbd7b807caf1d1da6f5b7678d1293703d5849faf5edf"
+            "sha256:686e85cb4e3217426932a0b60282ff4ea34c65d6d42d05c935d5259af57a0a8a"
         );
     }
 

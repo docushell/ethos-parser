@@ -22,19 +22,31 @@
       "title": "GeometryAbsence",
       "description": "Why a measurement is absent. Never a sentinel value: no zero box, no null island, no page-sized stand-in, and never height = font_size — a font-size-derived box is closer to invented than measured, and inventing a coordinate is forbidden.",
       "type": "string",
-      "enum": ["not_reported_by_reader", "not_applicable_to_kind", "capability_not_enabled"],
+      "enum": ["not_reported_by_reader", "not_applicable_to_kind", "no_ink_to_measure", "capability_not_enabled", "not_reported_by_structure_tree", "measured_off_page"],
       "oneOf": [
         {
           "const": "not_reported_by_reader",
-          "description": "The reader has no usable metrics for this glyph's font. The only variant that counts toward a declared capability limitation, and the only one that causes omission from a grounding artifact."
+          "description": "The reader has no usable metrics for this glyph's font. The only variant that counts toward a declared capability limitation."
         },
         {
           "const": "not_applicable_to_kind",
           "description": "The node kind has no geometry by definition, so absence is correct rather than a gap."
         },
         {
+          "const": "no_ink_to_measure",
+          "description": "The node draws no ink \u2014 a run of spaces \u2014 so no box exists to be missing. NOT a reader failure, which is why it is not `not_reported_by_reader` (v1-S6.2)."
+        },
+        {
           "const": "capability_not_enabled",
           "description": "This profile does not declare the capability that would produce the measurement."
+        },
+        {
+          "const": "not_reported_by_structure_tree",
+          "description": "The node was reconstructed from the document's structure tree, which states structure and never a coordinate, so there is no box to report and none is invented (v2-S24)."
+        },
+        {
+          "const": "measured_off_page",
+          "description": "The box WAS measured and the document draws it outside its own page box, so no page-relative rectangle exists to emit. A property of the document rather than a shortfall of this reader; the run keeps its text, its origin and an `off-page-text` finding (D4-S5)."
         }
       ]
     },

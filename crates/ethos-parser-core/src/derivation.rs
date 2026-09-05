@@ -140,6 +140,43 @@ pub enum GeometryAbsence {
     /// limitation, and it is not groundable either: a table with no box cannot enter a
     /// `ethos.grounding.v1` projection any more than a run with no ink box can.
     NotReportedByStructureTree,
+    /// The reader measured an ink box and the **document** draws it outside the page box, so
+    /// there is no page-relative rectangle to report (D4-S5).
+    ///
+    /// **The premise the refusal rested on was measurably false.**
+    /// `DocumentRepresentation::seal` refuses an out-of-page box on the stated grounds that it
+    /// *"means the measurement or the coordinate transform is wrong"*. For a whole class of real
+    /// documents it means neither. `01030000000029.pdf` of the DP-Bench corpus sets
+    /// `9.9626 0 0 9.9626 -435.1181 674.3054 Tm` against `/MediaBox [0 0 510.236 737.008]` — the
+    /// content stream itself places the text at x = −435.1181 pt, and the engine reported
+    /// x0 = −43512 centipoints, which is that number correctly transformed and quantized. The
+    /// measurement was right, the transform was right, and the document draws off-canvas because
+    /// a page was extracted from a wider original. Six of two hundred documents did this, and each
+    /// produced **no artifact at all**.
+    ///
+    /// **It is not [`Self::NoInkToMeasure`], and that difference is why this is its own variant
+    /// rather than a widening of that one.** v1-S6.2 met the same seal error from the opposite cause: a run
+    /// of spaces given a rectangle around nothing. There the box was fabricated and the fix was to
+    /// stop claiming one. Here the box is real, the glyphs are painted, and the only thing wrong
+    /// with it is that it cannot be *expressed* — the grounding schema requires `x0, y0 >= 0` and
+    /// `x1 <= page.width`, so a page-relative rectangle for this run does not exist to be emitted.
+    ///
+    /// **It is not [`Self::NotReportedByReader`]**, for the reason that variant's neighbours keep
+    /// repeating: that one counts toward a declared capability limitation, and this reader did not
+    /// fail at anything. Counting it would charge this engine for a choice the document made.
+    ///
+    /// **Nothing is clamped and nothing is dropped.** Clamping would fabricate a coordinate the
+    /// document does not contain (Workbench rule 3), and dropping the run would be a silent
+    /// erasure. The run stays in the artifact with its text, its `origin`, its region and its
+    /// [`crate::TextFinding::OffPage`] — which the engine already raised for exactly this content,
+    /// against the visible box, before deciding to refuse the document over it. What is absent is
+    /// the box, and this says why.
+    ///
+    /// Not a declarable limitation and not groundable, on the same footing as
+    /// [`Self::NotReportedByStructureTree`]: a run whose box lies off the page cannot enter an
+    /// `ethos.grounding.v1` projection, and `off-page-text` in the assurance block is where a
+    /// consumer reading a summary learns how much of the document this reached.
+    MeasuredOffPage,
 }
 
 /// Geometry that was measured, or a typed reason it was not.

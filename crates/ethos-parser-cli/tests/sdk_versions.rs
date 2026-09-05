@@ -20,7 +20,7 @@
 //!
 //! | file | value |
 //! | --- | --- |
-//! | `Cargo.toml` `[workspace.package]` | `0.42.0` |
+//! | `Cargo.toml` `[workspace.package]` | `0.42.1` |
 //! | `packages/python/src/ethos_parser/__init__.py` | `0.36.1` |
 //! | `packages/node/src/index.js` | `0.36.1` |
 //! | `packages/node/package.json` | `0.36.3` |

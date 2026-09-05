@@ -91,6 +91,10 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              around nothing, and it put 491 of nist-sp-800-53r5's 492 pages beyond
                              reach — the seal refused the document. Zero corpus fixtures had a
                              whitespace run claiming a box                          [v1-S6.2]
+  ink-past-the-media-box     a run with REAL ink metrics drawn at negative x, so its measured box
+                             is outside the /MediaBox — not the crop box, and not around
+                             whitespace. The one case the three fixtures below did not cover, and
+                             the one six DP-Bench documents met in the wild        [D4-S5]
   crop-box-smaller-than-media
                              a /CropBox strictly inside the /MediaBox, with a font carrying REAL
                              ink metrics and text in the cropped-away margin. The only fixture
@@ -808,6 +812,24 @@ FIXTURES = {
     # Every other fixture here supplies no ink metrics, so no measured box exists to fall out of
     # any page — which is exactly why nothing caught this until a probe was built by hand.
     "crop-box-smaller-than-media": "BT /F1 24 Tf 1 0 0 1 60 180 Tm (Near the top) Tj ET",
+    # D4-S5's golden: INK, measured correctly, drawn outside the MEDIA box by the document.
+    #
+    # The three fixtures above it each stop one step short of this case. `crop-box-smaller-than-
+    # media` puts a measured box outside the CROP box and inside the media box. `off-page-and-
+    # offset-box` puts a run's origin outside the crop box. `whitespace-past-the-page-edge` puts a
+    # box outside the media box but around NOTHING, which v1-S6.2 answered by not claiming a box.
+    # None of them has ink outside the media box, and that is the case the corpus met in the wild:
+    # six of two hundred DP-Bench documents, each a page lifted from a wider original, each
+    # producing no artifact at all.
+    #
+    # `1 0 0 1 -260 100 Tm` against the 300x144 default media box puts the whole run at negative x,
+    # the way `01030000000029.pdf` does at -435.1181. The second run is inside the page and is the
+    # other half of the assertion: a document that draws off-canvas still gets real boxes for the
+    # content that is on the canvas, so the absence is per-run and never a page-wide give-up.
+    "ink-past-the-media-box": (
+        "BT /F1 12 Tf 1 0 0 1 -260 100 Tm (Off the left edge) Tj "
+        "1 0 0 1 40 60 Tm (On the page) Tj ET"
+    ),
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -1135,6 +1157,10 @@ DESCRIPTORS = {
     # Real metrics, so an ink box would be built. Without them the run takes the typed-absence
     # path for a different reason and the fixture proves nothing.
     "whitespace-past-the-page-edge": "metrics",
+    # D4-S5. Real metrics for the same reason `crop-box-smaller-than-media` needs them: a
+    # typed-absent box can never be found outside a page, so without these the fixture would
+    # assert nothing about the case it exists for.
+    "ink-past-the-media-box": "metrics",
 }
 
 

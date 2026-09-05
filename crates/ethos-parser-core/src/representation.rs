@@ -2495,8 +2495,23 @@ impl DocumentRepresentation {
     /// to travel the geometry-omission path, and that path takes a typed absence by construction
     /// — an out-of-page *measured* box is not an absence, and routing it through would be
     /// exactly the "omit for a non-geometry reason" hole §11 forbids. So the box is refused, and
-    /// loudly: it means the measurement or the coordinate transform is wrong, and that is worth
-    /// finding rather than hiding behind a plausible rectangle.
+    /// loudly: by the time one reaches here the measurement or the coordinate transform is wrong,
+    /// and that is worth finding rather than hiding behind a plausible rectangle.
+    ///
+    /// **"By the time one reaches here" is doing real work in that sentence, and it did not used
+    /// to be there (D4-S5).** This check twice refused documents whose transform was correct, and
+    /// each time the answer was upstream rather than a weaker invariant. v1-S6.2: a run of spaces
+    /// was given a rectangle around nothing, and 491 of `nist-sp-800-53r5`'s 492 pages were
+    /// unreadable — answered by [`crate::GeometryAbsence::NoInkToMeasure`]. D4-S5: a document
+    /// *itself* drew ink off its own page — `01030000000029.pdf` sets `Tm` at x = −435.1181 pt
+    /// against a media box starting at 0 — and six of two hundred DP-Bench documents produced no
+    /// artifact at all; answered by [`crate::GeometryAbsence::MeasuredOffPage`], which the PDF
+    /// reader now decides while the page is still in scope.
+    ///
+    /// **The invariant here is deliberately unchanged by both.** Its job is to catch an engine
+    /// that computed a coordinate it cannot justify, and a reachable case that is *not* that is a
+    /// reason to teach the producer a new spelling — never to widen the seal, which would spend
+    /// the one check standing between a transform bug and a plausible-looking artifact.
     fn check_box_within_page(
         node: &NodeId,
         r: QRect,

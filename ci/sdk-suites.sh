@@ -9,7 +9,7 @@
 # `Cargo.toml`, and each says so in a comment next to the constant. At v2-S15 the four numbers
 # were:
 #
-#   Cargo.toml                                    0.42.0
+#   Cargo.toml                                    0.42.1
 #   packages/python/src/ethos_parser/__init__.py  0.36.1
 #   packages/node/src/index.js                    0.36.1
 #   packages/node/package.json                    0.36.3
