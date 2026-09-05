@@ -127,14 +127,14 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | --- | --- | --- |
 /// | v1.1-S1 | `markdown-linear-v1` | a table's cell runs as consecutive paragraphs, no grid |
 /// | v1.1-S2 | `markdown-blocks-v1` | a GFM table, and a list item from a tagged `/L` |
-/// | v1.1-S3 | `markdown-blocks-v2` | a word broken across a line closed up in the export |
+/// | v1.1-S3 | `markdown-blocks-v4` | a word broken across a line closed up in the export |
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 ///
 /// A document with a table comes out differently under the first two; a document with a hyphenated
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V3: &str = "markdown-blocks-v3";
+pub const MARKDOWN_RULE_BLOCKS_V4: &str = "markdown-blocks-v4";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -841,7 +841,7 @@ fn region_of(node: &crate::Node) -> Option<u32> {
 /// which is the same clause `hyphen_tail` needed at D4-S3. It says where a run is not, never what
 /// it is, so decision 19's line is untouched.
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct GroupKey {
+pub(crate) struct GroupKey {
     page: u32,
     region: Option<u32>,
     /// Which locator kind declared the id, so a tagged `4` and an artifact `4` are never one group.
@@ -849,7 +849,7 @@ struct GroupKey {
     mcid: i64,
 }
 
-fn group_key(node: &crate::Node) -> Option<GroupKey> {
+pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
     };
@@ -874,7 +874,7 @@ fn group_key(node: &crate::Node) -> Option<GroupKey> {
 /// cluster at -1, +1 and +2 centipoints, which is per-glyph coordinate rounding. Any epsilon in
 /// that valley gives the same answer; an epsilon of 0 breaks 28 785 boundaries, which is the
 /// measurement proving a tolerance is needed and that its value is not a knob.
-fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
+pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
     let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
         (&a.native_locator, &b.native_locator)
     else {
@@ -905,7 +905,7 @@ fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
 /// separate in `origin_y`, simply do not join. A missed join reads as two words, which is what the
 /// page drew; a wrong join invents one. Given `docs/01-CONTRACT.md`'s posture on fabrication, those
 /// are not comparable costs.
-fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
+pub(crate) fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
     match (&a.native_locator, &b.native_locator) {
         (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) => x.origin_y != y.origin_y,
         _ => false,
@@ -1167,7 +1167,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v2`
+/// # The rule, in full — `markdown-blocks-v4`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -1355,16 +1355,17 @@ pub fn to_markdown(
         let key = group_key(node);
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
-                if pending_space
+                // 1. The page drew a space — in either run's own bytes, or as a run of its own.
+                let drew_space = pending_space
                     || prev.text.ends_with(char::is_whitespace)
-                    || node.text.starts_with(char::is_whitespace)
-                {
-                    // 1. The page drew a space — in either run's own bytes, or as a run of its own.
-                    Some(true)
-                } else if on_different_lines(prev, node) {
-                    // 2. A line break inside one marked-content sequence. Rendering it as a space
-                    //    invents no word; welding across it would. `hyphen_tail` has already had
-                    //    first refusal, so a word the line break split is closed up instead.
+                    || node.text.starts_with(char::is_whitespace);
+                // 2. A line break inside one marked-content sequence. Rendering it as a space
+                //    invents no word; welding across it would. `hyphen_tail` has already had first
+                //    refusal, so a word the line break split is closed up instead. Same outcome as
+                //    clause 1 and a different reason, which is why they are named separately here
+                //    rather than written as two arms.
+                let broke_a_line = on_different_lines(prev, node);
+                if drew_space || broke_a_line {
                     Some(true)
                 } else if ink_contiguous(prev, node) {
                     // 3. Same baseline, no gap the page drew: two fragments of one word.

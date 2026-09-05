@@ -122,7 +122,7 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `<h1>` now projects `<h1>` where `-v2` projected `<p>`. Both projection ids move together here
 /// and that is not a contradiction of them being separate — separate means they *can* move
 /// independently, and this change went through `heading_level`, which both of them call.
-pub const HTML_RULE_BLOCKS_V3: &str = "html-blocks-v3";
+pub const HTML_RULE_BLOCKS_V4: &str = "html-blocks-v4";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -285,9 +285,18 @@ impl ListState {
     }
 }
 
+/// Close the open block, if one is open. **The only place a closing tag is written** (v2.2-S1).
+fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
+    match open.take() {
+        Some(Some(l)) => e.syntax(&format!("</h{l}>\n")),
+        Some(None) => e.syntax("</p>\n"),
+        None => {}
+    }
+}
+
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v2`
+/// # The rule, in full — `html-blocks-v4`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
@@ -352,6 +361,19 @@ pub fn to_html(
     let mut open_item: Option<(usize, bool)> = None;
     let mut joined_tail = false;
 
+    // v2.2-S1. The open block's closing tag, deferred.
+    //
+    // **This projection needs a discipline Markdown does not.** `markdown::separate` is lazy — it
+    // writes a separator *before* the next block, so a block that is never followed simply has no
+    // separator after it and nothing can be left dangling. Here the tag is eager: `<p>` and `</p>`
+    // were written around every node in one pass. Joining runs means the close has to wait, and a
+    // close that waits can be forgotten — a missed flush emits `</p>` after a `<table>`. So there
+    // is exactly ONE place that writes it, and every path out of a block calls it.
+    let mut open_block: Option<Option<u8>> = None;
+    let mut open_group: Option<crate::markdown::GroupKey> = None;
+    let mut open_prev: Option<&crate::Node> = None;
+    let mut pending_space = false;
+
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
 
@@ -364,25 +386,42 @@ pub fn to_html(
             let b = buckets.entry(code).or_insert((0, 0));
             b.0 += node.text.chars().count();
             b.1 += 1;
+            flush_block(&mut e, &mut open_block);
+            open_group = None;
+            open_prev = None;
+            pending_space = false;
             continue;
         }
 
         if let Some(&t) = owner.get(node.id.as_str()) {
             if !emitted_tables[t] {
                 emitted_tables[t] = true;
+                flush_block(&mut e, &mut open_block);
                 list.close_to(&mut e, 0);
                 emit_table(&mut e, &plans[t]);
                 open_item = None;
             }
+            open_group = None;
+            open_prev = None;
+            pending_space = false;
             continue;
         }
 
         let text = normalize(&node.text);
         if text.is_empty() {
+            // v2.2-S1. The space the page drew, which this `continue` used to destroy. The block
+            // stays open: a space inside a marked-content sequence does not end it.
+            if !node.text.is_empty() {
+                pending_space = true;
+            }
             continue;
         }
 
         if let Some(role) = list_role(node) {
+            flush_block(&mut e, &mut open_block);
+            open_group = None;
+            open_prev = None;
+            pending_space = false;
             let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
             if continues {
                 // A second body run inside an item the tree did not itself close. **This
@@ -405,13 +444,51 @@ pub fn to_html(
         }
 
         open_item = None;
+
+        // v2.2-S1. Join into the open element, or close it and open a new one. The clauses are
+        // `crate::markdown`'s, called from there so the two projections cannot drift: a document
+        // that reads as one block in Markdown must read as one `<p>` here.
+        let key = crate::markdown::group_key(node);
+        let joining = match (open_group, key, open_prev) {
+            (Some(open), Some(k), Some(prev)) if open == k => {
+                let drew_space = pending_space
+                    || prev.text.ends_with(char::is_whitespace)
+                    || node.text.starts_with(char::is_whitespace);
+                let broke_a_line = crate::markdown::on_different_lines(prev, node);
+                if drew_space || broke_a_line {
+                    Some(true)
+                } else if crate::markdown::ink_contiguous(prev, node) {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(space) = joining {
+            if space {
+                e.syntax(" ");
+            }
+            escaped_source(&mut e, &text, node.id.as_str());
+            *erasures.entry(crate::markdown::MCID_RUN_JOINS).or_insert(0) += 1;
+            pending_space = false;
+            open_prev = Some(node);
+            continue;
+        }
+
+        flush_block(&mut e, &mut open_block);
         list.close_to(&mut e, 0);
+        open_group = key;
+        open_prev = Some(node);
+        pending_space = false;
 
         let level = heading_level(node);
         match level {
             Some(l) => e.syntax(&format!("<h{l}>")),
             None => e.syntax("<p>"),
         }
+        open_block = Some(level);
 
         // The same join, from the same predicate. See `crate::markdown::hyphen_tail`.
         if let Some((tail, joined)) = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner) {
@@ -428,13 +505,9 @@ pub fn to_html(
         } else {
             escaped_source(&mut e, &text, node.id.as_str());
         }
-
-        match level {
-            Some(l) => e.syntax(&format!("</h{l}>\n")),
-            None => e.syntax("</p>\n"),
-        }
     }
 
+    flush_block(&mut e, &mut open_block);
     list.close_to(&mut e, 0);
 
     // A table whose cells enclose no run has no first run to sit behind, so it has no position in

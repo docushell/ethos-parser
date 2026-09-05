@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v3");
+    assert_eq!(a["html_rule"], "html-blocks-v4");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
