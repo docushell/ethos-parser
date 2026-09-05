@@ -538,7 +538,9 @@ averaged points, and removing one drops the macro to 23‰. **So neither 64‰ n
 of this engine**; what twelve documents establish is the shape, which is bimodal.
 
 **The chase is parked, and parking is not a pass.** 70‰ is this engine on twelve tagged PDFs this
-repository owns; 0.489 is a published score on their corpus. Same unit, different exam. Beating it is
+repository owns; 0.489 is a published score on their corpus, **in a different unit — TEDS, not
+cell-slot F1** (`table-gate-v1.md` §2; this paragraph said *"same unit"* and was wrong when written).
+Beating it is
 no longer a shipping precondition for any slice, and it resumes only if this repository has a labelled
 set it owns *and* the owner chooses to resume. **Fabrication 0 still binds.**
 

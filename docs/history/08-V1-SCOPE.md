@@ -16,7 +16,7 @@ The gate has three conditions. Two still bind as pass/fail; the third is parked.
 | --- | --- | --- |
 | **Fabrication rate 0** | **binds** | No cell text the document does not contain. Not "low" — zero |
 | **Cross-check diagnostics emitted** | **binds** | Geometric and structural readings of the same cell are compared, and disagreement goes on the artifact |
-| Table-cell accuracy above 0.489 | **parked** | 70‰ is this engine on twelve tagged PDFs this repository owns, and the band is what to quote: 0‰..590‰, median 0‰, ten of twelve at zero. 0.489 is a published score on **their** corpus. Same unit, different exam |
+| Table-cell accuracy above 0.489 | **parked** | 70‰ is this engine on twelve tagged PDFs this repository owns, and the band is what to quote: 0‰..590‰, median 0‰, ten of twelve at zero. 0.489 is a published score on **their** corpus, and in a different unit — see `table-gate-v1.md` §2 |
 
 The first two are properties of the design, testable from the first slice, and they are not
 negotiable. The third was always the last slice's problem, and it is now nobody's until the owner
@@ -52,8 +52,15 @@ bit-identically, which is exactly why it was picked as the bar — a reproducibl
 good one.
 
 **And it is not comparable to what this repository measures.** 70‰ is this engine on twelve tagged
-PDFs this repository owns; 0.489 is a published score on their corpus. Same unit, different exam. The
+PDFs this repository owns; 0.489 is a published score on their corpus. The
 chase is parked until this repository has a labelled set it owns *and chooses to resume*.
+
+**This section read *"Same unit, different exam"* and that was wrong when it was written**, not made
+wrong later: 0.489 is TEDS, a tree edit distance over a DOM, and 70‰ is cell-slot F1. The sentence is
+recorded here rather than removed because it is what the slice believed, and
+[`table-gate-v1.md`](../table-gate-v1.md) §2 carries the identification. **It made this section's own
+argument weaker than the truth** — the two numbers are not near-misses on one scale, they are answers
+to different questions.
 
 **The hybrid ~0.9 figure is a different product.** That path is not deterministic, and a determinism
 contract cannot sit under it. It was never a target: adopting a non-reproducible method to beat a

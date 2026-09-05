@@ -35,12 +35,29 @@ tables, differing only by invocation flags. A table score without its method is 
 ## Why this is not comparable to the 0.489 it is named after
 
 **70‰ is this engine on twelve tagged PDFs this repository owns. 0.489 is a published score on
-somebody else's corpus.** Same unit, different exam.
+somebody else's corpus.** Different unit **and** different exam — and this document said *"same
+unit"* until it was checked.
+
+**0.489 is TEDS.** Tree Edit Distance based Similarity, `1 - EditDist(T_gt, T_pred) /
+max(|T_gt|, |T_pred|, 1)`, computed over an HTML DOM with the APTED algorithm. It is
+`opendataloader`'s own committed result on the DP-Bench corpus — `teds_mean` **0.4887** — and the
+identification is not a guess from one number: the same results file gives its hybrid mode an
+`overall_mean` of **0.9066**, which is the 0.907 this repository has always quoted beside it. Both
+of the figures in these documents resolve, exactly, against the publisher's own file.
+
+**70‰ is macro-averaged cell-slot F1**, `2TP / (2TP + FP + FN)` over expanded `CellSlot{row,
+column}`, §5 below. A tree edit distance over a DOM and a set-overlap over grid slots are not one
+unit: they disagree on what a table IS before they disagree on how well one was read.
+
+**The correction makes this document's own case stronger, not weaker.** *"Same unit, different
+exam"* invited a reader to subtract 70 from 489 and call the difference a gap. There is no
+subtraction to do. The two numbers were never on one scale, and the paragraph that said they shared
+one was the single most misleading sentence in this file.
 
 It was used here as a floor to clear and **never as a claim to publish**; since the chase was parked
 it is not used as a floor either. The number below is computed on documents this project holds, with
 an evaluator written in this repository, against ground truth taken from the documents' own tagged
-structure trees. **It shares a unit with 0.489 and nothing else.**
+structure trees. **It shares nothing with 0.489 — not the corpus, not the ground truth, not the evaluator, and not the unit.**
 
 There is no bake-off table in this repository and there will not be one. A reader who wants to
 compare this engine to another must run both on one corpus with one evaluator, **and neither this

@@ -30,7 +30,7 @@ twelve tagged PDFs this repository owns. Quote the band with it — 0‰..590‰
 at exactly zero, and removing one document drops the macro to 23‰. An average over mostly zeros is
 not a summary of a detector.
 
-0.489 is a published score on somebody else's corpus. Same unit, different exam. The chase is parked
+0.489 is a published score on somebody else's corpus, and in a different unit — TEDS, not cell-slot F1 ([`table-gate-v1.md`](table-gate-v1.md) §2). The chase is parked
 until this repository has a labelled set it owns *and chooses to resume*; v2-S19 built the set, so
 the first half is met and the second half is the owner's standing condition (decision #18, decided). The hybrid figure
 was never the target and still is not — it is a non-deterministic mode, and a determinism contract
