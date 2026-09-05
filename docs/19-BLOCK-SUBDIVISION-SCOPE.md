@@ -160,7 +160,7 @@ than anything this document measured.
    threshold on this repository's own grounds. Decisive either way, exactly as `/Collection` was for
    D1: either they exist and declared beats measured, or they are 0 and that branch is cleanly
    refused.
-3. **Adaptive versus fixed, on probe 1's labels** — the band's own second mode against a constant,
+3. ~~**Adaptive versus fixed, on probe 1's labels**~~ **RUN — see §11.** — the band's own second mode against a constant,
    with the plausibility guard (modal gap ≥ 600 cp and mode share ≥ 25%, which excludes the 9% of
    bands that are not text flows) and the per-band indent-convention branch, reported per document
    with the worst document named.
@@ -309,3 +309,74 @@ run of
 [`measurements/block-subdivision/layout_attrs.py`](measurements/block-subdivision/layout_attrs.py)
 against any new fixture, and it is worth running on every corpus this repository acquires, because a
 document that declares its own spacing turns the whole of §4 into a fallback.
+
+---
+
+## 11. Probe 3, run: the corpus cannot answer the question it was built to answer
+
+§4.2 said the fixed multiplier fails because each document sets its break at a pitch of its own, and
+that the rule should therefore find each band's **second mode** and cut in the trough beneath it.
+Probe 3 tests that. Per band: bin gaps to 10 centipoints, `leading` is the modal bin, candidate
+second modes are bins above `1.15 × leading` holding `max(2, 5%)` of the gaps, and the cut sits
+midway between. **No second mode, no cut** — the rule declines rather than guessing.
+
+Probe 1 left one document with real labels, and "adaptive beats fixed" is a claim about variation
+*across* documents, which one document cannot exhibit. So the probe splits.
+
+### 11.1 — Test A: the mechanism, six documents, role-change labels
+
+A relative comparison against identical labels, so §4.1's subset problem does not invalidate it.
+Absolute values remain heading-and-list numbers.
+
+| document | fixed 1.6× | adaptive |
+| --- | --- | --- |
+| `nist-sp-800-207` | 97.1% / 9.6% | 79.1% / 10.0% |
+| `nist-sp-800-171r3` | 92.7% / 7.2% | 92.4% / 28.5% |
+| `irs-f1040sd-2025` | 75.0% / 39.1% | 75.0% / 39.1% |
+| `nist-sp-800-218` | 53.6% / 7.6% | 71.4% / 13.1% |
+| `nist-sp-800-37r2` | 36.6% / 6.1% | 65.6% / 14.8% |
+| `irs-fw9` | **33.3%** / 1.9% | **96.1%** / 27.9% |
+| **per-document spread** | **33.3–97.1% (64 pts)** | **65.6–96.1% (30 pts)** |
+
+**Adaptive is the variance fix it was predicted to be: the spread halves and the worst document
+nearly triples.** It also fires 2.5× more often on non-boundaries pooled (7.2% → 18.0%), and on
+role-change labels that pool contains the unlabelled P→P breaks, so whether the extra firing is
+right or wrong cannot be read here.
+
+### 11.2 — Test B: the magnitude, real P→P labels, `nist-sp-800-207` only
+
+127 real boundaries, 715 mid-paragraph pairs, guarded bands:
+
+| rule | recall | false-fire | precision |
+| --- | --- | --- | --- |
+| fixed 1.15× | 66.1% | 1.1% | 91.3% |
+| **fixed 1.60×** | **63.0%** | **0.0%** | **100.0%** |
+| adaptive | 46.5% | 1.1% | 88.1% |
+
+**Adaptive is worse than fixed here, on both axes.** And fixed at 1.60× is *perfect* on precision:
+across 715 mid-paragraph line pairs it never once fires.
+
+### 11.3 — Why these do not contradict, and why that is the finding
+
+They agree. Test A says adaptive helps the documents where fixed fails (`irs-fw9` 33.3 → 96.1,
+`nist-sp-800-37r2` 36.6 → 65.6) and *hurts* the one where fixed already excels
+(`nist-sp-800-207` 97.1 → 79.1). Test B measures `nist-sp-800-207` — because probe 1 proved it is
+the only document that can be labelled — which is precisely the document adaptive hurts.
+
+**The one document that can validate the rule is the one document where the rule under test is least
+needed.** The corpus cannot decide this, and no further analysis of these six files will change
+that: it is not a question of method, it is an absence of evidence.
+
+### 11.4 — What this settles, and what it does not
+
+- **Fixed `1.6 × leading` is measured, precise and narrow.** 63.0% recall at **100% precision** on
+  real labels. A rule that never fires wrongly across 715 chances is worth more to a repository that
+  refuses fabrication than a rule with higher recall and a false-fire rate.
+- **Adaptive is unproven where it matters and disproven where it does not.** It must not be scoped
+  on test A alone — that would be fitting a rule to proxy labels on documents whose real labels are
+  unavailable, which is §4.1's error committed deliberately.
+- **The binding constraint is now exact.** What is needed is one labellable document — 3+ lines per
+  `/P`, per §9.1 — **whose break pitch differs from `nist-sp-800-207`'s 1.87×**. Probe 1 supplies
+  the test for the first half and §4.2's per-document pitch table the second. Until such a document
+  exists, `1.6×` stands as the measured rule and adaptive stays a hypothesis with one supporting
+  and one contradicting measurement.
