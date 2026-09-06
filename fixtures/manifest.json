@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 41,
+    "engine_owned": 42,
     "gate": 8
   },
   "fixtures": [
@@ -523,6 +523,15 @@
       "sha256": "sha256:2c4ec0be97056281f50cba2a4e15c846074492c71a97f2e5951f674a9797c533",
       "owner": "engine",
       "notes": "v1-S8 negative, and the irs-form-1040-2025 principle without the tax form. A stroked 2x2 whose four faces are ALSO four widget /Rects at the same coordinates, so the boxes are the fields' own frames rather than a table's cells. Expect 0 tables. Contrast `stroke-ruled-worksheet`, which carries no widgets, and the real page 13, which carries 25 of them INSET inside its printed cells and is still a table \u2014 a face that merely contains a smaller field box is a real cell with a widget in it."
+    },
+    {
+      "id": "untagged-shredded-line",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-shredded-line/document.pdf",
+      "sha256": "sha256:dbe8bd591b3ad09843b62d19892c53d7f9cae747d08ef91b41931dc99dfa0cdd",
+      "owner": "engine",
+      "notes": "v2.2-S5's UNDECLARED-JOIN tripwire, and the only engine fixture whose runs share a baseline. Four runs at y=100 in Helvetica with /Widths 500 at 24pt — 12 points per glyph — so `Yar`+`ro`+`w` abut exactly (72+36=108, 108+24=132, 132+12=144) and `Separate` starts 40 points after `w` ends. No structure tree, so every run's structural locator is absent and the marked-content join has nothing to say. Expect TWO blocks, `Yarrow` and `Separate`, and `baseline-run-joins-abutted-v1: 2`. Every other engine fixture stacks its runs on distinct baselines, so before this one the whole CLI suite was blind to the fallback: a rule keyed on `same baseline, next ink along it` changed nothing anywhere and passed."
     },
     {
       "id": "markdown-two-blocks",

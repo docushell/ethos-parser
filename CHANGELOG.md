@@ -18,6 +18,114 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.47.0] — an untagged PDF projected one block per run, and the median block was two characters
+
+Until this release a run the document declared nothing about joined with nothing. `group_key`
+returned `None` for any run without a structural locator, on the standing rule that **absence is
+never a group** — written after an earlier draft read `mcid: None` as a group and welded
+`nist-sp-800-207`'s vertical margin stamp into `Thispublicationisavailable…` across 156 pt of white
+space, 59 times per document.
+
+The rule was right and its scope was wrong. On a corpus where nothing is tagged, *every* run took
+that path. Measured over all 981 born-digital PDFs of OmniDocBench's `v1_0` `ori_pdfs`:
+
+| | before | after |
+| --- | ---: | ---: |
+| median characters per Markdown block | **2.0** | **3.0** |
+| median share of blocks ≤2 characters | 60% | 41% |
+| documents ≥95% such blocks | 163 of 733 | **41** |
+| **share of all extracted text in those documents** | **52%** | **7%** |
+| documents ≥200 characters *and* <50% tiny blocks | 277 | **351** |
+
+### What changed
+
+Two runs now join when they are **the next ink along one baseline**: same page, same region, same
+stream (page furniture is not body text), same `origin_y`, drawn after rather than over, and no gap
+the page drew. Absence is still never a group — what licenses the join is not the missing
+declaration but the ink.
+
+**`advance` is not an ink width, and that is the whole of the safety argument.** A table cell is
+commonly drawn as one run whose advance is the *cell pitch*, so `origin_x + advance` lands inside
+the next cell and a gap test reads ~0 across 120 pt of white space.
+`docstructbench_llm-raw-scihub-o.O-ceat.200600410` draws `AC` at `origin_x` 31 181 with an advance
+of 12 053 — 6 026 per glyph, against that font's median of ~330 — and the next cell's `AA` begins
+at 43 229. Read naively they join and emit `ACAA`, a token the page draws nowhere.
+
+So a run's reach is capped at `glyphs × the document's own median advance-per-glyph for that
+(font, size)`, measured on the document being parsed. The bound this buys is **provable rather than
+measured**: acceptance requires `next.origin_x ≤ prev.origin_x + glyphs × reference + 12`, so reach
+per glyph can never exceed one reference glyph plus `12 / glyphs`, however badly `advance` lies. A
+font seen once has nothing to corroborate against and is refused.
+
+**No new constant.** The only number is the existing 12-centipoint quantization epsilon, now named
+`INK_EPSILON_CENTIPOINTS` instead of a bare literal. The two other multipliers are 1 — one glyph's
+width per glyph, one glyph of permitted overlap. A pitch-relative gap epsilon (`gap ≤ k × pitch`,
+k ≈ 0.18) was measured and **declined**: Latin has a trough to site it in and CJK has none, because
+CJK draws no word spaces, so it would be a measurement on one script and a tuned knob on the other.
+That is why the `newspaper` family — 111 documents, the worst — is **not** fixed by this release.
+
+### Two new census codes, counted apart on purpose
+
+`baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1`, beside `mcid-run-joins-v1`. The
+abutted form asserts two runs are one word; the spaced form only reproduces a space the page drew.
+A join this engine measured is a weaker claim than one the producer declared, and pooling them
+would erase exactly that difference. Read together on one document they are a derivation profile:
+on a tagged document the producer's declaration dominates, on an untagged one every boundary
+removed was removed on geometry alone.
+
+The fallback emits `source`, never `source_continuing`, so **a `source` segment gains a node id
+only from a producer-declared join or a hyphen closed up — never from geometry.** The seam between
+two runs this engine joined stays addressable to the byte.
+
+### What did not change, verified rather than asserted
+
+- **No text moved.** The coverage census balances on all 961 artifacts: 1 623 979 emitted +
+  106 184 dropped = 1 730 163 in representation.
+- **42 of 48 fixtures are byte-identical**, including all 40 engine fixtures and both tagged IRS
+  forms — everything there is declared, so the fallback never fires.
+  `fixtures/engine/markdown-two-blocks/document.pdf` still projects as two blocks, which matters
+  because it is the only end-to-end evidence for `capabilities.markdown` and `capabilities.html`.
+- **No table was flattened.** Pipe counts are identical in all six changed gate documents. A
+  table's runs reset the join state, as they did at v2.2-S1 — the reset measured at TEDS 0.104 → 0.000
+  when an earlier draft was tried outside the projection.
+- **The welding disaster does not reproduce.** `Thispublicationisavailable`, `NISTSP`, `ZEROTRUST`,
+  `207ZERO` and `from:https` occur **zero** times on `nist-sp-800-207` before and after. The blocks
+  the join creates there are `IST`, `-207`, `ER`, `T A`, `RCHITECTU` and `vii` — partial
+  reassembly of the *horizontal* running head, longest 9 characters.
+- **Zero fabricated tokens** (`ACAA`, `8DBBACAA`, `000000.26`) across all 961 documents.
+
+### The suite could not see any of this, so a fixture was added
+
+Every engine fixture stacks its runs on distinct baselines, so a rule keyed on "same baseline, next
+ink along it" changed nothing in the CLI suite and passed it unchanged — the same blindness the
+0.44.0 slice recorded. `fixtures/engine/untagged-shredded-line/document.pdf` is the tripwire: four
+runs at one baseline in a font with real ink metrics and no structure tree, three abutting exactly
+(12 points per glyph: 72+36=108, 108+24=132, 132+12=144) and a fourth 40 points further on. It
+projected `Yar` / `ro` / `w` / `Separate` and now projects `Yarrow` / `Separate`.
+
+Three mutants were watched failing, each caught by exactly the test written for it: dropping every
+guard in `ink_sequenced`, dropping the reach cap (caught **only** by
+`a_run_whose_advance_is_the_column_pitch_is_not_joined`), and making `LineKey` ignore the baseline
+(caught **only** by `runs_with_no_declaration_join_only_along_one_baseline`).
+
+### Both projection rule ids move, again
+
+`markdown_rule` `markdown-blocks-v4` → `-v5` and `html_rule` `html-blocks-v4` → `-v5`, together,
+because the clauses live in `markdown.rs` and `html.rs` calls them rather than restating them.
+`profile_sha256` moves with them. MINOR rather than PATCH: the emitter produces different bytes for
+the same input, which is `docs/RELEASING.md` §4's test.
+
+### Not fixed, and named so the number is not mistaken for the whole
+
+`newspaper` (111 documents) still reads at a median 90% sub-3-character blocks. CJK inter-glyph
+tracking sits above the 12-centipoint epsilon by construction, and reaching it needs the
+pitch-relative epsilon this slice measured and declined. The epsilon's own justification also does
+not cover this population — it was measured on *declared* pairs of *one Latin document*, and the
+13–150 centipoint band that is empty there is not empty on undeclared CJK pairs. That is now stated
+on the constant rather than inherited silently.
+
+---
+
 ## [0.46.1] — five of the six XHTML heading levels were reached by no test at all
 
 `xhtml_heading_level` maps `h1`…`h6` to levels 1…6, and always did. Replacing the **h2–h6** arms

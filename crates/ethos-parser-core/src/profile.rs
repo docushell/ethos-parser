@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V4`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V5`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V4`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V5`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -1054,7 +1054,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V4`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V5`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1065,7 +1065,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V4`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V5`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1116,8 +1116,8 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V2.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V4.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V4.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V5.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V5.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.46.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.47.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2656,11 +2656,25 @@ mod tests {
              were reached by no test at all — replacing them with `None` failed zero of ~1 300 — \
              so 0.43.0's declared-heading feature was verified at one level of six. It is now \
              verified at all six in both projections, and the mapping was already correct, which \
-             is why nothing moves but the number."
+             is why nothing moves but the number.\n\n\
+             Moved a SEVENTY-FIFTH time at 0.47.0 (v2.2-S5), and this one moves BOTH projection \
+             rule ids — `markdown-blocks-v4` -> `-v5`, `html-blocks-v4` -> `-v5` — because the \
+             clauses live in `markdown.rs` and `html.rs` calls them. Until now a run the document \
+             declared nothing about joined with nothing, so an untagged PDF projected one block \
+             per run: a median of TWO characters per block across 981 OmniDocBench documents, \
+             with 163 of 733 documents at 95% or more sub-3-character blocks holding 52% of all \
+             the text. Those runs now join when they are the next ink along one baseline — same \
+             page, same region, same stream, same `origin_y`, no gap the page drew. What differs \
+             on the wire: fewer blocks, and two new census codes, \
+             `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1`, counted apart \
+             from `mcid-run-joins-v1` because a join this engine measured is a weaker claim than \
+             one the producer declared. No text is gained or lost — the coverage census balances \
+             on all 961 artifacts, 1 623 979 emitted + 106 184 dropped = 1 730 163 in \
+             representation — and every one of the 40 engine fixtures is byte-identical."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:fa7e5994daf67dde89b86572da6da158f13d2a0894a6c6e91c14a52c9f4cf3a1"
+            "sha256:84813cbe54a7db6b9ea9d77dfd466af0846d8f6c86d096f596fe2b355d140f6c"
         );
     }
 

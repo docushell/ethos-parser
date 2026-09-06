@@ -33,6 +33,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              grounding artifact. The Markdown joins them with a blank line, and
                              a quote spanning that join is text the page never drew — the
                              Anchor Map golden                                    [v1.1-S1]
+  untagged-shredded-line     FOUR runs on ONE baseline in a font with real ink metrics and NO
+                             structure tree: three abutting exactly (`Yar`+`ro`+`w`) and a
+                             fourth 40 points to the right. The only fixture whose runs share a
+                             baseline, so the only one that can observe the undeclared join —
+                             every other engine fixture stacks its runs and is blind to it
+                                                                                  [v2.2-S5]
   markdown-hyphen-break      TWO runs 30 points apart in a font with real ink metrics, the
                              first ending `recalcu-`. The export closes the word up and the
                              joined sentence is on no page — the hyphen golden     [v1.1-S3]
@@ -390,6 +396,25 @@ FIXTURES = {
     # never drew, which is exactly the string the Anchor Map exists to mark unquotable. Proving
     # that needs the verifier to ground the first half and refuse the second, and every existing
     # fixture with measurable ink has only ONE run, so there is no join to span.
+    # v2.2-S5's UNDECLARED-JOIN fixture. Every other engine fixture puts its runs on distinct
+    # baselines, so the whole CLI suite was blind to the fallback: a rule keyed on "same baseline,
+    # next ink along it" changed nothing anywhere and passed. This is the tripwire.
+    #
+    # Uniform /Widths of 500 at 24pt is 12 points per glyph, so the abutment is arithmetic a
+    # reviewer can check without running anything:
+    #
+    #     72 + 3x12 = 108     `Yar` ends where `ro` starts
+    #    108 + 2x12 = 132     `ro`  ends where `w`  starts
+    #    132 + 1x12 = 144     `w`   ends, and the next run starts 40 points further on
+    #
+    # So `Yarrow` is one block and `Separate` is another, and a rule that joined on absence alone
+    # would produce `YarrowSeparate` across a gap the page plainly drew.
+    "untagged-shredded-line": (
+        "BT /F1 24 Tf 72 100 Td (Yar) Tj ET "
+        "BT /F1 24 Tf 108 100 Td (ro) Tj ET "
+        "BT /F1 24 Tf 132 100 Td (w) Tj ET "
+        "BT /F1 24 Tf 184 100 Td (Separate) Tj ET"
+    ),
     "markdown-two-blocks": (
         "BT /F1 24 Tf 72 120 Td (First block) Tj ET "
         "BT /F1 24 Tf 72 60 Td (Second block) Tj ET"
@@ -1269,6 +1294,7 @@ MEDIA = {
     # v1.1-S2. Ten baselines at 16pt spacing, from y=180 down to y=30.
     "tagged-list-items": (0, 0, 300, 200),
     # Tall enough for two 24pt lines with real ink boxes inside the page.
+    "untagged-shredded-line": (0, 0, 300, 200),
     "markdown-two-blocks": (0, 0, 300, 200),
     # v1.1-S3. Two 12pt lines 30 points apart, and wide enough that the longer one ends at 184.
     "markdown-hyphen-break": (0, 0, 300, 200),
@@ -1317,6 +1343,7 @@ DESCRIPTORS = {
     "measured-ink-box": "metrics",
     # Real metrics on BOTH runs, so both ground. Without them the elements array is empty and the
     # golden would pass vacuously against a verifier that found nothing either way.
+    "untagged-shredded-line": "metrics",
     "markdown-two-blocks": "metrics",
     # v1.1-S2. Real metrics so the CELL runs are groundable elements; without them the cell-quote
     # golden would watch the verifier find nothing and refuse both halves, proving nothing about

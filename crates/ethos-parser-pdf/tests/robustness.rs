@@ -459,7 +459,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 64] = [
+const EXPECTED_SURVIVORS: [&str; 65] = [
     "absent-font-metrics/junk-after-eof",
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
@@ -523,6 +523,7 @@ const EXPECTED_SURVIVORS: [&str; 64] = [
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
+    "untagged-shredded-line/junk-after-eof",
     "whitespace-past-the-page-edge/junk-after-eof",
 ];
 
@@ -860,8 +861,12 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        68,
-        "the manifest should declare 68 fixtures across FOUR roots. v2.2-S3 moved this from 66 by \
+        69,
+        "the manifest should declare 69 fixtures across FOUR roots. v2.2-S5 moved this from 68 by \
+         adding `untagged-shredded-line`, the only engine fixture whose runs share a baseline — \
+         every other one stacks them, so the whole CLI suite was blind to the undeclared join \
+         and a rule keyed on `same baseline, next ink along it` passed it unchanged. v2.2-S3 \
+         moved this from 66 by \
          adding the composite-font pair — `composite-font-cid-widths` and \
          `composite-font-non-identity-cmap` — the shape NEITHER owned corpus contained: no \
          fixture anywhere held a CIDFont, so the composite-width path was exercised by nothing \
