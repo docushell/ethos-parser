@@ -1131,6 +1131,95 @@ pub(crate) fn dropped_code(kind: NodeKind) -> Option<&'static str> {
     }
 }
 
+/// One geometric block: the nodes it holds, in order, and the text they join to (v2.2-S7).
+///
+/// **The text is verbatim concatenation and nothing else.** A space the page drew is a run of its
+/// own, with its own characters, so joining member texts reproduces exactly what the document
+/// drew and invents no separator. That is why this carries no space rule where the Markdown
+/// projection needs one: Markdown normalizes whitespace and must render a drawn space as its own
+/// single byte, and this does not render anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeometricBlock {
+    /// Indices into the node slice this was built from, in order.
+    pub members: Vec<usize>,
+    /// The members' own text, concatenated.
+    pub text: String,
+}
+
+/// Group runs into blocks by the rule both projections already use (v2.2-S7).
+///
+/// **This is `where`, never `what`** — decision #19. A block is a set of runs the page drew as one
+/// piece of ink; it is not a paragraph, a heading, a section or a column, and nothing downstream
+/// may read a role from one.
+///
+/// The clauses are the ones [`to_markdown`] joins on, called rather than restated so the two
+/// cannot drift: a declared marked-content group ([`group_key`]), or, where the document declared
+/// nothing, the next ink along one baseline ([`line_key`] + [`ink_sequenced`], with the reach
+/// capped by [`ink_reach`]). What this does NOT carry is the projection-specific breaks — list
+/// items, hyphen rejoins and heading markers are renderings, and a grounding consumer wants the
+/// ink.
+///
+/// `table_owned` names the node ids a table already claims. A cell's runs are grounded through
+/// the table, so merging them into a prose block would put one run in two places.
+pub fn geometric_blocks(
+    nodes: &[crate::Node],
+    table_owned: &std::collections::BTreeSet<&str>,
+) -> Vec<GeometricBlock> {
+    let pitch = pitch_reference(nodes);
+    let mut out: Vec<GeometricBlock> = Vec::new();
+    let mut open_group: Option<GroupKey> = None;
+    let mut open_line: Option<LineKey> = None;
+    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+    let mut open_prev: Option<&crate::Node> = None;
+
+    for (i, node) in nodes.iter().enumerate() {
+        // A node of another kind, or one a table already claims, is its own block and closes
+        // whatever was open — the same two resets the emitter makes.
+        let standalone =
+            node.kind != crate::NodeKind::TextRun || table_owned.contains(node.id.as_str());
+
+        let key = group_key(node);
+        let joins = !standalone
+            && match (open_group, key, open_prev) {
+                (Some(open), Some(k), Some(_)) if open == k => true,
+                (None, None, Some(_)) => match (open_line, line_ink) {
+                    (Some(line), Some((ink, end, reference))) => {
+                        Some(line) == line_key(node) && ink_sequenced(ink, end, reference, node)
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+
+        match out.last_mut() {
+            Some(block) if joins => {
+                block.members.push(i);
+                block.text.push_str(&node.text);
+            }
+            _ => out.push(GeometricBlock {
+                members: vec![i],
+                text: node.text.clone(),
+            }),
+        }
+
+        if standalone {
+            open_group = None;
+            open_prev = None;
+            open_line = None;
+            line_ink = None;
+        } else {
+            open_group = key;
+            open_prev = Some(node);
+            open_line = line_key(node);
+            line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+            if line_ink.is_none() {
+                open_line = None;
+            }
+        }
+    }
+    out
+}
+
 // -------------------------------------------------------------------------------------------
 // The emitter
 // -------------------------------------------------------------------------------------------
@@ -4021,5 +4110,123 @@ pub(crate) mod tests {
                 a.anchor_map.segments
             );
         }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // v2.2-S7 — geometric blocks, the grouping the grounding projection cites
+    // -----------------------------------------------------------------------------------
+
+    fn blocks_of_nodes(specs: &[LineSpec<'_>]) -> Vec<String> {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let nodes: Vec<Node> = specs
+            .iter()
+            .enumerate()
+            .map(|(i, (t, l, x, y, a, r))| {
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    t,
+                    l.clone(),
+                    *x,
+                    *y,
+                    *a,
+                    *r,
+                )
+            })
+            .collect();
+        geometric_blocks(&nodes, &std::collections::BTreeSet::new())
+            .into_iter()
+            .map(|b| b.text)
+            .collect()
+    }
+
+    /// **A block is the ink, and its text is the runs' own characters concatenated.**
+    ///
+    /// No separator is invented, because a space the page drew is a run with its own text — which
+    /// is why this needs none of the Markdown projection's space rule.
+    #[test]
+    fn geometric_blocks_join_the_next_ink_along_one_baseline() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("Yar", None, 7200, 7200, Some(1000), None),
+                ("row", None, 8200, 7200, Some(1000), None),
+            ]),
+            vec!["Yarrow"]
+        );
+    }
+
+    /// **A drawn space is a member, not a separator**, so the block text carries it verbatim.
+    #[test]
+    fn a_drawn_space_is_a_member_of_the_block() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("ab", None, 40000, 40000, Some(660), None),
+                ("ab", None, 40000, 42400, Some(660), None),
+                ("backup", None, 7200, 7200, Some(660), None),
+                (" ", None, 7860, 7200, Some(200), None),
+                ("withholding", None, 8060, 7200, Some(660), None),
+            ])
+            .last()
+            .unwrap(),
+            "backup withholding"
+        );
+    }
+
+    /// **A block never crosses a baseline**, which is `LineKey` doing the same job it does in the
+    /// projections — and the reason decision #21's territory is untouched.
+    #[test]
+    fn geometric_blocks_never_cross_a_baseline() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("first", None, 7200, 7200, Some(1000), None),
+                ("second", None, 8200, 9600, Some(1000), None),
+            ]),
+            vec!["first", "second"]
+        );
+    }
+
+    /// **A run a table already claims is its own block**, so no run is grounded twice.
+    #[test]
+    fn a_table_owned_run_is_never_joined_into_a_prose_block() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let nodes: Vec<Node> = [("Yar", 7200i64), ("row", 8200)]
+            .iter()
+            .enumerate()
+            .map(|(i, (t, x))| {
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    t,
+                    None,
+                    *x,
+                    7200,
+                    Some(1000),
+                    None,
+                )
+            })
+            .collect();
+        let mut owned = std::collections::BTreeSet::new();
+        owned.insert(nodes[1].id.as_str());
+        let blocks: Vec<String> = geometric_blocks(&nodes, &owned)
+            .into_iter()
+            .map(|b| b.text)
+            .collect();
+        assert_eq!(blocks, vec!["Yar", "row"]);
     }
 }

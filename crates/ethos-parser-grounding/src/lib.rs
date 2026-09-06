@@ -377,6 +377,19 @@ pub struct Projection {
     pub omission: OmissionReport,
 }
 
+/// The smallest box containing both, in the artifact's declared coordinate system.
+///
+/// Integer centipoints throughout, and a plain min/max: the union of two measured rectangles is
+/// measured, never inferred.
+fn union_of(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
+}
+
 /// Project a representation into `ethos.grounding.v1`.
 ///
 /// # What maps to what
@@ -384,23 +397,31 @@ pub struct Projection {
 /// | Representation | Grounding |
 /// | --- | --- |
 /// | [`PageRecord`] | `pages[]`, keyed by the page's own id |
-/// | Node with a measurable box | one `elements[]` entry **and** one `spans[]` entry referencing it |
+/// | Node with a measurable box | one `spans[]` entry, inside the `elements[]` entry for its block |
 /// | Node without one | omitted from both, counted in [`OmissionReport`] |
+/// | A block whose every member was omitted | no element at all |
 ///
-/// **Why a node becomes both an element and a span.** The schema offers two granularities —
-/// coarse citable elements and finer spans inside them — and v0 performs no line or block
-/// grouping, so the two coincide: a run *is* the element and *is* the span. Emitting only spans
-/// would leave `elements` empty on a document full of text, and an empty required array reads as
-/// "nothing here" — the exact absence-as-evidence misreading this project refuses. When grouping
-/// lands at v1 the element becomes the block and the span stays the run, and this shape is
-/// already the right one.
+/// **The element is the block and the span is the run** (v2.2-S7). The schema offers two
+/// granularities — coarse citable elements and finer spans inside them — and until grouping
+/// existed the two coincided: a run *was* the element and *was* the span, which left a consumer
+/// wanting to highlight one quoted sentence holding 970 glyph-run rectangles on `irs-fw9` and no
+/// rectangle for the sentence. It now holds 334 elements over those same 970 spans.
 ///
-/// **Why `char_offsets` stays false.** Ethos's own validator ties the capability to the fields:
-/// with `char_offsets: true` every span must carry complete offsets that index its element's
-/// text, and with it false no span may carry any. Since v0's element and span are the same
-/// object, an offset would always be `0..len` and would advertise sub-element addressing the
-/// engine cannot actually do. It flips at v1 with grouping, when the offsets start carrying
-/// information.
+/// The grouping is [`ethos_parser_core::markdown::geometric_blocks`], called rather than restated
+/// so this and the projections cannot disagree about what one piece of ink is. An element's box is
+/// the **union** of its members' measured boxes, which is measured rather than inferred, and its
+/// text is their own characters concatenated — a space the page drew is a run with its own text,
+/// so no separator is invented.
+///
+/// **Why `char_offsets` is still false, and the reason has changed.** Ethos's own validator ties
+/// the capability to the fields: with `char_offsets: true` every span must carry complete offsets
+/// that index its element's text, and with it false no span may carry any. Until v2.2-S7 the
+/// reason was that an offset would always be `0..len`, because element and span were the same
+/// object. **That reason is now spent** — an element holds several spans and an offset into its
+/// text carries real information. What has not happened is the capability flip, which changes a
+/// `grounding-aligned` capability the consuming validator enforces and belongs in its own slice
+/// with its own evidence. Recorded here rather than left as a stale justification, because a
+/// rationale that has outlived its fact is the defect this repository keeps finding in itself.
 ///
 /// # Errors
 ///
@@ -431,51 +452,87 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
     let mut omitted = 0u32;
     let mut element_ordinal = 0u32;
 
-    for (i, node) in payload.nodes.iter().enumerate() {
-        let presence = repr
-            .geometry_at(i)
-            .ok_or_else(|| malformed(format!("node {i} has no geometry row")))?;
+    // v2.2-S7. The element is the BLOCK and the span stays the run, which is the granularity
+    // this schema was shaped for and which v0 could not populate because no grouping existed.
+    // The rule is `crate::markdown`'s, called rather than restated.
+    let table_owned: std::collections::BTreeSet<&str> = payload
+        .tables
+        .iter()
+        .flat_map(|t| t.cells.iter())
+        .flat_map(|c| c.node_ids.iter())
+        .map(|id| id.as_str())
+        .collect();
+    let blocks = ethos_parser_core::markdown::geometric_blocks(&payload.nodes, &table_owned);
 
-        // The omission decision, and the only one. It takes a measurement state; there is no
-        // overload that takes anything else.
-        let Some(bbox) = GroundedBox::from_presence(presence) else {
-            omitted += 1;
+    for block in &blocks {
+        // A block's grounded members. A run the page drew no ink for — a run of spaces — has no
+        // box and cannot be in the union, but its characters are still the block's: it is why
+        // `text` here comes from the block and not from the members that survived this filter.
+        let mut boxes = Vec::new();
+        for &i in &block.members {
+            let node = &payload.nodes[i];
+            let presence = repr
+                .geometry_at(i)
+                .ok_or_else(|| malformed(format!("node {i} has no geometry row")))?;
+            let Some(bbox) = GroundedBox::from_presence(presence) else {
+                omitted += 1;
+                continue;
+            };
+            if !payload.pages.iter().any(|p| p.id == node.parent) {
+                return Err(malformed(format!(
+                    "node `{}` names parent page `{}`, which is not a declared page",
+                    node.id,
+                    node.parent.as_str()
+                )));
+            }
+            boxes.push((node, bbox));
+        }
+        // Every member was ungroundable, so the block has no box to be cited by and is omitted
+        // whole. Its members are already counted above.
+        let Some((first, first_box)) = boxes.first() else {
             continue;
         };
 
-        let page_id = node.parent.as_str().to_string();
-        if !payload.pages.iter().any(|p| p.id == node.parent) {
-            return Err(malformed(format!(
-                "node `{}` names parent page `{page_id}`, which is not a declared page",
-                node.id
-            )));
-        }
+        let page_id = first.parent.as_str().to_string();
+        // The union of the members' ink, which is the rectangle a reader would draw around the
+        // quote. Members always share a page: `LineKey` carries `page` and is compared for
+        // equality, so a block cannot span two.
+        let union = boxes
+            .iter()
+            .skip(1)
+            .fold(first_box.to_array(), |acc, (_, b)| {
+                union_of(acc, b.to_array())
+            });
 
-        // The span keeps the representation node's own id, so a consumer holding only a
-        // grounding artifact can join a span back to the node it came from without a mapping
-        // table. Elements get their own counter because they are a different granularity —
-        // one that stops being 1:1 with spans the moment line grouping lands at v1.
         element_ordinal += 1;
         let element_id = format!("e{element_ordinal}");
         elements.push(Element {
             id: element_id.clone(),
             page: Some(page_id.clone()),
-            bbox: Some(bbox.to_array()),
-            kind: node.kind.as_str().to_string(),
-            text: Some(node.text.clone()),
+            bbox: Some(union),
+            // Every member of a block is a text run: `geometric_blocks` makes any other kind
+            // standalone, so the block's kind is its first member's and they agree.
+            kind: first.kind.as_str().to_string(),
+            text: Some(block.text.clone()),
             locator: None,
         });
-        spans.push(Span {
-            id: node.id.as_str().to_string(),
-            page: page_id,
-            bbox: bbox.to_array(),
-            text: node.text.clone(),
-            element: Some(element_id),
-            // Tied to the capability by the consuming validator: `offsets_present` must equal
-            // `capabilities.char_offsets`, so these stay absent exactly while it is false.
-            char_start: None,
-            char_end: None,
-        });
+        for (node, bbox) in &boxes {
+            // The span keeps the representation node's own id, so a consumer holding only a
+            // grounding artifact can join a span back to the node it came from without a
+            // mapping table.
+            spans.push(Span {
+                id: node.id.as_str().to_string(),
+                page: page_id.clone(),
+                bbox: bbox.to_array(),
+                text: node.text.clone(),
+                element: Some(element_id.clone()),
+                // Tied to the capability by the consuming validator: `offsets_present` must
+                // equal `capabilities.char_offsets`, so these stay absent exactly while it is
+                // false.
+                char_start: None,
+                char_end: None,
+            });
+        }
     }
 
     // Exhaustiveness gate. A capability added to the engine's set without a decision about what

@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**These tables describe 0.48.0.** When the workspace version moves, this page moves with it or it
+**These tables describe 0.49.0.** When the workspace version moves, this page moves with it or it
 is wrong.
 
 This is the honest inventory — the answer to *"what does ethos-parser actually do today?"* It is not

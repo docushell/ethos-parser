@@ -18,6 +18,69 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.49.0] — a grounding element is the block now, not the glyph run
+
+`ethos.grounding.v1` offers two granularities: coarse citable **elements** and finer **spans**
+inside them, with every span naming its element. v0 could populate only one of them — with no
+grouping in the engine, a run *was* the element and *was* the span. The code said so, and said what
+would fix it: *"When grouping lands at v1 the element becomes the block and the span stays the run,
+and this shape is already the right one."*
+
+Grouping landed at 0.44.0 (marked content) and 0.47.0 (baseline ink). This connects it.
+
+### What a consumer gets
+
+A reader highlighting one quoted sentence on `irs-fw9` used to hold **970 glyph-run rectangles and
+no rectangle for the sentence**. It now holds 334 elements over those same 970 spans, and
+element 1 is `"Form  W-9"` with a box spanning both its runs.
+
+| corpus | runs per citable element |
+| --- | ---: |
+| `fixtures/gate` (tagged US federal publishing) | **13.55** |
+| `nist-sp-800-207` | **19.72** |
+| OmniDocBench `v1_0` (untagged) | **1.24** |
+
+**The same statistic means opposite things on the two corpora, and that is the honest reading.**
+Where the producer declares marked-content groups the element is a real block; where nothing is
+declared only the baseline join fires and the gain is small — the fragmentation that makes block
+assembly hard on untagged input limits this too.
+
+### What is measured and what is not
+
+The grouping is `markdown::geometric_blocks`, which **calls** the clauses both projections already
+join on rather than restating them, so the grounding artifact and the projections cannot disagree
+about what one piece of ink is. It is `where`, never `what` — decision #19 — and it cannot cross a
+baseline, so decision #21's territory is untouched.
+
+- An element's **box is the union** of its members' measured boxes. A union of measured rectangles
+  is measured; nothing is inferred.
+- An element's **text is its members' own characters concatenated**, with no separator logic at
+  all — because a space the page drew is a run with its own text. It is absent from `spans` only
+  because it has no ink box to be cited by.
+- A run a **table** already claims stays its own element, so no run is grounded twice.
+- A block whose every member is ungroundable produces **no element**, and its members are counted
+  in the omission report exactly as before.
+
+### A rationale that had outlived its fact
+
+`char_offsets` stays `false`, and the reason it gave is now spent: it said an offset "would always
+be `0..len`" because element and span were the same object. An element now holds several spans and
+an offset into its text carries real information. The capability is **not** flipped here — it is
+`grounding-aligned` and the consuming validator enforces it, so it belongs in its own slice with
+its own evidence — but the justification is corrected rather than left standing. A rationale that
+has outlived its fact is the defect this repository keeps finding in itself.
+
+### Tests
+
+Two existing tests pinned the 1:1 shape and were rewritten to assert something **stronger**: that
+every span sits in a real element and every element holds at least one span, and that an element's
+box is exactly the union of its spans' boxes. Four unit tests cover the grouping itself, including
+the drawn space as a member and the table-owned run that must not join.
+
+No rule id moves — there is no grounding rule id, which is itself worth noticing.
+
+---
+
 ## [0.48.0] — a legal hex string was fatal, and a symbolic font was decoded through the wrong table in silence
 
 Two correctness fixes found by reading the OmniDocBench census rather than the code. Neither

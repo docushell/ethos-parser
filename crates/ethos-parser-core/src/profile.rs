@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.48.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.49.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2683,11 +2683,27 @@ mod tests {
              separate the TeX math fonts where the decode is wrong from the ordinary prose fonts \
              that merely set the bit, and refusing both would drop correct text to fix a \
              minority. What changed is that the artifact now says so, under \
-             `symbolic-font-builtin-encoding-assumed`, on 36 of 981 documents."
+             `symbolic-font-builtin-encoding-assumed`, on 36 of 981 documents.\n\n\
+             Moved a SEVENTY-SEVENTH time at 0.49.0 (v2.2-S7), on `parser_version` alone — there \
+             is no grounding rule id to move, which is itself worth noticing. \
+             `ethos.grounding.v1` offers two granularities, coarse citable ELEMENTS and finer \
+             SPANS inside them, and v0 could populate only one of them: with no grouping, a run \
+             WAS the element and WAS the span. A consumer wanting to highlight one quoted \
+             sentence on `irs-fw9` therefore held 970 glyph-run rectangles and no rectangle for \
+             the sentence. The element is now the BLOCK and the span stays the run, grouped by \
+             `markdown::geometric_blocks` — the projections' own join clauses, called rather than \
+             restated. What differs on the wire: fewer elements, the same spans, each naming its \
+             block, and an element box that is the UNION of its members' measured boxes. Nothing \
+             is inferred: a union of measured rectangles is measured, and an element's text is \
+             its members' own characters concatenated, because a space the page drew is a run \
+             with its own text. Runs per citable element: 13.55 across the gate corpus \
+             (`nist-sp-800-207` 19.72), and 1.24 across OmniDocBench — the same statistic meaning \
+             opposite things on a tagged and an untagged corpus, because where nothing is \
+             declared only the baseline join fires."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:29833cb14f4b1d4c1baa2e90a981c652d5c2e10cc7c779288ce4f35e37bf4384"
+            "sha256:12384bfadefb0e184a8e37e3680e62fac2242001ac7347429e29876b9b0568ad"
         );
     }
 
