@@ -218,13 +218,27 @@ fn tokenize(src: &str) -> Vec<String> {
 }
 
 /// Strip the angle brackets from a hex-string token.
+/// The hex digits of a `<...>` token, or `None` when it is not a hexadecimal string.
+///
+/// **White space inside the angle brackets is ignored, because PDF 32000-1 §7.3.4.3 says it
+/// shall be.** Reading it as a syntax error is not a stricter reading of the specification, it is
+/// a wrong one — and it was document-fatal: `extract`'s page fold returns the first page error, so
+/// one stray space in one font's `ToUnicode` CMap cost the whole page. Two real documents in 981
+/// hit it, `<0009 000d 0020 00a0>` in a `bfchar` and the `bfrange` array form
+/// `[<0066 0066 006C>...]`, and one of them carries 4 165 bytes of text and a table.
+///
+/// PDF white space is the six characters of Table 1 — NUL, TAB, LF, FF, CR and SP — which is
+/// `char::is_ascii_whitespace` plus NUL.
 fn hex_of(token: &str) -> Option<String> {
     let s = token.strip_prefix('<')?.strip_suffix('>')?;
-    if s.chars().all(|c| c.is_ascii_hexdigit()) {
-        Some(s.to_string())
-    } else {
-        None
-    }
+    let digits: String = s
+        .chars()
+        .filter(|c| !(c.is_ascii_whitespace() || *c == '\0'))
+        .collect();
+    digits
+        .chars()
+        .all(|c| c.is_ascii_hexdigit())
+        .then_some(digits)
 }
 
 fn hex_to_u32(hex: &str) -> Result<u32, EngineError> {
@@ -307,6 +321,33 @@ end";
         assert_eq!(m.get(0x05), Some("e"));
         assert_eq!(m.get(0x06), Some(" "));
         assert_eq!(m.get(0x07), Some("l"));
+    }
+
+    /// **White space inside a hex string is ignored, because §7.3.4.3 says it shall be.**
+    ///
+    /// Both forms occur in real documents and both were document-fatal before v2.2-S6: a
+    /// `bfchar` destination written `<0009 000d 0020 00a0>`, and the `bfrange` array form whose
+    /// entries carry internal spaces. `extract`'s page fold returns the first page error, so one
+    /// space cost the whole page.
+    #[test]
+    fn white_space_inside_a_hex_string_is_ignored() {
+        let src = b"begincmap\n\
+            beginbfchar\n<29><0009 000d 0020 00a0>\nendbfchar\n\
+            beginbfrange\n<1a> <1c> [<0066 0066 006C><0066 006C><0066 0069>]\nendbfrange\n\
+            endcmap";
+        let m = ToUnicode::parse(src).expect("white space in a hex string is legal");
+        assert_eq!(m.get(0x29), Some("\u{9}\u{d}\u{20}\u{a0}"));
+        assert_eq!(m.get(0x1a), Some("ffl"));
+        assert_eq!(m.get(0x1b), Some("fl"));
+        assert_eq!(m.get(0x1c), Some("fi"));
+    }
+
+    /// **A genuinely non-hex entry is still refused.** Ignoring white space must not become
+    /// ignoring the check.
+    #[test]
+    fn a_non_hex_entry_is_still_refused_after_white_space_is_stripped() {
+        let src = b"begincmap\nbeginbfchar\n<29><00zz>\nendbfchar\nendcmap";
+        assert!(ToUnicode::parse(src).is_err());
     }
 
     /// One code, two scalars. This is the ligature caveat at its source.

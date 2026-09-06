@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.47.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.48.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2670,11 +2670,24 @@ mod tests {
              from `mcid-run-joins-v1` because a join this engine measured is a weaker claim than \
              one the producer declared. No text is gained or lost — the coverage census balances \
              on all 961 artifacts, 1 623 979 emitted + 106 184 dropped = 1 730 163 in \
-             representation — and every one of the 40 engine fixtures is byte-identical."
+             representation — and every one of the 40 engine fixtures is byte-identical.\n\n\
+             Moved a SEVENTY-SIXTH time at 0.48.0 (v2.2-S6), on `parser_version` alone: two \
+             correctness fixes, neither of which changes a rule's DEFINITION, so no rule id \
+             moves. First, `hex_of` refused a hexadecimal string containing white space, which \
+             PDF 32000-1 §7.3.4.3 says shall be ignored — and the refusal was document-fatal, so \
+             one stray space in one font's `ToUnicode` cost the whole page. Two documents of 981 \
+             hit it; both now read, one of them recovering 4 970 characters from nothing. \
+             Second, a font that declares itself SYMBOLIC, supplies no `/ToUnicode` and names no \
+             base encoding was decoded through `StandardEncoding` — which §9.6.6.2 gives to a \
+             NONSYMBOLIC font — and said nothing about it. It still is, because the flag does not \
+             separate the TeX math fonts where the decode is wrong from the ordinary prose fonts \
+             that merely set the bit, and refusing both would drop correct text to fix a \
+             minority. What changed is that the artifact now says so, under \
+             `symbolic-font-builtin-encoding-assumed`, on 36 of 981 documents."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:84813cbe54a7db6b9ea9d77dfd466af0846d8f6c86d096f596fe2b355d140f6c"
+            "sha256:29833cb14f4b1d4c1baa2e90a981c652d5c2e10cc7c779288ce4f35e37bf4384"
         );
     }
 

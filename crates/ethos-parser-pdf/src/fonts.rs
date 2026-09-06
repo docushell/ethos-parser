@@ -157,6 +157,11 @@ pub struct Font {
     pub decoder: Decoder,
     /// How to turn codes into advances.
     pub widths: WidthSource,
+    /// Set when this font declares itself symbolic, supplies no `/ToUnicode` and names no base
+    /// encoding — so its codes were resolved through `StandardEncoding`, which PDF 32000-1
+    /// §9.6.6.2 specifies for a NONSYMBOLIC font. Carries the base font name for the
+    /// document-scoped limitation's detail, the same shape `WidthSource::Absent` uses.
+    pub builtin_encoding_assumed: Option<String>,
     /// Measured ink extent for this font, in glyph space, or a typed absence.
     ///
     /// Font-level rather than per-glyph: a per-glyph ink box needs the glyph outline, which is
@@ -416,13 +421,50 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     // 3. Ink metrics.
     let ink = crate::metrics::resolve_font_ink(doc, fd);
 
+    // 4. Did this font get `StandardEncoding` without the specification licensing it? PDF 32000-1
+    //    §9.6.6.2 names that fallback for a NONSYMBOLIC font; Table 123 puts Symbolic at bit 3
+    //    and Nonsymbolic at bit 6. A font that sets the first, sets no `/ToUnicode` and names no
+    //    base is being decoded through a table it never asked for — reported, never dropped.
+    let builtin_encoding_assumed = match &decoder {
+        Decoder::Simple(enc) if enc.base() == BaseEncoding::Builtin && is_symbolic(doc, fd) => {
+            Some(base_font_detail(fd))
+        }
+        _ => None,
+    };
+
     Ok(Font {
         id: id.to_string(),
         kind: FontKind::from_subtype(&subtype),
         decoder,
         widths,
+        builtin_encoding_assumed,
         ink,
     })
+}
+
+/// Whether the font's descriptor sets the Symbolic flag and not the Nonsymbolic one.
+///
+/// PDF 32000-1 Table 123: bit position 3 (value 4) is Symbolic, bit position 6 (value 32) is
+/// Nonsymbolic. A descriptor that sets both is contradicting itself and is read as nonsymbolic,
+/// because that is the reading under which this profile's fallback is licensed.
+fn is_symbolic(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> bool {
+    const SYMBOLIC: i64 = 4;
+    const NONSYMBOLIC: i64 = 32;
+    let Some(descriptor) = resolve_dict(doc, fd.get(b"FontDescriptor").ok()) else {
+        return false;
+    };
+    let Ok(flags) = descriptor.get(b"Flags").and_then(|o| o.as_i64()) else {
+        return false;
+    };
+    flags & SYMBOLIC != 0 && flags & NONSYMBOLIC == 0
+}
+
+/// `BaseFont NAME` for a limitation detail, or a fixed string when the font declares none.
+fn base_font_detail(fd: &lopdf::Dictionary) -> String {
+    match fd.get(b"BaseFont") {
+        Ok(lopdf::Object::Name(n)) => format!("BaseFont {}", String::from_utf8_lossy(n)),
+        _ => "a font declaring no /BaseFont".to_string(),
+    }
 }
 
 fn load_simple_encoding(
@@ -713,6 +755,7 @@ mod tests {
             kind: FontKind::Simple,
             decoder: Decoder::Simple(SimpleEncoding::new(BaseEncoding::WinAnsi, BTreeMap::new())),
             widths,
+            builtin_encoding_assumed: None,
             ink,
         }
     }
@@ -1069,5 +1112,70 @@ mod tests {
             reason.contains("malformed rather than this profile limited"),
             "the fault is the document's and the message says so: {reason}"
         );
+    }
+
+    /// A font dictionary with a descriptor carrying `flags`, and whatever `/Encoding` is given.
+    fn symbolic_font(flags: i64, encoding: Option<lopdf::Object>) -> lopdf::Dictionary {
+        let mut desc = lopdf::Dictionary::new();
+        desc.set("Flags", lopdf::Object::Integer(flags));
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type1".to_vec()));
+        fd.set("BaseFont", lopdf::Object::Name(b"ABCDEF+CMEX10".to_vec()));
+        fd.set("FontDescriptor", lopdf::Object::Dictionary(desc));
+        if let Some(enc) = encoding {
+            fd.set("Encoding", enc);
+        }
+        fd
+    }
+
+    /// **A symbolic font decoded through `StandardEncoding` says so** (v2.2-S6).
+    ///
+    /// PDF 32000-1 §9.6.6.2 gives that fallback to a NONSYMBOLIC font. Applying it to a symbolic
+    /// one may produce the wrong character — CMEX10 code 90 is `integraldisplay` and arrives as
+    /// `Z` — and until this the artifact reported `scalar_code_mismatch: false` and nothing else.
+    #[test]
+    fn a_symbolic_font_with_no_tounicode_and_no_base_declares_the_assumption() {
+        let fd = symbolic_font(4, None);
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(
+            font.builtin_encoding_assumed.as_deref(),
+            Some("BaseFont ABCDEF+CMEX10"),
+            "the assumption must be declared, and name the font it was made about"
+        );
+    }
+
+    /// **A named base encoding is the document telling us which table to use**, so nothing is
+    /// assumed and nothing is declared — even though the font is flagged symbolic.
+    ///
+    /// Not hypothetical: 4 of the 42 OmniDocBench documents whose fonts set the symbolic bit
+    /// carry `/Encoding << /BaseEncoding /WinAnsiEncoding /Differences [...] >>`, and their text
+    /// decodes correctly. A rule that fired on the flag alone would have libelled them.
+    #[test]
+    fn a_symbolic_font_that_names_a_base_encoding_declares_nothing() {
+        let mut enc = lopdf::Dictionary::new();
+        enc.set(
+            "BaseEncoding",
+            lopdf::Object::Name(b"WinAnsiEncoding".to_vec()),
+        );
+        let fd = symbolic_font(4, Some(lopdf::Object::Dictionary(enc)));
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.builtin_encoding_assumed, None);
+    }
+
+    /// **A nonsymbolic font is exactly the case §9.6.6.2 licenses**, so it declares nothing.
+    #[test]
+    fn a_nonsymbolic_font_declares_nothing() {
+        let fd = symbolic_font(32, None);
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.builtin_encoding_assumed, None);
+    }
+
+    /// **A descriptor claiming both flags is read as nonsymbolic**, because that is the reading
+    /// under which the fallback this profile already applies is licensed.
+    #[test]
+    fn a_font_flagged_both_symbolic_and_nonsymbolic_declares_nothing() {
+        let fd = symbolic_font(4 | 32, None);
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.builtin_encoding_assumed, None);
     }
 }

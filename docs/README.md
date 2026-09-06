@@ -3,7 +3,7 @@
 Everything the project has decided, and where it is written down. Start with the root
 [`README.md`](../README.md) if you just want to know what the tool does.
 
-**Version 0.47.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
+**Version 0.48.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
 Tables are stated as a capability rather than as one average: the engine reads the tables a document
 declares (combined cell-slot recall 502‰), detects ruled tables where the producer drew them
 (geometric macro 70‰, band 0‰–590‰), emits nothing where neither holds, and fabricates nothing. The

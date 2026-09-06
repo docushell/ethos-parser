@@ -18,6 +18,69 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.48.0] — a legal hex string was fatal, and a symbolic font was decoded through the wrong table in silence
+
+Two correctness fixes found by reading the OmniDocBench census rather than the code. Neither
+changes a rule's **definition**, so no projection rule id moves; `parser_version` moves
+`profile_sha256` as it always does.
+
+### A hexadecimal string containing white space was refused
+
+PDF 32000-1 §7.3.4.3: white-space characters **shall be ignored** inside a hexadecimal string. So
+`<0009 000d 0020 00a0>` is exactly `<0009000d002000a0>`, and the `bfrange` array form
+`[<0066 0066 006C><0066 006C>…]` is three ligature destinations. `hex_of` required every character
+between the brackets to be a hex digit and reported `malformed` — and because `extract`'s page fold
+returns the first page error, **one stray space in one font's `ToUnicode` CMap cost the entire
+page**.
+
+Two documents of 981 hit it. `scihub_s12935-018-0683-z.pdf_0` went from **no artifact at all to
+4 970 characters** — a page carrying a table and a full abstract. Corpus effect: documents with no
+artifact **20 → 18**, non-empty Markdown **733 → 735**, and **zero** documents lost a character.
+
+Reading white space as a syntax error was not a stricter reading of the specification. It was a
+wrong one.
+
+### A symbolic font was decoded through `StandardEncoding` and the artifact did not say so
+
+§9.6.6.2 gives `StandardEncoding` as the fallback for a **nonsymbolic** font. A symbolic font's
+built-in encoding belongs to its own font program, which this profile does not read. Applied
+anyway, a TeX math font decodes to the wrong characters — CMEX10 code 90 is `integraldisplay` and
+arrives as `Z`, code 88 is `summationdisplay` and arrives as `X` — while the run reports
+`scalar_code_mismatch: false`, because one code did produce one scalar. It was simply the wrong
+one.
+
+**The decode is unchanged, and that is a measured decision rather than a deferral.** 42 of 981
+documents carry such a font, and the symbolic flag does not separate the two populations that
+condition covers:
+
+| font | what it is | decode through `StandardEncoding` |
+| --- | --- | --- |
+| `MathematicalPiLTStd-1`, `CGMathsBase`, `MTEX` | genuinely symbolic | **wrong** |
+| `Europa-Bold`, `NewBaskervilleStd-Roman`, `EhrhardtExpMT` | ordinary prose that sets the bit | **right** |
+
+Checked directly: the `Europa-Bold` document projects *"Older components such as carbon resistors
+are really not worth keeping…"* — correct English. Refusing on the flag would have dropped correct
+text from most of the 42 to fix a minority, which is `O21` inverted. Separating them needs the
+embedded font program's own encoding, which this profile does not read.
+
+So the fix is the disclosure, because **the defect was the silence, not the substitution**. New
+document-scoped limitation `symbolic-font-builtin-encoding-assumed`, on **36 of 981** documents —
+42 predicted, minus 2 that produce no artifact at all, minus 4 that name
+`/BaseEncoding /WinAnsiEncoding` inside an encoding dictionary and are therefore decoded exactly as
+the document asked. **Zero** documents changed a character, a node count or an exit code.
+
+### What this is not
+
+It is **not** a step toward vendoring the Adobe predefined CMaps. Measured, that buys less than the
+`predefined-cmaps-not-vendored` limitation implies: of the 20 documents that produce no artifact,
+**4** name `/GBK-EUC-H` and would be fixed by it; **8** name `/Identity-H`, which is not a
+predefined CJK CMap and needs CID→Unicode tables instead; 3 need the embedded font program's
+encoding; 5 were malformed `ToUnicode`, 2 of them fixed above. The error text for the
+`Identity-H` group currently blames the unvendored CJK set, which is misdirection and is worth
+correcting before anyone acts on it.
+
+---
+
 ## [0.47.0] — an untagged PDF projected one block per run, and the median block was two characters
 
 Until this release a run the document declared nothing about joined with nothing. `group_key`
