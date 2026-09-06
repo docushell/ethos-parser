@@ -18,6 +18,41 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.50.0] — one refusal was answering for two different absences
+
+**No artifact byte changes.** Only the text of an error, and only for documents that already
+produced nothing.
+
+`/Identity-H` and `/GBK-EUC-H` both reach the same refusal in `load_simple_encoding`, and it said:
+
+> Predefined CMaps (the Adobe CJK set) are not vendored; a document needing one is refused rather
+> than decoded approximately.
+
+That is true of `/GBK-EUC-H`. It is **false of an identity CMap**: PDF 32000-1 §9.7.4.2 makes that
+mapping the identity, so the code *is* the CID and nothing about the CMap is missing. What is
+absent is the step after it — CID to Unicode — which here has no source at all, because the font
+supplies no `/ToUnicode`. Adobe publishes such a mapping per registry and ordering and this profile
+carries none; and where the descendant's `/CIDSystemInfo` ordering is `Adobe-Identity-0` the CIDs
+are the subset font's own, so no published table decodes them either.
+
+**8 of the 20 OmniDocBench documents that produce no artifact are that kind.** The old sentence
+would have sent a reader after a dataset that could not have helped them — and nearly did: the gap
+analysis that prompted this listed "vendor the Adobe CMaps" as fixing 20 documents when it fixes 4.
+
+`load_cid_widths` already drew this distinction correctly for *widths*, with the reasoning spelled
+out under "Why this refuses every encoding but Identity". The decoding path never got it.
+
+### Why MINOR and not PATCH
+
+`docs/RELEASING.md` §4 says PATCH only when output is byte-identical for the same input, and stderr
+is bytes. Every artifact this build emits is byte-identical to 0.49.0's — verified across all 981
+corpus documents: exit codes unchanged, markdown unchanged at 2 646 129 characters, no-artifact
+count 18 both sides. A reviewer who reads "output" as the artifact alone would call this a PATCH,
+and that reading is defensible. It errs the other way because 0.42.1's entry records the cost of
+erring toward PATCH.
+
+---
+
 ## [0.49.0] — a grounding element is the block now, not the glyph run
 
 `ethos.grounding.v1` offers two granularities: coarse citable **elements** and finer **spans**

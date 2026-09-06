@@ -380,7 +380,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.49.0",
+      "parser_version": "0.50.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"

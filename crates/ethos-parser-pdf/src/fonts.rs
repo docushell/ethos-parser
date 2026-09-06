@@ -478,12 +478,34 @@ fn load_simple_encoding(
         Some(lopdf::Object::Name(n)) => {
             base = BaseEncoding::from_name(n).ok_or_else(|| EngineError::Unsupported {
                 what: "encoding".into(),
-                detail: format!(
-                    "/Encoding /{} is not a simple encoding this profile carries. Predefined \
-                     CMaps (the Adobe CJK set) are not vendored; a document needing one is \
-                     refused rather than decoded approximately.",
-                    String::from_utf8_lossy(n)
-                ),
+                // v2.2-S8. Two different absences reach here, and saying the wrong one sends a
+                // reader after data that would not help. An Identity CMap needs no vendoring at
+                // all: §9.7.4.2 makes it the identity, so the code IS the CID. What is missing
+                // there is the step AFTER that one.
+                detail: if matches!(n.as_slice(), b"Identity-H" | b"Identity-V") {
+                    format!(
+                        "/Encoding /{} maps character codes to CIDs by the identity (§9.7.4.2), \
+                         so nothing about the CMap is missing — the code IS the CID. What is \
+                         absent is the step after it: this font supplies no `/ToUnicode`, and \
+                         there is no other source here for CID to Unicode. Adobe publishes such \
+                         a mapping per registry and ordering, and this profile carries none of \
+                         them; where the descendant's /CIDSystemInfo ordering is \
+                         `Adobe-Identity-0` the CIDs are the subset font's own and no published \
+                         table decodes them either — only the embedded font program or a \
+                         `/ToUnicode` can. **Vendoring the predefined CJK CMaps would not change \
+                         this document**, which is what the message here used to imply. A \
+                         substituted character is a character the document does not contain, so \
+                         the page is refused rather than decoded approximately.",
+                        String::from_utf8_lossy(n)
+                    )
+                } else {
+                    format!(
+                        "/Encoding /{} is not a simple encoding this profile carries. Predefined \
+                         CMaps (the Adobe CJK set) are not vendored; a document needing one is \
+                         refused rather than decoded approximately.",
+                        String::from_utf8_lossy(n)
+                    )
+                },
             })?;
         }
         Some(obj) => {
@@ -1177,5 +1199,46 @@ mod tests {
         let fd = symbolic_font(4 | 32, None);
         let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
         assert_eq!(font.builtin_encoding_assumed, None);
+    }
+
+    /// **An Identity CMap is refused for a different reason than a predefined CJK one, and says
+    /// so** (v2.2-S8).
+    ///
+    /// Both reach the same refusal, and until this slice both blamed the unvendored Adobe CJK
+    /// set. That is true of `/GBK-EUC-H` and false of `/Identity-H`: §9.7.4.2 makes the identity
+    /// CMap the identity, so nothing about it is missing. 8 of the 20 OmniDocBench documents that
+    /// produce no artifact are the second kind, and the old message would have sent a reader
+    /// after a dataset that could not have helped them.
+    #[test]
+    fn an_identity_cmap_does_not_blame_the_unvendored_cjk_set() {
+        for name in [b"Identity-H".as_slice(), b"Identity-V".as_slice()] {
+            let mut fd = lopdf::Dictionary::new();
+            fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+            fd.set("Encoding", lopdf::Object::Name(name.to_vec()));
+            let err = load_font(&lopdf::Document::new(), "F1", &fd)
+                .expect_err("no /ToUnicode and no simple encoding is still a refusal");
+            let detail = format!("{err}");
+            assert!(
+                detail.contains("the code IS the CID"),
+                "an identity CMap must be refused for its own reason: {detail}"
+            );
+            assert!(
+                !detail.contains("are not vendored"),
+                "an identity CMap needs no vendored data, so it must not blame it: {detail}"
+            );
+        }
+    }
+
+    /// **A genuine predefined CJK CMap still names the unvendored set**, which for it is the
+    /// truthful answer.
+    #[test]
+    fn a_predefined_cjk_cmap_still_names_the_unvendored_set() {
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+        fd.set("Encoding", lopdf::Object::Name(b"GBK-EUC-H".to_vec()));
+        let err = load_font(&lopdf::Document::new(), "F1", &fd).expect_err("refused");
+        let detail = format!("{err}");
+        assert!(detail.contains("are not vendored"), "{detail}");
+        assert!(!detail.contains("the code IS the CID"), "{detail}");
     }
 }

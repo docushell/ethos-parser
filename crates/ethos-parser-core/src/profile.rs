@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.49.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.50.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2699,11 +2699,23 @@ mod tests {
              with its own text. Runs per citable element: 13.55 across the gate corpus \
              (`nist-sp-800-207` 19.72), and 1.24 across OmniDocBench — the same statistic meaning \
              opposite things on a tagged and an untagged corpus, because where nothing is \
-             declared only the baseline join fires."
+             declared only the baseline join fires.\n\n\
+             Moved a SEVENTY-EIGHTH time at 0.50.0 (v2.2-S8), and this one changes NO ARTIFACT \
+             BYTE — only the text of one refusal. Two different absences reached one message and \
+             it named the wrong one for half of them: `/Identity-H` was refused with `Predefined \
+             CMaps (the Adobe CJK set) are not vendored`, which is true of `/GBK-EUC-H` and false \
+             of an identity CMap. §9.7.4.2 makes that mapping the identity, so the code IS the \
+             CID and nothing about the CMap is missing; what is absent is CID to Unicode, which \
+             here has no source because the font supplies no `/ToUnicode`. 8 of the 20 \
+             OmniDocBench documents that produce no artifact are that kind, and the old sentence \
+             would have sent a reader after a dataset that could not have helped them. MINOR \
+             rather than PATCH because §4's rule is about bytes for the same input and stderr is \
+             bytes; a reviewer who reads `output` as the artifact alone would call it a PATCH, \
+             and 0.42.1's entry is why this errs the other way."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:12384bfadefb0e184a8e37e3680e62fac2242001ac7347429e29876b9b0568ad"
+            "sha256:0742f0c593da1220f68853b084e27c46fe6a70c2682d9be04b9ed8462f49add2"
         );
     }
 
