@@ -51,7 +51,7 @@ python3 docs/measurements/omnidocbench/census.py <corpus>/ori_pdfs
 
 About 115 s of engine time for all 981, serial; 15 s wall at eight threads.
 
-## What it measured at 0.50.0
+## What it measured at 0.52.0
 
 | | documents |
 | --- | ---: |
@@ -76,12 +76,14 @@ the pitch-relative epsilon that would reach it, and why it was measured and decl
 
 ### The limitation census, which is where the defects were
 
-Document-varying codes over the 961 documents that produced an artifact, with
-`../opendataloader-bench/`'s 200 for comparison:
+Document-varying codes over the 963 documents that produced an artifact, with
+`../opendataloader-bench/`'s 200 for comparison. **This line said 961 until 0.52.0 and the
+instrument said 963**, one of three stale numbers in the 0.50.0 record found by re-running it — see
+the note under the groundability figure:
 
 | code | docs | share | opendataloader-bench |
 | --- | ---: | ---: | --- |
-| `geometry-absent-not-groundable` | 889 | 92% | 92% |
+| `geometry-absent-not-groundable` | 884 | 92% | 92% |
 | `non-text-nodes-not-projected` | 745 | 77% | 63% |
 | `unruled-table-candidate-refused` | 719 | 75% | 100% |
 | **`composite-font-codes-from-tounicode`** | **412** | **43%** | **25%** |
@@ -90,19 +92,39 @@ Document-varying codes over the 961 documents that produced an artifact, with
 | `broken-font-encoding` | 149 | 15% | 13% |
 | `mcid-property-list-by-name` | 70 | 7% | — |
 | `invisible-render-mode-text` | 66 | 7% | — |
-| `off-page-text` | 45 | 5% | — |
-| `font-widths-absent` | 36 | 4% | 1 doc |
+| `off-page-text` | 44 | 5% | — |
 | **`symbolic-font-builtin-encoding-assumed`** | **36** | **4%** | new at 0.48.0 |
+| **`font-widths-absent`** | **7** | **1%** | 1 doc |
 | `stroke-ruled-table-candidate-refused` | 6 | 1% | — |
 | `inline-images-not-emitted` | 3 | 0.3% | — |
 
 **Composite fonts are ~1.7× denser here than on the previous external corpus**, which is why this
 one was worth acquiring and why both defects below surfaced on it.
 
-Groundability: **50 918 of 823 340 nodes (6.2%)** carry no measured ink box, against 8.0% on
+Groundability: **40 028 of 824 220 nodes (4.9%)** carry no measured ink box, against 8.0% on
 opendataloader-bench after the 0.46.0 fix.
 
-### Hard failures — 20 documents produce no artifact
+**Measured before and after on this corpus, same instrument, by rebuilding 0.50.0 in a worktree:**
+
+| | 0.50.0 | 0.52.0 |
+| --- | ---: | ---: |
+| measured ink box | 773 237 (93.8%) | **784 192 (95.1%)** |
+| no box — omitted from `ethos.grounding.v1` | 50 983 (6.2%) | **40 028 (4.9%)** |
+| total nodes | 824 220 | **824 220** |
+
+**10 955 nodes recovered**, by decision #22's vendored Core-14 metrics (0.51.0) and the derived
+glyph-name table (0.52.0). The total is **identical on both sides**: no text is gained or lost, only
+whether it can be cited. The figure matches the 37-document measurements those releases were built
+on — 10 948 + 7 — to the node.
+
+**Three numbers in the 0.50.0 record were stale and are corrected here.** It said *20 documents
+produce no artifact* where its own table summed to 18 and its own "artifact produced 963" implied
+18; it said the census covered *961* documents where the instrument said 963; and it said *823 340*
+nodes where the instrument says 824 220. None came from a behaviour change — the prose around the
+tables was written by hand and not regenerated, which is the drift the instrument printing its own
+numbers was meant to stop. It stopped the tables and not the sentences.
+
+### Hard failures — 18 documents produce no artifact
 
 | cause | docs |
 | --- | ---: |
