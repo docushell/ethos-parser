@@ -130,7 +130,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v1.1-S3 | `markdown-blocks-v4` | a word broken across a line closed up in the export |
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
-/// | v2.2-S5 | `markdown-blocks-v5` | runs the document declared nothing about join along a baseline |
+/// | v2.2-S5 | `markdown-blocks-v6` | runs the document declared nothing about join along a baseline |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -141,7 +141,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V5: &str = "markdown-blocks-v5";
+pub const MARKDOWN_RULE_BLOCKS_V6: &str = "markdown-blocks-v6";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -985,13 +985,25 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// ~330, eighteen times over — and the next cell's `AA` begins at 43 229. A rule reading `advance`
 /// alone joins them and emits `ACAA`, a token the page draws nowhere.
 ///
-/// Capping the reach at `glyphs × reference` is what refuses that, and the bound it buys is
-/// **provable rather than measured**: acceptance needs
-/// `next.origin_x <= prev.origin_x + glyphs × reference + INK_EPSILON_CENTIPOINTS`, so reach per
-/// glyph can never exceed one reference glyph plus `12 / glyphs`, however badly `advance` lies.
+/// Capping the reach is what refuses that, and the bound it buys is **provable rather than
+/// measured**: acceptance needs
+/// `next.origin_x <= prev.origin_x + (glyphs + 1) × reference + INK_EPSILON_CENTIPOINTS`, so reach
+/// per glyph can never exceed one reference glyph plus `(reference + 12) / glyphs`, however badly
+/// `advance` lies.
 ///
-/// The multiplier is 1 in both places it appears — one glyph's width per glyph, and one glyph of
-/// permitted overlap. 1 is the unit of the thing being measured, not a number to tune.
+/// **The slack is one glyph on each side, and it was one-sided until this was measured.** The cap
+/// read `glyphs × reference`, which allowed a run to overlap the next by a whole glyph and yet
+/// refused it a single centipoint of reach beyond the estimate. `reference` is a **median**, so
+/// half of all runs exceed `glyphs × reference` by construction — and the epsilon is 12
+/// centipoints, so a fraction of one percent is enough to break a join that is really abutting.
+/// Measured on `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`: `coordi` advances 2 509
+/// over 6 glyphs against a font median of 415, so the cap truncated its reach by 21 centipoints
+/// and turned a true 8-centipoint gap into a computed 29 — `coordi` and `nation` came out as two
+/// blocks, and the whole page projected one word per block.
+///
+/// The multiplier is still 1 everywhere it appears — one glyph's width per glyph, one glyph of
+/// tolerance above, one glyph of permitted overlap below. The `AC` cell-pitch run above is
+/// refused by a factor of eighteen and is nowhere near the widened bound.
 pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, i64)> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
@@ -1006,7 +1018,10 @@ pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i
         return None;
     }
     let reference = *pitch.get(&(a.font_id.clone(), a.font_size))?;
-    Some((loc.origin_x + advance.min(glyphs * reference), reference))
+    Some((
+        loc.origin_x + advance.min((glyphs + 1) * reference),
+        reference,
+    ))
 }
 
 /// Whether `b` is the next ink after `a` on one line — drawn **after** it, not over it, no gap.
@@ -1442,7 +1457,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v5`
+/// # The rule, in full — `markdown-blocks-v6`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -3957,6 +3972,30 @@ pub(crate) mod tests {
             ("s", art(), 1968, 24522, Some(500), None),
         ]);
         assert_eq!(blocks_of(&a), vec!["T", "hi", "s"]);
+    }
+
+    /// **A run a shade wider than the font's median glyph keeps its join.**
+    ///
+    /// The cap in [`ink_reach`] is `(glyphs + 1) × reference`, and it read `glyphs × reference`
+    /// until this was measured. `reference` is a **median**, so half of all runs exceed
+    /// `glyphs × reference` by construction, and the epsilon is 12 centipoints — a fraction of one
+    /// percent over the median was enough to truncate a run's reach past the epsilon and split a
+    /// word in half.
+    ///
+    /// From `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`, in the corroborating font's
+    /// units: `coordi` advances 2 000 over 6 glyphs where the median is 330, so the old cap of
+    /// 1 980 put its reach 20 centipoints short, turning a true 8-centipoint gap into 28 and
+    /// emitting `coordi` and `nation` as two blocks. That page projected one word per block and
+    /// scored a flat 1.0 on OmniDocBench text edit distance.
+    #[test]
+    fn a_run_wider_than_the_median_glyph_still_joins() {
+        let mut specs = corroborating(6);
+        specs.push(("coordi", None, 7200, 7200, Some(2000), None));
+        specs.push(("nation", None, 9208, 7200, Some(1980), None));
+        assert!(
+            joined_block(&specs, "coordination"),
+            "a run 1% over the median glyph lost its join to the cap"
+        );
     }
 
     /// **A run whose advance is the column pitch is not joined onto the next cell** — the test

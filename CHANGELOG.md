@@ -18,6 +18,65 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.53.0] — a median used as a hard bound split words in half
+
+**Found by running OmniDocBench end2end for the first time.** An English chemistry page scored a
+flat **1.0** on text edit distance, and the output explained why: `coordination` came out as
+`coordi` and `nation`, `There` as `T` and `here`, `Figure` as `F` and `igure`. Not a decoding
+failure — a join failure, mid-word.
+
+**The cause.** [`ink_reach`](crates/ethos-parser-core/src/markdown.rs) capped a run's reach at
+`glyphs × reference`, where `reference` is the font's **median** advance per glyph. A median is a
+central estimate, so **half of all runs exceed it by construction** — and the join epsilon is 12
+centipoints, so a fraction of one percent over the median is enough to manufacture a gap that is
+not there.
+
+Measured on `docstructbench_llm-raw-scihub-o.O-chem.200700133.pdf_6`:
+
+| | |
+| --- | ---: |
+| `coordi` advance | 2 509 over 6 glyphs (418/glyph) |
+| font median | 415/glyph |
+| old cap | 6 × 415 = **2 488** — 21 centipoints short of the true advance |
+| true gap to `nation` | **8** centipoints |
+| gap after truncation | **29** — over the 12-centipoint epsilon |
+
+**The fix is one token.** The cap is now `(glyphs + 1) × reference`: the same **one glyph of
+slack** that `ink_sequenced` already allows on the overlap side. The bound was one-sided — a run
+could overlap the next by a whole glyph and yet was refused a single centipoint of reach beyond a
+median. No constant is introduced and the multiplier stays 1, which is what
+[`ink_reach`'s own doc comment](crates/ethos-parser-core/src/markdown.rs) requires of it.
+
+The `AC` cell-pitch run that the cap exists to refuse — advance 12 053 over 2 glyphs against a
+median of 330, **eighteen times over** — is nowhere near the widened bound and is still refused.
+
+**Corpus effect**, over the 981 OmniDocBench documents:
+
+| | 0.52.0 | 0.53.0 |
+| --- | ---: | ---: |
+| median characters per block | 3.0 | **4.0** |
+| median share of blocks ≤2 chars | 41% | **31%** |
+| documents >50% tiny blocks | 306 | **253** |
+
+Nothing else moves: groundability, artifact count, limitation codes and hard failures are all
+identical.
+
+**No golden changed, and that is the finding underneath the finding.** The engine corpus never
+exercised a run whose advance sits just above the font median, so the whole test suite was blind to
+this. A regression test now holds it — `a_run_wider_than_the_median_glyph_still_joins`, verified to
+**fail against the old cap** rather than merely pass against the new one.
+
+**What this does NOT fix.** Words are still separate blocks where the page drew a space between
+them: the gap there is ~300 centipoints against a 12-centipoint epsilon, and bridging it is the
+pitch-relative epsilon that 0.47.0 measured and declined — *"Latin has a trough to site it in and
+CJK has none."* That refusal stands. The page above is materially better and still fragmented.
+
+`markdown_rule` moves `markdown-blocks-v5` → `-v6` and `html_rule` `html-blocks-v5` → `-v6`,
+together, because the change is in the function both projections call. Block-level grounding
+elements move with them, since `geometric_blocks` is the same code.
+
+---
+
 ## [0.52.0] — a table refused by hand and derived instead
 
 **A reader changed.** 0.51.0 named its own limit: a width was found by asking the font's own
