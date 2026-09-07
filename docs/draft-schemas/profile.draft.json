@@ -97,7 +97,7 @@
       "minLength": 1,
       "description": "Identity of the vendored FONT METRIC data, distinct from cmap_data_version: that one names the tables turning a code into a character, this one the tables turning a character into an advance and a face into an ink envelope. At decision #22 that is Adobe's Core-14 AFMs in vendor/afm/, under APAFML. A standard-14 font the document names with no /Widths gains a measured ink box from them, so a run before and after this string existed produced different geometry and is correctly non-comparable.",
       "examples": [
-        "core14-afm-1"
+        "core14-afm-2"
       ]
     },
     "xref_repair": {
@@ -378,7 +378,7 @@
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
-      "font_metrics_data_version": "core14-afm-1",
+      "font_metrics_data_version": "core14-afm-2",
       "coordinate_system": {
         "origin": "top-left",
         "unit": "centipoint"
@@ -390,7 +390,7 @@
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.51.0",
+      "parser_version": "0.52.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"

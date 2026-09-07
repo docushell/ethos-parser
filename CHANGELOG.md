@@ -18,6 +18,65 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.52.0] — a table refused by hand and derived instead
+
+**A reader changed.** 0.51.0 named its own limit: a width was found by asking the font's own
+decoder what a code means, so coverage stopped at the ASCII range `StandardEncoding` carries. That
+entry, and decision #22's row, both said widening it *"needs the Annex D glyph-name column, which
+is its own measurement rather than a guess bolted on"*.
+
+**The measurement was made, and it refused the obvious version.**
+[`docs/21`](docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md) classified all 1 238 remaining absences by
+resolving each node's `font_id` back to the `/BaseFont` its document declares:
+
+| Class | Nodes | Share |
+| --- | ---: | ---: |
+| the font is **not** one of the standard 14 | 1 110 | 89.7% |
+| not a text node | 77 | 6.2% |
+| Core-14, every code ASCII | 44 | 3.6% |
+| **Core-14 + a code `WinAnsiEncoding` defines** | **7** | **0.6%** |
+
+**Seven nodes.** 96–224 entries of hand-transcribed specification data for 0.03% is the trade this
+repository refuses elsewhere — `deny.toml`'s header makes the same argument about the same kind of
+table, and `docs/20` §4 rejected pdf.js's metrics partly for carrying two verified `xHeight`
+transcription defects.
+
+**So the table is derived, not transcribed.**
+[`vendor/generate-winansi-glyph-names.py`](vendor/generate-winansi-glyph-names.py) emits an entry
+only where three independent sources agree: this repository's own `WIN_ANSI` code-to-text column,
+Adobe's Glyph List — passed in by path and **not vendored**, because it is a tool used once rather
+than data the build reads — and the glyph repertoire of `vendor/afm/`, which disambiguates the
+AGL's several names for one codepoint and proves the chosen name is a real Adobe glyph rather than
+a plausible-looking typo. A name whose AGL codepoint disagrees with `WIN_ANSI` is a hard failure,
+because two vendored tables disagreeing is a reason to stop rather than to pick a winner.
+
+**Two codes are refused by the generator: `0xA0` and `0xAD`.** Annex D notes that
+`WinAnsiEncoding` also encodes `space` at `0xA0` and `hyphen` at `0xAD`, while `WIN_ANSI` decodes
+them to U+00A0 and U+00AD, which is right for *text* and leaves no AFM glyph at that codepoint.
+Both readings are real and they disagree, so neither is emitted — a width from the wrong reading is
+a plausible number for a glyph the document did not ask for. **216 of 218** populated codes carry a
+name.
+
+**The guarantee is re-checked in-repo with no external source.** Two tests assert that every name
+in the table is a glyph some vendored AFM carries — `eacutte` for `eacute` fails — and that the
+table is populated at exactly the codes `WIN_ANSI` is, minus those two.
+
+**It recovered exactly the seven nodes predicted.** Over the same 37 documents, measured ink boxes
+move **23 885 → 23 892 of 25 123** and typed-absent **1 238 → 1 231**; the "Core-14 and a code
+`WinAnsiEncoding` defines" class is now zero. Prediction and outcome agree to the node.
+
+Seven is a property of *this* corpus — English scientific PDFs in unembedded Times and Helvetica.
+The table is general: a population writing Latin-1 accented text in standard-14 faces gets far
+more, and gets it without another decision.
+
+**Profile.** `font_metrics_data_version` moves `core14-afm-1` → `core14-afm-2`, because it names
+the metric data **and the join used to reach it** — the AFM bytes are unchanged and the route to
+them is not. `cmap_data_version` deliberately does **not** move beside it: this table turns a code
+into a width, never into different text, and a field that moved for both would stop telling the two
+apart.
+
+---
+
 ## [0.51.0] — the metrics §9.6.2.2 expects a reader to hold
 
 **A reader changed, and it is the largest groundability move since 0.46.0.** A PDF may name
@@ -60,7 +119,9 @@ document calls `Arial` is a metric *substitution*, not a reading, and `afm::for_
 the Core-14 names exactly and nothing else. The residual 1 238 absences are that refusal working,
 plus codes outside this profile's encoding tables: a width is found by asking the font's own
 decoder what a code means, so coverage stops at the ASCII range `StandardEncoding` carries. Widening
-it needs the Annex D glyph-name column, which is its own measurement rather than a guess bolted on.
+it needs the Annex D glyph-name column, which is its own measurement rather than a guess bolted on —
+now made, and **refused**: it would reach **7 of those 1 238 nodes**. See
+[`docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md`](docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md).
 
 **The licence is the real cost, and it is not OSI-approved.** APAFML requires that `MustRead.html`
 travel with the files under that exact filename, that per-file copyright lines survive, that any

@@ -15,6 +15,8 @@ shipped code — 12 937 → 23 885 ink boxes measured of 25 123, and `font-width
 66 → 0, over the 37 corpus documents that declare a Core-14 face with no `/Widths` and no
 `/FontDescriptor`. §3's 83.4% was the spike's prediction over a differently-found 36-document set;
 the shipped figure is in [`../CHANGELOG.md`](../CHANGELOG.md) under 0.51.0 and is the one to quote.
+The ASCII limit this left behind was measured in turn and **refused** —
+[`21-STANDARD-14-ASCII-COVERAGE-SCOPE.md`](21-STANDARD-14-ASCII-COVERAGE-SCOPE.md).
 
 **It is not an ADR, and this repository has none.** There is no `docs/adr/` and never has been;
 the two ADR numbers cited in this tree — ADR-0004 in

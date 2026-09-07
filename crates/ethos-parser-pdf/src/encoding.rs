@@ -103,6 +103,23 @@ impl SimpleEncoding {
         self.base
     }
 
+    /// The glyph NAME this encoding gives a code, where this profile knows one.
+    ///
+    /// `/Differences` wins, exactly as it does for decoding — it is the document overriding its
+    /// own base. Otherwise only `WinAnsiEncoding` answers, from the derived table in
+    /// [`crate::winansi_names`]. `StandardEncoding` deliberately does not: an AFM's own `C`
+    /// column IS StandardEncoding, so [`crate::afm`] already reaches those widths by code and a
+    /// second route to the same number could only disagree with the first.
+    pub(crate) fn glyph_name(&self, code: u8) -> Option<&str> {
+        if let Some(name) = self.differences.get(&code) {
+            return Some(name);
+        }
+        match self.base {
+            BaseEncoding::WinAnsi => crate::winansi_names::WIN_ANSI_NAMES[code as usize],
+            BaseEncoding::Standard | BaseEncoding::Builtin | BaseEncoding::MacRoman => None,
+        }
+    }
+
     /// Decode one byte.
     ///
     /// # Errors
@@ -156,6 +173,16 @@ static WIN_ANSI: &[Option<&'static str>; 256] = &build_win_ansi();
 
 /// `StandardEncoding`, ASCII range only.
 static STANDARD: &[Option<&'static str>; 256] = &build_standard();
+
+/// What `WinAnsiEncoding` says a code means, or `None` where the table carries nothing.
+///
+/// Read by [`crate::afm`]'s tests to prove the derived glyph-name table is populated at exactly
+/// the codes this one is — a check with no external source in it. Test-only for that reason: the
+/// reader itself goes through [`SimpleEncoding::decode`], which applies `/Differences` first.
+#[cfg(test)]
+pub(crate) fn win_ansi_code_to_str(code: u8) -> Option<&'static str> {
+    WIN_ANSI[code as usize]
+}
 
 /// What `StandardEncoding` says a code means, or `None` where this profile does not carry it.
 ///
