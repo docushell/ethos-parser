@@ -57,6 +57,13 @@ pub struct Core14 {
     /// `ZapfDingbats` they are the face's built-in encoding. Only consulted when the document
     /// names no base encoding, so the two cases never mix.
     by_code: [Option<f64>; 256],
+    /// Widths keyed by the AFM's own glyph names.
+    ///
+    /// The join a `WinAnsiEncoding` document needs: it addresses glyphs by code, an AFM holds
+    /// them by name, and [`crate::winansi_names`] is the derived bridge. Built for every face
+    /// including `Symbol` and `ZapfDingbats`, whose names are theirs alone and simply never
+    /// match a WinAnsi name.
+    by_name: BTreeMap<&'static str, f64>,
     /// Widths keyed by the text a code decodes to.
     ///
     /// Empty for `Symbol` and `ZapfDingbats`: their `C` codes are not `StandardEncoding`, so
@@ -83,11 +90,28 @@ impl PartialEq for Core14 {
             && self.descent == other.descent
             && self.vertical_source == other.vertical_source
             && self.by_text == other.by_text
+            && self.by_name == other.by_name
             && self.by_code == other.by_code
     }
 }
 
 impl Core14 {
+    /// Advance for a glyph the document named, in text space units per unit font size.
+    ///
+    /// The most direct route there is: the document says which glyph, and the AFM says how wide
+    /// that glyph is. No character round-trip, so no chance of two glyphs sharing a decoded
+    /// string and contesting one width.
+    pub fn advance_for_glyph(&self, name: &str) -> Option<f64> {
+        self.by_name.get(name).map(|w| w / GLYPH_SPACE_UNITS)
+    }
+
+    /// Whether this face carries the glyph name. Exists only to validate the derived table, so
+    /// it is test-only: nothing in the reader asks the question, it asks for a width.
+    #[cfg(test)]
+    pub fn has_glyph(&self, name: &str) -> bool {
+        self.by_name.contains_key(name)
+    }
+
     /// Advance for the text a code decoded to, in text space units per unit font size.
     pub fn advance_for_text(&self, text: &str) -> Option<f64> {
         self.by_text.get(text).map(|w| w / GLYPH_SPACE_UNITS)
@@ -183,7 +207,7 @@ pub fn for_base_font(base_font: &str) -> Option<&'static Core14> {
 /// Returns `None` if the file carries no usable vertical envelope, which would make every ink box
 /// built from it degenerate. No Core-14 file is in that state; the check is here so a damaged
 /// vendored file fails closed instead of emitting zero-height boxes.
-fn parse(name: &'static str, text: &str) -> Option<Core14> {
+fn parse(name: &'static str, text: &'static str) -> Option<Core14> {
     let symbolic = SYMBOLIC.contains(&name);
     let mut ascender = None;
     let mut descender = None;
@@ -191,6 +215,7 @@ fn parse(name: &'static str, text: &str) -> Option<Core14> {
     let mut bbox_bottom = None;
     let mut by_code = [None; 256];
     let mut by_text: BTreeMap<&'static str, f64> = BTreeMap::new();
+    let mut by_name: BTreeMap<&'static str, f64> = BTreeMap::new();
     // Keys whose width is contested by two glyphs. Dropped rather than guessed between.
     let mut ambiguous: Vec<&'static str> = Vec::new();
 
@@ -211,6 +236,9 @@ fn parse(name: &'static str, text: &str) -> Option<Core14> {
             }
         } else if line.starts_with("C ") {
             let (code, width, glyph) = char_metric(line)?;
+            // The name is a slice of the embedded file, which `include_str!` makes `'static`, so
+            // the key borrows the vendored bytes rather than copying them.
+            by_name.insert(glyph, width);
             if let (Ok(idx), true) = (usize::try_from(code), (0..256).contains(&code)) {
                 by_code[idx] = Some(width);
             }
@@ -252,6 +280,7 @@ fn parse(name: &'static str, text: &str) -> Option<Core14> {
 
     Some(Core14 {
         face: name,
+        by_name,
         ascent,
         descent,
         vertical_source,
@@ -264,7 +293,7 @@ fn parse(name: &'static str, text: &str) -> Option<Core14> {
 ///
 /// The AFM grammar is `key value ;` segments in any order, so this reads them by name rather than
 /// by position.
-fn char_metric(line: &str) -> Option<(i64, f64, &str)> {
+fn char_metric(line: &'static str) -> Option<(i64, f64, &'static str)> {
     let mut code = None;
     let mut width = None;
     let mut glyph = None;
@@ -325,6 +354,60 @@ mod tests {
             assert!(m.advance_for_text("a").is_none());
             assert!(m.by_text.is_empty(), "{name} must build no text keys");
         }
+    }
+
+    /// **The derived table checks out against the vendored AFMs, with no external source.**
+    ///
+    /// `21` refused a hand-transcribed `WinAnsiEncoding` glyph-name column because a typed entry
+    /// can be a plausible-looking typo nothing catches. This is the check that makes the derived
+    /// one safe: every name the generator chose must be a glyph some vendored Core-14 file
+    /// actually carries. `eacutte` for `eacute` fails here, and so does any other invention.
+    #[test]
+    fn every_derived_glyph_name_exists_in_a_vendored_afm() {
+        let faces: Vec<&Core14> = FILES.iter().filter_map(|(n, _)| for_base_font(n)).collect();
+        let mut checked = 0;
+        for (code, name) in crate::winansi_names::WIN_ANSI_NAMES.iter().enumerate() {
+            let Some(name) = name else { continue };
+            assert!(
+                faces.iter().any(|f| f.has_glyph(name)),
+                "WIN_ANSI_NAMES[{code:#04X}] is /{name}, which no vendored AFM carries — a \
+                 derived table must never name a glyph that does not exist"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 216, "the derived table covers 216 codes");
+    }
+
+    /// The derived table is populated exactly where `WIN_ANSI` is, minus the two Annex D notes
+    /// whose glyph reading and text reading disagree.
+    #[test]
+    fn the_derived_table_matches_win_ansi_code_for_code() {
+        for code in 0..=255u8 {
+            let has_text = crate::encoding::win_ansi_code_to_str(code).is_some();
+            let has_name = crate::winansi_names::WIN_ANSI_NAMES[code as usize].is_some();
+            if code == 0xA0 || code == 0xAD {
+                assert!(
+                    has_text && !has_name,
+                    "{code:#04X} is the documented disagreement"
+                );
+                continue;
+            }
+            assert_eq!(
+                has_text, has_name,
+                "{code:#04X}: WIN_ANSI and WIN_ANSI_NAMES must be populated together"
+            );
+        }
+    }
+
+    /// Spot-checks against Adobe's own numbers, on the codes `21` measured as the whole return.
+    #[test]
+    fn the_codes_that_motivated_this_now_resolve() {
+        let t = for_base_font("Times-Roman").expect("vendored");
+        // Times-Roman.afm: quotedblleft and quotedblright are both WX 444.
+        assert_eq!(t.advance_for_glyph("quotedblleft"), Some(0.444));
+        assert_eq!(t.advance_for_glyph("quotedblright"), Some(0.444));
+        // And an accented letter, which no ASCII table could ever have reached.
+        assert_eq!(t.advance_for_glyph("eacute"), t.advance_for_glyph("e"));
     }
 
     #[test]

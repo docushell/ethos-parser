@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "ethos-parser-cli"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "clap",
  "ethos-parser-core",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "ethos-parser-core"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "proptest",
  "serde",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "ethos-parser-grounding"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "ethos-parser-core",
  "serde",
@@ -403,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "ethos-parser-office"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "ethos-parser-core",
  "flate2",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "ethos-parser-pdf"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "ethos-parser-core",
  "lopdf",

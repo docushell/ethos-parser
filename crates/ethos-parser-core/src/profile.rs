@@ -347,7 +347,13 @@ pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
 /// belongs in the profile, or it is a bug*. Vendoring these metrics moves ink boxes and moves
 /// which nodes reach `ethos.grounding.v1` at all, so an artifact produced before this string
 /// existed and one produced after are correctly non-comparable.
-pub const FONT_METRICS_DATA_VERSION: &str = "core14-afm-1";
+///
+/// It names the metric data **and the join used to reach it**, which is why `-2` follows a slice
+/// that added no new metrics. `core14-afm-2` carries the derived `WinAnsiEncoding` glyph-name
+/// table: the same AFM bytes, reachable from codes above ASCII that `-1` could not resolve. The
+/// sibling `CMAP_DATA_VERSION` deliberately does NOT move, because no character changed — the
+/// table turns a code into a *width*, never into different text.
+pub const FONT_METRICS_DATA_VERSION: &str = "core14-afm-2";
 
 /// Identity of the object/xref backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2024,7 +2030,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-1","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.51.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.52.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2752,11 +2758,18 @@ mod tests {
              `ethos.grounding.v1` entirely — they had text and could not be quoted. One from \
              after carries a box measured from Adobe's own published metrics. The two came from \
              different readers, and a hash that could not tell them apart would claim a \
-             comparability neither has."
+             comparability neither has.\n\n\
+             Moved again at 0.52.0: the version, and `font_metrics_data_version` \
+             `core14-afm-1` -> `-2`. The AFM bytes are unchanged; the JOIN used to reach them is \
+             not. `docs/21` refused a hand-transcribed WinAnsiEncoding glyph-name column and named \
+             the condition that reopens it, and the derived table meets it — so a code above \
+             ASCII now resolves to a width where `-1` had none. `cmap_data_version` deliberately \
+             does NOT move beside it: the table turns a code into a width, never into different \
+             text, and a field that moved for both would stop telling the two apart."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:94be1d4c0ee49635f3ed62c7c1d85acc8e310736d02b7cfe9607aae7b8e55b1b"
+            "sha256:0ce56b70788818eba92c9d2c7742804afea5849b01545698209677e15d94af2b"
         );
     }
 

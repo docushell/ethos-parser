@@ -286,6 +286,18 @@ impl Font {
                             return Some(w);
                         }
                     }
+                    // The document names a glyph and the AFM holds that glyph's width, so this
+                    // asks the question directly instead of round-tripping through characters.
+                    // It is also the only route that reaches a code above ASCII, where
+                    // `StandardEncoding`'s table stops — `21` measured that gap and refused to
+                    // close it by hand; `winansi_names` closes it by derivation.
+                    if let Some(w) = u8::try_from(code)
+                        .ok()
+                        .and_then(|b| enc.glyph_name(b))
+                        .and_then(|n| metrics.advance_for_glyph(n))
+                    {
+                        return Some(w);
+                    }
                 }
                 metrics.advance_for_text(self.decode_code(code).ok()?)
             }
