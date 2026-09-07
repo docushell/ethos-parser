@@ -60,7 +60,9 @@ document calls `Arial` is a metric *substitution*, not a reading, and `afm::for_
 the Core-14 names exactly and nothing else. The residual 1 238 absences are that refusal working,
 plus codes outside this profile's encoding tables: a width is found by asking the font's own
 decoder what a code means, so coverage stops at the ASCII range `StandardEncoding` carries. Widening
-it needs the Annex D glyph-name column, which is its own measurement rather than a guess bolted on.
+it needs the Annex D glyph-name column, which is its own measurement rather than a guess bolted on —
+now made, and **refused**: it would reach **7 of those 1 238 nodes**. See
+[`docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md`](docs/21-STANDARD-14-ASCII-COVERAGE-SCOPE.md).
 
 **The licence is the real cost, and it is not OSI-approved.** APAFML requires that `MustRead.html`
 travel with the files under that exact filename, that per-file copyright lines survive, that any
