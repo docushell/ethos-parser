@@ -120,7 +120,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// same document, and an artifact whose hash could not tell them apart would claim a
 /// comparability it lacks.
 ///
-/// **Three values so far, one per slice that changed what comes out**, and this string is the only
+/// **One value per slice that changed what comes out**, and this string is the only
 /// place the current one is spelled:
 ///
 /// | slice | value | what it did that the one before did not |
@@ -129,12 +129,19 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v1.1-S2 | `markdown-blocks-v1` | a GFM table, and a list item from a tagged `/L` |
 /// | v1.1-S3 | `markdown-blocks-v4` | a word broken across a line closed up in the export |
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
+/// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
+/// | v2.2-S5 | `markdown-blocks-v5` | runs the document declared nothing about join along a baseline |
+///
+/// **The `slice` column above disagrees with the `value` column on two rows and did so before
+/// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
+/// rather than silently corrected, because which id shipped in which release is a fact about
+/// published artifacts and belongs to `CHANGELOG.md`, not to a guess made while editing.
 ///
 /// A document with a table comes out differently under the first two; a document with a hyphenated
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V4: &str = "markdown-blocks-v4";
+pub const MARKDOWN_RULE_BLOCKS_V5: &str = "markdown-blocks-v5";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -211,6 +218,23 @@ pub const GFM_LIST_ITEM_RUN_JOINS: &str = "gfm-list-item-run-joins-v1";
 /// It is **not** a `GFM_*` code: GFM is not what causes it. The join is caused by the document
 /// declaring a group and this exporter honouring it, which would be true of any output format.
 pub const MCID_RUN_JOINS: &str = "mcid-run-joins-v1";
+
+/// Runs joined into one block because they abut on one baseline, with no declaration to license
+/// it — this engine's geometry, not the producer's (v2.2-S5). **No space anywhere**: the join
+/// asserts the two runs are one word.
+///
+/// This is the fabrication-capable half and it is counted separately for that reason, following
+/// [`dropped_code`]'s precedent of one code per kind rather than one catch-all. A reader
+/// comparing this against [`MCID_RUN_JOINS`] is reading a per-document derivation profile: on a
+/// tagged document the producer's declaration dominates; on an untagged one every boundary this
+/// projection removed, it removed on geometry alone. An absent code means zero.
+pub const BASELINE_RUN_JOINS_ABUTTED: &str = "baseline-run-joins-abutted-v1";
+
+/// The same join where **the page itself drew the space** — in either run's bytes or as a
+/// whitespace run of its own (v2.2-S5). The projection inserts one space and invents no word,
+/// which is a materially weaker claim than [`BASELINE_RUN_JOINS_ABUTTED`] and so is not pooled
+/// with it.
+pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 
 // -------------------------------------------------------------------------------------------
 // The map
@@ -785,7 +809,7 @@ pub(crate) fn hyphen_tail<'a>(
 ///
 /// **Equality rather than exclusion**, because a two-line running head may hyphenate exactly like
 /// a paragraph. What may not happen is a join *across* the boundary.
-fn is_page_artifact(node: &crate::Node) -> bool {
+pub(crate) fn is_page_artifact(node: &crate::Node) -> bool {
     matches!(
         node.structural_locator,
         Some(crate::StructuralLocator::PdfArtifact(_))
@@ -814,7 +838,7 @@ fn is_page_artifact(node: &crate::Node) -> bool {
 /// `None` for every non-run node and for every run on a page the cut did not divide, so two such
 /// nodes compare equal and the join behaves exactly as it did before D4 — which is what
 /// `two_runs_in_one_region_still_join` and the untouched hyphen tests assert.
-fn region_of(node: &crate::Node) -> Option<u32> {
+pub(crate) fn region_of(node: &crate::Node) -> Option<u32> {
     match &node.attributes {
         crate::NodeAttributes::TextRun(a) => a.region,
         _ => None,
@@ -866,14 +890,176 @@ pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
     })
 }
 
+/// The text-run attributes a run carries, or `None` for any other node kind.
+pub(crate) fn text_run_attributes(node: &crate::Node) -> Option<&crate::TextRunAttributes> {
+    match &node.attributes {
+        crate::NodeAttributes::TextRun(a) => Some(a),
+        _ => None,
+    }
+}
+
+/// The line a run was drawn on — **where, never what** (v2.2-S5).
+///
+/// Four values, all read for equality and none for order, which is the same posture `region`
+/// already takes at [`region_of`]: it says two runs are not on one line, never what either line
+/// is. Nothing downstream may read a role from it, and nothing here names one — decision #19's
+/// line, and `docs/06-STEAL-REFUSE.md` P14.
+///
+/// **`baseline` is why this cannot touch decision #21.** `origin_y` is compared for equality, so
+/// a key can never span two baselines, so the fallback below can neither merge two lines into a
+/// flow nor split one. `docs/19-BLOCK-SUBDIVISION-SCOPE.md` measures *vertical* gaps between
+/// baselines and is parked; this is *horizontal*, within one baseline, and the two rules cannot
+/// reach each other's evidence.
+///
+/// **`artifact` separates two streams the document itself declared separate.** Page furniture and
+/// flow content share a page and sometimes a baseline; welding one onto the other is disaster
+/// D4-S3 in its horizontal form.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LineKey {
+    page: u32,
+    region: Option<u32>,
+    artifact: bool,
+    baseline: i64,
+}
+
+pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
+    let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
+        return None;
+    };
+    Some(LineKey {
+        page: loc.page,
+        region: region_of(node),
+        artifact: is_page_artifact(node),
+        baseline: loc.origin_y,
+    })
+}
+
+/// How wide one glyph is in this document, per `(font resource, size)`, as the document draws it.
+///
+/// Keyed exactly as the document keys its own fonts, and measured on the document being parsed —
+/// so it is not a constant in this source at all. A key with fewer than two runs is **absent**:
+/// one observation cannot corroborate itself, and a run whose font appears nowhere else is
+/// refused rather than trusted.
+pub(crate) type PitchReference = std::collections::HashMap<(String, i64), i64>;
+
+pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
+    let mut per_font: std::collections::HashMap<(String, i64), Vec<i64>> =
+        std::collections::HashMap::new();
+    for node in nodes {
+        let (Some(a), crate::NativeLocator::Pdf(loc)) =
+            (text_run_attributes(node), &node.native_locator)
+        else {
+            continue;
+        };
+        let (Some(advance), glyphs) = (loc.advance, i64::try_from(a.char_codes.len()).unwrap_or(0))
+        else {
+            continue;
+        };
+        if advance <= 0 || glyphs == 0 {
+            continue;
+        }
+        per_font
+            .entry((a.font_id.clone(), a.font_size))
+            .or_default()
+            .push(advance / glyphs);
+    }
+    per_font
+        .into_iter()
+        .filter_map(|(k, mut v)| {
+            (v.len() >= 2).then(|| {
+                v.sort_unstable();
+                (k, v[v.len() / 2])
+            })
+        })
+        .collect()
+}
+
+/// Where `a`'s ink ends, and the width of one of its glyphs — both taken from the document's own
+/// measure of the font rather than from `a`'s advance alone.
+///
+/// **`advance` is not an ink width, and this is the whole reason v2.2-S5 needs a second opinion.**
+/// A table cell is commonly drawn as one run whose advance is the CELL PITCH, so
+/// `origin_x + advance` lands on the *next cell* and a gap test reads ~0 across 120 pt of white
+/// space. Measured on `docstructbench_llm-raw-scihub-o.O-ceat.200600410`: `AC` is drawn at
+/// `origin_x` 31 181 with an advance of 12 053 — 6 026 per glyph, where the same font's median is
+/// ~330, eighteen times over — and the next cell's `AA` begins at 43 229. A rule reading `advance`
+/// alone joins them and emits `ACAA`, a token the page draws nowhere.
+///
+/// Capping the reach at `glyphs × reference` is what refuses that, and the bound it buys is
+/// **provable rather than measured**: acceptance needs
+/// `next.origin_x <= prev.origin_x + glyphs × reference + INK_EPSILON_CENTIPOINTS`, so reach per
+/// glyph can never exceed one reference glyph plus `12 / glyphs`, however badly `advance` lies.
+///
+/// The multiplier is 1 in both places it appears — one glyph's width per glyph, and one glyph of
+/// permitted overlap. 1 is the unit of the thing being measured, not a number to tune.
+pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, i64)> {
+    let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
+        return None;
+    };
+    let advance = loc.advance?;
+    if advance < 0 {
+        return None;
+    }
+    let a = text_run_attributes(node)?;
+    let glyphs = i64::try_from(a.char_codes.len()).ok()?;
+    if glyphs == 0 {
+        return None;
+    }
+    let reference = *pitch.get(&(a.font_id.clone(), a.font_size))?;
+    Some((loc.origin_x + advance.min(glyphs * reference), reference))
+}
+
+/// Whether `b` is the next ink after `a` on one line — drawn **after** it, not over it, no gap.
+///
+/// Two-sided where [`ink_contiguous`] is one-sided, because a declaration is no longer supplying
+/// the order. `a_end` and `a_reference` come from [`ink_reach`]; `a` may be a whitespace-only run
+/// the projection skipped, which is how contiguity carries across a space the page drew.
+pub(crate) fn ink_sequenced(
+    a: &crate::Node,
+    a_end: i64,
+    a_reference: i64,
+    b: &crate::Node,
+) -> bool {
+    let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
+        (&a.native_locator, &b.native_locator)
+    else {
+        return false;
+    };
+    // 1. Drawn after, not over. `dx == 0` is exact overprint and `dx < 0` a backward jump; both
+    //    are refused, because neither is "the next ink along this line".
+    y.origin_x > x.origin_x
+        // 2. No gap the page drew.
+        && y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS
+        // 3. Overlapping by at most one of `a`'s own glyphs. Negative tracking is ordinary — CJK
+        //    medians sit near -42 centipoints — but an overlap deeper than a glyph means the two
+        //    runs are stacked rather than sequenced.
+        && y.origin_x - a_end >= -a_reference
+}
+
+/// The gap, in centipoints, at or below which the page drew no space between two runs.
+///
+/// A quantization epsilon, not a tuned threshold. Measured on the gate corpus, the gap between
+/// same-baseline pairs in one group is 0 for 64 120 of 64 143 pairs on `nist-sp-800-207` and the
+/// histogram between 13 and 150 centipoints is **empty** — raw gaps cluster at -1, +1 and +2
+/// centipoints, which is per-glyph coordinate rounding. Any epsilon in that valley gives the same
+/// answer; an epsilon of 0 breaks 28 785 boundaries, which is the measurement proving a tolerance
+/// is needed and that its value is not a knob.
+///
+/// **What that justification does NOT cover, stated because v2.2-S5 now leans on this number
+/// outside the population it was measured on.** The valley was measured on *declared* pairs of
+/// *one Latin document*. On undeclared pairs of the OmniDocBench corpus — roughly four fifths of
+/// which set CJK — the 13-150 centipoint band is not empty: CJK draws no word space, so its gap
+/// distribution decays monotonically and has no valley to site an epsilon in. The number is kept
+/// because it is the one already in the tree and because raising it would be a per-script knob,
+/// but a CJK reader is being told less by `ink_contiguous` than a Latin one.
+pub(crate) const INK_EPSILON_CENTIPOINTS: i64 = 12;
+
 /// Whether two runs in one group are **ink-contiguous** — no gap the page drew between them.
 ///
-/// The tolerance is a quantization epsilon, not a tuned threshold. Measured on the gate corpus,
-/// the gap between same-baseline pairs in one group is 0 for 64 120 of 64 143 pairs on
-/// `nist-sp-800-207` and the histogram between 13 and 150 centipoints is **empty** — raw gaps
-/// cluster at -1, +1 and +2 centipoints, which is per-glyph coordinate rounding. Any epsilon in
-/// that valley gives the same answer; an epsilon of 0 breaks 28 785 boundaries, which is the
-/// measurement proving a tolerance is needed and that its value is not a knob.
+/// One-sided: it bounds how far apart two runs may be and says nothing about overlap or about
+/// which was drawn first. Inside a marked-content group the producer's declaration supplies both,
+/// which is why v2.2-S1 needed no more. [`ink_sequenced`] is the two-sided form the undeclared
+/// fallback needs.
 pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
     let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
         (&a.native_locator, &b.native_locator)
@@ -883,7 +1069,7 @@ pub(crate) fn ink_contiguous(a: &crate::Node, b: &crate::Node) -> bool {
     let Some(advance) = x.advance else {
         return false;
     };
-    y.origin_x - (x.origin_x + advance) <= 12
+    y.origin_x - (x.origin_x + advance) <= INK_EPSILON_CENTIPOINTS
 }
 
 /// Whether two runs sit on different baselines — the test for "broken across a line".
@@ -943,6 +1129,95 @@ pub(crate) fn dropped_code(kind: NodeKind) -> Option<&'static str> {
         // image node carries no text.
         NodeKind::Image => Some("image-nodes-carry-no-text-v1"),
     }
+}
+
+/// One geometric block: the nodes it holds, in order, and the text they join to (v2.2-S7).
+///
+/// **The text is verbatim concatenation and nothing else.** A space the page drew is a run of its
+/// own, with its own characters, so joining member texts reproduces exactly what the document
+/// drew and invents no separator. That is why this carries no space rule where the Markdown
+/// projection needs one: Markdown normalizes whitespace and must render a drawn space as its own
+/// single byte, and this does not render anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeometricBlock {
+    /// Indices into the node slice this was built from, in order.
+    pub members: Vec<usize>,
+    /// The members' own text, concatenated.
+    pub text: String,
+}
+
+/// Group runs into blocks by the rule both projections already use (v2.2-S7).
+///
+/// **This is `where`, never `what`** — decision #19. A block is a set of runs the page drew as one
+/// piece of ink; it is not a paragraph, a heading, a section or a column, and nothing downstream
+/// may read a role from one.
+///
+/// The clauses are the ones [`to_markdown`] joins on, called rather than restated so the two
+/// cannot drift: a declared marked-content group ([`group_key`]), or, where the document declared
+/// nothing, the next ink along one baseline ([`line_key`] + [`ink_sequenced`], with the reach
+/// capped by [`ink_reach`]). What this does NOT carry is the projection-specific breaks — list
+/// items, hyphen rejoins and heading markers are renderings, and a grounding consumer wants the
+/// ink.
+///
+/// `table_owned` names the node ids a table already claims. A cell's runs are grounded through
+/// the table, so merging them into a prose block would put one run in two places.
+pub fn geometric_blocks(
+    nodes: &[crate::Node],
+    table_owned: &std::collections::BTreeSet<&str>,
+) -> Vec<GeometricBlock> {
+    let pitch = pitch_reference(nodes);
+    let mut out: Vec<GeometricBlock> = Vec::new();
+    let mut open_group: Option<GroupKey> = None;
+    let mut open_line: Option<LineKey> = None;
+    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+    let mut open_prev: Option<&crate::Node> = None;
+
+    for (i, node) in nodes.iter().enumerate() {
+        // A node of another kind, or one a table already claims, is its own block and closes
+        // whatever was open — the same two resets the emitter makes.
+        let standalone =
+            node.kind != crate::NodeKind::TextRun || table_owned.contains(node.id.as_str());
+
+        let key = group_key(node);
+        let joins = !standalone
+            && match (open_group, key, open_prev) {
+                (Some(open), Some(k), Some(_)) if open == k => true,
+                (None, None, Some(_)) => match (open_line, line_ink) {
+                    (Some(line), Some((ink, end, reference))) => {
+                        Some(line) == line_key(node) && ink_sequenced(ink, end, reference, node)
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+
+        match out.last_mut() {
+            Some(block) if joins => {
+                block.members.push(i);
+                block.text.push_str(&node.text);
+            }
+            _ => out.push(GeometricBlock {
+                members: vec![i],
+                text: node.text.clone(),
+            }),
+        }
+
+        if standalone {
+            open_group = None;
+            open_prev = None;
+            open_line = None;
+            line_ink = None;
+        } else {
+            open_group = key;
+            open_prev = Some(node);
+            open_line = line_key(node);
+            line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+            if line_ink.is_none() {
+                open_line = None;
+            }
+        }
+    }
+    out
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1167,7 +1442,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v4`
+/// # The rule, in full — `markdown-blocks-v5`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -1250,6 +1525,15 @@ pub fn to_markdown(
     let mut open_prev: Option<&crate::Node> = None;
     let mut pending_space = false;
 
+    // v2.2-S5. The undeclared fallback. `open_line` is the line the open block was drawn on and
+    // `line_ink` is how far along it the ink has reached — the run that last extended it, the x
+    // that run's ink ends at, and that font's reference glyph width. One pre-pass measures the
+    // document's own fonts, because `advance` alone cannot be trusted to be an ink width; see
+    // `ink_reach`.
+    let pitch = pitch_reference(&payload.nodes);
+    let mut open_line: Option<LineKey> = None;
+    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
 
@@ -1267,6 +1551,8 @@ pub fn to_markdown(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             continue;
         }
 
@@ -1286,6 +1572,8 @@ pub fn to_markdown(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             continue;
         }
 
@@ -1300,6 +1588,24 @@ pub fn to_markdown(
             // closed — a space inside a marked-content sequence does not end it.
             if !node.text.is_empty() {
                 pending_space = true;
+                // v2.2-S5. A drawn space is ink on the line even though it projects to nothing,
+                // so the reach moves past it rather than the line being abandoned. Without this
+                // the fallback breaks at every space the page drew as its own run.
+                match (open_line, line_ink) {
+                    (Some(line), Some((ink, end, reference)))
+                        if Some(line) == line_key(node)
+                            && ink_sequenced(ink, end, reference, node) =>
+                    {
+                        line_ink = ink_reach(node, &pitch).map(|(e, r)| (node, e, r));
+                        if line_ink.is_none() {
+                            open_line = None;
+                        }
+                    }
+                    _ => {
+                        open_line = None;
+                        line_ink = None;
+                    }
+                }
             }
             continue;
         }
@@ -1336,6 +1642,8 @@ pub fn to_markdown(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             continue;
         }
 
@@ -1352,6 +1660,11 @@ pub fn to_markdown(
         // page drew its space by positioning rather than by a glyph — 467 word boundaries on
         // `nist-sp-800-171r3` alone, and the `SynthesisReason::TjGap` that might have covered them
         // fires **zero** times on four of the five gate documents.
+        // v2.2-S5. Computed here rather than below so it keeps **first refusal** over the
+        // undeclared join: a run that is the head of a word the page broke across a line opens a
+        // block, so `hyphen_tail` can close the word up. Joining it into the block above instead
+        // would strand the tail and re-open `nonescr` from the other side.
+        let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
         let key = group_key(node);
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
@@ -1375,23 +1688,63 @@ pub fn to_markdown(
                     None
                 }
             }
+            // v2.2-S5. **Neither run carries a declaration**, so geometry is the whole licence
+            // and every clause a declaration licensed is gone. `LineKey` equality holds the join
+            // to one page, one region, one stream and one baseline; `ink_sequenced` holds it to
+            // ink the page drew next along that line, with the reach capped by the document's own
+            // measure of the font. Where v2.2-S1 could join across a line break because the
+            // producer said the two runs were one sequence, here nothing said so — and welding
+            // across a baseline with no declaration is exactly the disaster `group_key`'s
+            // "absence is never a group" was written against.
+            (None, None, Some(_)) => match (open_line, line_ink) {
+                (Some(line), Some((ink, end, reference)))
+                    if ht.is_none()
+                        && Some(line) == line_key(node)
+                        && ink_sequenced(ink, end, reference, node) =>
+                {
+                    Some(
+                        pending_space
+                            || ink.text.ends_with(char::is_whitespace)
+                            || node.text.starts_with(char::is_whitespace),
+                    )
+                }
+                _ => None,
+            },
             _ => None,
         };
 
         match joining {
             Some(space) => {
+                let declared = key.is_some();
                 if space {
                     // `syntax`, not source: the document drew a space somewhere, and this is this
                     // exporter's single normalized rendering of it. `html.rs`'s cell join settled
                     // the same question the same way.
                     e.syntax(" ");
                     e.source(&text, node.id.as_str());
-                } else {
+                } else if declared {
                     e.source_continuing(&text, node.id.as_str());
+                } else {
+                    // v2.2-S5. `source`, never `source_continuing`. That method's licence is that
+                    // "the contiguity is the document's"; under a geometric join it is this
+                    // engine's, so the exception does not apply and the seam stays addressable —
+                    // two abutting `source` segments naming different nodes.
+                    e.source(&text, node.id.as_str());
                 }
-                *erasures.entry(MCID_RUN_JOINS).or_insert(0) += 1;
+                let code = if declared {
+                    MCID_RUN_JOINS
+                } else if space {
+                    BASELINE_RUN_JOINS_SPACED
+                } else {
+                    BASELINE_RUN_JOINS_ABUTTED
+                };
+                *erasures.entry(code).or_insert(0) += 1;
                 pending_space = false;
                 open_prev = Some(node);
+                line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+                if line_ink.is_none() {
+                    open_line = None;
+                }
                 continue;
             }
             None => {
@@ -1399,6 +1752,11 @@ pub fn to_markdown(
                 open_group = key;
                 open_prev = Some(node);
                 pending_space = false;
+                open_line = line_key(node);
+                line_ink = ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+                if line_ink.is_none() {
+                    open_line = None;
+                }
             }
         }
 
@@ -1413,11 +1771,16 @@ pub fn to_markdown(
         // A word the page broke across a line, closed up here and nowhere else. The two halves
         // become one `source` segment naming both runs, no separator goes between them, and the
         // hyphen that is no longer in the string is counted — see `HYPHENATION_REJOIN_DROPPED`.
-        if let Some((tail, joined)) = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner) {
+        if let Some((tail, joined)) = ht {
             e.joined_source(&joined, node.id.as_str(), tail.id.as_str());
             let b = buckets.entry(HYPHENATION_REJOIN_DROPPED).or_insert((0, 0));
             b.0 += 1;
             b.1 += 1;
+            // v2.2-S5. The block now holds text from two baselines, so the reach measured for
+            // this run no longer describes where its ink ends. Nothing may join onto it by
+            // geometry.
+            open_line = None;
+            line_ink = None;
             joined_tail = true;
             continue;
         }
@@ -2575,6 +2938,139 @@ pub(crate) mod tests {
         assert!(a.coverage.balances());
     }
 
+    /// One EPUB block node, whose XHTML element name is the fact under test.
+    ///
+    /// The sibling of [`text_node`], and its absence is why the XHTML half of `heading_level` went
+    /// unguarded above level 1: with no builder for an `EpubBlock` node, every test of that
+    /// function had to go through a real publication, and the only publication in the corpus
+    /// carries nothing but `<h1>`.
+    fn epub_node(alloc: &mut IdAllocator, parent: &NodeId, ordinal: u32, element: &str) -> Node {
+        Node {
+            id: alloc.next(IdKind::Span).unwrap(),
+            kind: NodeKind::TextRun,
+            parent: parent.clone(),
+            ordinal,
+            text: format!("Text inside {element}"),
+            native_locator: NativeLocator::Epub(crate::EpubLocator {
+                part: "text/body.xhtml".into(),
+                block: ordinal,
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::EpubBlock(crate::EpubBlockAttributes {
+                element: element.into(),
+                linear: true,
+            }),
+        }
+    }
+
+    /// A page-less representation of EPUB blocks, one per element name.
+    pub(crate) fn epub_repr_of(elements: &[&str]) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        // **A part, not a page.** `seal` refuses a page-less node parented by a page id, in as
+        // many words: *"a page-less node is parented by the part it was read from, never by a
+        // page this engine invented for it."* Reaching for `IdKind::Page` here — the reflex, from
+        // every other builder in this module — produced exactly that refusal, which is the
+        // invariant doing its job on a test that was about to build a document no reader emits.
+        let root = alloc.next(IdKind::Part).unwrap();
+        let nodes: Vec<Node> = elements
+            .iter()
+            .enumerate()
+            .map(|(i, e)| epub_node(&mut alloc, &root, i as u32 + 1, e))
+            .collect();
+        // Page-less and box-less: an EPUB has no page and its blocks have no ink box, which is
+        // the shape v2-S24 taught the seal to accept. Building it with geometry would be building
+        // a document this reader never produces.
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Absent(crate::GeometryAbsence::NotApplicableToKind),
+            })
+            .collect();
+        // The seal requires the payload to DECLARE what the sidecar shows, because the sidecar
+        // sits outside the fingerprint: a record whose geometry contradicts its own assurance
+        // block is exactly what that check exists to refuse. Two invariants fired while this
+        // helper was being written, and both were the seal working rather than in the way.
+        let mut payload = payload(nodes, Vec::new());
+        payload.source.media_type = "application/epub+zip".into();
+        payload.assurance = crate::assurance::Assurance::new(
+            Capabilities::V0,
+            0,
+            Vec::new(),
+            vec![Limitation::document(
+                crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "every node here is an EPUB block, and an EPUB block has no ink box by \
+                 construction — there is nothing to measure until something lays the publication \
+                 out, and laying it out is invented pagination.",
+            )],
+        )
+        .unwrap();
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// **All six XHTML heading levels, and this is a table because a fixture cannot be one**
+    /// (v2.2-S4).
+    ///
+    /// The PDF half of `heading_level` was guarded at every level from the day it shipped, by
+    /// `a_heading_role_from_the_tree_projects_as_a_heading` — which is a hand-built
+    /// representation for the reason it states: *"no fixture in either corpus carries a heading
+    /// role"*. The XHTML half, added at v2.2-S0, got no such test. Its only coverage was one
+    /// end-to-end assertion over `fixtures/office/book-spine/book.epub`, and that publication
+    /// contains `<h1>` and nothing else.
+    ///
+    /// So five of the six arms were reached by nothing. **Measured rather than suspected**:
+    /// replacing `"h2"`..`"h6"` with `None` and running the whole workspace failed **zero** of
+    /// roughly 1 300 tests. Every `<h2>`–`<h6>` in every EPUB could have projected as a paragraph
+    /// and the suite would have stayed green — 0.43.0's headline feature, silently half-delivered.
+    ///
+    /// A fixture cannot close this the way a table can. Covering six levels through a publication
+    /// means six headings in a real EPUB, which is a fixture edit, a digest move and a golden
+    /// move for a fact that has nothing to do with any of them. The end-to-end path is already
+    /// proved at `h1` by `an_epubs_own_heading_element_projects_as_an_h_element`; what was missing
+    /// is that the LEVEL follows the element, and that is a mapping, so it is tested as one.
+    #[test]
+    fn every_xhtml_heading_level_projects_at_its_own_depth() {
+        let a = artifact_of(epub_repr_of(&["h1", "h2", "h3", "h4", "h5", "h6"]));
+        assert_eq!(
+            a.markdown,
+            "# Text inside h1\n\n\
+             ## Text inside h2\n\n\
+             ### Text inside h3\n\n\
+             #### Text inside h4\n\n\
+             ##### Text inside h5\n\n\
+             ###### Text inside h6\n",
+            "each level projects at its own depth; before v2.2-S4 only the first was checked"
+        );
+        assert!(a.coverage.balances());
+    }
+
+    /// **The near misses, which are the other half of an exact match** (v2.2-S4).
+    ///
+    /// `xhtml_heading_level`'s doc comment says the match is exact and not a prefix test, and
+    /// names `hgroup` as the reason. Nothing tested that either. XHTML is XML and therefore
+    /// case-sensitive, so `H1` is a different element from `h1` and must not become a heading —
+    /// and `h7` does not exist in any HTML specification.
+    ///
+    /// Each of these projects as a paragraph rather than as a guess, which is what the module
+    /// header means by *"a heading is a heading because the document said so"*.
+    #[test]
+    fn an_element_that_merely_looks_like_a_heading_stays_a_paragraph() {
+        for element in ["hgroup", "h7", "h0", "H1", "H2", "header", "hr", "h", "h11"] {
+            let a = artifact_of(epub_repr_of(&[element]));
+            assert_eq!(
+                a.markdown,
+                format!("Text inside {element}\n"),
+                "`{element}` is not one of the six names HTML defines and must not project as a \
+                 heading"
+            );
+            assert!(
+                !a.markdown.starts_with('#'),
+                "`{element}` produced a heading marker"
+            );
+        }
+    }
+
     /// **No font size is consulted.** The same text with no role is a paragraph, and the node's
     /// `font_size` is 2400 either way.
     #[test]
@@ -3138,6 +3634,7 @@ pub(crate) mod tests {
         text: &str,
         loc: Option<StructuralLocator>,
         x: i64,
+        y: i64,
         advance: Option<i64>,
         region: Option<u32>,
     ) -> Node {
@@ -3150,7 +3647,7 @@ pub(crate) mod tests {
             native_locator: NativeLocator::Pdf(PdfLocator {
                 page: 1,
                 origin_x: x,
-                origin_y: 7200,
+                origin_y: y,
                 advance,
             }),
             structural_locator: loc,
@@ -3184,7 +3681,29 @@ pub(crate) mod tests {
         Option<u32>,
     );
 
+    /// A run spec that also names the baseline it was drawn on (v2.2-S5).
+    ///
+    /// `RunSpec` pins every run at `origin_y = 7200`, which is why no test written before this
+    /// slice could express a baseline difference — and why the fallback's refusal to cross one
+    /// had no in-unit tripwire. `(text, locator, x, y, advance, region)`.
+    pub(crate) type LineSpec<'a> = (
+        &'a str,
+        Option<StructuralLocator>,
+        i64,
+        i64,
+        Option<i64>,
+        Option<u32>,
+    );
+
     pub(crate) fn project_runs(specs: &[RunSpec<'_>]) -> MarkdownArtifact {
+        let lines: Vec<LineSpec<'_>> = specs
+            .iter()
+            .map(|(t, l, x, a, r)| (*t, l.clone(), *x, 7200, *a, *r))
+            .collect();
+        project_lines(&lines)
+    }
+
+    pub(crate) fn project_lines(specs: &[LineSpec<'_>]) -> MarkdownArtifact {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -3196,8 +3715,18 @@ pub(crate) mod tests {
         let nodes: Vec<Node> = specs
             .iter()
             .enumerate()
-            .map(|(i, (t, l, x, a, r))| {
-                placed_run(&mut alloc, &page.id, i as u32 + 1, t, l.clone(), *x, *a, *r)
+            .map(|(i, (t, l, x, y, a, r))| {
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    t,
+                    l.clone(),
+                    *x,
+                    *y,
+                    *a,
+                    *r,
+                )
             })
             .collect();
         let geometry = nodes
@@ -3286,25 +3815,39 @@ pub(crate) mod tests {
         assert_eq!(blocks_of(&a), vec!["first", "second"]);
     }
 
-    /// **Absence is never a group.** A run the document did not mark joins with nothing.
+    /// **Absence is not a group, but a baseline is a line** (v2.2-S5).
     ///
-    /// This is the invariant that keeps every office format and every untagged PDF projecting
-    /// byte-identically to 0.43.0 — and the one an earlier draft broke by reading `mcid: None` on
-    /// page artifacts as a group, welding a running head to a folio 70 pt away.
+    /// Until this slice a run the document did not mark joined with nothing, and on an untagged
+    /// PDF every run became its own block — a median of two characters per block over the 981
+    /// OmniDocBench documents. Absence is still never a *group*: what licenses the join is not
+    /// the missing declaration but the ink, drawn next along one baseline.
+    ///
+    /// **Both halves are asserted here on purpose.** The second is the sole in-unit guard for the
+    /// welding disaster `group_key` was written against, and dropping it for brevity would leave
+    /// a mutant that ignores `LineKey::baseline` alive.
     #[test]
-    fn runs_with_no_declaration_never_join() {
-        let a = project_runs(&[
-            ("first", None, 7200, Some(1000), None),
-            ("second", None, 8200, Some(1000), None),
+    fn runs_with_no_declaration_join_only_along_one_baseline() {
+        let joined = project_lines(&[
+            ("first", None, 7200, 7200, Some(1000), None),
+            ("second", None, 8200, 7200, Some(1000), None),
         ]);
-        assert_eq!(blocks_of(&a), vec!["first", "second"]);
+        assert_eq!(blocks_of(&joined), vec!["firstsecond"]);
+
+        // The same runs, one baseline apart. The x clause still passes — 8200 - (7200 + 1000) is
+        // 0 — so `LineKey::baseline` is the only thing that can refuse, which is what puts it
+        // under test rather than merely present.
+        let apart = project_lines(&[
+            ("first", None, 7200, 7200, Some(1000), None),
+            ("second", None, 8200, 9600, Some(1000), None),
+        ]);
+        assert_eq!(blocks_of(&apart), vec!["first", "second"]);
     }
 
     /// **A page artifact with no `mcid` is not a group either** — the case above, on the locator
     /// whose `mcid` is documented as usually absent and is absent on all 4 826 artifact runs of
     /// `nist-sp-800-207`.
     #[test]
-    fn artifacts_without_an_mcid_never_join() {
+    fn artifacts_without_an_mcid_join_only_along_one_baseline() {
         let art = || {
             Some(StructuralLocator::PdfArtifact(
                 crate::representation::PdfArtifactLocator { mcid: None },
@@ -3312,12 +3855,22 @@ pub(crate) mod tests {
         };
         // **Ink-contiguous on purpose.** Placed apart, the gap clause would break them and this
         // test would pass without the key ever being consulted — it did, and a mutant making
-        // `mcid: None` a group survived it. Adjacent, only the key can keep them apart.
-        let a = project_runs(&[
-            ("NIST SP 800-207", art(), 7200, Some(1000), None),
-            ("ZERO TRUST", art(), 8200, Some(1000), None),
+        // `mcid: None` a group survived it. Adjacent on one baseline they are one run of ink and
+        // v2.2-S5 joins them; the claim that matters is the one below.
+        let a = project_lines(&[
+            ("NIST SP 800-207", art(), 7200, 7200, Some(1000), None),
+            ("ZERO TRUST", art(), 8200, 7200, Some(1000), None),
         ]);
-        assert_eq!(blocks_of(&a), vec!["NIST SP 800-207", "ZERO TRUST"]);
+        assert_eq!(blocks_of(&a), vec!["NIST SP 800-207ZERO TRUST"]);
+
+        // A page artifact and body text sharing a baseline are still two streams the document
+        // itself declared separate — `LineKey::artifact`. Corpus-wide this field refuses only
+        // about ten pairs, so no measurement would catch a mutant that dropped it.
+        let mixed = project_lines(&[
+            ("NIST SP 800-207", art(), 7200, 7200, Some(1000), None),
+            ("body", None, 8200, 7200, Some(1000), None),
+        ]);
+        assert_eq!(blocks_of(&mixed), vec!["NIST SP 800-207", "body"]);
     }
 
     /// **A column boundary breaks a block even inside one marked-content sequence.**
@@ -3349,5 +3902,331 @@ pub(crate) mod tests {
             .map(|e| e.count)
             .unwrap_or(0);
         assert_eq!(n, 1, "erasures: {:?}", a.coverage.structural_erasures);
+    }
+
+    // -----------------------------------------------------------------------------------
+    // v2.2-S5 — the undeclared fallback
+    //
+    // Every test here builds the geometry so the clause under test is the DECIDING one. That
+    // discipline is not decoration: at v2.2-S1 a mutant survived because the fixture placed its
+    // runs 224 pt apart, so the gap clause broke them and the key was never consulted.
+    // -----------------------------------------------------------------------------------
+
+    /// `n` runs of one font, so the pitch reference exists.
+    ///
+    /// [`ink_reach`] refuses a font it has seen once, so a bare two-run fixture would refuse for
+    /// that reason rather than the one under test. Placed on their own baselines, far to the
+    /// right, so they are their own blocks and disturb nothing.
+    fn corroborating(n: u32) -> Vec<LineSpec<'static>> {
+        (0..n)
+            .map(|i| {
+                (
+                    "ab",
+                    None,
+                    40000,
+                    40000 + i64::from(i) * 2400,
+                    Some(660),
+                    None,
+                )
+            })
+            .collect()
+    }
+
+    fn joined_block(specs: &[LineSpec<'_>], needle: &str) -> bool {
+        blocks_of(&project_lines(specs))
+            .iter()
+            .any(|b| b.contains(needle))
+    }
+
+    /// **The vertical margin stamp, in the geometry the page draws it** (disaster 1).
+    ///
+    /// `nist-sp-800-207` sets "This publication is available free of charge from: …" down the
+    /// margin of every page as page artifacts with no `mcid`, one fragment per baseline at a
+    /// constant `origin_x`. An earlier draft read `mcid: None` as a group and welded them into
+    /// `Thispublicationisavailable…` across 156 pt of white space, 59 times per document.
+    #[test]
+    fn an_artifact_stamp_down_the_margin_is_never_welded_into_one_block() {
+        let art = || {
+            Some(StructuralLocator::PdfArtifact(
+                crate::representation::PdfArtifactLocator { mcid: None },
+            ))
+        };
+        let a = project_lines(&[
+            ("T", art(), 1968, 23274, Some(500), None),
+            ("hi", art(), 1968, 23826, Some(500), None),
+            ("s", art(), 1968, 24522, Some(500), None),
+        ]);
+        assert_eq!(blocks_of(&a), vec!["T", "hi", "s"]);
+    }
+
+    /// **A run whose advance is the column pitch is not joined onto the next cell** — the test
+    /// this rule is shaped around.
+    ///
+    /// `advance` is not an ink width. `docstructbench_llm-raw-scihub-o.O-ceat.200600410` draws a
+    /// table row's `AC` at `origin_x` 31 181 with an advance of 12 053 — 6 026 per glyph against
+    /// a font median of ~330 — so `origin_x + advance` lands inside the *next cell* and a
+    /// one-sided gap test reads ~0 across 120 pt of white space, emitting `ACAA`. Capping the
+    /// reach at `glyphs × the document's own reference` is the only clause that refuses it: the
+    /// pair is ink-contiguous under [`ink_contiguous`], and it also passes a bound scaled by the
+    /// run's *own* pitch, because an inflated advance loosens that bound in step.
+    #[test]
+    fn a_run_whose_advance_is_the_column_pitch_is_not_joined() {
+        let mut specs = corroborating(6);
+        specs.push(("AC", None, 31181, 7200, Some(12053), None));
+        specs.push(("AA", None, 43229, 7200, Some(660), None));
+        assert!(
+            !joined_block(&specs, "ACAA"),
+            "the cell pitch was read as an ink width"
+        );
+    }
+
+    /// **A run drawn at the same origin is drawn over, not after.** 103 such pairs occur in 153
+    /// corpus documents and 98 are byte-identical duplicates — an overprinted bold effect.
+    #[test]
+    fn a_run_drawn_at_the_same_origin_is_not_joined() {
+        let mut specs = corroborating(2);
+        specs.push(("图说", None, 7200, 7200, Some(660), None));
+        specs.push(("图说", None, 7200, 7200, Some(660), None));
+        assert!(!joined_block(&specs, "图说图说"));
+    }
+
+    /// **A run drawn to the left of the open one is a backward jump, not the next ink.**
+    #[test]
+    fn a_run_drawn_to_the_left_is_not_joined() {
+        let mut specs = corroborating(2);
+        specs.push(("Diversified", None, 27000, 7200, Some(660), None));
+        specs.push(("Fast", None, 7407, 7200, Some(660), None));
+        assert!(!joined_block(&specs, "DiversifiedFast"));
+    }
+
+    /// **A hyphen inside a line is the author's, and a geometric join keeps it** (disaster 4).
+    ///
+    /// `cfpb-home-loan-toolkit` p24 draws `non-escrowed` as `non-`, `escr`, `o`, `w` … at one
+    /// baseline, and the hyphen rule produced `nonescr`. The fallback concatenates verbatim, so
+    /// the only way it can fail is by deleting a character it was never asked to touch.
+    #[test]
+    fn a_hyphen_inside_a_line_is_kept_when_geometry_joins() {
+        let mut specs = corroborating(2);
+        specs.push(("non-", None, 7200, 7200, Some(660), None));
+        specs.push(("escr", None, 7860, 7200, Some(660), None));
+        assert!(joined_block(&specs, "non-escr"), "the hyphen was dropped");
+    }
+
+    /// **A space the page drew as its own run is still the space the page drew** (disaster 3).
+    ///
+    /// The whitespace-only run is skipped before any join state sees it, which is how an earlier
+    /// draft produced `backupwithholding` on `irs-fw9`. Here the three runs carry no declaration
+    /// at all, so the fallback must carry `pending_space` across the skip — and must carry the
+    /// *reach* across it too, or the block breaks at every drawn space.
+    #[test]
+    fn a_skipped_whitespace_run_is_the_space_the_page_drew_here_too() {
+        let mut specs = corroborating(2);
+        specs.push(("backup", None, 7200, 7200, Some(660), None));
+        specs.push((" ", None, 7860, 7200, Some(200), None));
+        specs.push(("withholding", None, 8060, 7200, Some(660), None));
+        assert!(joined_block(&specs, "backup withholding"));
+    }
+
+    /// **A declared run never joins an undeclared one, in either order.** The fallback arm
+    /// matches only when both sides carry no key; no corpus measurement exercises this.
+    #[test]
+    fn a_declared_run_never_joins_an_undeclared_one() {
+        let mut fwd = corroborating(2);
+        fwd.push(("left", None, 7200, 7200, Some(660), None));
+        fwd.push(("right", tagged_at(1), 7860, 7200, Some(660), None));
+        assert!(!joined_block(&fwd, "leftright"));
+
+        let mut back = corroborating(2);
+        back.push(("left", tagged_at(1), 7200, 7200, Some(660), None));
+        back.push(("right", None, 7860, 7200, Some(660), None));
+        assert!(!joined_block(&back, "leftright"));
+    }
+
+    /// **A visible gap breaks an undeclared block, and no advance is not contiguity.**
+    #[test]
+    fn a_visible_gap_breaks_an_undeclared_block() {
+        let mut gap = corroborating(2);
+        gap.push(("left", None, 7200, 7200, Some(660), None));
+        gap.push(("right", None, 20000, 7200, Some(660), None));
+        assert!(!joined_block(&gap, "leftright"));
+
+        let mut none = corroborating(2);
+        none.push(("left", None, 7200, 7200, None, None));
+        none.push(("right", None, 7860, 7200, Some(660), None));
+        assert!(!joined_block(&none, "leftright"));
+    }
+
+    /// **Geometric joins are declared under their own codes, never pooled with declared ones.**
+    #[test]
+    fn geometric_joins_are_declared_under_their_own_code() {
+        let count = |a: &MarkdownArtifact, code: &str| {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map(|e| e.count)
+                .unwrap_or(0)
+        };
+        let abutted = project_lines(&[
+            ("Yarr", None, 7200, 7200, Some(1000), None),
+            ("ow", None, 8200, 7200, Some(400), None),
+        ]);
+        assert_eq!(count(&abutted, BASELINE_RUN_JOINS_ABUTTED), 1);
+        assert_eq!(count(&abutted, BASELINE_RUN_JOINS_SPACED), 0);
+        assert_eq!(count(&abutted, MCID_RUN_JOINS), 0);
+
+        // Corroborated, like every other fixture here: without it the reference pitch is a
+        // median of the three runs under test, and the space's own advance is capped below its
+        // width by the run it is supposed to be measured against.
+        let mut runs = corroborating(2);
+        runs.push(("backup", None, 7200, 7200, Some(660), None));
+        runs.push((" ", None, 7860, 7200, Some(200), None));
+        runs.push(("withholding", None, 8060, 7200, Some(660), None));
+        let spaced = project_lines(&runs);
+        assert_eq!(count(&spaced, BASELINE_RUN_JOINS_SPACED), 1);
+        assert_eq!(count(&spaced, BASELINE_RUN_JOINS_ABUTTED), 0);
+    }
+
+    /// **A geometric join never puts two nodes in one segment.** The fallback calls `source`, not
+    /// `source_continuing`, so the seam between two runs *this engine* joined stays addressable
+    /// to the byte — which is the whole difference between a producer's join and a measured one.
+    #[test]
+    fn a_geometric_join_never_puts_two_nodes_in_one_segment() {
+        let a = project_lines(&[
+            ("Yarr", None, 7200, 7200, Some(1000), None),
+            ("ow", None, 8200, 7200, Some(400), None),
+        ]);
+        assert_eq!(blocks_of(&a), vec!["Yarrow"]);
+        for seg in a
+            .anchor_map
+            .segments
+            .iter()
+            .filter(|s| s.kind == SegmentKind::Source)
+        {
+            assert_eq!(
+                seg.node_ids.len(),
+                1,
+                "segments: {:?}",
+                a.anchor_map.segments
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // v2.2-S7 — geometric blocks, the grouping the grounding projection cites
+    // -----------------------------------------------------------------------------------
+
+    fn blocks_of_nodes(specs: &[LineSpec<'_>]) -> Vec<String> {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let nodes: Vec<Node> = specs
+            .iter()
+            .enumerate()
+            .map(|(i, (t, l, x, y, a, r))| {
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    t,
+                    l.clone(),
+                    *x,
+                    *y,
+                    *a,
+                    *r,
+                )
+            })
+            .collect();
+        geometric_blocks(&nodes, &std::collections::BTreeSet::new())
+            .into_iter()
+            .map(|b| b.text)
+            .collect()
+    }
+
+    /// **A block is the ink, and its text is the runs' own characters concatenated.**
+    ///
+    /// No separator is invented, because a space the page drew is a run with its own text — which
+    /// is why this needs none of the Markdown projection's space rule.
+    #[test]
+    fn geometric_blocks_join_the_next_ink_along_one_baseline() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("Yar", None, 7200, 7200, Some(1000), None),
+                ("row", None, 8200, 7200, Some(1000), None),
+            ]),
+            vec!["Yarrow"]
+        );
+    }
+
+    /// **A drawn space is a member, not a separator**, so the block text carries it verbatim.
+    #[test]
+    fn a_drawn_space_is_a_member_of_the_block() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("ab", None, 40000, 40000, Some(660), None),
+                ("ab", None, 40000, 42400, Some(660), None),
+                ("backup", None, 7200, 7200, Some(660), None),
+                (" ", None, 7860, 7200, Some(200), None),
+                ("withholding", None, 8060, 7200, Some(660), None),
+            ])
+            .last()
+            .unwrap(),
+            "backup withholding"
+        );
+    }
+
+    /// **A block never crosses a baseline**, which is `LineKey` doing the same job it does in the
+    /// projections — and the reason decision #21's territory is untouched.
+    #[test]
+    fn geometric_blocks_never_cross_a_baseline() {
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("first", None, 7200, 7200, Some(1000), None),
+                ("second", None, 8200, 9600, Some(1000), None),
+            ]),
+            vec!["first", "second"]
+        );
+    }
+
+    /// **A run a table already claims is its own block**, so no run is grounded twice.
+    #[test]
+    fn a_table_owned_run_is_never_joined_into_a_prose_block() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let nodes: Vec<Node> = [("Yar", 7200i64), ("row", 8200)]
+            .iter()
+            .enumerate()
+            .map(|(i, (t, x))| {
+                placed_run(
+                    &mut alloc,
+                    &page.id,
+                    i as u32 + 1,
+                    t,
+                    None,
+                    *x,
+                    7200,
+                    Some(1000),
+                    None,
+                )
+            })
+            .collect();
+        let mut owned = std::collections::BTreeSet::new();
+        owned.insert(nodes[1].id.as_str());
+        let blocks: Vec<String> = geometric_blocks(&nodes, &owned)
+            .into_iter()
+            .map(|b| b.text)
+            .collect();
+        assert_eq!(blocks, vec!["Yar", "row"]);
     }
 }

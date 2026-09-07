@@ -460,8 +460,28 @@ fn omission_selects_rather_than_empties() {
         .map(|s| s.id.as_str())
         .collect();
     assert_eq!(emitted, expected, "the projection kept the wrong nodes");
-    assert_eq!(p.source.elements.len(), expected.len());
     assert_eq!(total - expected.len(), p.omission.nodes_omitted as usize);
+    // v2.2-S7: the element is the BLOCK and the span is the run, so elements are no longer 1:1
+    // with grounded nodes. What must still hold is that every span sits in an element and no
+    // element is empty — the hierarchy is populated, not merely present.
+    assert!(
+        p.source.elements.len() <= expected.len(),
+        "blocks cannot outnumber the runs they group"
+    );
+    let element_ids: std::collections::BTreeSet<&str> =
+        p.source.elements.iter().map(|e| e.id.as_str()).collect();
+    let referenced: std::collections::BTreeSet<&str> = p
+        .source
+        .spans
+        .as_ref()
+        .expect("spans are claimed")
+        .iter()
+        .map(|s| s.element.as_deref().expect("every span names its element"))
+        .collect();
+    assert_eq!(
+        referenced, element_ids,
+        "every element holds at least one span, and every span names a real element"
+    );
 
     schema_subset::validate(&as_value(&p.source)).expect("a mixed document still validates");
 }
@@ -506,9 +526,35 @@ fn every_emitted_box_is_the_measured_box() {
             );
             compared += 1;
         }
-        // And the element beside it carries the same box, since v0's granularities coincide.
-        for (e, s2) in g.elements.iter().zip(g.spans.iter().flatten()) {
-            assert_eq!(e.bbox.expect("paginated"), s2.bbox);
+        // v2.2-S7: an element is a block, so its box is the UNION of its spans' measured boxes —
+        // a stronger claim than the equality this asserted while the two granularities coincided.
+        // Nothing is inferred: a union of measured rectangles is measured.
+        let mut union: std::collections::BTreeMap<&str, [i64; 4]> =
+            std::collections::BTreeMap::new();
+        for span in g.spans.iter().flatten() {
+            let e = span
+                .element
+                .as_deref()
+                .expect("every span names its element");
+            union
+                .entry(e)
+                .and_modify(|u| {
+                    *u = [
+                        u[0].min(span.bbox[0]),
+                        u[1].min(span.bbox[1]),
+                        u[2].max(span.bbox[2]),
+                        u[3].max(span.bbox[3]),
+                    ]
+                })
+                .or_insert(span.bbox);
+        }
+        for e in &g.elements {
+            assert_eq!(
+                e.bbox.expect("paginated"),
+                union[e.id.as_str()],
+                "element {} is not the union of its spans",
+                e.id
+            );
         }
     }
     assert!(

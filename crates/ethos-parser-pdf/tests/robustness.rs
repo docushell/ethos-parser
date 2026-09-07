@@ -414,11 +414,13 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **62** at v2.2-S2, and neither of the two additions since v2-S21 is a
-/// mutation-behaviour change. `ink-past-the-media-box` (D4-S5) and `form-xobject-text-drawn`
-/// (v2.2-S2) were each added to the corpus and each survives `junk-after-eof` exactly as every
-/// other engine fixture does — bytes appended past `%%EOF` leave the cross-reference table
-/// resolving. The v2-S21 measurement above stands as recorded; only the population moved.
+/// The pinned set is **64** at v2.2-S3, and not one of the four additions since v2-S21 is a
+/// mutation-behaviour change. `ink-past-the-media-box` (D4-S5), `form-xobject-text-drawn`
+/// (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
+/// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
+/// `junk-after-eof` exactly as every other engine fixture does — bytes appended past `%%EOF`
+/// leave the cross-reference table resolving. The v2-S21 measurement above stands as recorded;
+/// only the population moved.
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -457,13 +459,15 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 62] = [
+const EXPECTED_SURVIVORS: [&str; 65] = [
     "absent-font-metrics/junk-after-eof",
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
     "both-table-rules/junk-after-eof",
     "broken-font-encoding/junk-after-eof",
     "cfpb-home-loan-toolkit/junk-after-eof",
+    "composite-font-cid-widths/junk-after-eof",
+    "composite-font-non-identity-cmap/junk-after-eof",
     "crop-box-smaller-than-media/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
@@ -519,6 +523,7 @@ const EXPECTED_SURVIVORS: [&str; 62] = [
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
+    "untagged-shredded-line/junk-after-eof",
     "whitespace-past-the-page-edge/junk-after-eof",
 ];
 
@@ -856,10 +861,18 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        66,
-        "the manifest should declare 66 fixtures across FOUR roots. v2.2-S2 moved this from 65 by \
-         adding `form-xobject-text-drawn`: the third member of v1-S6's `Do` pair, and the one \
-         placement that produces no node of any kind. v2-S19 moved it from 55: \
+        69,
+        "the manifest should declare 69 fixtures across FOUR roots. v2.2-S5 moved this from 68 by \
+         adding `untagged-shredded-line`, the only engine fixture whose runs share a baseline — \
+         every other one stacks them, so the whole CLI suite was blind to the undeclared join \
+         and a rule keyed on `same baseline, next ink along it` passed it unchanged. v2.2-S3 \
+         moved this from 66 by \
+         adding the composite-font pair — `composite-font-cid-widths` and \
+         `composite-font-non-identity-cmap` — the shape NEITHER owned corpus contained: no \
+         fixture anywhere held a CIDFont, so the composite-width path was exercised by nothing \
+         and read `/Widths` off a dictionary the format never puts it on. v2.2-S2 moved it from \
+         65 by adding `form-xobject-text-drawn`: the third member of v1-S6's `Do` pair, and the \
+         one placement that produces no node of any kind. v2-S19 moved it from 55: \
          it added the `gate` root — eight tagged public documents committed to `fixtures/gate/` \
          so the table gate could be measured on twelve documents instead of four — and pinned \
          `cfpb-home-loan-toolkit.pdf` in `benchmark`, which had carried the largest share of the \

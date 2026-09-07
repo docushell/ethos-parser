@@ -18,6 +18,445 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.50.0] — one refusal was answering for two different absences
+
+**No artifact byte changes.** Only the text of an error, and only for documents that already
+produced nothing.
+
+`/Identity-H` and `/GBK-EUC-H` both reach the same refusal in `load_simple_encoding`, and it said:
+
+> Predefined CMaps (the Adobe CJK set) are not vendored; a document needing one is refused rather
+> than decoded approximately.
+
+That is true of `/GBK-EUC-H`. It is **false of an identity CMap**: PDF 32000-1 §9.7.4.2 makes that
+mapping the identity, so the code *is* the CID and nothing about the CMap is missing. What is
+absent is the step after it — CID to Unicode — which here has no source at all, because the font
+supplies no `/ToUnicode`. Adobe publishes such a mapping per registry and ordering and this profile
+carries none; and where the descendant's `/CIDSystemInfo` ordering is `Adobe-Identity-0` the CIDs
+are the subset font's own, so no published table decodes them either.
+
+**8 of the 20 OmniDocBench documents that produce no artifact are that kind.** The old sentence
+would have sent a reader after a dataset that could not have helped them — and nearly did: the gap
+analysis that prompted this listed "vendor the Adobe CMaps" as fixing 20 documents when it fixes 4.
+
+`load_cid_widths` already drew this distinction correctly for *widths*, with the reasoning spelled
+out under "Why this refuses every encoding but Identity". The decoding path never got it.
+
+### Why MINOR and not PATCH
+
+`docs/RELEASING.md` §4 says PATCH only when output is byte-identical for the same input, and stderr
+is bytes. Every artifact this build emits is byte-identical to 0.49.0's — verified across all 981
+corpus documents: exit codes unchanged, markdown unchanged at 2 646 129 characters, no-artifact
+count 18 both sides. A reviewer who reads "output" as the artifact alone would call this a PATCH,
+and that reading is defensible. It errs the other way because 0.42.1's entry records the cost of
+erring toward PATCH.
+
+---
+
+## [0.49.0] — a grounding element is the block now, not the glyph run
+
+`ethos.grounding.v1` offers two granularities: coarse citable **elements** and finer **spans**
+inside them, with every span naming its element. v0 could populate only one of them — with no
+grouping in the engine, a run *was* the element and *was* the span. The code said so, and said what
+would fix it: *"When grouping lands at v1 the element becomes the block and the span stays the run,
+and this shape is already the right one."*
+
+Grouping landed at 0.44.0 (marked content) and 0.47.0 (baseline ink). This connects it.
+
+### What a consumer gets
+
+A reader highlighting one quoted sentence on `irs-fw9` used to hold **970 glyph-run rectangles and
+no rectangle for the sentence**. It now holds 334 elements over those same 970 spans, and
+element 1 is `"Form  W-9"` with a box spanning both its runs.
+
+| corpus | runs per citable element |
+| --- | ---: |
+| `fixtures/gate` (tagged US federal publishing) | **13.55** |
+| `nist-sp-800-207` | **19.72** |
+| OmniDocBench `v1_0` (untagged) | **1.24** |
+
+**The same statistic means opposite things on the two corpora, and that is the honest reading.**
+Where the producer declares marked-content groups the element is a real block; where nothing is
+declared only the baseline join fires and the gain is small — the fragmentation that makes block
+assembly hard on untagged input limits this too.
+
+### What is measured and what is not
+
+The grouping is `markdown::geometric_blocks`, which **calls** the clauses both projections already
+join on rather than restating them, so the grounding artifact and the projections cannot disagree
+about what one piece of ink is. It is `where`, never `what` — decision #19 — and it cannot cross a
+baseline, so decision #21's territory is untouched.
+
+- An element's **box is the union** of its members' measured boxes. A union of measured rectangles
+  is measured; nothing is inferred.
+- An element's **text is its members' own characters concatenated**, with no separator logic at
+  all — because a space the page drew is a run with its own text. It is absent from `spans` only
+  because it has no ink box to be cited by.
+- A run a **table** already claims stays its own element, so no run is grounded twice.
+- A block whose every member is ungroundable produces **no element**, and its members are counted
+  in the omission report exactly as before.
+
+### A rationale that had outlived its fact
+
+`char_offsets` stays `false`, and the reason it gave is now spent: it said an offset "would always
+be `0..len`" because element and span were the same object. An element now holds several spans and
+an offset into its text carries real information. The capability is **not** flipped here — it is
+`grounding-aligned` and the consuming validator enforces it, so it belongs in its own slice with
+its own evidence — but the justification is corrected rather than left standing. A rationale that
+has outlived its fact is the defect this repository keeps finding in itself.
+
+### Tests
+
+Two existing tests pinned the 1:1 shape and were rewritten to assert something **stronger**: that
+every span sits in a real element and every element holds at least one span, and that an element's
+box is exactly the union of its spans' boxes. Four unit tests cover the grouping itself, including
+the drawn space as a member and the table-owned run that must not join.
+
+No rule id moves — there is no grounding rule id, which is itself worth noticing.
+
+---
+
+## [0.48.0] — a legal hex string was fatal, and a symbolic font was decoded through the wrong table in silence
+
+Two correctness fixes found by reading the OmniDocBench census rather than the code. Neither
+changes a rule's **definition**, so no projection rule id moves; `parser_version` moves
+`profile_sha256` as it always does.
+
+### A hexadecimal string containing white space was refused
+
+PDF 32000-1 §7.3.4.3: white-space characters **shall be ignored** inside a hexadecimal string. So
+`<0009 000d 0020 00a0>` is exactly `<0009000d002000a0>`, and the `bfrange` array form
+`[<0066 0066 006C><0066 006C>…]` is three ligature destinations. `hex_of` required every character
+between the brackets to be a hex digit and reported `malformed` — and because `extract`'s page fold
+returns the first page error, **one stray space in one font's `ToUnicode` CMap cost the entire
+page**.
+
+Two documents of 981 hit it. `scihub_s12935-018-0683-z.pdf_0` went from **no artifact at all to
+4 970 characters** — a page carrying a table and a full abstract. Corpus effect: documents with no
+artifact **20 → 18**, non-empty Markdown **733 → 735**, and **zero** documents lost a character.
+
+Reading white space as a syntax error was not a stricter reading of the specification. It was a
+wrong one.
+
+### A symbolic font was decoded through `StandardEncoding` and the artifact did not say so
+
+§9.6.6.2 gives `StandardEncoding` as the fallback for a **nonsymbolic** font. A symbolic font's
+built-in encoding belongs to its own font program, which this profile does not read. Applied
+anyway, a TeX math font decodes to the wrong characters — CMEX10 code 90 is `integraldisplay` and
+arrives as `Z`, code 88 is `summationdisplay` and arrives as `X` — while the run reports
+`scalar_code_mismatch: false`, because one code did produce one scalar. It was simply the wrong
+one.
+
+**The decode is unchanged, and that is a measured decision rather than a deferral.** 42 of 981
+documents carry such a font, and the symbolic flag does not separate the two populations that
+condition covers:
+
+| font | what it is | decode through `StandardEncoding` |
+| --- | --- | --- |
+| `MathematicalPiLTStd-1`, `CGMathsBase`, `MTEX` | genuinely symbolic | **wrong** |
+| `Europa-Bold`, `NewBaskervilleStd-Roman`, `EhrhardtExpMT` | ordinary prose that sets the bit | **right** |
+
+Checked directly: the `Europa-Bold` document projects *"Older components such as carbon resistors
+are really not worth keeping…"* — correct English. Refusing on the flag would have dropped correct
+text from most of the 42 to fix a minority, which is `O21` inverted. Separating them needs the
+embedded font program's own encoding, which this profile does not read.
+
+So the fix is the disclosure, because **the defect was the silence, not the substitution**. New
+document-scoped limitation `symbolic-font-builtin-encoding-assumed`, on **36 of 981** documents —
+42 predicted, minus 2 that produce no artifact at all, minus 4 that name
+`/BaseEncoding /WinAnsiEncoding` inside an encoding dictionary and are therefore decoded exactly as
+the document asked. **Zero** documents changed a character, a node count or an exit code.
+
+### What this is not
+
+It is **not** a step toward vendoring the Adobe predefined CMaps. Measured, that buys less than the
+`predefined-cmaps-not-vendored` limitation implies: of the 20 documents that produce no artifact,
+**4** name `/GBK-EUC-H` and would be fixed by it; **8** name `/Identity-H`, which is not a
+predefined CJK CMap and needs CID→Unicode tables instead; 3 need the embedded font program's
+encoding; 5 were malformed `ToUnicode`, 2 of them fixed above. The error text for the
+`Identity-H` group currently blames the unvendored CJK set, which is misdirection and is worth
+correcting before anyone acts on it.
+
+---
+
+## [0.47.0] — an untagged PDF projected one block per run, and the median block was two characters
+
+Until this release a run the document declared nothing about joined with nothing. `group_key`
+returned `None` for any run without a structural locator, on the standing rule that **absence is
+never a group** — written after an earlier draft read `mcid: None` as a group and welded
+`nist-sp-800-207`'s vertical margin stamp into `Thispublicationisavailable…` across 156 pt of white
+space, 59 times per document.
+
+The rule was right and its scope was wrong. On a corpus where nothing is tagged, *every* run took
+that path. Measured over all 981 born-digital PDFs of OmniDocBench's `v1_0` `ori_pdfs`:
+
+| | before | after |
+| --- | ---: | ---: |
+| median characters per Markdown block | **2.0** | **3.0** |
+| median share of blocks ≤2 characters | 60% | 41% |
+| documents ≥95% such blocks | 163 of 733 | **41** |
+| **share of all extracted text in those documents** | **52%** | **7%** |
+| documents ≥200 characters *and* <50% tiny blocks | 277 | **351** |
+
+### What changed
+
+Two runs now join when they are **the next ink along one baseline**: same page, same region, same
+stream (page furniture is not body text), same `origin_y`, drawn after rather than over, and no gap
+the page drew. Absence is still never a group — what licenses the join is not the missing
+declaration but the ink.
+
+**`advance` is not an ink width, and that is the whole of the safety argument.** A table cell is
+commonly drawn as one run whose advance is the *cell pitch*, so `origin_x + advance` lands inside
+the next cell and a gap test reads ~0 across 120 pt of white space.
+`docstructbench_llm-raw-scihub-o.O-ceat.200600410` draws `AC` at `origin_x` 31 181 with an advance
+of 12 053 — 6 026 per glyph, against that font's median of ~330 — and the next cell's `AA` begins
+at 43 229. Read naively they join and emit `ACAA`, a token the page draws nowhere.
+
+So a run's reach is capped at `glyphs × the document's own median advance-per-glyph for that
+(font, size)`, measured on the document being parsed. The bound this buys is **provable rather than
+measured**: acceptance requires `next.origin_x ≤ prev.origin_x + glyphs × reference + 12`, so reach
+per glyph can never exceed one reference glyph plus `12 / glyphs`, however badly `advance` lies. A
+font seen once has nothing to corroborate against and is refused.
+
+**No new constant.** The only number is the existing 12-centipoint quantization epsilon, now named
+`INK_EPSILON_CENTIPOINTS` instead of a bare literal. The two other multipliers are 1 — one glyph's
+width per glyph, one glyph of permitted overlap. A pitch-relative gap epsilon (`gap ≤ k × pitch`,
+k ≈ 0.18) was measured and **declined**: Latin has a trough to site it in and CJK has none, because
+CJK draws no word spaces, so it would be a measurement on one script and a tuned knob on the other.
+That is why the `newspaper` family — 111 documents, the worst — is **not** fixed by this release.
+
+### Two new census codes, counted apart on purpose
+
+`baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1`, beside `mcid-run-joins-v1`. The
+abutted form asserts two runs are one word; the spaced form only reproduces a space the page drew.
+A join this engine measured is a weaker claim than one the producer declared, and pooling them
+would erase exactly that difference. Read together on one document they are a derivation profile:
+on a tagged document the producer's declaration dominates, on an untagged one every boundary
+removed was removed on geometry alone.
+
+The fallback emits `source`, never `source_continuing`, so **a `source` segment gains a node id
+only from a producer-declared join or a hyphen closed up — never from geometry.** The seam between
+two runs this engine joined stays addressable to the byte.
+
+### What did not change, verified rather than asserted
+
+- **No text moved.** The coverage census balances on all 961 artifacts: 1 623 979 emitted +
+  106 184 dropped = 1 730 163 in representation.
+- **42 of 48 fixtures are byte-identical**, including all 40 engine fixtures and both tagged IRS
+  forms — everything there is declared, so the fallback never fires.
+  `fixtures/engine/markdown-two-blocks/document.pdf` still projects as two blocks, which matters
+  because it is the only end-to-end evidence for `capabilities.markdown` and `capabilities.html`.
+- **No table was flattened.** Pipe counts are identical in all six changed gate documents. A
+  table's runs reset the join state, as they did at v2.2-S1 — the reset measured at TEDS 0.104 → 0.000
+  when an earlier draft was tried outside the projection.
+- **The welding disaster does not reproduce.** `Thispublicationisavailable`, `NISTSP`, `ZEROTRUST`,
+  `207ZERO` and `from:https` occur **zero** times on `nist-sp-800-207` before and after. The blocks
+  the join creates there are `IST`, `-207`, `ER`, `T A`, `RCHITECTU` and `vii` — partial
+  reassembly of the *horizontal* running head, longest 9 characters.
+- **Zero fabricated tokens** (`ACAA`, `8DBBACAA`, `000000.26`) across all 961 documents.
+
+### The suite could not see any of this, so a fixture was added
+
+Every engine fixture stacks its runs on distinct baselines, so a rule keyed on "same baseline, next
+ink along it" changed nothing in the CLI suite and passed it unchanged — the same blindness the
+0.44.0 slice recorded. `fixtures/engine/untagged-shredded-line/document.pdf` is the tripwire: four
+runs at one baseline in a font with real ink metrics and no structure tree, three abutting exactly
+(12 points per glyph: 72+36=108, 108+24=132, 132+12=144) and a fourth 40 points further on. It
+projected `Yar` / `ro` / `w` / `Separate` and now projects `Yarrow` / `Separate`.
+
+Three mutants were watched failing, each caught by exactly the test written for it: dropping every
+guard in `ink_sequenced`, dropping the reach cap (caught **only** by
+`a_run_whose_advance_is_the_column_pitch_is_not_joined`), and making `LineKey` ignore the baseline
+(caught **only** by `runs_with_no_declaration_join_only_along_one_baseline`).
+
+### Both projection rule ids move, again
+
+`markdown_rule` `markdown-blocks-v4` → `-v5` and `html_rule` `html-blocks-v4` → `-v5`, together,
+because the clauses live in `markdown.rs` and `html.rs` calls them rather than restating them.
+`profile_sha256` moves with them. MINOR rather than PATCH: the emitter produces different bytes for
+the same input, which is `docs/RELEASING.md` §4's test.
+
+### Not fixed, and named so the number is not mistaken for the whole
+
+`newspaper` (111 documents) still reads at a median 90% sub-3-character blocks. CJK inter-glyph
+tracking sits above the 12-centipoint epsilon by construction, and reaching it needs the
+pitch-relative epsilon this slice measured and declined. The epsilon's own justification also does
+not cover this population — it was measured on *declared* pairs of *one Latin document*, and the
+13–150 centipoint band that is empty there is not empty on undeclared CJK pairs. That is now stated
+on the constant rather than inherited silently.
+
+---
+
+## [0.46.1] — five of the six XHTML heading levels were reached by no test at all
+
+`xhtml_heading_level` maps `h1`…`h6` to levels 1…6, and always did. Replacing the **h2–h6** arms
+with `None` and running the whole workspace failed **zero** of roughly 1 300 tests.
+
+Every `<h2>`–`<h6>` in every EPUB could have projected as a paragraph — in both syntaxes — and the
+suite would have stayed green. That is 0.43.0's headline feature, verified at one level out of six.
+
+### Why the gap existed, which is the interesting part
+
+The **PDF** half of the same function has been guarded at every level since it shipped, by
+`a_heading_role_from_the_tree_projects_as_a_heading` — a hand-built representation, for the reason
+its own doc comment gives: *"no fixture in either corpus carries a heading role."*
+
+The **XHTML** half, added at v2.2-S0, got no such test. Its only coverage was one end-to-end
+assertion over `fixtures/office/book-spine/book.epub`, and that publication contains an `<h1>` and
+no other heading. So the coverage was as complete as the fixture happened to be — which is this
+repository's recurring defect wearing its politest face: not a guard that reads its subject
+wrongly, but a guard that reads only the part of its subject the corpus supplied.
+
+A fixture could not have closed it cleanly. Six levels through a real publication means a fixture
+edit, a digest move and a golden move for a fact none of those are about. The end-to-end path was
+already proved at `h1`; what was missing is that the **level follows the element**, and that is a
+mapping, so it is now tested as one.
+
+### Added
+
+- **Four tests**, two per projection: all six levels at their own depth, and the near misses that
+  the exact-match doc comment always promised and nothing checked — `hgroup` (which the comment
+  names), `h7`, `h0`, `h11`, `header`, `hr`, `h`, and `H1`/`H2` (XHTML is XML and case-sensitive,
+  so these are different elements and must not become headings).
+- **`epub_repr_of`**, the page-less test builder whose absence *was* the gap: with no way to make
+  an `EpubBlock` node, every test of that path had to go through a whole publication.
+
+Three mutants were watched failing in both projections: `h2`–`h6` to `None` (the exact defect that
+passed before), one level off by one (`h4` → 3), and an exact match replaced by a prefix test —
+which is what turns `hgroup` into a heading, the case the doc comment warns about.
+
+**The seal caught two errors in the new builder while it was being written**, and both were the
+invariant working rather than being in the way: a page-less node parented by an invented page id,
+and a payload whose geometry sidecar contradicted its own assurance block.
+
+### Fixed
+
+- A shipped error message in `representation.rs` loses a run of **eighteen stray spaces** mid-
+  sentence, carried since 0.42.1 — *"the payload does not declare `…`"* was rendering as
+  `declare` + 18 spaces + the code. Surfaced by hitting the error legitimately from a test.
+
+### Unchanged
+
+**Nothing this engine emits moves.** The mapping was already correct; only its coverage changed.
+`profile_sha256` moves to `fa7e5994` because `parser_version` is a profile field and a build is a
+build — the mechanism working, not a behaviour change.
+
+---
+
+## [0.46.0] — a composite font's widths were read from a key the format never puts them on
+
+`load_widths` asked every font for `/Widths` and `/FirstChar`. That is the **simple** font shape.
+PDF 32000-1 §9.7.4.3 puts a composite font's widths on its **descendant CIDFont**, as `/W` spans
+with `/DW` as the default, and a `/Type0` dictionary carries no `/Widths` at all.
+
+So every composite font fell through to "no width information" and reported an **unknown advance**
+while the document supplied a perfectly good one. Measured on the 200-document
+`opendataloader-bench` corpus:
+
+| | |
+| --- | --- |
+| documents where a `/Type0` font was declared width-absent | **50** |
+| …of which the file carried `/W` or `/DW` | **50** |
+| composite fonts declared width-absent | **72** |
+| …matched by a descendant carrying `/W` or `/DW` | **72** |
+
+A 100% false-positive rate. The engine said "this document does not say" about a document that
+said it plainly, on one file in four.
+
+### What it cost, which is the part that matters
+
+No width means no ink box, and no ink box means the node is **omitted from
+`ethos.grounding.v1`** — that schema requires a bbox on every element, and fabricating one is
+forbidden. So a seventh of the corpus could not be quoted, which is the one thing this engine
+exists to make possible.
+
+| | before | after |
+| --- | --- | --- |
+| text nodes omitted from grounding | 14 683 of 109 500 (**13.41%**) | **8 770** (8.01%) |
+| documents declaring `font-widths-absent` | 51 | **1** |
+| NID on `opendataloader-bench` | 0.8471 | **0.8490** |
+
+**No text is gained or lost and the node count is identical** — 109 500 on both sides. Only what
+can be expressed downstream changed. NID moves as a side effect: measurable advances let 0.44.0's
+block assembly judge ink-contiguity it previously had to guess at.
+
+### The same misattribution, one layer along, found while writing this entry
+
+The number that belongs in the row above — *"…because the font gave no ascent/descent/BBox: 6 519
+→ 131"* — **was itself misattributed**, and this entry very nearly repeated it. `extract.rs`'s
+`_ =>` arm fills `NotReportedByReader` when EITHER the font metrics are missing OR the advance is,
+and the sentence beneath it said, of all of them, *"their font supplies no usable ascent/descent
+and no `/FontBBox`"*. A claim about ink envelopes, made over a bucket half of which was about
+widths.
+
+The two are separable with no new wire type — a run with no advance already carries
+`advance: None` — so `geometry-absent-not-groundable` now counts them apart. What the corpus
+actually holds, of the 8 770 still omitted:
+
+| | nodes | is this a gap in this reader? |
+| --- | --- | --- |
+| no ink envelope | **130** | **yes** — the real metrics gap |
+| no advance | **1** | yes |
+| nothing to measure — whitespace runs | 5 592 | no; there was never a box |
+| measured, and drawn off the page | 3 047 | no; the document's own choice (D4-S5) |
+
+So the reader's own limitation is **130 nodes in 109 500 — 0.12%**, where before this slice the
+artifact said 6 519 and named the wrong cause for **6 388** of them. Everything else omitted from
+grounding is a property of the documents.
+
+The one document still declaring `font-widths-absent` is a Type1 `Times-Roman` with no `/Widths` —
+a genuine standard-14 case, and the only place the AFM sentence was ever true. The message that
+was wrong 50 times in 51 is now right 1 time in 1.
+
+### Added
+
+- **`WidthSource::Cid`** — `/W` spans and `/DW`, keyed by CID. **Both** `/W` forms are read: `c [w1
+  w2 …]` and `c_first c_last w`. Both occur in the wild — 1 143 and 810 entries respectively on
+  that corpus — and a parser that implemented one would read the other's numbers as CIDs and build
+  silently wrong spans.
+- **`fixtures/engine/composite-font-cid-widths`** and **`composite-font-non-identity-cmap`**.
+  Manifest `engine_owned` 39 → 41, fixtures 66 → 68, pinned survivors 62 → 64.
+
+### Claimed only where the CID is knowable
+
+`/W` is keyed by CID; `advance_glyph_space` is handed a character **code**. The map between them is
+the `/Encoding` CMap, and this profile parses none — the standing
+`composite-font-codes-from-tounicode` interim. Under `Identity-H` and `Identity-V` the map is the
+identity by definition, so the code **is** the CID. Under anything else the advance stays absent,
+because a width looked up with the wrong key is a plausible number for the wrong glyph, and a
+plausible number is the one failure a consumer cannot detect.
+
+The restriction costs nothing measurable: **all 78** composite fonts on that corpus declare
+`Identity-H`. That is the claim `split_codes` already made in prose — *"right for Identity-H, which
+is what real documents overwhelmingly use"* — and this is the first slice to put a number on it.
+
+### Why 1 294 tests passed while this was true
+
+**`grep -rl CIDFontType fixtures/` matched nothing**, in either owned corpus. The composite-width
+path was exercised by no test at all. That is verbatim the argument v1-S6 used to justify
+`image-xobject-drawn` — *"the corpus contains NO image XObject anywhere, so without this the whole
+image path is untested"* — and it was available for four versions before anyone applied it here.
+
+Five mutants were watched failing, at two layers: the `/DW` default replaced with zero, the `/W`
+range made exclusive at its end, `Identity-V` dropped, the encoding refusal dropped, and the
+`/Type0` dispatch removed (the original defect, restored).
+
+**One of them found a defect in this slice's own test.** With `/DW 1000` in the fixture — which is
+also §9.7.4.3's value for an omitted key — a reader that ignored `/DW` entirely still produced the
+right number, and the mutant survived. The fixture now declares `/DW 900`. And the first draft of
+the unit test walked the span table with its own copy of the lookup, so the exclusive-range mutant
+survived there too; it now goes through `advance_glyph_space`. A guard that reads its own subject
+through a private copy of that subject is this repository's recurring defect, and writing one
+inside the slice that repairs an instance of it would have been a poor joke.
+
+### Changed
+
+- `geometry-absent-not-groundable` splits `NotReportedByReader` into "no ink envelope" and "no
+  advance". Prose and counts only; no new type reaches the wire.
+- `profile_sha256` moves to `cf5ee039`, on `parser_version` alone. No rule id moves.
+
+---
+
 ## [0.45.0] — a page whose whole content was one `Do` came out blank, and said so nowhere
 
 `extract` walks a page's `Do` operators and asks each XObject what it is. A `/Subtype /Image`

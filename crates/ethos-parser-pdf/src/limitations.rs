@@ -63,6 +63,26 @@ pub const XREF_ENTRY_PADDED: &str = "xref-entry-padded";
 /// text in the evidence that the document does not contain.
 pub const BROKEN_FONT_ENCODING: &str = "broken-font-encoding";
 
+/// A symbolic font supplied no `/ToUnicode` and named no base encoding, so its codes were
+/// resolved through `StandardEncoding` anyway.
+///
+/// **The characters may be wrong, and until this code existed the artifact did not say so.**
+/// PDF 32000-1 §9.6.6.2 gives `StandardEncoding` as the fallback for a NONSYMBOLIC font; a
+/// symbolic font's built-in encoding is its own font program's, which this profile does not read.
+/// A TeX math font is the clear case — CMEX10 code 90 is `integraldisplay` and resolves here to
+/// `Z`, code 88 is `summationdisplay` and resolves to `X` — and the run carries
+/// `scalar_code_mismatch: false`, because one code did produce one scalar. It was simply the
+/// wrong one.
+///
+/// **Why the codes are still emitted rather than refused.** Measured over 981 OmniDocBench
+/// documents, 42 carry such a font, and the flag does not separate the two populations: the same
+/// condition holds for `MathematicalPiLTStd-1`, where the decode is wrong, and for `Europa-Bold`
+/// and `NewBaskervilleStd-Roman`, where the font is ordinary prose that merely sets the symbolic
+/// bit and the decode is right. Refusing all of them would drop correct text from most of the
+/// documents to fix a minority — so this profile reports rather than deletes, which is `O21`.
+/// Separating them needs the embedded font program's own encoding, which is not read here.
+pub const SYMBOLIC_FONT_BUILTIN_ENCODING_ASSUMED: &str = "symbolic-font-builtin-encoding-assumed";
+
 /// The code declaring that a reason in the classification vocabulary is never emitted.
 ///
 /// Derived from the reason's own wire spelling rather than hand-written, so the declaration and
@@ -153,6 +173,24 @@ pub fn extract_limitations() -> Vec<Limitation> {
     ));
 
     out
+}
+
+/// The document-scoped limitation for a symbolic font decoded through `StandardEncoding`.
+pub fn symbolic_font_builtin_encoding_assumed(detail: &str) -> Limitation {
+    Limitation::document(
+        SYMBOLIC_FONT_BUILTIN_ENCODING_ASSUMED,
+        format!(
+            "A font on this document declares itself SYMBOLIC, supplies no `/ToUnicode` CMap and \
+             names no base encoding, so its codes were resolved through `StandardEncoding` — \
+             which PDF 32000-1 §9.6.6.2 specifies for a NONSYMBOLIC font. A symbolic font's \
+             built-in encoding belongs to its own font program, which this profile does not read, \
+             so the characters from this font MAY NOT BE THE ONES THE DOCUMENT DRAWS. A TeX math \
+             font is the clear case: CMEX10 code 90 is `integraldisplay` and arrives here as `Z`. \
+             The affected runs are emitted rather than dropped because the same condition holds \
+             for ordinary prose fonts that merely set the symbolic bit, where the decode is \
+             correct, and this profile reports rather than deletes. Detail: {detail}"
+        ),
+    )
 }
 
 /// The document-scoped limitation for a font that supplied no usable widths.
@@ -595,12 +633,13 @@ mod tests {
     use ethos_parser_core::LimitationScope;
 
     /// Every code this module emits, in one place, so a rename is a visible event.
-    const PDF_CODES: [&str; 9] = [
+    const PDF_CODES: [&str; 10] = [
         CLASSIFY_SAMPLE_BOUND,
         BACKEND_XREF_STRICT_20_BYTE,
         PREDEFINED_CMAPS_NOT_VENDORED,
         FORM_XOBJECT_TEXT_NOT_DESCENDED,
         FONT_WIDTHS_ABSENT,
+        SYMBOLIC_FONT_BUILTIN_ENCODING_ASSUMED,
         // Two this module declares that the list did not carry. `every_code_is_stable_kebab_case`
         // said *every code* over five of the seven `pub const` spellings in this file, and the
         // two it omitted are wire spellings a caller matches on exactly like the other five.
@@ -629,9 +668,10 @@ mod tests {
             .collect();
         assert_eq!(
             declared.len(),
-            7,
-            "this module declares {} `pub const` code(s): {declared:?}. Seven is the number at \
-             v2-S13.1; a new one belongs in `PDF_CODES` too.",
+            8,
+            "this module declares {} `pub const` code(s): {declared:?}. Eight is the number at \
+             v2.2-S6, which added `symbolic-font-builtin-encoding-assumed`; a new one belongs in \
+             `PDF_CODES` too.",
             declared.len()
         );
         for code in &declared {

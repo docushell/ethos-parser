@@ -1001,6 +1001,7 @@ mod tests {
                     widths: vec![500.0; 95],
                     type3_scale_x: None,
                 },
+                builtin_encoding_assumed: None,
                 ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
             }),
         );

@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v4");
+    assert_eq!(a["html_rule"], "html-blocks-v5");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
@@ -739,5 +739,21 @@ fn an_epubs_own_heading_element_projects_as_an_h_element() {
     assert!(
         !html.contains("<h1>Rows &amp; columns"),
         "a `<p>` must NOT become a heading:\n{html}"
+    );
+}
+
+/// **The undeclared join, in HTML** (v2.2-S5).
+///
+/// The twin of `runs_the_document_declared_nothing_about_join_along_one_baseline`. Both
+/// projections call the same clauses out of `crate::markdown`, and a document that reads as one
+/// block there must read as one `<p>` here — so this fixture is the tripwire for both.
+#[test]
+fn runs_the_document_declared_nothing_about_join_into_one_paragraph() {
+    let dir = scratch("undeclared-join-html");
+    let repr = extract_to(&dir, &engine_fixture("untagged-shredded-line"));
+    let a = html_of(&repr);
+    assert_eq!(
+        a["html"].as_str().unwrap(),
+        "<p>Yarrow</p>\n<p>Separate</p>\n"
     );
 }

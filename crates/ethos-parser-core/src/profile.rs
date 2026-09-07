@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V4`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V5`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V4`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V5`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -1054,7 +1054,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V4`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V5`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1065,7 +1065,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V4`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V5`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1116,8 +1116,8 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V2.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V4.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V4.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V5.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V5.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
@@ -1991,7 +1991,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v4","markdown_rule":"markdown-blocks-v4","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.45.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.50.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2638,11 +2638,84 @@ mod tests {
              is `q /Xf1 Do Q` emitted zero nodes with `pages_failed: 0` and a consumer could not \
              tell it from a blank page. The profile-scoped `form-xobject-text-not-descended` is \
              untouched and never covered this: it rides on EVERY artifact this engine writes, \
-             including ones for documents holding no XObject at all."
+             including ones for documents holding no XObject at all.\n\n\
+             Moved a SEVENTY-THIRD time at 0.46.0 (v2.2-S3), on `parser_version` alone again, and \
+             this one is the largest CORRECTNESS move since 0.42.1. `load_widths` asked a /Type0 \
+             font dictionary for `/Widths` — a key PDF 32000-1 §9.7.4.3 never puts there, because \
+             a composite font's widths live on its descendant CIDFont as `/W` with `/DW` as the \
+             default — so every composite font reported an unknown advance while the document \
+             supplied a perfectly good one. What differs on the wire: those runs now carry an \
+             `advance`, and with an advance they carry a MEASURED ink box instead of a typed \
+             absence, so they reach `ethos.grounding.v1` where they used to be omitted from it. \
+             Measured on 200 documents: ungroundable text nodes 14 683 -> 8 770 of 109 500. No \
+             text is gained or lost and the node count is identical — only what can be expressed \
+             downstream changed, which is exactly the axis this engine exists on.\n\n\
+             Moved a SEVENTY-FOURTH time at 0.46.1 (v2.2-S4), and this one changes NOTHING a \
+             reader can observe. The version moves because `parser_version` is a profile field \
+             and a build is a build; the slice is guards. `xhtml_heading_level`'s h2..h6 arms \
+             were reached by no test at all — replacing them with `None` failed zero of ~1 300 — \
+             so 0.43.0's declared-heading feature was verified at one level of six. It is now \
+             verified at all six in both projections, and the mapping was already correct, which \
+             is why nothing moves but the number.\n\n\
+             Moved a SEVENTY-FIFTH time at 0.47.0 (v2.2-S5), and this one moves BOTH projection \
+             rule ids — `markdown-blocks-v4` -> `-v5`, `html-blocks-v4` -> `-v5` — because the \
+             clauses live in `markdown.rs` and `html.rs` calls them. Until now a run the document \
+             declared nothing about joined with nothing, so an untagged PDF projected one block \
+             per run: a median of TWO characters per block across 981 OmniDocBench documents, \
+             with 163 of 733 documents at 95% or more sub-3-character blocks holding 52% of all \
+             the text. Those runs now join when they are the next ink along one baseline — same \
+             page, same region, same stream, same `origin_y`, no gap the page drew. What differs \
+             on the wire: fewer blocks, and two new census codes, \
+             `baseline-run-joins-abutted-v1` and `baseline-run-joins-spaced-v1`, counted apart \
+             from `mcid-run-joins-v1` because a join this engine measured is a weaker claim than \
+             one the producer declared. No text is gained or lost — the coverage census balances \
+             on all 961 artifacts, 1 623 979 emitted + 106 184 dropped = 1 730 163 in \
+             representation — and every one of the 40 engine fixtures is byte-identical.\n\n\
+             Moved a SEVENTY-SIXTH time at 0.48.0 (v2.2-S6), on `parser_version` alone: two \
+             correctness fixes, neither of which changes a rule's DEFINITION, so no rule id \
+             moves. First, `hex_of` refused a hexadecimal string containing white space, which \
+             PDF 32000-1 §7.3.4.3 says shall be ignored — and the refusal was document-fatal, so \
+             one stray space in one font's `ToUnicode` cost the whole page. Two documents of 981 \
+             hit it; both now read, one of them recovering 4 970 characters from nothing. \
+             Second, a font that declares itself SYMBOLIC, supplies no `/ToUnicode` and names no \
+             base encoding was decoded through `StandardEncoding` — which §9.6.6.2 gives to a \
+             NONSYMBOLIC font — and said nothing about it. It still is, because the flag does not \
+             separate the TeX math fonts where the decode is wrong from the ordinary prose fonts \
+             that merely set the bit, and refusing both would drop correct text to fix a \
+             minority. What changed is that the artifact now says so, under \
+             `symbolic-font-builtin-encoding-assumed`, on 36 of 981 documents.\n\n\
+             Moved a SEVENTY-SEVENTH time at 0.49.0 (v2.2-S7), on `parser_version` alone — there \
+             is no grounding rule id to move, which is itself worth noticing. \
+             `ethos.grounding.v1` offers two granularities, coarse citable ELEMENTS and finer \
+             SPANS inside them, and v0 could populate only one of them: with no grouping, a run \
+             WAS the element and WAS the span. A consumer wanting to highlight one quoted \
+             sentence on `irs-fw9` therefore held 970 glyph-run rectangles and no rectangle for \
+             the sentence. The element is now the BLOCK and the span stays the run, grouped by \
+             `markdown::geometric_blocks` — the projections' own join clauses, called rather than \
+             restated. What differs on the wire: fewer elements, the same spans, each naming its \
+             block, and an element box that is the UNION of its members' measured boxes. Nothing \
+             is inferred: a union of measured rectangles is measured, and an element's text is \
+             its members' own characters concatenated, because a space the page drew is a run \
+             with its own text. Runs per citable element: 13.55 across the gate corpus \
+             (`nist-sp-800-207` 19.72), and 1.24 across OmniDocBench — the same statistic meaning \
+             opposite things on a tagged and an untagged corpus, because where nothing is \
+             declared only the baseline join fires.\n\n\
+             Moved a SEVENTY-EIGHTH time at 0.50.0 (v2.2-S8), and this one changes NO ARTIFACT \
+             BYTE — only the text of one refusal. Two different absences reached one message and \
+             it named the wrong one for half of them: `/Identity-H` was refused with `Predefined \
+             CMaps (the Adobe CJK set) are not vendored`, which is true of `/GBK-EUC-H` and false \
+             of an identity CMap. §9.7.4.2 makes that mapping the identity, so the code IS the \
+             CID and nothing about the CMap is missing; what is absent is CID to Unicode, which \
+             here has no source because the font supplies no `/ToUnicode`. 8 of the 20 \
+             OmniDocBench documents that produce no artifact are that kind, and the old sentence \
+             would have sent a reader after a dataset that could not have helped them. MINOR \
+             rather than PATCH because §4's rule is about bytes for the same input and stderr is \
+             bytes; a reviewer who reads `output` as the artifact alone would call it a PATCH, \
+             and 0.42.1's entry is why this errs the other way."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0a532bf7d0ed4270fad80796dd7a5cb4f1a60b34e456489d5429170db053e619"
+            "sha256:0742f0c593da1220f68853b084e27c46fe6a70c2682d9be04b9ed8462f49add2"
         );
     }
 

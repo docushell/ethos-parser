@@ -33,6 +33,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              grounding artifact. The Markdown joins them with a blank line, and
                              a quote spanning that join is text the page never drew — the
                              Anchor Map golden                                    [v1.1-S1]
+  untagged-shredded-line     FOUR runs on ONE baseline in a font with real ink metrics and NO
+                             structure tree: three abutting exactly (`Yar`+`ro`+`w`) and a
+                             fourth 40 points to the right. The only fixture whose runs share a
+                             baseline, so the only one that can observe the undeclared join —
+                             every other engine fixture stacks its runs and is blind to it
+                                                                                  [v2.2-S5]
   markdown-hyphen-break      TWO runs 30 points apart in a font with real ink metrics, the
                              first ending `recalcu-`. The export closes the word up and the
                              joined sentence is on no page — the hyphen golden     [v1.1-S3]
@@ -79,6 +85,16 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
   image-declared-not-drawn   the SAME image declared in /Resources and never drawn. Classify
                              counts a resource; extract emits a node per `Do`. Zero nodes here
                              is the right answer and this fixture is what says so   [v1-S6]
+  composite-font-cid-widths  a /Type0 font whose widths live on its DESCENDANT CIDFont as /W and
+                             /DW, in BOTH forms the spec defines. Neither owned corpus held a
+                             single CIDFont, so the composite-width path was tested by nothing and
+                             `load_widths` read `/Widths` off a dictionary the format never puts
+                             it on — 50 of 50 corpus documents wrongly said "no widths" [v2.2-S3]
+  composite-font-non-identity-cmap
+                             the SAME descendant under a CMap this profile does not parse. /W is
+                             keyed by CID; without the CMap the code is not the CID, so the width
+                             must be ABSENT — and absent for that reason, not the standard-14 one
+                                                                                        [v2.2-S3]
   form-xobject-text-drawn    the THIRD member of that pair: a /Subtype /Form XObject drawing text,
                              painted with the same `Do`. It is neither an image node nor a text
                              node — this profile does not descend — so the only thing that can say
@@ -216,6 +232,7 @@ def build_pdf(
     font_subtype="Type1",
     font_extra="",
     struct_tree=False,
+    font_object=None,
 ) -> bytes:
     # `extra_objects` is a list of object bodies appended after the fixed five, numbered from 6.
     # Object numbering here is fixed by position (1 catalog, 2 pages, 3 page, 4 contents, 5 font),
@@ -231,6 +248,14 @@ def build_pdf(
     # dictionary entirely, so an image declared through it would be invisible to a `Do`.
     #
     # `font_extra` splices into the font dictionary — where a /ToUnicode reference goes (v1-S6.1).
+    #
+    # `font_object` REPLACES object 5 outright, and exists because a composite font is not the
+    # simple shape with extra keys — it is a different dictionary (v2.2-S3). A /Type0 carries no
+    # /FirstChar, no /LastChar and no /Widths at all; its widths live on a descendant CIDFont and
+    # are keyed by CID. Splicing that through `font_extra` would have produced a font dictionary
+    # holding BOTH shapes, and a fixture that is legal-but-nonsense proves nothing about a reader
+    # that has to choose between them. When it is given, `font_subtype`, `differences` and
+    # `descriptor` have nothing to act on and are refused rather than silently ignored.
     #
     # `struct_tree` decides whether the catalog names object 6 as /StructTreeRoot. It is an
     # EXPLICIT flag, and it is explicit because the heuristic it replaced ("extra_objects and no
@@ -250,6 +275,10 @@ def build_pdf(
     # time and raises before 3.10, which would make regenerating fixtures depend on the
     # regenerator's toolchain. The assertion below is the check that annotation would have been.
     assert descriptor in DESCRIPTOR_KINDS, f"unknown descriptor kind {descriptor!r}"
+    assert not (font_object and (descriptor or differences or font_extra)), (
+        "font_object replaces the whole font dictionary, so a descriptor, /Differences or "
+        "font_extra would be silently dropped; give the fixture one or the other"
+    )
     widths = " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1))
     objects = [
         (
@@ -266,7 +295,9 @@ def build_pdf(
             % (media + (resources_extra, page_extra))
         ).encode(),
         None,  # content stream, filled below
-        (
+        font_object
+        if font_object
+        else (
             "<< /Type /Font /Subtype /%s /BaseFont /Helvetica "
             "/Encoding %s /FirstChar %d /LastChar %d /Widths [%s]%s%s >>"
             % (
@@ -365,6 +396,25 @@ FIXTURES = {
     # never drew, which is exactly the string the Anchor Map exists to mark unquotable. Proving
     # that needs the verifier to ground the first half and refuse the second, and every existing
     # fixture with measurable ink has only ONE run, so there is no join to span.
+    # v2.2-S5's UNDECLARED-JOIN fixture. Every other engine fixture puts its runs on distinct
+    # baselines, so the whole CLI suite was blind to the fallback: a rule keyed on "same baseline,
+    # next ink along it" changed nothing anywhere and passed. This is the tripwire.
+    #
+    # Uniform /Widths of 500 at 24pt is 12 points per glyph, so the abutment is arithmetic a
+    # reviewer can check without running anything:
+    #
+    #     72 + 3x12 = 108     `Yar` ends where `ro` starts
+    #    108 + 2x12 = 132     `ro`  ends where `w`  starts
+    #    132 + 1x12 = 144     `w`   ends, and the next run starts 40 points further on
+    #
+    # So `Yarrow` is one block and `Separate` is another, and a rule that joined on absence alone
+    # would produce `YarrowSeparate` across a gap the page plainly drew.
+    "untagged-shredded-line": (
+        "BT /F1 24 Tf 72 100 Td (Yar) Tj ET "
+        "BT /F1 24 Tf 108 100 Td (ro) Tj ET "
+        "BT /F1 24 Tf 132 100 Td (w) Tj ET "
+        "BT /F1 24 Tf 184 100 Td (Separate) Tj ET"
+    ),
     "markdown-two-blocks": (
         "BT /F1 24 Tf 72 120 Td (First block) Tj ET "
         "BT /F1 24 Tf 72 60 Td (Second block) Tj ET"
@@ -793,6 +843,20 @@ FIXTURES = {
         "q 120 0 0 60 40 60 cm /Im1 Do Q "
         "BT /F1 12 Tf 1 0 0 1 40 30 Tm (Below the image) Tj ET"
     ),
+    # v2.2-S3. Four glyphs under Identity-H, written as 2-byte codes because that is what an
+    # Identity CMap means. Their four widths come from four different places — /W array form, /W
+    # array form, the font's own /DW, /W range form — and are 500, 750, 900 and 250 glyph units.
+    # At 12 pt that is 6.0 + 9.0 + 10.8 + 3.0 = 28.8 pt of advance, and no two of the four are
+    # equal, so a reader that mis-sourced any single one lands on a different total.
+    "composite-font-cid-widths": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm <0001000200030005> Tj ET"
+    ),
+    # The same four glyphs under a CMap this profile does not parse. The text still decodes —
+    # /ToUnicode is authoritative for characters — and the ADVANCE must be absent, because the
+    # code is not the CID and nothing here can say what is.
+    "composite-font-non-identity-cmap": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm <0001000200030005> Tj ET"
+    ),
     # The SAME image, declared and never drawn. `Do` is what makes a node; a resource nobody
     # painted is a resource, and zero image nodes is the correct answer.
     "image-declared-not-drawn": "BT /F1 12 Tf 1 0 0 1 40 60 Tm (No Do here) Tj ET",
@@ -1033,6 +1097,104 @@ def _tounicode_object() -> bytes:
     )
 
 
+
+# --- v2.2-S3: the composite font, the shape NEITHER owned corpus contained ---------------------
+#
+# Before this slice `grep -l CIDFontType fixtures/` matched nothing, in either corpus. The whole
+# composite-width path was therefore exercised by no test at all, which is why `load_widths`
+# reading `/Widths` off a /Type0 dictionary — a key the format never puts there — passed 1 294
+# tests for its entire life. Same argument v1-S6 used to justify `image-xobject-drawn`: *"the
+# corpus contains NO image XObject anywhere, so without this the whole image path is untested."*
+
+# Codes are CIDs under Identity-H, so the CMap maps the four CIDs the page draws.
+_CID_TOUNICODE = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\nbegincmap\n"
+    b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+    b"4 beginbfchar\n"
+    b"<0001> <0041>\n"  # A
+    b"<0002> <0042>\n"  # B
+    b"<0003> <0043>\n"  # C
+    b"<0005> <0045>\n"  # E
+    b"endbfchar\n"
+    b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend"
+)
+
+
+def _type0_font(encoding: str) -> bytes:
+    """Object 5: a /Type0 font. Note what it does NOT carry: /FirstChar, /LastChar, /Widths."""
+    return (
+        "<< /Type /Font /Subtype /Type0 /BaseFont /Helvetica /Encoding /%s "
+        "/DescendantFonts [6 0 R] /ToUnicode 7 0 R >>" % encoding
+    ).encode()
+
+
+def _cid_font() -> bytes:
+    """Object 6: the descendant CIDFont, and the whole point of the pair of fixtures.
+
+    `/W` deliberately uses BOTH forms PDF 32000-1 sec 9.7.4.3 defines, because both occur in the
+    wild — 1 143 array-form and 810 range-form entries across the 200-document
+    `opendataloader-bench` corpus — and a parser that implemented one would read the other's
+    numbers as CIDs and produce silently wrong spans:
+
+        1 [500 750]   the ARRAY form: CID 1 -> 500, CID 2 -> 750
+        5 7 250       the RANGE form: CIDs 5, 6 and 7 -> 250
+
+    CID 3 is named by neither and falls to `/DW`. So the four glyphs the page draws take their
+    widths from four different code paths, and the four numbers are all different — a reader that
+    got any single one wrong produces a different total advance.
+
+    **`/DW` is 900 and not 1000, and that is the whole reason this fixture can see it.** 1000 is
+    also the value sec 9.7.4.3 gives when `/DW` is omitted, so a `/DW 1000` here would be
+    indistinguishable from the default and a reader that ignored the key entirely would still
+    produce the right number. Measured, not argued: with `/DW 1000` a mutant replacing the default
+    with zero SURVIVED this fixture. The absent-`/DW` case is covered by a unit test in
+    `fonts.rs`, where a dictionary can be built without one.
+    """
+    return (
+        b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Helvetica "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        b"/DW 900 /W [ 1 [500 750] 5 7 250 ] /FontDescriptor 8 0 R >>"
+    )
+
+
+def _cid_tounicode() -> bytes:
+    return b"<< /Length %d >>\nstream\n%s\nendstream" % (
+        len(_CID_TOUNICODE),
+        _CID_TOUNICODE,
+    )
+
+
+def _cid_descriptor() -> bytes:
+    """Object 8: REAL ascent/descent, so an ink box is measured once a width exists.
+
+    Without this the fixture would prove only that the advance was read. The advance is what the
+    ink box needs to become a rectangle, and the rectangle is what makes a node groundable — which
+    is the thing the defect actually cost. A descriptor with no metrics would leave the node
+    ungroundable for an unrelated reason and the fixture would assert nothing about the repair.
+    """
+    return (
+        b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 4 "
+        b"/Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 88 "
+        b"/FontBBox [-166 -225 1000 931] >>"
+    )
+
+
+COMPOSITE_FONTS = {
+    "composite-font-cid-widths": _type0_font("Identity-H"),
+    # The SAME descendant, the same /W, the same /DW — and a predefined CMap this profile does not
+    # parse. `/W` is keyed by CID and the code -> CID map is that CMap, so the CID is unknown and
+    # a width read here would be a plausible number for the wrong glyph. Must refuse, and must
+    # refuse for THAT reason: the standard-14 AFM sentence is about a different case entirely and
+    # was the wrong explanation printed 50 times out of 51 before this slice.
+    "composite-font-non-identity-cmap": _type0_font("UniJIS-UCS2-H"),
+}
+
+COMPOSITE_OBJECTS = {
+    name: [_cid_font(), _cid_tounicode(), _cid_descriptor()] for name in COMPOSITE_FONTS
+}
+
+
 # name -> the /ToUnicode object. Object 6, like every other extra.
 TOUNICODE_OBJECTS = {
     "simple-font-two-byte-tounicode": [_tounicode_object()],
@@ -1132,6 +1294,7 @@ MEDIA = {
     # v1.1-S2. Ten baselines at 16pt spacing, from y=180 down to y=30.
     "tagged-list-items": (0, 0, 300, 200),
     # Tall enough for two 24pt lines with real ink boxes inside the page.
+    "untagged-shredded-line": (0, 0, 300, 200),
     "markdown-two-blocks": (0, 0, 300, 200),
     # v1.1-S3. Two 12pt lines 30 points apart, and wide enough that the longer one ends at 184.
     "markdown-hyphen-break": (0, 0, 300, 200),
@@ -1180,6 +1343,7 @@ DESCRIPTORS = {
     "measured-ink-box": "metrics",
     # Real metrics on BOTH runs, so both ground. Without them the elements array is empty and the
     # golden would pass vacuously against a verifier that found nothing either way.
+    "untagged-shredded-line": "metrics",
     "markdown-two-blocks": "metrics",
     # v1.1-S2. Real metrics so the CELL runs are groundable elements; without them the cell-quote
     # golden would watch the verifier find nothing and refuse both halves, proving nothing about
@@ -1219,7 +1383,9 @@ def main() -> int:
                 or FORM_OBJECTS.get(name)
                 or IMAGE_OBJECTS.get(name)
                 or TOUNICODE_OBJECTS.get(name)
+                or COMPOSITE_OBJECTS.get(name)
             ),
+            font_object=COMPOSITE_FONTS.get(name),
             font_subtype=FONT_SUBTYPE.get(name, "Type1"),
             font_extra=FONT_EXTRA.get(name, ""),
             struct_tree=name in STRUCTURE,

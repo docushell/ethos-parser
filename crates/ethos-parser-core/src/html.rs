@@ -122,7 +122,11 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `<h1>` now projects `<h1>` where `-v2` projected `<p>`. Both projection ids move together here
 /// and that is not a contradiction of them being separate — separate means they *can* move
 /// independently, and this change went through `heading_level`, which both of them call.
-pub const HTML_RULE_BLOCKS_V4: &str = "html-blocks-v4";
+/// `-v5` at v2.2-S5: two runs the document declared nothing about, drawn as the next ink along
+/// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
+/// again, for the same reason as last time — the clauses live in `crate::markdown` and this
+/// projection calls them.
+pub const HTML_RULE_BLOCKS_V5: &str = "html-blocks-v5";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -296,7 +300,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v4`
+/// # The rule, in full — `html-blocks-v5`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
@@ -374,6 +378,12 @@ pub fn to_html(
     let mut open_prev: Option<&crate::Node> = None;
     let mut pending_space = false;
 
+    // v2.2-S5. The undeclared fallback, from `crate::markdown` so the two projections cannot
+    // drift: a document that reads as one block there must read as one `<p>` here.
+    let pitch = crate::markdown::pitch_reference(&payload.nodes);
+    let mut open_line: Option<crate::markdown::LineKey> = None;
+    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
 
@@ -390,6 +400,8 @@ pub fn to_html(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             continue;
         }
 
@@ -404,6 +416,8 @@ pub fn to_html(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             continue;
         }
 
@@ -413,6 +427,24 @@ pub fn to_html(
             // stays open: a space inside a marked-content sequence does not end it.
             if !node.text.is_empty() {
                 pending_space = true;
+                // v2.2-S5. See the twin in `crate::markdown`: a drawn space is ink on the line
+                // even though it projects to nothing, so the reach moves past it.
+                match (open_line, line_ink) {
+                    (Some(line), Some((ink, end, reference)))
+                        if Some(line) == crate::markdown::line_key(node)
+                            && crate::markdown::ink_sequenced(ink, end, reference, node) =>
+                    {
+                        line_ink =
+                            crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+                        if line_ink.is_none() {
+                            open_line = None;
+                        }
+                    }
+                    _ => {
+                        open_line = None;
+                        line_ink = None;
+                    }
+                }
             }
             continue;
         }
@@ -422,6 +454,8 @@ pub fn to_html(
             open_group = None;
             open_prev = None;
             pending_space = false;
+            open_line = None;
+            line_ink = None;
             let continues = !role.label && open_item.map(|(d, _)| d) == Some(role.depth);
             if continues {
                 // A second body run inside an item the tree did not itself close. **This
@@ -448,6 +482,9 @@ pub fn to_html(
         // v2.2-S1. Join into the open element, or close it and open a new one. The clauses are
         // `crate::markdown`'s, called from there so the two projections cannot drift: a document
         // that reads as one block in Markdown must read as one `<p>` here.
+        // v2.2-S5. Computed here so it keeps first refusal over the undeclared join, exactly as
+        // in `crate::markdown`.
+        let ht = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner);
         let key = crate::markdown::group_key(node);
         let joining = match (open_group, key, open_prev) {
             (Some(open), Some(k), Some(prev)) if open == k => {
@@ -463,6 +500,22 @@ pub fn to_html(
                     None
                 }
             }
+            // v2.2-S5. Neither run carries a declaration; geometry along one baseline is the
+            // whole licence. The clauses are `crate::markdown`'s, called rather than restated.
+            (None, None, Some(_)) => match (open_line, line_ink) {
+                (Some(line), Some((ink, end, reference)))
+                    if ht.is_none()
+                        && Some(line) == crate::markdown::line_key(node)
+                        && crate::markdown::ink_sequenced(ink, end, reference, node) =>
+                {
+                    Some(
+                        pending_space
+                            || ink.text.ends_with(char::is_whitespace)
+                            || node.text.starts_with(char::is_whitespace),
+                    )
+                }
+                _ => None,
+            },
             _ => None,
         };
 
@@ -471,9 +524,20 @@ pub fn to_html(
                 e.syntax(" ");
             }
             escaped_source(&mut e, &text, node.id.as_str());
-            *erasures.entry(crate::markdown::MCID_RUN_JOINS).or_insert(0) += 1;
+            let code = if key.is_some() {
+                crate::markdown::MCID_RUN_JOINS
+            } else if space {
+                crate::markdown::BASELINE_RUN_JOINS_SPACED
+            } else {
+                crate::markdown::BASELINE_RUN_JOINS_ABUTTED
+            };
+            *erasures.entry(code).or_insert(0) += 1;
             pending_space = false;
             open_prev = Some(node);
+            line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+            if line_ink.is_none() {
+                open_line = None;
+            }
             continue;
         }
 
@@ -482,6 +546,11 @@ pub fn to_html(
         open_group = key;
         open_prev = Some(node);
         pending_space = false;
+        open_line = crate::markdown::line_key(node);
+        line_ink = crate::markdown::ink_reach(node, &pitch).map(|(x, r)| (node, x, r));
+        if line_ink.is_none() {
+            open_line = None;
+        }
 
         let level = heading_level(node);
         match level {
@@ -491,7 +560,7 @@ pub fn to_html(
         open_block = Some(level);
 
         // The same join, from the same predicate. See `crate::markdown::hyphen_tail`.
-        if let Some((tail, joined)) = hyphen_tail(node, &text, payload.nodes.get(i + 1), &owner) {
+        if let Some((tail, joined)) = ht {
             e.joined_source_encoded(
                 &escape(&joined),
                 joined.chars().count(),
@@ -502,6 +571,11 @@ pub fn to_html(
             b.0 += 1;
             b.1 += 1;
             joined_tail = true;
+            // v2.2-S5. The block now holds text from two baselines, so the reach measured for
+            // this run no longer describes where its ink ends. The twin of the same reset in
+            // `crate::markdown`.
+            open_line = None;
+            line_ink = None;
         } else {
             escaped_source(&mut e, &text, node.id.as_str());
         }
@@ -618,7 +692,8 @@ pub fn fingerprint(artifact: &HtmlArtifact) -> Result<Sha256Hex, EngineError> {
 mod tests {
     use super::*;
     use crate::markdown::tests::{
-        cell, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr, spanning,
+        cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
+        spanning,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -687,6 +762,44 @@ mod tests {
             "<h1>Chapter One</h1>\n<p>Body text</p>\n<h3>Sub</h3>\n"
         );
         assert_tiles(&a);
+    }
+
+    /// **All six XHTML heading levels reach this projection too** (v2.2-S4).
+    ///
+    /// The same fact as `markdown.rs`'s `every_xhtml_heading_level_projects_at_its_own_depth`, in
+    /// the other syntax, and asserting it in both is the point rather than duplication: the two
+    /// rule ids are separate precisely so they *can* move apart, and only a test in each says
+    /// they did not. That is the argument `an_epubs_own_heading_element_projects_as_an_h_element`
+    /// already makes in `html_cli.rs` — for `h1` alone, which was the whole gap.
+    ///
+    /// Both projections read one `heading_level`, so before v2.2-S4 a mutation to five of its six
+    /// XHTML arms went unnoticed by either. Measured: zero of ~1 300 tests failed.
+    #[test]
+    fn every_xhtml_heading_level_projects_as_its_own_h_element() {
+        let a = artifact_of(epub_repr_of(&["h1", "h2", "h3", "h4", "h5", "h6"]));
+        assert_eq!(
+            a.html,
+            "<h1>Text inside h1</h1>\n\
+             <h2>Text inside h2</h2>\n\
+             <h3>Text inside h3</h3>\n\
+             <h4>Text inside h4</h4>\n\
+             <h5>Text inside h5</h5>\n\
+             <h6>Text inside h6</h6>\n"
+        );
+        assert_tiles(&a);
+    }
+
+    /// An element that merely looks like a heading is a `<p>`, in this syntax as in the other.
+    #[test]
+    fn an_element_that_merely_looks_like_a_heading_is_a_paragraph_element() {
+        for element in ["hgroup", "h7", "H1", "header", "hr"] {
+            let a = artifact_of(epub_repr_of(&[element]));
+            assert_eq!(
+                a.html,
+                format!("<p>Text inside {element}</p>\n"),
+                "`{element}` is not one of the six names HTML defines"
+            );
+        }
     }
 
     /// **No font size is read here either.** L29 is REFUSE on both projections.

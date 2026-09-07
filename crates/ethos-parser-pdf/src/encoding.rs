@@ -95,6 +95,14 @@ impl SimpleEncoding {
         Self { base, differences }
     }
 
+    /// The base this encoding resolves through.
+    ///
+    /// Read by `load_font` for one question only: whether the document NAMED a base, or whether
+    /// [`BaseEncoding::Builtin`] is standing in for one it never supplied.
+    pub fn base(&self) -> BaseEncoding {
+        self.base
+    }
+
     /// Decode one byte.
     ///
     /// # Errors

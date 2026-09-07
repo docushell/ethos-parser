@@ -331,18 +331,35 @@ pub fn to_representation(
     // there was never a box to measure and no gap exists. Reporting 11 663 of the first when 242
     // of them are the first and 11 421 are the second is the same conflation this slice repairs
     // one layer down.
+    // v2.2-S3. **Split again, and for the reason v1-S6.2 split it the first time.**
+    // `NotReportedByReader` is filled by `extract.rs`'s `_ =>` arm, which fires when EITHER the
+    // font metrics are missing OR the advance is — and the sentence beneath it said, of all of
+    // them, *"their font supplies no usable ascent/descent and no /FontBBox"*. That is a claim
+    // about ink metrics made over a bucket half of which is about widths. On
+    // `opendataloader-bench` before this slice it was the wrong explanation for 6 519 nodes,
+    // because `load_widths` was reading a composite font's widths from a key the format never
+    // puts them on; repairing that dropped the bucket to 131 and left the sentence still wrong
+    // about whatever remains. The two are separable with no new wire type: a run with no advance
+    // has `advance: None` on the locator it already carries.
+    let not_reported = |g: &ethos_parser_core::NodeGeometry, n: &ethos_parser_core::Node| {
+        n.kind == NodeKind::TextRun
+            && matches!(
+                g.presence,
+                ethos_parser_core::GeometryPresence::Absent(
+                    ethos_parser_core::GeometryAbsence::NotReportedByReader
+                )
+            )
+    };
+    let advance_absent = |n: &ethos_parser_core::Node| matches!(&n.native_locator, NativeLocator::Pdf(l) if l.advance.is_none());
+    let no_advance = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| not_reported(g, n) && advance_absent(n))
+        .count() as u32;
     let unmeasurable = geometry
         .iter()
         .zip(&nodes)
-        .filter(|(g, n)| {
-            n.kind == NodeKind::TextRun
-                && matches!(
-                    g.presence,
-                    ethos_parser_core::GeometryPresence::Absent(
-                        ethos_parser_core::GeometryAbsence::NotReportedByReader
-                    )
-                )
-        })
+        .filter(|(g, n)| not_reported(g, n) && !advance_absent(n))
         .count() as u32;
     let no_ink = geometry
         .iter()
@@ -381,7 +398,7 @@ pub fn to_representation(
                 )
         })
         .count() as u32;
-    let ink_absent = unmeasurable + no_ink + off_page;
+    let ink_absent = unmeasurable + no_advance + no_ink + off_page;
     let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
     // Nodes whose geometry is absent because their KIND has none — an annotation, a
     // form field, an image. `check_structure` requires the geometry declaration
@@ -416,6 +433,7 @@ pub fn to_representation(
     if ink_absent > 0 || kind_absent > 0 {
         limitations.push(geometry_absent_limitation(
             unmeasurable,
+            no_advance,
             no_ink,
             off_page,
             text_total,
@@ -500,6 +518,7 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
 
 fn geometry_absent_limitation(
     unmeasurable: u32,
+    no_advance: u32,
     no_ink: u32,
     off_page: u32,
     total: u32,
@@ -511,10 +530,14 @@ fn geometry_absent_limitation(
     // "two reasons" above three clauses is that defect in miniature. Conditional rather than
     // always "three" so a document with no off-page box carries the sentence it always carried,
     // byte for byte, and no golden moves for a case this slice did not change.
-    let (split_count, split_slices) = if off_page > 0 {
-        ("Three", "v1-S6.2, D4-S5")
-    } else {
-        ("Two", "v1-S6.2")
+    //
+    // v2.2-S3 adds a fourth clause and the count moves with it, which is the point of computing
+    // it. Splitting the ascent/descent bucket without touching this line would have produced a
+    // sentence reading "Three reasons" above four — the exact defect the paragraph above
+    // describes, introduced by the slice that quotes it.
+    let (split_count, split_slices) = match off_page > 0 {
+        true => ("Four", "v1-S6.2, D4-S5, v2.2-S3"),
+        false => ("Three", "v1-S6.2, v2.2-S3"),
     };
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
@@ -530,11 +553,16 @@ fn geometry_absent_limitation(
              ({split_slices}). \
              {unmeasurable} node(s) could NOT be measured: their font supplies no usable \
              ascent/descent and no `/FontBBox`, which is a real gap in what this engine can do. \
-             {no_ink} node(s) had NOTHING to measure: the run draws no ink — a run of spaces — so \
-             no box exists to be missing. Only the first is a limitation of this reader. Before \
-             they were split, an artifact reported their sum under a sentence that read as though \
-             the reader had failed every time.",
-            unmeasurable + no_ink + off_page
+             {no_advance} node(s) have no ADVANCE, which is a different gap wearing the same \
+             coat: the box needs a width as well as an envelope, and this reader could not read \
+             one. Until v2.2-S3 these two were reported together under the ascent/descent \
+             sentence alone, and the count that sentence was wrong about was large — 6 519 of \
+             them on a 200-document corpus, every one really a width the reader had looked for \
+             under the wrong key. {no_ink} node(s) had NOTHING to measure: the run draws no ink — \
+             a run of spaces — so no box exists to be missing. Only the first two are limitations \
+             of this reader. Before any of them were split, an artifact reported their sum under \
+             a sentence that read as though the reader had failed every time.",
+            unmeasurable + no_advance + no_ink + off_page
         ) + &off_page_clause(off_page)
             + &kind_absent_clause(kind_absent),
     )
@@ -630,7 +658,7 @@ mod tests {
 
         // And the declaration it produces names that population rather than
         // silently reporting zero text nodes.
-        let limitation = geometry_absent_limitation(0, 0, 0, 1, kind_absent);
+        let limitation = geometry_absent_limitation(0, 0, 0, 0, 1, kind_absent);
         assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
         assert!(
             limitation.detail.contains("their KIND has none"),
@@ -647,23 +675,25 @@ mod tests {
     /// three clauses, which is the v2-S13.3 defect: a statement that stopped being true.
     #[test]
     fn the_off_page_reason_is_counted_and_the_reason_count_follows_it() {
-        let none = geometry_absent_limitation(1, 0, 0, 1, 0);
+        let none = geometry_absent_limitation(1, 0, 0, 0, 1, 0);
         assert!(
-            none.detail.contains("**Two reasons"),
-            "no off-page box means the v1-S6.2 sentence, verbatim: {}",
+            none.detail.contains("**Three reasons"),
+            "no off-page box means three clauses, not four — v2.2-S3 added one and the count \
+             moves with it: {}",
             none.detail
         );
         assert!(!none.detail.contains("are not on the page"));
 
-        let some = geometry_absent_limitation(0, 0, 2, 3, 0);
+        let some = geometry_absent_limitation(0, 0, 0, 2, 3, 0);
         assert!(
             some.detail.starts_with("2 of 3 text node(s)"),
             "an off-page box counts toward the omitted total: {}",
             some.detail
         );
         assert!(
-            some.detail.contains("**Three reasons"),
-            "three clauses must be introduced as three: {}",
+            some.detail.contains("**Four reasons"),
+            "four clauses must be introduced as four; a count that stopped following its own \
+             clauses is the v2-S13.3 defect this line exists to prevent: {}",
             some.detail
         );
         assert!(
@@ -679,7 +709,7 @@ mod tests {
     fn the_ink_sentence_counts_text_nodes_on_both_sides() {
         // One unmeasurable text run in a document that also holds two annotations:
         // the sentence is about text, so the total is 1, not 3.
-        let limitation = geometry_absent_limitation(1, 0, 0, 1, 2);
+        let limitation = geometry_absent_limitation(1, 0, 0, 0, 1, 2);
         assert!(
             limitation.detail.starts_with("1 of 1 text node(s)"),
             "the denominator was diluted by non-text nodes: {}",

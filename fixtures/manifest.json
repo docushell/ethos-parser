@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 39,
+    "engine_owned": 42,
     "gate": 8
   },
   "fixtures": [
@@ -417,6 +417,24 @@
       "notes": "v1-S6, the other half of the images proof. The SAME image object declared in /Resources and never drawn. Expect ZERO image nodes with the capability still true: `Do` is what makes a placement. Classify still counts the declared resource and reports `embedded-images`, which is a different question honestly answered."
     },
     {
+      "id": "composite-font-cid-widths",
+      "root": "engine",
+      "group": "engine",
+      "path": "composite-font-cid-widths/document.pdf",
+      "sha256": "sha256:6cf372b74126eb701704346e522ec685ba17f529e9ba6518fd3e32ff7999ddbc",
+      "owner": "engine",
+      "notes": "v2.2-S3 composite-width golden, and the shape NEITHER owned corpus contained \u2014 `grep -l CIDFontType fixtures/` matched nothing before this. A /Type0 font under /Identity-H whose widths live on its descendant CIDFont as `/W [ 1 [500 750] 5 7 250 ]` with `/DW 900`, so the four glyphs the page draws take their widths from the array form, the array form, /DW and the range form respectively. Expect ONE run, text `ABCE`, and an advance of exactly 2880 centipoints \u2014 6.00 + 9.00 + 10.80 + 3.00 pt at 12 pt \u2014 with a MEASURED ink box 2880 wide. `/DW` is 900 rather than 1000 deliberately: 1000 is also \u00a79.7.4.3's value for an omitted key, and at 1000 a mutant replacing the default with zero survived this fixture. Before v2.2-S3 `load_widths` read `/Widths` off the /Type0 dictionary \u2014 a key the format never puts there \u2014 so every composite font reported an unknown advance: 50 of 50 documents and 72 of 72 fonts on `opendataloader-bench`, every one of which had /W or /DW in the file."
+    },
+    {
+      "id": "composite-font-non-identity-cmap",
+      "root": "engine",
+      "group": "engine",
+      "path": "composite-font-non-identity-cmap/document.pdf",
+      "sha256": "sha256:6780f741c920ba15a2f68b6964ead4bbde8667bd6e9009b828e3128305f5c17a",
+      "owner": "engine",
+      "notes": "v2.2-S3, the other half. The SAME descendant with the SAME /W and /DW under /Encoding /UniJIS-UCS2-H, so the only difference from `composite-font-cid-widths` is the CMap. `/W` is keyed by CID and the code\u2192CID map is that CMap, which this profile does not parse \u2014 so the CID is unknown and a width read here would be a plausible number for the WRONG glyph, the one failure a consumer cannot detect. Expect the text `ABCE` still read (/ToUnicode is authoritative for characters), the advance ABSENT, and `font-widths-absent` naming the encoding and explicitly disowning the standard-14 AFM sentence, which was the wrong explanation on 50 of the 51 corpus documents that printed it."
+    },
+    {
       "id": "form-xobject-text-drawn",
       "root": "engine",
       "group": "engine",
@@ -505,6 +523,15 @@
       "sha256": "sha256:2c4ec0be97056281f50cba2a4e15c846074492c71a97f2e5951f674a9797c533",
       "owner": "engine",
       "notes": "v1-S8 negative, and the irs-form-1040-2025 principle without the tax form. A stroked 2x2 whose four faces are ALSO four widget /Rects at the same coordinates, so the boxes are the fields' own frames rather than a table's cells. Expect 0 tables. Contrast `stroke-ruled-worksheet`, which carries no widgets, and the real page 13, which carries 25 of them INSET inside its printed cells and is still a table \u2014 a face that merely contains a smaller field box is a real cell with a widget in it."
+    },
+    {
+      "id": "untagged-shredded-line",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-shredded-line/document.pdf",
+      "sha256": "sha256:dbe8bd591b3ad09843b62d19892c53d7f9cae747d08ef91b41931dc99dfa0cdd",
+      "owner": "engine",
+      "notes": "v2.2-S5's UNDECLARED-JOIN tripwire, and the only engine fixture whose runs share a baseline. Four runs at y=100 in Helvetica with /Widths 500 at 24pt — 12 points per glyph — so `Yar`+`ro`+`w` abut exactly (72+36=108, 108+24=132, 132+12=144) and `Separate` starts 40 points after `w` ends. No structure tree, so every run's structural locator is absent and the marked-content join has nothing to say. Expect TWO blocks, `Yarrow` and `Separate`, and `baseline-run-joins-abutted-v1: 2`. Every other engine fixture stacks its runs on distinct baselines, so before this one the whole CLI suite was blind to the fallback: a rule keyed on `same baseline, next ink along it` changed nothing anywhere and passed."
     },
     {
       "id": "markdown-two-blocks",

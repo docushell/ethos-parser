@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v4");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v5");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -560,6 +560,54 @@ fn lists_come_from_the_tree_and_nowhere_else() {
     );
 }
 
+/// **The undeclared join, end to end** (v2.2-S5).
+///
+/// `untagged-shredded-line` is the only engine fixture whose runs share a baseline, and it exists
+/// because every other one stacks them: before it, a rule keyed on "same baseline, next ink along
+/// it" changed nothing in this suite and passed it unchanged. That is the same blindness the
+/// 0.44.0 slice recorded, and this is the tripwire for it.
+///
+/// Three runs abut exactly — `Yar`+`ro`+`w` at 12 points per glyph — and the fourth starts 40
+/// points after the third ends, so the gap the page drew still breaks the block. The census names
+/// the two joins under the geometric code and not under `mcid-run-joins-v1`, because nothing in
+/// the document declared them.
+#[test]
+fn runs_the_document_declared_nothing_about_join_along_one_baseline() {
+    let dir = scratch("undeclared-join");
+    let repr = extract_to(&dir, &engine_fixture("untagged-shredded-line"));
+    let a = markdown_of(&repr);
+    assert_eq!(a["markdown"].as_str().unwrap(), "Yarrow\n\nSeparate\n");
+
+    let erasure = |code: &str| {
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == code)
+            .map(|e| e["count"].as_u64().unwrap())
+            .unwrap_or(0)
+    };
+    assert_eq!(erasure("baseline-run-joins-abutted-v1"), 2);
+    assert_eq!(erasure("baseline-run-joins-spaced-v1"), 0);
+    assert_eq!(
+        erasure("mcid-run-joins-v1"),
+        0,
+        "nothing in this document declares a marked-content sequence"
+    );
+
+    // The seam stays addressable: a join this engine measured never merges two nodes into one
+    // segment, which is what separates it from a join the producer declared.
+    for seg in a["anchor_map"]["segments"].as_array().unwrap() {
+        if seg["kind"] == "source" {
+            assert_eq!(
+                seg["node_ids"].as_array().unwrap().len(),
+                1,
+                "a geometric join merged two nodes into one segment: {seg}"
+            );
+        }
+    }
+}
+
 /// **The S1 fixtures come out byte-for-byte as they did**, modulo the identity fields.
 ///
 /// S2 changed how a table and a list project. It did not change how a paragraph projects, and a
@@ -780,7 +828,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v4");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v5");
 }
 
 // -------------------------------------------------------------------------------------------

@@ -218,7 +218,8 @@ struct PageYield {
     undescended_xobjects: u32,
     composite_fonts: u32,
     findings_seen: std::collections::BTreeMap<&'static str, u32>,
-    widths_absent: Vec<ethos_parser_core::Limitation>,
+    /// Document-scoped limitations a font on this page declared. Deduped by the fold.
+    font_limitations: Vec<ethos_parser_core::Limitation>,
     /// The page-local allocator, counters included — the fold rebases every id by
     /// the document-global base and then replays the same NUMBER of allocations,
     /// because a refused candidate consumes an id it never ships (a cross-check
@@ -260,7 +261,7 @@ fn extract_page(
     let mut findings_seen: std::collections::BTreeMap<&'static str, u32> =
         std::collections::BTreeMap::new();
     let mut composite_fonts: u32 = 0;
-    let mut widths_absent: Vec<ethos_parser_core::Limitation> = Vec::new();
+    let mut font_limitations: Vec<ethos_parser_core::Limitation> = Vec::new();
     let page_extract;
     {
         let page_dict =
@@ -288,11 +289,18 @@ fn extract_page(
         );
 
         for font in fonts.values() {
-            if let WidthSource::Absent { reason } = &font.widths {
-                let entry = lim::font_widths_absent(reason);
-                if !widths_absent.contains(&entry) {
-                    widths_absent.push(entry);
+            let mut declare_once = |entry: ethos_parser_core::Limitation| {
+                if !font_limitations.contains(&entry) {
+                    font_limitations.push(entry);
                 }
+            };
+            if let WidthSource::Absent { reason } = &font.widths {
+                declare_once(lim::font_widths_absent(reason));
+            }
+            // v2.2-S6. `StandardEncoding` was applied to a font the specification does not give
+            // it to. The characters still travel; the artifact now says they may be wrong.
+            if let Some(detail) = &font.builtin_encoding_assumed {
+                declare_once(lim::symbolic_font_builtin_encoding_assumed(detail));
             }
         }
 
@@ -868,7 +876,7 @@ fn extract_page(
         undescended_xobjects,
         composite_fonts,
         findings_seen,
-        widths_absent,
+        font_limitations,
         local_ids: alloc,
     })
 }
@@ -1167,7 +1175,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         for (code, n) in y.findings_seen {
             *findings_seen.entry(code).or_insert(0) += n;
         }
-        for entry in y.widths_absent {
+        for entry in y.font_limitations {
             if !limitations.contains(&entry) {
                 limitations.push(entry);
             }
