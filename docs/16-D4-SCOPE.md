@@ -176,20 +176,28 @@ meaning; v2.2 would later attach names to those regions and must justify each na
 Shipping D4 first means the geometric half is on the wire and measurable **before** anything starts
 naming it — and if v2.2 never happens, D4 is still worth its own bytes.
 
-**That contingency is now the outcome.** Decision #21 (2026-09-05) closed v2.2 at half: this half
-met, auto-tagging refused on the format rather than deferred. The sentence above was written as a
-hedge and is now the load-bearing reason this version shipped — `region` is on the wire, both
-projections read it, and none of that depended on the half that was refused.
+**That contingency was the outcome, and then stopped being it.** Decision #21 (2026-09-05) closed
+v2.2 at half: this half met, auto-tagging refused on the format rather than deferred. Decision #23
+(2026-09-07) reversed that refusal — see §7 — so the closure was temporary and the second half is
+open again, and unstarted. The sentence above was written as a hedge and is the load-bearing reason
+this version shipped either way: `region` is on the wire, both projections read it, and none of it
+ever depended on the other half.
 
 **What the decision carries with it**, accepted rather than discovered later: the rule id moves to
 `gutter-columns-v2` (§10), so `profile_sha256` moves and every golden regenerates. Contract §2
 requires exactly that — *anything that can change a byte of output belongs in the profile, or it is
 a bug.*
 
-**The second half stays unscoped — and after decision #21, permanently.** This read *"auto-tagging
-gets its milestones document when somebody starts it, not now"*, which assumed somebody would.
-Row 21 refused it on the format, so it gets no milestones document at all: one for refused work
-would be a plan for something nobody may build.
+**The second half is unscoped, and that is now a debt rather than a decision.** This read
+*"auto-tagging gets its milestones document when somebody starts it, not now"*, which assumed
+somebody would. Decision #21 then refused it on the format and this section said it would get no
+milestones document **permanently** — one for refused work would be a plan for something nobody may
+build.
+
+**Decision #23 (2026-09-07) reversed #21**, answering its reopening condition with an attribute
+object under `/A` carrying a private owner — the shape `structure.rs` already parses for `/Table`
+spans. So *permanently* was wrong, and the original sentence was right: auto-tagging gets its
+documents when somebody starts it. Nobody has. What #23 changed is that starting is now allowed.
 
 ## 8. Known limitation, declared rather than discovered later
 

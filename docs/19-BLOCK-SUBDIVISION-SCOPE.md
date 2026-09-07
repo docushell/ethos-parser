@@ -130,9 +130,16 @@ must be published as a band with the worst document named, per decision #18.
 
 ## 6. What is refused now, and needs no further measurement
 
-> **Settled 2026-09-05 as [decision #21](00-NORTH-STAR.md).** What this section argued, the owner
-> accepted: v2.2 closes at half, with auto-tagging refused on the format. The argument below is
-> what row 21 records, and row 21 is where the status is stated.
+> **Settled 2026-09-05 as [decision #21](00-NORTH-STAR.md), and unsettled again on 2026-09-07 by
+> [decision #23](00-NORTH-STAR.md).** What this section argued, the owner accepted: v2.2 closed at
+> half with auto-tagging refused on the format. #23 answered row 21's reopening condition — an
+> attribute object under `/A` naming a private owner, which `structure.rs` already parses — so the
+> refusal is lifted and **row 23 is where the status is now stated**.
+>
+> **What this section argued is NOT reversed with it.** Naming a geometric block a paragraph stays
+> refused: that is P14 and decision #19's line, and #23 leans on exactly that distinction — a
+> written tag says a block was *computed* here, never that an author *declared* one. The subdivision
+> below is still an unnamed `Computed` index.
 
 **Naming a geometric block a paragraph.** Decision #19: *"A region is never a heading, a paragraph,
 a section or a column — that is P14, and it stays refused."* Whatever this becomes is a **Computed
@@ -380,9 +387,11 @@ that: it is not a question of method, it is an absence of evidence.
   on test A alone — that would be fitting a rule to proxy labels on documents whose real labels are
   unavailable, which is §4.1's error committed deliberately.
 - **The binding constraint is now exact — and decision #21 removed the consumer it was binding
-  for.** Auto-tagging is refused, so no tag depends on this rule and nothing is blocked by the
-  document below being absent. It stays recorded because a block subdivision emitted as `Computed`
-  layout would be worth its own bytes on D4's argument, and because a measurement that named its
+  for, then decision #23 gave it back.** #21 refused auto-tagging, so for two days no tag depended
+  on this rule and nothing was blocked by the document below being absent. #23 (2026-09-07)
+  reversed that, so the constraint binds again. It stayed recorded through the refusal because a
+  block subdivision emitted as `Computed` layout would be worth its own bytes on D4's argument
+  even with no tag consumer at all, and because a measurement that named its
   own missing evidence should say what would supply it. What is needed is one labellable document — 3+ lines per
   `/P`, per §9.1 — **whose break pitch differs from `nist-sp-800-207`'s 1.87×**. Probe 1 supplies
   the test for the first half and §4.2's per-document pitch table the second. Until such a document
