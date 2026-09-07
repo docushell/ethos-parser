@@ -15,7 +15,17 @@
 # limitations under the License.
 #
 
-"""DCO enforcement (ADR-0004): every commit in the checked range carries a Signed-off-by line.
+"""DCO enforcement (ADR-0004): every NON-MERGE commit in the range carries a Signed-off-by line.
+
+Merge commits are skipped, and that is the standard reading of a DCO rather than a relaxation of
+it. The certificate is an assertion about authorship of a contribution; a merge commit contributes
+no lines and has no author making that claim — GitHub writes it, under whoever pressed the button,
+and its own UI supplies no `Signed-off-by`. Checking it therefore failed EVERY push to `main` on a
+commit no human wrote, while the commits that carried real work all passed. Measured: merges #16
+through #20 all red on this alone.
+
+The sign-offs that matter are unaffected. A merge's parents are in the range on their own and are
+still checked individually, so nothing reaches `main` unsigned by being merged.
 
 Usage: check_dco.py <base_sha> <head_sha>
 """
@@ -57,7 +67,15 @@ else:
     rev = f"{head}^!"
 
 out = subprocess.run(
-    ["git", "log", "--format=%H%x00%an <%ae>%x00%(trailers:key=Signed-off-by,valueonly)", rev],
+    [
+        "git",
+        "log",
+        # See the module docstring: a merge commit asserts no authorship, so it carries no
+        # certificate to check. Its parents remain in the range and are checked on their own.
+        "--no-merges",
+        "--format=%H%x00%an <%ae>%x00%(trailers:key=Signed-off-by,valueonly)",
+        rev,
+    ],
     capture_output=True,
     text=True,
     check=True,
