@@ -126,7 +126,7 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-pub const HTML_RULE_BLOCKS_V5: &str = "html-blocks-v5";
+pub const HTML_RULE_BLOCKS_V6: &str = "html-blocks-v6";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -300,7 +300,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v5`
+/// # The rule, in full — `html-blocks-v6`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
