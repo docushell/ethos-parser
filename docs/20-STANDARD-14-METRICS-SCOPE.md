@@ -1,13 +1,17 @@
-# 20 — Standard-14 metrics: measured, and a decision the owner has not taken
+# 20 — Standard-14 metrics: measured, and the decision the owner took
 
-**This document is a measurement, not a decision.** It follows [`17-D1-SCOPE.md`](17-D1-SCOPE.md),
-[`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) and
+**This document is a measurement, not the decision itself.** It follows
+[`17-D1-SCOPE.md`](17-D1-SCOPE.md), [`18-INTERNING-SCOPE.md`](18-INTERNING-SCOPE.md) and
 [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md): a question was asked, an
 instrument was built, and what it found is written down before anything is built on it. Unlike 17
 and 18 it does not end in a refusal, and unlike 19 it does not end in a probe list. It ends in a
-**recommendation and a licence the owner has to accept or decline**, because the cost is not
-engineering effort — it is a vendored dataset under a licence no tool in this repository can check
-and no reviewer here has yet read.
+**recommendation and a licence the owner had to accept or decline**, because the cost is not
+engineering effort — it is a vendored dataset under a licence no tool here can check.
+
+**Accepted 2026-09-07 as decision #22** of [`00-NORTH-STAR.md`](00-NORTH-STAR.md). That row is
+where the decision lives; this document is the argument behind it, and §6 is what the row had to
+carry. **The vendoring itself has not landed** — until it does, `vendor/README.md` still describes
+what the engine actually does.
 
 **It is not an ADR, and this repository has none.** There is no `docs/adr/` and never has been;
 the two ADR numbers cited in this tree — ADR-0004 in
@@ -134,10 +138,10 @@ The refusal also describes the gap as **widths only**. That is narrower than the
 fonts declare no descriptor, so ascent/descent is missing too, and `ink_box` needs it **first**.
 The repository's own description of what it refuses is smaller than what it refuses.
 
-## 6. What a decision row would have to say
+## 6. What the decision row says
 
-Not taken here. If accepted it is a new numbered row in [`00-NORTH-STAR.md`](00-NORTH-STAR.md)
-after #21, and it would have to carry:
+Taken 2026-09-07 as row **#22** of [`00-NORTH-STAR.md`](00-NORTH-STAR.md), after #21. What it had
+to carry, and does:
 
 1. **No `APAFML` entry in `deny.toml` — stated, not left silent.** The allowlist governs crate
    licences in the resolved dependency graph. AFMs are data and never enter it, exactly as
