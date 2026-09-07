@@ -14,6 +14,41 @@ for /Differences) are transcriptions of PDF 32000-1 (ISO 32000-1:2008) Annex D,
 a published specification. They were authored for this project.
 
 --------------------------------------------------------------------------------
+Adobe Core-14 font metrics (APAFML)
+--------------------------------------------------------------------------------
+
+vendor/afm/ contains Adobe's 14 PostScript(R) AFM files, unmodified, together
+with their licence file MustRead.html. They are vendored by decision #22 of
+docs/00-NORTH-STAR.md, whose measurement is docs/20-STANDARD-14-METRICS-SCOPE.md.
+
+  Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated.
+  All Rights Reserved.  (Each .afm carries its own copyright line; the years
+  differ by file and are retained as Adobe wrote them.)
+
+The licence is APAFML. Its full text is vendor/afm/MustRead.html, which must be
+distributed WITH the AFM files and is reproduced there byte-exact, including its
+original line endings, because the licence requires that its paragraph not be
+modified. In Adobe's words, the files "may be used, copied, and distributed for
+any purpose and without charge, with or without modification, provided that all
+copyright notices are retained; that the AFM files are not distributed without
+this file; that all modifications to this file or any of the AFM files are
+prominently noted in the modified file(s); and that this paragraph is not
+modified."
+
+Nothing in vendor/afm/ is modified, so no file there carries a modification
+note. Anything generated FROM these files would be a modified file and must
+carry one. The engine embeds them verbatim with include_str! and parses at
+runtime, so no generated table exists today.
+
+APAFML is NOT OSI-approved and is deliberately absent from deny.toml. That
+allowlist governs crate licences in the resolved dependency graph; these are
+data files and never enter it, the same as the Adobe CMap data described below.
+An entry cargo-deny could never match is the "just in case" entry that file's
+header forbids. The consequence is stated rather than hidden: a non-OSI-approved
+licence is present in this repository and CI is green, because no tool here can
+check it. The review is decision #22, this notice, and vendor/afm/README.md.
+
+--------------------------------------------------------------------------------
 Adobe CMap resources: NOT PRESENT
 --------------------------------------------------------------------------------
 
@@ -36,5 +71,7 @@ When those files land — with a fixture that proves they work — they belong u
 vendor/cmaps/ with the Adobe BSD 3-Clause licence text reproduced there and this
 section replaced by the attribution.
 
-See vendor/README.md for the full vendoring posture, including the Core-14 AFM
-width tables and the Adobe Glyph List, which are absent for the same reason.
+See vendor/README.md for the full vendoring posture, including the Adobe Glyph
+List, which is absent for the same reason. The Core-14 AFM metrics were absent
+for that reason too until decision #22; they are now present, under the APAFML
+section above.

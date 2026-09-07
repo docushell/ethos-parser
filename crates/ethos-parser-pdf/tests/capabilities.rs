@@ -440,8 +440,10 @@ fn measured_ink_boxes_are_measured_and_absence_stays_typed() {
     );
     assert!(measured.assurance.capabilities.measured_ink_boxes);
 
-    // The other half: no usable metrics produces typed absence, never a fabricated box.
-    let absent = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    // The other half: no usable metrics produces typed absence, never a fabricated box. The
+    // document has to be one `vendor/afm/` cannot answer for — since decision #22 a standard-14
+    // face is measured whatever the file omits, so Helvetica proves nothing here.
+    let absent = extract_ok(engine_fx("absent-font-widths"));
     assert!(
         absent
             .runs()
@@ -1070,7 +1072,9 @@ fn the_assurance_block_is_byte_identical_across_runs() {
 /// answer is never written down.
 #[test]
 fn the_stand_in_vocabularies_are_absorbed_not_duplicated() {
-    let path = conformance("synthetic/simple-text/document.pdf");
+    // Needs a document that still declares `font-widths-absent`, which since decision #22 means
+    // a face outside the standard 14.
+    let path = engine_fx("absent-font-widths");
     let profile = Profile::default();
     let e = extract_with(path.clone(), &profile);
     let c = classify_with(path, &profile);

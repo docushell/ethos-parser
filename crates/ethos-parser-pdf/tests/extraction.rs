@@ -189,8 +189,10 @@ fn horizontal_scaling_changes_the_advance() {
 /// A font with no metrics yields typed absence, never a font-size-shaped box.
 #[test]
 fn a_font_without_metrics_yields_typed_absence() {
-    // The conformance corpus is standard-14 Helvetica with no FontDescriptor.
-    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    // Was `synthetic/simple-text` — standard-14 Helvetica with no /FontDescriptor — until
+    // decision #22 vendored the Core-14 AFMs and made that document's metrics readable. It is now
+    // the fixture nothing can answer for: /ArialMT, no /Widths, no descriptor.
+    let a = extract_ok(engine_fx("absent-font-widths"));
     let r = runs(&a)[0];
 
     assert_eq!(
@@ -1025,7 +1027,9 @@ fn ordinals_and_ids_follow_the_reading_order_on_a_reordered_page() {
 /// relationship they have to work out.
 #[test]
 fn undecodable_gaps_are_declared_rather_than_silent() {
-    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    // Not the Helvetica document any more: decision #22 answers that one from `vendor/afm/`, so
+    // it no longer declares `font-widths-absent` at all.
+    let a = extract_ok(engine_fx("absent-font-widths"));
     let codes: Vec<&str> = a
         .assurance
         .limitations
@@ -1035,8 +1039,8 @@ fn undecodable_gaps_are_declared_rather_than_silent() {
 
     assert!(
         codes.contains(&ethos_parser_pdf::limitations::FONT_WIDTHS_ABSENT),
-        "standard-14 Helvetica carries no /Widths, and this profile does not vendor the AFM \
-         tables — the gap must be declared: {codes:?}"
+        "/ArialMT carries no /Widths and is not a face `vendor/afm/` may answer for — the gap \
+         must be declared: {codes:?}"
     );
     assert!(
         codes.contains(&ethos_parser_pdf::limitations::FORM_XOBJECT_TEXT_NOT_DESCENDED),
@@ -1049,7 +1053,9 @@ fn undecodable_gaps_are_declared_rather_than_silent() {
 
 #[test]
 fn an_absent_advance_is_absent_not_zero() {
-    let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
+    // /ArialMT, which decision #22 deliberately refuses to supply metrics for. A Helvetica
+    // document reaches a MEASURED advance here now, which is the point of that decision.
+    let a = extract_ok(engine_fx("absent-font-widths"));
     let r = runs(&a)[0];
     assert_eq!(
         r.locator.advance, None,

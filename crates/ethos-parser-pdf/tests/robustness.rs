@@ -459,8 +459,9 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 65] = [
+const EXPECTED_SURVIVORS: [&str; 66] = [
     "absent-font-metrics/junk-after-eof",
+    "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
     "background-panel-not-a-grid/junk-after-eof",
     "both-table-rules/junk-after-eof",
@@ -861,8 +862,8 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        69,
-        "the manifest should declare 69 fixtures across FOUR roots. v2.2-S5 moved this from 68 by \
+        70,
+        "the manifest should declare 70 fixtures across FOUR roots. Decision #22 moved this from 69 by adding `absent-font-widths`: vendoring Adobe's Core-14 AFMs means a Helvetica document with no `/Widths` is now MEASURED, so `synthetic/simple-text` stopped being able to prove typed absence and five tests were quietly asserting the recovered path instead. `/ArialMT` is the metric substitution that decision refuses, so nothing can answer for it. v2.2-S5 moved this from 68 by \
          adding `untagged-shredded-line`, the only engine fixture whose runs share a baseline — \
          every other one stacks them, so the whole CLI suite was blind to the undeclared join \
          and a rule keyed on `same baseline, next ink along it` passed it unchanged. v2.2-S3 \

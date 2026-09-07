@@ -336,6 +336,19 @@ pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 /// non-comparable, because they really were produced by different decoders.
 pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
 
+/// Identity of the vendored **font metric** data — Adobe's Core-14 AFMs in `vendor/afm/`.
+///
+/// Sibling of [`CMAP_DATA_VERSION`] and deliberately separate from it: that one names the tables
+/// that turn a code into a character, this one names the tables that turn a character into an
+/// advance and a font into an ink envelope. They move independently, and a run that changed only
+/// one of them must stay comparable on the other.
+///
+/// Required by decision #22 under Contract §2 — *anything that can change a byte of output
+/// belongs in the profile, or it is a bug*. Vendoring these metrics moves ink boxes and moves
+/// which nodes reach `ethos.grounding.v1` at all, so an artifact produced before this string
+/// existed and one produced after are correctly non-comparable.
+pub const FONT_METRICS_DATA_VERSION: &str = "core14-afm-1";
+
 /// Identity of the object/xref backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1080,6 +1093,8 @@ pub struct Profile {
     pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
+    /// Identity of the vendored font-metric data. See [`FONT_METRICS_DATA_VERSION`].
+    pub font_metrics_data_version: String,
     /// Version id of the character-code rule in force. New at v1-S6.1.
     ///
     /// See [`TEXT_CODE_RULE_V1`]. Distinct from [`CMAP_DATA_VERSION`], which names the vendored
@@ -1120,6 +1135,7 @@ impl Default for Profile {
             html_rule: crate::html::HTML_RULE_BLOCKS_V5.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
+            font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             text_code_rule: TEXT_CODE_RULE_V1.to_string(),
             observation_rule: OBSERVATION_RULE_V1.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
@@ -1201,6 +1217,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: DOCX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1264,6 +1281,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: XLSX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1321,6 +1339,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: PPTX_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1382,6 +1401,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: ODT_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1430,6 +1450,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: ODS_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1484,6 +1505,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: ODP_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1536,6 +1558,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: RTF_TEXT_CODE_RULE_V1.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1592,6 +1615,7 @@ impl Profile {
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
+            font_metrics_data_version: NOT_RUN.into(),
             text_code_rule: EPUB_TEXT_CODE_RULE_V1.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1740,6 +1764,7 @@ mod tests {
             html_rule: _,
             form_annotation_rule: _,
             cmap_data_version: _,
+            font_metrics_data_version: _,
             xref_repair: _,
             verifier: _,
         } = &base;
@@ -1888,6 +1913,13 @@ mod tests {
                 "cmap_data_version",
                 Box::new(|p: &mut Profile| p.cmap_data_version = "adobe-2026-01".into()),
             ),
+            (
+                // Decision #22. Separate from `cmap_data_version` because the gaps are separate:
+                // one names the tables that turn a code into a character, this one the tables
+                // that turn a character into an advance and a face into an ink envelope.
+                "font_metrics_data_version",
+                Box::new(|p: &mut Profile| p.font_metrics_data_version = "core14-afm-9".into()),
+            ),
             // The eight the pattern named and this list did not. Each is a knob that changes what
             // an artifact contains, and until v2-S13.1 nothing anywhere demonstrated that moving
             // it moves the digest — the pin in `the_default_profile_is_pinned` shows each field
@@ -1932,11 +1964,12 @@ mod tests {
         // not covered are named in this test's doc comment, each because its type has exactly one
         // legal value and cannot be mutated at all. Thirty-two was the number at v2-S13.1; the
         // one it grew by is `table_detection.tagged`, which arrived at v2-S24 with its mutation
-        // in the same commit.
+        // in the same commit. Thirty-four since decision #22, which added
+        // `font_metrics_data_version` with its mutation in the same commit for the same reason.
         assert_eq!(
             mutations.len(),
-            33,
-            "{} single-field mutation(s); thirty-three is the number at v2-S24",
+            34,
+            "{} single-field mutation(s); thirty-four is the number at decision #22",
             mutations.len()
         );
 
@@ -1991,7 +2024,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.50.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-1","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v5","markdown_rule":"markdown-blocks-v5","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.51.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2711,11 +2744,19 @@ mod tests {
              would have sent a reader after a dataset that could not have helped them. MINOR \
              rather than PATCH because §4's rule is about bytes for the same input and stderr is \
              bytes; a reviewer who reads `output` as the artifact alone would call it a PATCH, \
-             and 0.42.1's entry is why this errs the other way."
+             and 0.42.1's entry is why this errs the other way.\n\n\
+             Moved again at 0.51.0, for decision #22: the version, and the new \
+             `font_metrics_data_version` naming the vendored Core-14 AFMs. Not a knob but a \
+             SOURCE. An artifact from before it carries NO ink box for a standard-14 face the \
+             document named and gave no `/Widths` for, so those nodes were dropped from \
+             `ethos.grounding.v1` entirely — they had text and could not be quoted. One from \
+             after carries a box measured from Adobe's own published metrics. The two came from \
+             different readers, and a hash that could not tell them apart would claim a \
+             comparability neither has."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0742f0c593da1220f68853b084e27c46fe6a70c2682d9be04b9ed8462f49add2"
+            "sha256:94be1d4c0ee49635f3ed62c7c1d85acc8e310736d02b7cfe9607aae7b8e55b1b"
         );
     }
 

@@ -1,0 +1,8 @@
+# Adobe's Core-14 AFM files and their licence are vendored BYTE-EXACT under APAFML, which requires
+# that any modification be prominently noted in the modified file and that the licence paragraph
+# itself not be modified. Line-ending normalisation is a modification: `MustRead.html` carries the
+# original classic-Mac CR endings and the .afm files carry CRLF, and a checkout that rewrote either
+# would break the pinned sha256 digests in vendor/afm/README.md and the obligation with them.
+#
+# `-text` disables all end-of-line conversion on these paths, whatever the client's core.autocrlf.
+vendor/afm/** -text

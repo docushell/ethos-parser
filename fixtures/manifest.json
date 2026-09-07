@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 42,
+    "engine_owned": 43,
     "gate": 8
   },
   "fixtures": [
@@ -232,9 +232,18 @@
       "root": "engine",
       "group": "engine",
       "path": "absent-font-metrics/document.pdf",
-      "sha256": "sha256:218c2ad51efc30835771be062e7baae0a08fca14d01c260ba142cb72163f9783",
+      "sha256": "sha256:fb88175569fd72d90d48a20c79e5c512609850153b0bb3d320d71f410e21b90d",
       "owner": "engine",
-      "notes": "Carries a /FontDescriptor that RESOLVES and answers nothing \u2014 no /Ascent, no /Descent, no /FontBBox, no embedded program \u2014 so resolve_font_ink walks the descriptor and still declines to measure. That route is what only this fixture covers: the three M3 engine fixtures also pair a known advance with absent geometry, but they carry no descriptor at all, and synthetic/simple-text never reaches the metrics branch because its advance is unknown too. /Widths IS supplied here, so the advance is known and the absence is attributable to the font's silence about ink extent alone. Drives the M5 geometry-omission path."
+      "notes": "Carries a /FontDescriptor that RESOLVES and answers nothing \u2014 no /Ascent, no /Descent, no /FontBBox, no embedded program \u2014 so resolve_font_ink walks the descriptor and still declines to measure. The face is /ArialMT and NOT one of the standard 14, which decision #22 made load-bearing: Helvetica's ascent and descent are now readable from vendor/afm/ whatever the descriptor omits, so a Helvetica fixture would silently exercise the recovered path and assert nothing. Arial is the substitution decision #22 refuses, so its metrics are unknowable in the document AND in the vendored data. That route is what only this fixture covers: the three M3 engine fixtures also pair a known advance with absent geometry, but they carry no descriptor at all, and synthetic/simple-text never reaches the metrics branch because its advance is unknown too. /Widths IS supplied here, so the advance is known and the absence is attributable to the font's silence about ink extent alone. Drives the M5 geometry-omission path."
+    },
+    {
+      "id": "absent-font-widths",
+      "root": "engine",
+      "group": "engine",
+      "path": "absent-font-widths/document.pdf",
+      "sha256": "sha256:db62667e3d02fb0f1dc7a2938c7374c4edcea8cd27bed5d713e6a7445f12a515",
+      "owner": "engine",
+      "notes": "/BaseFont /ArialMT with NO /Widths and NO /FontDescriptor, so the advance AND the ink box are both unknown and `font-widths-absent` is declared. Added at decision #22, which vendored Adobe's Core-14 AFMs: a Helvetica document can no longer reach this path, because §9.6.2.2 makes its metrics known and the engine now reads them. Arial is the metric substitution decision #22 refuses, so nothing can answer for it. Without this fixture the width-absent limitation and the absent-advance path would have no document left to exercise them."
     },
     {
       "id": "broken-font-encoding",

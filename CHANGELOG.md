@@ -18,6 +18,85 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.51.0] — the metrics §9.6.2.2 expects a reader to hold
+
+**A reader changed, and it is the largest groundability move since 0.46.0.** A PDF may name
+`/BaseFont /Helvetica` with no `/Widths` and no `/FontDescriptor`. The specification permits that
+**because** a conforming reader is expected to hold the standard-14 metrics — so they are known and
+merely absent from the file, which is the standing `fonts.rs` already gave an omitted `/DW`:
+*"Reading a normative default is reading the document, not guessing at it."* This build holds them.
+
+Adobe's 14 AFM files are vendored **pristine** in `vendor/afm/`, with `MustRead.html` beside them,
+and embedded verbatim by `include_str!`. Decision **#22** of `docs/00-NORTH-STAR.md` is where the
+licence was accepted; `docs/20-STANDARD-14-METRICS-SCOPE.md` is the measurement behind it.
+
+**Measured before and after on the same 37 OmniDocBench documents**, with the same instrument —
+every document declaring a Core-14 face with no `/Widths` and no `/FontDescriptor`:
+
+| | 0.50.0 | 0.51.0 |
+| --- | ---: | ---: |
+| geometry entries | 25 123 | 25 123 |
+| measured | 12 937 (51.5%) | **23 885 (95.1%)** |
+| typed-absent | 12 186 (48.5%) | **1 238 (4.9%)** |
+| documents declaring `font-widths-absent` | 66 | **0** |
+
+**10 948 of 12 186 absent ink boxes recover — 89.8%.** A node with no ink box is omitted from
+`ethos.grounding.v1` entirely, so those are runs that had text and could not be quoted and now can.
+The geometry-entry count is **identical on both sides**: no text is gained or lost, and no node
+appears or disappears. Only whether each one can be cited.
+
+The spike in `docs/20` predicted 83.4% over 36 documents. It is not the same denominator — that
+count was ungroundable *nodes* over a set found by the limitation code, this one is geometry
+entries over a set found by scanning font dictionaries — so the two are close rather than
+comparable, and the shipped number is the one measured on the shipped code.
+
+**Verified against Adobe's published numbers by hand**, not merely for presence: the conformance
+fixture `synthetic/simple-text` draws `Hello Ethos` in 24pt Helvetica, whose AFM widths sum to
+5113/1000 em. 5113 ÷ 1000 × 24 × 100 = **12 271 centipoints**, which is exactly the advance the
+engine now reports.
+
+**What did not change, and is refused on purpose.** Supplying Helvetica's metrics for a font the
+document calls `Arial` is a metric *substitution*, not a reading, and `afm::for_base_font` matches
+the Core-14 names exactly and nothing else. The residual 1 238 absences are that refusal working,
+plus codes outside this profile's encoding tables: a width is found by asking the font's own
+decoder what a code means, so coverage stops at the ASCII range `StandardEncoding` carries. Widening
+it needs the Annex D glyph-name column, which is its own measurement rather than a guess bolted on.
+
+**The licence is the real cost, and it is not OSI-approved.** APAFML requires that `MustRead.html`
+travel with the files under that exact filename, that per-file copyright lines survive, that any
+modification be prominently noted in the modified file — and, a fourth obligation the scope
+document's quotation had truncated, **that the licence paragraph itself not be modified**. So
+`MustRead.html` is vendored byte-exact, original classic-Mac CR line endings included. Nothing in
+`vendor/afm/` is modified, so nothing there carries a modification note.
+
+`APAFML` is **deliberately absent from `deny.toml`**. That allowlist governs crate licences in the
+resolved dependency graph; these are data files and never enter it, exactly as `deny.toml` already
+records for Adobe's CMap data. An entry `cargo deny` could never match is the "just in case" entry
+that file's own header forbids. Stated rather than hidden: **a non-OSI-approved licence is present
+and CI is green, because no tool here can check it.** The review is decision #22, `NOTICE`, and
+`vendor/afm/README.md`.
+
+**Provenance.** No copy of Adobe's original distribution is reachable today, so the files were taken
+from `gettalong/hexapdf` and corroborated byte-for-byte against `yob/pdf-reader` — all 14 identical
+— and against `UglyToad/PdfPig`, which agrees once one transformation is undone: it holds them with
+`CR` replaced by `LF` rather than `CRLF` collapsed, which is why it was not used as the source. Each
+file's sha256 and the pinned source commits are in `vendor/afm/README.md`.
+
+**Profile.** A new `font_metrics_data_version` field names the metrics source, beside
+`cmap_data_version` and deliberately separate from it: one names the tables that turn a code into a
+character, the other the tables that turn a character into an advance. `profile_sha256` therefore
+moves for two reasons, and artifacts from before and after are correctly non-comparable.
+
+**Two fixtures moved, because the change made one of them vacuous.** `absent-font-metrics` named
+`/Helvetica`, so after this it is measured and could no longer demonstrate typed absence — five
+tests were left asserting the recovered path instead of the absent one. Its face is now `/ArialMT`.
+A new fixture `absent-font-widths` carries `/ArialMT` with no `/Widths` and no `/FontDescriptor`,
+which is the only remaining shape that reaches `font-widths-absent` and an absent advance at once.
+The engine corpus is 43 fixtures, and the mutation survivor pin moves 65 -> 66 for the new
+fixture's `junk-after-eof`, which survives on every fixture that opens at all.
+
+---
+
 ## [0.50.0] — one refusal was answering for two different absences
 
 **No artifact byte changes.** Only the text of an error, and only for documents that already
