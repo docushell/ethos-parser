@@ -51,14 +51,14 @@ python3 docs/measurements/omnidocbench/census.py <corpus>/ori_pdfs
 
 About 115 s of engine time for all 981, serial; 15 s wall at eight threads.
 
-## What it measured at 0.47.0
+## What it measured at 0.50.0
 
 | | documents |
 | --- | ---: |
 | single page | 981 / 981 |
 | text layer present | 756 (77.1%) |
-| artifact produced | 961 (98.0%) |
-| non-empty Markdown | 733 (74.7%) |
+| artifact produced | 963 (98.2%) |
+| non-empty Markdown | 735 (74.9%) |
 
 ### Block assembly — the reason 0.47.0 exists
 
@@ -81,17 +81,18 @@ Document-varying codes over the 961 documents that produced an artifact, with
 
 | code | docs | share | opendataloader-bench |
 | --- | ---: | ---: | --- |
-| `geometry-absent-not-groundable` | 887 | 92% | 92% |
-| `non-text-nodes-not-projected` | 743 | 77% | 63% |
-| `unruled-table-candidate-refused` | 717 | 75% | 100% |
+| `geometry-absent-not-groundable` | 889 | 92% | 92% |
+| `non-text-nodes-not-projected` | 745 | 77% | 63% |
+| `unruled-table-candidate-refused` | 719 | 75% | 100% |
 | **`composite-font-codes-from-tounicode`** | **412** | **43%** | **25%** |
-| `ruled-table-candidate-refused` | 399 | 42% | 29% |
+| `ruled-table-candidate-refused` | 399 | 41% | 29% |
 | `form-xobjects-not-descended` | 256 | 27% | 23% |
-| `broken-font-encoding` | 148 | 15% | 13% |
-| `mcid-property-list-by-name` | 69 | 7% | — |
+| `broken-font-encoding` | 149 | 15% | 13% |
+| `mcid-property-list-by-name` | 70 | 7% | — |
 | `invisible-render-mode-text` | 66 | 7% | — |
 | `off-page-text` | 45 | 5% | — |
 | `font-widths-absent` | 36 | 4% | 1 doc |
+| **`symbolic-font-builtin-encoding-assumed`** | **36** | **4%** | new at 0.48.0 |
 | `stroke-ruled-table-candidate-refused` | 6 | 1% | — |
 | `inline-images-not-emitted` | 3 | 0.3% | — |
 
@@ -105,12 +106,16 @@ opendataloader-bench after the 0.46.0 fix.
 
 | cause | docs |
 | --- | ---: |
-| predefined CJK CMap not vendored (`/GBK-EUC-H` and kin) | 12 |
-| malformed ToUnicode CMap | 5 |
+| `/Identity-H` with no `/ToUnicode` | 8 |
+| predefined CJK CMap `/GBK-EUC-H` not vendored | 4 |
 | no font supplied `/ToUnicode` or a mappable encoding | 3 |
+| malformed ToUnicode CMap | 3 |
 
-Only **1.2%** die on the CJK vendoring refusal. That refusal was expected to cap this corpus and
-does not: nearly every Chinese document here embeds its own ToUnicode CMap.
+**Vendoring the Adobe predefined CJK CMaps would fix 4 of these, not all 12 as the
+`predefined-cmaps-not-vendored` limitation implies.** `/Identity-H` is not a predefined CJK CMap:
+§9.7.4.2 makes it the identity, so the code *is* the CID, and what is missing is CID-to-Unicode.
+0.50.0 corrected the engine's own message, which had said otherwise. Two malformed-ToUnicode
+documents were recovered at 0.48.0 by reading white space inside a hex string as §7.3.4.3 requires.
 
 ## What running it found, which is the point
 
@@ -119,12 +124,17 @@ does not: nearly every Chinese document here embeds its own ToUnicode CMap.
    statistic (68–79% tiny) while those blocks hold only 3–7% of its text, against 52% here. The
    same number meaning opposite things on two corpora is what the census makes visible and a score
    would have hidden.
-2. **A legal hex string is refused, and it costs the whole document.** PDF 32000-1 §7.3.4.3 says
-   white space inside a hexadecimal string shall be ignored; `cmap.rs`'s `hex_of` requires every
-   character between the brackets to be a hex digit, so `<0009 000d 0020 00a0>` and the `bfrange`
-   array form `[<0066 0066 006C>…]` are read as malformed and `extract` exits 2 with no artifact.
-   Confirmed on 2 of 981 — `scihub_s12935-018-0683-z.pdf_0` carries 4 165 bytes of text and a
-   `table-likely` layout. **Not fixed at 0.47.0.**
+2. **A legal hex string was refused, and it cost the whole document.** §7.3.4.3 says white space
+   inside a hexadecimal string shall be ignored; `hex_of` required every character between the
+   brackets to be a hex digit. Two documents of 981; `scihub_s12935-018-0683-z.pdf_0` recovered
+   4 970 characters from nothing. **Fixed at 0.48.0.**
+3. **A symbolic font was decoded through `StandardEncoding` in silence.** §9.6.6.2 gives that
+   fallback to a NONSYMBOLIC font; applied to a symbolic one, CMEX10 code 90 arrives as `Z`. The
+   decode is unchanged — 42 documents carry such a font and the flag does not separate the TeX
+   math fonts from ordinary prose that merely sets the bit — but the artifact now declares it on
+   36 documents. **Declared at 0.48.0.**
+4. **One refusal answered for two different absences**, sending a reader after data that could not
+   help. **Fixed at 0.50.0**, and this instrument's own failure labels were corrected with it.
 
 **Use it as a bug-finder, not a scoreboard.** Both were found by running someone else's corpus
 through this engine and reading what came out.

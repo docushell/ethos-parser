@@ -16,7 +16,7 @@ which are a property of the emitted Markdown string and are named as such below.
 research use only, and the precedent beside this file commits the instrument and never the corpus.
 Fetch it yourself; the branch and commit it came from are in `README.md`.
 """
-import json,subprocess,glob,os,re,statistics,sys,tempfile,time
+import collections,json,subprocess,glob,os,re,statistics,sys,tempfile,time
 from concurrent.futures import ThreadPoolExecutor
 
 B=os.environ.get("ETHOS_PARSER_BIN","target/release/ethos-parser")
@@ -41,7 +41,14 @@ def one(f):
     p=subprocess.run([B,'extract',f],capture_output=True)
     r['extract_exit']=p.returncode
     if p.returncode==0:
-        rep=json.loads(p.stdout)['representation']
+        art=json.loads(p.stdout)
+        rep=art['representation']
+        # Groundability, counted here because the artifact is already parsed. A node with no
+        # measured ink box is omitted from `ethos.grounding.v1` and cannot be quoted.
+        geo=art.get('geometry') or []
+        r['nodes_total']=len(geo)
+        r['nodes_absent']=sum(1 for g in geo
+                              if (g.get('presence') or {}).get('state')!='measured')
         a=rep.get('assurance',{})
         r['lims']=sorted({l['code'] for l in a.get('limitations',[])})
         r['nodes']=len(rep.get('nodes',[]))
@@ -76,4 +83,65 @@ files=sorted(glob.glob(os.path.join(sys.argv[1] if len(sys.argv)>1 else "pdfs","
 t0=time.time()
 with ThreadPoolExecutor(8) as ex: rows=list(ex.map(one,files))
 json.dump(rows,open('full_census.json','w'),indent=1)
-print(f"{len(rows)} documents in {time.time()-t0:.0f}s wall")
+elapsed=time.time()-t0
+
+
+def report(rows):
+    """Print every table `README.md` beside this file quotes.
+
+    The point of committing an instrument is that its numbers can be re-derived rather than
+    believed, and until this function existed they could not: the script wrote JSON and the
+    tables were assembled by hand somewhere else.
+    """
+    n=len(rows)
+    art=[r for r in rows if r['extract_exit']==0]
+    md=[r for r in art if (r.get('md_len') or 0)>0]
+    blocks=[r for r in md if r.get('blocks')]
+
+    print(f"\n=== reach ({n} documents) ===")
+    for label,k in (("single page", sum(1 for r in rows if r.get('pages')==1)),
+                    ("text layer present", sum(1 for r in rows if (r.get('pages_with_text') or 0)>0)),
+                    ("artifact produced", len(art)),
+                    ("non-empty Markdown", len(md))):
+        print(f"  {label:24s} {k:4d}  ({k/n*100:.1f}%)")
+
+    print(f"\n=== block assembly ({len(blocks)} documents with Markdown) ===")
+    print(f"  median characters per block       {statistics.median([r['median_block'] for r in blocks]):.1f}")
+    print(f"  median share of blocks <=2 chars  {statistics.median([r['pct_tiny'] for r in blocks])*100:.0f}%")
+    total_chars=sum(r['md_len'] for r in blocks)
+    for thr,label in ((0.95,'>=95%'),(0.5,'>=50%')):
+        hit=[r for r in blocks if r['pct_tiny']>=thr]
+        share=sum(r['md_len'] for r in hit)/total_chars*100 if total_chars else 0
+        print(f"  documents {label} tiny blocks      {len(hit):4d}   holding {share:.0f}% of all text")
+
+    print(f"\n=== limitation census ({len(art)} documents with an artifact) ===")
+    counts=collections.Counter(c for r in art for c in (r.get('lims') or []))
+    for code,k in counts.most_common():
+        if k==len(art):
+            continue  # profile-constant: fires on every artifact and says nothing per document
+        print(f"  {code:44s} {k:4d}  {k/len(art)*100:3.0f}%")
+
+    tot=sum(r.get('nodes_total') or 0 for r in art)
+    absent=sum(r.get('nodes_absent') or 0 for r in art)
+    if tot:
+        print(f"\n=== groundability ===")
+        print(f"  measured box   {tot-absent:8,d}  {(tot-absent)/tot*100:.1f}%")
+        print(f"  NO box         {absent:8,d}  {absent/tot*100:.1f}%   (omitted from ethos.grounding.v1)")
+
+    fails=[r for r in rows if r['extract_exit']!=0]
+    print(f"\n=== hard failures ({len(fails)} documents produce no artifact) ===")
+    causes=collections.Counter()
+    for r in fails:
+        e=r.get('extract_err') or ''
+        m=re.search(r'/Encoding /([A-Za-z0-9-]+)', e)
+        # Named by the encoding, NOT called "predefined": `/Identity-H` is not a predefined
+        # CJK CMap and vendoring that set would not fix it. The engine's own message made
+        # exactly this mistake until 0.50.0; repeating it here would undo that.
+        causes[f"unreadable /Encoding /{m.group(1)}" if m
+               else re.sub(r'\d+','N', e.split('engine:')[-1].strip()[:58])]+=1
+    for cause,k in causes.most_common():
+        print(f"  {k:3d}  {cause}")
+
+
+print(f"{len(rows)} documents in {elapsed:.0f}s wall")
+report(rows)
