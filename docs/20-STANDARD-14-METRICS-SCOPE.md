@@ -10,8 +10,11 @@ engineering effort — it is a vendored dataset under a licence no tool here can
 
 **Accepted 2026-09-07 as decision #22** of [`00-NORTH-STAR.md`](00-NORTH-STAR.md). That row is
 where the decision lives; this document is the argument behind it, and §6 is what the row had to
-carry. **The vendoring itself has not landed** — until it does, `vendor/README.md` still describes
-what the engine actually does.
+carry. **Shipped at 0.51.0**: every item in §6 landed, and the recovery was re-measured on the
+shipped code — 12 937 → 23 885 ink boxes measured of 25 123, and `font-widths-absent` counts
+66 → 0, over the 37 corpus documents that declare a Core-14 face with no `/Widths` and no
+`/FontDescriptor`. §3's 83.4% was the spike's prediction over a differently-found 36-document set;
+the shipped figure is in [`../CHANGELOG.md`](../CHANGELOG.md) under 0.51.0 and is the one to quote.
 
 **It is not an ADR, and this repository has none.** There is no `docs/adr/` and never has been;
 the two ADR numbers cited in this tree — ADR-0004 in

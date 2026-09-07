@@ -55,6 +55,7 @@ pub mod limitations;
 // compiled into the library. The same narrowing M7 applied to the parser's insides.
 #[cfg(test)]
 pub(crate) mod accuracy;
+pub(crate) mod afm;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;

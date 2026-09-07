@@ -157,6 +157,15 @@ static WIN_ANSI: &[Option<&'static str>; 256] = &build_win_ansi();
 /// `StandardEncoding`, ASCII range only.
 static STANDARD: &[Option<&'static str>; 256] = &build_standard();
 
+/// What `StandardEncoding` says a code means, or `None` where this profile does not carry it.
+///
+/// Read by [`crate::afm`] for one job: an AFM's `C` column is a `StandardEncoding` code, so this
+/// turns a vendored metric into the text a decoder would produce for it. The high range is `None`
+/// here, which is why standard-14 width recovery stops at ASCII.
+pub(crate) fn standard_code_to_str(code: u8) -> Option<&'static str> {
+    STANDARD[code as usize]
+}
+
 const fn empty_table() -> [Option<&'static str>; 256] {
     [None; 256]
 }
@@ -422,7 +431,7 @@ const fn build_standard() -> [Option<&'static str>; 256] {
 /// A deliberately small table: the names the fixture corpus uses plus the obvious Latin set. The
 /// full Adobe Glyph List is not vendored, and an unresolvable name is an error rather than a
 /// dropped character.
-fn glyph_name_to_str(name: &str) -> Option<&'static str> {
+pub(crate) fn glyph_name_to_str(name: &str) -> Option<&'static str> {
     Some(match name {
         "space" => " ",
         "exclam" => "!",

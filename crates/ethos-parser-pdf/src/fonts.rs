@@ -86,12 +86,26 @@ pub enum WidthSource {
         /// once the encoding is Identity.
         default: f64,
     },
-    /// No width information in the document.
+    /// Adobe's own metrics for a standard-14 face the document named (decision #22).
     ///
-    /// The standard-14 fonts may legally omit `/Widths`, expecting the reader to supply built-in
-    /// AFM metrics. **This profile does not vendor those tables**, so the advance is unknown and
-    /// is reported as unknown rather than guessed. Origins remain exact — they come from the
-    /// content stream, not from the font.
+    /// §9.6.2.2 lets a font dictionary name one of the standard 14 with no `/Widths` **because** a
+    /// conforming reader is expected to hold these metrics, so they are known and merely absent
+    /// from the file. That is the same standing [`Self::Cid`] already gives an omitted `/DW`.
+    ///
+    /// **Only for a face the document itself names.** `Arial` is not `Helvetica` and reaches
+    /// [`Self::Absent`] as before — see [`crate::afm::for_base_font`].
+    Standard14 {
+        /// The Core-14 face, as matched. Carried so a trace names the face rather than a pointer.
+        face: &'static str,
+        /// The vendored metrics for it.
+        metrics: &'static crate::afm::Core14,
+    },
+    /// No width information in the document, and none this profile may supply.
+    ///
+    /// Reached by a font that is not one of the standard 14 — where supplying metrics would be a
+    /// *substitution* rather than a reading — and by a standard-14 code this profile's encoding
+    /// tables do not cover. The advance is reported as unknown rather than guessed. Origins remain
+    /// exact: they come from the content stream, not from the font.
     Absent {
         /// Why, as the `detail` of the document-scoped `font-widths-absent` limitation.
         ///
@@ -260,6 +274,21 @@ impl Font {
     pub fn advance_glyph_space(&self, code: u32) -> Option<f64> {
         match &self.widths {
             WidthSource::Absent { .. } => None,
+            // Decision #22. Ask this font's own decoder what the code means and look that up, so
+            // one arm covers every encoding the profile already reads — WinAnsi, Standard,
+            // `/Differences`, `ToUnicode`. Where the document names no base encoding the AFM's
+            // own `C` column IS the answer, and for Symbol and ZapfDingbats it is the only one,
+            // because their codes are not StandardEncoding.
+            WidthSource::Standard14 { metrics, .. } => {
+                if let Decoder::Simple(enc) = &self.decoder {
+                    if enc.base() == BaseEncoding::Builtin {
+                        if let Some(w) = metrics.advance_for_builtin_code(code) {
+                            return Some(w);
+                        }
+                    }
+                }
+                metrics.advance_for_text(self.decode_code(code).ok()?)
+            }
             // v2.2-S3. The CID is the code, because `load_cid_widths` refuses to build this
             // variant under any encoding where that is not true by definition. That refusal is
             // what lets this arm be three lines instead of a CMap parser.
@@ -399,11 +428,12 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
         .map(|n| String::from_utf8_lossy(n).to_string())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    // `/BaseFont` is deliberately not read. It was parsed and stored through M6 and nothing ever
-    // looked at it — the decoder comes from `/ToUnicode` or the encoding, the advance from
-    // `/Widths`, and the ink box from the embedded program or the descriptor. A font name would
-    // only be useful for substituting metrics this profile refuses to substitute, so carrying it
-    // was state with no reader. Removed at M7 with the rest of the API freeze.
+    // `/BaseFont` was deliberately not read from M7 until decision #22, on the reasoning that a
+    // font name "would only be useful for substituting metrics this profile refuses to
+    // substitute". Decision #22 drew the line one step in from there: reading Helvetica's own
+    // metrics for a font the document CALLS Helvetica is reading the document, and only
+    // supplying them for `Arial` is the substitution that stays refused. So the name now has two
+    // readers — the standard-14 lookup below, and `base_font_detail` for limitation details.
 
     // 1. Decoder — ToUnicode wins when the document ships one.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
@@ -416,10 +446,38 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     };
 
     // 2. Widths.
-    let widths = load_widths(doc, fd, &subtype, id);
+    let mut widths = load_widths(doc, fd, &subtype, id);
 
     // 3. Ink metrics.
-    let ink = crate::metrics::resolve_font_ink(doc, fd);
+    let mut ink = crate::metrics::resolve_font_ink(doc, fd);
+
+    // 3b. Decision #22: a standard-14 face the document named, whose metrics §9.6.2.2 expects a
+    //     reader to hold. The two fallbacks are independent because the gaps are — a font can
+    //     declare a descriptor and no `/Widths`, or the reverse — and each only ever fills a
+    //     typed absence, so nothing the document actually stated is overwritten.
+    //
+    //     Composite fonts are excluded: their advances are CID-keyed via `/W` and `/DW`, so an
+    //     AFM code lookup would be measuring a different thing under the same name.
+    if matches!(FontKind::from_subtype(&subtype), FontKind::Simple) {
+        if let Some(metrics) = base_font_name(fd)
+            .as_deref()
+            .and_then(crate::afm::for_base_font)
+        {
+            if matches!(widths, WidthSource::Absent { .. }) {
+                widths = WidthSource::Standard14 {
+                    face: metrics.face,
+                    metrics,
+                };
+            }
+            if matches!(ink, FontInk::Absent(_)) {
+                ink = FontInk::Measured {
+                    ascent: metrics.ascent,
+                    descent: metrics.descent,
+                    source: metrics.vertical_source,
+                };
+            }
+        }
+    }
 
     // 4. Did this font get `StandardEncoding` without the specification licensing it? PDF 32000-1
     //    §9.6.6.2 names that fallback for a NONSYMBOLIC font; Table 123 puts Symbolic at bit 3
@@ -460,6 +518,17 @@ fn is_symbolic(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> bool {
 }
 
 /// `BaseFont NAME` for a limitation detail, or a fixed string when the font declares none.
+/// `/BaseFont` as the document spells it, with no interpretation.
+///
+/// Separate from [`base_font_detail`], which builds a human sentence for a limitation's `detail`.
+/// This one is read by the standard-14 lookup and must stay the raw name.
+fn base_font_name(fd: &lopdf::Dictionary) -> Option<String> {
+    match fd.get(b"BaseFont") {
+        Ok(lopdf::Object::Name(n)) => Some(String::from_utf8_lossy(n).to_string()),
+        _ => None,
+    }
+}
+
 fn base_font_detail(fd: &lopdf::Dictionary) -> String {
     match fd.get(b"BaseFont") {
         Ok(lopdf::Object::Name(n)) => format!("BaseFont {}", String::from_utf8_lossy(n)),

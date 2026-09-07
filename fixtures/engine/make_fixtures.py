@@ -11,8 +11,16 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              MEASURED — the only fixture anywhere that takes that
                              branch                                                   [M3]
   absent-font-metrics        a /FontDescriptor that exists and carries NO usable ink
-                             metrics, so geometry is typed-absent while the advance is
-                             known — the geometry-omission path at M5                 [M5]
+                             metrics, on a face (`ArialMT`) that is NOT one of the standard
+                             14 — so geometry is typed-absent while the advance is known.
+                             The face matters since decision #22: Helvetica's metrics are
+                             now readable from vendor/afm/ whatever the descriptor omits
+                             — the geometry-omission path at M5                       [M5]
+  absent-font-widths         /BaseFont /ArialMT with NO /Widths and NO /FontDescriptor, so
+                             the advance AND the ink box are both unknown and
+                             `font-widths-absent` is declared. Not Helvetica, deliberately:
+                             since decision #22 a standard-14 face is answered from
+                             vendor/afm/ whatever the document omits                  [#22]
   broken-font-encoding       /Differences pointing at glyph names no table carries, so a
                              naive reader emits mojibake and this one drops the run  [v0.1]
   ruled-table-grid           a 3x3 grid DRAWN with `re` rectangles, one merged cell and
@@ -156,6 +164,19 @@ LAST_CHAR = 126
 # descriptor, found nothing usable in it, and still refused to invent a box.
 DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
 
+# The face a "no-metrics" fixture must name, and it deliberately is NOT one of the standard 14.
+#
+# Decision #22 vendored Adobe's Core-14 AFMs, so `/BaseFont /Helvetica` now HAS a knowable ascent
+# and descent whatever the descriptor says — §9.6.2.2 makes those metrics known and merely absent
+# from the file. A Helvetica fixture can therefore no longer demonstrate typed-absent geometry:
+# it was silently exercising the recovered path instead, which is a test asserting nothing.
+#
+# `ArialMT` is the case decision #22 explicitly refuses to fill: supplying Helvetica's metrics for
+# Arial is a metric SUBSTITUTION rather than a reading. So this face has no metrics anywhere —
+# not in the document, and not in `vendor/afm/` — which is the only remaining way to reach the
+# geometry-omission path honestly.
+UNKNOWABLE_FACE = "ArialMT"
+
 
 def two_column_stream(left_lines: int, right_lines: int) -> str:
     """A two-column page, written RIGHT column first, on a 400x300 media box.
@@ -298,10 +319,11 @@ def build_pdf(
         font_object
         if font_object
         else (
-            "<< /Type /Font /Subtype /%s /BaseFont /Helvetica "
+            "<< /Type /Font /Subtype /%s /BaseFont /%s "
             "/Encoding %s /FirstChar %d /LastChar %d /Widths [%s]%s%s >>"
             % (
                 font_subtype,
+                UNKNOWABLE_FACE if descriptor == "no-metrics" else "Helvetica",
                 (
                     "<< /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [%s] >>"
                     % differences
@@ -335,8 +357,8 @@ def build_pdf(
         # the cause: this run's geometry is absent because the font declares no ink metrics, not
         # because the reader could not work out how wide the text is.
         objects.append(
-            b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
-            b"/ItalicAngle 0 /StemV 88 >>"
+            b"<< /Type /FontDescriptor /FontName /%s /Flags 32 "
+            b"/ItalicAngle 0 /StemV 88 >>" % UNKNOWABLE_FACE.encode()
         )
     for body in extra_objects or []:
         objects.append(body.encode() if isinstance(body, str) else body)
@@ -527,6 +549,10 @@ FIXTURES = {
     # the run with its native locator and typed-absent geometry; the grounding projection omits
     # it, counts it, and declares it.
     "absent-font-metrics": "BT /F1 24 Tf 72 72 Td (No ink metrics) Tj ET",
+    # Decision #22's other side. `absent-font-metrics` supplies /Widths and withholds ink; this
+    # one withholds BOTH, on a face no vendored table can answer for, which is the only shape
+    # left that reaches `font-widths-absent` and an absent advance at once.
+    "absent-font-widths": "BT /F1 12 Tf 1 0 0 1 72 72 Tm (No widths anywhere) Tj ET",
     # v0.1 / parity checklist P10. Two runs under a font whose /Differences point at glyph names
     # no vendored table carries.
     #
@@ -1180,6 +1206,20 @@ def _cid_descriptor() -> bytes:
     )
 
 
+# A SIMPLE font dictionary written out in full, for a fixture whose point is something
+# `build_pdf` always supplies. It always writes `/Widths`, so a document without them cannot be
+# expressed any other way.
+#
+# `/ArialMT` is deliberate and load-bearing since decision #22: Helvetica's widths and ink metrics
+# are now readable from `vendor/afm/` whether or not the document carries them, so a Helvetica
+# fixture can no longer reach the width-absent path at all. Arial is the metric SUBSTITUTION that
+# decision refuses, so nothing can answer for it — which is what keeps this fixture honest.
+RAW_FONTS = {
+    "absent-font-widths": (
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /ArialMT /Encoding /WinAnsiEncoding >>"
+    ),
+}
+
 COMPOSITE_FONTS = {
     "composite-font-cid-widths": _type0_font("Identity-H"),
     # The SAME descendant, the same /W, the same /DW — and a predefined CMap this profile does not
@@ -1385,7 +1425,7 @@ def main() -> int:
                 or TOUNICODE_OBJECTS.get(name)
                 or COMPOSITE_OBJECTS.get(name)
             ),
-            font_object=COMPOSITE_FONTS.get(name),
+            font_object=COMPOSITE_FONTS.get(name) or RAW_FONTS.get(name),
             font_subtype=FONT_SUBTYPE.get(name, "Type1"),
             font_extra=FONT_EXTRA.get(name, ""),
             struct_tree=name in STRUCTURE,
