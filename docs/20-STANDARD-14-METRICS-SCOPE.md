@@ -6,17 +6,19 @@
 instrument was built, and what it found is written down before anything is built on it. Unlike 17
 and 18 it does not end in a refusal, and unlike 19 it does not end in a probe list. It ends in a
 **recommendation and a licence the owner has to accept or decline**, because the cost is not
-engineering effort — it is a vendored dataset under a licence this repository's allowlist does not
-carry.
+engineering effort — it is a vendored dataset under a licence no tool in this repository can check
+and no reviewer here has yet read.
 
-**It is not an ADR.** [`AGENTS.md`](../AGENTS.md) names `docs/adr/` and a `CONTEXT.md`; neither
-exists, and the two ADR numbers this repository cites — ADR-0004 in
+**It is not an ADR, and this repository has none.** There is no `docs/adr/` and never has been;
+the two ADR numbers cited in this tree — ADR-0004 in
 [`check_dco.py`](../.github/scripts/check_dco.py) and ADR-0009 in
-[`03-V0-SCOPE.md`](history/03-V0-SCOPE.md) — belong to the sibling Ethos repository's
-`docs/decisions/`. What this repository actually uses is a numbered scope document plus a numbered
-row in [`00-NORTH-STAR.md`](00-NORTH-STAR.md), and this follows that. The AGENTS.md divergence is
-recorded here rather than resolved: adopting a second convention for one file would be worse than
-the inconsistency.
+[`03-V0-SCOPE.md`](history/03-V0-SCOPE.md) — resolve to the sibling Ethos repository, not to
+anything here. The `docs/adr/` convention comes from an `AGENTS.md` that is **untracked** — local
+tooling scaffolding rather than a file this repository carries — so there is no divergence to
+reconcile. What this repository uses is a numbered scope document plus a numbered row in
+[`00-NORTH-STAR.md`](00-NORTH-STAR.md), and this follows that. The one place an ADR is genuinely
+mandatory here is [`deny.toml`](../deny.toml), for exceptions to the dependency allowlist — and
+§6.1 is why this decision does not reach it.
 
 ---
 
@@ -95,7 +97,7 @@ a `NOTICE` mention is not enough; per-file copyright lines must survive; and a g
 JSON table is a **modified file** and needs a prominent in-file note.
 
 **The Apache-2.0 alternative is rejected, on evidence rather than taste.** Mozilla pdf.js ships
-standard-font metrics under Apache-2.0 and would need no allowlist entry. It also carries **no
+standard-font metrics under Apache-2.0, a licence already reviewed here. It also carries **no
 `FontBBox`**, so Symbol and ZapfDingbats would have no vertical source at all; its Symbol and
 ZapfDingbats ascent/descent are `NaN`; and it carries two verified transcription defects in
 `xHeight`. Taking it means resting on Mozilla's Apache-2.0 assertion over numbers that are provably
@@ -137,9 +139,14 @@ The repository's own description of what it refuses is smaller than what it refu
 Not taken here. If accepted it is a new numbered row in [`00-NORTH-STAR.md`](00-NORTH-STAR.md)
 after #21, and it would have to carry:
 
-1. **`APAFML` in `deny.toml`** — the first non-OSI-approved entry in an allowlist whose header says
-   *"an entry added 'just in case' is a licence nobody reviewed"*. Say in the row that it is the
-   first, and why.
+1. **No `APAFML` entry in `deny.toml` — stated, not left silent.** The allowlist governs crate
+   licences in the resolved dependency graph. AFMs are data and never enter it, exactly as
+   `deny.toml` already records for `vendor/cmaps/`, which it calls data rather than a crate: *"It
+   does not appear in the dependency graph; its NOTICE obligation is handled in ./NOTICE."* An
+   entry `cargo deny` can never match is exactly the "just in case" entry that file's own header
+   forbids. The row has to say so, because a reader who sees a non-OSI-approved licence arrive with
+   no allowlist change will otherwise read it as a review that was skipped. It was not skipped — it
+   is §4's blind spot, and items 2 and 3 are what stands in for the absent tooling.
 2. **`vendor/afm/`** holding the pristine AFMs **and `MustRead.html` under that exact filename**,
    with a pinned sha256 and the provenance URL, on the pattern `vendor/` already uses.
 3. **A `NOTICE` paragraph**, and an automatic modification note in any generated table.
