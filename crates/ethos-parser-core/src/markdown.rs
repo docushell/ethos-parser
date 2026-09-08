@@ -130,7 +130,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v1.1-S3 | `markdown-blocks-v4` | a word broken across a line closed up in the export |
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
-/// | v2.2-S5 | `markdown-blocks-v6` | runs the document declared nothing about join along a baseline |
+/// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -141,7 +141,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V6: &str = "markdown-blocks-v6";
+pub const MARKDOWN_RULE_BLOCKS_V7: &str = "markdown-blocks-v7";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -1024,6 +1024,33 @@ pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i
     ))
 }
 
+/// Whether `a` ends with a space **this reader inserted**, rather than one the page drew.
+///
+/// A PDF may open a word gap by moving the text cursor instead of drawing a space glyph. The
+/// reader recognises that and writes the space into the run's own `text`, flagging it in
+/// [`crate::TextRunAttributes::synthesized`] so nothing downstream mistakes it for a character the
+/// document contains.
+///
+/// **This asks the flag rather than the reason string.** `SynthesizedAt::reason` is "in the
+/// format's own vocabulary" — `tj-gap` is the PDF reader's word — and core has no business
+/// knowing it. That a space was inserted at all is the format-neutral fact, and it is the one
+/// this needs.
+fn reader_inserted_trailing_space(a: &crate::Node) -> bool {
+    if !a.text.ends_with(char::is_whitespace) {
+        return false;
+    }
+    let Some(attrs) = text_run_attributes(a) else {
+        return false;
+    };
+    let Some(last) = a.text.chars().count().checked_sub(1) else {
+        return false;
+    };
+    attrs
+        .synthesized
+        .iter()
+        .any(|s| usize::try_from(s.char_index).is_ok_and(|i| i == last))
+}
+
 /// Whether `b` is the next ink after `a` on one line — drawn **after** it, not over it, no gap.
 ///
 /// Two-sided where [`ink_contiguous`] is one-sided, because a declaration is no longer supplying
@@ -1043,8 +1070,28 @@ pub(crate) fn ink_sequenced(
     // 1. Drawn after, not over. `dx == 0` is exact overprint and `dx < 0` a backward jump; both
     //    are refused, because neither is "the next ink along this line".
     y.origin_x > x.origin_x
-        // 2. No gap the page drew.
-        && y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS
+        // 2. No gap the page drew — **or** a gap this reader already read as a space and wrote
+        //    into `a`'s own text. The second clause is the whole of v2.2-S7.
+        //
+        //    Without it an untagged page whose word gaps are cursor moves rather than space
+        //    glyphs emits ONE WORD PER BLOCK: the reader inserts the space, and the block rule
+        //    then measures the same gap against a 12-centipoint quantization epsilon and calls it
+        //    a break. 253 of 735 OmniDocBench documents were more than half sub-3-character
+        //    blocks, holding 53% of all their text.
+        //
+        //    **It joins on the reader's own prior finding, not on a new threshold.** A gap
+        //    epsilon sized to word spaces was measured and refused at 0.47.0 — *"Latin has a
+        //    trough to site it in and CJK has none"* — and re-measured here over 749 409
+        //    same-baseline pairs: the Latin distribution decays monotonically from its
+        //    word-space mode with no empty band anywhere, so any ceiling would be a tuned knob.
+        //    There is none. What bounds this instead is that the space is **already in `a`'s
+        //    text either way**, so the join moves a block boundary and changes no byte of text.
+        //
+        //    The declared path above has always joined on exactly this test — `drew_space`, with
+        //    no gap check at all — because an mcid group is the document's own statement that two
+        //    runs belong together. This is the same clause reaching the undeclared path, where
+        //    the reader's insertion is the only statement available.
+        && (y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS || reader_inserted_trailing_space(a))
         // 3. Overlapping by at most one of `a`'s own glyphs. Negative tracking is ordinary — CJK
         //    medians sit near -42 centipoints — but an overlap deeper than a glyph means the two
         //    runs are stacked rather than sequenced.
@@ -1457,7 +1504,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v6`
+/// # The rule, in full — `markdown-blocks-v7`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
@@ -4154,6 +4201,88 @@ pub(crate) mod tests {
     // -----------------------------------------------------------------------------------
     // v2.2-S7 — geometric blocks, the grouping the grounding projection cites
     // -----------------------------------------------------------------------------------
+
+    /// Flag a run's trailing space as one this reader inserted, the way `content.rs` flags a
+    /// `TJ` gap it read as a word space.
+    ///
+    /// A local helper rather than a seventh field on `LineSpec`: one test needs this and every
+    /// other caller of `placed_run` would have to carry it.
+    fn reader_spaced(mut n: Node) -> Node {
+        let last = u32::try_from(n.text.chars().count() - 1).expect("short fixture text");
+        if let NodeAttributes::TextRun(a) = &mut n.attributes {
+            a.synthesized.push(crate::SynthesizedAt {
+                char_index: last,
+                reason: "tj-gap".into(),
+            });
+        }
+        n
+    }
+
+    /// **A word gap the page opened by moving the cursor keeps the line together** (v2.2-S7).
+    ///
+    /// The page draws no space glyph; the reader recognises the `TJ` gap, writes a space into the
+    /// run's own text and flags it. Before this, the block rule then measured that same gap
+    /// against the 12-centipoint quantization epsilon, called it a break, and emitted one word per
+    /// block — 296 of 735 OmniDocBench documents projected that way.
+    ///
+    /// The gap here is 300 centipoints against a 330-centipoint reference: far outside the
+    /// epsilon, and exactly the size of the space that is already sitting in `with `'s text.
+    #[test]
+    fn a_cursor_moved_word_gap_does_not_break_the_line() {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 61200,
+            height: 79200,
+            rotation: 0,
+        };
+        let mut nodes: Vec<Node> = Vec::new();
+        // Two corroborating runs so the pitch reference exists, then the pair under test.
+        for i in 0..4u32 {
+            nodes.push(placed_run(
+                &mut alloc,
+                &page.id,
+                i + 1,
+                "ab",
+                None,
+                40000,
+                40000 + i64::from(i) * 2400,
+                Some(660),
+                None,
+            ));
+        }
+        nodes.push(reader_spaced(placed_run(
+            &mut alloc,
+            &page.id,
+            5,
+            "with ",
+            None,
+            7200,
+            7200,
+            Some(1320),
+            None,
+        )));
+        nodes.push(placed_run(
+            &mut alloc,
+            &page.id,
+            6,
+            "a",
+            None,
+            8820,
+            7200,
+            Some(330),
+            None,
+        ));
+        let owned = std::collections::BTreeSet::new();
+        let joined = geometric_blocks(&nodes, &owned)
+            .into_iter()
+            .any(|b| b.text.contains("with a"));
+        assert!(
+            joined,
+            "a gap the reader already read as a space broke the line anyway"
+        );
+    }
 
     fn blocks_of_nodes(specs: &[LineSpec<'_>]) -> Vec<String> {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
