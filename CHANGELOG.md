@@ -18,6 +18,65 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [0.54.0] — a word gap the page opened by moving the cursor
+
+**A PDF may open a word gap without drawing a space glyph** — it moves the text cursor with a `TJ`
+adjustment instead. `content.rs` already recognises that, writes the space into the run's own text
+and flags it `synthesized` so nothing mistakes it for a character the document contains.
+
+**The block rule then measured the same gap a second time** — against `INK_EPSILON_CENTIPOINTS`,
+a 12-centipoint *quantization* epsilon — decided it was a break, and started a new block. So a
+page whose word spaces are cursor moves emitted **one word per block**:
+
+```
+coordination          coordination geomet
+geomet          →     ry with a N
+ry
+with
+a
+```
+
+**Measured over the 981 OmniDocBench documents**, before and after, per document:
+
+| | 0.53.0 | 0.54.0 |
+| --- | ---: | ---: |
+| documents whose block count changed | — | **296 of 735 (40%)** |
+| documents made **worse** | — | **0** |
+| total blocks | 463 715 | **405 052** (−12.7%) |
+| median characters per block | 5.42 | **8.40** |
+
+The largest single change is 1 774 → 356 blocks, 5.3 → 30.4 characters each.
+
+**It introduces no threshold, and that is the point.** A gap epsilon sized to word spaces was
+measured and refused at 0.47.0 — *"Latin has a trough to site it in and CJK has none, so it would
+be a measurement on one script and a tuned knob on the other."* That was re-measured here over
+**749 409 same-baseline pairs**: for Latin pairs carrying a synthesized space the distribution
+decays monotonically from its word-space mode at 0.6–0.7 pitch, and the shallowest band is 419 per
+unit against 929 below and 494 above — a factor of 1.2, not the empty valley `INK_EPSILON`'s own
+justification rests on. **There is no trough to site a ceiling in, so this rule has no ceiling.**
+
+What stands in for one is that **the space is already in the run's text either way**. Joining moves
+a block boundary; it changes no byte of text. And the *declared* path has always joined on exactly
+this test — `drew_space`, with no gap check at all — because an mcid group is the document's own
+statement that two runs belong together. This is that clause reaching the undeclared path, where
+the reader's own insertion is the only statement available.
+
+**No golden changed, for the second release running.** `SynthesisReason::TjGap` fires zero times on
+four of the five gate documents, so the fixtures cannot see this rule at all.
+`a_cursor_moved_word_gap_does_not_break_the_line` now holds it, verified by reverting the change
+and watching it **fail**.
+
+**What this does not fix.** Intra-word splits survive where a run's advance exceeds even the
+widened `ink_reach` cap — `geomet` / `ry` in the sample above, where the advance runs 17% over the
+font median. And CJK is untouched by construction: it draws no word spaces, so no space is
+synthesized and no join is offered. The 0.47.0 refusal stands there in full.
+
+`markdown_rule` moves `markdown-blocks-v6` → `-v7` and `html_rule` `html-blocks-v6` → `-v7`,
+together, because the change is in `ink_sequenced`, which both projections and `geometric_blocks`
+call.
+
+---
+
 ## [0.53.0] — a median used as a hard bound split words in half
 
 **Found by running OmniDocBench end2end for the first time.** An English chemistry page scored a
