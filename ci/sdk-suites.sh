@@ -87,6 +87,18 @@ if ! ( cd packages/node && npm install --no-audit --no-fund --loglevel=error ); 
   echo "  skip. If this is a registry or proxy problem rather than a real resolution failure," >&2
   echo "  \`npm config get registry\` is the first thing to check — a registry that cannot be" >&2
   echo "  reached fails here rather than silently producing a partial gate." >&2
+  echo >&2
+  echo "  Behind a corporate proxy, the registry is reachable but the step still fails, twice" >&2
+  echo "  over: ENOTFOUND with the VPN down, then CERT_HAS_EXPIRED with it up, both against an" >&2
+  echo "  internal mirror. Exporting the proxy FOR THE RUN fixes it and changes no npm config:" >&2
+  echo >&2
+  echo "    export http_proxy=http://www-proxy:80/" >&2
+  echo "    export https_proxy=http://www-proxy.us.oracle.com:80/" >&2
+  echo "    export no_proxy=localhost,127.0.0.1,.us.oracle.com,.au.oracle.com,.oraclecorp.com" >&2
+  echo >&2
+  echo "  Those hosts are one organisation\'s; the shape is what transfers. Setting a registry" >&2
+  echo "  with \`npm config set\` would outlive the run and is deliberately not what is advised" >&2
+  echo "  here — a gate that edits your tooling to pass is a gate nobody can trust." >&2
   exit 1
 fi
 
