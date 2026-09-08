@@ -51,6 +51,17 @@ python3 docs/measurements/omnidocbench/census.py <corpus>/ori_pdfs
 
 About 115 s of engine time for all 981, serial; 15 s wall at eight threads.
 
+**The benchmark's own end2end evaluation** is a second instrument beside this one, run through
+[`end2end.py`](end2end.py):
+
+```bash
+python3 docs/measurements/omnidocbench/end2end.py <work-dir>
+```
+
+It scores **their** metrics against **their** ground truth, so unlike the census the numbers are
+comparable to what other projects publish — which is exactly why decision **O26** refuses to
+publish a row from it. §"Their metrics, across three releases" below is the record.
+
 ## What it measured at 0.52.0
 
 | | documents |
@@ -160,3 +171,85 @@ documents were recovered at 0.48.0 by reading white space inside a hex string as
 
 **Use it as a bug-finder, not a scoreboard.** Both were found by running someone else's corpus
 through this engine and reading what came out.
+
+---
+
+## Their metrics, across three releases
+
+**Run privately, for diagnosis, and not quotable** — decision **O26**, and the corpus is
+research-use-only. Recorded here because the working directory that produced them was destroyed
+twice in one day and re-deriving it cost an afternoon each time.
+
+`Edit_dist` is **lower-is-better**; `TEDS` **higher-is-better**. All three runs used the same
+harness, corpus and filtered ground truth — only the engine changed.
+
+| Module | Metric | 0.52.0 | 0.53.0 | 0.54.0 |
+| --- | --- | ---: | ---: | ---: |
+| **text_block** | Edit_dist | 0.5931 | 0.5674 | **0.4845** |
+| **reading_order** | Edit_dist | 0.5916 | 0.5758 | **0.5314** |
+| display_formula | Edit_dist | 0.9812 | 0.9696 | 0.9616 |
+| table | TEDS | 0.0111 | 0.0111 | 0.0139 |
+| table | TEDS structure | 0.0162 | 0.0162 | 0.0202 |
+
+### The average is the wrong statistic, and the band says why
+
+684 of the 981 pages carry a text layer. The other 237 score **exactly 1.0** in every run — there
+is no OCR, by decision #11, so a scan yields nothing to compare. Averaging those in describes
+neither population.
+
+| Pages **with** a text layer (684) | 0.52.0 | 0.53.0 | 0.54.0 |
+| --- | ---: | ---: | ---: |
+| mean | 0.4521 | 0.4175 | **0.3059** |
+| **median** | 0.2763 | 0.2111 | **0.0786** |
+| near-perfect, < 0.10 | 244 (35.7%) | 274 (40.1%) | **365 (53.4%)** |
+| failing, ≥ 0.75 | 259 (37.9%) | 238 (34.8%) | **162 (23.7%)** |
+
+**The median page went 0.2763 → 0.0786 across two releases**, and more than half of all
+text-bearing pages are now near-perfect.
+
+### What moved it
+
+**0.53.0** — `ink_reach` capped a run's reach at the font's **median** advance per glyph, so half
+of all runs were truncated by construction and a 12-centipoint epsilon then read a gap that was not
+there. Words split mid-token.
+
+**0.54.0** — a word gap the page opened by **moving the cursor** rather than drawing a space glyph
+was measured twice: the reader wrote the space into the run's text, and the block rule then
+measured the same gap again and called it a break. Pages emitted one word per block. This is the
+larger of the two by a wide margin.
+
+Neither introduced a threshold. A word-space gap epsilon was refused at 0.47.0 and re-measured over
+**749 409 same-baseline pairs**: for Latin pairs the distribution decays monotonically from its
+word-space mode with no empty band, so any ceiling would be a tuned knob. There is none.
+
+### Where the remaining failures are, which is the finding to revisit
+
+| 162 pages still failing, by class | 0.52.0 | 0.54.0 |
+| --- | ---: | ---: |
+| English | 118 | **26** |
+| Chinese / mixed | 141 | **136** |
+| — `newspaper` alone | 69 | **69** |
+| — academic literature, English | 84 | **13** |
+
+**The English half is 78% solved and the CJK half has barely moved.** That is not a shortfall, it
+is the mechanism: both fixes key on spaces the reader synthesized from cursor moves, and CJK draws
+no word spaces, so no join is ever offered. `newspaper` alone is 69 of the 162.
+
+**A hypothesis for whoever picks this up, untested.** Latin needs a rule that distinguishes a word
+space from a column jump, and the measurement above says no such boundary exists in the data. CJK
+has *no word boundaries at all* — every same-line gap is tracking — so the question may collapse
+from *"is this a space?"* to *"is this a column jump?"*, which is strictly easier and may not need
+the trough Latin lacks. Measure before building.
+
+### Read the numbers with these
+
+- **`Overall` is not computed.** Its formula needs CDM, which needs TeX Live, Ghostscript and
+  ImageMagick, and OmniDocBench's own `pyproject.toml` calls for Linux. Only the text term exists:
+  `(1 − 0.4845) × 100 = 51.6` at 0.54.0, against 40.7 at 0.52.0.
+- **981 of the benchmark's 1 651 ground-truth pages.** Only the `v1_0` subset ships as PDFs, and
+  the ground truth is filtered to pages predictions exist for — scoring the full set would report
+  670 missing predictions as total failures.
+- **Table figures are a side effect, not a detection change.** Nothing in 0.53.0 or 0.54.0 goes
+  near table detection. OmniDocBench lifts `<table>` out of a prediction and matches its text, so
+  better-assembled blocks match more often. Do not read 0.0111 → 0.0139 as tables improving.
+- **921 of 981 pages carried scorable text blocks**; 60 had none.
