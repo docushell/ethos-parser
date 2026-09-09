@@ -351,6 +351,36 @@ fn extract_page(
                 .transpose()
                 .map_err(quantize_err)?;
 
+            // The per-code advances must account for the total, and must be present on exactly
+            // the runs the total is present on. Checked here rather than asserted in a comment,
+            // because a vector that silently drops an entry stays plausible: it is still
+            // monotonic, still sums close, and every sub-run box built from it after the gap is
+            // wrong by one glyph. `debug_assert` because this is an interpreter invariant rather
+            // than a document property — a PDF cannot violate it, only a bug here can.
+            //
+            // The tolerance is deliberate and not a fudge. `advance` is `sum(deltas) * scale`
+            // while this is `sum(delta * scale)`, and those differ in the last bits by
+            // construction. The engine keeps the first spelling because it is the one every
+            // artifact so far was quantized from; changing the arithmetic to make an assertion
+            // exact would be the assertion editing its own subject.
+            debug_assert_eq!(
+                shown.code_advances.is_some(),
+                shown.advance.is_some(),
+                "code_advances and advance must agree on presence"
+            );
+            if let (Some(per), Some(total)) = (&shown.code_advances, shown.advance) {
+                debug_assert_eq!(
+                    per.len(),
+                    shown.codes.len(),
+                    "one advance per code, or the alignment is a lie"
+                );
+                let summed: f64 = per.iter().sum();
+                debug_assert!(
+                    (summed - total).abs() <= 1e-6 * total.abs().max(1.0),
+                    "per-code advances sum to {summed}, total says {total}"
+                );
+            }
+
             let geometry = match (font, shown.advance) {
                 // v1-S6.2. **A run that draws no ink has no ink box.** `ink_box` builds its
                 // rectangle from the font's ascent/descent envelope stretched over the run's
