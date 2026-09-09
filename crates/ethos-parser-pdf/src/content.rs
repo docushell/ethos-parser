@@ -62,10 +62,40 @@ pub struct ShownText {
     pub origin: (f64, f64),
     /// Advance in user space, or `None` when the font carries no widths.
     pub advance: Option<f64>,
+    /// The same advance, per code, in the same space — or `None` on the same condition.
+    ///
+    /// **Aligned with [`Self::codes`], not with [`Self::text`].** A code may decode to more than
+    /// one character (a ligature code, or any `ToUnicode` entry mapping to a string), which is
+    /// exactly what `extract.rs` records as `scalar_code_mismatch`. So the *n*th entry here is the
+    /// advance of the *n*th code, and indexing it by a character offset is wrong on any run where
+    /// that flag is set.
+    ///
+    /// `Some` only when [`Self::advance`] is `Some`, and then `len() == codes.len()` and the
+    /// entries sum to it. The two travel together because a code with no width advances nothing
+    /// and contributes no entry: a partial vector would look complete and silently misalign every
+    /// entry after the gap.
+    ///
+    /// Nothing on the wire reads this yet. It exists because the per-glyph deltas are already
+    /// computed here and summing them away is lossy, and a sub-run box cannot be recovered
+    /// afterwards from the total.
+    pub code_advances: Option<Vec<f64>>,
     /// Font resource name.
     pub font_id: String,
-    /// Font size in text space.
+    /// Font size in text space — the raw `Tf` operand, as the document states it.
+    ///
+    /// **Not the rendered size**, and not what an ink box may be built from. A page may set
+    /// `Tf /F 1` and carry the type size in the text matrix or the CTM, in which case this is 1
+    /// and the glyphs are 10pt. Use [`Self::em_scale_pt`] for anything geometric; this stays the
+    /// operand because the operand is what the document says.
     pub font_size: f64,
+    /// The rendered height of one em, in the same space as [`Self::origin`].
+    ///
+    /// The vertical scale of the text rendering matrix — `Tfs` composed with the text matrix and
+    /// the CTM, per §9.4.4 — so ascent and descent scaled by this land in the space the origin is
+    /// already in. `origin` is `(trm.e, trm.f)` and the advance is multiplied by `ctm.x_scale()`;
+    /// this is the third side of that same triangle, and without it the box's height and width
+    /// were in different spaces.
+    pub em_scale_pt: f64,
     /// Marked-content id in force, if any.
     pub mcid: Option<i64>,
     /// Whether **any** enclosing marked-content sequence is an `/Artifact` (v1-S3).
@@ -663,6 +693,7 @@ impl<'a> Interpreter<'a> {
         let mut text = String::new();
         let mut kept_codes = Vec::with_capacity(codes.len());
         let mut advance_total = 0.0f64;
+        let mut per_code = Vec::with_capacity(codes.len());
         let mut advance_known = true;
 
         for code in codes {
@@ -698,7 +729,9 @@ impl<'a> Interpreter<'a> {
                     let is_space = code == 32;
                     let before = self.ts.text_matrix.e;
                     self.ts.advance(w0, is_space);
-                    advance_total += self.ts.text_matrix.e - before;
+                    let delta = self.ts.text_matrix.e - before;
+                    advance_total += delta;
+                    per_code.push(delta);
                 }
                 None => advance_known = false,
             }
@@ -710,8 +743,11 @@ impl<'a> Interpreter<'a> {
             codes: kept_codes,
             origin,
             advance: advance_known.then_some(advance_total * scale),
+            code_advances: advance_known
+                .then(|| per_code.iter().map(|d| d * scale).collect::<Vec<_>>()),
             font_id,
             font_size: self.ts.font_size,
+            em_scale_pt: trm.y_scale(),
             mcid: self.current_mcid(),
             artifact: self.inside_artifact(),
             synthesized_indices: synthesized.to_vec(),
@@ -1114,6 +1150,63 @@ mod tests {
         let e = i.run(&ops("40 80 100 40 re S UnknownOp")).unwrap_err();
         assert_eq!(e.code(), "unsupported");
         assert!(i.rects.is_empty(), "geometry must go with the text");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Per-code advances
+    // ---------------------------------------------------------------------------------------
+
+    /// One advance per code, summing to the total, in the total's space.
+    #[test]
+    fn per_code_advances_align_with_codes_and_sum_to_the_total() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 0 0 Td (AB) Tj ET")).unwrap();
+
+        let sh = &i.shown[0];
+        let per = sh
+            .code_advances
+            .as_ref()
+            .expect("this font carries widths, so the advance is known");
+
+        assert_eq!(per.len(), sh.codes.len(), "one entry per code");
+        assert_eq!(per.len(), 2, "two codes were shown");
+
+        // `one_font` gives every glyph 500/1000 em, so at 10pt each advances 5pt.
+        for (n, a) in per.iter().enumerate() {
+            assert!(approx_eq(*a, 5.0), "code {n} advanced {a}, expected 5.0");
+        }
+
+        let summed: f64 = per.iter().sum();
+        let total = sh.advance.expect("advance is known");
+        assert!(
+            (summed - total).abs() < 1e-9,
+            "per-code {summed} vs total {total}"
+        );
+    }
+
+    /// The per-code advances are in user space, like the total — the CTM applies to both.
+    ///
+    /// Worth its own test because the two are computed on different lines: the total is summed in
+    /// text space and scaled once, each entry is scaled as it is collected. A refactor that scaled
+    /// only one of them would still pass the alignment test above.
+    #[test]
+    fn per_code_advances_carry_the_ctm_like_the_total_does() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("2 0 0 2 0 0 cm BT /F1 10 Tf 0 0 Td (AB) Tj ET"))
+            .unwrap();
+
+        let sh = &i.shown[0];
+        let per = sh.code_advances.as_ref().expect("widths are known");
+        for a in per {
+            assert!(
+                approx_eq(*a, 10.0),
+                "a doubling CTM must double 5pt, got {a}"
+            );
+        }
+        let summed: f64 = per.iter().sum();
+        assert!(approx_eq(summed, sh.advance.unwrap()));
     }
 
     /// Fail-closed means *nothing* survives, including text shown before the bad token.

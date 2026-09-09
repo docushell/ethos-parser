@@ -103,7 +103,7 @@ if [ -z "${ETHOS_BIN:-}" ] && [ -x ../ethos-oracle/target/release/ethos ]; then
 fi
 
 step=0
-total=8
+total=9
 announce() {
   step=$((step + 1))
   printf '\n\033[1m[%d/%d] %s\033[0m\n' "$step" "$total" "$1"
@@ -114,6 +114,9 @@ ci/forbidden-tokens.sh confidence
 
 announce 'v0-no-verify — no verification code, type, or field exists in the tree'
 ci/forbidden-tokens.sh verification
+
+announce 'doc-version — every stated version matches the workspace'
+ci/doc-version.sh
 
 announce 'fmt'
 cargo fmt --all --check

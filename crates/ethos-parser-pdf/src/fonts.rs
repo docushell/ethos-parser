@@ -339,7 +339,7 @@ impl Font {
         origin_x_pt: f64,
         baseline_y_pt: f64,
         width_pt: f64,
-        font_size_pt: f64,
+        em_scale_pt: f64,
     ) -> GeometryPresence {
         let FontInk::Measured {
             ascent, descent, ..
@@ -358,9 +358,20 @@ impl Font {
             return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
         }
 
-        // Ascent/descent are glyph-space units per em; scale by the font size.
-        let top_pt = baseline_y_pt - (ascent / GLYPH_SPACE_UNITS) * font_size_pt;
-        let bottom_pt = baseline_y_pt - (descent / GLYPH_SPACE_UNITS) * font_size_pt;
+        // Ascent/descent are glyph-space units per em; scale by the RENDERED em height.
+        //
+        // **Not the `Tf` operand.** This used to take `font_size` straight off the text
+        // state, which is the operand and not the size anything is drawn at: §9.4.4 composes the
+        // rendered glyph from `Tfs`, the text matrix and the CTM. A producer that emits
+        // `1 0 0 1 0 0 Tm` with `/F1 10 Tf` and one that emits `10 0 0 10 0 0 Tm` with
+        // `/F1 1 Tf` draw identical pages, and this measured the second at a tenth of the first —
+        // about a point tall, on every run of every document written that way.
+        //
+        // The width never had the bug: `content.rs` multiplies the accumulated advance by
+        // `ctm.x_scale()`. So the two axes of one rectangle disagreed, which is why fixing only
+        // the text matrix (and not the CTM) would still have been wrong.
+        let top_pt = baseline_y_pt - (ascent / GLYPH_SPACE_UNITS) * em_scale_pt;
+        let bottom_pt = baseline_y_pt - (descent / GLYPH_SPACE_UNITS) * em_scale_pt;
 
         let (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) = (
             quantize(origin_x_pt, QUANTUM_PER_POINT),

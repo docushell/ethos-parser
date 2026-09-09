@@ -88,6 +88,23 @@ impl Matrix {
     pub fn x_scale(self) -> f64 {
         (self.a * self.a + self.b * self.b).sqrt()
     }
+
+    /// The vertical scale this matrix applies.
+    ///
+    /// The counterpart to [`Self::x_scale`], and it exists for the same reason: a length measured
+    /// in the matrix's source space is not a length in its target space. Ascent and descent are
+    /// glyph-space lengths, so an ink box built from them needs this exactly as an advance needs
+    /// `x_scale`.
+    ///
+    /// **Why the two were not symmetric before.** `x_scale` arrived with the advance, which is
+    /// horizontal, and nothing asked for the vertical half until the ink box was checked against
+    /// the page it was drawn on. The box was scaling ascent and descent by the raw `Tf` operand —
+    /// so on a document that sets `Tf /F 1` and carries the type size in the text matrix, every
+    /// box came out about a point tall while its *width* was already fully transformed. The two
+    /// axes of one rectangle were in different spaces.
+    pub fn y_scale(self) -> f64 {
+        (self.c * self.c + self.d * self.d).sqrt()
+    }
 }
 
 /// Graphics state that matters to text placement.
@@ -223,6 +240,63 @@ mod tests {
 
     fn approx(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
+    }
+
+    /// The three ways a page can specify 10pt text must all measure 10pt.
+    ///
+    /// This is the ink-box defect as a unit test. A producer may put the type size in the `Tf`
+    /// operand, in the text matrix, or in the CTM, and the three draw identical pages. The ink box
+    /// used to scale ascent and descent by the operand alone, so the second and third forms
+    /// measured 1pt tall against the first's 10pt — while the *width* of the same rectangle was
+    /// already carried through the CTM.
+    #[test]
+    fn one_em_renders_the_same_however_the_page_spells_it() {
+        let ten = Matrix::new(10.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+
+        // (a) size in the Tf operand.
+        let a = TextState {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        let a_scale = a.rendering_matrix(Matrix::IDENTITY).y_scale();
+
+        // (b) Tf 1, size carried in the text matrix — doc 19 §2's population.
+        let b = TextState {
+            font_size: 1.0,
+            text_matrix: ten,
+            ..Default::default()
+        };
+        let b_scale = b.rendering_matrix(Matrix::IDENTITY).y_scale();
+
+        // (c) Tf 1, size carried in the CTM.
+        let c = TextState {
+            font_size: 1.0,
+            ..Default::default()
+        };
+        let c_scale = c.rendering_matrix(ten).y_scale();
+
+        assert!(approx(a_scale, 10.0), "Tf-carried: got {a_scale}");
+        assert!(approx(b_scale, 10.0), "matrix-carried: got {b_scale}");
+        assert!(approx(c_scale, 10.0), "CTM-carried: got {c_scale}");
+
+        // The operand alone is what the old code used, and it is wrong on two of the three.
+        assert!(
+            approx(b.font_size, 1.0) && approx(c.font_size, 1.0),
+            "the Tf operand is 1 on both, which is why it could not be the scale"
+        );
+    }
+
+    /// `y_scale` is to a vertical length what `x_scale` is to an advance.
+    #[test]
+    fn y_scale_matches_x_scale_on_a_uniform_matrix() {
+        let m = Matrix::new(3.0, 0.0, 0.0, 3.0, 7.0, 9.0);
+        assert!(approx(m.x_scale(), 3.0));
+        assert!(approx(m.y_scale(), 3.0));
+
+        // Non-uniform: the two axes must not borrow each other's factor.
+        let n = Matrix::new(2.0, 0.0, 0.0, 5.0, 0.0, 0.0);
+        assert!(approx(n.x_scale(), 2.0), "x borrowed y");
+        assert!(approx(n.y_scale(), 5.0), "y borrowed x");
     }
 
     #[test]
