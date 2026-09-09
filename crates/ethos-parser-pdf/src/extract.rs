@@ -368,7 +368,7 @@ fn extract_page(
                         ethos_parser_core::GeometryAbsence::NoInkToMeasure,
                     )
                 }
-                (Some(f), Some(w)) => f.ink_box(ox_pt, oy_pt, w, shown.font_size),
+                (Some(f), Some(w)) => f.ink_box(ox_pt, oy_pt, w, shown.em_scale_pt),
                 // No advance means no width, so there is no box to measure — and a box guessed
                 // from the font size is exactly what this project refuses.
                 _ => ethos_parser_core::GeometryPresence::Absent(

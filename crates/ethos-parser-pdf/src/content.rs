@@ -64,8 +64,21 @@ pub struct ShownText {
     pub advance: Option<f64>,
     /// Font resource name.
     pub font_id: String,
-    /// Font size in text space.
+    /// Font size in text space — the raw `Tf` operand, as the document states it.
+    ///
+    /// **Not the rendered size**, and not what an ink box may be built from. A page may set
+    /// `Tf /F 1` and carry the type size in the text matrix or the CTM, in which case this is 1
+    /// and the glyphs are 10pt. Use [`Self::em_scale_pt`] for anything geometric; this stays the
+    /// operand because the operand is what the document says.
     pub font_size: f64,
+    /// The rendered height of one em, in the same space as [`Self::origin`].
+    ///
+    /// The vertical scale of the text rendering matrix — `Tfs` composed with the text matrix and
+    /// the CTM, per §9.4.4 — so ascent and descent scaled by this land in the space the origin is
+    /// already in. `origin` is `(trm.e, trm.f)` and the advance is multiplied by `ctm.x_scale()`;
+    /// this is the third side of that same triangle, and without it the box's height and width
+    /// were in different spaces.
+    pub em_scale_pt: f64,
     /// Marked-content id in force, if any.
     pub mcid: Option<i64>,
     /// Whether **any** enclosing marked-content sequence is an `/Artifact` (v1-S3).
@@ -712,6 +725,7 @@ impl<'a> Interpreter<'a> {
             advance: advance_known.then_some(advance_total * scale),
             font_id,
             font_size: self.ts.font_size,
+            em_scale_pt: trm.y_scale(),
             mcid: self.current_mcid(),
             artifact: self.inside_artifact(),
             synthesized_indices: synthesized.to_vec(),

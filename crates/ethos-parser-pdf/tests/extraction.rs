@@ -238,6 +238,62 @@ fn measured_metrics_produce_a_box_that_is_not_the_font_size() {
     assert_eq!(height, 2220, "718 + 207 = 925 thousandths of 24pt");
 }
 
+/// A real document that carries its type size in the text matrix gets real boxes.
+///
+/// **The regression this exists for.** `ink_box` used to scale ascent and descent by the raw
+/// `Tf` operand. `measured_metrics_produce_a_box_that_is_not_the_font_size` above covers only the
+/// case where the operand *is* the size, so it passed throughout — and on
+/// `nist-sp-800-207`, which sets `Tf /F 1` and carries the size in the text matrix (the population
+/// `docs/19-BLOCK-SUBDIVISION-SCOPE.md` §2 describes), **all 82 909 measured boxes came out between
+/// 110 and 123 centipoints** — every one of them a hairline about 1.1pt tall, on a document whose
+/// body text is 13pt.
+///
+/// Nothing caught it: the geometry section is not covered by `representation_c14n_sha256`, so the
+/// artifact hash was byte-identical before and after the fix.
+///
+/// The assertion is deliberately loose. It is not pinning a layout; it is asserting that a box on a
+/// text-bearing page is a plausible *glyph* height and not a rounding artefact.
+#[test]
+fn a_matrix_carried_type_size_produces_a_real_box() {
+    let path = repo_root().join("fixtures/gate/nist-sp-800-207.pdf");
+    if !path.exists() {
+        // The gate fixtures are large and not every checkout carries them. Absent is not a pass:
+        // say so loudly rather than reporting green on a test that did not run.
+        eprintln!("SKIP: {} absent", path.display());
+        return;
+    }
+    let a = extract_ok(path);
+
+    let mut heights: Vec<i64> = runs(&a)
+        .iter()
+        .filter_map(|r| r.geometry.measured())
+        .map(|rect| rect.y1() - rect.y0())
+        .collect();
+    assert!(
+        heights.len() > 1_000,
+        "expected thousands of measured boxes on this document, got {}",
+        heights.len()
+    );
+
+    heights.sort_unstable();
+    let median = heights[heights.len() / 2];
+
+    // 200 centipoints is 2pt. No glyph on a readable page is 2pt tall, so anything at or below
+    // this is the scaling defect and not a small font.
+    let hairlines = heights.iter().filter(|&&h| h <= 200).count();
+    assert_eq!(
+        hairlines,
+        0,
+        "{hairlines} of {} boxes are 2pt or shorter — ink_box is scaling by the Tf operand again, \
+         not by the rendered em (median height {median}cp)",
+        heights.len()
+    );
+    assert!(
+        median > 400,
+        "median box height {median}cp is under 4pt; the vertical scale is wrong"
+    );
+}
+
 /// Structural: no code path assigns a box dimension from the font size.
 #[test]
 fn no_source_line_derives_a_box_from_the_font_size() {
