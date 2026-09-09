@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**These tables describe 0.50.0.** When the workspace version moves, this page moves with it or it
+**These tables describe 0.54.0.** When the workspace version moves, this page moves with it or it
 is wrong.
 
 This is the honest inventory — the answer to *"what does ethos-parser actually do today?"* It is not
@@ -15,7 +15,8 @@ Everything below runs locally, with no network and no renderer.
 | Area | What works | Where |
 | --- | --- | --- |
 | **Classify** | Sorts a PDF into named reason codes on two axes — does it need OCR, is the layout hard — with per-page counts and three distinct exit codes. No confidence score anywhere | `classify` |
-| **Extract (PDF)** | Text runs from a born-digital PDF, each with a locator back into the source bytes, and an ink box only where font metrics actually measured one | `extract` |
+| **Extract (PDF)** | Text runs from a born-digital PDF, each with a locator back into the source bytes, and an ink box only where font metrics actually measured one — from the font's own tables, or, for the standard 14, from vendored Adobe AFMs (decision #22) | `extract` |
+| **Standard-14 metrics** | A PDF may name `/BaseFont /Helvetica` with no `/Widths` and no `/FontDescriptor`; §9.6.2.2 permits that because a conforming reader is expected to hold the metrics. This one now does, from vendored AFMs. **10 955 previously ungroundable nodes recover**; documents declaring `font-widths-absent` went 66 → 0. Reading Helvetica's metrics for a font the document calls Helvetica is reading the document; supplying them for Arial is a substitution and stays refused | `extract`, 0.51.0–0.52.0 |
 | **Extract (office)** | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB into the same record, each addressed the way its own format addresses itself: `{part, paragraph, run}` for Word, `{part, sheet, row, column}` for a workbook, `{part, shape, paragraph, run}` for a slide, and so on | `extract` |
 | **Office pages** | `pages` is always `[]` for office formats. No spreadsheet print range, slide, soft page break or RTF `\page` is ever turned into a page record | — |
 | **Grounding** | Emits `ethos.grounding.v1` in both shapes: the paginated 1.0.0 shape for PDFs, and the page-less 1.1.0 shape for office documents, where each element carries its native locator instead of geometry. A DOCX quote extracted here, grounded here, and checked by the sibling verifier comes back `grounded` | `ground` |
