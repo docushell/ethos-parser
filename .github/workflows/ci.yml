@@ -126,6 +126,15 @@ jobs:
           ./ethos-oracle/target/release/ethos --version
           echo "oracle ref: ${{ env.ETHOS_ORACLE_REF }}"
 
+      # `docs/CAPABILITY.md` opens with its own rule — "When the workspace version moves, this page
+      # moves with it or it is wrong" — and nothing enforced it. At 0.54.0 three files still said
+      # 0.50.0: `README.md`, `docs/README.md` and `docs/CAPABILITY.md`. Same liveness failure the
+      # SDK-suites comment below describes, on the page whose whole job is to say what the engine
+      # can do today. A script rather than an inline grep, so `ci/gate.sh` runs the identical
+      # command and `the_local_gate_runs_what_ci_runs` can compare them.
+      - name: doc-version
+        run: ci/doc-version.sh
+
       - name: fmt
         run: cargo fmt --all --check
 
