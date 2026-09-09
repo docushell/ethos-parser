@@ -193,11 +193,18 @@ harness, corpus and filtered ground truth — only the engine changed.
 
 ### The average is the wrong statistic, and the band says why
 
-684 of the 981 pages carry a text layer. The other 237 score **exactly 1.0** in every run — there
-is no OCR, by decision #11, so a scan yields nothing to compare. Averaging those in describes
-neither population.
+**Of the 921 pages the harness scores** — 60 of the 981 carry no scorable text block, per the
+filtered-ground-truth note below — **684 yield something to compare and 237 score exactly 1.0** in
+every run. There is no OCR, by decision #11, so a scan yields nothing to compare, and averaging
+those in describes neither population.
 
-| Pages **with** a text layer (684) | 0.52.0 | 0.53.0 | 0.54.0 |
+**The denominator is 921, not 981**, and this sentence said 981 until 0.54.0: 684 + 237 = 921, and
+981 - 684 = 297, which is nobody's number. The census table above counts a different thing again —
+**756 pages carry text objects** (`census.py`, `pages_with_text > 0`) — and the 72-page gap against
+684 is not a contradiction: a page can carry text objects and still score 1.0 when what it yields is
+unusable. Three populations, three denominators; each is now named where it is used.
+
+| Scored pages that yield a comparison (684 of 921) | 0.52.0 | 0.53.0 | 0.54.0 |
 | --- | ---: | ---: | ---: |
 | mean | 0.4521 | 0.4175 | **0.3059** |
 | **median** | 0.2763 | 0.2111 | **0.0786** |
