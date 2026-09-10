@@ -50,6 +50,32 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
 
 ### Changed
 
+- **`table_detection.ruled` `ruled-rects-v3` → `ruled-rects-v4`: the ruled rule takes either of
+  two shapes of evidence.** `-v3` had one precondition — every implied face covered by a rectangle
+  that is not the enclosing border. That is right for a producer drawing cells and wrong for one
+  drawing rules. Over `opendataloader-bench`, of the 42 documents whose ground truth holds a table,
+  **all 30 that draw rectangles implying a grid were refused by that clause alone**, at a median
+  57% of faces drawn: a page laying down row separators and no column separators has stated
+  exactly where its grid lies while drawing almost none of its cells.
+
+  `-v4` keeps that test and adds **line tracing** — every row and column boundary carried end to
+  end by the rectangle edges lying on it, gaps closed by collinear ink only, merged rather than
+  summed. **Either suffices.** Neither subsumes the other, which is why this is a widening and not
+  a swap: a merged cell breaks an interior line, so tracing refuses what faces accept, and a
+  rules-only grid draws no cell, so faces refuse what tracing accepts. Requiring both would keep
+  all 30 refused. **Nothing `-v3` emitted is lost.**
+
+  Documents emitting a table go **5 → 7**, all 7 with a table in ground truth, **zero false
+  positives**. Tracing cannot fabricate: the lattice is built from rectangle edges, so a line
+  nothing drew is not a lattice line. The enclosing rectangle counts toward the four outer lines,
+  which it draws by definition, and helps no interior line —
+  `background-panel-not-a-grid` still refuses under both paths.
+
+  The gain is small because a second limit binds: `detect_ruled` builds one lattice from every
+  rectangle on the page, so a line must be traced across logos and borders too. 53 documents refuse
+  on tracing for that reason. Grouping rectangles into spatially connected candidate grids is the
+  next structural change and is not this one.
+
 - **`reading_order_rule` `gutter-columns-v2` → `gutter-columns-v3`** on the PDF profile, so
   `profile_sha256` moves and every golden regenerates. A bump rather than a new name on
   `READING_ORDER_RULE_V2`'s own test: the rule reads the same evidence — whitespace in page space —
