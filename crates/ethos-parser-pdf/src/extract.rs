@@ -1049,6 +1049,19 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // what `--max-pages` and `PageBudget` are for, and not a smaller window onto the same
     // retained set. Do not re-propose the batching without re-measuring: it costs complexity in
     // the hottest loop here and bought 0 MiB.
+    //
+    // # Re-measured at 97fa562, and the per-page figure is a range rather than a constant
+    //
+    // "~4.7 MiB per page" above is the median of a spread. Across the eight gate documents it is
+    // 3.20 to 9.07 MiB/page, and the 733-page document peaks at 6.5 GiB. Within ONE document the
+    // marginal cost per admitted page IS constant — a `--max-pages` ladder on that document gives
+    // 8.4 to 9.2 MiB/page from 128 pages up — so there is no superlinear retention here and the
+    // cross-document spread is content density.
+    //
+    // What the paragraph above does not say, and what the ladder exposed: `--max-pages 0` on the
+    // 733-page document still costs 224 MiB. The budget is read at the `let budget` below, but
+    // `structure::read` and `tree_mcids_by_page` are built above it over the WHOLE document, so
+    // that term never responds to the flag. See `docs/measurements/memory-ceiling/`.
     use rayon::prelude::*;
     let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
         .pages()

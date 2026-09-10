@@ -27,10 +27,18 @@ the measured path.
 # Peak memory is measured too, and it is the ceiling
 
 Throughput is linear in emitted bytes; **memory is where this stops working.** Across the gate
-corpus peak RSS runs 6.4x to 7.8x the artifact and roughly 300x the *input* — `nist-sp-800-161r1`
-is 4.6 MB in and peaks at 1.65 GB — because `canonical_bytes_of` returns one `Vec<u8>` holding the
-whole artifact while the nodes it was built from are still alive. Extrapolated, the largest gate
-document needs several gigabytes for a 7.5 MB PDF.
+corpus peak RSS runs 5.2x to 7.9x the artifact — `nist-sp-800-161r1` is 4.6 MB in and peaks at
+1.64 GiB — because `canonical_bytes_of` returns one `Vec<u8>` holding the whole artifact while the
+nodes it was built from are still alive. The largest gate document is no longer an extrapolation:
+`nist-sp-800-53Ar5` is 7.12 MiB in, emits a 950 MiB artifact, and **peaks at 6.5 GiB**.
+
+**An earlier draft of this paragraph said "roughly 300x the input" and that figure was withdrawn.**
+Measured at 97fa562 it runs 143x to 933x — a 6.5x spread, so it is a corpus median and not a
+bound, and anyone provisioning from 300x under-sizes the worst gate document threefold. Peak is
+two terms, both knowable before the run: a floor that scales with the document's TOTAL page count
+and does not respond to `--max-pages` at all, plus a constant marginal cost per ADMITTED page. The
+readings, the model fit that rejected the input-bytes model, and the ladders that establish
+linearity are in `docs/measurements/memory-ceiling/`.
 
 None of that was visible from inside the process: `Diagnostics::resident_bytes` is `Some` only on
 Linux and `None` on the platform this repository is developed on, which is a correct typed absence

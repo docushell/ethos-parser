@@ -214,11 +214,17 @@ struct ExtractArgs {
     ///
     /// **This is the only bound a caller has on how much memory one extract costs**, and until
     /// v2-S15 there was none. Peak resident memory tracks PAGE COUNT rather than file size —
-    /// measured across the corpus at ~4.7 MiB per page, so `nist-sp-800-171r3` (120 pages,
-    /// 1.5 MB) peaks at 566 MiB while a 1.5 MB 28-page document peaks at 124 MiB. Every page's
-    /// extract is retained because it IS the artifact, so the only thing that bounds the cost is
-    /// admitting fewer pages. A host handing this untrusted input could not previously do that:
+    /// 3.2 to 9.1 MiB per page across the gate corpus, so `nist-sp-800-171r3` (120 pages, 1.5 MB)
+    /// peaks at 568 MiB while a 1.5 MB 28-page document peaks at 124 MiB. Every page's extract is
+    /// retained because it IS the artifact, so the only thing that bounds the cost is admitting
+    /// fewer pages. A host handing this untrusted input could not previously do that:
     /// `page_budget` defaults to `Unlimited` and nothing on this command could lower it.
+    ///
+    /// **It does not bound everything.** `--max-pages 0` on a 733-page document still costs
+    /// 224 MiB, because the structure tree is read over the whole document before the budget is
+    /// consulted. For sizing, budget ~10 MiB per admitted page plus ~0.35 MiB per page in the
+    /// document; on the corpus's worst case that over-predicts by 14%, which is the safe
+    /// direction. Readings and instruments: `docs/measurements/memory-ceiling/`.
     ///
     /// The pages left out are not silently dropped. Each is quarantined with
     /// `resource_limit_pages` and the artifact declares the limitation, which is the same
@@ -318,8 +324,13 @@ struct OverlayArgs {
 /// difference between a diagnosable exit 2 and an OOM kill with no stderr.
 ///
 /// This bounds the SOURCE. The dominant cost of an extract is not the file — peak memory tracks
-/// page count at roughly 4.7 MiB per page, which is what `extract --max-pages` exists to bound.
+/// page count at 3.2 to 9.1 MiB per page, which is what `extract --max-pages` exists to bound.
 /// The two ceilings are complementary and neither subsumes the other.
+///
+/// They also do not COMPOSE into a memory bound, which is worth stating plainly: nothing maps a
+/// permitted 2 GiB input onto a peak-memory figure, and the page budget leaves a floor that grows
+/// with the document's page count. A caller who needs a hard memory ceiling does not have one
+/// today. See `docs/measurements/memory-ceiling/` §5.
 pub(crate) const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Read a caller-supplied file, refusing one that is over [`MAX_SOURCE_BYTES`].

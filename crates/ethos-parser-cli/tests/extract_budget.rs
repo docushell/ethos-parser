@@ -33,6 +33,12 @@
 //! flag, on the 120-page document: 558.0 MiB unbounded, 299.1 at `--max-pages 64`, 184.7 at 32,
 //! 70.7 at 8.
 //!
+//! Re-measured at 97fa562, the same document reads 563.5 MiB unbounded, 307.4 at 64, 188.1 at 32
+//! and 73.2 at 8 — so the ladder reproduces, and the per-page figure is a corpus median whose
+//! real range is 3.20 to 9.07 MiB/page. The flag's floor is what the v2-S15 table could not show:
+//! `--max-pages 0` costs 45.3 MiB here and 224.2 MiB on a 733-page document, because the
+//! structure tree is read before the budget is consulted. `docs/measurements/memory-ceiling/`.
+//!
 //! The mechanism is not new — `PageBudget::AtMost` has always quarantined the pages past the
 //! budget and declared `resource-limit-pages`. What was missing was any way to reach it. So these
 //! tests assert the wiring and, more importantly, that a bounded run is **legible**: fewer pages
