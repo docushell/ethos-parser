@@ -48,6 +48,7 @@
 //! cycle into a named [`EngineError`], not a hang and not a partial answer.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use ethos_parser_core::{EngineError, PdfTaggedLocator};
 use lopdf::{Dictionary, Object, ObjectId};
@@ -83,14 +84,14 @@ const OBJECT_CITED_NOT_MARKED: i64 = -1;
 #[derive(Debug, Default)]
 pub struct StructureTree {
     /// The bindings, keyed by page and mcid.
-    bindings: BTreeMap<Key, PdfTaggedLocator>,
+    bindings: BTreeMap<Key, Arc<PdfTaggedLocator>>,
     /// Bindings for whole objects the tree cites by `/OBJR` — annotations and widgets (v1-S4).
     ///
     /// v1-S3 walked `/OBJR` and bound nothing, because there was no node to bind it to yet.
     /// There is now, and the tree citing a widget is the author saying where that field sits in
     /// the document's structure. Keyed by object id: an `/OBJR` names the object directly, so
     /// unlike marked content there is no page-plus-index pair to join on.
-    object_bindings: BTreeMap<ObjectId, PdfTaggedLocator>,
+    object_bindings: BTreeMap<ObjectId, Arc<PdfTaggedLocator>>,
     /// Tables the tree describes, in document order.
     pub tables: Vec<TaggedTable>,
     /// Content items whose page could not be determined, so they bind nothing.
@@ -155,12 +156,12 @@ pub struct TaggedCell {
 
 impl StructureTree {
     /// The role path the tree gives a run, if it cites that run's page and id.
-    pub fn locator_for(&self, page: ObjectId, mcid: i64) -> Option<&PdfTaggedLocator> {
+    pub fn locator_for(&self, page: ObjectId, mcid: i64) -> Option<&Arc<PdfTaggedLocator>> {
         self.bindings.get(&(page, mcid))
     }
 
     /// The role path the tree gives a whole object it cites by `/OBJR` (v1-S4).
-    pub fn locator_for_object(&self, object: ObjectId) -> Option<&PdfTaggedLocator> {
+    pub fn locator_for_object(&self, object: ObjectId) -> Option<&Arc<PdfTaggedLocator>> {
         self.object_bindings.get(&object)
     }
 
@@ -352,7 +353,7 @@ impl Walker<'_> {
                         let mapped = standard != *role_path;
                         self.tree.object_bindings.insert(
                             *oid,
-                            PdfTaggedLocator {
+                            Arc::new(PdfTaggedLocator {
                                 // An `/OBJR` is not marked content and has no id of its own.
                                 // `-1` would be a number nobody wrote, so this reuses the
                                 // sentinel-free option: the tree cites the object, not an mcid.
@@ -360,7 +361,7 @@ impl Walker<'_> {
                                 role_path: role_path.to_vec(),
                                 standard_role_path: mapped.then_some(standard),
                                 element_id: None,
-                            },
+                            }),
                         );
                     }
                 }
@@ -572,12 +573,12 @@ impl Walker<'_> {
         // be reached by the same key a run is.
         self.tree.bindings.insert(
             (page, mcid),
-            PdfTaggedLocator {
+            Arc::new(PdfTaggedLocator {
                 mcid,
                 role_path: role_path.to_vec(),
                 standard_role_path: mapped.then_some(standard),
                 element_id: element_id.map(str::to_owned),
-            },
+            }),
         );
     }
 

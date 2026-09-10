@@ -939,7 +939,7 @@ pub enum StructuralLocator {
     /// cannot see the document.
     PdfMcid(i64),
     /// The address the document's own structure tree gives this content.
-    PdfTagged(PdfTaggedLocator),
+    PdfTagged(std::sync::Arc<PdfTaggedLocator>),
     /// Content the page marked as an **artifact**: running heads, folios, rules, decoration.
     ///
     /// Page furniture the author deliberately kept out of the structure tree (PDF 32000-1

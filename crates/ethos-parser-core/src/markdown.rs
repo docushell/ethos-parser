@@ -2474,12 +2474,15 @@ pub(crate) mod tests {
                 advance: Some(1000),
             }),
             structural_locator: role.map(|r| {
-                StructuralLocator::PdfTagged(PdfTaggedLocator {
-                    mcid: 0,
-                    role_path: vec!["Document".into(), r.into()],
-                    standard_role_path: None,
-                    element_id: None,
-                })
+                StructuralLocator::PdfTagged(
+                    PdfTaggedLocator {
+                        mcid: 0,
+                        role_path: vec!["Document".into(), r.into()],
+                        standard_role_path: None,
+                        element_id: None,
+                    }
+                    .into(),
+                )
             }),
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::TextRun(TextRunAttributes {
@@ -2596,12 +2599,15 @@ pub(crate) mod tests {
         path: &[&str],
     ) -> Node {
         let mut n = text_node(alloc, parent, ordinal, text, Some("P"));
-        n.structural_locator = Some(StructuralLocator::PdfTagged(PdfTaggedLocator {
-            mcid: ordinal as i64,
-            role_path: path.iter().map(|s| (*s).to_string()).collect(),
-            standard_role_path: None,
-            element_id: None,
-        }));
+        n.structural_locator = Some(StructuralLocator::PdfTagged(
+            PdfTaggedLocator {
+                mcid: ordinal as i64,
+                role_path: path.iter().map(|s| (*s).to_string()).collect(),
+                standard_role_path: None,
+                element_id: None,
+            }
+            .into(),
+        ));
         n
     }
 
@@ -3729,12 +3735,15 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn tagged_at(mcid: i64) -> Option<StructuralLocator> {
-        Some(StructuralLocator::PdfTagged(PdfTaggedLocator {
-            mcid,
-            role_path: vec!["Document".into(), "P".into()],
-            standard_role_path: None,
-            element_id: None,
-        }))
+        Some(StructuralLocator::PdfTagged(
+            PdfTaggedLocator {
+                mcid,
+                role_path: vec!["Document".into(), "P".into()],
+                standard_role_path: None,
+                element_id: None,
+            }
+            .into(),
+        ))
     }
 
     type RunSpec<'a> = (
