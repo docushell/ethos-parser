@@ -99,6 +99,94 @@ grid, and moves no threshold**, so it does not touch decision D1 — it is what 
 Grading how close the candidate came is the thing `01-CONTRACT.md` §9 refuses, and none of the
 above requires it.
 
+## 4c. T2 — the unruled rule cannot detect a real table, and the reason is structural
+
+§4b concluded that a candidate needs a bounded region and that the block cut would supply one. The
+block cut shipped (`gutter-columns-v3`), so the prediction was testable.
+[`block_scoped.py`](block_scoped.py) and [`preconditions.py`](preconditions.py) test it, plus two
+further repairs. **Four experiments, and none of them emits a table.**
+
+### The prediction held, and it did not help
+
+Scoping the candidate to a block collapses the lattice by 30–40×:
+
+| scope | median faces | under `MAX_FACES` |
+| --- | ---: | ---: |
+| page, table present | 6 435 | 35% |
+| page, prose | 4 628 | 42% |
+| **block, table present** | **154** | **96%** |
+| **block, prose** | **208** | **95%** |
+
+So candidates now *reach* the preconditions that test whether a grid is there. Which gate decides:
+
+| gate | page scope | block scope |
+| --- | ---: | ---: |
+| `gutter_below_floor` | 82 | **649** |
+| `lattice_too_large` | 117 | 29 |
+| `faces_without_text` | 0 | 10 |
+| no candidate | 1 | 346 |
+| **would emit** | **0** | **0** |
+
+The bottleneck moved from the size cap to the gutter floor. Nothing was gained.
+
+### Three structural blockers, each independently fatal
+
+**1. The fold tolerance and the gutter floor contradict each other.** `fold` groups x-origins within
+`ALIGN_TOLERANCE` = 150 centipoints, so **every word start becomes its own column line** — a table
+cell holding three words produces three columns. The gutter floor then refuses any adjacent pair
+closer than 1 200 centipoints, which word starts always are. Measured inside the largest block of
+each table page: **median 100 column lines at 150cp against 31 at the floor, a 3.6× over-count.**
+One constant creates what the other forbids.
+
+**2. Folding at the floor removes that, and occupancy then refuses everything.** With the fold at
+1 200/600, `gutter_below_floor` disappears by construction — and **all 656 candidates die at
+`faces_without_text`**. Zero emit.
+
+**3. Occupancy does not discriminate, at any threshold.** The rule demands every face hold a run.
+Measured occupancy of block candidates folded at the floor:
+
+| | n | median | at 100% |
+| --- | ---: | ---: | ---: |
+| block on a table page | 123 | **54%** | **0** |
+| block on a prose page | 533 | **54%** | **0** |
+
+Identical medians. And relaxing it is worse than useless — at every threshold **more prose blocks
+pass than table blocks**, because prose blocks outnumber them 4.3×:
+
+| threshold | table blocks | prose blocks | best-case precision |
+| --- | ---: | ---: | ---: |
+| ≥90% | 2 | 5 | 29% |
+| ≥80% | 7 | 19 | 27% |
+| ≥70% | 22 | 71 | 24% |
+| ≥60% | 41 | 175 | 19% |
+
+**4. Cell grouping does not rescue it.** Merging horizontally adjacent runs into cells before folding
+— the obvious answer to blocker 1 — yields **3 candidates that would emit at a 4pt cell gap, of
+which 2 are on prose pages**, and 1 at 8pt. The handful that pass are majority-wrong. That is the
+fabrication this rule's strictness exists to refuse, arrived at from the other direction.
+
+### What this settles
+
+**Fabrication-0 and emits-nothing are one property of this rule, not two.** The strictness that
+guarantees the first guarantees the second, and no constant in it can be moved to separate them:
+blocker 1 is a contradiction between two constants, blocker 3 is an absence of signal in the
+underlying quantity. Text alignment does not distinguish a table from prose on this corpus.
+
+**So §5.3 of the plan is answered negatively.** There is nothing useful for a refused candidate to
+emit, because the candidate carries no information about whether a table is there. Emitting cell
+rectangles from a 54%-occupied word-lattice would be emitting the shape of the prose.
+
+**This corroborates [`table-gate-v1.md`](../../table-gate-v1.md) v2-S22 with a mechanism.** That
+section already concluded *"the alignment rule is not a gap to close in v1"* and that recovering the
+missed tables *"needs a derivation that reads a table's geometry from something other than drawn
+grid ink"*, leaving retire-or-rework as a version-boundary question for the owner. This says why, at
+four named gates, on a corpus this repository does not own. **The question is unchanged and now
+answerable on evidence.**
+
+**What it does not say.** Nothing here touches the ruled or stroke-ruled rules, which do emit and
+are exact where a producer draws the grid, nor the tagged rule, which reads what the document
+declares. The gap is untagged tables whose producer drew no rules, and it stays open.
+
 ## 5. Reproducing
 
 ```bash
