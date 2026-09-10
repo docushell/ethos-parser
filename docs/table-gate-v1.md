@@ -367,6 +367,15 @@ real multi-page documents are.
 assurance record differs. That is a contract question about what a rule id promises, and it is not
 settled here.
 
+**Corrected on consolidation, 2026-09-10.** Measured on the merged tree the split is
+`lattice_too_large` **116** / `gutter_below_floor` **83**, not 117/82. One document moved, and the
+cause is a real interaction the two changes had never been tested against each other for: the ruled
+coverage rework emits a table on two more pages, and `unruled::detect` runs on `leftover` — the runs
+no accepted ruled table already claims (`tables.rs:353`) — so on a page that now emits a ruled
+table the alignment rule sees fewer runs, folds a different lattice, and fails a different
+precondition first. The ruled side is unchanged by the merge: 7 documents emit, all 7 with a table
+in ground truth, zero false positives.
+
 **And no lattice metric separates a table page from a prose page.** Three of five are inverted —
 table pages carry *fewer* gutters at or over the floor (48% of pages vs 56%) and a *narrower* widest
 gap (median 1 161 vs 1 288). At 180 column lines folded at a 150-centipoint tolerance from every run

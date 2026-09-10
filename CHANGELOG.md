@@ -91,7 +91,9 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   opendataloader-bench documents because the gutter check always answered first with a few hundred
   centipoints of word spacing. Both were true; the word gap read as a near miss on a page whose
   candidate was a histogram of where words start. The reported refusal moves to
-  `lattice_too_large` on 117 of 199 documents. **No table changes** — 115 tables across the eight
+  `lattice_too_large` on **116** of 199 documents on the consolidated tree — 117 measured in
+  isolation, and one document moves because the ruled coverage rework emits a table on two
+  more pages and `unruled::detect` runs on the runs no accepted ruled table already claims. **No table changes** — 115 tables across the eight
   gate documents, byte-identical.
 
 ### Fixed

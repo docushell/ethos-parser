@@ -99,6 +99,15 @@ grid, and moves no threshold**, so it does not touch decision D1 — it is what 
 Grading how close the candidate came is the thing `01-CONTRACT.md` §9 refuses, and none of the
 above requires it.
 
+**Corrected on consolidation, 2026-09-10.** Measured on the merged tree the split is
+`lattice_too_large` **116** / `gutter_below_floor` **83**, not 117/82. One document moved, and the
+cause is a real interaction the two changes had never been tested against each other for: the ruled
+coverage rework emits a table on two more pages, and `unruled::detect` runs on `leftover` — the runs
+no accepted ruled table already claims (`tables.rs:353`) — so on a page that now emits a ruled
+table the alignment rule sees fewer runs, folds a different lattice, and fails a different
+precondition first. The ruled side is unchanged by the merge: 7 documents emit, all 7 with a table
+in ground truth, zero false positives.
+
 ## 4b. T1b — the lattice, rebuilt out-of-band, and the answer is worse than §4 assumed
 
 §4 asked for a wider refusal disclosure. **Do not build it.** The instrument that would have
