@@ -99,6 +99,63 @@ grid, and moves no threshold**, so it does not touch decision D1 — it is what 
 Grading how close the candidate came is the thing `01-CONTRACT.md` §9 refuses, and none of the
 above requires it.
 
+## 4b. T1b — the lattice, rebuilt out-of-band, and the answer is worse than §4 assumed
+
+§4 asked for a wider refusal disclosure. **Do not build it.** The instrument that would have
+justified it, [`lattice.py`](lattice.py), was written as a probe instead — reproducing
+`unruled::fold` over the run origins the artifact already carries, rather than enriching a
+limitation detail that sits inside `representation_c14n_sha256` on 199 of 200 documents. That is
+`structelem.py`'s rule: changing the product to justify changing the product is not a measurement.
+
+**Over 194 pages** (the 5 documents where the engine accepts a ruled table are excluded, not
+approximated, because `leftover` is then not every run):
+
+| | table page (n=37) | prose page (n=157) |
+| --- | ---: | ---: |
+| column lines, median | 180 | 157 |
+| **faces implied, median** | **6 672** | **4 628** |
+| gaps at/over the floor, median | **0** | **1** |
+| widest gap on the page, median | 1 161 | **1 288** |
+| pages with ≥1 gap at/over the floor | **48%** | **56%** |
+
+**The signal is absent, and on three of five measures it is inverted.** Table pages carry *fewer*
+clear gutters than prose pages and a *narrower* widest gap. No threshold over this lattice
+separates the two populations, so no disclosure of it would have helped.
+
+### Why, and it is not the floor
+
+`MAX_FACES` is **4 096** ([`unruled.rs:176`](../../../crates/ethos-parser-pdf/src/unruled.rs)). The
+median candidate is **4 628 faces on a prose page and 6 672 on a table page**. Both are past the
+ceiling that exists to refuse them.
+
+`LatticeTooLarge` nonetheless fires **zero** times, because `detect` checks the gutter floor
+**before** the size cap — the module header numbers the preconditions 1-6, but the execution order
+is 3, 2, 6, 3, 4, and step 2 returns first on essentially every page.
+
+So the refusal a consumer sees — *"two adjacent column lines sat 416 centipoints apart"* — is the
+**less informative of two that both apply**. The honest description is the other one: a 6 672-face
+lattice folded from every run on the page, which was never a table candidate. It is a
+word-position index.
+
+### What this settles
+
+**The lever is the candidate, not the disclosure and not the floor.** `fold` over every run's
+x-origin on a whole page — header, footer, body and all — cannot produce a table candidate. 180
+column lines at a 150-centipoint tolerance is a histogram of where words start.
+
+**A table candidate has to be built inside a bounded region.** That is what the block cut (plan
+5.5) produces, and it makes the block cut a **prerequisite** for the table work rather than a
+sibling of it. It is also the strongest argument yet for deciding D1: without blocks there is no
+region to build a candidate in, and the unruled rule has nowhere to stand.
+
+**Two contained repairs are worth making regardless**, and neither needs a decision:
+
+1. **Check the size cap before the gutter floor.** A 6 672-face lattice should be refused as
+   oversized, which is true and useful, rather than as a word gap, which is true and misleading.
+   Same refusals, better reason, and `LatticeTooLarge` stops being dead code in practice.
+2. **State in `table-gate-v1.md` that the unruled rule is page-scoped.** Its measured band already
+   says the detector finds almost nothing; this says why, which the band does not.
+
 ## 5. Reproducing
 
 ```bash

@@ -324,6 +324,59 @@ floor is doing exactly its job: the gold negatives prove that lowering it buys a
 **In every case the tables are real, but their geometry is in the tags and the text, not in ink that
 forms a grid.**
 
+### The lattice is oversized too, on a second corpus — 2026-09-10
+
+**This extends the section above rather than correcting it, and one sentence in it needs
+qualifying.** Everything here is measured on **opendataloader-bench's 200 documents**, not on the
+twelve gate documents, and the two corpora are not interchangeable.
+Instrument: [`measurements/table-refusals/`](measurements/table-refusals/).
+
+**Corroborated, from a corpus this repository does not own.** The column-gutter floor is the
+precondition that refuses, on 199 of 200 documents, and the other three variants fire **zero** times.
+And the floor is not a tuning target: column gaps that failed it come out at median 416 centipoints
+whether or not the page holds a table, so lowering it to reach the 42 table-bearing documents would
+reach the 157 others too. That is this section's *"lowering it buys a fabrication"*, reproduced
+elsewhere.
+
+**Qualified: *"turned away four steps earlier"* describes the control flow, not the candidate.** It
+is true that step 2 returns before the lattice-size cap is reached, and this section is right that
+earlier analysis could not blame a check the rule never runs. But the lattice was never
+exonerated — only unmeasured. Rebuilt out-of-band over 194 pages, the candidate's median size is
+**4 628 faces on a page holding prose and 6 672 on one holding a table**, against a
+[`MAX_FACES`](../crates/ethos-parser-pdf/src/unruled.rs) ceiling of **4 096**. The typical candidate
+is past the cap that exists to refuse it, and `LatticeTooLarge` fires zero times only because step 2
+answers first.
+
+So two refusals apply to the same page and the reported one is whichever is tested first. As of
+2026-09-10 the size cap is tested **before** the gutter floor, so an oversized lattice is refused as
+oversized.
+
+**Measured, both sides.** On opendataloader-bench the reported refusal moves from
+`gutter_below_floor` 199 / `lattice_too_large` **0**, to `lattice_too_large` **117** /
+`gutter_below_floor` 82 — so **117 of 199 documents were being told a word gap when the truthful
+answer was an oversized lattice**, and 27 of the 42 table-bearing pages are among them.
+
+**No table changes anywhere.** Over the eight gate documents the emitted tables are byte-identical
+across the reorder: 115 tables, same digests. What moves is the assurance record — **25 of 268
+artifacts**, being `extract`, `markdown` and `html` on all eight gate PDFs plus `ground` on two.
+Zero engine fixtures move, because a synthetic fixture's lattice is nowhere near 4 096 faces; only
+real multi-page documents are.
+
+**The open question this leaves the owner** is whether `table_detection.unruled` moves off
+`unruled-align-v1`. The rule detects exactly what it detected before and the tables prove it; the
+assurance record differs. That is a contract question about what a rule id promises, and it is not
+settled here.
+
+**And no lattice metric separates a table page from a prose page.** Three of five are inverted —
+table pages carry *fewer* gutters at or over the floor (48% of pages vs 56%) and a *narrower* widest
+gap (median 1 161 vs 1 288). At 180 column lines folded at a 150-centipoint tolerance from every run
+on the page, header and footer included, the candidate is a histogram of where words start.
+
+**What that adds to the recommendation below.** This section says recovering the missed slots *"needs
+a derivation that reads a table's geometry from something other than drawn grid ink"*. The
+measurement narrows it: the missing ingredient is a **bounded region** to build the candidate in. A
+page is the wrong scope, and no rule folding every run on a page can be tuned into the right one.
+
 ### The recommendation, named not taken
 
 **The alignment rule is not a gap to close in v1.** It has emitted zero tables on 172 real gold

@@ -90,6 +90,19 @@
 //! 6. **A lattice-size cap.** Past [`MAX_FACES`] this is refused outright rather than emitted
 //!    truncated. A truncated table is a table with cells missing and no way to say so.
 //!
+//! **These numbers are identities, not an order.** `detect` refers to them as "step N" and tests
+//! them in the order 3, 6, 2, 3, 4 — renumbering to match would break every reference and settle
+//! nothing, because the set is what a candidate must satisfy and satisfying it is order-free.
+//!
+//! **The tested order is not free, though**, and it was wrong until 2026-09-10. More than one
+//! precondition fails on a typical page, and only the first is reported — so the order decides
+//! what a consumer is told. Step 2 ran before step 6, and
+//! `docs/measurements/table-refusals/` measured what that cost: on 194 opendataloader-bench pages
+//! the median candidate is 4 628 to 6 672 faces, past the 4 096 cap, and step 6 fired **zero**
+//! times because step 2 always answered first with a few hundred centipoints of word spacing.
+//! Both were true. One described a near miss and the other described a word-position histogram,
+//! and the histogram was the truth. Step 6 is tested first now.
+//!
 //! # What this rule deliberately cannot do
 //!
 //! **One run per cell, in practice.** Two runs land in the same cell only when their origins fold
@@ -312,6 +325,27 @@ pub fn detect(
         });
     }
 
+    // Step 6, and it runs BEFORE step 2 deliberately. Two preconditions can both fail on one
+    // page, and then the one reported is whichever is tested first — so the order decides what a
+    // consumer is told, not merely how fast the refusal is reached.
+    //
+    // Measured at `docs/measurements/table-refusals/`: over 194 opendataloader-bench pages the
+    // median candidate is 4 628 faces on a page holding prose and 6 672 on one holding a table,
+    // both past this 4 096 ceiling. With the gutter floor first, `LatticeTooLarge` fired **zero**
+    // times across that corpus and every page was reported as a word gap of a few hundred
+    // centipoints instead. Both statements were true; the word gap was the less useful one, and it
+    // read as a near miss on a page whose candidate was a histogram of where words start.
+    //
+    // Cheapness is the secondary argument and still holds: this is a multiply, and the gutter scan
+    // walks both axes.
+    let faces = rows.len() * columns.len();
+    if faces > MAX_FACES {
+        return Ok(Outcome {
+            table: None,
+            refusal: Some(Refusal::LatticeTooLarge { faces }),
+        });
+    }
+
     // Step 2. The gutter floor, on both axes.
     if let Some(r) = gutter_fault(&columns, COLUMN_GUTTER_MIN, true)
         .or_else(|| gutter_fault(&rows, ROW_GUTTER_MIN, false))
@@ -319,15 +353,6 @@ pub fn detect(
         return Ok(Outcome {
             table: None,
             refusal: Some(r),
-        });
-    }
-
-    // Step 6. Checked before occupancy so a pathological page cannot make us build the map first.
-    let faces = rows.len() * columns.len();
-    if faces > MAX_FACES {
-        return Ok(Outcome {
-            table: None,
-            refusal: Some(Refusal::LatticeTooLarge { faces }),
         });
     }
 
