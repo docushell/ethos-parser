@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V4` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V5` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -67,7 +67,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V4` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V5` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -182,7 +182,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V4`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V5`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -735,7 +735,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V4.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V5.to_string(),
         }],
         None,
     ))
@@ -846,6 +846,23 @@ struct Span {
 struct Lattice {
     xs: Vec<i64>,
     ys: Vec<i64>,
+    /// Which y bands are rows of the grid, as indices into `ys`'s band sequence.
+    ///
+    /// **A band no rectangle occupies is not a row** — it is the space between drawn cells.
+    /// Measured at `docs/measurements/table-refusals/` §4e: `01030000000045.pdf` paints nine
+    /// rectangles that are a complete 3 x 3 cell grid, and because its rows have gaps between them
+    /// the six y edges cluster into FIVE bands, two of which are inter-cell whitespace. Counting
+    /// those as rows made the grid 5 x 3 = 15 faces with nine covered, which is the refusal's own
+    /// arithmetic — *"9 rectangles implied 15 cells"* — and the rule declined a perfectly drawn
+    /// grid because it had inserted rows the page never drew.
+    ///
+    /// **Why an index list and not `Vec<(i64, i64)>`.** `span_of` maps a rectangle's edges to
+    /// lattice lines by binary search over `xs`/`ys`, and every line is still needed for that
+    /// whether or not the band above it is a row. Keeping the lines and selecting among the bands
+    /// preserves that lookup exactly; a band list would have to re-derive it.
+    row_bands: Vec<usize>,
+    /// Which x bands are columns of the grid. See [`Self::row_bands`].
+    col_bands: Vec<usize>,
 }
 
 impl Lattice {
@@ -881,77 +898,75 @@ impl Lattice {
             return Err(Some(RuledRefusal::LatticeTooLarge { faces }));
         }
 
-        let lattice = Self { xs, ys };
+        // **Select the bands that are actually rows and columns**, before anything is asked of the
+        // grid. A band no rectangle occupies is the space between drawn cells, and the acceptance
+        // test below must not be asked to explain it.
+        let all = Self {
+            row_bands: (0..ys.len() - 1).collect(),
+            col_bands: (0..xs.len() - 1).collect(),
+            xs,
+            ys,
+        };
+        let occupied = all.occupied_faces(rects, faces);
+        let row_bands: Vec<usize> = (0..all.ys.len() - 1)
+            .filter(|r| (0..all.xs.len() - 1).any(|c| occupied[r * (all.xs.len() - 1) + c]))
+            .collect();
+        let col_bands: Vec<usize> = (0..all.xs.len() - 1)
+            .filter(|c| (0..all.ys.len() - 1).any(|r| occupied[r * (all.xs.len() - 1) + c]))
+            .collect();
 
-        // **The coherence precondition.** Every face has to be covered by a rectangle the
-        // document actually painted. A genuine ruled grid drawn as cell rectangles satisfies this
-        // exactly; a page with scattered boxes does not, and would otherwise become a table with
-        // hundreds of invented cells.
+        // **A grid needs two bands on BOTH axes**, and that is the floor above carried one step
+        // further rather than a new rule. Its comment says *"one face is a box, not a grid"*; two
+        // faces **in a line** is two boxes, stacked or side by side, and dropping empty bands is
+        // what makes that shape reachable — a page of framed form fields collapses to an N x 1.
         //
-        // Overlaps are deliberately NOT excluded here — a rectangle claiming a face another
-        // rectangle already owns is a real disagreement, and it belongs in the cross-check where
-        // it is reported rather than in a precondition where it would be silently dropped.
+        // Measured at `docs/measurements/table-refusals/` §4f. Band selection took the benchmark
+        // from 7 emitting documents to 17, and **all four of the new false positives were single
+        // column** — three 2 x 1 and one 6 x 1 — against thirteen true positives of which twelve
+        // have two or more columns. Requiring 2 x 2 leaves **twelve tables, twelve on documents
+        // whose ground truth holds one, zero false**. It costs one true 1 x 3, a lone header row,
+        // which geometry cannot tell from three boxes in a row.
         //
-        // **A rectangle spanning the whole lattice is not evidence** (v1-S7b). `detect_ruled`
-        // already refuses to emit such a rectangle as a cell — *"the table's own border"* — and
-        // the two claims cannot both stand: a rectangle that is not a cell because it merely
-        // encloses the grid is equally not proof that the grid's faces were drawn. Counting it
-        // was how `cfpb-home-loan-toolkit` page 22 became a 17 x 13 table with 12 cells on a page
-        // whose tree declares no table at all: the page paints a 351 x 454 pt background panel,
-        // the panel covers every face, and twelve scattered highlight bars supplied the edges.
-        // Measured across that document, this single confusion produced 79 of the 91 false-positive
-        // cell slots the gate charged against the ruled rule.
-        // The same precondition, decided in one pass instead of one scan per
-        // (face, rectangle) pair. `covers_within_tolerance` against a face whose
-        // edges ARE lattice lines is an interval condition on the line indices —
-        // xs[c] >= r.x0 − tol and xs[c+1] <= r.x1 + tol, and likewise for rows —
-        // so each rectangle marks the block of faces it covers in a 2-D difference
-        // grid, and `encloses_everything`, a property of the rectangle alone, runs
-        // once per rectangle instead of once per pair. A face is uncovered under
-        // this scan exactly when it was under the per-pair scan, and the refusal
-        // carries the identical payload, so nothing on the wire can move.
+        // No candidate rather than a refusal, on the same judgement the face floor makes: a stack
+        // of boxes is an ordinary page, and declaring a near miss on it would put this limitation
+        // on most documents in existence.
+        if row_bands.len() < 2 || col_bands.len() < 2 {
+            return Err(None);
+        }
+
+        let lattice = Self {
+            row_bands,
+            col_bands,
+            xs: all.xs,
+            ys: all.ys,
+        };
+        let faces = lattice.row_bands.len() * lattice.col_bands.len();
+
         // **Two shapes of evidence that the document drew this grid, and either will do.**
         //
-        // `ruled-rects-v3` had exactly one: every implied FACE covered by some rectangle. That is
-        // the right test for a producer that draws cells, and it is the wrong test for one that
-        // draws rules. Measured over `opendataloader-bench`, of the 42 documents whose ground
-        // truth holds a table, **30 draw rectangles implying a grid and all 30 were refused by
-        // that clause alone**, at a median 57% of faces drawn — see
-        // `docs/measurements/table-refusals/` §4d. A page laying down row separators and no
-        // column separators has stated exactly where its grid lies while drawing almost none of
-        // its cells.
+        // 1. **Faces.** Every face of the KEPT grid covered by a rectangle that is not the
+        //    enclosing border. Accepts a grid drawn cell by cell, merged cells included — a
+        //    rowspan rectangle covers the faces it spans, which is why
+        //    `a_merged_cell_claims_every_slot_it_covers` passes here and cannot pass by tracing.
+        // 2. **Lines.** Every row and column boundary carried across the grid's own bands by
+        //    rectangle edges lying on it, gaps closed by collinear ink only. Accepts a grid drawn
+        //    as rules, where path 1 finds almost no cell drawn.
         //
-        // So a second path is added and the first is kept **unchanged**:
+        // **Neither subsumes the other.** A merged cell breaks an interior line, so tracing
+        // refuses what faces accept; a rules-only grid draws no cell, so faces refuse what tracing
+        // accepts. Requiring both would refuse both populations. Requiring either loses nothing.
         //
-        // 1. **Faces.** Every implied cell covered by a rectangle that is not the enclosing
-        //    border. Accepts a grid drawn cell by cell, including merged cells — a rowspan
-        //    rectangle covers the faces it spans, which is why `a_merged_cell_claims_every_slot`
-        //    passes here and cannot pass by tracing.
-        // 2. **Lines.** Every row and column boundary carried end to end by rectangle edges
-        //    lying on it, gaps closed by collinear ink only. Accepts a grid drawn as rules, where
-        //    path 1 finds almost no cell drawn.
-        //
-        // **Neither is weaker than the other and neither subsumes it.** A merged cell breaks an
-        // interior line, so tracing refuses what faces accept; a rules-only grid draws no cell,
-        // so faces refuse what tracing accepts. Requiring both would keep the 30 refused;
-        // requiring either is a **widening** that loses nothing previously emitted.
-        //
-        // # Why the second path is not fabrication
-        //
-        // A line nothing drew is not a lattice line at all — the lattice is built from rectangle
-        // edges — so tracing can never invent a boundary. It asks whether ink the document
-        // painted runs the length of a line that same ink implied, and a grid it accepts is one
-        // the producer drew, with the completion interpolated *between its own lines*.
+        // Neither path can fabricate. A line nothing drew is not a lattice line — the lattice is
+        // built from rectangle edges — and a band nothing occupies is no longer a row, so the
+        // question asked is always about ink the document painted.
         //
         // `background-panel-not-a-grid` is the fixture holding this honest: a panel painted twice
-        // plus three scattered 40x10 bars implying a 7x7 lattice. Faces refuses it because the
-        // panel is the enclosing border and the bars draw three of 49. Tracing refuses it too —
-        // the panel traces the four outer lines, which it draws by definition, and the bars cannot
-        // span a single interior one.
-        let faces_covered = Self::every_face_covered(&lattice, rects, faces);
-        let untraced = Self::first_untraced_line(&lattice, rects);
-        if !faces_covered {
-            if let Some((axis, index, lines)) = untraced {
+        // plus three scattered 40x10 bars. Band selection leaves at most the three rows and three
+        // columns the bars touch, faces refuses because the panel is the enclosing border and the
+        // bars draw three of nine, and tracing refuses because three scattered bars carry no line.
+        let occupied_kept = lattice.occupied_faces(rects, faces);
+        if !lattice.every_kept_face_covered(&occupied_kept) {
+            if let Some((axis, index, lines)) = lattice.first_untraced_line(rects) {
                 return Err(Some(RuledRefusal::GridNotDrawn {
                     faces,
                     rects: rects.len(),
@@ -979,32 +994,41 @@ impl Lattice {
     /// a 351 x 454 pt background panel, the panel covers every face, and twelve scattered
     /// highlight bars supplied the edges. That single confusion produced 79 of the 91
     /// false-positive cell slots the gate charged against the ruled rule.
-    fn every_face_covered(lattice: &Lattice, rects: &[QuantRect], faces: usize) -> bool {
-        let encloses_everything = |r: &QuantRect| {
-            lattice
-                .span_of(*r)
-                .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
-        };
-        let columns = lattice.columns() as usize;
-        let row_count = lattice.rows() as usize;
+    /// Which faces of the FULL band grid a rectangle covers, indexed `row * columns + column`.
+    ///
+    /// Over every band, not only the kept ones — this is what decides which bands are kept.
+    ///
+    /// **A rectangle spanning the whole lattice is not evidence** (v1-S7b). `detect_ruled` already
+    /// refuses to emit such a rectangle as a cell — *"the table's own border"* — and the two claims
+    /// cannot both stand. Counting it was how `cfpb-home-loan-toolkit` page 22 became a 17 x 13
+    /// table with 12 cells on a page whose tree declares no table at all: the page paints a
+    /// 351 x 454 pt background panel, the panel covers every face, and twelve scattered highlight
+    /// bars supplied the edges. That single confusion produced 79 of the 91 false-positive cell
+    /// slots the gate charged against the ruled rule.
+    ///
+    /// Overlaps are deliberately NOT excluded — a rectangle claiming a face another already owns is
+    /// a real disagreement, and it belongs in the cross-check where it is reported rather than in a
+    /// precondition where it would be silently dropped.
+    ///
+    /// Decided in one pass through a 2-D difference grid rather than one scan per
+    /// (face, rectangle) pair. `tests::the_coverage_grid_is_the_per_pair_scan_by_another_route`
+    /// re-derives every verdict through the per-pair predicate to prove the two agree.
+    fn occupied_faces(&self, rects: &[QuantRect], faces: usize) -> Vec<bool> {
+        let columns = self.xs.len() - 1;
+        let row_count = self.ys.len() - 1;
         let stride = columns + 1;
         let mut coverage = vec![0i64; (row_count + 1) * stride];
         for r in rects {
-            if encloses_everything(r) {
-                continue;
+            if self
+                .span_of_bands(*r)
+                .is_some_and(|(_, _, rs, cs)| rs * cs == faces)
+            {
+                continue; // the table's own border
             }
-            let c_lo = lattice
-                .xs
-                .partition_point(|x| *x < r.x0 - LATTICE_TOLERANCE);
-            let c_hi = lattice
-                .xs
-                .partition_point(|x| *x <= r.x1 + LATTICE_TOLERANCE);
-            let r_lo = lattice
-                .ys
-                .partition_point(|y| *y < r.y0 - LATTICE_TOLERANCE);
-            let r_hi = lattice
-                .ys
-                .partition_point(|y| *y <= r.y1 + LATTICE_TOLERANCE);
+            let c_lo = self.xs.partition_point(|x| *x < r.x0 - LATTICE_TOLERANCE);
+            let c_hi = self.xs.partition_point(|x| *x <= r.x1 + LATTICE_TOLERANCE);
+            let r_lo = self.ys.partition_point(|y| *y < r.y0 - LATTICE_TOLERANCE);
+            let r_hi = self.ys.partition_point(|y| *y <= r.y1 + LATTICE_TOLERANCE);
             if c_hi < c_lo + 2 || r_hi < r_lo + 2 {
                 continue;
             }
@@ -1014,6 +1038,7 @@ impl Lattice {
             coverage[r1 * stride + c_lo] -= 1;
             coverage[r1 * stride + c1] += 1;
         }
+        let mut out = vec![false; row_count * columns];
         let mut running = vec![0i64; (row_count + 1) * stride];
         for row in 0..row_count {
             for column in 0..columns {
@@ -1034,31 +1059,49 @@ impl Lattice {
                 };
                 let total = coverage[row * stride + column] + above + left - diag;
                 running[row * stride + column] = total;
-                if total == 0 {
-                    return false;
-                }
+                out[row * columns + column] = total > 0;
             }
         }
-        true
+        out
     }
 
-    /// Path 2: the first lattice line whose ink does not carry it end to end, if any.
+    /// Path 1: every face of the KEPT grid covered by a rectangle that is not the enclosing border.
+    ///
+    /// The `ruled-rects-v3` precondition, asked of the rows and columns that exist rather than of
+    /// the inter-cell whitespace between them.
+    fn every_kept_face_covered(&self, occupied: &[bool]) -> bool {
+        let columns = self.xs.len() - 1;
+        self.row_bands
+            .iter()
+            .all(|r| self.col_bands.iter().all(|c| occupied[r * columns + c]))
+    }
+
+    /// Path 2: the first lattice line whose ink does not carry it across the grid's own rows.
     ///
     /// `None` means every line is traced. The enclosing rectangle counts here and does not in
     /// path 1: surrounding the grid is no evidence its faces were drawn, and is definitionally
     /// evidence its four outer lines were. No interior line gets that help.
-    fn first_untraced_line(lattice: &Lattice, rects: &[QuantRect]) -> Option<(Axis, usize, usize)> {
-        let xs_span = (
-            *lattice.xs.first().expect("non-empty"),
-            *lattice.xs.last().expect("non-empty"),
-        );
-        let ys_span = (
-            *lattice.ys.first().expect("non-empty"),
-            *lattice.ys.last().expect("non-empty"),
-        );
-        for (axis, lines, span) in [
-            (Axis::Vertical, &lattice.xs, ys_span),
-            (Axis::Horizontal, &lattice.ys, xs_span),
+    ///
+    /// **Across the KEPT bands, not the full extent.** A table drawn as separated cell rows has
+    /// nothing on its vertical lines in the whitespace between rows, and requiring coverage there
+    /// would be requiring the page to draw the gaps it deliberately left — `01030000000045.pdf`'s
+    /// line at x=8352 has union gaps of 2 635 and 1 656 centipoints for exactly that reason. The
+    /// bands are the grid; the gaps are not part of it.
+    fn first_untraced_line(&self, rects: &[QuantRect]) -> Option<(Axis, usize, usize)> {
+        let row_intervals: Vec<(i64, i64)> = self
+            .row_bands
+            .iter()
+            .map(|r| (self.ys[*r], self.ys[r + 1]))
+            .collect();
+        let col_intervals: Vec<(i64, i64)> = self
+            .col_bands
+            .iter()
+            .map(|c| (self.xs[*c], self.xs[c + 1]))
+            .collect();
+
+        for (axis, lines, want) in [
+            (Axis::Vertical, &self.xs, &row_intervals),
+            (Axis::Horizontal, &self.ys, &col_intervals),
         ] {
             for (index, line) in lines.iter().enumerate() {
                 let mut spans: Vec<(i64, i64)> = rects
@@ -1073,7 +1116,7 @@ impl Lattice {
                             .then_some((lo, hi))
                     })
                     .collect();
-                if !traces(&mut spans, span) {
+                if !want.iter().all(|band| traces(&mut spans, *band)) {
                     return Some((axis, index, lines.len()));
                 }
             }
@@ -1081,49 +1124,85 @@ impl Lattice {
         None
     }
 
-    fn rows(&self) -> u32 {
-        (self.ys.len() - 1) as u32
-    }
-
-    fn columns(&self) -> u32 {
-        (self.xs.len() - 1) as u32
-    }
-
-    fn bounds(&self) -> QuantRect {
-        QuantRect {
-            x0: self.xs[0],
-            y0: self.ys[0],
-            x1: self.xs[self.xs.len() - 1],
-            y1: self.ys[self.ys.len() - 1],
-        }
-    }
-
-    /// Retained under `cfg(test)` with [`QuantRect::covers_within_tolerance`], as
-    /// the other half of the coherence scan's executable spec.
-    #[cfg(test)]
-    fn face(&self, row: u32, column: u32) -> QuantRect {
-        QuantRect {
-            x0: self.xs[column as usize],
-            y0: self.ys[row as usize],
-            x1: self.xs[column as usize + 1],
-            y1: self.ys[row as usize + 1],
-        }
-    }
-
-    /// Which faces a rectangle covers, if its edges land on lattice lines.
-    fn span_of(&self, r: QuantRect) -> Option<Span> {
+    /// A rectangle's span in FULL band indices: `(row, column, rowspan, colspan)`.
+    ///
+    /// The raw lookup [`Self::span_of`] maps through to grid indices. Kept separate because
+    /// [`Self::occupied_faces`] runs before any band is selected and must speak in band indices.
+    fn span_of_bands(&self, r: QuantRect) -> Option<(usize, usize, usize, usize)> {
         let c0 = index_of(&self.xs, r.x0)?;
         let c1 = index_of(&self.xs, r.x1)?;
         let r0 = index_of(&self.ys, r.y0)?;
         let r1 = index_of(&self.ys, r.y1)?;
         if c1 <= c0 || r1 <= r0 {
-            return None; // a zero-width or zero-height rectangle is a rule, not a cell
+            return None;
+        }
+        Some((r0, c0, r1 - r0, c1 - c0))
+    }
+
+    fn rows(&self) -> u32 {
+        self.row_bands.len() as u32
+    }
+
+    fn columns(&self) -> u32 {
+        self.col_bands.len() as u32
+    }
+
+    /// The grid's own extent: the kept bands, not every line clustered on the page.
+    ///
+    /// Leading and trailing empty bands are outside the table — ink the page drew above or below
+    /// it — and a bounds that included them would put the table's box around whitespace nobody
+    /// claimed.
+    fn bounds(&self) -> QuantRect {
+        QuantRect {
+            x0: self.xs[self.col_bands[0]],
+            y0: self.ys[self.row_bands[0]],
+            x1: self.xs[self.col_bands[self.col_bands.len() - 1] + 1],
+            y1: self.ys[self.row_bands[self.row_bands.len() - 1] + 1],
+        }
+    }
+
+    /// Retained under `cfg(test)` with [`QuantRect::covers_within_tolerance`], as
+    /// the other half of the coherence scan's executable spec.
+    ///
+    /// Indices are GRID rows and columns, so `face(0, 0)` is the first kept band pair and not
+    /// necessarily the first band on the page.
+    #[cfg(test)]
+    fn face(&self, row: u32, column: u32) -> QuantRect {
+        let r = self.row_bands[row as usize];
+        let c = self.col_bands[column as usize];
+        QuantRect {
+            x0: self.xs[c],
+            y0: self.ys[r],
+            x1: self.xs[c + 1],
+            y1: self.ys[r + 1],
+        }
+    }
+
+    /// Which faces of the GRID a rectangle covers, if its edges land on lattice lines.
+    ///
+    /// Band indices are mapped to grid indices by counting kept bands, so a rectangle spanning a
+    /// dropped band claims only the real rows and columns inside it — which is what a cell drawn
+    /// across a gap between rows actually covers.
+    ///
+    /// `None` when the rectangle covers no kept band at all: ink sitting entirely in the
+    /// whitespace between cells is not a cell.
+    fn span_of(&self, r: QuantRect) -> Option<Span> {
+        let (r0, c0, rowspan, colspan) = self.span_of_bands(r)?;
+        let grid = |kept: &[usize], from: usize, len: usize| {
+            let start = kept.iter().take_while(|b| **b < from).count();
+            let end = kept.iter().take_while(|b| **b < from + len).count();
+            (start, end - start)
+        };
+        let (row, rows) = grid(&self.row_bands, r0, rowspan);
+        let (column, columns) = grid(&self.col_bands, c0, colspan);
+        if rows == 0 || columns == 0 {
+            return None;
         }
         Some(Span {
-            row: r0 as u32,
-            column: c0 as u32,
-            rowspan: (r1 - r0) as u32,
-            colspan: (c1 - c0) as u32,
+            row: row as u32,
+            column: column as u32,
+            rowspan: rows as u32,
+            colspan: columns as u32,
         })
     }
 }
@@ -1328,7 +1407,14 @@ mod tests {
                     // grid that should have been emitted.
                     let xs = cluster(rects.iter().flat_map(|rect| [rect.x0, rect.x1]));
                     let ys = cluster(rects.iter().flat_map(|rect| [rect.y0, rect.y1]));
-                    let lattice = Lattice { xs, ys };
+                    // ALL bands, which is the state `build` starts from before selection —
+                    // the specs below are the pre-selection claim and must be asked it.
+                    let lattice = Lattice {
+                        row_bands: (0..ys.len() - 1).collect(),
+                        col_bands: (0..xs.len() - 1).collect(),
+                        xs,
+                        ys,
+                    };
                     assert!(
                         !spec(&lattice),
                         "{name}: build refused a lattice the FACE spec accepts"

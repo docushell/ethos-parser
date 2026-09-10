@@ -398,7 +398,7 @@
       "reading_order_rule": "gutter-columns-v3",
       "struct_tree_rule": "struct-tree-v1",
       "table_detection": {
-        "ruled": "ruled-rects-v4",
+        "ruled": "ruled-rects-v5",
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1"

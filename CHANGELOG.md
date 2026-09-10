@@ -50,6 +50,32 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
 
 ### Changed
 
+- **`table_detection.ruled` `ruled-rects-v4` → `ruled-rects-v5`: the grid's own rows, not every
+  band its edges imply.** `-v4` clustered every rectangle edge into lines and treated every band
+  between them as a row or column. A table drawn as separated cell rows has whitespace between
+  those rows, and that whitespace became a band nothing occupies — so the grid was larger than the
+  page drew and the missing faces refused it.
+
+  `01030000000045.pdf` paints **nine rectangles that are a complete 3 × 3 cell grid**. Its six y
+  edges clustered into five bands, two of them inter-cell space: 5 × 3 = 15 faces with nine covered,
+  which is the refusal's own arithmetic — *"9 rectangles implied 15 cells"*. **The rule declined a
+  perfectly drawn grid over two rows it had invented.** It now emits `3 rows, 3 columns, 9 cells`.
+
+  **A band no rectangle occupies is not a row.** Bands are selected before anything is asked of the
+  grid, and both acceptance paths then speak of the rows and columns that exist — tracing
+  especially, because a page must not be required to draw gaps it deliberately left.
+
+  **And a grid needs two bands on both axes**, which is the face floor's own argument carried one
+  step: two faces in a line is two boxes. Selection makes that shape reachable, since a page of
+  framed form fields collapses to an N × 1. Without the floor the benchmark emits **17 documents
+  with four false positives, every one single column**; with it, **12 with none**. It costs one true
+  1 × 3, a lone header row geometry cannot tell from three boxes in a row.
+
+  Documents emitting a table go **7 → 12, all twelve with a table in ground truth, zero false
+  positives** — precision 100%, recall 29%. Across this entry's two ruled changes: **5 → 12
+  documents, 2.4× the recall, fabrication at zero throughout.**
+  `background-panel-not-a-grid` refuses at every step.
+
 - **`table_detection.ruled` `ruled-rects-v3` → `ruled-rects-v4`: the ruled rule takes either of
   two shapes of evidence.** `-v3` had one precondition — every implied face covered by a rectangle
   that is not the enclosing border. That is right for a producer drawing cells and wrong for one

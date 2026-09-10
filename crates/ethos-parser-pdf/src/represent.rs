@@ -795,7 +795,7 @@ mod tests {
             .payload()
             .tables
             .iter()
-            .find(|t| t.detection_rule == ethos_parser_core::TABLE_DETECTION_V4)
+            .find(|t| t.detection_rule == ethos_parser_core::TABLE_DETECTION_V5)
             .expect("the painted grid is a Computed table");
         assert_eq!(g.derivation, ethos_parser_core::DerivationClass::Computed);
         assert!(matches!(

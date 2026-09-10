@@ -301,6 +301,42 @@ pub const TABLE_DETECTION_V3: &str = "ruled-rects-v3";
 /// lines by definition, the three scattered bars cannot span one interior line.
 pub const TABLE_DETECTION_V4: &str = "ruled-rects-v4";
 
+/// The **ruled** rule with the grid's own bands, rather than every band its edges imply.
+///
+/// # What `-v4` still counted, and what it cost
+///
+/// `-v4` clustered every rectangle edge into lines and treated every band between them as a row or
+/// a column. A table drawn as separated cell rows has **whitespace between those rows**, and that
+/// whitespace became a band nothing occupies — so the grid was larger than the page drew and the
+/// missing faces refused it.
+///
+/// `01030000000045.pdf` paints nine rectangles that are a complete 3 x 3 cell grid. Its six y edges
+/// clustered into five bands, two of them inter-cell space: 5 x 3 = 15 faces with nine covered,
+/// which is the refusal's own arithmetic — *"9 rectangles implied 15 cells"*. **The rule declined a
+/// perfectly drawn grid because it had inserted rows the page never drew.**
+///
+/// # The change
+///
+/// **A band no rectangle occupies is not a row.** Bands are selected before anything is asked of
+/// the grid, and both acceptance paths then speak of the rows and columns that exist: faces are
+/// checked over kept bands, and a line is traced across the kept bands rather than the full extent
+/// — a page is not required to draw the gaps it deliberately left.
+///
+/// **A grid needs two bands on both axes**, which is `-v4`'s *"one face is a box, not a grid"*
+/// carried one step: two faces in a line is two boxes. Selection makes that shape reachable, since
+/// a page of framed form fields collapses to an N x 1.
+///
+/// # Measured
+///
+/// On the 200-document benchmark, documents emitting a table go **7 → 12, all twelve with a table
+/// in ground truth, zero false positives** — precision 100%, recall 29%. Without the 2 x 2 floor it
+/// is 17 documents and **four false positives, every one of them single column**. The floor costs
+/// one true 1 x 3, a lone header row that geometry cannot tell from three boxes in a row.
+///
+/// `background-panel-not-a-grid` still refuses: selection leaves at most the three rows and columns
+/// its scattered bars touch, faces refuses three of nine, and three bars carry no line.
+pub const TABLE_DETECTION_V5: &str = "ruled-rects-v5";
+
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
 /// A separate id from [`TABLE_DETECTION_V1`], not a bump of it. The two answer different
@@ -505,7 +541,7 @@ impl Default for TableDetection {
     /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V4.to_string(),
+            ruled: TABLE_DETECTION_V5.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
@@ -2095,7 +2131,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v4","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v5","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2844,6 +2880,16 @@ mod tests {
              and flagged it; the block rule was measuring the same gap a second time against a \
              quantization epsilon and splitting on it. 296 of 735 corpus documents change, none \
              for the worse.\n\n\
+             Moved again for the band rework: `table_detection.ruled` `ruled-rects-v4` -> `-v5`. \
+             A band no rectangle occupies is no longer a row of the grid. A table drawn as \
+             separated cell rows has whitespace between them, and that whitespace was becoming a \
+             band nothing could explain — `01030000000045.pdf` paints nine rectangles that are a \
+             complete 3x3 grid, whose six y edges clustered into FIVE bands, and the rule declined \
+             it over the two it had invented. Both acceptance paths now speak of the rows and \
+             columns that exist. A grid also needs two bands on BOTH axes, which is the face \
+             floor's own argument carried one step: two faces in a line is two boxes. Documents \
+             emitting a table go 7 -> 12, all twelve with a table in ground truth, zero false \
+             positives; without the 2x2 floor it is 17 with four false, every one single column.\n\n\
              Moved again for the ruled coverage rework: `table_detection.ruled` `ruled-rects-v3` \
              -> `-v4`. The rule gained a SECOND shape of evidence and kept the first: a grid is \
              accepted when every implied face is covered, OR when every row and column boundary \
@@ -2864,7 +2910,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:c2c5e4ac802186005475e84f5944bae7e693cb58f0bc1280288ba2963e25c80f"
+            "sha256:559f033a1e70da9a876311073d90727880c9f889cfac97ab498b89cc22dd8690"
         );
     }
 
@@ -2877,14 +2923,14 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V4);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V5);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V4, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V4, TABLE_DETECTION_STROKE_V1),
-            (TABLE_DETECTION_V4, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V5, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V5, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V5, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
@@ -2899,22 +2945,26 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v4","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v5","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
 
         let mut ruled_moved = base.clone();
-        // A NEXT id, not the current one. This read `"ruled-rects-v2"` until v2-S20 promoted that
-        // string to the default's predecessor and a bulk rename made the line assert that the
-        // default differs from itself — which it does not, and the test said so.
+        // **A value that is not, and can never be, a real rule id.**
         //
-        // **It happened again at the coverage rework**, the same way: a bulk `v3 -> v4` rename
-        // walked over this line too, and the test caught it a second time. The lesson the first
-        // occurrence recorded is the one that matters — this string is deliberately NOT any
-        // constant in this file, because a rename that updates every constant must not be able to
-        // update this. Leave it a literal one ahead of the default.
-        ruled_moved.table_detection.ruled = "ruled-rects-v5".into();
+        // This has now gone stale three times. It read `"ruled-rects-v2"` until v2-S20 promoted
+        // that string to the default's predecessor. A bulk `v3 -> v4` rename walked over it at the
+        // coverage rework. Then it was set to `"ruled-rects-v5"` as "one ahead of the default" —
+        // and the band rework made v5 the default, so the line asserted that the default differs
+        // from itself. Each time the test caught it, which is the system working; each time the fix
+        // was another version string, which is the mistake repeating.
+        //
+        // A NEXT id cannot be safe, because the default eventually becomes it. What this assertion
+        // needs is any value the default is not, so it is a value no release can ever take. The
+        // rule ids are opaque strings and nothing parses them, so a sentinel is as good as a
+        // version here and is the only spelling that cannot rot.
+        ruled_moved.table_detection.ruled = "ruled-rects-SENTINEL-NEVER-A-RELEASE".into();
         assert_ne!(hash(&base), hash(&ruled_moved), "the ruled id is identity");
 
         let mut unruled_moved = base.clone();
@@ -2969,7 +3019,7 @@ mod tests {
         // The probe key was `tagged` until v2-S24 made that a real field — the exact promotion
         // this test exists to catch, and it caught it: the assertion failed the moment the key
         // stopped being unknown, and the probe moved to a fifth key instead of being deleted.
-        let bad = r#"{"ruled":"ruled-rects-v4","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","recognized":"x-v1"}"#;
+        let bad = r#"{"ruled":"ruled-rects-v5","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","recognized":"x-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(bad).is_err(),
             "a fifth rule id must fail closed, not vanish and change the hash"
@@ -2977,7 +3027,7 @@ mod tests {
 
         // And a profile MISSING the field v1-S8 added is refused too, rather than defaulted into
         // one that claims a rule it never ran.
-        let stale = r#"{"ruled":"ruled-rects-v4","unruled":"unruled-align-v1"}"#;
+        let stale = r#"{"ruled":"ruled-rects-v5","unruled":"unruled-align-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(stale).is_err(),
             "a pre-S8 profile must not silently acquire the stroke-ruled rule"
@@ -2985,13 +3035,13 @@ mod tests {
 
         // The same claim one field later: a profile from before v2-S24 must be refused, not
         // defaulted into one that says the tagged rule ran when it did not.
-        let pre_tagged = r#"{"ruled":"ruled-rects-v4","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
+        let pre_tagged = r#"{"ruled":"ruled-rects-v5","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1"}"#;
         assert!(
             serde_json::from_str::<TableDetection>(pre_tagged).is_err(),
             "a pre-S24 profile must not silently acquire the tagged rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v4","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v5","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

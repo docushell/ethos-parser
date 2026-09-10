@@ -410,6 +410,64 @@ tweak. **Emitting a 5 × 3 grid with six empty slots instead is the shortcut and
 document drew a 3 × 3, and a table claiming five rows where two are whitespace is a grid this engine
 invented.
 
+## 4f. T5 — the band rework, and the false positives it nearly shipped
+
+§4e's design, built. **A band no rectangle occupies is not a row of the grid.**
+
+### It works on the case that motivated it
+
+`01030000000045.pdf` now emits `3 rows, 3 columns, 9 cells` — exactly its nine rectangles. The two
+inter-cell bands are no longer rows, so the arithmetic that refused it (*"9 rectangles implied 15
+cells"*) becomes nine implied and nine covered.
+
+Both acceptance paths were narrowed to the kept bands. Tracing especially: a vertical line in a
+table drawn as separated rows has nothing on it in the whitespace between them, and requiring
+coverage there was requiring the page to draw gaps it deliberately left.
+
+### And it nearly shipped four fabrications
+
+Band selection alone took the benchmark from 7 emitting documents to **17** — and **four of the ten
+new ones have no table in ground truth.** Precision fell from 100% to 76%. The shapes say why:
+
+| shape | GT table? |
+| --- | --- |
+| 2 × 1, 2 × 1, 2 × 1, 6 × 1 | **no** |
+| 1 × 3 | yes |
+| 2 × 4, 3 × 3, 2 × 10, 4 × 7, 5 × 7, 9 × 4, 3 × 12, 10 × 4, 12 × 4, 10 × 5, 13 × 4, 18 × 8 | yes |
+
+**Every false positive is single column.** Dropping empty bands is what makes that shape reachable:
+a page of framed form fields, or a stack of highlight bars, collapses to an N × 1.
+
+| require | tables | on GT-table docs | false |
+| --- | ---: | ---: | ---: |
+| ≥ 1 × 1 | 17 | 13 | **4** |
+| **≥ 2 × 2** | **12** | **12** | **0** |
+
+So a grid needs two bands on **both** axes. That is not a new rule — it is the face floor's own
+argument carried one step. Its comment reads *"one face is a box, not a grid"*, and two faces **in a
+line** is two boxes, stacked or side by side. It costs one true `1 × 3`, a lone header row that
+geometry cannot tell from three boxes in a row.
+
+### Where the ruled rule ended up
+
+| | documents emitting | precision | recall |
+| --- | ---: | ---: | ---: |
+| before the coverage rework | 5 | 100% | 12% |
+| `ruled-rects-v4`, faces or lines | 7 | 100% | 17% |
+| **`ruled-rects-v5`, the grid's own bands** | **12** | **100%** | **29%** |
+
+**2.4× the recall, fabrication at zero throughout.** `background-panel-not-a-grid` refuses at every
+step: selection leaves at most the three rows and columns its scattered bars touch, faces refuses
+three of nine, and three bars carry no line.
+
+### What is still refused, and it is no longer a lattice problem
+
+Thirty of the 42 documents draw rectangles; twelve now emit. The remaining eighteen are the
+population `table-gate-v1.md` v2-S22 already described — cell shading and decoration rather than a
+covered grid, or a partial grid with a column line left undrawn. **Neither is a band-selection
+failure**, and closing them needs ink this engine can read as a boundary rather than a different way
+of counting the ink it already has.
+
 ## 5. Reproducing
 
 ```bash

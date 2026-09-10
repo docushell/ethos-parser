@@ -1405,7 +1405,7 @@ fn the_locator_cross_check_agrees_on_the_golden_and_the_hostile_grid_is_refused(
         t.check
     );
     assert_eq!(t.check.check_id, ethos_parser_core::LOCATOR_CHECK_V1);
-    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V4);
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V5);
 
     // The hostile fixture draws overlapping rectangles. No table — and the artifact says why,
     // rather than saying nothing, which is the distinction `ruled-table-candidate-refused` exists
@@ -1535,7 +1535,7 @@ fn a_page_with_both_kinds_of_grid_records_both_rules() {
 
     let ruled = tables
         .iter()
-        .find(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V4)
+        .find(|t| t.rule == ethos_parser_core::TABLE_DETECTION_V5)
         .expect("the painted grid must be found by the ruled rule");
     let unruled = tables
         .iter()
@@ -1596,7 +1596,7 @@ fn where_both_rules_could_fire_the_ruled_one_wins() {
     );
     assert_eq!(
         tables[0].rule,
-        ethos_parser_core::TABLE_DETECTION_V4,
+        ethos_parser_core::TABLE_DETECTION_V5,
         "the author drew this grid, so the author's derivation is the one kept"
     );
     assert_eq!((tables[0].rows, tables[0].columns), (2, 2));
@@ -2240,7 +2240,7 @@ fn a_tagged_table_that_matches_the_painted_grid_checks_ok() {
     let t = tables[0];
 
     assert_eq!((t.rows, t.columns), (2, 2));
-    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V4);
+    assert_eq!(t.rule, ethos_parser_core::TABLE_DETECTION_V5);
 
     let check = t
         .tagged_check
@@ -2708,7 +2708,7 @@ fn reading_forms_changes_no_earlier_slices_answer() {
     let ruled = extract_ok(engine_fx("ruled-table-grid"));
     let rt: Vec<_> = ruled.pages.iter().flat_map(|p| p.tables.iter()).collect();
     assert_eq!(rt.len(), 1);
-    assert_eq!(rt[0].rule, ethos_parser_core::TABLE_DETECTION_V4);
+    assert_eq!(rt[0].rule, ethos_parser_core::TABLE_DETECTION_V5);
 
     // S3's four locator states, still four.
     let tagged = extract_ok(engine_fx("tagged-structure-roles"));

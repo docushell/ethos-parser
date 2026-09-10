@@ -417,6 +417,42 @@ spatially connected candidate grids is the change that would address it** — na
 honest: the panel is the enclosing border and draws three faces of 49, and while it traces the four
 outer lines by definition, three scattered bars cannot span one interior line.
 
+### The band rework: the grid's own rows, not every band its edges imply — 2026-09-10
+
+**Measured on `opendataloader-bench`.** Instruments:
+[`measurements/table-refusals/`](measurements/table-refusals/) §4e–§4f.
+
+`ruled-rects-v4` clustered every rectangle edge into lines and treated **every band between them**
+as a row or column. A table drawn as separated cell rows has whitespace between those rows, and that
+whitespace became a band nothing occupies — so the grid was larger than the page drew and the
+missing faces refused it.
+
+`01030000000045.pdf` paints **nine rectangles that are a complete 3 × 3 cell grid**. Its six y edges
+clustered into five bands, two of them inter-cell space: 5 × 3 = 15 faces with nine covered, which
+is the refusal's own arithmetic. **The rule declined a perfectly drawn grid over two rows it had
+invented.** Two more refused documents are the same shape at seven columns.
+
+`-v5` selects bands before anything is asked of the grid, and both acceptance paths then speak of
+the rows and columns that exist — tracing especially, since a page must not be required to draw the
+gaps it deliberately left.
+
+**And a grid needs two bands on both axes.** That is this section's own *"one face is a box, not a
+grid"* carried one step: two faces in a line is two boxes. Selection makes the shape reachable,
+because a page of framed form fields collapses to an N × 1. Without the floor the benchmark emits
+**17 documents with four false positives, every one single column**; with it, **12 with none**.
+
+| | documents emitting | precision | recall |
+| --- | ---: | ---: | ---: |
+| before the coverage rework | 5 | 100% | 12% |
+| `-v4`, faces or lines | 7 | 100% | 17% |
+| **`-v5`, the grid's own bands** | **12** | **100%** | **29%** |
+
+**What is still refused is no longer a lattice problem.** Thirty of the 42 documents draw
+rectangles and twelve now emit; the remaining eighteen are the population this section already
+named — cell shading and decoration rather than a covered grid, or a partial grid with a column line
+left undrawn. Closing those needs ink this engine can read as a boundary, not a different way of
+counting the ink it has.
+
 ### The recommendation, named not taken
 
 **The alignment rule is not a gap to close in v1.** It has emitted zero tables on 172 real gold
