@@ -378,6 +378,50 @@ the only document that can be labelled — which is precisely the document adapt
 needed.** The corpus cannot decide this, and no further analysis of these six files will change
 that: it is not a question of method, it is an absence of evidence.
 
+### 11.2b — Test B, reconstructed 2026-09-10, because its instrument was never committed
+
+**§11.2's numbers were not reproducible.** `probe3.py` implements Test A only and `structelem.py`
+stops at its gate question, so the table above — the one §11.4 chooses fixed over adaptive on, and
+the one the implementation plan carries — had no instrument behind it. That is the failure this
+document's own header exists to prevent. [`measurements/block-subdivision/probe3b.py`](measurements/block-subdivision/probe3b.py)
+now produces it, and it is re-derived here on a tree eight releases newer.
+
+**135 real P→P boundaries and 719 mid-paragraph pairs** (§11.2 had 127 and 715; the small
+difference is the inline-child exclusion this reconstruction states explicitly, plus eight releases
+of run-set change). No band failed the plausibility guard on this document.
+
+| rule | §11.2 recall / false-fire / precision | reconstructed |
+| --- | --- | --- |
+| fixed 1.15× | 66.1% / 1.1% / 91.3% | **68.9% / 0.0% / 100.0%** |
+| fixed 1.40× | 61.2% / 0.0% / — | 65.9% / 0.0% / 100.0% |
+| **fixed 1.60×** | **63.0% / 0.0% / 100.0%** | **63.7% / 0.0% / 100.0%** |
+| fixed 1.80× | 54.5% / 0.0% / — | 58.5% / 0.0% / 100.0% |
+| adaptive | 46.5% / 1.1% / 88.1% | 51.1% / 0.0% / 100.0% |
+
+**Two things hold and one has changed.**
+
+**Holds — fixed beats adaptive on real labels**, 63.7% against 51.1%, and §11.3's reading of why
+Test A and Test B disagree is untouched.
+
+**Holds — precision.** Not one mid-paragraph pair fires at any threshold tested, over 719 chances.
+§11.4's *"a rule that never fires wrongly across 715 chances is worth more to a repository that
+refuses fabrication"* is if anything stronger now.
+
+**Changed — the reason for preferring 1.60× over 1.15× has evaporated.** §11.2 chose the higher
+threshold because 1.15× cost a 1.1% false-fire. On this tree 1.15× fires wrongly **zero** times and
+returns **5.2 points more recall**. On this document it dominates.
+
+**And that is exactly the claim §11.4 forbids acting on.** One document cannot carry a threshold —
+Test A puts fixed-1.6×'s per-document recall between 32.3% and 97.1%, and a constant fitted to
+`nist-sp-800-207` is a constant fitted to the one document that can be labelled. **1.60× stands as
+the shipped rule.** What has changed is that its margin over 1.15× is now zero on the evidence
+available, so the second labellable document §11.4 asks for would decide a live question rather
+than confirm a settled one.
+
+**Test A also drifted slightly** and is restated here: `nist-sp-800-171r3` 92.7% → 91.9% fixed,
+`nist-sp-800-37r2` 36.6% → 32.3% fixed and 65.6% → 62.6% adaptive. Pooled fixed 71.2% → 70.5%.
+Every other document is unchanged to the decimal. The spread is 65 points where it was 64.
+
 ### 11.4 — What this settles, and what it does not
 
 - **Fixed `1.6 × leading` is measured, precise and narrow.** 63.0% recall at **100% precision** on
