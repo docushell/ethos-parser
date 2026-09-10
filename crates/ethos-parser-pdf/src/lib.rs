@@ -56,6 +56,7 @@ pub mod limitations;
 #[cfg(test)]
 pub(crate) mod accuracy;
 pub(crate) mod afm;
+pub(crate) mod blocks;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;

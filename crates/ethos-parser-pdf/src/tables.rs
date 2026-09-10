@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V3` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V4` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -67,7 +67,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V3` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V4` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -182,7 +182,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V3`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V4`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -392,6 +392,54 @@ pub fn detect(
 /// narrower: under `ruled-rects-v1` a rectangle enclosing the whole lattice satisfied coverage for
 /// every face at once, so a page painting decoration on a background panel produced a *table*
 /// rather than a refusal — `cfpb-home-loan-toolkit` page 22 emitted a 17 × 13 grid holding 12
+/// Which family of lattice lines a tracing failure was on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    /// A column boundary: a vertical line, traced along y.
+    Vertical,
+    /// A row boundary: a horizontal line, traced along x.
+    Horizontal,
+}
+
+impl Axis {
+    /// What a reader calls this line, in the refusal text.
+    pub fn line_name(self) -> &'static str {
+        match self {
+            Self::Vertical => "column boundary",
+            Self::Horizontal => "row boundary",
+        }
+    }
+}
+
+/// Whether `spans` cover `(lo, hi)` end to end once merged.
+///
+/// **Merged, not summed.** Three collinear rules that together run the width of a table trace its
+/// line; three that overlap each other in one corner do not, and their total length can exceed the
+/// extent either way. Sorting and merging is what tells those apart.
+///
+/// [`LATTICE_TOLERANCE`] of slack is allowed at each end and across each join, for the reason the
+/// lattice itself is tolerant: a line is a cluster representative rather than any one edge, and a
+/// grid drawn with 1pt rules has edges that differ by the rule's width.
+fn traces(spans: &mut [(i64, i64)], (lo, hi): (i64, i64)) -> bool {
+    if spans.is_empty() {
+        return false;
+    }
+    spans.sort_unstable();
+    let mut reach = spans[0].0.min(spans[0].1);
+    if reach > lo + LATTICE_TOLERANCE {
+        return false;
+    }
+    reach = spans[0].0.max(spans[0].1);
+    for (a, b) in spans.iter().skip(1) {
+        let (s_lo, s_hi) = (*a.min(b), *a.max(b));
+        if s_lo > reach + LATTICE_TOLERANCE {
+            return false;
+        }
+        reach = reach.max(s_hi);
+    }
+    reach + LATTICE_TOLERANCE >= hi
+}
+
 /// cells. Fixing that is what made the surrounding silence visible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuledRefusal {
@@ -399,11 +447,17 @@ pub enum RuledRefusal {
     ///
     /// The scattered-boxes case, and since `-v2` the panel case: the rectangles imply a grid whose
     /// cells they do not draw.
-    FaceWithoutRectangle {
+    GridNotDrawn {
         /// Faces the lattice implied.
         faces: usize,
         /// Rectangles the page painted in the region.
         rects: usize,
+        /// Which family of lines the untraced one belongs to.
+        axis: Axis,
+        /// Its index among that family, 0-based from the low edge.
+        index: usize,
+        /// How many lines that family has.
+        lines: usize,
     },
     /// The lattice exceeded [`Lattice::MAX_FACES`].
     LatticeTooLarge {
@@ -449,7 +503,7 @@ impl RuledRefusal {
     /// a change of layout, not a truncation.
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::FaceWithoutRectangle { .. } => "a cell the ink does not draw",
+            Self::GridNotDrawn { .. } => "a grid line the ink does not trace",
             Self::LatticeTooLarge { .. } => "past the cell ceiling",
             Self::CrossCheckRejected { .. } => "a grid that contradicts itself",
         }
@@ -458,12 +512,22 @@ impl RuledRefusal {
     /// The reasoning behind a kind of refusal, stated once.
     pub fn explanation(&self) -> String {
         match self {
-            Self::FaceWithoutRectangle { .. } => String::from(
-                "The rectangles implied a grid whose cells they do not all draw. A ruled grid must \
-                 be explained by the ink face by face, or it is a lattice this engine inferred \
-                 rather than one the document drew. A rectangle merely ENCLOSING the grid does not \
-                 count: it is the table's own border, it is not emitted as a cell, and it is not \
-                 evidence that the cells exist either",
+            Self::GridNotDrawn { .. } => String::from(
+                "The rectangles implied a grid one of whose LINES their ink does not trace. A \
+                 ruled grid must be explained by the ink line by line: every row and column \
+                 boundary carried end to end by rectangle edges lying on it, gaps closed by \
+                 collinear ink only. Merged rather than summed — three rules that together run \
+                 the width of a table trace its line, three that overlap in one corner do not, \
+                 and their total length can exceed the extent either way. This replaced a FACE \
+                 test that asked instead whether every implied cell was drawn: measured over \
+                 `opendataloader-bench`, 30 of the 30 documents that hold a table and draw \
+                 rectangles were refused by that clause alone, at a median 57% of faces drawn, \
+                 because a producer laying down row separators and no column separators has \
+                 stated exactly where its grid lies while drawing almost none of its cells. \
+                 Tracing is not that producer's fabrication: a line nothing drew is not a \
+                 lattice line at all, since the lattice is built from rectangle edges. The \
+                 enclosing rectangle DOES count toward the four outer lines, which it draws by \
+                 definition, and helps no interior line",
             ),
             Self::LatticeTooLarge { .. } => format!(
                 "The rectangles implied more than the {}-cell ceiling for a reconstructed grid. \
@@ -489,9 +553,18 @@ impl RuledRefusal {
     /// This page's own numbers, without the reasoning.
     pub fn detail(&self) -> String {
         match self {
-            Self::FaceWithoutRectangle { faces, rects } => {
-                format!("{rects} rectangles implied {faces} cells")
-            }
+            Self::GridNotDrawn {
+                faces,
+                rects,
+                axis,
+                index,
+                lines,
+            } => format!(
+                "{rects} rectangles implied {faces} cells, and {} {} of {lines} is not traced \
+                 end to end",
+                axis.line_name(),
+                index + 1
+            ),
             Self::LatticeTooLarge { faces } => format!("{faces} cells implied"),
             Self::CrossCheckRejected {
                 structural,
@@ -662,7 +735,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V3.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V4.to_string(),
         }],
         None,
     ))
@@ -828,11 +901,6 @@ impl Lattice {
         // the panel covers every face, and twelve scattered highlight bars supplied the edges.
         // Measured across that document, this single confusion produced 79 of the 91 false-positive
         // cell slots the gate charged against the ruled rule.
-        let encloses_everything = |r: &QuantRect| {
-            lattice
-                .span_of(*r)
-                .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
-        };
         // The same precondition, decided in one pass instead of one scan per
         // (face, rectangle) pair. `covers_within_tolerance` against a face whose
         // edges ARE lattice lines is an interval condition on the line indices —
@@ -842,10 +910,85 @@ impl Lattice {
         // once per rectangle instead of once per pair. A face is uncovered under
         // this scan exactly when it was under the per-pair scan, and the refusal
         // carries the identical payload, so nothing on the wire can move.
+        // **Two shapes of evidence that the document drew this grid, and either will do.**
+        //
+        // `ruled-rects-v3` had exactly one: every implied FACE covered by some rectangle. That is
+        // the right test for a producer that draws cells, and it is the wrong test for one that
+        // draws rules. Measured over `opendataloader-bench`, of the 42 documents whose ground
+        // truth holds a table, **30 draw rectangles implying a grid and all 30 were refused by
+        // that clause alone**, at a median 57% of faces drawn — see
+        // `docs/measurements/table-refusals/` §4d. A page laying down row separators and no
+        // column separators has stated exactly where its grid lies while drawing almost none of
+        // its cells.
+        //
+        // So a second path is added and the first is kept **unchanged**:
+        //
+        // 1. **Faces.** Every implied cell covered by a rectangle that is not the enclosing
+        //    border. Accepts a grid drawn cell by cell, including merged cells — a rowspan
+        //    rectangle covers the faces it spans, which is why `a_merged_cell_claims_every_slot`
+        //    passes here and cannot pass by tracing.
+        // 2. **Lines.** Every row and column boundary carried end to end by rectangle edges
+        //    lying on it, gaps closed by collinear ink only. Accepts a grid drawn as rules, where
+        //    path 1 finds almost no cell drawn.
+        //
+        // **Neither is weaker than the other and neither subsumes it.** A merged cell breaks an
+        // interior line, so tracing refuses what faces accept; a rules-only grid draws no cell,
+        // so faces refuse what tracing accepts. Requiring both would keep the 30 refused;
+        // requiring either is a **widening** that loses nothing previously emitted.
+        //
+        // # Why the second path is not fabrication
+        //
+        // A line nothing drew is not a lattice line at all — the lattice is built from rectangle
+        // edges — so tracing can never invent a boundary. It asks whether ink the document
+        // painted runs the length of a line that same ink implied, and a grid it accepts is one
+        // the producer drew, with the completion interpolated *between its own lines*.
+        //
+        // `background-panel-not-a-grid` is the fixture holding this honest: a panel painted twice
+        // plus three scattered 40x10 bars implying a 7x7 lattice. Faces refuses it because the
+        // panel is the enclosing border and the bars draw three of 49. Tracing refuses it too —
+        // the panel traces the four outer lines, which it draws by definition, and the bars cannot
+        // span a single interior one.
+        let faces_covered = Self::every_face_covered(&lattice, rects, faces);
+        let untraced = Self::first_untraced_line(&lattice, rects);
+        if !faces_covered {
+            if let Some((axis, index, lines)) = untraced {
+                return Err(Some(RuledRefusal::GridNotDrawn {
+                    faces,
+                    rects: rects.len(),
+                    axis,
+                    index,
+                    lines,
+                }));
+            }
+        }
+
+        Ok(lattice)
+    }
+
+    /// Path 1: every implied face covered by a rectangle that is not the enclosing border.
+    ///
+    /// The `ruled-rects-v3` precondition, unchanged, decided in one pass through a 2-D difference
+    /// grid rather than one scan per (face, rectangle) pair.
+    /// `tests::the_coverage_grid_is_the_per_pair_scan_by_another_route` re-derives every verdict
+    /// through the per-pair predicate to prove the two agree.
+    ///
+    /// **A rectangle spanning the whole lattice is not evidence** (v1-S7b). `detect_ruled` already
+    /// refuses to emit such a rectangle as a cell — *"the table's own border"* — and the two
+    /// claims cannot both stand. Counting it was how `cfpb-home-loan-toolkit` page 22 became a
+    /// 17 x 13 table with 12 cells on a page whose tree declares no table at all: the page paints
+    /// a 351 x 454 pt background panel, the panel covers every face, and twelve scattered
+    /// highlight bars supplied the edges. That single confusion produced 79 of the 91
+    /// false-positive cell slots the gate charged against the ruled rule.
+    fn every_face_covered(lattice: &Lattice, rects: &[QuantRect], faces: usize) -> bool {
+        let encloses_everything = |r: &QuantRect| {
+            lattice
+                .span_of(*r)
+                .is_some_and(|s| (s.rowspan * s.colspan) as usize == faces)
+        };
         let columns = lattice.columns() as usize;
         let row_count = lattice.rows() as usize;
-        let mut coverage = vec![0i64; (row_count + 1) * (columns + 1)];
         let stride = columns + 1;
+        let mut coverage = vec![0i64; (row_count + 1) * stride];
         for r in rects {
             if encloses_everything(r) {
                 continue;
@@ -862,9 +1005,6 @@ impl Lattice {
             let r_hi = lattice
                 .ys
                 .partition_point(|y| *y <= r.y1 + LATTICE_TOLERANCE);
-            // Covered faces are [r_lo, r_hi−1) × [c_lo, c_hi−1): a face needs both
-            // its near line inside the rectangle's tolerance band and its far line,
-            // which is the next line up.
             if c_hi < c_lo + 2 || r_hi < r_lo + 2 {
                 continue;
             }
@@ -874,7 +1014,7 @@ impl Lattice {
             coverage[r1 * stride + c_lo] -= 1;
             coverage[r1 * stride + c1] += 1;
         }
-        let mut running = vec![0i64; (row_count + 1) * (columns + 1)];
+        let mut running = vec![0i64; (row_count + 1) * stride];
         for row in 0..row_count {
             for column in 0..columns {
                 let above = if row > 0 {
@@ -895,15 +1035,50 @@ impl Lattice {
                 let total = coverage[row * stride + column] + above + left - diag;
                 running[row * stride + column] = total;
                 if total == 0 {
-                    return Err(Some(RuledRefusal::FaceWithoutRectangle {
-                        faces,
-                        rects: rects.len(),
-                    }));
+                    return false;
                 }
             }
         }
+        true
+    }
 
-        Ok(lattice)
+    /// Path 2: the first lattice line whose ink does not carry it end to end, if any.
+    ///
+    /// `None` means every line is traced. The enclosing rectangle counts here and does not in
+    /// path 1: surrounding the grid is no evidence its faces were drawn, and is definitionally
+    /// evidence its four outer lines were. No interior line gets that help.
+    fn first_untraced_line(lattice: &Lattice, rects: &[QuantRect]) -> Option<(Axis, usize, usize)> {
+        let xs_span = (
+            *lattice.xs.first().expect("non-empty"),
+            *lattice.xs.last().expect("non-empty"),
+        );
+        let ys_span = (
+            *lattice.ys.first().expect("non-empty"),
+            *lattice.ys.last().expect("non-empty"),
+        );
+        for (axis, lines, span) in [
+            (Axis::Vertical, &lattice.xs, ys_span),
+            (Axis::Horizontal, &lattice.ys, xs_span),
+        ] {
+            for (index, line) in lines.iter().enumerate() {
+                let mut spans: Vec<(i64, i64)> = rects
+                    .iter()
+                    .filter_map(|r| {
+                        let (near, far, lo, hi) = match axis {
+                            Axis::Vertical => (r.x0, r.x1, r.y0, r.y1),
+                            Axis::Horizontal => (r.y0, r.y1, r.x0, r.x1),
+                        };
+                        ((near - *line).abs() <= LATTICE_TOLERANCE
+                            || (far - *line).abs() <= LATTICE_TOLERANCE)
+                            .then_some((lo, hi))
+                    })
+                    .collect();
+                if !traces(&mut spans, span) {
+                    return Some((axis, index, lines.len()));
+                }
+            }
+        }
+        None
     }
 
     fn rows(&self) -> u32 {
@@ -1112,20 +1287,55 @@ mod tests {
                     })
                 })
             };
+            // The tracing spec, re-derived the slow way: for each line, walk every rectangle
+            // and collect the edges lying on it, then ask whether their merged union spans the
+            // lattice. `Lattice::build` decides the same thing inline; this is the executable
+            // statement of what it decides.
+            let traced = |lattice: &Lattice| {
+                let xs_span = (*lattice.xs.first().unwrap(), *lattice.xs.last().unwrap());
+                let ys_span = (*lattice.ys.first().unwrap(), *lattice.ys.last().unwrap());
+                [
+                    (Axis::Vertical, &lattice.xs, ys_span),
+                    (Axis::Horizontal, &lattice.ys, xs_span),
+                ]
+                .iter()
+                .all(|(axis, lines, span)| {
+                    lines.iter().all(|line| {
+                        let mut spans: Vec<(i64, i64)> = rects
+                            .iter()
+                            .filter_map(|rect| {
+                                let (near, far, lo, hi) = match axis {
+                                    Axis::Vertical => (rect.x0, rect.x1, rect.y0, rect.y1),
+                                    Axis::Horizontal => (rect.y0, rect.y1, rect.x0, rect.x1),
+                                };
+                                ((near - *line).abs() <= LATTICE_TOLERANCE
+                                    || (far - *line).abs() <= LATTICE_TOLERANCE)
+                                    .then_some((lo, hi))
+                            })
+                            .collect();
+                        traces(&mut spans, *span)
+                    })
+                })
+            };
             match built {
                 Ok(lattice) => assert!(
-                    spec(&lattice),
-                    "{name}: the grid accepted a lattice the per-pair spec refuses"
+                    spec(&lattice) || traced(&lattice),
+                    "{name}: build accepted a lattice NEITHER path accepts"
                 ),
-                Err(Some(RuledRefusal::FaceWithoutRectangle { .. })) => {
-                    // Rebuild the lattice geometry alone to ask the spec the same
-                    // question the grid answered.
+                Err(Some(RuledRefusal::GridNotDrawn { .. })) => {
+                    // Rebuild the lattice geometry alone to ask both specs the question build
+                    // answered. A refusal means BOTH paths declined; either alone accepting is a
+                    // grid that should have been emitted.
                     let xs = cluster(rects.iter().flat_map(|rect| [rect.x0, rect.x1]));
                     let ys = cluster(rects.iter().flat_map(|rect| [rect.y0, rect.y1]));
                     let lattice = Lattice { xs, ys };
                     assert!(
                         !spec(&lattice),
-                        "{name}: the grid refused a lattice the per-pair spec accepts"
+                        "{name}: build refused a lattice the FACE spec accepts"
+                    );
+                    assert!(
+                        !traced(&lattice),
+                        "{name}: build refused a lattice the TRACING spec accepts"
                     );
                 }
                 Err(other) => panic!("{name}: unexpected refusal {other:?}"),

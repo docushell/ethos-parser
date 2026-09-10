@@ -376,6 +376,37 @@ on the page, header and footer included, the candidate is a histogram of where w
 a derivation that reads a table's geometry from something other than drawn grid ink"*. The
 measurement narrows it: the missing ingredient is a **bounded region** to build the candidate in. A
 page is the wrong scope, and no rule folding every run on a page can be tuned into the right one.
+### The ruled coverage rework, and what it actually bought — 2026-09-10
+
+**Measured on `opendataloader-bench`, not on this gate's twelve.** Instruments:
+[`measurements/table-refusals/`](measurements/table-refusals/).
+
+Of the 42 documents whose ground truth holds a table, **30 draw rectangles that imply a grid and
+every one of those 30 was refused by a single clause** — `a cell the ink does not draw`, at a median
+**57%** of implied faces drawn. The cause has a name: a producer laying down row separators and no
+column separators has stated exactly where its grid lies while drawing almost none of its cells, and
+the precondition counted faces.
+
+`ruled-rects-v4` keeps that test and adds a second: **every row and column boundary carried end to
+end by the rectangle edges lying on it**, gaps closed by collinear ink only. Either suffices.
+
+**Neither subsumes the other, which is why it is a widening rather than a swap.** A merged cell
+breaks an interior line, so tracing refuses what faces accept — `a_merged_cell_claims_every_slot`
+is that case and it caught the first draft, which had replaced the test outright. A rules-only grid
+draws no cell, so faces refuse what tracing accepts. **Requiring both would keep all 30 refused.**
+
+**What it bought:** documents emitting a table go **5 → 7**, all 7 with a table in ground truth,
+**zero false positives**. Document-level precision 100%, recall 17%.
+
+**Why only two, and it is the same limit twice.** `detect_ruled` builds **one lattice from every
+rectangle on the page**, so a line must be traced across the extent of logos, borders and shading as
+well as the table's own rules. 53 documents refuse on tracing for that reason. This is §4b's
+page-scope finding in the ruled rule rather than the unruled one, and **grouping rectangles into
+spatially connected candidate grids is the change that would address it** — named here, not taken.
+
+**`background-panel-not-a-grid` still refuses under both paths**, which is what keeps the widening
+honest: the panel is the enclosing border and draws three faces of 49, and while it traces the four
+outer lines by definition, three scattered bars cannot span one interior line.
 
 ### The recommendation, named not taken
 

@@ -155,6 +155,251 @@ region to build a candidate in, and the unruled rule has nowhere to stand.
    Same refusals, better reason, and `LatticeTooLarge` stops being dead code in practice.
 2. **State in `table-gate-v1.md` that the unruled rule is page-scoped.** Its measured band already
    says the detector finds almost nothing; this says why, which the band does not.
+## 4c. T2 — the unruled rule cannot detect a real table, and the reason is structural
+
+§4b concluded that a candidate needs a bounded region and that the block cut would supply one. The
+block cut shipped (`gutter-columns-v3`), so the prediction was testable.
+[`block_scoped.py`](block_scoped.py) and [`preconditions.py`](preconditions.py) test it, plus two
+further repairs. **Four experiments, and none of them emits a table.**
+
+### The prediction held, and it did not help
+
+Scoping the candidate to a block collapses the lattice by 30–40×:
+
+| scope | median faces | under `MAX_FACES` |
+| --- | ---: | ---: |
+| page, table present | 6 435 | 35% |
+| page, prose | 4 628 | 42% |
+| **block, table present** | **154** | **96%** |
+| **block, prose** | **208** | **95%** |
+
+So candidates now *reach* the preconditions that test whether a grid is there. Which gate decides:
+
+| gate | page scope | block scope |
+| --- | ---: | ---: |
+| `gutter_below_floor` | 82 | **649** |
+| `lattice_too_large` | 117 | 29 |
+| `faces_without_text` | 0 | 10 |
+| no candidate | 1 | 346 |
+| **would emit** | **0** | **0** |
+
+The bottleneck moved from the size cap to the gutter floor. Nothing was gained.
+
+### Three structural blockers, each independently fatal
+
+**1. The fold tolerance and the gutter floor contradict each other.** `fold` groups x-origins within
+`ALIGN_TOLERANCE` = 150 centipoints, so **every word start becomes its own column line** — a table
+cell holding three words produces three columns. The gutter floor then refuses any adjacent pair
+closer than 1 200 centipoints, which word starts always are. Measured inside the largest block of
+each table page: **median 100 column lines at 150cp against 31 at the floor, a 3.6× over-count.**
+One constant creates what the other forbids.
+
+**2. Folding at the floor removes that, and occupancy then refuses everything.** With the fold at
+1 200/600, `gutter_below_floor` disappears by construction — and **all 656 candidates die at
+`faces_without_text`**. Zero emit.
+
+**3. Occupancy does not discriminate, at any threshold.** The rule demands every face hold a run.
+Measured occupancy of block candidates folded at the floor:
+
+| | n | median | at 100% |
+| --- | ---: | ---: | ---: |
+| block on a table page | 123 | **54%** | **0** |
+| block on a prose page | 533 | **54%** | **0** |
+
+Identical medians. And relaxing it is worse than useless — at every threshold **more prose blocks
+pass than table blocks**, because prose blocks outnumber them 4.3×:
+
+| threshold | table blocks | prose blocks | best-case precision |
+| --- | ---: | ---: | ---: |
+| ≥90% | 2 | 5 | 29% |
+| ≥80% | 7 | 19 | 27% |
+| ≥70% | 22 | 71 | 24% |
+| ≥60% | 41 | 175 | 19% |
+
+**4. Cell grouping does not rescue it.** Merging horizontally adjacent runs into cells before folding
+— the obvious answer to blocker 1 — yields **3 candidates that would emit at a 4pt cell gap, of
+which 2 are on prose pages**, and 1 at 8pt. The handful that pass are majority-wrong. That is the
+fabrication this rule's strictness exists to refuse, arrived at from the other direction.
+
+### What this settles
+
+**Fabrication-0 and emits-nothing are one property of this rule, not two.** The strictness that
+guarantees the first guarantees the second, and no constant in it can be moved to separate them:
+blocker 1 is a contradiction between two constants, blocker 3 is an absence of signal in the
+underlying quantity. Text alignment does not distinguish a table from prose on this corpus.
+
+**So §5.3 of the plan is answered negatively.** There is nothing useful for a refused candidate to
+emit, because the candidate carries no information about whether a table is there. Emitting cell
+rectangles from a 54%-occupied word-lattice would be emitting the shape of the prose.
+
+**This corroborates [`table-gate-v1.md`](../../table-gate-v1.md) v2-S22 with a mechanism.** That
+section already concluded *"the alignment rule is not a gap to close in v1"* and that recovering the
+missed tables *"needs a derivation that reads a table's geometry from something other than drawn
+grid ink"*, leaving retire-or-rework as a version-boundary question for the owner. This says why, at
+four named gates, on a corpus this repository does not own. **The question is unchanged and now
+answerable on evidence.**
+
+**What it does not say.** Nothing here touches the ruled or stroke-ruled rules, which do emit and
+are exact where a producer draws the grid, nor the tagged rule, which reads what the document
+declares. The gap is untagged tables whose producer drew no rules, and it stays open.
+
+## 4d. T3 — reworking the unruled rule, and why the ruled rule is the better target
+
+The owner chose **rework** over retire. This measures what a rework could reach, and finds the
+choice was offered on a menu that was wrong: **the unruled rule is not where the tables are.**
+
+### First, T2's own weakness, resolved
+
+§4c compared blocks on table pages against blocks on prose pages, and said so: *"ground truth says
+whether a `Table` is on that page, not whether it is this block"*. The reference file carries
+coordinates, so [`gt_boxes.py`](gt_boxes.py) resolves it — normalized × page dimensions lands in the
+same top-left centipoints the engine uses.
+
+**It confirms §4c and inverts it.** Runs *inside* a real table box, folded at the floor: occupancy
+median **37%**, against prose blocks' **54%**. Same column count. A real table is **sparser** than
+prose, because it holds short cell contents scattered across many x-positions while prose packs
+words densely along each line. Occupancy does not merely fail to discriminate; it points the wrong
+way.
+
+### What the real tables actually look like
+
+Reading one table's runs out of the artifact shows three instrument problems, not an absent signal:
+
+- **Runs are split mid-word.** `'Y'` + `'outh Federations of Cambodia'`; `'Cambodian W'` +
+  `'omen for Peace and'`. Each fragment contributes its own column line.
+- **Columns are right-aligned.** One numeric column produced origins at 30934, 31184, 31593, 32093 —
+  four spurious column lines for one real column, because `fold` sees only left edges.
+- **Cells wrap across lines.** `'Union of '` then `'(UYFC)'` is one cell on two baselines, so
+  lattice rows are not table rows.
+
+Column 2 sat at x=8752 on 8 of 15 rows, dead consistent. The signal is there and the lattice cannot
+see it.
+
+### Fixing two of the three helps, and not enough
+
+[`edge_alignment.py`](edge_alignment.py) joins mid-word fragments and folds **right** edges as well
+as left, then counts alignment positions supported by at least half the rows
+([`column_support.py`](column_support.py) is the unfixed version, for contrast).
+
+| threshold | inside a table box | prose block | precision |
+| --- | ---: | ---: | ---: |
+| ≥2 strong columns | **48%** (19/40) | 23% (96/423) | 17% |
+| ≥3 | 18% | 8% | 18% |
+| ≥4 | 12% | 6% | 17% |
+
+**A 2:1 likelihood ratio, where every earlier statistic was inverted.** That is real progress. It is
+also nowhere near enough: prose blocks outnumber table blocks **10.6:1**, so 2:1 lands at **17%
+precision** — five emissions in six would be wrong. Reaching 70% precision against that base rate
+needs roughly **20:1**.
+
+### And the tables are not there anyway
+
+| of the 42 documents whose ground truth holds a Table | docs |
+| --- | ---: |
+| the **ruled** rule built a lattice from painted rectangles and refused it | **30** |
+| only the unruled rule ever fired — nothing grid-shaped was drawn | 12 |
+| already emit a table | 5 |
+
+**The unruled rule's entire addressable population is 12 of 42.** Even a perfect unruled rule leaves
+30 documents untouched, and its measured ceiling is 17% precision.
+
+### The ruled rule fails on one precondition, 30 times out of 30
+
+Every one of those 30 documents is refused by the same clause, and the artifact names it:
+
+> **a cell the ink does not draw** — *"The rectangles implied a grid whose cells they do not all
+> draw. A ruled grid must be explained by the ink face by face… A rectangle merely ENCLOSING the grid
+> does not count."* — `9 rectangles implied 15 cells`
+
+Across the 30, a median of **57%** of implied cells are drawn (p25 30%, p75 93%).
+
+**This is structurally the same precondition as the unruled rule's occupancy — and epistemically the
+opposite.** The unruled rule asks whether inferred alignment explains an inferred grid. The ruled
+rule asks whether **ink the document actually painted** explains a grid **that same ink implied**.
+Completing a partially-drawn grid from the lines its own producer drew is interpolation within
+stated geometry. Inferring columns from word positions is not.
+
+And the shortfall has an obvious cause: a producer that draws row separators but no column
+separators, or an outer border plus horizontal rules, has fully specified its grid in *lines* while
+drawing few of its *cells*. The precondition counts faces.
+
+### The recommendation
+
+**Rework the ruled rule's coverage precondition, not the unruled rule.** It reaches 30 of 42
+documents against 12, it fails on one named clause rather than three, its evidence is drawn ink
+rather than inferred alignment, and its 57% median coverage is a shortfall with a nameable cause
+rather than a 2:1 signal against a 10.6:1 base rate.
+
+**What stays true about the unruled rule.** §4c's conclusion is unchanged: it cannot work as
+designed. T3 adds that even reworked it addresses 29% of the population at 17% precision. Retiring
+it is now better supported than reworking it — but that is the owner's call, and it is no longer the
+question that matters.
+
+## 4e. T4 — 5.7 was the wrong fix. The lattice invents rows the page did not draw
+
+5.7 was scoped as *"group rectangles into spatially connected candidate grids"*, on the reasoning
+that the page-wide lattice extent is what defeats tracing. Designing it against real pages —
+rectangles are not on the wire, so this needed a throwaway dump, since removed — showed the premise
+is wrong.
+
+### What a refused table page actually paints
+
+`01030000000045.pdf`, one ground-truth table, currently refused. Its nine rectangles:
+
+```
+row 1   y=[20777,23412]   x=[5400,8352]  [8352,27347]  [27347,37273]
+row 2   y=[26047,28682]   x=[5400,8352]  [8352,27347]  [27347,37273]
+row 3   y=[30338,31893]   x=[5400,8352]  [8352,27347]  [27347,37273]
+```
+
+**That is a complete 3 × 3 cell grid with every cell drawn.** Nothing is missing, nothing is
+scattered, and there is no page furniture to cluster away. `01030000000046.pdf` (35 rectangles,
+7 columns) and `01030000000047.pdf` (28, 7 columns) are the same shape.
+
+### Why it is refused, exactly
+
+The rows have **gaps between them**: row 1 ends at 23412, row 2 begins at 26047. So `Lattice::build`
+clusters six y edges into five bands, of which **two are the whitespace between drawn cells**:
+
+| band | y | covered |
+| --- | --- | --- |
+| 1 | 20777–23412 | yes, 3 cells |
+| 2 | **23412–26047** | **nothing** |
+| 3 | 26047–28682 | yes, 3 cells |
+| 4 | **28682–30338** | **nothing** |
+| 5 | 30338–31893 | yes, 3 cells |
+
+Five bands × three columns = 15 faces, of which the nine drawn cells cover nine. **That is the
+refusal's own arithmetic — `9 rectangles implied 15 cells`** — and the six uncovered faces are all
+inter-cell whitespace. Tracing fails for the same reason: the vertical line at x=8352 has edges only
+where cells are, so its union has gaps of 2 635 and 1 656 centipoints, far past
+`LATTICE_TOLERANCE`.
+
+**The rule is refusing a perfectly drawn grid because it inserted rows the page never drew.**
+
+### So 5.7 is a different change
+
+Not clustering. **A band no rectangle occupies is not a row of the grid** — it is the space between
+cells — and dropping such bands turns this page's 15 implied faces into 9 implied faces, all
+covered, which emits a 3 × 3 table.
+
+**The guard still holds under it.** `background-panel-not-a-grid` paints three scattered bars into a
+7 × 7 lattice. Dropping empty bands leaves at most the three rows and three columns the bars touch —
+9 faces of which 3 are painted, 6 uncovered — so it is still refused, and tracing still cannot carry
+a line across it.
+
+### What it costs, and why it is not this increment
+
+`Lattice` is `{ xs, ys }` with rows and columns derived as `len − 1`, and **a gap between rows cannot
+be expressed as a line list**: dropping either line bounding an empty band merges the two real rows
+around it and moves their geometry. The lattice has to carry explicit bands — `rows: Vec<(i64,i64)>`,
+`cols: Vec<(i64,i64)>` — which touches 28 references and the five methods `rows`, `columns`,
+`bounds`, `face` and `span_of`.
+
+That is the honest scope of 5.7, and it is a structural change to the type rather than a precondition
+tweak. **Emitting a 5 × 3 grid with six empty slots instead is the shortcut and it is refused**: the
+document drew a 3 × 3, and a table claiming five rows where two are whitespace is a grid this engine
+invented.
 
 ## 5. Reproducing
 

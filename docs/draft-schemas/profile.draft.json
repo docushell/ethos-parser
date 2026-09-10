@@ -79,7 +79,7 @@
       "minLength": 1,
       "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity. `gutter-columns-v2` (D4-S2) is the same cut as `gutter-columns-v1` (v1-S5) — same constants, same order — and additionally reports the regions it made, as `region` on each text run; the id moved because the artifact gained a field, not because the sequence changed. `single-column-v1` means content-stream order with no reordering. `gutter-columns-v1` took a new id rather than bumping `single-column-v1`, because those two read different evidence and can list the same runs in a different sequence.",
       "examples": [
-        "gutter-columns-v2",
+        "gutter-columns-v3",
         "gutter-columns-v1",
         "single-column-v1"
       ]
@@ -395,10 +395,10 @@
       "raster_dpi": {
         "mode": "not_emitted"
       },
-      "reading_order_rule": "gutter-columns-v2",
+      "reading_order_rule": "gutter-columns-v3",
       "struct_tree_rule": "struct-tree-v1",
       "table_detection": {
-        "ruled": "ruled-rects-v3",
+        "ruled": "ruled-rects-v4",
         "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1",
         "tagged": "tagged-tables-v1"

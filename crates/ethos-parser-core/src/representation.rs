@@ -1495,6 +1495,37 @@ pub struct TextRunAttributes {
     /// it cost nothing: the engine's run time is linear in the bytes it emits.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<u32>,
+    /// Which block of its page the leading-gap cut placed this run in, 1-based, in reading order.
+    ///
+    /// # Where, never what — the same rule [`Self::region`] is under
+    ///
+    /// A block is a stretch of text the rule found separated from its neighbours by vertical
+    /// whitespace wider than the band's own leading. It is **not** a paragraph, a heading, a list
+    /// item or a section, and nothing downstream may read a role from it. That is
+    /// `docs/06-STEAL-REFUSE.md` **P14**, and it is the line
+    /// [`docs/19-BLOCK-SUBDIVISION-SCOPE.md`] §6 draws in as many words when it permits this
+    /// field at all: *"a **Computed block subdivision**… an unnamed index, absent where the rule
+    /// declined."* Roles come from the document's own structure tree
+    /// ([`super::PdfTaggedLocator::role_path`]) or from nowhere.
+    ///
+    /// **A block boundary is not a paragraph boundary, and the measurement says so.** On the one
+    /// gate document that can carry a real paragraph label, the rule finds **63.7% of them at
+    /// 100% precision** — it never fires mid-paragraph across 719 chances, and it misses better
+    /// than a third of the breaks. §9.2 says why the ceiling is there: 35.1% of real paragraph
+    /// breaks carry no extra leading at all, so no gap rule can see them. A consumer that treats
+    /// a block as a paragraph is treating a 64%-recall index as a structure.
+    ///
+    /// # Absent means the rule declined, and that is the common case
+    ///
+    /// Unlike `region`, absence here is ordinary rather than a corner: a page of uniform body text
+    /// has no gap wide enough to open a second block, and it is *supposed* to have none. Absent
+    /// covers that, a band whose modal gap is not a leading at all (a table-column interleave
+    /// pitch, which §5 measured on 9% of bands), a band whose gaps are a scatter with no mode, and
+    /// a format with no cut. A node cannot tell them apart and does not need to — the profile's
+    /// `reading_order_rule` names which rule ran, and none of the four can differ between two runs
+    /// of one artifact. A bare `Option` for the reason `region` is one: `docs/16-D4-SCOPE.md` §4.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block: Option<u32>,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -2733,6 +2764,7 @@ mod tests {
                 font_id: "F1".into(),
                 font_size: 2400,
                 region: None,
+                block: None,
             }),
         }
     }
