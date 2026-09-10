@@ -2011,7 +2011,7 @@ fn the_structure_tree_supplies_role_paths_and_absence_stays_absent() {
 
     // Half one: a tagged document yields the roles ITS OWN TREE gives.
     let tagged = extract_ok(engine_fx("tagged-structure-roles"));
-    let bound: Vec<&ethos_parser_core::PdfTaggedLocator> = runs(&tagged)
+    let bound: Vec<&std::sync::Arc<ethos_parser_core::PdfTaggedLocator>> = runs(&tagged)
         .iter()
         .filter_map(|r| match &r.structural {
             Some(StructuralLocator::PdfTagged(t)) => Some(t),

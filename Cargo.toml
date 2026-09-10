@@ -626,7 +626,7 @@ sha2 = "0.10"
 # no unsafe API surface — reviewed against deny.toml's allowlist before addition.
 rayon = "1.10"
 serde_json = "1"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 
 # dev-only
 proptest = "1"
