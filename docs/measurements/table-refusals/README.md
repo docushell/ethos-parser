@@ -187,6 +187,98 @@ answerable on evidence.**
 are exact where a producer draws the grid, nor the tagged rule, which reads what the document
 declares. The gap is untagged tables whose producer drew no rules, and it stays open.
 
+## 4d. T3 — reworking the unruled rule, and why the ruled rule is the better target
+
+The owner chose **rework** over retire. This measures what a rework could reach, and finds the
+choice was offered on a menu that was wrong: **the unruled rule is not where the tables are.**
+
+### First, T2's own weakness, resolved
+
+§4c compared blocks on table pages against blocks on prose pages, and said so: *"ground truth says
+whether a `Table` is on that page, not whether it is this block"*. The reference file carries
+coordinates, so [`gt_boxes.py`](gt_boxes.py) resolves it — normalized × page dimensions lands in the
+same top-left centipoints the engine uses.
+
+**It confirms §4c and inverts it.** Runs *inside* a real table box, folded at the floor: occupancy
+median **37%**, against prose blocks' **54%**. Same column count. A real table is **sparser** than
+prose, because it holds short cell contents scattered across many x-positions while prose packs
+words densely along each line. Occupancy does not merely fail to discriminate; it points the wrong
+way.
+
+### What the real tables actually look like
+
+Reading one table's runs out of the artifact shows three instrument problems, not an absent signal:
+
+- **Runs are split mid-word.** `'Y'` + `'outh Federations of Cambodia'`; `'Cambodian W'` +
+  `'omen for Peace and'`. Each fragment contributes its own column line.
+- **Columns are right-aligned.** One numeric column produced origins at 30934, 31184, 31593, 32093 —
+  four spurious column lines for one real column, because `fold` sees only left edges.
+- **Cells wrap across lines.** `'Union of '` then `'(UYFC)'` is one cell on two baselines, so
+  lattice rows are not table rows.
+
+Column 2 sat at x=8752 on 8 of 15 rows, dead consistent. The signal is there and the lattice cannot
+see it.
+
+### Fixing two of the three helps, and not enough
+
+[`edge_alignment.py`](edge_alignment.py) joins mid-word fragments and folds **right** edges as well
+as left, then counts alignment positions supported by at least half the rows
+([`column_support.py`](column_support.py) is the unfixed version, for contrast).
+
+| threshold | inside a table box | prose block | precision |
+| --- | ---: | ---: | ---: |
+| ≥2 strong columns | **48%** (19/40) | 23% (96/423) | 17% |
+| ≥3 | 18% | 8% | 18% |
+| ≥4 | 12% | 6% | 17% |
+
+**A 2:1 likelihood ratio, where every earlier statistic was inverted.** That is real progress. It is
+also nowhere near enough: prose blocks outnumber table blocks **10.6:1**, so 2:1 lands at **17%
+precision** — five emissions in six would be wrong. Reaching 70% precision against that base rate
+needs roughly **20:1**.
+
+### And the tables are not there anyway
+
+| of the 42 documents whose ground truth holds a Table | docs |
+| --- | ---: |
+| the **ruled** rule built a lattice from painted rectangles and refused it | **30** |
+| only the unruled rule ever fired — nothing grid-shaped was drawn | 12 |
+| already emit a table | 5 |
+
+**The unruled rule's entire addressable population is 12 of 42.** Even a perfect unruled rule leaves
+30 documents untouched, and its measured ceiling is 17% precision.
+
+### The ruled rule fails on one precondition, 30 times out of 30
+
+Every one of those 30 documents is refused by the same clause, and the artifact names it:
+
+> **a cell the ink does not draw** — *"The rectangles implied a grid whose cells they do not all
+> draw. A ruled grid must be explained by the ink face by face… A rectangle merely ENCLOSING the grid
+> does not count."* — `9 rectangles implied 15 cells`
+
+Across the 30, a median of **57%** of implied cells are drawn (p25 30%, p75 93%).
+
+**This is structurally the same precondition as the unruled rule's occupancy — and epistemically the
+opposite.** The unruled rule asks whether inferred alignment explains an inferred grid. The ruled
+rule asks whether **ink the document actually painted** explains a grid **that same ink implied**.
+Completing a partially-drawn grid from the lines its own producer drew is interpolation within
+stated geometry. Inferring columns from word positions is not.
+
+And the shortfall has an obvious cause: a producer that draws row separators but no column
+separators, or an outer border plus horizontal rules, has fully specified its grid in *lines* while
+drawing few of its *cells*. The precondition counts faces.
+
+### The recommendation
+
+**Rework the ruled rule's coverage precondition, not the unruled rule.** It reaches 30 of 42
+documents against 12, it fails on one named clause rather than three, its evidence is drawn ink
+rather than inferred alignment, and its 57% median coverage is a shortfall with a nameable cause
+rather than a 2:1 signal against a 10.6:1 base rate.
+
+**What stays true about the unruled rule.** §4c's conclusion is unchanged: it cannot work as
+designed. T3 adds that even reworked it addresses 29% of the population at 17% precision. Retiring
+it is now better supported than reworking it — but that is the owner's call, and it is no longer the
+question that matters.
+
 ## 5. Reproducing
 
 ```bash
