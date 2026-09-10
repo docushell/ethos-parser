@@ -279,6 +279,72 @@ designed. T3 adds that even reworked it addresses 29% of the population at 17% p
 it is now better supported than reworking it — but that is the owner's call, and it is no longer the
 question that matters.
 
+## 4e. T4 — 5.7 was the wrong fix. The lattice invents rows the page did not draw
+
+5.7 was scoped as *"group rectangles into spatially connected candidate grids"*, on the reasoning
+that the page-wide lattice extent is what defeats tracing. Designing it against real pages —
+rectangles are not on the wire, so this needed a throwaway dump, since removed — showed the premise
+is wrong.
+
+### What a refused table page actually paints
+
+`01030000000045.pdf`, one ground-truth table, currently refused. Its nine rectangles:
+
+```
+row 1   y=[20777,23412]   x=[5400,8352]  [8352,27347]  [27347,37273]
+row 2   y=[26047,28682]   x=[5400,8352]  [8352,27347]  [27347,37273]
+row 3   y=[30338,31893]   x=[5400,8352]  [8352,27347]  [27347,37273]
+```
+
+**That is a complete 3 × 3 cell grid with every cell drawn.** Nothing is missing, nothing is
+scattered, and there is no page furniture to cluster away. `01030000000046.pdf` (35 rectangles,
+7 columns) and `01030000000047.pdf` (28, 7 columns) are the same shape.
+
+### Why it is refused, exactly
+
+The rows have **gaps between them**: row 1 ends at 23412, row 2 begins at 26047. So `Lattice::build`
+clusters six y edges into five bands, of which **two are the whitespace between drawn cells**:
+
+| band | y | covered |
+| --- | --- | --- |
+| 1 | 20777–23412 | yes, 3 cells |
+| 2 | **23412–26047** | **nothing** |
+| 3 | 26047–28682 | yes, 3 cells |
+| 4 | **28682–30338** | **nothing** |
+| 5 | 30338–31893 | yes, 3 cells |
+
+Five bands × three columns = 15 faces, of which the nine drawn cells cover nine. **That is the
+refusal's own arithmetic — `9 rectangles implied 15 cells`** — and the six uncovered faces are all
+inter-cell whitespace. Tracing fails for the same reason: the vertical line at x=8352 has edges only
+where cells are, so its union has gaps of 2 635 and 1 656 centipoints, far past
+`LATTICE_TOLERANCE`.
+
+**The rule is refusing a perfectly drawn grid because it inserted rows the page never drew.**
+
+### So 5.7 is a different change
+
+Not clustering. **A band no rectangle occupies is not a row of the grid** — it is the space between
+cells — and dropping such bands turns this page's 15 implied faces into 9 implied faces, all
+covered, which emits a 3 × 3 table.
+
+**The guard still holds under it.** `background-panel-not-a-grid` paints three scattered bars into a
+7 × 7 lattice. Dropping empty bands leaves at most the three rows and three columns the bars touch —
+9 faces of which 3 are painted, 6 uncovered — so it is still refused, and tracing still cannot carry
+a line across it.
+
+### What it costs, and why it is not this increment
+
+`Lattice` is `{ xs, ys }` with rows and columns derived as `len − 1`, and **a gap between rows cannot
+be expressed as a line list**: dropping either line bounding an empty band merges the two real rows
+around it and moves their geometry. The lattice has to carry explicit bands — `rows: Vec<(i64,i64)>`,
+`cols: Vec<(i64,i64)>` — which touches 28 references and the five methods `rows`, `columns`,
+`bounds`, `face` and `span_of`.
+
+That is the honest scope of 5.7, and it is a structural change to the type rather than a precondition
+tweak. **Emitting a 5 × 3 grid with six empty slots instead is the shortcut and it is refused**: the
+document drew a 3 × 3, and a table claiming five rows where two are whitespace is a grid this engine
+invented.
+
 ## 5. Reproducing
 
 ```bash
