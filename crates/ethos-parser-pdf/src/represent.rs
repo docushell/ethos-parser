@@ -238,6 +238,10 @@ pub fn to_representation(
                     // through `reorder_page` on the run itself. Absent where the cut made no
                     // division, which is most pages.
                     region: run.region,
+                    // Assigned by the leading-gap half of `gutter-columns-v3`, carried on the run
+                    // exactly as `region` is. Absent wherever the rule declined, which includes
+                    // every page of uniform body text.
+                    block: run.block,
                     // v1-S6. Carried through unchanged. The node is here because the run is
                     // here; a finding never decides whether it gets projected.
                     findings: run.findings.clone(),

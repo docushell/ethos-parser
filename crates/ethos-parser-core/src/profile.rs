@@ -114,6 +114,34 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
 
+/// The cut with its horizontal half emitted: columns **and** blocks.
+///
+/// # Why a bump and not a new name
+///
+/// [`READING_ORDER_RULE_V2`]'s own test, applied again: a new name is for a rule that reads
+/// *different evidence*, a bump is for one that reads the same evidence and **reports more of what
+/// it found**. This reads whitespace in page space, exactly as v1 and v2 did. What widened is
+/// which of it reaches the wire — v2 promised a region wherever a page divided vertically, and
+/// this promises a block wherever a band's own leading says one stretch of text ended.
+///
+/// # Why one id and not two
+///
+/// [`READING_ORDER_RULE_V2`]'s "No second id for the regions", unchanged: *one cut emits both, and
+/// a change to the cut changes both together. Two ids for one rule would claim a precision that
+/// does not exist.* The block cut is the same recursion's horizontal axis, bounded by the same
+/// vertical cuts, and nothing can move one half without the other.
+///
+/// # What an artifact naming this promises, and what it does not
+///
+/// It promises a `block` on every run of any page the rule subdivided, and nothing at all where it
+/// declined. **It does not promise a paragraph.** The rule finds 63.7% of real paragraph breaks at
+/// 100% precision on the one document able to carry that label, and §9.2 measured why the ceiling
+/// exists: 35.1% of real breaks carry no extra leading, so no gap rule can reach them.
+///
+/// A consumer that cannot tell this id from `gutter-columns-v2` cannot tell a page with no blocks
+/// from an older build that had no block field — the same confusion v2 was bumped to prevent.
+pub const READING_ORDER_RULE_V3: &str = "gutter-columns-v3";
+
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
 /// One id covering both because they are one pass over one content stream, reading the same
@@ -1134,7 +1162,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V2.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V3.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V7.to_string(),
@@ -2030,7 +2058,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v2","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v3","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2778,11 +2806,19 @@ mod tests {
              longer breaks a line. The reader had already written that space into the run's text \
              and flagged it; the block rule was measuring the same gap a second time against a \
              quantization epsilon and splitting on it. 296 of 735 corpus documents change, none \
-             for the worse."
+             for the worse.\n\n\
+             Moved again for the block cut: `reading_order_rule` `gutter-columns-v2` -> `-v3`. \
+             The cut's horizontal half now reaches the wire as `block` on every run of a page it \
+             subdivided. The vertical half is unchanged and so is the order — what widened is \
+             which of one cut's output is reported, which is what a bump means and why there is \
+             no second id. A block is an unnamed `Computed` index and never a paragraph: it finds \
+             63.7% of real paragraph breaks at 100% precision on the one gate document able to \
+             carry that label, and 35.1% of real breaks carry no extra leading for any gap rule \
+             to see."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:461478e3526aa0c9db4cbcfe5016e8a516ea9929c4f561517d1942f92b0eb902"
+            "sha256:6edbdce4186c6a48d6d24b4ce321feef98f89f35a528be29c36809dc43f781e5"
         );
     }
 

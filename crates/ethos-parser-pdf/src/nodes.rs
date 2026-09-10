@@ -103,6 +103,12 @@ pub struct TextRun {
     /// travels with its run and needs no index fixing of its own. `None` on a page the cut did
     /// not divide.
     pub region: Option<u32>,
+    /// Which block of its page the leading-gap cut placed this run in.
+    ///
+    /// Set beside [`Self::region`] and travelling the same way. `None` on a page the rule
+    /// declined — which, unlike `region`, is common even on a single-column page, because a page
+    /// of uniform body text has no gap wide enough to open a second block.
+    pub block: Option<u32>,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -238,6 +244,7 @@ mod tests {
         TextRun {
             id: alloc.next(IdKind::Span).unwrap(),
             region: None,
+            block: None,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

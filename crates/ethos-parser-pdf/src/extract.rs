@@ -452,6 +452,7 @@ fn extract_page(
                 // content stream, and the rule needs the whole page plus its accepted tables.
                 // Filled in below, where `arrange_page` is called.
                 region: None,
+                block: None,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -668,6 +669,17 @@ fn extract_page(
             // is the common page, and the engine's run time is linear in what it emits.
             for (run, region) in runs.iter_mut().zip(&arranged.regions) {
                 run.region = *region;
+            }
+
+            // The block cut, on the same discipline and for the same reason: before
+            // `reorder_page`, indexed by stream position, empty when the rule declined.
+            //
+            // It takes `arranged.order` as well, because a block is bounded by the vertical cut
+            // too — two columns of prose are never one block, whatever their leading — and it
+            // takes `arranged.regions` to know where those bounds are.
+            let blocks = crate::blocks::subdivide(&geometry, &arranged.order, &arranged.regions);
+            for (run, block) in runs.iter_mut().zip(&blocks) {
+                run.block = *block;
             }
 
             reorder_page(&mut runs, &mut tables, &arranged.order);
@@ -1965,13 +1977,21 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V2,
-            "D4-S2 moved the default to the id that promises the region field"
+            ethos_parser_core::READING_ORDER_RULE_V3,
+            "the block cut moved the default to the id that promises the block field too"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V3,
+            "gutter-columns-v3",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **`-v2` keeps its exact spelling for the reason the older two do.** Artifacts exist
+        // under it, and it promises a region and no block. A spelling that moved would make one
+        // of those and a `-v3` artifact look comparable while they promise different fields.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V2,
             "gutter-columns-v2",
-            "the id is data on every artifact; changing the string is an identity event"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         // **The older ids keep their exact spellings.** `single-column-v1` means content-stream
         // order and `gutter-columns-v1` means the same cut without the regions; artifacts exist
@@ -2070,6 +2090,7 @@ mod tests {
             .map(|&(x, y, text)| TextRun {
                 id: alloc.next(IdKind::Span).expect("ids"),
                 region: None,
+                block: None,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,

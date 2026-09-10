@@ -2490,6 +2490,7 @@ pub(crate) mod tests {
                 font_id: "F1".into(),
                 font_size: 2400,
                 region: None,
+                block: None,
             }),
         }
     }
@@ -3722,6 +3723,7 @@ pub(crate) mod tests {
                 font_id: "F1".into(),
                 font_size: 2400,
                 region,
+                block: None,
             }),
         }
     }

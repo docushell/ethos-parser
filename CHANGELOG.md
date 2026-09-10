@@ -18,6 +18,86 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased] — the cut's horizontal half reaches the wire
+
+**Not a version yet.** `profile_sha256` has moved, so by this file's own header these artifacts are
+already non-comparable with 0.54.0's; assigning the number is the owner's deliberate act and it
+carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-version.sh`).
+
+### Added
+
+- **`block` on `TextRunAttributes`** — which block of its page the leading-gap cut placed a run in,
+  1-based in reading order. An **unnamed `Computed` index**, which is the only shape
+  [`19-BLOCK-SUBDIVISION-SCOPE.md`](docs/19-BLOCK-SUBDIVISION-SCOPE.md) §6 permits without
+  reversing P14: it says two runs are in different blocks and never that either is a paragraph.
+  Absent wherever the rule declined, which — unlike `region` — is the ordinary case, because a page
+  of uniform body text has no gap wide enough to open a second block and is supposed to have none.
+
+  The rule is a gap of at least **1.6 × the band's own modal leading**, in integers (`5·gap ≥
+  8·leading`). Measured on the one gate document able to carry a real paragraph label:
+  **63.7% of real paragraph breaks at 100% precision**, never firing mid-paragraph across 719
+  chances. The third it misses is a ceiling rather than a shortfall — §9.2 measured that 35.1% of
+  real breaks carry no extra leading for any gap rule to see. On `nist-sp-800-207` it produces a
+  median of **9 blocks per page** and **0.12 blocks per line**, about eight lines to a block.
+
+  `reading_order`'s existing `horizontal_cut` could not do this and its own doc says why: it cuts at
+  *the widest gap and every gap tied with it*, and body text at uniform leading ties every baseline
+  gap, so numbering its leaves would put one index on every line — *a line number wearing a block's
+  name*. The criterion changed, not the machinery.
+
+- **`READING_ORDER_RULE_V3`** — `gutter-columns-v3`. Added to the public freeze and
+  [`PUBLIC-API.md`](docs/PUBLIC-API.md).
+
+### Changed
+
+- **`reading_order_rule` `gutter-columns-v2` → `gutter-columns-v3`** on the PDF profile, so
+  `profile_sha256` moves and every golden regenerates. A bump rather than a new name on
+  `READING_ORDER_RULE_V2`'s own test: the rule reads the same evidence — whitespace in page space —
+  and reports more of what it found. **One id and not two**, on that same doc's *"two ids for one
+  rule would claim a precision that does not exist"*: one cut emits the order, the regions and the
+  blocks, and none can move without the others. `-v2` keeps its spelling; artifacts exist under it
+  and it promises a region and no block. **The nine office profiles are untouched.**
+
+- **The unruled table rule tests its lattice-size cap before its gutter floor.** More than one
+  precondition fails on a typical page and only the first is reported, so the order decides what a
+  consumer is told. `MAX_FACES` is 4 096 and the median candidate is 4 628 faces on a page of prose
+  and 6 672 on one holding a table, yet `LatticeTooLarge` fired **zero** times across 200
+  opendataloader-bench documents because the gutter check always answered first with a few hundred
+  centipoints of word spacing. Both were true; the word gap read as a near miss on a page whose
+  candidate was a histogram of where words start. The reported refusal moves to
+  `lattice_too_large` on 117 of 199 documents. **No table changes** — 115 tables across the eight
+  gate documents, byte-identical.
+
+### Fixed
+
+- **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that
+  carries its type size in the text matrix, every grounding box came out about a point tall — all
+  **82 909** of them on `nist-sp-800-207`, whose body text is 13.3pt. The *width* was already
+  carried through the CTM, so the two axes of one rectangle were in different spaces, which is why
+  adding only the text matrix would still have been wrong. Scaling is now by the vertical component
+  of the text rendering matrix (§9.4.4). No test caught this: geometry sits outside
+  `representation_c14n_sha256`, and the one height test exercises only the operand-carried path.
+
+- **Three files claimed 0.50.0 against a 0.54.0 tree** — `README.md`, `docs/README.md` and
+  `docs/CAPABILITY.md`, the last of which opens with a rule requiring it to move with the version.
+  `ci/doc-version.sh` now enforces that in both `ci/gate.sh` and CI.
+
+### Measurements
+
+- **`docs/measurements/table-refusals/`** — the unruled rule refuses on 199 of 200 documents and
+  emits a table on 5 of the 42 that hold one. Crossed with ground truth, no lattice metric separates
+  a table page from a prose page, and three of five are inverted. A table candidate has to be built
+  inside a bounded region; a page is the wrong scope.
+
+- **`docs/measurements/block-subdivision/probe3b.py`** — the instrument behind
+  [`19`](docs/19-BLOCK-SUBDIVISION-SCOPE.md) §11.2's numbers, which had never been committed. Its
+  headline reproduces eight releases later (63.7% against 63.0%), and 1.15×'s published 1.1%
+  false-fire has gone to zero, so the margin that chose 1.60× is now zero. §11.4 forbids acting on a
+  one-document result, so 1.60× ships — but a second labellable document would now decide a live
+  question.
+
+---
+
 ## [0.54.0] — a word gap the page opened by moving the cursor
 
 **A PDF may open a word gap without drawing a space glyph** — it moves the text cursor with a `TJ`
