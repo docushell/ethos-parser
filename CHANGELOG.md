@@ -122,6 +122,24 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   more pages and `unruled::detect` runs on the runs no accepted ruled table already claims. **No table changes** — 115 tables across the eight
   gate documents, byte-identical.
 
+- **The tagged role path is shared instead of cloned once per run and again per node.** Peak
+  resident memory on the 733-page gate document falls from **6647.0 MiB to 4663.7 — 29.8%** — and
+  the artifact is byte-identical, verified both by the goldens and by hashing both arms of an
+  interleaved A/B across three repetitions. `bind_structure` deep-cloned the whole
+  `PdfTaggedLocator` into every run and `to_representation` cloned it again into every node: ~21.9M
+  `Vec<String>` elements per copy, held twice at peak, for **thirty distinct role paths over
+  twenty-three distinct role names**, the dominant one 15 deep and carried by 1.2M runs. The tree's
+  bindings hold `Arc<PdfTaggedLocator>` now, so 5,661 locators exist instead of 1.65M clones. The
+  clone sites are unchanged — they were already `found.clone()` and are pointer clones now.
+  −22.0% at `--max-pages 128`, −16.1% / −14.9% / −14.6% on the three mid-sized documents, −6.9% on
+  a six-page form. Wall time moves 3–9%, largest on the densest document.
+
+  **`StructuralLocator::PdfTagged` now carries an `Arc`**, which is source-breaking for a
+  downstream crate matching that variant. Thirteen in-tree sites are updated. By
+  [`RELEASING.md`](docs/RELEASING.md) §4 the rule is output-based and byte-identical means PATCH, as
+  0.37.1's "the run buffers move instead of cloning" was — but that rule measures bytes and says
+  nothing about compilation, so the label is the owner's call rather than this entry's.
+
 ### Fixed
 
 - **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that
@@ -149,6 +167,26 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   false-fire has gone to zero, so the margin that chose 1.60× is now zero. §11.4 forbids acting on a
   one-document result, so 1.60× ships — but a second labellable document would now decide a live
   question.
+
+- **`docs/measurements/memory-ceiling/`** — this file's own memory figure was wrong, and is
+  withdrawn. `ci/bench.py` shipped "peak RSS runs roughly **300x** the input"; measured over the
+  eight gate documents it runs **143x to 933x**, a 6.5x spread, and after role-path sharing 133x to
+  655x. It is a corpus median and never was a bound. "~4.7 MiB per page" was also a median — the
+  real range was 3.20 to 9.07, now 2.98 to 6.89.
+
+  Three things nobody had measured. The corpus's worst case had only ever been extrapolated: it is
+  **6.5 GiB for a 7.12 MiB input**, now 4.56. Peak is **linear in admitted pages within one
+  document**, so there is no superlinear retention — the cross-document spread is content density.
+  And **`--max-pages` leaves a floor it cannot lower**: `--max-pages 0` costs 221 MiB on the
+  733-page document, because `structure::read` and `tree_mcids_by_page` are built above the
+  `let budget`. So the two ceilings in the tree do not compose into a memory bound — nothing maps a
+  permitted 2 GiB input onto a peak figure, and a caller who needs a hard memory ceiling still does
+  not have one.
+
+  Four proposals died with a measurement rather than an argument, recorded so the slice is not
+  spent twice: streaming the artifact buffer (950 MiB at an instant that sits 1.1–2.1 GiB below the
+  high-water mark), mimalloc (**+22%**), bounding rayon's threads (~97 MiB, +47–54% wall clock),
+  and narrowing the page fold, which is v2-S15's refusal in disguise.
 
 ---
 

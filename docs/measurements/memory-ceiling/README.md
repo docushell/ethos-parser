@@ -122,32 +122,102 @@ leaves a floor that grows with the document.** The two ceilings in the tree do n
 peak to any caller-chosen number — `MAX_SOURCE_BYTES` permits a 2 GiB input, and nothing maps
 2 GiB of input onto a memory figure.
 
-## 6. What a caller can be told today
+## 6. A 30% cut, byte-identical
 
-Peak is two terms, both measurable before the run:
+§3 says peak is a tight multiple of what the engine EMITS. That turned out to be the wrong place to
+look for the fix. An adversarial audit of the retained memory refuted 13 of 16 proposals, and the
+one that survived was not the artifact buffer `ci/bench.py` blamed — it was one value copied 1.65
+million times.
+
+`bind_structure` resolved a run's `(page, mcid)` against the structure tree and deep-cloned the
+whole `PdfTaggedLocator` into the run; `to_representation` cloned it again into the node. On
+`53Ar5` that is ~21.9M `Vec<String>` elements per copy, held twice at peak, for **30 distinct role
+paths over 23 distinct role names**. The dominant path is 15 deep and carried by 1.2M runs. Sharing
+one `Arc<PdfTaggedLocator>` per tree binding leaves 5,661 locators.
+
+Interleaved A/B, median of 3, both arms in the same loop:
+
+| document | budget | baseline | patched | delta | bytes |
+| --- | --- | --- | --- | --- | --- |
+| nist-sp-800-53Ar5 | — | 6647.0M | 4663.7M | **-29.8%** | IDENTICAL |
+| nist-sp-800-53Ar5 | 128 | 1368.5M | 1067.3M | -22.0% | IDENTICAL |
+| nist-sp-800-37r2 | — | 1083.7M | 909.7M | -16.1% | IDENTICAL |
+| nist-sp-800-171r3 | — | 572.9M | 487.8M | -14.9% | IDENTICAL |
+| nist-sp-800-161r1 | — | 1642.0M | 1401.8M | -14.6% | IDENTICAL |
+| irs-fw9 | — | 18.7M | 17.4M | -6.9% | IDENTICAL |
+
+**Throughput moved too, by 3% to 9%** — and that number needed its own instrument. Two SEQUENTIAL
+`bench.py` runs across the change showed wall time down ~36% uniformly, including on a 6-page form
+with almost no role paths to share. A real effect here must scale with role-path density, so a flat
+36% is the signature of machine state. Interleaved A/B on the engine's own `wall_micros`, median of
+5, gives the honest figure: -3.6% on `irs-fw9`, -2.6% on `171r3`, -3.2% on `161r1`, -4.7% on `218`,
+**-8.6% on `53Ar5`** — small, and largest on the densest document, which is the shape the mechanism
+predicts. This is the trap `ci/bench.py`'s own header describes, and it very nearly published a
+36% throughput claim.
+
+**What the audit refuted, each measured rather than argued.** Recorded so nobody spends the slice
+twice:
+
+| proposal | why it died |
+| --- | --- |
+| Stream the artifact instead of one `Vec<u8>` | A real 950 MiB at the print instant — but that instant sits 1.1-2.1 GiB BELOW the high-water mark. Peak does not move. |
+| Swap the allocator (mimalloc) | **+1293 MiB (+22%)**. The system allocator tracks live data to within 4.9%; there is no fragmentation to reclaim. |
+| Bound rayon's thread count | Saturates at ~97 MiB (1.5%) and costs +47-54% wall clock. One refuter measured it as a +138 MiB regression. |
+| Narrow the parallel page fold | The v2-S15 refusal in disguise, exactly as `extract.rs:1030` warns. Ceiling <=21.6 MiB; realizable -4.7 MiB, i.e. worse. |
+
+## 7. The corpus after the cut, and what a caller can be told
+
+Re-measured at `58a1342`, median of 5 — these are the SHIPPED coefficients; §2's table is the
+baseline that motivated the change:
+
+| fixture | pages | artifact | peak RSS | /input | /artifact | MiB/page |
+| --- | --- | --- | --- | --- | --- | --- |
+| irs-f1040sd-2025 | 2 | 0.64M | 13.8M | 148x | 21.53x | 6.89 |
+| irs-fw9 | 6 | 0.80M | 17.9M | 133x | 22.42x | 2.98 |
+| nist-sp-800-218 | 36 | 28.73M | 199.1M | 282x | 6.93x | 5.53 |
+| nist-sp-800-207 | 59 | 42.67M | 214.0M | 232x | 5.02x | 3.63 |
+| nist-sp-800-171r3 | 120 | 81.96M | 488.0M | 321x | 5.95x | 4.07 |
+| nist-sp-800-37r2 | 183 | 207.66M | 912.3M | 421x | 4.39x | 4.99 |
+| nist-sp-800-161r1 | 327 | 271.55M | 1398.2M | 303x | 5.15x | 4.28 |
+| nist-sp-800-53Ar5 | 733 | 950.48M | **4665.6M** | 655x | 4.91x | 6.37 |
+
+The worst case is **4.56 GiB, down from 6.49**. Per-page is now 2.98-6.89 MiB (median 4.63, spread
+2.31x) and the input ratio 133x-655x — still a 4.9x spread, so it is still not a bound and the
+withdrawal in §3 stands. Peak/artifact on the six real documents tightens to 4.39x-6.93x.
+
+**The floor did not move, as predicted:** `--max-pages 0` costs 221.4 MiB on `53Ar5` against 224.2
+before, 45.2 against 45.3 on `171r3`. A document admitting no pages has no runs whose role path
+could be shared, so the term §5 identifies is untouched. That is a check on the mechanism, not just
+a repeat reading.
+
+Peak is two terms, both knowable before the run:
 
     peak ~= floor(total_pages) + k x admitted_pages
 
-with, on this corpus, `floor` at 0.18-0.32 MiB per document page and `k` at 4.3-8.6 MiB per
-admitted page. For sizing, the worst observed coefficient is the only safe one:
+with `floor` at 0.18-0.32 MiB per document page and `k` at 3.0-6.9 MiB per admitted page. For
+sizing, the worst observed coefficient is the only safe one:
 
-**Budget 10 MiB per admitted page, plus 0.35 MiB per page in the document.** On `53Ar5` that
-predicts 7.6 GiB against 6.6 GiB measured — over by 14%, which is the direction an estimate for
+**Budget 7 MiB per admitted page, plus 0.35 MiB per page in the document.** On `53Ar5` that
+predicts 5.3 GiB against 4.56 GiB measured — over by 16%, which is the direction an estimate for
 provisioning should err.
 
-## 7. What this does not settle
+## 8. What this still does not settle
 
-- Whether any of the retained memory can be released **byte-identically**. Peak is 5.2x-7.9x the
-  artifact, so most of it is live Rust structures rather than the JSON buffer; `bench.py:30` names
-  `canonical_bytes_of` returning one `Vec<u8>` as the cause, and on `53Ar5` that buffer is 950 MiB
-  of 6646 MiB — real, but a minority of the peak.
-- Whether the floor in §5 can be bounded by the page budget without changing output.
-- Whether a ceiling expressed in *bytes* is wanted at all, given `profile.rs:975` already records
-  the design position that pages are "the bound that actually governs peak cost ... which is why it
-  is the knob rather than a byte ceiling". §5 shows that position is right about the dominant term
-  and silent about the floor.
+- **There is no ceiling a caller can set.** This is the part 6.2's title asked for and it remains
+  open. `--max-pages` bounds the dominant term but not the floor, and `MAX_SOURCE_BYTES` permits a
+  2 GiB input that nothing maps onto a memory figure. Two shapes are unmeasured: a named
+  `ResourceLimit` refusal when `total_pages x coefficient` exceeds a caller-supplied ceiling, and a
+  decompression ceiling on the PDF load path to match `zip::MAX_INFLATED_BYTES`, which the office
+  path has had since v2-S13. Whether a byte-denominated ceiling is wanted at all is a design call:
+  `profile.rs:975` records the position that pages are the knob.
+- **One measurement disagreement, unresolved.** One auditor claims dropping the lopdf object graph
+  before `to_representation` saves 838 MiB, measured on a built prototype. Its refuter measured the
+  whole term — 141.7 MiB graph plus the 7.1 MiB source plus <=5 MiB of font cache — at 148.8 MiB,
+  and calls 838 arithmetically impossible. Both claim measurement. In-process heap accounting under
+  a counting `GlobalAlloc` would settle it; external peak RSS cannot, because it cannot separate
+  retained from transient.
+- **Whether the floor's structure-tree share can be bounded by the page budget.** One audit lens
+  put it at 32.1 MiB of `53Ar5`'s 221 MiB floor and byte-identical; nobody built it.
 
-Do not re-propose chunking the parallel page fold: it was built and measured at v2-S15
-(558.9 -> 563.6 MiB, nothing, slightly the wrong way) and the reasoning is at
-`extract.rs:1030-1053`. The pages are the artifact; bounding how many are live bounds only the
-counters.
+Do not re-propose chunking the parallel page fold, streaming the artifact buffer, or a different
+allocator. All three are in §6's table with the measurement that killed them.

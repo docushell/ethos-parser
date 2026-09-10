@@ -1052,14 +1052,23 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     //
     // # Re-measured at 97fa562, and the per-page figure is a range rather than a constant
     //
-    // "~4.7 MiB per page" above is the median of a spread. Across the eight gate documents it is
-    // 3.20 to 9.07 MiB/page, and the 733-page document peaks at 6.5 GiB. Within ONE document the
-    // marginal cost per admitted page IS constant — a `--max-pages` ladder on that document gives
-    // 8.4 to 9.2 MiB/page from 128 pages up — so there is no superlinear retention here and the
-    // cross-document spread is content density.
+    // "~4.7 MiB per page" above is the median of a spread. Measured pre-Arc it was 3.20 to 9.07
+    // MiB/page with the 733-page document at 6.5 GiB; after the role-path sharing below it is
+    // 2.98 to 6.89, and that document peaks at 4.56 GiB. Within ONE document the marginal cost per
+    // admitted page IS constant — a pre-Arc `--max-pages` ladder gives 8.4 to 9.2 MiB/page from
+    // 128 pages up, and the two post-Arc points (128 and 733) give 5.95 — so there is no
+    // superlinear retention here and the cross-document spread is content density.
+    //
+    // The 30% that came off was not the parallelism and not the artifact buffer: it was the tagged
+    // role path, deep-cloned once per run at `bind_structure` and again per node, ~21.9M
+    // `Vec<String>` elements for THIRTY distinct paths. It is shared behind an `Arc` now. The
+    // paragraph above is still right that the pages are the artifact and cannot be dropped; it was
+    // wrong that what they hold is irreducible.
     //
     // What the paragraph above does not say, and what the ladder exposed: `--max-pages 0` on the
-    // 733-page document still costs 224 MiB. The budget is read at the `let budget` below, but
+    // 733-page document still costs 221 MiB, and role-path sharing did not move it — a document
+    // admitting no pages has no run whose path could be shared, which is a check on the mechanism
+    // rather than a repeat reading. The budget is read at the `let budget` below, but
     // `structure::read` and `tree_mcids_by_page` are built above it over the WHOLE document, so
     // that term never responds to the flag. See `docs/measurements/memory-ceiling/`.
     use rayon::prelude::*;
