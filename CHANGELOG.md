@@ -227,6 +227,24 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   not by freeing sooner. Baseline footprint also runs 13–22% below RSS, so the RSS-based sizing
   rule over-provisions on macOS — the safe direction.
 
+
+- **The read side had never been measured, and verification is most of it.** `ground`, `markdown`,
+  `html` and MCP's `ground` and `node_get` load a representation and verify its fingerprint by
+  rebuilding the whole canonical payload. On the largest gate document `ground` peaks at 4.17 GiB —
+  **531 MiB above `extract` producing the same artifact** — and measurement-only arms, never
+  shipped, show verification accounts for about the payload's size in memory (805 MiB there) and
+  **55–64% of the wall time on every read command at every size**: `ground` on that document runs
+  18.4 s with it and 8.3 s without. Freeing the source buffer early does nothing. A streaming hash
+  would not help, because c14n stages `nodes` in full to sort keys; hashing the input's own bytes
+  would, but is not verdict-identical — about 25 fields parse an explicit empty value the same as its
+  absence — so the fix is left as an owner's choice among three options.
+  `docs/measurements/memory-ceiling/` §12. `grounding-check` peaks at 12.7–13.5x its input, the
+  worst ratio in the engine, from parsing its artifact twice. **Found on the way, and not fixed:**
+  `ground` emits a grounding artifact the Ethos verifier refuses for the largest gate document —
+  1,619,510 spans against `ethos.grounding.v1`'s 1,000,000 cap, which the projection does not
+  enforce — so grounding fails silently for documents past roughly 450–750 pages while `ground`
+  exits 0. Confirmed by the engine's own check, an exact count, and `ethos grounding check`. What
+  `ground` should do past the cap is an owner's decision.
 ---
 
 ## [0.54.0] — a word gap the page opened by moving the cursor
