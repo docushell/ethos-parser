@@ -140,6 +140,21 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   0.37.1's "the run buffers move instead of cloning" was — but that rule measures bytes and says
   nothing about compilation, so the label is the owner's call rather than this entry's.
 
+- **MCP stopped parsing every artifact back into a tree.** `tool_extract` handed the canonical
+  bytes to `serde_json::from_slice` so they could sit in a `json!` response, then serialized the
+  response back into one String — the artifact three times over, the middle copy a value tree
+  several times the text. A 4.6 MB PDF peaked at **8.7 GiB** over MCP against 1.4 GiB on the CLI,
+  on the surface `mcp.rs` calls the one that matters most. It now peaks at **1.1 GiB (−87%)**, and
+  MCP runs at about the CLI's own peak across the gate corpus. The 733-page document, never run
+  through the old route because it would have needed ~30 GB, needs 3.7 GiB. **Byte-identical in the
+  build that ships**: an artifact reply writes every key in sorted order around the canonical bytes,
+  which is what a release build's `serde_json` printed — verified over 84 MCP sessions across
+  `extract`, `ground` and `node_get`, and on the headline document, with zero differing bytes.
+  **The envelope is now canonical in every build, which it was not:** core's dev-dependency
+  `preserve_order` unifies into `cargo test --workspace`, so the old envelope was insertion-ordered
+  in the gate's test build and sorted in release. The first version of this fix failed the gate on
+  exactly that. `node_get` returns one node and keeps its `Value`.
+
 ### Fixed
 
 - **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that
@@ -187,6 +202,19 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   spent twice: streaming the artifact buffer (950 MiB at an instant that sits 1.1–2.1 GiB below the
   high-water mark), mimalloc (**+22%**), bounding rayon's threads (~97 MiB, +47–54% wall clock),
   and narrowing the page fold, which is v2-S15's refusal in disguise.
+
+- **Freeing memory sooner was measured and refused: it raised the peak.** An audit claimed that
+  dropping the lopdf object graph before `to_representation` saved 838 MiB; its refuter put the
+  whole graph at 149 MiB. Rebuilt and measured against today's engine, interleaved, five runs per
+  arm, every artifact byte-identical: it **raises** peak RSS by 343 MiB and peak *footprint* by
+  **668 MiB** on `nist-sp-800-53Ar5`, and by 211 / 241 MiB on `nist-sp-800-37r2`. Dropping the
+  whole extract page graph before `seal` as well adds nothing. Footprint rising more than RSS rules
+  out reclaimable pages: the change genuinely raises what macOS charges the process. The auditor's
+  −838 MiB was a real measurement of the engine before role-path sharing; the sign flipped with an
+  unrelated commit, which is the reason to refuse it rather than re-tune it. The lesson recorded in
+  `docs/measurements/memory-ceiling/` §9: in this engine, memory is released by not allocating,
+  not by freeing sooner. Baseline footprint also runs 13–22% below RSS, so the RSS-based sizing
+  rule over-provisions on macOS — the safe direction.
 
 ---
 

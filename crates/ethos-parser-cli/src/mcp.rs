@@ -101,24 +101,25 @@ pub fn serve(input: impl BufRead, mut output: impl Write) -> std::io::Result<()>
             // shortcut: answering `notifications/initialized` is a protocol error.
             continue;
         };
-        writeln!(output, "{response}")?;
+        response.write_to(&mut output)?;
+        writeln!(output)?;
         output.flush()?;
     }
     Ok(())
 }
 
 /// One line in, at most one response out.
-fn handle_line(line: &str) -> Option<Value> {
+fn handle_line(line: &str) -> Option<Reply> {
     let request: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         // No id to answer with, so this is the one case that answers with a null id — the JSON-RPC
         // spec's own provision for an unparseable request.
         Err(e) => {
-            return Some(json!({
+            return Some(Reply::Json(json!({
                 "jsonrpc": "2.0",
                 "id": Value::Null,
                 "error": { "code": -32700, "message": format!("parse error: {e}") }
-            }))
+            })))
         }
     };
 
@@ -130,9 +131,87 @@ fn handle_line(line: &str) -> Option<Value> {
     let id = id?;
 
     Some(match dispatch(method, &params) {
-        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-        Err(e) => json!({ "jsonrpc": "2.0", "id": id, "error": e.to_json() }),
+        Ok(Outcome::Value(result)) => {
+            Reply::Json(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+        }
+        Ok(Outcome::Artifact { summary, artifact }) => Reply::Artifact {
+            id,
+            summary,
+            artifact,
+        },
+        Err(e) => Reply::Json(json!({ "jsonrpc": "2.0", "id": id, "error": e.to_json() })),
     })
+}
+
+/// What [`dispatch`] produces: a result object, or a tool's artifact still in canonical bytes.
+enum Outcome {
+    Value(Value),
+    Artifact { summary: String, artifact: Vec<u8> },
+}
+
+/// What a tool hands back for `structuredContent`.
+enum Artifact {
+    /// Canonical bytes, written into the response verbatim and never parsed into a tree.
+    Bytes(Vec<u8>),
+    /// A value small enough that serializing it with the envelope costs nothing — one node.
+    Value(Value),
+}
+
+/// One response line, before its newline.
+enum Reply {
+    Json(Value),
+    Artifact {
+        id: Value,
+        summary: String,
+        artifact: Vec<u8>,
+    },
+}
+
+impl Reply {
+    /// Write this reply, without the trailing newline.
+    ///
+    /// **An artifact is never parsed back into a tree.** The route this replaces handed the
+    /// canonical bytes to `serde_json::from_slice` so they could sit inside a `json!` envelope,
+    /// then serialized the envelope — tree and all — back into one String to print it. The
+    /// artifact existed three times over, and the tree is several times the text it came from:
+    /// on a 4.6 MB PDF, peak memory was 1.4 GiB through `extract` on the CLI and 8.7 GiB
+    /// through the same tool here, on the surface this module calls the one that matters most.
+    ///
+    /// **Canonical in every build, which the old route was not.** A release build's `serde_json`
+    /// sorts object keys, so the envelope read `id`, `jsonrpc`, `result`, the result read
+    /// `content`, `isError`, `structuredContent`, and the artifact was LAST at both levels — the
+    /// old output was literally this prefix, the artifact's bytes, and `}}`. But that order is a
+    /// property of the build, not of this code: `preserve_order`, which core enables in its
+    /// dev-dependencies precisely because it is a hazard, unifies into `cargo test --workspace`,
+    /// and there the old route printed the same envelope in insertion order. MCP's envelope bytes
+    /// differed between the build that ships and the build the gate tests for as long as this
+    /// module has existed. The artifact inside never did, because c14n sorts at write time.
+    ///
+    /// So every key of an artifact reply is written out here in sorted order — the envelope's,
+    /// the result's, and the one summary object's in `content` — and the artifact arrives already
+    /// canonical. That is exactly what a release build printed, so the shipped wire bytes do not
+    /// move, and it no longer depends on which features unify.
+    /// `an_artifact_reply_is_canonical_in_every_build` compares it with `c14n_bytes` of the same
+    /// envelope, and because the gate runs that test under `preserve_order`, the hazard is
+    /// exercised rather than described.
+    fn write_to(&self, out: &mut impl Write) -> std::io::Result<()> {
+        match self {
+            Reply::Json(v) => write!(out, "{v}"),
+            Reply::Artifact {
+                id,
+                summary,
+                artifact,
+            } => {
+                let summary = Value::from(summary.as_str());
+                write!(
+                    out,
+                    r#"{{"id":{id},"jsonrpc":"2.0","result":{{"content":[{{"text":{summary},"type":"text"}}],"isError":false,"structuredContent":"#
+                )?;
+                out.write_all(artifact)?;
+                out.write_all(b"}}")
+            }
+        }
+    }
 }
 
 /// A JSON-RPC error, or a tool error carried inside a successful result.
@@ -164,19 +243,19 @@ impl From<&EngineError> for Failure {
     }
 }
 
-fn dispatch(method: &str, params: &Value) -> Result<Value, Failure> {
+fn dispatch(method: &str, params: &Value) -> Result<Outcome, Failure> {
     match method {
-        "initialize" => Ok(json!({
+        "initialize" => Ok(Outcome::Value(json!({
             "protocolVersion": PROTOCOL_VERSION,
             // `tools` and nothing else. No resources, no prompts, no sampling: each is a surface
             // that would have to obey the handle law, and none of them is needed to return an
             // artifact.
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "ethos-parser", "version": env!("CARGO_PKG_VERSION") },
-        })),
-        "tools/list" => Ok(json!({ "tools": tools() })),
+        }))),
+        "tools/list" => Ok(Outcome::Value(json!({ "tools": tools() }))),
         "tools/call" => call_tool(params),
-        "ping" => Ok(json!({})),
+        "ping" => Ok(Outcome::Value(json!({}))),
         other => Err(Failure::new(
             METHOD_NOT_FOUND,
             format!("no method `{other}`"),
@@ -259,7 +338,7 @@ fn tools() -> Value {
     ])
 }
 
-fn call_tool(params: &Value) -> Result<Value, Failure> {
+fn call_tool(params: &Value) -> Result<Outcome, Failure> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
@@ -274,26 +353,26 @@ fn call_tool(params: &Value) -> Result<Value, Failure> {
     };
 
     match outcome {
-        Ok((summary, artifact)) => Ok(json!({
-            // **The summary is for the model; the artifact is for the pipeline.** Counts only —
-            // no box, no id, no cell. §16.7's split, and a test asserts no coordinate reaches
-            // here.
+        // **The summary is for the model; the artifact is for the pipeline.** Counts only — no
+        // box, no id, no cell. §16.7's split, and a test asserts no coordinate reaches here.
+        Ok((summary, Artifact::Bytes(artifact))) => Ok(Outcome::Artifact { summary, artifact }),
+        Ok((summary, Artifact::Value(artifact))) => Ok(Outcome::Value(json!({
             "content": [{ "type": "text", "text": summary }],
             "structuredContent": artifact,
             "isError": false,
-        })),
+        }))),
         // **A tool failure, not a protocol failure.** The call was well-formed and the answer is
         // no — which is what a forged handle must produce, so the model sees a refusal rather
         // than a plausible guess.
-        Err(f) => Ok(json!({
+        Err(f) => Ok(Outcome::Value(json!({
             "content": [{ "type": "text", "text": f.message }],
             "isError": true,
-        })),
+        }))),
     }
 }
 
 /// `path` → the canonical representation, and the same bytes `ethos-parser extract` prints.
-fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
+fn tool_extract(args: &Value) -> Result<(String, Artifact), Failure> {
     let path = args
         .get("path")
         .and_then(Value::as_str)
@@ -315,11 +394,14 @@ fn tool_extract(args: &Value) -> Result<(String, Value), Failure> {
         artifact.payload().pages.len(),
         artifact.payload().nodes.len()
     );
-    Ok((summary, canonical(&artifact.to_canonical_bytes())?))
+    let bytes = artifact
+        .to_canonical_bytes()
+        .map_err(|e| Failure::from(&e))?;
+    Ok((summary, Artifact::Bytes(bytes)))
 }
 
 /// A representation → `ethos.grounding.v1`.
-fn tool_ground(args: &Value) -> Result<(String, Value), Failure> {
+fn tool_ground(args: &Value) -> Result<(String, Artifact), Failure> {
     let repr = representation_arg(args)?;
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
     let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
@@ -329,7 +411,7 @@ fn tool_ground(args: &Value) -> Result<(String, Value), Failure> {
         projection.source.elements.len(),
         projection.omission.nodes_omitted
     );
-    Ok((summary, canonical(&Ok(bytes))?))
+    Ok((summary, Artifact::Bytes(bytes)))
 }
 
 /// **The handle law, made mechanical.**
@@ -337,7 +419,7 @@ fn tool_ground(args: &Value) -> Result<(String, Value), Failure> {
 /// The representation is re-validated (fingerprint) and the id is looked up among *that*
 /// artifact's own nodes. Not found is an error, deliberately: an empty result would tell a model
 /// its guess was merely unlucky.
-fn tool_node_get(args: &Value) -> Result<(String, Value), Failure> {
+fn tool_node_get(args: &Value) -> Result<(String, Artifact), Failure> {
     let repr = representation_arg(args)?;
     let node_id = args.get("node_id").and_then(Value::as_str).ok_or_else(|| {
         Failure::new(INVALID_PARAMS, "`node_id` is required and must be a string")
@@ -362,7 +444,10 @@ fn tool_node_get(args: &Value) -> Result<(String, Value), Failure> {
 
     let value = serde_json::to_value(node)
         .map_err(|e| Failure::new(INVALID_PARAMS, format!("node will not serialize: {e}")))?;
-    Ok((format!("1 node, kind `{:?}`.", node.kind), value))
+    Ok((
+        format!("1 node, kind `{:?}`.", node.kind),
+        Artifact::Value(value),
+    ))
 }
 
 /// Read the `representation` argument and **re-validate it before anything reads it**.
@@ -391,24 +476,69 @@ fn representation_arg(args: &Value) -> Result<DocumentRepresentation, Failure> {
     Ok(repr)
 }
 
-/// Canonical artifact bytes, parsed back into JSON for `structuredContent`.
-///
-/// Through the canonical form rather than `serde_json::to_value` directly, so what a tool returns
-/// is the artifact the CLI prints — key order, integer discipline and all — rather than a second
-/// serialization that could drift from it.
-fn canonical(bytes: &Result<Vec<u8>, EngineError>) -> Result<Value, Failure> {
-    let bytes = bytes.as_ref().map_err(Failure::from)?;
-    serde_json::from_slice(bytes)
-        .map_err(|e| Failure::new(INVALID_PARAMS, format!("canonical bytes: {e}")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn call(method: &str, params: Value) -> Value {
         let line = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
-        handle_line(&line.to_string()).expect("a request with an id gets a response")
+        render(handle_line(&line.to_string()).expect("a request with an id gets a response"))
+    }
+
+    /// A reply as the wire carries it, parsed back — the only form a host ever sees.
+    fn render(reply: Reply) -> Value {
+        let mut bytes = Vec::new();
+        reply
+            .write_to(&mut bytes)
+            .expect("writing to a Vec cannot fail");
+        serde_json::from_slice(&bytes).expect("a reply is one JSON value")
+    }
+
+    /// **An artifact reply is canonical in every build.**
+    ///
+    /// `Reply::write_to` writes every key order by hand, so it must equal the canonical
+    /// serialization of the envelope the old `Value` route built — which is what a release build's
+    /// `serde_json` prints. The reference is `c14n_bytes`, which sorts at write time whatever
+    /// features unify, because `serde_json`'s own order is a build property: the gate runs this test
+    /// under `preserve_order`, where the old route printed this envelope in insertion order. The
+    /// summary carries a quote, a backslash and a non-ASCII character, so escaping is compared too.
+    #[test]
+    fn an_artifact_reply_is_canonical_in_every_build() {
+        let value =
+            json!({ "nested": { "b": [1, 2], "a": "caf\u{e9}" }, "artifact_type": "x", "n": 3 });
+        let artifact = ethos_parser_core::c14n_bytes(&value).expect("canonical");
+        let summary = "a \"quoted\" summary \\ caf\u{e9}".to_string();
+        let id = json!(7);
+
+        let mut spliced = Vec::new();
+        Reply::Artifact {
+            id: id.clone(),
+            summary: summary.clone(),
+            artifact,
+        }
+        .write_to(&mut spliced)
+        .expect("write");
+
+        let tree = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "content": [{ "type": "text", "text": summary }],
+                "structuredContent": value,
+                "isError": false,
+            }
+        });
+
+        assert_eq!(
+            String::from_utf8_lossy(&spliced),
+            String::from_utf8_lossy(&ethos_parser_core::c14n_bytes(&tree).expect("canonical")),
+            "an artifact reply must be the canonical envelope, whatever features this build unified"
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&spliced).expect("one JSON value"),
+            tree,
+            "and it must carry the values the Value route did"
+        );
     }
 
     #[test]
@@ -507,7 +637,7 @@ mod tests {
 
     #[test]
     fn an_unparseable_line_is_an_error_rather_than_a_panic() {
-        let r = handle_line("{not json").expect("a reply");
+        let r = render(handle_line("{not json").expect("a reply"));
         assert_eq!(r["error"]["code"], -32700);
     }
 
