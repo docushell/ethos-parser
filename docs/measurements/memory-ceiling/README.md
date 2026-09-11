@@ -425,3 +425,138 @@ two-page form, where the ~13 MiB process floor dominates and adopting has nothin
 `53Ar5` the rule now predicts 5.26 GiB against 3.65 measured, over by 44%. Loose is the safe
 direction for provisioning. Tightening it would mean a two-term rule with a separate process floor,
 which changes what is published rather than re-measuring it, and is not done here.
+
+## 12. Reading an artifact back in costs more than producing it
+
+Everything above measured the WRITE side — `extract`, and MCP's `extract`. Nothing had measured the
+commands that READ a representation back in: `ground`, `markdown`, `html`, and MCP's `ground` and
+`node_get`. They share one load path: the whole file into one buffer, `serde_json::from_slice` into
+the typed `DocumentRepresentation`, `verify_fingerprint`, then project and emit. `grounding-check`
+has a different one — it reads a grounding artifact, not a representation.
+
+Instruments: [`abload.py`](abload.py), [`mcpload.py`](mcpload.py), [`gcheck.py`](gcheck.py).
+
+### The baseline
+
+| document | representation | `ground` RSS / footprint | MCP `node_get` (load + verify only) | `extract` |
+| --- | --- | --- | --- | --- |
+| nist-sp-800-171r3 | 82.0 MiB | 344.6 / 343.0 | 286.4 | 403.7 |
+| nist-sp-800-37r2 | 207.7 | 798.3 / 797.0 | 702.9 | 914.9 |
+| nist-sp-800-161r1 | 271.5 | 1102.0 / 1082.5 | 926.0 | 1129.2 |
+| **nist-sp-800-53Ar5** | **950.5** | **4267.1 / 4216.6** | **3683.4** | 3736.2 |
+
+**On the largest document, `ground` peaks 531 MiB above `extract`.** MCP's `node_get` is given an id
+that does not exist, so it pays the load and the verify and fails closed: its peak is the load
+path's cost with no projection on top, and on `53Ar5` that alone is 3683 MiB — what producing the
+artifact cost. MCP's `ground` matches the CLI's (4264.8 against 4267.1), so §10's fix holds.
+
+Footprint sits within 1–2% of RSS here, unlike `extract`, where it ran 13–22% lower. The load path
+is dominated by a few huge allocations, which macOS charges in full.
+
+### Where the load path's memory and time go
+
+Measurement-only arms, built in a scratch worktree and never shipped, against the baseline,
+interleaved, three runs per arm, output hashed on every run:
+
+| `ground` on `53Ar5` | peak RSS | footprint | wall |
+| --- | --- | --- | --- |
+| baseline | 4265.7 MiB | 4216.9 | 18.38 s |
+| A1 — skip `verify_fingerprint` | **−804.8** | −806.9 | **8.28 s (−54.9%)** |
+| A2 — free the file buffer once parsed | −0.9 | −0.9 | −0.5% |
+| A3 — both | −805.3 | −805.6 | −54.9% |
+
+The same arms across every read command and document, output byte-identical in all eight cases:
+
+| case | baseline | A1 skip verify: RSS / footprint / wall | A2 free buffer: RSS | A3 both: RSS |
+| --- | --- | --- | --- | --- |
+| `markdown` 53Ar5 | 3975.5M, 16.38 s | −763.6 / −795.9 / **−61.3%** | −8.1 | −797.5 |
+| `html` 53Ar5 | 4129.7M, 17.28 s | −667.9 / −742.1 / **−58.9%** | +11.8 | −793.3 |
+| `ground` 161r1 | 1103.7M, 4.92 s | −226.2 / −226.2 / **−60.0%** | −0.6 | −228.4 |
+| `markdown` 161r1 | 1041.8M, 4.54 s | −200.4 / −223.4 / **−64.3%** | −3.6 | −221.9 |
+| `html` 161r1 | 1077.3M, 4.78 s | −215.3 / −226.9 / **−61.4%** | −1.0 | −226.6 |
+| `ground` 37r2 | 797.2M, 3.70 s | −100.1 / −118.5 / **−60.8%** | +0.0 | −173.6 |
+| `ground` 171r3 | 344.0M, 1.46 s | −68.4 / −68.4 / **−59.2%** | +0.2 | −68.5 |
+
+Freeing the buffer alone never helps (−8 to +12 MiB). Once verification stops allocating it sometimes
+adds a little — 74 MiB more on 37r2, 125 more on `html` 53Ar5 — because the peak moves to an instant
+where the buffer is still counted. An interaction, not a fix.
+
+**Verification is the load path's dominant cost: 55–64% of the wall time on every read command at
+every size, and about the canonical payload's size in memory — 805 MiB on 53Ar5.** The
+805 MiB is the canonical payload's size exactly — `fingerprint()` rebuilds all of it to hash it and
+throw it away. With `sha2` 0.10 dispatching to the ARMv8 SHA-2 instructions on this machine,
+hashing 805 MB should take well under a second, so most of the ~10 s is the re-serialization; that
+split is inferred, not measured.
+
+**Freeing the 950 MB file buffer early does nothing** — §9's lesson a third time. In this engine,
+memory comes down by not allocating, not by freeing sooner.
+
+### Why a streaming hash would not help, and what would
+
+The obvious fix — hash as a stream instead of into a `Vec` — saves nothing here. c14n sorts keys by
+staging each field of an object in its own buffer, so the payload's `nodes` field is materialized
+in full, 805 MiB, before a single byte could reach the hasher. §11 removed the COPY of that buffer;
+it did not remove the buffer.
+
+What would work is not re-serializing at all: the file is canonical JSON, so its `representation`
+member IS the canonical payload, and hashing that byte span in place costs neither the buffer nor
+the walk. But it is **not verdict-identical**, and an audit of the representation types says why:
+
+- unknown fields are refused everywhere — every payload struct, and the envelope through
+  `RepresentationWire` — so that route is closed;
+- but 21 `skip_serializing_if` fields parse an explicit `null` or empty value exactly as their
+  absence, and 4 `serde(default)` sites fill a missing field — among them `tables`, which is always
+  emitted. Around 25 places where two different byte strings parse to the same value.
+
+So hashing the input span would accept a narrow class of hand-crafted payloads today's check
+rejects — explicit empty arrays written into the JSON with the digest recomputed over those raw
+bytes — and the engine would then speak for a record whose declared fingerprint is not the
+canonical encoding of what it parsed. The options, which are an owner's decision and not a
+measurement's:
+
+| option | memory | the ~10 s | semantics |
+| --- | --- | --- | --- |
+| A. a payload-aware streaming canonical hash | −805 MiB | mostly stays | identical |
+| B. hash the input span; fall back to today's check on mismatch | −805 MiB | mostly gone | accepts crafted inputs today's check rejects |
+| C. make parsing lossless for canonical input, then B | −805 MiB | mostly gone | a stricter reader — a MINOR, and more work |
+
+### `grounding-check` has the worst ratio in the engine
+
+| document | grounding artifact | peak RSS / footprint | RSS / input |
+| --- | --- | --- | --- |
+| nist-sp-800-171r3 | 15.3 MiB | 205.9 / 177.9 | 13.5x |
+| nist-sp-800-37r2 | 37.4 | 492.5 / 425.5 | 13.2x |
+| nist-sp-800-161r1 | 47.8 | 639.5 / 539.2 | 13.4x |
+| nist-sp-800-53Ar5 | 151.4 | 1922.8 / 1691.6 | 12.7x |
+
+`grounding_check` parses the artifact twice — into a `serde_json::Value` tree (`check.rs:483`) and
+then into the typed `GroundingSource` (`check.rs:511)` — the tree-multiplier shape §10 removed from
+MCP. Not changed here.
+
+### Found on the way: `ground` emits an artifact its own checker rejects
+
+On the largest gate document, `ground` writes a grounding artifact that `ethos.grounding.v1` rejects
+— and the Ethos verifier refuses it too. `grounding-check` exited 1 on it while this section was
+being measured, and three independent checks then agreed:
+
+| check | `nist-sp-800-53Ar5`'s grounding artifact |
+| --- | --- |
+| the engine's `grounding-check` | exit 1 — `invalid`, `limit_exceeded` at `/` |
+| exact sizes, [`gcount.py`](gcount.py) | **1,619,510 spans** against a 1,000,000 limit; its 50,329 elements and longest string (2,094 bytes) are within theirs |
+| the Ethos verifier, `ethos grounding check` 0.6.0 | exit 2 — `invalid`, `limit_exceeded` at `/`: "reduce the submitted artifact within the measured limits" |
+
+The other three gate documents are valid under both checkers, carrying 159,594 to 498,561 spans.
+`ethos.grounding.v1` caps `elements` and `spans` at 1,000,000 each (`check.rs`, `mod limits`,
+differential-tested against Ethos down to verdict, code and path). Every node with a measurable ink
+box becomes one span, and the four documents carry 1,330 to 2,210 spans a page — so the cap is
+reached somewhere between about 450 and 750 pages of text. `ground`'s projection enforces none of the
+schema's limits, so above that size it emits an artifact the verifier refuses outright: the grounding
+this engine exists to provide fails, silently, for every sufficiently large document, while `ground`
+itself exits 0.
+
+The gate is green because no test grounds a document this large and then checks what it wrote.
+
+**Not fixed here.** What `ground` should do past the cap is a contract decision. The schema already
+makes `spans` optional (`capabilities.spans`), which suggests one shape — emit the elements alone and
+declare the omission, keeping block-level grounding for large documents — beside the plainer one of
+refusing by name, as `MAX_SOURCE_BYTES` does. Either is better than an artifact the verifier rejects.
