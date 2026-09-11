@@ -153,11 +153,11 @@ wrote, and retyping them by hand is how a consumer silently stops matching.
 
 | Kind | Supported items |
 | --- | --- |
-| Projection | `project`, `Projection`, `OmissionReport` (with `is_lossy`), `to_canonical_bytes` |
+| Projection | `project`, `Projection`, `OmissionReport` (with `is_lossy`), `SpansWithheld`, `to_canonical_bytes` |
 | Artifact | `GroundingSource`, `Source`, `Producer`, `GroundingCapabilities`, `GroundingCoordinateSystem`, `Page`, `Element`, `Span`, `Table`, `Cell` |
 | Emittable geometry | `GroundedBox`, with `from_presence` and `to_array` — and `from_presence` is its **only** constructor, taking a `GeometryPresence` |
 | Validator (`check`) | `grounding_check`, `ValidationReport`, `Structure`, `SourceBinding`, `Counts`, `ReportError` |
-| Constants | `GROUNDING_ARTIFACT_TYPE`, `SOURCE_MEDIA_TYPE`, `GROUNDING_SCHEMA_VERSION`, `GROUNDING_SCHEMA_VERSION_PAGE_LESS`, `PAGE_LESS_MEDIA_TYPES`, `GEOMETRY_ABSENT_OMITTED`, `VALIDATION_ARTIFACT_TYPE`, `VALIDATION_SCHEMA_VERSION`, `CRATE_NAME` |
+| Constants | `GROUNDING_ARTIFACT_TYPE`, `SOURCE_MEDIA_TYPE`, `GROUNDING_SCHEMA_VERSION`, `GROUNDING_SCHEMA_VERSION_PAGE_LESS`, `PAGE_LESS_MEDIA_TYPES`, `GEOMETRY_ABSENT_OMITTED`, `SPANS_WITHHELD_OVER_LIMIT`, `VALIDATION_ARTIFACT_TYPE`, `VALIDATION_SCHEMA_VERSION`, `CRATE_NAME` |
 
 **Internal, do not use:** `grounded_box` as a module. It is private already, and that privacy is
 load-bearing rather than tidy — `project()` lives outside it and therefore cannot construct a

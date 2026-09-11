@@ -180,6 +180,28 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   `docs/CAPABILITY.md`, the last of which opens with a rule requiring it to move with the version.
   `ci/doc-version.sh` now enforces that in both `ci/gate.sh` and CI.
 
+
+- **`ground` emitted an artifact the Ethos verifier refused for large documents.**
+  `ethos.grounding.v1` caps `spans` at a million, and the projection never looked: the 733-page gate
+  document produced 1,619,510 spans, the engine's own `grounding-check` called the artifact
+  `invalid` and `ethos grounding check` refused it (`limit_exceeded` at `/`), while `ground` exited
+  0. Past the cap the projection now keeps every element and withholds the spans — all of them,
+  never truncated to the cap, since a partial set would ground some runs and silently drop the
+  rest — and declares it three ways: `capabilities.spans: false` in the artifact, a stderr note
+  naming `spans-withheld-over-schema-limit`, and MCP's `ground` summary; library callers read
+  `Projection.spans_withheld`. Verified with release builds: on the 733-page document
+  both checkers now accept the artifact — the engine's `grounding-check` and `ethos grounding
+  check` each exit 0, where they returned 1 and 2 — and it carries its 50,329 elements, no spans,
+  and shrinks from 151.4 MiB to 6.6 MiB; `ground` on the three next-largest gate documents is
+  byte-identical to before. Every artifact under the cap is byte-identical, because the
+  rule only engages past it. **An emitter change, so a MINOR** — although the only outputs that move
+  are ones no verifier accepted. New public items `SpansWithheld` and `SPANS_WITHHELD_OVER_LIMIT`,
+  frozen and documented. The end-to-end test grounds the 733-page document through both checkers
+  and is `#[ignore]`d, because through the debug binary it would add minutes to every gate run; the
+  rule itself is tested in the grounding crate with a small cap. **Not covered:** the schema's
+  other limits — 5,000 pages, a million elements, 100,000 tables, 16 KiB strings — are still not
+  enforced by the projection. Nothing in the corpus comes near them.
+
 ### Measurements
 
 - **`docs/measurements/table-refusals/`** — the unruled rule refuses on 199 of 200 documents and

@@ -827,6 +827,14 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                     projection.omission.limitation_code,
                 );
             }
+            if let Some(w) = projection.spans_withheld {
+                eprintln!(
+                    "engine: {} span(s) withheld — more than the {} `ethos.grounding.v1` admits \
+                     [{}]. The artifact carries its elements only (`capabilities.spans: false`): \
+                     every block is still grounded, at block rather than run granularity.",
+                    w.spans, w.limit, w.limitation_code,
+                );
+            }
             ExitCode::from(PROJECTED as u8)
         }
         Err(e) => fail(&e),

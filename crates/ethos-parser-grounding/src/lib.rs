@@ -103,6 +103,15 @@ pub const PAGE_LESS_MEDIA_TYPES: [&str; 8] = [
 /// same thing and a consumer can join them.
 pub const GEOMETRY_ABSENT_OMITTED: &str = "geometry-absent-not-groundable";
 
+/// The limitation code naming spans the projection withheld to keep an artifact inside the schema.
+///
+/// `ethos.grounding.v1` caps `spans` at a million (`check.rs`, `mod limits`, differential-tested
+/// against Ethos). A document with more measured runs than that — the 733-page gate document carries
+/// 1,619,510 — used to be projected in full, into an artifact the verifier refused outright. It now
+/// keeps every element and withholds the spans, which the artifact itself declares with
+/// `capabilities.spans: false`.
+pub const SPANS_WITHHELD_OVER_LIMIT: &str = "spans-withheld-over-schema-limit";
+
 /// The box type, in its own module so the privacy is real.
 ///
 /// **`project()` lives outside this module and therefore cannot construct a [`GroundedBox`]
@@ -375,6 +384,39 @@ pub struct Projection {
     pub source: GroundingSource,
     /// What it could not carry.
     pub omission: OmissionReport,
+    /// Spans withheld to keep the artifact inside the schema, when there were more than it admits.
+    ///
+    /// `None` for every artifact under the cap, which is every artifact this engine emitted before
+    /// the cap was enforced and that a verifier accepted.
+    pub spans_withheld: Option<SpansWithheld>,
+}
+
+/// Spans the projection withheld because there were more than `ethos.grounding.v1` admits (G1).
+///
+/// The artifact then carries its elements — every block, grounded at block granularity — and no
+/// `spans`, with `capabilities.spans: false`. All of them are withheld, never the excess alone:
+/// truncating to the cap would ground some of a document's runs and silently drop the rest, and the
+/// capability is all-or-nothing precisely so an artifact never claims coverage it only partly has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpansWithheld {
+    /// Spans the projection measured and did not emit.
+    pub spans: u32,
+    /// The schema's cap they exceeded.
+    pub limit: u32,
+    /// The limitation code naming the withholding: [`SPANS_WITHHELD_OVER_LIMIT`].
+    pub limitation_code: &'static str,
+}
+
+/// Whether spans must be withheld to keep an artifact inside the schema's cap.
+///
+/// Split out so the rule is testable with a small cap. The real one is a million spans, which no
+/// fast test can build.
+fn spans_over_cap(claimed: bool, spans: usize, cap: usize) -> Option<SpansWithheld> {
+    (claimed && spans > cap).then(|| SpansWithheld {
+        spans: u32::try_from(spans).unwrap_or(u32::MAX),
+        limit: u32::try_from(cap).unwrap_or(u32::MAX),
+        limitation_code: SPANS_WITHHELD_OVER_LIMIT,
+    })
 }
 
 /// The smallest box containing both, in the artifact's declared coordinate system.
@@ -641,6 +683,15 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
         })
         .collect();
 
+    // **G1.** `ethos.grounding.v1` caps `spans` at a million, and this projection never looked: the
+    // 733-page gate document produced 1,619,510 and an artifact the engine's own checker called
+    // `invalid` and Ethos refused whole, while `ground` exited 0. Past the cap the elements are
+    // kept — every block, still grounded — and the spans withheld, declared in the one field the
+    // schema defines for it. Under the cap `spans_emitted` equals `spans_claimed`, so every artifact
+    // below it is byte-for-byte what it was.
+    let spans_withheld = spans_over_cap(spans_claimed, spans.len(), check::limits::MAX_ELEMENTS);
+    let spans_emitted = spans_claimed && spans_withheld.is_none();
+
     Ok(Projection {
         source: GroundingSource {
             artifact_type: GROUNDING_ARTIFACT_TYPE.to_string(),
@@ -656,7 +707,7 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
                 version: payload.processing_run.processor.version.clone(),
             },
             capabilities: GroundingCapabilities {
-                spans: spans_claimed,
+                spans: spans_emitted,
                 char_offsets,
                 tables,
             },
@@ -668,7 +719,7 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
             elements,
             // Present iff claimed. `None` and `Some(vec![])` are different artifacts, and the
             // consuming validator treats the mismatch as an error rather than a nicety.
-            spans: if spans_claimed { Some(spans) } else { None },
+            spans: if spans_emitted { Some(spans) } else { None },
             // Present iff claimed, exactly like `spans`. From v1-S1 the capability is true, so
             // this is `Some` — and an empty vec is a real answer, not a missing one.
             tables: if tables { Some(projected_tables) } else { None },
@@ -678,6 +729,7 @@ pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError>
             nodes_omitted: omitted,
             limitation_code: GEOMETRY_ABSENT_OMITTED,
         },
+        spans_withheld,
     })
 }
 
@@ -763,6 +815,8 @@ fn project_page_less(repr: &DocumentRepresentation) -> Result<Projection, Engine
             nodes_omitted: 0,
             limitation_code: GEOMETRY_ABSENT_OMITTED,
         },
+        // A page-less artifact carries no spans at all, so none can be withheld.
+        spans_withheld: None,
     })
 }
 
@@ -797,3 +851,31 @@ pub fn to_canonical_bytes(g: &GroundingSource) -> Result<Vec<u8>, EngineError> {
 
 /// The crate name, used by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "ethos-parser-grounding";
+
+#[cfg(test)]
+mod span_cap_tests {
+    use super::*;
+
+    /// At or under the cap nothing is withheld — which is why every artifact below it is unchanged.
+    #[test]
+    fn spans_at_or_under_the_cap_are_all_emitted() {
+        assert_eq!(spans_over_cap(true, 0, 3), None);
+        assert_eq!(spans_over_cap(true, 3, 3), None);
+    }
+
+    /// One past the cap and the whole set is withheld, and says so under its own code.
+    #[test]
+    fn one_span_past_the_cap_withholds_all_of_them_and_names_it() {
+        let w = spans_over_cap(true, 4, 3).expect("withheld");
+        assert_eq!(
+            (w.spans, w.limit, w.limitation_code),
+            (4, 3, SPANS_WITHHELD_OVER_LIMIT)
+        );
+    }
+
+    /// A projection that never claimed spans has none to withhold, and nothing to declare.
+    #[test]
+    fn nothing_is_withheld_when_spans_were_never_claimed() {
+        assert_eq!(spans_over_cap(false, 10, 3), None);
+    }
+}
