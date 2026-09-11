@@ -155,6 +155,17 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   in the gate's test build and sorted in release. The first version of this fix failed the gate on
   exactly that. `node_get` returns one node and keeps its `Value`.
 
+- **A canonical object's largest field is adopted into the output instead of copied into it.**
+  c14n sorts keys by staging every field in its own buffer and then copying each into the output,
+  so the representation payload's `nodes` — 805 MiB on the largest gate document, 99.9% of the
+  payload — existed twice during `seal`, which is where that document peaks. At the top level
+  nothing has been written yet, so `CanonicalMap::finish` now builds the result around that buffer:
+  shift it right in place, write the prefix into the gap, append the suffix. Peak RSS on
+  `nist-sp-800-53Ar5` **4664.8 → 3717.0 MiB (−20%)**, footprint −910.9; −19% on `161r1`, −16% on
+  `171r3`; byte-identical across 86 documents and every canonical subcommand; wall time within 2%. The worst gate document now peaks at 3.65 GiB, down
+  from 6.49 GiB when this work began. **Reserving the output at its final size — the change first
+  proposed — was measured beside it and bought nothing on any axis, and is not shipped.**
+
 ### Fixed
 
 - **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that

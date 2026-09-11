@@ -42,7 +42,9 @@
 //! Every figure above is PRE-Arc. Role-path sharing (58a1342) then took the same 120-page document
 //! to 488.0 MiB unbounded and the 733-page one to 4665.6, byte-identically, without moving the
 //! floor: 45.2 and 221.4 MiB at `--max-pages 0`. The flag's arithmetic is unchanged; only the
-//! coefficient it multiplies is smaller. `docs/measurements/memory-ceiling/`.
+//! coefficient it multiplies is smaller. c14n then stopped copying the payload's largest field,
+//! taking the two documents to 403.7 and 3736.2 MiB with the floor still at 44.9 and 222.1.
+//! `docs/measurements/memory-ceiling/`.
 //!
 //! The mechanism is not new — `PageBudget::AtMost` has always quarantined the pages past the
 //! budget and declared `resource-limit-pages`. What was missing was any way to reach it. So these

@@ -167,8 +167,9 @@ twice:
 
 ## 7. The corpus after the cut, and what a caller can be told
 
-Re-measured at `58a1342`, median of 5 — these are the SHIPPED coefficients; §2's table is the
-baseline that motivated the change:
+Re-measured at `58a1342`, median of 5 — the coefficients after role-path sharing, superseded by
+§11 for the engine that ships after the adopt change; §2's table is the baseline that motivated the
+change:
 
 | fixture | pages | artifact | peak RSS | /input | /artifact | MiB/page |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -198,7 +199,7 @@ with `floor` at 0.18-0.32 MiB per document page and `k` at 3.0-6.9 MiB per admit
 sizing, the worst observed coefficient is the only safe one:
 
 **Budget 7 MiB per admitted page, plus 0.35 MiB per page in the document.** On `53Ar5` that
-predicts 5.3 GiB against 4.56 GiB measured — over by 16%, which is the direction an estimate for
+predicts 5.26 GiB against 4.56 GiB measured — over by 15%, which is the direction an estimate for
 provisioning should err.
 
 ## 8. What this still does not settle
@@ -216,8 +217,8 @@ provisioning should err.
   put it at 32.1 MiB of `53Ar5`'s 221 MiB floor and byte-identical; nobody built it.
 
 Do not re-propose chunking the parallel page fold, streaming the artifact buffer, a different
-allocator, or freeing the object graph or the extract sooner. All five are in §6's and §9's tables
-with the measurement that killed them.
+allocator, freeing the object graph or the extract sooner, or reserving c14n's output buffer at its
+final size. All six are in §6's, §9's and §11's tables with the measurement that killed them.
 
 ## 9. Freeing memory earlier made the peak worse, and was refused
 
@@ -336,3 +337,91 @@ first version still printed through `Display`. `an_artifact_reply_is_canonical_i
 compares it with `c14n_bytes` of the same envelope — over a nested object, an array, an integer, and
 a summary carrying a quote, a backslash and a non-ASCII character — and because the gate runs it
 under `preserve_order`, the hazard is exercised rather than described.
+
+## 11. Reserving the buffer bought nothing; adopting it bought 20%
+
+§10 left one candidate: `seal` canonicalizes the payload into a `Vec` that grows while the run sits
+at its peak, and `CanonicalMap::finish` knew every entry's length before writing one and pre-sized
+nothing. Reading `finish` closely showed two things happening there, of about the same size:
+
+1. **The copy.** Sorting keys means every field is serialized into its own staging buffer first,
+   then copied into `out`. The payload's largest staging buffer is `nodes` — 804.8 MiB, 99.9% of the
+   payload on the largest gate document — and for the length of that copy it existed twice.
+2. **The regrowth.** `out` was sized to fit `nodes` exactly, and the 250 KB of fields that sort
+   after it made it regrow to 1.61 GiB.
+
+Pre-sizing — the change that had been proposed — removes only the second. The first needs the
+buffer not to be copied at all: at the top level nothing has been written to `out` yet, so `finish`
+can build the result AROUND the largest staging buffer — shift its bytes right in place, write the
+prefix into the gap, append the suffix. Same bytes, same order, one buffer.
+
+Both were built and measured, interleaved, five runs per arm, every artifact hashed:
+
+| document | pre-size: RSS / footprint | adopt: RSS / footprint | adopt: wall |
+| --- | --- | --- | --- |
+| nist-sp-800-53Ar5 | +0.4 / −13.7 | **−953.5 / −949.5** | +0.4% |
+| nist-sp-800-161r1 | −1.2 / +135.5\* | **−271.3 / −274.1** | +2.1% |
+| nist-sp-800-171r3 | +0.8 / +6.6 | **−81.0 / −67.0** | +1.0% |
+| nist-sp-800-37r2 | +0.9 / −2.8 | −0.8 / −78.6 | +1.3% |
+
+\* bimodal runs (1104–1328 MiB); not a regression.
+
+The code that ships — the same logic with the experiment's label removed and its tests added — was
+then measured again against the baseline, on its own:
+
+| document | shipped adopt: RSS / footprint |
+| --- | --- |
+| nist-sp-800-53Ar5 | **−947.9 / −910.9** (4664.8 → 3717.0 MiB) |
+| nist-sp-800-161r1 | −270.0 / −276.6 |
+| nist-sp-800-171r3 | −77.4 / −66.3 |
+| nist-sp-800-37r2 | −0.0 / −67.8 |
+
+It reproduces the experimental arm within noise, byte-identical in every run — including the 37r2
+anomaly described below, which is therefore a property of the change and not of one run.
+
+**Pre-sizing is refused.** Zero on every axis, including wall time. The regrowth it prevents only
+ever added capacity nobody wrote, and an allocation that is never written is not memory — which is
+the auditor's own caveat, and the reason a sibling proposal to trim the representation's `Vec`
+capacity measured 0 to −22 MiB. It is the same lesson as §9 from the other side.
+
+**Adopting is shipped.** `nist-sp-800-53Ar5` goes from 4669.8 to 3716.2 MiB, tight across runs
+(3712–3718). The corpus's worst case is now **3.65 GiB, down from 6.49 GiB when 6.2 started — 44%**,
+in three byte-identical changes: role-path sharing, and this, with MCP brought down to the CLI's
+level in between. The cost is one in-place shift of the adopted buffer, 0.4–2.1% of wall time.
+
+One result is not explained, so it is recorded rather than smoothed over: on `nist-sp-800-37r2`
+adopting leaves peak RSS unchanged while footprint falls 79 MiB. The likeliest reading is that
+37r2's RSS peak falls outside `seal`, so removing a duplicate inside `seal` cannot lower it; that
+has not been verified.
+
+### The corpus after the adopt change
+
+Re-measured on the shipped build with `ci/bench.py --repeat 5`
+([`bench-c14n-adopt.tsv`](bench-c14n-adopt.tsv)); §7's table is the post-`Arc` record:
+
+| fixture | pages | artifact | peak RSS | /input | /artifact | MiB/page |
+| --- | --- | --- | --- | --- | --- | --- |
+| irs-f1040sd-2025 | 2 | 0.64M | 13.2M | 141x | 20.56x | 6.58 |
+| irs-fw9 | 6 | 0.80M | 18.1M | 135x | 22.65x | 3.01 |
+| nist-sp-800-218 | 36 | 28.73M | 169.4M | 240x | 5.90x | 4.70 |
+| nist-sp-800-207 | 59 | 42.67M | 205.3M | 223x | 4.81x | 3.48 |
+| nist-sp-800-171r3 | 120 | 81.96M | 403.7M | 266x | 4.93x | 3.36 |
+| nist-sp-800-37r2 | 183 | 207.66M | 914.9M | 423x | 4.41x | 5.00 |
+| nist-sp-800-161r1 | 327 | 271.55M | 1129.2M | 244x | 4.16x | 3.45 |
+| nist-sp-800-53Ar5 | 733 | 950.48M | **3736.2M** | 524x | 3.93x | 5.10 |
+
+Per-page is now **3.01–6.58 MiB** (median 4.09, spread 2.18x). The input ratio is 135x–524x, still
+a 3.9x spread, so §3's withdrawal stands. Peak/artifact on the six real documents is 3.93x–5.90x, a
+spread of 1.50x. **The worst case is 3.65 GiB**, 44% below the 6.49 GiB §2 measured. (3736.2 MiB
+here against 3717.0 in the A/B above: two separate runs 0.5% apart, inside this instrument's noise.)
+
+The floor did not move — 222.1 MiB at `--max-pages 0` on `53Ar5`, 44.9 on `171r3` — which is the
+prediction: a document admitting no pages has a payload too small for adopting its largest field to
+matter.
+
+**The sizing rule stays 7 MiB per admitted page plus 0.35 per document page, and it is now loose.**
+Its per-page term is the worst coefficient observed, and that is 6.58 on `irs-f1040sd-2025` — a
+two-page form, where the ~13 MiB process floor dominates and adopting has nothing to adopt. On
+`53Ar5` the rule now predicts 5.26 GiB against 3.65 measured, over by 44%. Loose is the safe
+direction for provisioning. Tightening it would mean a two-term rule with a separate process floor,
+which changes what is published rather than re-measuring it, and is not done here.

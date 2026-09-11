@@ -345,6 +345,65 @@ impl CanonicalMap<'_> {
                 window[0].0
             ))));
         }
+        // **At the top level, adopt the largest entry's buffer instead of copying it.** Sorting keys
+        // means every field is serialized into its own staging buffer first, and the loop below then
+        // copies each into `out`. For a representation payload the largest staging buffer is `nodes`
+        // — 99.9% of the payload, 805 MiB on the largest gate document — and for the length of that
+        // copy it existed twice, once in staging and once in `out`, inside `seal`, which is where
+        // that document peaks. Nothing has been written to `out` exactly when this is the top level,
+        // so the result can be built AROUND that buffer instead: shift its bytes right in place,
+        // write the prefix into the gap, append the suffix. The bytes are the ones the loop would
+        // have written, in the order it would have written them.
+        //
+        // Measured on this code, interleaved, five runs a side: peak RSS 4664.8 -> 3717.0 MiB
+        // (-947.9) on `nist-sp-800-53Ar5`, peak footprint -910.9, output byte-identical, wall time
+        // within 2%.
+        // Reserving `out` at its final size was measured beside it and bought nothing: the regrowth
+        // that prevents only ever added capacity nobody wrote. `docs/measurements/memory-ceiling/`
+        // §11.
+        if self.out.is_empty() {
+            if let Some(big) = entries
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, (_, value))| value.len())
+                .map(|(i, _)| i)
+            {
+                let mut prefix = vec![b'{'];
+                for (i, (key, value)) in entries[..big].iter().enumerate() {
+                    if i > 0 {
+                        prefix.push(b',');
+                    }
+                    write_string(key, &mut prefix);
+                    prefix.push(b':');
+                    prefix.extend_from_slice(value);
+                }
+                if big > 0 {
+                    prefix.push(b',');
+                }
+                write_string(&entries[big].0, &mut prefix);
+                prefix.push(b':');
+                let mut suffix = Vec::new();
+                for (key, value) in &entries[big + 1..] {
+                    suffix.push(b',');
+                    write_string(key, &mut suffix);
+                    suffix.push(b':');
+                    suffix.extend_from_slice(value);
+                }
+                suffix.push(b'}');
+                if self.close_variant {
+                    suffix.push(b'}');
+                }
+                let mut adopted = std::mem::take(&mut entries[big].1);
+                let (gap, len) = (prefix.len(), adopted.len());
+                adopted.reserve(gap + suffix.len());
+                adopted.resize(len + gap, 0);
+                adopted.copy_within(0..len, gap);
+                adopted[..gap].copy_from_slice(&prefix);
+                adopted.extend_from_slice(&suffix);
+                *self.out = adopted;
+                return Ok(());
+            }
+        }
         self.out.push(b'{');
         for (i, (key, value)) in entries.into_iter().enumerate() {
             if i > 0 {
@@ -1096,6 +1155,47 @@ mod tests {
         assert_eq!(
             canonical_bytes_of(&fine).unwrap(),
             c14n_bytes(&serde_json::to_value(&fine).unwrap()).unwrap(),
+        );
+    }
+
+    /// **Adopting the largest entry writes the bytes the copy loop would have.** The top level is
+    /// the only place `finish` adopts, so every position the largest value can sort into is
+    /// covered — first, middle, last, alone — plus the empty object and a nested value, each against
+    /// the `Value` route, which shares no code with `finish`.
+    #[test]
+    fn adopting_the_largest_entry_is_byte_identical_wherever_it_sorts() {
+        let big = "y".repeat(10_000);
+        for v in [
+            json!({ "a": big, "m": "x", "z": [1, 2] }),
+            json!({ "a": "x", "m": big, "z": [1, 2] }),
+            json!({ "a": "x", "m": [1, 2], "z": big }),
+            json!({ "only": big }),
+            json!({}),
+            json!({ "a": { "nested": big, "b": 1 }, "q\"uote": "k", "\u{e9}": 2 }),
+        ] {
+            assert_eq!(
+                canonical_bytes_of(&v).expect("streaming"),
+                c14n_bytes(&v).expect("value route"),
+                "{v}"
+            );
+        }
+    }
+
+    /// A struct variant opens its `{"Variant":` wrapper in `out` before its fields are staged, so
+    /// `out` is not empty and the adopt path must not run — the wrapper still has to close.
+    #[test]
+    fn a_top_level_struct_variant_still_closes_its_wrapper() {
+        #[derive(serde::Serialize)]
+        enum E {
+            Variant { small: u8, large: String },
+        }
+        let v = E::Variant {
+            small: 1,
+            large: "z".repeat(10_000),
+        };
+        assert_eq!(
+            canonical_bytes_of(&v).expect("streaming"),
+            c14n_bytes(&serde_json::to_value(&v).expect("value")).expect("value route"),
         );
     }
 
