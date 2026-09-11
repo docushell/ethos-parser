@@ -52,7 +52,7 @@ pub const VALIDATION_ARTIFACT_TYPE: &str = "ethos.grounding_validation.v1";
 pub const VALIDATION_SCHEMA_VERSION: &str = "1.0.0";
 
 /// Limits, transcribed from `ethos-core::grounding_json`.
-mod limits {
+pub(crate) mod limits {
     pub const MAX_INPUT_BYTES: usize = 256 * 1024 * 1024;
     pub const MAX_PAGES: usize = 5_000;
     pub const MAX_ELEMENTS: usize = 1_000_000;
@@ -951,6 +951,27 @@ fn _span_type_is_used(_: &Span) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The shape a document past the span cap is projected into is a valid artifact (G1).**
+    ///
+    /// `project` withholds the spans of a document with more than `limits::MAX_ELEMENTS` of them,
+    /// and says so with `capabilities.spans: false` and no `spans` key. That is only a fix if the
+    /// validator accepts it for a PDF source — the page-less path has always emitted it, so this
+    /// pins it for the path that never did.
+    #[test]
+    fn a_pdf_artifact_with_its_spans_withheld_is_valid() {
+        let mut v: serde_json::Value = serde_json::from_slice(&valid_bytes()).unwrap();
+        v["capabilities"]["spans"] = serde_json::Value::Bool(false);
+        v.as_object_mut().unwrap().remove("spans");
+        let bytes = serde_json::to_vec(&v).unwrap();
+        let r = grounding_check(&bytes, None).unwrap();
+        assert_eq!(
+            r.exit_code(),
+            0,
+            "{}",
+            String::from_utf8_lossy(&r.to_canonical_bytes().unwrap())
+        );
+    }
 
     /// A minimal valid artifact, built through the public types so it cannot drift.
     fn valid_bytes() -> Vec<u8> {

@@ -406,11 +406,17 @@ fn tool_ground(args: &Value) -> Result<(String, Artifact), Failure> {
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
     let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
         .map_err(|e| Failure::from(&e))?;
-    let summary = format!(
+    let mut summary = format!(
         "{} element(s) with a measured box; {} omitted for having none.",
         projection.source.elements.len(),
         projection.omission.nodes_omitted
     );
+    if let Some(w) = projection.spans_withheld {
+        summary.push_str(&format!(
+            " {} span(s) withheld, more than the {} the schema admits: elements only.",
+            w.spans, w.limit
+        ));
+    }
     Ok((summary, Artifact::Bytes(bytes)))
 }
 

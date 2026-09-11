@@ -1284,3 +1284,47 @@ fn the_oracle_agrees_on_an_artifact_with_real_elements_and_spans() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **A document past the span cap still grounds to an artifact both checkers accept (G1).**
+///
+/// `nist-sp-800-53Ar5` carries 1,619,510 measured runs, past `ethos.grounding.v1`'s cap of a
+/// million spans. `ground` used to emit all of them into an artifact the engine's checker called
+/// `invalid` and Ethos refused outright, while `ground` itself exited 0. It now withholds the spans
+/// and keeps every element, and this is the test that was missing: ground the document, then put
+/// the result through both checkers.
+///
+/// **Ignored by default, deliberately.** It extracts and grounds a 733-page document through the
+/// debug binary, which would add minutes to every gate run. The rule is covered cheaply in
+/// `ethos-parser-grounding` with a small cap; this is the end-to-end proof, run with
+/// `cargo test -p ethos-parser-cli --test oracle -- --ignored`.
+#[test]
+#[ignore = "grounds a 733-page document through the debug binary; run with --ignored"]
+fn a_document_past_the_span_cap_grounds_to_an_artifact_both_checkers_accept() {
+    let manifest = read_manifest();
+    let pdf = corpus_root(&manifest, "gate").join("nist-sp-800-53Ar5.pdf");
+    let dir = scratch("span-cap");
+    let grounding = ground_fixture(&pdf, &dir).expect("the 733-page gate document grounds");
+
+    let (_, ours, theirs) = compare(&grounding, None, "nist-sp-800-53Ar5");
+    assert_eq!(
+        (ours, theirs),
+        (0, 0),
+        "both checkers must accept the artifact; before G1 the engine said 1 and Ethos 2"
+    );
+
+    let g: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&grounding).expect("read")).expect("json");
+    assert_eq!(
+        g["capabilities"]["spans"],
+        serde_json::json!(false),
+        "the withholding is declared in the artifact"
+    );
+    assert!(
+        g.get("spans").is_none(),
+        "and no spans key is emitted beside it"
+    );
+    assert!(
+        g["elements"].as_array().is_some_and(|e| !e.is_empty()),
+        "every block is still grounded"
+    );
+}

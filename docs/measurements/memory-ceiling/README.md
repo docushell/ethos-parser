@@ -560,3 +560,12 @@ The gate is green because no test grounds a document this large and then checks 
 makes `spans` optional (`capabilities.spans`), which suggests one shape — emit the elements alone and
 declare the omission, keeping block-level grounding for large documents — beside the plainer one of
 refusing by name, as `MAX_SOURCE_BYTES` does. Either is better than an artifact the verifier rejects.
+
+**Fixed afterwards with option A** (branch `fix/grounding-span-cap`). Past the cap `ground` now
+keeps every element and withholds the spans — all of them, never truncated — declared by
+`capabilities.spans: false` in the artifact, a stderr note, and MCP's `ground` summary. On the
+733-page document both checkers now accept the artifact — the engine's `grounding-check` and `ethos
+grounding check` each exit 0, where they returned 1 and 2 — and it carries its 50,329 elements, no
+spans, and is 6.6 MiB instead of 151.4. `ground` on the three next-largest gate documents is
+byte-identical to before. Under the cap nothing changes. The schema's other limits are still not
+enforced by the projection; none is reached by this corpus.
