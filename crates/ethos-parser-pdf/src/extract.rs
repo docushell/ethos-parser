@@ -1053,8 +1053,9 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // # Re-measured at 97fa562, and the per-page figure is a range rather than a constant
     //
     // "~4.7 MiB per page" above is the median of a spread. Measured pre-Arc it was 3.20 to 9.07
-    // MiB/page with the 733-page document at 6.5 GiB; after the role-path sharing below it is
-    // 2.98 to 6.89, and that document peaks at 4.56 GiB. Within ONE document the marginal cost per
+    // MiB/page with the 733-page document at 6.5 GiB; after the role-path sharing below it was
+    // 2.98 to 6.89 at 4.56 GiB, and since c14n stopped copying the payload's largest field it is
+    // 3.01 to 6.58, with that document at 3.65 GiB. Within ONE document the marginal cost per
     // admitted page IS constant — a pre-Arc `--max-pages` ladder gives 8.4 to 9.2 MiB/page from
     // 128 pages up, and the two post-Arc points (128 and 733) give 5.95 — so there is no
     // superlinear retention here and the cross-document spread is content density.

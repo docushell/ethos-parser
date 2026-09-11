@@ -27,10 +27,11 @@ the measured path.
 # Peak memory is measured too, and it is the ceiling
 
 Throughput is linear in emitted bytes; **memory is where this stops working.** Across the gate
-corpus peak RSS runs 4.4x to 6.9x the artifact — `nist-sp-800-161r1` is 4.6 MB in and peaks at
-1.37 GiB. The largest gate document is no longer an extrapolation: `nist-sp-800-53Ar5` is 7.12 MiB
-in, emits a 950 MiB artifact, and **peaks at 4.56 GiB** — down from 6.5 GiB, since role-path
-sharing (58a1342) removed 30% byte-identically.
+corpus peak RSS runs 3.9x to 5.9x the artifact — `nist-sp-800-161r1` is 4.6 MB in and peaks at
+1.10 GiB. The largest gate document is no longer an extrapolation: `nist-sp-800-53Ar5` is 7.12 MiB
+in, emits a 950 MiB artifact, and **peaks at 3.65 GiB** — down from 6.5 GiB, after role-path
+sharing (58a1342) and c14n adopting the payload's largest field instead of copying it took 44%
+off between them, byte-identically.
 
 Note what that change also settles about this paragraph's own former explanation. It used to blame
 `canonical_bytes_of` returning one `Vec<u8>` while the nodes were still alive. That buffer is real
@@ -40,7 +41,8 @@ BELOW the high-water mark, so removing it moves no peak at all.
 **An earlier draft of this paragraph said "roughly 300x the input" and that figure was withdrawn.**
 Measured at 97fa562 it runs 143x to 933x — a 6.5x spread, so it is a corpus median and not a
 bound, and anyone provisioning from 300x under-sizes the worst gate document threefold. Role-path
-sharing did not rescue the model: at 58a1342 the same ratio is 133x to 655x, still a 4.9x spread.
+sharing did not rescue the model: at 58a1342 the same ratio is 133x to 655x, still a 4.9x spread,
+and after the adopt change 135x to 524x, 3.9x.
 The input-bytes model is wrong in kind, not merely mis-calibrated. Peak is
 two terms, both knowable before the run: a floor that scales with the document's TOTAL page count
 and does not respond to `--max-pages` at all, plus a constant marginal cost per ADMITTED page. The
