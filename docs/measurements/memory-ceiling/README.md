@@ -210,14 +210,129 @@ provisioning should err.
   decompression ceiling on the PDF load path to match `zip::MAX_INFLATED_BYTES`, which the office
   path has had since v2-S13. Whether a byte-denominated ceiling is wanted at all is a design call:
   `profile.rs:975` records the position that pages are the knob.
-- **One measurement disagreement, unresolved.** One auditor claims dropping the lopdf object graph
-  before `to_representation` saves 838 MiB, measured on a built prototype. Its refuter measured the
-  whole term — 141.7 MiB graph plus the 7.1 MiB source plus <=5 MiB of font cache — at 148.8 MiB,
-  and calls 838 arithmetically impossible. Both claim measurement. In-process heap accounting under
-  a counting `GlobalAlloc` would settle it; external peak RSS cannot, because it cannot separate
-  retained from transient.
+- **The 838 MiB disagreement is settled in §9**, and neither side was right about today's engine:
+  freeing the lopdf object graph earlier RAISES peak footprint, by 668 MiB on `53Ar5`. Refused.
 - **Whether the floor's structure-tree share can be bounded by the page budget.** One audit lens
   put it at 32.1 MiB of `53Ar5`'s 221 MiB floor and byte-identical; nobody built it.
 
-Do not re-propose chunking the parallel page fold, streaming the artifact buffer, or a different
-allocator. All three are in §6's table with the measurement that killed them.
+Do not re-propose chunking the parallel page fold, streaming the artifact buffer, a different
+allocator, or freeing the object graph or the extract sooner. All five are in §6's and §9's tables
+with the measurement that killed them.
+
+## 9. Freeing memory earlier made the peak worse, and was refused
+
+§8 left one disagreement open. An auditor claimed that dropping the lopdf object graph before
+`to_representation` saved **838 MiB**, measured on a built prototype; its refuter measured the whole
+graph at **149 MiB** and called 838 arithmetically impossible. The auditor's own write-up conceded
+only ~190 MiB is actually freed and put the rest down to allocator high-water — so the two agreed on
+the bytes and disagreed on whether peak memory can fall by more than the bytes freed. Both had
+measured the engine BEFORE role-path sharing moved the peak.
+
+Rebuilt from its description (its source was not saved) and measured against today's engine, with a
+second arm that also drops the whole extract page graph before `seal` — the only other large value
+dead by then, since `to_representation` reads nothing but small fields after its page loop.
+
+Interleaved, 5 runs per arm, every artifact hashed:
+
+| document | arm | peak RSS | Δ | peak **footprint** | Δ |
+| --- | --- | --- | --- | --- | --- |
+| nist-sp-800-53Ar5 | baseline | 4664.4M | — | 4060.6M | — |
+| | drop the object graph | 5007.9M | **+343.5** | 4729.0M | **+668.4** |
+| | … and the extract | 5003.0M | +338.6 | 4730.1M | +669.6 |
+| nist-sp-800-37r2 | baseline | 911.1M | — | 807.6M | — |
+| | drop the object graph | 1121.8M | **+210.7** | 1048.9M | **+241.3** |
+| | … and the extract | 1123.4M | +212.3 | 1049.7M | +242.0 |
+| nist-sp-800-171r3 | baseline | 490.8M | — | 382.5M | — |
+| | drop the object graph | 512.6M | +21.8 | 450.0M | +67.6 |
+| | … and the extract | 513.8M | +23.0 | 450.2M | +67.7 |
+
+Every artifact byte-identical across all three arms.
+
+**Freeing earlier raised the peak.** It is not noise: two independently built binaries show the same
+increase, and the individual runs are tight (37r2's five readings for the first arm span
+1120-1123 MiB). Nor is it pages the OS could take back for free, which was the first hypothesis:
+macOS's `time -l` reports **peak memory footprint** beside RSS, footprint excludes pages the
+allocator has handed back as reusable, and footprint rises MORE than RSS does. The change genuinely
+raises the memory macOS charges the process — by far more than the graph it frees weighs.
+
+So the dispute resolves with neither side right on today's engine. The auditor's −838 MiB was a
+real measurement of an engine that no longer exists; the same change is **+668 MiB** of footprint
+now. The refuter was right that only ~150 MiB is freed and wrong that the effect is bounded by it.
+What both missed is that the sign is not stable: this is an allocator-layout effect, it flips
+between engine versions, and a change whose effect can reverse on the next unrelated commit is not
+one to ship.
+
+Dropping the extract before `seal` adds nothing on top — it frees several hundred MiB of live runs
+and the peak does not move. That is the same lesson from the other side. **In this engine, on this
+platform, memory is released by not allocating, not by freeing sooner.** Role-path sharing worked
+because 1.65M clones were never made; these two free values that were made, and the allocator does
+not hand the space to what comes next.
+
+**Refused, with the numbers above.** Do not re-propose either drop without a footprint A/B against
+the engine as it stands, because the answer measured here was the opposite of the answer measured
+one commit earlier.
+
+### RSS overstates what macOS counts, in the safe direction
+
+A side result worth keeping: baseline footprint runs **13–22% below RSS** — 4060.6 against 4664.4
+MiB on `53Ar5`, 382.5 against 490.8 on `171r3`. Footprint is what macOS's jetsam acts on, and every
+coefficient in §7 is RSS. So the published sizing rule over-provisions on macOS, which is the
+direction an estimate for provisioning should err. Linux reports no footprint through `time -v`;
+RSS stays the portable measure and the one this directory publishes.
+
+## 10. MCP parsed every artifact back into a tree, and no longer does
+
+Everything above was measured on the CLI. `extract` over MCP is the same engine and had never been
+measured at all — and it was not the same cost. `mcp.rs`'s `tool_extract` built the representation,
+serialized it to canonical bytes, then handed those bytes to a `canonical()` helper that ran
+`serde_json::from_slice` over the WHOLE artifact so it could sit inside a `json!` response; `serve`
+then serialized that response, tree and all, back into one String to print it. The artifact existed
+three times over, and the middle copy is a JSON value tree several times the text it came from.
+`tool_ground` did the same.
+
+Same binary, one request over stdin, median of 3:
+
+| document | CLI peak | MCP before | MCP after | change |
+| --- | --- | --- | --- | --- |
+| irs-fw9 | 17.8M | 38.3M | 17.9M | −53% |
+| nist-sp-800-218 | 195.7M | 1015.6M | 199.7M | −80% |
+| nist-sp-800-171r3 | 490.3M | 2790.3M | 485.7M | −83% |
+| nist-sp-800-161r1 | 1399.1M | **8923.2M** | 1128.4M | **−87%** |
+| nist-sp-800-53Ar5 | 4668.9M | not run | 3778.0M | — |
+
+**A 4.6 MB PDF needed 8.7 GiB over MCP** — 6.4x its own CLI peak, the multiplier growing as the
+document does — on the surface `mcp.rs` itself calls the one that matters most: a long-lived process
+handling untrusted documents repeatedly. The 733-page document was deliberately never run through
+the old route; on that trend it needed ~30 GB. It now needs 3.7 GiB.
+
+**Not claimed:** MCP reads 0.81x the CLI on the two largest documents. The arms were not
+interleaved, and §9 shows heap layout alone moving this engine's peak by hundreds of MiB in either
+direction. The claim is that MCP now runs at about the CLI's own peak — not that it is cheaper.
+
+### Byte-identical where it ships, and canonical everywhere now
+
+The fix never builds the tree. Tools return canonical bytes, and an artifact reply writes every key
+in sorted order — `id`, `jsonrpc`, `result`; then `content`, `isError`, `structuredContent`; and the
+summary object's `text`, `type` — with the artifact arriving already canonical. In a release build
+that is exactly what the old route printed: `serde_json` sorts keys there, the artifact was last at
+both levels, and a probe found the old response was literally a 162-byte prefix, the CLI's bytes,
+and `}}`. Verified with the final build across **84 MCP sessions** — `extract`, `ground` and
+`node_get` over every gate, engine and conformance fixture — with zero differing bytes and zero old
+responses that had already drifted from the CLI; and on `nist-sp-800-161r1`, the headline document,
+both builds emit the same 284,739,383 bytes (sha256 `fd2e93a1…`).
+
+**The first version of this fix failed the gate, and the failure found an older defect.** Its guard
+compared the spliced reply against a `json!` tree serialized by `serde_json`, and passed under
+`cargo test -p ethos-parser-cli`. Under `ci/gate.sh` it failed, because the gate runs
+`cargo test --workspace`, which builds core's tests — and core enables `serde_json/preserve_order`
+in its dev-dependencies, precisely because it is a hazard. Resolver 2 keeps that feature out of
+`cargo build`, but in a workspace test build `serde_json` is compiled once with it for every crate,
+so the tree printed its keys in INSERTION order. That meant the old route's envelope was sorted in
+the build that ships and insertion-ordered in the build the gate tests, for as long as `mcp.rs` has
+existed. The artifact inside never differed, because c14n sorts at write time.
+
+So the final reply does not borrow `serde_json`'s order anywhere, including the summary object the
+first version still printed through `Display`. `an_artifact_reply_is_canonical_in_every_build`
+compares it with `c14n_bytes` of the same envelope — over a nested object, an array, an integer, and
+a summary carrying a quote, a backslash and a non-ASCII character — and because the gate runs it
+under `preserve_order`, the hazard is exercised rather than described.
