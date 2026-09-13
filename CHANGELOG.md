@@ -50,6 +50,43 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
 
 ### Changed
 
+- **`table_detection.ruled` `ruled-rects-v5` → `ruled-rects-v6`: `-v5` was wrong in both
+  directions, and its benchmark could see only one.** Found while reviewing this release, before
+  it was tagged.
+
+  **It emitted stacks as grids.** The lattice is page-wide, so a column line can come from ink
+  nowhere near the grid, and once empty bands are dropped a stack of full-width rectangles covers
+  every face that remains. `nist-sp-800-207`'s disclaimer shades each line of one paragraph with its
+  own rectangle and emitted as a **14 × 5 table whose thirteen cells each span all five columns** —
+  its only interior column edges are the ends of a URL's 0.48pt underline. Every ruled table `-v5`
+  emitted on the gate corpus was of that kind: that disclaimer on `207`, `218`, `161r1` and `53Ar5`,
+  and two pairs of empty full-width bars on `171r3`. **Six fabricated tables in five of eight
+  documents**, against a benchmark precision of 100%, because the benchmark's table documents are
+  not NIST's. A grid must now be **divided inside itself on both axes**: some rectangle with an edge
+  on an interior column line must span a kept row, and likewise for rows. That is the two-band floor
+  asked of the ink instead of the band count, and like the floor it is no candidate rather than a
+  refusal.
+
+  **And it lost every grid drawn in rules.** A rule thinner than the lattice tolerance — pdfTeX
+  draws `\hline` and `|` as exactly that — folds to one line and occupies no face, so selecting
+  bands by faces kept none, and a grid `-v4` emitted by tracing produced **no table and no
+  refusal**. On the benchmark that was a true 3 × 5 and a true 2 × 2. A rule now keeps the bands it
+  crosses; a rectangle thick on both axes already occupied them, so no other page's selection moves.
+
+  Measured with the new `docs/measurements/table-refusals/rule_ab.py`. Benchmark documents emitting
+  a table go **12 → 14, every one holding a table in ground truth, zero false positives** — precision
+  100%, recall 33%; ruled tables alone 10 → 12, `-v4`'s two back at `-v4`'s shapes. **On the gate
+  corpus all six `-v5` tables are gone and none is added**, and over 41 further PDFs from the Ethos
+  corpora it removes one more disclaimer and adds nothing. Every page `-v6` refuses is a page `-v4`
+  refused. Compared byte for byte at equal profile, ten fixtures move: the six gate PDFs whose tables
+  or refused pages change, and four — both IRS forms, `background-panel-not-a-grid` and
+  `ruled-table-overlap` — whose tables and refused pages are identical and whose refusal only reads
+  differently, below. No office fixture moves. **The refusal limitation also named `ruled-rects-v3` through both
+  bumps of this rule** — the constant was spelled a second time in `limitations.rs` and nothing
+  compared the two. It names the profile's rule now, and a test holds them together. Its explanation
+  also said tracing *replaced* the face test, which it sits beside; it says so now. New public
+  constant `TABLE_DETECTION_V6`.
+
 - **`table_detection.ruled` `ruled-rects-v4` → `ruled-rects-v5`: the grid's own rows, not every
   band its edges imply.** `-v4` clustered every rectangle edge into lines and treated every band
   between them as a row or column. A table drawn as separated cell rows has whitespace between
@@ -72,7 +109,8 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   1 × 3, a lone header row geometry cannot tell from three boxes in a row.
 
   Documents emitting a table go **7 → 12, all twelve with a table in ground truth, zero false
-  positives** — precision 100%, recall 29%. Across this entry's two ruled changes: **5 → 12
+  positives** — precision 100%, recall 29%. **Zero false positives on the benchmark only:** on the gate corpus
+  this rule emitted six tables and all six were fabricated — see `-v6` above, which removes them. Across this entry's two ruled changes: **5 → 12
   documents, 2.4× the recall, fabrication at zero throughout.**
   `background-panel-not-a-grid` refuses at every step.
 
@@ -89,7 +127,8 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   summed. **Either suffices.** Neither subsumes the other, which is why this is a widening and not
   a swap: a merged cell breaks an interior line, so tracing refuses what faces accept, and a
   rules-only grid draws no cell, so faces refuse what tracing accepts. Requiring both would keep
-  all 30 refused. **Nothing `-v3` emitted is lost.**
+  all 30 refused. **Nothing `-v3` emitted is lost** by `-v4` — though the release as a whole gives up
+  single-row and single-column grids, on purpose, at `-v5`'s two-band floor above.
 
   Documents emitting a table go **5 → 7**, all 7 with a table in ground truth, **zero false
   positives**. Tracing cannot fabricate: the lattice is built from rectangle edges, so a line
@@ -97,10 +136,10 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   which it draws by definition, and helps no interior line —
   `background-panel-not-a-grid` still refuses under both paths.
 
-  The gain is small because a second limit binds: `detect_ruled` builds one lattice from every
-  rectangle on the page, so a line must be traced across logos and borders too. 53 documents refuse
-  on tracing for that reason. Grouping rectangles into spatially connected candidate grids is the
-  next structural change and is not this one.
+  The gain was small, and the first diagnosis for it — one page-wide lattice traced across logos
+  and borders — was wrong: T4 found the refused pages draw complete grids whose rows have whitespace
+  between them, which `-v5` above addresses. Clustering rectangles into candidate grids is not the
+  next change.
 
 - **`reading_order_rule` `gutter-columns-v2` → `gutter-columns-v3`** on the PDF profile, so
   `profile_sha256` moves and every golden regenerates. A bump rather than a new name on
@@ -117,10 +156,14 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   opendataloader-bench documents because the gutter check always answered first with a few hundred
   centipoints of word spacing. Both were true; the word gap read as a near miss on a page whose
   candidate was a histogram of where words start. The reported refusal moves to
-  `lattice_too_large` on **116** of 199 documents on the consolidated tree — 117 measured in
-  isolation, and one document moves because the ruled coverage rework emits a table on two
-  more pages and `unruled::detect` runs on the runs no accepted ruled table already claims. **No table changes** — 115 tables across the eight
-  gate documents, byte-identical.
+  `lattice_too_large` on **117** of 199 documents measured in isolation. The split moves again with
+  every ruled change, because `unruled::detect` runs only on the runs no accepted ruled table
+  already claims: on the tree this release ships it is **115 `lattice_too_large`, 81
+  `gutter_below_floor` and 3 `faces_without_text`**. **No table changed at that commit** — 115
+  tables across the eight gate documents, byte-identical — but the refusal is inside the artifact,
+  so `extract`, `markdown` and `html` moved on every gate PDF, with their
+  `representation_c14n_sha256`, while `table_detection.unruled` stayed `unruled-align-v1`: a rule
+  id that reports a different first refusal for the same page.
 
 - **The tagged role path is shared instead of cloned once per run and again per node.** Peak
   resident memory on the 733-page gate document falls from **6647.0 MiB to 4663.7 — 29.8%** — and

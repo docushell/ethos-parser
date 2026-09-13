@@ -337,6 +337,46 @@ pub const TABLE_DETECTION_V4: &str = "ruled-rects-v4";
 /// its scattered bars touch, faces refuses three of nine, and three bars carry no line.
 pub const TABLE_DETECTION_V5: &str = "ruled-rects-v5";
 
+/// The **ruled** rule with bands a rule crosses kept, and a grid the page never divides refused.
+///
+/// # What `-v5` got wrong, in both directions
+///
+/// **It lost every grid drawn in rules.** Band selection kept a band only where a rectangle
+/// occupied one of its faces. A rule thinner than `LATTICE_TOLERANCE` folds both of its edges into
+/// one lattice line and occupies no face, so a grid drawn entirely as rules — pdfTeX draws `\hline`
+/// and `|` as exactly such filled rectangles — kept no band, produced no candidate, and declared
+/// nothing. `-v4` emitted those by tracing. On the 200-document benchmark that was two true tables,
+/// a 3 x 5 and a 2 x 2, gone without a word.
+///
+/// **And it emitted stacks as grids.** The lattice is page-wide, so a column line can come from ink
+/// nowhere near the grid. `nist-sp-800-207`'s disclaimer shades each line of one paragraph with its
+/// own full-width rectangle; with empty bands dropped every kept face was covered, and it emitted as
+/// a 14 x 5 table whose thirteen cells each span all five columns. Its only interior column edges
+/// are the ends of a URL's underline. Five of the eight gate documents carried a table of that kind
+/// or of two empty full-width bars. The benchmark could not see it: its table documents are not
+/// NIST's.
+///
+/// # The change
+///
+/// **A rule keeps the bands it crosses**: a vertical rule states that the rows it runs across are
+/// rows, a horizontal one the same of columns. A rectangle thick on both axes already occupies the
+/// faces of every band it spans, so selection on a page that draws no rule is unchanged.
+///
+/// **A grid must be divided inside itself on both axes**: some rectangle with an edge on an
+/// interior column line must span a kept row, and likewise for rows. A cell narrower than the grid
+/// is one; a vertical rule is one; an underline's end, 0.48pt tall, is not. This is the two-band
+/// floor asked of the ink rather than of the band count, and it is a missing candidate rather than
+/// a refusal for the floor's own reason.
+///
+/// # Measured
+///
+/// Documents emitting a ruled table on the benchmark: `-v4` 2, `-v5` 10, **`-v6` 12 — all twelve
+/// with a table in ground truth, both of `-v4`'s back at `-v4`'s shapes**. On the gate corpus every
+/// ruled table `-v5` emitted, six in five documents, is gone and none is added. Over 41 further
+/// PDFs from the Ethos conformance corpora it removes one more disclaimer and adds nothing. Every
+/// page `-v6` refuses is a page `-v4` refused.
+pub const TABLE_DETECTION_V6: &str = "ruled-rects-v6";
+
 /// The **unruled** table-detection rule v1-S2 ships: grids inferred from text alignment.
 ///
 /// A separate id from [`TABLE_DETECTION_V1`], not a bump of it. The two answer different
@@ -541,7 +581,7 @@ impl Default for TableDetection {
     /// All four rules, enabled — the two v1-S2 shipped, the one v1-S8 added, and the one v2-S24 did.
     fn default() -> Self {
         Self {
-            ruled: TABLE_DETECTION_V5.to_string(),
+            ruled: TABLE_DETECTION_V6.to_string(),
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
@@ -2131,7 +2171,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v5","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.54.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2880,6 +2920,17 @@ mod tests {
              and flagged it; the block rule was measuring the same gap a second time against a \
              quantization epsilon and splitting on it. 296 of 735 corpus documents change, none \
              for the worse.\n\n\
+             Moved again for the rules and the stacks: `table_detection.ruled` `ruled-rects-v5` \
+             -> `-v6`. `-v5` was wrong both ways. A grid drawn in rules thinner than the lattice \
+             tolerance — pdfTeX's `\\hline` and `|` — occupies no face, so selecting bands by \
+             faces kept none and two benchmark tables `-v4` emitted vanished with no refusal; a \
+             rule now keeps the bands it crosses. And a stack of full-width rectangles, with \
+             columns borrowed from ink elsewhere on a page-wide lattice, emitted as a grid: \
+             `nist-sp-800-207`'s shaded disclaimer became a 14x5 table of thirteen full-width \
+             cells, on five of the eight gate documents; a grid must now be divided inside itself \
+             on both axes by a rectangle that spans a kept band. Benchmark documents emitting a \
+             ruled table go 10 -> 12, every one with a table in ground truth; all six `-v5` \
+             tables on the gate corpus are gone and none is added.\n\n\
              Moved again for the band rework: `table_detection.ruled` `ruled-rects-v4` -> `-v5`. \
              A band no rectangle occupies is no longer a row of the grid. A table drawn as \
              separated cell rows has whitespace between them, and that whitespace was becoming a \
@@ -2910,7 +2961,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:559f033a1e70da9a876311073d90727880c9f889cfac97ab498b89cc22dd8690"
+            "sha256:b2fd51083aa42da538bffd4bbac34ddf5e2799d1d97e8ac9dd4c1752e39aa7ba"
         );
     }
 
@@ -2923,14 +2974,14 @@ mod tests {
     #[test]
     fn the_profile_names_every_table_rule_and_any_one_moves_the_hash() {
         let base = Profile::default();
-        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V5);
+        assert_eq!(base.table_detection.ruled, TABLE_DETECTION_V6);
         assert_eq!(base.table_detection.unruled, TABLE_DETECTION_UNRULED_V1);
         assert_eq!(base.table_detection.stroke_ruled, TABLE_DETECTION_STROKE_V1);
         assert_eq!(base.table_detection.tagged, TABLE_DETECTION_TAGGED_V1);
         for (a, b) in [
-            (TABLE_DETECTION_V5, TABLE_DETECTION_UNRULED_V1),
-            (TABLE_DETECTION_V5, TABLE_DETECTION_STROKE_V1),
-            (TABLE_DETECTION_V5, TABLE_DETECTION_TAGGED_V1),
+            (TABLE_DETECTION_V6, TABLE_DETECTION_UNRULED_V1),
+            (TABLE_DETECTION_V6, TABLE_DETECTION_STROKE_V1),
+            (TABLE_DETECTION_V6, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
@@ -2945,7 +2996,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v5","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -3041,7 +3092,7 @@ mod tests {
             "a pre-S24 profile must not silently acquire the tagged rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v5","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()
