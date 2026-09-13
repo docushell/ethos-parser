@@ -1,7 +1,10 @@
 # Releasing
 
-**Nothing here has ever been released.** `git tag` returns nothing, no crate is on crates.io, no
-package is on npm or PyPI, and there is no publish automation. `CHANGELOG.md` has said so from its
+**The first release is v0.55.0, and it is binaries only**: a GitHub Release carrying macOS builds —
+`aarch64` and `x86_64`, each executed and byte-compared by `ci/release-artifacts.sh` — on a private
+repository, following §8. **Nothing is on crates.io, npm or PyPI**, the `publish = false` tripwire in
+§6 is still in place, and there is no publish automation. A local `v0.54.0` tag predates this
+procedure being followed; it was never pushed and nothing was released from it. `CHANGELOG.md` has said so from its
 third line: *"Version numbers are in-tree; creating a tag or a release is a separate, deliberate
 act."*
 
@@ -17,6 +20,7 @@ cannot be undone.**
 | --- | --- |
 | A version bump in the tree | yes — it is a commit |
 | A git tag | yes — `git tag -d` and a force-push, while nobody has fetched it |
+| A GitHub Release with binaries | yes — `gh release delete` and delete the tag, while nobody depends on it; on a private repository only collaborators ever saw it |
 | **A crates.io publish** | **no.** `cargo yank` stops *new* dependents resolving it; the version number is spent forever and the files stay downloadable |
 | **An npm publish** | **no**, in practice. Unpublish is allowed for 72 hours and only if nothing depends on it; after that, `deprecate` |
 | **A PyPI publish** | **no.** A deleted file's version can never be reused |
@@ -154,3 +158,36 @@ enforces. The friction is the point.
   because 5.4 is a loop that can stop in the middle. It is recoverable: publish the rest, or yank
   what went out and move to the next patch version. Record which, in `CHANGELOG.md`, because the
   gap will otherwise be visible on crates.io and explained nowhere.
+
+## 8. A binaries-only GitHub Release
+
+The registries in §5.3–5.5 claim names permanently and stay blocked until the owner decides they
+should not. A GitHub Release of prebuilt binaries claims nothing and can be deleted, so it can ship
+first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
+
+1. **Build and verify the artifacts** on a clean tree at the tagged commit:
+
+   ```bash
+   ci/release-artifacts.sh
+   ```
+
+   Every target lands as `verified` — built, executed on this host, and every artifact digest over
+   the gate corpus equal to the native build's — or `compiled`, built and never run.
+   `target/release-artifacts/SHA256SUMS.txt` records which. **Ship only `verified` targets.** A
+   compiled-only binary is an untested claim for an engine whose product is byte-identical reruns;
+   Linux and Windows wait for a runner that can execute them (plan item 6.1).
+
+2. **Push the tag**, then create the release from those files and nothing else:
+
+   ```bash
+   git push origin v0.55.0
+   gh release create v0.55.0 --title "ethos-parser 0.55.0" --notes-file <notes> \
+     target/release-artifacts/*.tar.gz target/release-artifacts/SHA256SUMS.txt
+   ```
+
+   The notes say which platforms were verified and which were not built, so no reader infers a
+   platform from its absence.
+
+**Undoing it**, if something is wrong: `gh release delete v0.55.0`, then `git push --delete origin
+v0.55.0` and `git tag -d v0.55.0`. Fix, and release again under the same number only if nobody
+outside the repository could have fetched it; otherwise the number is spent, as in §7.
