@@ -83,6 +83,8 @@ two different sentences about the same document.
 - **Not a verifier, still.** No adapter emits `grounded`, an evidence tier, or a verdict of its own.
 - **Not a session.** Every call is self-contained, and passing the artifact back **is** the session.
   No process-global document cache makes call 2 depend on call 1.
+  **Amended 2026-09-13 by [decision 24](../00-NORTH-STAR.md):** no answer depends on an earlier
+  call; an earlier call may make a later call on byte-identical path-form input cheaper.
 - **Not permission to reopen v1 or v1.1.** Every detection and projection rule keeps its id and its
   numbers.
 - **Not a platform.** One MCP server reaches every platform on the list without dragging their

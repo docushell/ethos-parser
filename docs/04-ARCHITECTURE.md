@@ -41,6 +41,13 @@ merits: the oracle drives one CLI and compares against another.
 | `ethos-parser-grounding` | `ethos-parser-core` | Any **format** concept at all — it projects the *representation*, never a document |
 | `ethos-parser-cli` | all four | Any logic. It parses arguments, calls the library, and maps errors to exit codes |
 
+**One piece of state lives in the CLI, and it is not logic.** The MCP server remembers the SHA-256
+of representation bytes passed by path that already verified in its own process, so a repeat call on identical
+bytes skips a verification core has already performed (`00-NORTH-STAR.md` decision 24). It decides
+nothing core does not: the verdict is core's, reached once, and only its cost is spared. It stays
+out of core on purpose — a core API that skips verification for a digest would be sound only inside
+the process that verified, and wrong everywhere else.
+
 **"Any PDF concept" means machinery, not vocabulary.** The contract defines `NativeLocator` as a
 discriminated union with a `PdfLocator` variant, and `ethos-parser-core` owns the contract, so the
 line is:

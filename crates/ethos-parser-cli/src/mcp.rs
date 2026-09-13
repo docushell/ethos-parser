@@ -45,11 +45,42 @@
 //!    file names a coordinate** — not `page`, not `bbox`, not `x`/`y`/`width`/`height`, not a
 //!    row/column pair. A test reads the advertised schemas and fails on those names.
 //! 3. **Re-validate.** A representation is fingerprint-checked before it is read, exactly as
-//!    `ethos-parser ground` checks it, and a node id is looked up among **that artifact's** own nodes.
+//!    `ethos-parser ground` checks it — in this call, or in an earlier call of this process over
+//!    bytes this call proves identical by hashing every byte it read — and a node id is looked up
+//!    among the nodes parsed from **this call's** bytes.
 //!
 //! **A handle this engine did not mint fails closed** — a tool error, never an empty result. An
 //! empty result tells a model its guess was unlucky; an error tells it the guess was not
 //! admissible.
+//!
+//! # What the server keeps between calls: which exact bytes already verified, and nothing else
+//!
+//! `docs/history/12-V12-SCOPE.md` §5 recorded *"No process-global document cache makes call 2
+//! depend on call 1"*, and `docs/00-NORTH-STAR.md` decision 24 amends it: **no call's answer
+//! depends on an earlier call; an earlier call may make a later call on byte-identical input
+//! cheaper.** Verification rebuilds and hashes the whole payload, and it was two-thirds of a
+//! `node_get` and most of a `ground` (`docs/measurements/memory-ceiling/` §14) — so a host asking
+//! fifty questions of one artifact paid for it fifty times.
+//!
+//! [`ledger`] remembers the SHA-256 of each path-form buffer that parsed and verified, and a call
+//! whose own bytes hash to one of them skips `verify_fingerprint` and nothing else: it still reads,
+//! parses and structurally checks its own bytes, and answers from them. Verification is a
+//! deterministic function of the bytes within one binary, so skipping it for identical bytes
+//! cannot change a reply — every reply is the one a fresh process gives. What is deliberately NOT
+//! the key:
+//!
+//! - **the path, the inode, the size or the modification time** — a same-length rewrite with its
+//!   mtime restored defeats every one of them, and the ledger is never handed a path at all;
+//! - **the declared fingerprint** — the caller wrote it, and an edited payload that kept it would
+//!   share the key with the original and skip the one check that refuses it;
+//! - **anything computed from a parsed `Value`** — its serialization is a build property under
+//!   `preserve_order`, so inline arguments are never remembered and always verified.
+//!
+//! No document, tree, path or byte buffer is kept: 64 digests at most, least recently used first
+//! out, about 6 KiB whatever the input. Nothing a model can name or enumerate lives there — no
+//! argument takes a digest and no reply prints one. **One bit leaks through latency**: that these
+//! exact bytes were verified earlier in this process. It needs the full preimage and reveals no
+//! locator; the only way to close it is to verify every time, which is the cost this removes.
 //!
 //! # Why there is no framework here
 //!
@@ -67,7 +98,10 @@
 //! `docs/04-ARCHITECTURE.md` §1 keeps logic out of the CLI, and this file holds none: every tool
 //! calls the same library entry point the matching subcommand calls, and the artifacts are the
 //! artifacts. What lives here is protocol plumbing, which is why it is a CLI module rather than a
-//! fifth crate or a new concept in `ethos-parser-core`.
+//! fifth crate or a new concept in `ethos-parser-core`. [`ledger`] is plumbing too — it remembers a
+//! verdict core already reached, per process — and it stays here on purpose: a core entry point
+//! that skips verification for a digest would be the fingerprint-accepting constructor core
+//! refuses, and it is sound only inside the process that did the verifying.
 
 use std::io::{BufRead, Write};
 
@@ -90,13 +124,22 @@ const METHOD_NOT_FOUND: i64 = -32601;
 /// One JSON object per line. A line that is not JSON, or is JSON this server has no method for,
 /// gets a JSON-RPC error rather than a panic or a silent skip — a host that mis-frames a request
 /// should learn that from the response, not from a closed pipe.
-pub fn serve(input: impl BufRead, mut output: impl Write) -> std::io::Result<()> {
+pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
+    serve_with(input, output, &mut ledger::Ledger::new())
+}
+
+/// [`serve`], with the session's [`ledger::Ledger`] supplied, so a test can inspect it afterwards.
+fn serve_with(
+    input: impl BufRead,
+    mut output: impl Write,
+    ledger: &mut ledger::Ledger,
+) -> std::io::Result<()> {
     for line in input.lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = handle_line(&line) else {
+        let Some(response) = handle_line(&line, ledger) else {
             // A notification (no `id`) takes no reply, which is JSON-RPC's rule rather than a
             // shortcut: answering `notifications/initialized` is a protocol error.
             continue;
@@ -109,7 +152,7 @@ pub fn serve(input: impl BufRead, mut output: impl Write) -> std::io::Result<()>
 }
 
 /// One line in, at most one response out.
-fn handle_line(line: &str) -> Option<Reply> {
+fn handle_line(line: &str, ledger: &mut ledger::Ledger) -> Option<Reply> {
     let request: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         // No id to answer with, so this is the one case that answers with a null id — the JSON-RPC
@@ -130,7 +173,7 @@ fn handle_line(line: &str) -> Option<Reply> {
     // A notification has no `id`. It is acted on and not answered.
     let id = id?;
 
-    Some(match dispatch(method, &params) {
+    Some(match dispatch(method, &params, ledger) {
         Ok(Outcome::Value(result)) => {
             Reply::Json(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
         }
@@ -219,6 +262,7 @@ impl Reply {
 /// The distinction is MCP's and it matters: a *protocol* failure is a JSON-RPC `error`, while a
 /// *tool* failure is a result with `isError: true` so the model can see and react to it. A forged
 /// handle is a tool failure — the call was well-formed, the answer is no.
+#[derive(Debug)]
 struct Failure {
     code: i64,
     message: String,
@@ -243,7 +287,7 @@ impl From<&EngineError> for Failure {
     }
 }
 
-fn dispatch(method: &str, params: &Value) -> Result<Outcome, Failure> {
+fn dispatch(method: &str, params: &Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
     match method {
         "initialize" => Ok(Outcome::Value(json!({
             "protocolVersion": PROTOCOL_VERSION,
@@ -254,7 +298,7 @@ fn dispatch(method: &str, params: &Value) -> Result<Outcome, Failure> {
             "serverInfo": { "name": "ethos-parser", "version": env!("CARGO_PKG_VERSION") },
         }))),
         "tools/list" => Ok(Outcome::Value(json!({ "tools": tools() }))),
-        "tools/call" => call_tool(params),
+        "tools/call" => call_tool(params, ledger),
         "ping" => Ok(Outcome::Value(json!({}))),
         other => Err(Failure::new(
             METHOD_NOT_FOUND,
@@ -338,7 +382,7 @@ fn tools() -> Value {
     ])
 }
 
-fn call_tool(params: &Value) -> Result<Outcome, Failure> {
+fn call_tool(params: &Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
@@ -347,8 +391,8 @@ fn call_tool(params: &Value) -> Result<Outcome, Failure> {
 
     let outcome = match name {
         "extract" => tool_extract(&args),
-        "ground" => tool_ground(&args),
-        "node_get" => tool_node_get(&args),
+        "ground" => tool_ground(&args, ledger),
+        "node_get" => tool_node_get(&args, ledger),
         other => return Err(Failure::new(INVALID_PARAMS, format!("no tool `{other}`"))),
     };
 
@@ -401,8 +445,8 @@ fn tool_extract(args: &Value) -> Result<(String, Artifact), Failure> {
 }
 
 /// A representation → `ethos.grounding.v1`.
-fn tool_ground(args: &Value) -> Result<(String, Artifact), Failure> {
-    let repr = representation_arg(args)?;
+fn tool_ground(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Artifact), Failure> {
+    let repr = representation_arg(args, ledger)?;
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
     let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
         .map_err(|e| Failure::from(&e))?;
@@ -425,8 +469,8 @@ fn tool_ground(args: &Value) -> Result<(String, Artifact), Failure> {
 /// The representation is re-validated (fingerprint) and the id is looked up among *that*
 /// artifact's own nodes. Not found is an error, deliberately: an empty result would tell a model
 /// its guess was merely unlucky.
-fn tool_node_get(args: &Value) -> Result<(String, Artifact), Failure> {
-    let repr = representation_arg(args)?;
+fn tool_node_get(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Artifact), Failure> {
+    let repr = representation_arg(args, ledger)?;
     let node_id = args.get("node_id").and_then(Value::as_str).ok_or_else(|| {
         Failure::new(INVALID_PARAMS, "`node_id` is required and must be a string")
     })?;
@@ -463,24 +507,172 @@ fn tool_node_get(args: &Value) -> Result<(String, Artifact), Failure> {
 /// whose payload does not hash to its declared digest is not a record this engine will speak for,
 /// so a model that edited the JSON on the way through fails here instead of getting an answer
 /// about a document that never existed.
-fn representation_arg(args: &Value) -> Result<DocumentRepresentation, Failure> {
+///
+/// **A path is read once and its bytes handed to the ledger by value**, which parses, hashes and —
+/// unless these exact bytes already verified in this process — verifies that one buffer. The
+/// ledger is never given the path. An inline object is verified every time, exactly as before.
+fn representation_arg(
+    args: &Value,
+    ledger: &mut ledger::Ledger,
+) -> Result<DocumentRepresentation, Failure> {
     let raw = args
         .get("representation")
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`representation` is required"))?;
 
-    let repr: DocumentRepresentation = match raw {
+    match raw {
         Value::String(path) => {
             let bytes = crate::read_source(std::path::Path::new(path))
                 .map_err(|e| Failure::new(INVALID_PARAMS, format!("{path}: {e}")))?;
-            serde_json::from_slice(&bytes)
+            ledger.load(bytes)
         }
-        other => serde_json::from_value(other.clone()),
+        other => {
+            let repr: DocumentRepresentation = serde_json::from_value(other.clone())
+                .map_err(|e| Failure::new(INVALID_PARAMS, format!("representation: {e}")))?;
+            repr.verify_fingerprint().map_err(|e| Failure::from(&e))?;
+            Ok(repr)
+        }
     }
-    .map_err(|e| Failure::new(INVALID_PARAMS, format!("representation: {e}")))?;
-
-    repr.verify_fingerprint().map_err(|e| Failure::from(&e))?;
-    Ok(repr)
 }
+
+/// **Which exact bytes already verified in this process** — digests, and nothing else.
+///
+/// The module doc's *What the server keeps between calls* is the argument; this is the mechanism.
+/// Its code never touches the filesystem or a parsed tree's serialization, and
+/// `the_ledger_never_sees_a_path_or_the_filesystem` reads this module's source to hold it there.
+mod ledger {
+    use std::collections::VecDeque;
+
+    use ethos_parser_core::DocumentRepresentation;
+
+    use super::{Failure, INVALID_PARAMS};
+
+    /// How many verified digests are remembered. A constant, not a knob: MCP exposes none.
+    pub(super) const CAPACITY: usize = 64;
+
+    /// The identity of one buffer: its length and the SHA-256 of every byte of it.
+    ///
+    /// No `Default` and no `Clone`, and one constructor: a key exists only because some buffer was
+    /// hashed.
+    #[derive(PartialEq, Eq)]
+    struct Key {
+        len: u64,
+        sha256: String,
+    }
+
+    impl Key {
+        fn of(bytes: &[u8]) -> Self {
+            Key {
+                len: bytes.len() as u64,
+                sha256: ethos_parser_core::sha256_hex_bytes(bytes),
+            }
+        }
+    }
+
+    /// Digests of buffers that parsed and verified, least recently used at the front.
+    pub(super) struct Ledger {
+        verified: VecDeque<Key>,
+        #[cfg(test)]
+        pub(super) stats: Stats,
+    }
+
+    /// What the ledger did, for tests to hold it to.
+    ///
+    /// Counted inside `load` rather than observed from outside because some of it cannot be
+    /// observed any other way: that a parse failure was never hashed leaves no trace in a reply.
+    #[cfg(test)]
+    #[derive(Default, Clone, Copy, Debug, PartialEq)]
+    pub(super) struct Stats {
+        pub(super) parses: u32,
+        pub(super) hashes: u32,
+        pub(super) verifies: u32,
+        pub(super) hits: u32,
+    }
+
+    impl Ledger {
+        pub(super) fn new() -> Self {
+            Ledger {
+                verified: VecDeque::new(),
+                #[cfg(test)]
+                stats: Stats::default(),
+            }
+        }
+
+        /// Parse `bytes`, and verify them unless these exact bytes already verified.
+        ///
+        /// The order is the argument. A parse failure returns before anything is hashed, so a
+        /// mistaken path to a 950 MiB PDF costs what it did. The buffer is freed before
+        /// verification, as it was. And the only insertion is here, after verification succeeded
+        /// on the tree parsed from the very buffer the key was hashed from — so an entry always
+        /// means *these bytes verified*, and an error is never remembered.
+        pub(super) fn load(&mut self, bytes: Vec<u8>) -> Result<DocumentRepresentation, Failure> {
+            #[cfg(test)]
+            {
+                self.stats.parses += 1;
+            }
+            let repr: DocumentRepresentation = serde_json::from_slice(&bytes)
+                .map_err(|e| Failure::new(INVALID_PARAMS, format!("representation: {e}")))?;
+
+            let key = self.key_of(&bytes);
+            drop(bytes);
+
+            if let Some(i) = self.verified.iter().position(|k| *k == key) {
+                if let Some(k) = self.verified.remove(i) {
+                    self.verified.push_back(k);
+                }
+                #[cfg(test)]
+                {
+                    self.stats.hits += 1;
+                }
+                return Ok(repr);
+            }
+
+            #[cfg(test)]
+            {
+                self.stats.verifies += 1;
+            }
+            repr.verify_fingerprint().map_err(|e| Failure::from(&e))?;
+            self.insert(key);
+            Ok(repr)
+        }
+
+        /// The only route `load` takes to a key, so the test counter cannot drift from the hash.
+        fn key_of(&mut self, bytes: &[u8]) -> Key {
+            #[cfg(test)]
+            {
+                self.stats.hashes += 1;
+            }
+            Key::of(bytes)
+        }
+
+        fn insert(&mut self, key: Key) {
+            if self.verified.len() == CAPACITY {
+                self.verified.pop_front();
+            }
+            self.verified.push_back(key);
+        }
+
+        #[cfg(test)]
+        pub(super) fn len(&self) -> usize {
+            self.verified.len()
+        }
+
+        #[cfg(test)]
+        pub(super) fn knows(&self, bytes: &[u8]) -> bool {
+            let key = Key::of(bytes);
+            self.verified.iter().any(|k| *k == key)
+        }
+
+        /// A ledger that believes `bytes` verified when they never did — to prove a skip is decided
+        /// by the key alone, and so that nothing else can be what makes a test pass.
+        #[cfg(test)]
+        pub(super) fn remembering_unverified(bytes: &[u8]) -> Self {
+            let mut ledger = Ledger::new();
+            ledger.verified.push_back(Key::of(bytes));
+            ledger
+        }
+    }
+}
+// end mod ledger
 
 #[cfg(test)]
 mod tests {
@@ -488,7 +680,10 @@ mod tests {
 
     fn call(method: &str, params: Value) -> Value {
         let line = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
-        render(handle_line(&line.to_string()).expect("a request with an id gets a response"))
+        render(
+            handle_line(&line.to_string(), &mut ledger::Ledger::new())
+                .expect("a request with an id gets a response"),
+        )
     }
 
     /// A reply as the wire carries it, parsed back — the only form a host ever sees.
@@ -636,14 +831,14 @@ mod tests {
     fn a_notification_gets_no_reply() {
         let line = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
         assert!(
-            handle_line(&line.to_string()).is_none(),
+            handle_line(&line.to_string(), &mut ledger::Ledger::new()).is_none(),
             "answering a notification is a protocol error, not a courtesy"
         );
     }
 
     #[test]
     fn an_unparseable_line_is_an_error_rather_than_a_panic() {
-        let r = render(handle_line("{not json").expect("a reply"));
+        let r = render(handle_line("{not json", &mut ledger::Ledger::new()).expect("a reply"));
         assert_eq!(r["error"]["code"], -32700);
     }
 
@@ -671,5 +866,534 @@ mod tests {
         );
         // Malformed representation, so it never reaches the lookup — and it still fails closed.
         assert_eq!(r["result"]["isError"], json!(true));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The ledger. Every test below compares raw reply bytes with a fresh ledger's reply to the
+    // same request at the same file state — the claim is that earlier calls change cost, never
+    // content — and each names the wrong implementation it exists to catch.
+    // ---------------------------------------------------------------------------------------
+
+    /// The canonical artifact of an in-repo one-node PDF, minted here rather than read from disk.
+    fn artifact() -> Vec<u8> {
+        let pdf = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/engine/measured-ink-box/document.pdf"
+        ))
+        .expect("fixture");
+        crate::representation_for_bytes(&pdf, &ethos_parser_core::Profile::default())
+            .expect("extracts")
+            .to_canonical_bytes()
+            .expect("canonical")
+    }
+
+    /// The same length, the declared fingerprint kept, one letter of the node's text flipped — a
+    /// payload edit `verify_fingerprint` refuses and nothing cheaper can see.
+    fn tampered(bytes: &[u8]) -> Vec<u8> {
+        let at = bytes
+            .windows(8)
+            .rposition(|w| w == b"\"text\":\"")
+            .expect("a text field")
+            + 8;
+        let mut out = bytes.to_vec();
+        assert!(
+            out[at].is_ascii_alphabetic(),
+            "the text starts with a letter"
+        );
+        out[at] ^= 0x20;
+        out
+    }
+
+    /// A directory of its own per test, so parallel tests never share a file, removed when the test
+    /// ends — including when it panics.
+    struct Scratch(std::path::PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = std::path::Path;
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn scratch(name: &str) -> Scratch {
+        let dir =
+            std::env::temp_dir().join(format!("ethos-mcp-ledger-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        Scratch(dir)
+    }
+
+    fn write(path: &std::path::Path, bytes: &[u8]) {
+        std::fs::write(path, bytes).expect("write");
+    }
+
+    /// One tool call through the real line handler, as the wire bytes of its reply.
+    fn tool(ledger: &mut ledger::Ledger, name: &str, arguments: Value) -> Vec<u8> {
+        let line = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": name, "arguments": arguments }
+        });
+        let mut out = Vec::new();
+        handle_line(&line.to_string(), ledger)
+            .expect("a reply")
+            .write_to(&mut out)
+            .expect("write");
+        out
+    }
+
+    fn fresh(name: &str, arguments: Value) -> Vec<u8> {
+        tool(&mut ledger::Ledger::new(), name, arguments)
+    }
+
+    fn is_error(reply: &[u8]) -> bool {
+        serde_json::from_slice::<Value>(reply).expect("json")["result"]["isError"] == json!(true)
+    }
+
+    fn at(path: &std::path::Path) -> Value {
+        json!(path.to_str().expect("utf-8 path"))
+    }
+
+    /// The failure this catches: a ledger that never records, which would make every equality below vacuous; a hit
+    /// that skips the parse and with it `check_structure`; a key taken from anything but a hash of
+    /// this call's bytes.
+    #[test]
+    fn a_path_is_verified_once_then_answered_identically() {
+        let dir = scratch("once");
+        let p = dir.join("a.json");
+        write(&p, &artifact());
+        let mut ledger = ledger::Ledger::new();
+        for _ in 0..3 {
+            let args = json!({ "representation": at(&p), "node_id": "s1" });
+            let reply = tool(&mut ledger, "node_get", args.clone());
+            assert!(!is_error(&reply));
+            assert_eq!(reply, fresh("node_get", args));
+        }
+        for _ in 0..2 {
+            let args = json!({ "representation": at(&p) });
+            assert_eq!(
+                tool(&mut ledger, "ground", args.clone()),
+                fresh("ground", args)
+            );
+        }
+        assert_eq!(
+            ledger.stats,
+            ledger::Stats {
+                parses: 5,
+                hashes: 5,
+                verifies: 1,
+                hits: 4
+            }
+        );
+    }
+
+    /// The failure this catches: skipping verification whenever a key of the same length exists, or
+    /// whenever the ledger is not empty; a key over a prefix, the first and last blocks, or the
+    /// declared fingerprint. The edit sits 256 KiB from the start and 1 MiB from the end, away from
+    /// the middle, and the poisoned ledger proves the key is the whole test.
+    #[test]
+    fn the_skip_is_decided_by_the_bytes_alone() {
+        let mut a = vec![b' '; 256 * 1024];
+        a.extend_from_slice(&artifact());
+        a.extend(std::iter::repeat_n(b' ', 1024 * 1024));
+        let t = tampered(&a);
+        assert_eq!(a.len(), t.len());
+
+        assert!(
+            ledger::Ledger::remembering_unverified(&t)
+                .load(t.clone())
+                .is_ok(),
+            "a remembered key skips verification — the only thing that decides a skip"
+        );
+        let refused = ledger::Ledger::remembering_unverified(&a)
+            .load(t.clone())
+            .expect_err("different bytes are verified, whatever else is remembered");
+        let fresh_refusal = ledger::Ledger::new()
+            .load(t.clone())
+            .expect_err("and refused");
+        assert!(refused
+            .message
+            .contains("declared representation_c14n_sha256 is"));
+        assert_eq!(refused.message, fresh_refusal.message);
+
+        let mut warmed = ledger::Ledger::new();
+        assert!(warmed.load(a).is_ok());
+        assert!(
+            warmed.load(t).is_err(),
+            "a verified original does not vouch for its edit"
+        );
+    }
+
+    /// The failure this catches: a key made of the path, the inode, the size or the modification time. The file is
+    /// rewritten in place — same inode, same length — and its mtime put back.
+    #[test]
+    fn a_same_length_rewrite_with_its_mtime_restored_is_verified_again() {
+        let dir = scratch("rewrite");
+        let p = dir.join("a.json");
+        let good = artifact();
+        write(&p, &good);
+        let args = json!({ "representation": at(&p), "node_id": "s1" });
+        let mut ledger = ledger::Ledger::new();
+        assert!(!is_error(&tool(&mut ledger, "node_get", args.clone())));
+
+        let before = std::fs::metadata(&p).expect("meta");
+        {
+            use std::io::Write as _;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&p)
+                .expect("open");
+            f.write_all(&tampered(&good)).expect("rewrite in place");
+            f.set_modified(before.modified().expect("mtime"))
+                .expect("restore mtime");
+        }
+        let after = std::fs::metadata(&p).expect("meta");
+        assert_eq!(before.len(), after.len());
+        assert_eq!(before.modified().ok(), after.modified().ok());
+
+        let reply = tool(&mut ledger, "node_get", args.clone());
+        assert!(
+            is_error(&reply),
+            "the edited bytes must be verified, and refused"
+        );
+        assert_eq!(reply, fresh("node_get", args.clone()));
+        assert_eq!(ledger.stats.verifies, 2);
+
+        write(&p, &good);
+        assert!(!is_error(&tool(&mut ledger, "node_get", args)));
+        assert_eq!(ledger.stats.hits, 1, "the original bytes are still known");
+    }
+
+    /// The failure this catches: a change-time or inode key no timestamp test can reach; a second read or `stat`
+    /// inside the ledger; a key hashed from a `Value`; a second insertion site, such as one before
+    /// verification. Comment lines are skipped, so the module may explain what it does not do.
+    #[test]
+    fn the_ledger_never_sees_a_path_or_the_filesystem() {
+        let src = include_str!("mcp.rs");
+        let start = src.find("mod ledger {").expect("the module");
+        let end = src.find("// end mod ledger").expect("its end marker");
+        let code: String = src[start..end]
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for banned in [
+            "std::fs",
+            "read_source",
+            "Path",
+            "metadata",
+            "File",
+            "modified",
+            "Value",
+            "to_string(",
+            "serde_json::to_",
+        ] {
+            assert!(
+                !code.contains(banned),
+                "the ledger's code mentions `{banned}`"
+            );
+        }
+        assert_eq!(
+            code.matches("insert(").count(),
+            2,
+            "one definition and one call: an entry is made in exactly one place"
+        );
+        let load = &code[code.find("fn load(").expect("load")..];
+        assert!(
+            load.find("from_slice(").expect("a parse") < load.find("key_of(").expect("a hash"),
+            "`load` must parse before it hashes"
+        );
+    }
+
+    /// The failure this catches: hashing before parsing, which would make a mistaken path to a large PDF wait for
+    /// a SHA-256 of it; remembering a failure.
+    #[test]
+    fn a_parse_failure_is_neither_hashed_nor_remembered() {
+        let dir = scratch("parse");
+        let good = artifact();
+        let pdf = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/engine/measured-ink-box/document.pdf"
+        );
+        let half = dir.join("half.json");
+        write(&half, &good[..good.len() / 2]);
+        let other = dir.join("other.json");
+        write(&other, br#"{"nope":true}"#);
+        let mut ledger = ledger::Ledger::new();
+        for path in [half.as_path(), other.as_path(), std::path::Path::new(pdf)] {
+            let args = json!({ "representation": at(path), "node_id": "s1" });
+            let reply = tool(&mut ledger, "node_get", args.clone());
+            assert!(is_error(&reply));
+            assert_eq!(reply, fresh("node_get", args));
+        }
+        assert_eq!(ledger.stats.hashes, 0);
+        assert_eq!(ledger.len(), 0);
+    }
+
+    /// The failure this catches: an insertion before, or regardless of, verification; a remembered refusal replayed
+    /// after the file is fixed.
+    #[test]
+    fn a_verification_failure_is_never_remembered() {
+        let dir = scratch("refused");
+        let p = dir.join("a.json");
+        let good = artifact();
+        let bad = tampered(&good);
+        write(&p, &bad);
+        let args = json!({ "representation": at(&p), "node_id": "s1" });
+        let mut ledger = ledger::Ledger::new();
+        let first = tool(&mut ledger, "node_get", args.clone());
+        assert!(is_error(&first));
+        assert_eq!(first, tool(&mut ledger, "node_get", args.clone()));
+        assert_eq!(ledger.stats.verifies, 2);
+        assert!(!ledger.knows(&bad));
+
+        write(&p, &good);
+        assert!(!is_error(&tool(&mut ledger, "node_get", args)));
+        assert_eq!(ledger.stats.verifies, 3);
+    }
+
+    /// The failure this catches: an inline route keyed on a `Value`'s serialization — a build property under
+    /// `preserve_order` — or inline input seeding, or being answered from, a path's entry.
+    #[test]
+    fn inline_never_consults_or_fills_the_ledger() {
+        let dir = scratch("inline");
+        let p = dir.join("a.json");
+        let good = artifact();
+        write(&p, &good);
+        let inline: Value = serde_json::from_slice(&good).expect("json");
+        let tampered_inline: Value = serde_json::from_slice(&tampered(&good)).expect("json");
+
+        let mut ledger = ledger::Ledger::new();
+        tool(
+            &mut ledger,
+            "node_get",
+            json!({ "representation": at(&p), "node_id": "s1" }),
+        );
+        let stats = ledger.stats;
+        let args = json!({ "representation": tampered_inline, "node_id": "s1" });
+        assert!(is_error(&tool(&mut ledger, "node_get", args)));
+        let args = json!({ "representation": inline.clone(), "node_id": "s1" });
+        assert_eq!(
+            tool(&mut ledger, "node_get", args.clone()),
+            fresh("node_get", args)
+        );
+        assert_eq!(ledger.stats, stats);
+        assert_eq!(ledger.len(), 1);
+
+        let mut ledger = ledger::Ledger::new();
+        tool(
+            &mut ledger,
+            "node_get",
+            json!({ "representation": inline, "node_id": "s1" }),
+        );
+        tool(
+            &mut ledger,
+            "node_get",
+            json!({ "representation": at(&p), "node_id": "s1" }),
+        );
+        assert_eq!((ledger.stats.verifies, ledger.stats.hits), (1, 0));
+    }
+
+    /// The failure this catches: a reply that starts naming the path, which would make sharing by bytes unsound; a
+    /// key that quietly includes the path.
+    #[cfg(unix)]
+    #[test]
+    fn identical_bytes_share_verification_whatever_the_path() {
+        let dir = scratch("aliases");
+        let good = artifact();
+        let p = dir.join("a.json");
+        write(&p, &good);
+        let copy = dir.join("copy.json");
+        write(&copy, &good);
+        let link = dir.join("link.json");
+        std::os::unix::fs::symlink(&p, &link).expect("symlink");
+        let hard = dir.join("hard.json");
+        std::fs::hard_link(&p, &hard).expect("hard link");
+
+        let mut ledger = ledger::Ledger::new();
+        let mut replies = Vec::new();
+        for path in [&p, &link, &hard, &copy] {
+            for id in ["s1", "s-forged"] {
+                let args = json!({ "representation": at(path), "node_id": id });
+                let reply = tool(&mut ledger, "node_get", args.clone());
+                assert_eq!(reply, fresh("node_get", args));
+                let text = String::from_utf8_lossy(&reply).into_owned();
+                assert!(
+                    !text.contains(dir.to_str().expect("utf-8")),
+                    "a reply names the path"
+                );
+                replies.push((id, reply));
+            }
+        }
+        assert_eq!(ledger.stats.verifies, 1);
+        for (id, reply) in &replies {
+            assert_eq!(
+                reply,
+                &replies.iter().find(|(i, _)| i == id).expect("first").1
+            );
+        }
+    }
+
+    /// The failure this catches: a normalizing key — a hash of re-serialized or canonicalized content — which would
+    /// couple the gate's build to the release build and cost a walk the size of verification.
+    #[test]
+    fn whitespace_and_formatting_are_part_of_the_key() {
+        let dir = scratch("format");
+        let good = artifact();
+        let mut newline = good.clone();
+        newline.push(b'\n');
+        let pretty =
+            serde_json::to_vec_pretty(&serde_json::from_slice::<Value>(&good).expect("json"))
+                .expect("pretty");
+        let reference = fresh(
+            "node_get",
+            json!({ "representation": at(&{
+            let p = dir.join("canonical.json");
+            write(&p, &good);
+            p
+        }), "node_id": "s1" }),
+        );
+        let mut ledger = ledger::Ledger::new();
+        for (name, bytes) in [
+            ("canonical.json", &good),
+            ("newline.json", &newline),
+            ("pretty.json", &pretty),
+        ] {
+            let p = dir.join(name);
+            write(&p, bytes);
+            let reply = tool(
+                &mut ledger,
+                "node_get",
+                json!({ "representation": at(&p), "node_id": "s1" }),
+            );
+            assert_eq!(reply, reference);
+        }
+        assert_eq!(ledger.stats.verifies, 3);
+    }
+
+    /// The failure this catches: first-in-first-out eviction, which forgets a key in use; growth without a bound.
+    #[test]
+    fn the_ledger_is_bounded_and_least_recently_used() {
+        let good = artifact();
+        let variant = |k: usize| {
+            let mut v = good.clone();
+            v.extend(std::iter::repeat_n(b' ', k));
+            v
+        };
+        let mut ledger = ledger::Ledger::new();
+        for k in 0..ledger::CAPACITY {
+            ledger.load(variant(k)).expect("verifies");
+        }
+        assert!(ledger.load(variant(0)).is_ok());
+        assert_eq!(ledger.stats.hits, 1);
+        ledger.load(variant(ledger::CAPACITY)).expect("verifies");
+        assert_eq!(ledger.len(), ledger::CAPACITY);
+        let verifies = ledger.stats.verifies;
+        ledger.load(variant(0)).expect("still known");
+        assert_eq!(
+            ledger.stats.verifies, verifies,
+            "the recently used key survived eviction"
+        );
+        ledger.load(variant(1)).expect("verifies again");
+        assert_eq!(
+            ledger.stats.verifies,
+            verifies + 1,
+            "the least recently used key was evicted"
+        );
+    }
+
+    /// The failure this catches: the `node_id` check hoisted above the load, or a hit that returns before the
+    /// arguments are validated.
+    #[test]
+    fn error_precedence_is_unchanged_on_a_warm_ledger() {
+        let dir = scratch("precedence");
+        let good = artifact();
+        let p = dir.join("a.json");
+        let t = dir.join("t.json");
+        write(&p, &good);
+        write(&t, &tampered(&good));
+        let mut ledger = ledger::Ledger::new();
+        tool(
+            &mut ledger,
+            "node_get",
+            json!({ "representation": at(&p), "node_id": "s1" }),
+        );
+        for (args, says) in [
+            (
+                json!({ "representation": at(&t) }),
+                "declared representation_c14n_sha256",
+            ),
+            (json!({ "representation": at(&p) }), "`node_id` is required"),
+            (
+                json!({ "representation": at(&p), "node_id": 7 }),
+                "`node_id` is required",
+            ),
+        ] {
+            let reply = tool(&mut ledger, "node_get", args.clone());
+            assert!(is_error(&reply));
+            assert!(
+                String::from_utf8_lossy(&reply).contains(says),
+                "expected `{says}`"
+            );
+            assert_eq!(reply, fresh("node_get", args));
+        }
+    }
+
+    /// The failure this catches: recording, hashing or rewording around a read error.
+    #[test]
+    fn a_read_error_is_todays_error_and_touches_nothing() {
+        let dir = scratch("unreadable");
+        let mut ledger = ledger::Ledger::new();
+        for path in [dir.join("missing.json"), dir.to_path_buf()] {
+            let args = json!({ "representation": at(&path), "node_id": "s1" });
+            let reply = tool(&mut ledger, "node_get", args.clone());
+            assert!(is_error(&reply));
+            let text = serde_json::from_slice::<Value>(&reply).expect("json")["result"]["content"]
+                [0]["text"]
+                .as_str()
+                .expect("text")
+                .to_string();
+            assert!(text.starts_with(path.to_str().expect("utf-8")), "{text}");
+            assert_eq!(reply, fresh("node_get", args));
+        }
+        assert_eq!(ledger.stats, ledger::Stats::default());
+    }
+
+    /// The failure this catches: a ledger made per line or per call inside the loop, which every test above — each
+    /// handing in its own — would miss.
+    #[test]
+    fn serve_threads_one_ledger_through_the_session() {
+        let dir = scratch("session");
+        let p = dir.join("a.json");
+        write(&p, &artifact());
+        let call = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "node_get", "arguments": { "representation": at(&p), "node_id": "s1" } }
+        });
+        let ping = json!({ "jsonrpc": "2.0", "id": 2, "method": "ping" });
+        let input = format!("{call}\n{ping}\n{call}\n");
+        let mut out = Vec::new();
+        let mut ledger = ledger::Ledger::new();
+        serve_with(std::io::Cursor::new(input), &mut out, &mut ledger).expect("serve");
+        assert_eq!((ledger.stats.verifies, ledger.stats.hits), (1, 1));
+
+        let mut expected = Vec::new();
+        for line in [&call, &ping, &call] {
+            serve_with(
+                std::io::Cursor::new(format!("{line}\n")),
+                &mut expected,
+                &mut ledger::Ledger::new(),
+            )
+            .expect("serve");
+        }
+        assert_eq!(
+            out, expected,
+            "a session's replies are three fresh servers' replies"
+        );
     }
 }

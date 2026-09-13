@@ -628,3 +628,78 @@ a mis-split shell argument produced a "baseline" of 0.0 s per call and 2.4 MiB f
 failed instantly; a separate reading of 14 s per call was taken while ten other processes shared
 the machine. Neither is published.
 
+## 14. MCP stops re-verifying bytes it already verified: repeat calls 52–66% faster, and one memory line breached
+
+**Run 2026-09-13.** A = `main` at `d22b12c` (0.55.0 with `sha2` 0.11), B = the same tree plus the
+verification ledger in `crates/ethos-parser-cli/src/mcp.rs`, both release builds at equal version.
+Instruments: [`ledgerab.py`](ledgerab.py) (interleaved sessions, three per arm) and
+[`ledgerpace.py`](ledgerpace.py). `docs/00-NORTH-STAR.md` decision 24 records why the server may keep
+anything at all.
+
+### How much of a call verification was
+
+A measurement-only arm with `verify_fingerprint` removed from the MCP route — never shipped, built to
+bound what any cache could save — against A, per `node_get` call, output identical:
+
+| representation | A | no verification | share |
+| --- | ---: | ---: | ---: |
+| 53Ar5, 950 MiB | 8.3 s | 2.8 s | 66% |
+| 161r1, 272 MiB | 2.3 s | 0.70 s | 70% |
+| 171r3, 82 MiB | 0.69 s | 0.21 s | 70% |
+
+A hit still reads, parses and hashes the file; hashing 950 MiB on the SHA-2 instructions takes
+0.43 s (§13). That left a ceiling of about 61–64% per repeat call.
+
+### What the ledger does
+
+| workload (one session) | first call, B vs A | later calls, B vs A | replies |
+| --- | ---: | ---: | --- |
+| `ground` once, 53Ar5 | 15.62 vs 15.31 s, **+2.0%** | — | identical |
+| `ground` once, 161r1 | 4.54 vs 4.45 s, +2.0% | — | identical |
+| `node_get` ×5, 53Ar5 | +2.3% | **4.86 vs 12.78 s, −61.9%** | identical |
+| `node_get` ×8, 161r1 | +2.8% | 1.22 vs 3.53 s, −65.5% | identical |
+| `node_get` ×12, 171r3 | +2.5% | 0.37 vs 1.05 s, −65.3% | identical |
+| `ground` ×3, 53Ar5 | +1.8% | 7.28 vs 15.19 s, −52.1% | identical |
+| truncated 950 MiB file ×2 | −7.0% | −6.6% | identical |
+| a PDF passed as a representation ×2 | ~0 | ~0 | identical |
+
+**The first sight of a file costs +2 to +3%** — one SHA-256 over it — against the +6% line set before
+the run. **A file that fails to parse costs nothing extra**, because the hash runs after the parse
+succeeds. Every reply digest is identical across arms and runs. These session timings run slower
+than the single-call figures above (A's `node_get` 12.8 s here against 8.3 s there) because a
+session's later calls run on a heap the earlier ones fragmented; the comparison is within each
+workload, where both arms run the same sequence.
+
+### The memory line, and why it was breached
+
+Set before the run: B's peak may not exceed A's worst run by more than max(1%, 32 MiB). **On 53Ar5's
+five-call session it did:** B peaked at 4823 MiB RSS and 3769 MiB footprint in two runs of three,
+against A's 4174 and 3189. `161r1` and `171r3` peak identically in both arms, and `ground` ×3 on 53Ar5
+is within the line (+34 MiB RSS, +11 footprint).
+
+The ledger holds 64 digests at most, so this is not retained data, and [`ledgerpace.py`](ledgerpace.py)
+shows what it is. Five B calls on 53Ar5 with a pause before each call after the first:
+
+| pause | later calls | peak RSS | peak footprint |
+| ---: | ---: | ---: | ---: |
+| none | 4.72–4.74 s | 4808–4820 MiB | 3755–3768 MiB |
+| 1 s | 4.74–4.77 s | 4820–4822 MiB | 3768–3770 MiB |
+| 2 s | 4.75–4.82 s | 4782–4820 MiB | 3730–3768 MiB |
+| 4 s | 4.74–4.79 s | 4461–4464 MiB | 3408–3411 MiB |
+| 8 s | 4.78 s | **4174 MiB** | **3039 MiB** |
+| A, no pause | 12.36–12.50 s | 4173 MiB | 3121 MiB |
+
+**It is the allocator's reclamation running behind the calls.** Each call frees its parsed tree — an
+estimated, unmeasured ~2 GiB — and the next reads a 950 MiB file. A spends ~5 s verifying between the two, which is time for macOS's
+allocator to hand the freed pages back; B's next call arrives before it has, and the new buffer lands
+on top of pages not yet returned. Given 8 s, B's peak is A's exactly and its footprint is 82 MiB
+lower. The same effect shows in resting memory two seconds after the last reply — 161r1 rests at
+2345 MiB in B against 1802 in A. When resting memory settles was not measured.
+
+**Shipped anyway, by the owner's decision, with this section as the record.** A host that fires
+repeat calls at a 950 MiB representation faster than every 4–8 s will see its server peak up to
+~650 MiB higher, in exchange for each of those calls taking 4.9 s instead of 12.8. Nothing here
+changes a reply. The candidate that could remove it for both arms — parsing from a hashing reader so
+no 950 MiB buffer exists — is not measured; serde_json's reader path is slower than `from_slice`,
+so it may cost back what it saves.
+

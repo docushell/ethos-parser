@@ -141,7 +141,8 @@ The catch with MCP is that the model picks the arguments. A tool that accepted a
 bounding box would make the model the citation authority in one step, and the result would look
 exactly like a real citation. So no tool argument anywhere names a coordinate. The engine mints
 every locator itself, hands it back as an opaque id, and re-checks it on the way in: `node_get`
-verifies the artifact's fingerprint first, then looks up the id among *that* artifact's nodes. An
+verifies the artifact's fingerprint — once per distinct byte string per server process — then
+looks up the id among the nodes parsed from *those* bytes. An
 id the engine did not mint is an error, never a nearest match.
 
 **Python and Node SDKs** ([`packages/python/`](packages/python/),

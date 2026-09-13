@@ -383,7 +383,8 @@ fn a_minted_handle_round_trips_and_a_forged_one_fails_closed() {
     );
 }
 
-/// `ground` takes the artifact back — inline or as a path — and re-validates it the same way.
+/// `ground` takes the artifact back inline and re-validates it the same way. The path form has its
+/// own test, `ground_and_node_get_take_a_path_and_refuse_a_tampered_one`.
 #[test]
 fn ground_accepts_the_minted_artifact_and_checks_it() {
     let pdf = conformance("synthetic/two-lines/document.pdf");
@@ -437,4 +438,256 @@ fn no_tool_emits_a_verdict_and_there_is_no_verify_tool() {
             "`{word}` appears in the advertised surface"
         );
     }
+}
+
+// -------------------------------------------------------------------------------------------
+// The verification ledger, against the real binary
+// -------------------------------------------------------------------------------------------
+
+/// A representation this repository owns, extracted by the CLI to a file: the bytes a host would
+/// pass back by path, trailing newline included.
+fn extracted_to(dir: &std::path::Path) -> (PathBuf, Vec<u8>, Value) {
+    let pdf = repo_root().join("fixtures/engine/measured-ink-box/document.pdf");
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["extract", pdf.to_str().expect("utf-8")])
+        .output()
+        .expect("extract runs");
+    assert_eq!(out.status.code(), Some(0));
+    let path = dir.join("a.json");
+    std::fs::write(&path, &out.stdout).expect("write");
+    let value = serde_json::from_slice(&out.stdout).expect("json");
+    (path, out.stdout, value)
+}
+
+/// The same length, the declared fingerprint kept, one letter of the node's text flipped.
+fn tampered_bytes(bytes: &[u8]) -> Vec<u8> {
+    let at = bytes
+        .windows(8)
+        .rposition(|w| w == b"\"text\":\"")
+        .expect("a text field")
+        + 8;
+    let mut out = bytes.to_vec();
+    assert!(out[at].is_ascii_alphabetic());
+    out[at] ^= 0x20;
+    out
+}
+
+/// A directory of its own per test, removed when the test ends, including when it panics.
+struct StdioScratch(PathBuf);
+
+impl std::ops::Deref for StdioScratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for StdioScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn stdio_scratch(name: &str) -> StdioScratch {
+    let dir = std::env::temp_dir().join(format!("ethos-mcp-stdio-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch");
+    StdioScratch(dir)
+}
+
+/// One request to a server of its own, as the raw reply line.
+fn one_shot(request: &Value) -> String {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("runs");
+    writeln!(child.stdin.take().expect("stdin"), "{request}").expect("write");
+    let out = child.wait_with_output().expect("exits");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "the server must close cleanly: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout)
+        .expect("utf-8")
+        .trim_end()
+        .to_string()
+}
+
+/// **Path form, one process per call: read it, answer from it, refuse its edit.**
+///
+/// The failure this catches: a path route that trusts bytes it has not verified because they came from a file this
+/// engine could have written. Path-form input had no stdio coverage before the ledger existed.
+#[test]
+fn ground_and_node_get_take_a_path_and_refuse_a_tampered_one() {
+    let dir = stdio_scratch("path");
+    let (p, bytes, repr) = extracted_to(&dir);
+    let minted = repr["representation"]["nodes"][0]["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+
+    let by_path: Value = serde_json::from_str(&one_shot(&call(
+        "ground",
+        json!({ "representation": p }),
+        1,
+    )))
+    .expect("json");
+    let inline: Value = serde_json::from_str(&one_shot(&call(
+        "ground",
+        json!({ "representation": repr }),
+        1,
+    )))
+    .expect("json");
+    assert_eq!(by_path["result"]["isError"], json!(false), "{by_path}");
+    assert_eq!(
+        by_path["result"]["structuredContent"],
+        inline["result"]["structuredContent"]
+    );
+
+    let node: Value = serde_json::from_str(&one_shot(&call(
+        "node_get",
+        json!({ "representation": p, "node_id": minted }),
+        1,
+    )))
+    .expect("json");
+    assert_eq!(
+        node["result"]["structuredContent"],
+        repr["representation"]["nodes"][0]
+    );
+
+    let t = dir.join("t.json");
+    std::fs::write(&t, tampered_bytes(&bytes)).expect("write");
+    let refused: Value = serde_json::from_str(&one_shot(&call(
+        "node_get",
+        json!({ "representation": t, "node_id": minted }),
+        1,
+    )))
+    .expect("json");
+    assert_eq!(refused["result"]["isError"], json!(true));
+    assert!(refused["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .contains("declared representation_c14n_sha256"));
+}
+
+/// **Every reply in one long session is the reply a fresh server gives at the same file state.**
+///
+/// One server takes a script of calls with file edits between them — including a same-length
+/// rewrite with its mtime put back — and every raw reply line is compared with a server started for
+/// that one request. The failure this catches: wiring in the shipped binary that tests of the module cannot see; any
+/// answer that depends on an earlier call; a remembered refusal; and a key that is not the bytes.
+#[test]
+fn every_reply_in_a_session_is_the_reply_a_fresh_server_gives() {
+    use std::io::{BufRead, BufReader};
+
+    let dir = stdio_scratch("session");
+    let (p, good, repr) = extracted_to(&dir);
+    let minted = repr["representation"]["nodes"][0]["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+    let with_newline = dir.join("q.json");
+    let mut q = good.clone();
+    q.push(b'\n');
+    std::fs::write(&with_newline, &q).expect("write");
+    let pdf = repo_root().join("fixtures/engine/measured-ink-box/document.pdf");
+
+    enum Step {
+        Ask(Value),
+        Tamper,
+        Restore,
+    }
+    let node = |path: &std::path::Path, id: &str| {
+        call(
+            "node_get",
+            json!({ "representation": path, "node_id": id }),
+            9,
+        )
+    };
+    let mut script = vec![
+        Step::Ask(json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {} })),
+        Step::Ask(call("ground", json!({ "representation": p }), 1)),
+        Step::Ask(node(&p, &minted)),
+        Step::Ask(node(&p, "s-forged")),
+        Step::Tamper,
+        Step::Ask(node(&p, &minted)),
+        Step::Restore,
+        Step::Ask(node(&p, &minted)),
+        Step::Ask(call(
+            "node_get",
+            json!({ "representation": repr, "node_id": minted }),
+            3,
+        )),
+        Step::Ask(call("extract", json!({ "path": pdf }), 4)),
+        Step::Ask(node(&with_newline, &minted)),
+        Step::Ask(call("ground", json!({ "representation": p }), 5)),
+    ];
+    #[cfg(unix)]
+    {
+        let link = dir.join("link.json");
+        std::os::unix::fs::symlink(&p, &link).expect("symlink");
+        script.push(Step::Ask(node(&link, &minted)));
+    }
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("runs");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut asked = 0;
+    for step in &script {
+        match step {
+            Step::Tamper => {
+                let before = std::fs::metadata(&p).expect("meta");
+                let mut f = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&p)
+                    .expect("open");
+                f.write_all(&tampered_bytes(&good))
+                    .expect("rewrite in place");
+                f.set_modified(before.modified().expect("mtime"))
+                    .expect("restore mtime");
+                drop(f);
+                let after = std::fs::metadata(&p).expect("meta");
+                assert_eq!(
+                    (before.len(), before.modified().ok()),
+                    (after.len(), after.modified().ok())
+                );
+            }
+            Step::Restore => std::fs::write(&p, &good).expect("restore"),
+            Step::Ask(request) => {
+                writeln!(stdin, "{request}").expect("write");
+                stdin.flush().expect("flush");
+                let mut line = String::new();
+                stdout.read_line(&mut line).expect("a reply");
+                let line = line.trim_end().to_string();
+                assert_eq!(
+                    line,
+                    one_shot(request),
+                    "reply to {request} differs from a fresh server's"
+                );
+                asked += 1;
+            }
+        }
+    }
+    // The call right after the in-place rewrite must be refused, not merely equal to a fresh reply.
+    let tampered_reply = {
+        let request = node(&p, &minted);
+        std::fs::write(&p, tampered_bytes(&good)).expect("tamper");
+        let r: Value = serde_json::from_str(&one_shot(&request)).expect("json");
+        std::fs::write(&p, &good).expect("restore");
+        r
+    };
+    assert_eq!(tampered_reply["result"]["isError"], json!(true));
+    drop(stdin);
+    assert_eq!(child.wait().expect("exits").code(), Some(0));
+    assert!(asked >= 10, "only {asked} calls were compared");
 }
