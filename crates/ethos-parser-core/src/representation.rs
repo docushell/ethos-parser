@@ -2592,7 +2592,9 @@ impl DocumentRepresentation {
     /// coordinate the document does not contain (Workbench rule 3). **Omitting** it would have
     /// to travel the geometry-omission path, and that path takes a typed absence by construction
     /// — an out-of-page *measured* box is not an absence, and routing it through would be
-    /// exactly the "omit for a non-geometry reason" hole §11 forbids. So the box is refused, and
+    /// exactly the "omit for a non-geometry reason" hole §11 forbids. (§11 has since admitted one
+    /// other reason, a string past the grounding schema's byte limit; a box outside its page is not
+    /// that either.) So the box is refused, and
     /// loudly: by the time one reaches here the measurement or the coordinate transform is wrong,
     /// and that is worth finding rather than hiding behind a plausible rectangle.
     ///

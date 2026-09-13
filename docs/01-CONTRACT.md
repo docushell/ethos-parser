@@ -433,10 +433,17 @@ never the reverse.**
    | `ethos.grounding.v1` | **Node omitted**, with a declared limitation and a count. Never `[0,0,0,0]`, never `height = font_size` |
 
    Two constraints this imposes: **omission is only ever for missing measurable geometry** — never
-   because a classifier disliked a page, never as a quality filter — and the omit-and-count path needs
-   its own fixture with absent metrics. The type that makes this enforceable takes a *measurement
-   state* rather than a boolean, so the omission path is unreachable from a quality judgement by
-   construction rather than by review.
+   because a classifier disliked a page, never as a quality filter — **or, since G2, for a string
+   longer than the grounding schema admits**: an element whose text exceeds `ethos.grounding.v1`'s
+   16,384 bytes (or a page-less locator its 2,048) is omitted, counted and declared under
+   `elements-omitted-over-schema-limit`, because truncating it would put a quote on the wire the
+   document does not contain. That is a measurement of length against a published limit, not a
+   judgement of the text, and it is the only other reason. The omit-and-count path needs
+   its own fixture with absent metrics. The type that makes the geometry omission enforceable takes
+   a *measurement state* rather than a boolean, so that path is unreachable from a quality judgement
+   by construction rather than by review. The length omission is not built that way: it is a fixed
+   byte comparison against the published limit, held by `ethos-parser-grounding`'s schema-limit
+   tests.
 
 3. **The grounding shape is lossy relative to the representation.** It carries no derivation class, no
    `mcid`, no structural locator, no synthesized flags, no per-page coverage. That is expected — it is

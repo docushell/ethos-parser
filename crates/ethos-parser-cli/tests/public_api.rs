@@ -444,10 +444,15 @@ const GROUNDING: &[&str] = &[
     "Cell",
     "Counts",
     "Element",
+    "ElementsOmitted",
     "GEOMETRY_ABSENT_OMITTED",
     // G1. Spans withheld past `ethos.grounding.v1`'s cap, named beside the omission the
     // projection already declares, so both halves of "keep what fits, say what did not" are pinned.
     "SPANS_WITHHELD_OVER_LIMIT",
+    // G2. The schema's other limits: an element omitted for a string too long, and tables
+    // withheld together, each named beside G1's spans so every degradation is pinned.
+    "ELEMENTS_OMITTED_OVER_LIMIT",
+    "TABLES_WITHHELD_OVER_LIMIT",
     "GROUNDING_ARTIFACT_TYPE",
     // v2-S2. The one media type this artifact can name as its source, so `project` can refuse a
     // page-less one by name rather than on a page lookup that would report the wrong reason.
@@ -470,6 +475,7 @@ const GROUNDING: &[&str] = &[
     "SpansWithheld",
     "Structure",
     "Table",
+    "TablesWithheld",
     "VALIDATION_ARTIFACT_TYPE",
     "VALIDATION_SCHEMA_VERSION",
     "ValidationReport",
