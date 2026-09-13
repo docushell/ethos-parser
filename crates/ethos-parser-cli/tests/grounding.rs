@@ -162,7 +162,17 @@ fn every_emitted_grounding_artifact_validates_against_the_schema() {
             .map(|n| engine_fx(n)),
         )
     {
-        let v = as_value(&ground(&id).source);
+        let projection = ground(&id);
+        // G2's degradations exist for documents past the schema's limits. None here is, so any
+        // that fires on this corpus is a regression or a real document reaching a limit — either
+        // way worth seeing rather than absorbing.
+        assert_eq!(
+            (projection.elements_omitted, projection.tables_withheld),
+            (None, None),
+            "{} engaged a schema-limit degradation",
+            id.display()
+        );
+        let v = as_value(&projection.source);
         schema_subset::validate(&v).unwrap_or_else(|errs| {
             panic!(
                 "{} does not validate:\n  {}",

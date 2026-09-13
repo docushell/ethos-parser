@@ -461,6 +461,18 @@ fn tool_ground(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Art
             w.spans, w.limit
         ));
     }
+    if let Some(o) = projection.elements_omitted {
+        summary.push_str(&format!(
+            " {} element(s) omitted, a string over the schema's byte limit.",
+            o.elements
+        ));
+    }
+    if let Some(t) = projection.tables_withheld {
+        summary.push_str(&format!(
+            " {} table(s) withheld, over the schema's limits: no tables.",
+            t.tables
+        ));
+    }
     Ok((summary, Artifact::Bytes(bytes)))
 }
 

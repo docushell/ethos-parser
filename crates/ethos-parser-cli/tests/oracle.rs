@@ -1326,3 +1326,69 @@ fn a_document_past_the_span_cap_grounds_to_an_artifact_both_checkers_accept() {
         "every block is still grounded"
     );
 }
+
+/// **G2's degradations ground to artifacts both checkers accept, and the shapes they replace are
+/// refused by both.**
+///
+/// A table this engine detected, `fixtures/engine/ruled-table-grid`, has one run and the cell
+/// holding it lengthened to 16,386 bytes and is re-sealed. `ground` omits the element and withholds
+/// the tables; both checkers must accept what it wrote. The negative control places the over-long
+/// text in the artifact's first element, which both must refuse — so the acceptance is the
+/// degradation's doing, not a checker that stopped looking. The tables half of that control is held
+/// by the engine's checker (`a_pdf_artifact_with_its_tables_withheld_is_valid`), not by Ethos. Small inputs, so not `#[ignore]`d.
+/// Page-less G2 is not oracle-tested: the pinned Ethos predates schema 1.1.0.
+#[test]
+fn schema_limit_degradations_ground_to_artifacts_both_checkers_accept() {
+    let profile = ethos_parser_core::Profile::default();
+    let pdf = repo_root().join("fixtures/engine/ruled-table-grid/document.pdf");
+    let doc = ethos_parser_pdf::Document::open(&pdf, &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    let repr = ethos_parser_pdf::to_representation(&extract, &profile).expect("represents");
+    let mut payload = repr.payload().clone();
+    let long = "\u{e9}".repeat(8_193);
+    let cell = &mut payload.tables[0].cells[0];
+    cell.text = long.clone();
+    let run = cell.node_ids[0].clone();
+    let node = payload
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == run)
+        .expect("the cell's run");
+    node.text = long.clone();
+    if let ethos_parser_core::NodeAttributes::TextRun(a) = &mut node.attributes {
+        a.char_codes = long.chars().map(u32::from).collect();
+    }
+    let edited = ethos_parser_core::DocumentRepresentation::seal(payload, repr.geometry().to_vec())
+        .expect("re-seals");
+
+    let dir = scratch("schema-limits");
+    let repr_path = dir.join("repr.json");
+    std::fs::write(&repr_path, edited.to_canonical_bytes().expect("canonical")).expect("write");
+    let out = run_engine(&["ground".as_ref(), repr_path.as_ref()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let grounding = dir.join("grounding.json");
+    std::fs::write(&grounding, &out.stdout).expect("write grounding");
+
+    let (_, ours, theirs) = compare(&grounding, None, "ruled-table-grid, degraded");
+    assert_eq!(
+        (ours, theirs),
+        (0, 0),
+        "both checkers must accept the degraded artifact"
+    );
+
+    let mut g: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(g.get("tables").is_none() && g["capabilities"]["tables"] == serde_json::json!(false));
+    g["elements"][0]["text"] = serde_json::Value::String(long);
+    let restored = dir.join("restored.json");
+    std::fs::write(&restored, serde_json::to_vec(&g).expect("json")).expect("write");
+    let (_, ours, theirs) = compare(&restored, None, "ruled-table-grid, over-long text restored");
+    assert!(
+        ours != 0 && theirs != 0,
+        "both must refuse the shape G2 replaces: {ours} {theirs}"
+    );
+}

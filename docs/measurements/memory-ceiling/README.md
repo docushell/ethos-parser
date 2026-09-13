@@ -579,7 +579,9 @@ keeps every element and withholds the spans — all of them, never truncated —
 grounding check` each exit 0, where they returned 1 and 2 — and it carries its 50,329 elements, no
 spans, and is 6.6 MiB instead of 151.4. `ground` on the three next-largest gate documents is
 byte-identical to before. Under the cap nothing changes. The schema's other limits are still not
-enforced by the projection; none is reached by this corpus.
+enforced by the projection; none is reached by this corpus. *Since enforced (G2): an over-long element is omitted, over-long
+cells or too many tables withhold the tables, and too many pages or elements — or an artifact over
+256 MiB — is refused; see `ethos-parser-grounding`'s crate docs.*
 
 ## 13. The hash was running in software, and moving to `sha2` 0.11 is 9–13% of every command
 

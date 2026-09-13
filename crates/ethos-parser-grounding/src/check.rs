@@ -59,6 +59,8 @@ pub(crate) mod limits {
     pub const MAX_TABLES: usize = 100_000;
     pub const MAX_CELLS: usize = 1_000_000;
     pub const MAX_STRING_BYTES: usize = 16_384;
+    /// A page-less element's locator, which Ethos bounds more tightly than any other string.
+    pub const MAX_LOCATOR_BYTES: usize = 2_048;
     pub const MAX_ID_BYTES: usize = 256;
     /// `2^53 - 1`, the largest integer the canonical form admits.
     pub const MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
@@ -622,7 +624,8 @@ fn validate(a: &GroundingSource) -> Result<(), Box<ValidationReport>> {
                 );
             }
             match e.locator.as_deref() {
-                Some(locator) if !locator.is_empty() && locator.len() <= 2048 => {}
+                Some(locator)
+                    if !locator.is_empty() && locator.len() <= limits::MAX_LOCATOR_BYTES => {}
                 _ => {
                     return bad(
                         "invalid_field",
@@ -970,6 +973,43 @@ mod tests {
             0,
             "{}",
             String::from_utf8_lossy(&r.to_canonical_bytes().unwrap())
+        );
+    }
+
+    /// **The shape a document's tables are withheld into is a valid artifact, and the shape it
+    /// replaces is not (G2).** A table holding a cell past the string limit is refused whole, at `/`;
+    /// the same artifact with `capabilities.tables: false` and no `tables` key is accepted; and an
+    /// EMPTY array under a false capability is refused too — which pins that withholding means the
+    /// key is absent.
+    #[test]
+    fn a_pdf_artifact_with_its_tables_withheld_is_valid() {
+        let mut with: serde_json::Value = serde_json::from_slice(&valid_bytes()).unwrap();
+        with["capabilities"]["tables"] = serde_json::Value::Bool(true);
+        with["tables"] = serde_json::json!([{
+            "id": "t1", "page": "p1", "bbox": [10, 10, 100, 100],
+            "cells": [{ "row": 0, "col": 0, "row_span": 1, "col_span": 1,
+                        "bbox": [10, 10, 100, 100], "text": "x".repeat(limits::MAX_STRING_BYTES + 1) }]
+        }]);
+        let r = grounding_check(&serde_json::to_vec(&with).unwrap(), None).unwrap();
+        assert_eq!(r.structure, Structure::Invalid);
+        let e = r.error.as_ref().expect("an error");
+        assert_eq!((e.code.as_str(), e.path.as_str()), ("limit_exceeded", "/"));
+
+        let withheld = valid_bytes();
+        let r = grounding_check(&withheld, None).unwrap();
+        assert_eq!(
+            r.exit_code(),
+            0,
+            "tables: false with no key is the withheld shape"
+        );
+
+        let mut empty: serde_json::Value = serde_json::from_slice(&valid_bytes()).unwrap();
+        empty["tables"] = serde_json::json!([]);
+        let r = grounding_check(&serde_json::to_vec(&empty).unwrap(), None).unwrap();
+        assert_eq!(
+            r.structure,
+            Structure::Invalid,
+            "an empty array is not a withheld table set"
         );
     }
 

@@ -88,7 +88,12 @@ enum Command {
     /// Exit codes: 0 projected, 2 could not read or refused. Nodes with no measurable ink box
     /// are omitted from the artifact and reported on stderr — the grounding schema is
     /// `additionalProperties: false` and cannot carry the count, so the representation it came
-    /// from is where the declaration lives.
+    /// from is where the declaration lives. What the schema's own limits will not hold is reported
+    /// on stderr, and spans and tables also through the artifact's `capabilities`: an element whose
+    /// text or page-less locator is too long is omitted, too many tables or a cell or grid too
+    /// large withholds the tables, too many spans withholds the spans, and a document with more
+    /// pages or elements than the schema admits — or an artifact larger than a verifier accepts —
+    /// is refused with exit 2 and no artifact.
     Ground(GroundArgs),
 
     /// Project a `DocumentRepresentation v0` into `ethos.markdown.v1` (v1.1-S1).
@@ -833,6 +838,30 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                      [{}]. The artifact carries its elements only (`capabilities.spans: false`): \
                      every block is still grounded, at block rather than run granularity.",
                     w.spans, w.limit, w.limitation_code,
+                );
+            }
+            if let Some(o) = projection.elements_omitted {
+                eprintln!(
+                    "engine: {} element(s) omitted from the grounding artifact, and {} span(s) \
+                     with them — text longer than the {} bytes, or a locator longer than the {}, \
+                     that `ethos.grounding.v1` admits [{}]. The text remains in the \
+                     representation; nothing is truncated.",
+                    o.elements, o.spans, o.text_limit, o.locator_limit, o.limitation_code,
+                );
+            }
+            if let Some(t) = projection.tables_withheld {
+                eprintln!(
+                    "engine: {} table(s) withheld — {} over the {} tables the schema admits, {} \
+                     cell(s) longer than its {} bytes, {} grid(s) with more cells than it admits \
+                     [{}]. The artifact carries no tables (`capabilities.tables: false`); \
+                     withholding them moved no element or span.",
+                    t.tables,
+                    t.tables.saturating_sub(t.table_limit),
+                    t.table_limit,
+                    t.oversized_cells,
+                    t.string_limit,
+                    t.oversized_grids,
+                    t.limitation_code,
                 );
             }
             ExitCode::from(PROJECTED as u8)

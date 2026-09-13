@@ -21,6 +21,46 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ground` kept inside `ethos.grounding.v1`'s other limits, which it never looked at (G2).**
+  0.55.0 enforced the span cap and nothing else, so a document past any other limit still exited 0
+  with an artifact the verifier refuses whole. Every limit a record this engine wrote can reach is
+  now kept, never by truncating. **An element whose text is over 16,384 bytes** — a paragraph of
+  short runs joined past it, a spreadsheet cell of 32,767 characters — or a page-less element whose
+  locator is over 2,048, which a crafted part or sheet name reaches, **is omitted** with its spans;
+  in a PDF artifact later element ids close up behind it, and a page-less id is its node's and does
+  not move. **More than 100,000 tables, any cell's text over 16,384 bytes, or a grid of more than a
+  million cells withholds every table**, declared by `capabilities.tables: false` exactly as G1
+  declares spans. **More than 5,000 pages, more than a million elements — counted after omission —
+  or an artifact over 256 MiB including `ground`'s trailing newline is refused**: exit 2,
+  `resource_limit`, no artifact, because the schema has no capability to declare a missing page and
+  a partial set would be a silent hole. A producer string over the limit, which this engine never
+  writes, is refused as malformed. What was omitted or withheld is declared on stderr with its
+  counts, in MCP's `ground` summary, and to library callers in `Projection.elements_omitted` and
+  `Projection.tables_withheld`; `OmissionReport` and `is_lossy()` are documented as the geometry
+  ledger they always were. Comparisons are the checker's own — UTF-8 bytes, strictly greater — with
+  the artifact ceiling one byte stricter for MCP and library callers, who get no newline. **Every
+  artifact inside the limits is byte-identical**: `ci/artifact-bytes.py` equal over all 268, and the
+  13 fixtures the schema-conformance test grounds are asserted to engage no degradation. Proven on
+  tables this engine detected, re-sealed with a run and a cell past the limit: the engine's checker
+  and the Ethos verifier both accept the degraded artifact, and both refuse it with the over-long
+  text placed back in an element. The caps are one internal value, so tests exercise the element,
+  page and grid caps at their call sites; fourteen wrong implementations were each shown to fail a
+  test — among them `>=` for `>`, characters for bytes, a run's text measured instead of its
+  block's, the element cap counted before omission, an id gap, an empty `tables` array for an absent
+  one, one table withheld of several, and the newline left out of the artifact ceiling. `docs/01-CONTRACT.md` §11 names the second omission reason — a length
+  against a published limit, never a judgement of the text. New public items `ElementsOmitted`,
+  `TablesWithheld`, `ELEMENTS_OMITTED_OVER_LIMIT`, `TABLES_WITHHELD_OVER_LIMIT`, frozen and documented.
+  **An emitter and exit-code change, so a MINOR** — although the only outputs that move are ones no
+  verifier accepted. Closes the "not covered" note on 0.55.0's G1 entry. **Not covered:** a
+  hand-built record can still carry an id past 256 bytes or overlapping cells, which no limit a real
+  document meets reaches; page-less artifacts are checked against the engine's checker only, as the
+  pinned Ethos predates schema 1.1.0; and the Python and Node LangChain adapters build their
+  `ground` summary from node and element counts and read no stderr, so they neither carry G1's or
+  G2's declarations nor match MCP's summary when one fires — they would call an omitted over-long
+  element one with no box.
+
 ### Changed
 
 - **SHA-256 uses the CPU's SHA-2 instructions on Apple silicon: every command is 9–13% faster.**
