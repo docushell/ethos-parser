@@ -453,6 +453,43 @@ named — cell shading and decoration rather than a covered grid, or a partial g
 left undrawn. Closing those needs ink this engine can read as a boundary, not a different way of
 counting the ink it has.
 
+### `-v6`: what `-v5` emitted where the benchmark was not looking — 2026-09-13
+
+**Measured on `opendataloader-bench`, the gate corpus, and the Ethos corpora.** Instrument:
+[`measurements/table-refusals/rule_ab.py`](measurements/table-refusals/rule_ab.py), §4g.
+
+**`-v5` fabricated a table on five of the eight gate documents.** The table above says 100%
+precision, and on the benchmark it was. On the gate corpus every ruled table `-v5` emitted was
+false: NIST's disclaimer, whose every line is shaded by its own full-width rectangle, as a 14 × 5
+grid of thirteen cells spanning all five columns, on four documents; and two pairs of empty
+full-width bars on a fifth. The columns were never drawn — the lattice is page-wide, and they came
+from an underline's ends and ink elsewhere on the page. Band selection had made the stack look
+covered.
+
+**And it lost the grids drawn in rules.** A rule thinner than `LATTICE_TOLERANCE` occupies no face,
+so band selection by faces kept no band of a rules-only grid, and `-v4`'s two benchmark tables of
+that kind disappeared with no refusal.
+
+`-v6` keeps the bands a rule crosses, and requires a grid to be divided inside itself on both axes
+by a rectangle that spans a kept band.
+
+| | documents emitting | holding a table | precision | recall |
+| --- | ---: | ---: | ---: | ---: |
+| `-v4`, faces or lines | 7 | 7 | 100% | 17% |
+| `-v5`, the grid's own bands | 12 | 12 | 100% | 29% |
+| **`-v6`, rules cross bands; a grid is divided** | **14** | **14** | **100%** | **33%** |
+
+| gate corpus | ruled tables | of them fabricated |
+| --- | ---: | ---: |
+| `-v4` | 0 | 0 |
+| `-v5` | 6 | **6** |
+| **`-v6`** | **0** | **0** |
+
+**The lesson is the one this section keeps relearning at a different scale:** a precision measured
+on one population is a precision on that population. The gate corpus has no ground truth for
+tables, so it cannot score recall, but it can be read — and a table whose cells are the lines of a
+paragraph needs no ground truth to be called false.
+
 ### The recommendation, named not taken
 
 **The alignment rule is not a gap to close in v1.** It has emitted zero tables on 172 real gold

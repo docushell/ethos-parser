@@ -24,7 +24,7 @@
 //!
 //! # The rule, in full
 //!
-//! Pinned as `ethos_parser_core::TABLE_DETECTION_V5` in the profile, so changing any part of it moves
+//! Pinned as `ethos_parser_core::TABLE_DETECTION_V6` in the profile, so changing any part of it moves
 //! `profile_sha256` and makes artifacts from before and after correctly non-comparable.
 //!
 //! 1. **Lattice from edges.** Every captured rectangle contributes its two x edges and two y
@@ -67,7 +67,7 @@ use ethos_parser_core::{
     QUANTUM_PER_POINT,
 };
 
-// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V5` and is NOT restated here. Two spellings
+// The rule id lives in `ethos_parser_core::TABLE_DETECTION_V6` and is NOT restated here. Two spellings
 // of one rule id is exactly the drift a versioned id exists to prevent, and a test asserting the
 // two match would only catch it after somebody had already written the second one.
 
@@ -182,7 +182,7 @@ pub struct DetectedTable {
     pub tagged_check: Option<ethos_parser_core::TaggedGridCheck>,
     /// Which rule produced this table (v1-S2).
     ///
-    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V5`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
+    /// Exactly one of `ethos_parser_core::TABLE_DETECTION_V6`, `ethos_parser_core::TABLE_DETECTION_UNRULED_V1`
     /// or `ethos_parser_core::TABLE_DETECTION_STROKE_V1`. Set from those constants at the **three**
     /// places a table is built — `tables.rs`'s ruled arm, `unruled.rs` and `stroke_ruled.rs` —
     /// never spelled out here: a rule id written twice is a rule id that can drift, which is the
@@ -513,17 +513,17 @@ impl RuledRefusal {
     pub fn explanation(&self) -> String {
         match self {
             Self::GridNotDrawn { .. } => String::from(
-                "The rectangles implied a grid one of whose LINES their ink does not trace. A \
-                 ruled grid must be explained by the ink line by line: every row and column \
-                 boundary carried end to end by rectangle edges lying on it, gaps closed by \
-                 collinear ink only. Merged rather than summed — three rules that together run \
-                 the width of a table trace its line, three that overlap in one corner do not, \
-                 and their total length can exceed the extent either way. This replaced a FACE \
-                 test that asked instead whether every implied cell was drawn: measured over \
-                 `opendataloader-bench`, 30 of the 30 documents that hold a table and draw \
-                 rectangles were refused by that clause alone, at a median 57% of faces drawn, \
-                 because a producer laying down row separators and no column separators has \
-                 stated exactly where its grid lies while drawing almost none of its cells. \
+                "The rectangles implied a grid whose cells are not all drawn and one of whose \
+                 LINES their ink does not trace, and a ruled grid is accepted on either. Tracing \
+                 means every row and column boundary carried end to end by rectangle edges lying \
+                 on it, gaps closed by collinear ink only. Merged rather than summed — three rules \
+                 that together run the width of a table trace its line, three that overlap in one \
+                 corner do not, and their total length can exceed the extent either way. It sits \
+                 beside the FACE test because that test alone, asking whether every implied cell \
+                 was drawn, refused 30 of the 30 `opendataloader-bench` documents that hold a \
+                 table and draw rectangles, at a median 57% of faces drawn: a producer laying down \
+                 row separators and no column separators has stated exactly where its grid lies \
+                 while drawing almost none of its cells. \
                  Tracing is not that producer's fabrication: a line nothing drew is not a \
                  lattice line at all, since the lattice is built from rectangle edges. The \
                  enclosing rectangle DOES count toward the four outer lines, which it draws by \
@@ -735,7 +735,7 @@ pub fn detect_ruled(
             cells: detected,
             check,
             tagged_check: None,
-            rule: ethos_parser_core::TABLE_DETECTION_V5.to_string(),
+            rule: ethos_parser_core::TABLE_DETECTION_V6.to_string(),
         }],
         None,
     ))
@@ -908,11 +908,18 @@ impl Lattice {
             ys,
         };
         let occupied = all.occupied_faces(rects, faces);
+        let (rows_crossed, cols_crossed) = all.bands_crossed_by_rules(rects);
         let row_bands: Vec<usize> = (0..all.ys.len() - 1)
-            .filter(|r| (0..all.xs.len() - 1).any(|c| occupied[r * (all.xs.len() - 1) + c]))
+            .filter(|r| {
+                rows_crossed[*r]
+                    || (0..all.xs.len() - 1).any(|c| occupied[r * (all.xs.len() - 1) + c])
+            })
             .collect();
         let col_bands: Vec<usize> = (0..all.xs.len() - 1)
-            .filter(|c| (0..all.ys.len() - 1).any(|r| occupied[r * (all.xs.len() - 1) + c]))
+            .filter(|c| {
+                cols_crossed[*c]
+                    || (0..all.ys.len() - 1).any(|r| occupied[r * (all.xs.len() - 1) + c])
+            })
             .collect();
 
         // **A grid needs two bands on BOTH axes**, and that is the floor above carried one step
@@ -940,6 +947,17 @@ impl Lattice {
             xs: all.xs,
             ys: all.ys,
         };
+
+        // **And the page must draw a division inside the grid on both axes.** The lattice is
+        // page-wide, so a column line can come from ink nowhere near this grid — a logo, a box
+        // above it — and a stack of full-width rectangles then counts as five columns it never
+        // divided. `nist-sp-800-207`'s disclaimer shades each line of one paragraph with its own
+        // rectangle, and band selection alone emitted it as a 14 x 5 table whose thirteen cells
+        // each span all five columns. The two-band floor above is the same argument asked of
+        // band counts; this asks it of the ink.
+        if !lattice.divided_on_both_axes(rects) {
+            return Err(None);
+        }
         let faces = lattice.row_bands.len() * lattice.col_bands.len();
 
         // **Two shapes of evidence that the document drew this grid, and either will do.**
@@ -1063,6 +1081,64 @@ impl Lattice {
             }
         }
         out
+    }
+
+    /// Whether the page draws a division **inside** this grid on both axes: some rectangle with an
+    /// edge on an interior column line that spans a kept row, and one with an edge on an interior
+    /// row line that spans a kept column.
+    ///
+    /// A cell narrower than the grid ends on a column line and is as tall as its row; a vertical
+    /// rule lies on one and crosses rows. What does not count is an edge with no extent across
+    /// the other axis — `nist-sp-800-207`'s disclaimer carries its only interior column edges on
+    /// the underline beneath a URL, 0.48pt tall — or a line only ink outside the grid drew.
+    fn divided_on_both_axes(&self, rects: &[QuantRect]) -> bool {
+        fn interior(lines: &[i64], bands: &[usize], v: i64) -> bool {
+            index_of(lines, v).is_some_and(|i| i > bands[0] && i <= bands[bands.len() - 1])
+        }
+        fn spans_kept(lines: &[i64], bands: &[usize], lo: i64, hi: i64) -> bool {
+            let first = lines.partition_point(|l| *l < lo - LATTICE_TOLERANCE);
+            let past = lines.partition_point(|l| *l <= hi + LATTICE_TOLERANCE);
+            bands.iter().any(|b| *b >= first && b + 2 <= past)
+        }
+        let columns = rects.iter().any(|r| {
+            (interior(&self.xs, &self.col_bands, r.x0) || interior(&self.xs, &self.col_bands, r.x1))
+                && spans_kept(&self.ys, &self.row_bands, r.y0, r.y1)
+        });
+        let rows = rects.iter().any(|r| {
+            (interior(&self.ys, &self.row_bands, r.y0) || interior(&self.ys, &self.row_bands, r.y1))
+                && spans_kept(&self.xs, &self.col_bands, r.x0, r.x1)
+        });
+        columns && rows
+    }
+
+    /// The bands a **rule** runs across: `(rows, columns)`, indexed like the full lattice.
+    ///
+    /// A rule is a rectangle thinner than [`LATTICE_TOLERANCE`] on one axis, so both of its edges
+    /// fold into one lattice line and [`Self::occupied_faces`] finds it occupying no face. Band
+    /// selection by faces alone therefore kept no band at all for a grid drawn entirely as rules —
+    /// pdfTeX's `\hline` and `|` are filled rectangles of exactly that shape — and a grid
+    /// `ruled-rects-v4` emitted by tracing produced no table and no refusal. A vertical rule states
+    /// that the rows it crosses are rows; a horizontal one says the same of columns.
+    ///
+    /// A rectangle thick on both axes is never counted here — a cell already occupies the faces of
+    /// every band it spans, and the enclosing border is not evidence of a row — so selection on a
+    /// page that draws no rule is unchanged.
+    fn bands_crossed_by_rules(&self, rects: &[QuantRect]) -> (Vec<bool>, Vec<bool>) {
+        let mut rows = vec![false; self.ys.len() - 1];
+        let mut cols = vec![false; self.xs.len() - 1];
+        for r in rects {
+            let c_lo = self.xs.partition_point(|x| *x < r.x0 - LATTICE_TOLERANCE);
+            let c_hi = self.xs.partition_point(|x| *x <= r.x1 + LATTICE_TOLERANCE);
+            let r_lo = self.ys.partition_point(|y| *y < r.y0 - LATTICE_TOLERANCE);
+            let r_hi = self.ys.partition_point(|y| *y <= r.y1 + LATTICE_TOLERANCE);
+            if c_hi == c_lo + 1 && r_hi >= r_lo + 2 {
+                rows[r_lo..r_hi - 1].iter_mut().for_each(|b| *b = true);
+            }
+            if r_hi == r_lo + 1 && c_hi >= c_lo + 2 {
+                cols[c_lo..c_hi - 1].iter_mut().for_each(|b| *b = true);
+            }
+        }
+        (rows, cols)
     }
 
     /// Path 1: every face of the KEPT grid covered by a rectangle that is not the enclosing border.
@@ -1453,6 +1529,74 @@ mod tests {
             .unwrap()
             .0;
         assert!(t.is_empty(), "got {t:?}");
+    }
+
+    /// A rectangle in centipoints, for shapes that sit inside `LATTICE_TOLERANCE` on one axis.
+    fn cp(x0: i64, y0: i64, x1: i64, y1: i64) -> QuantRect {
+        QuantRect { x0, y0, x1, y1 }
+    }
+
+    #[test]
+    fn a_grid_drawn_only_in_rules_is_a_grid() {
+        // pdfTeX draws `\hline` and `|` as filled rectangles thinner than the lattice tolerance, so
+        // each folds to one line and occupies no face. `ruled-rects-v5` selected bands by faces
+        // alone, kept none here, and emitted nothing and refused nothing; `-v4` traced it.
+        for (thickness, border) in [(20, false), (50, false), (100, false), (100, true)] {
+            let mut rects = Vec::new();
+            for i in 0..4 {
+                rects.push(cp(0, i * 2000, 30000 + thickness, i * 2000 + thickness));
+                rects.push(cp(i * 10000, 0, i * 10000 + thickness, 6000 + thickness));
+            }
+            if border {
+                rects.push(cp(0, 0, 30000 + thickness, 6000 + thickness));
+            }
+            let (t, refusal) = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+            assert_eq!(refusal, None, "{thickness}cp rules, border {border}");
+            assert_eq!(
+                t.iter().map(|t| (t.rows, t.columns)).collect::<Vec<_>>(),
+                [(3, 3)],
+                "{thickness}cp rules, border {border}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_shaded_paragraph_is_a_stack_and_not_a_grid() {
+        // `nist-sp-800-207`'s disclaimer, reduced: each line shaded by its own full-width
+        // rectangle, a thin border segment either side of every line, an underline under a URL on
+        // the last one, and ink further down the page whose edges land inside the box's width.
+        // With empty bands dropped every kept face is covered, and `-v5` emitted it as a table
+        // whose every cell spans every column. Nothing inside the box divides a column: the
+        // underline's ends are the only interior edges, and it is 0.48pt tall.
+        let mut rects = Vec::new();
+        for i in 0..5 {
+            let (y0, y1) = (36312 + i * 1150, 36312 + (i + 1) * 1150);
+            rects.push(cp(6252, y0, 54948, y1));
+            rects.push(cp(6156, y0, 6252, y1));
+            rects.push(cp(54948, y0, 55044, y1));
+        }
+        rects.push(cp(6252, 36216, 54948, 36312));
+        rects.push(cp(6252, 42062, 54948, 42158));
+        rects.push(cp(7200, 41800, 20202, 41848));
+        rects.push(cp(26808, 63258, 37440, 63330));
+        let (t, refusal) = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        assert!(t.is_empty(), "a stack of shaded lines emitted as {t:?}");
+        assert_eq!(refusal, None, "a stack is not a near miss either");
+    }
+
+    #[test]
+    fn two_full_width_bars_are_not_a_grid() {
+        // `nist-sp-800-171r3` pages 15 and 16 under `-v5`: two bars, the whitespace between them
+        // dropped as a band, and columns borrowed from a rule further down. Two empty cells, each
+        // spanning the table, emitted as a 2 x 3.
+        let rects = [
+            cp(7812, 31416, 51660, 31716),
+            cp(7812, 39240, 51660, 39540),
+            cp(15000, 60000, 45000, 60048),
+        ];
+        let (t, refusal) = detect_ruled(1, &rects, &[], &mut alloc()).unwrap();
+        assert!(t.is_empty(), "two bars emitted as {t:?}");
+        assert_eq!(refusal, None);
     }
 
     #[test]

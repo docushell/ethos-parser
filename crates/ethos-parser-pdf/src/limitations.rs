@@ -290,7 +290,7 @@ pub fn ruled_candidate_refused(refusals: &[(u32, crate::tables::RuledRefusal)]) 
          grid-shaped was drawn here` and `a grid was implied and judged incoherent`, and only the \
          second one is reported below. Nothing was repaired or partially emitted: a candidate \
          either satisfies every precondition of `{}` or it produces no table.",
-        ethos_parser_core::TABLE_DETECTION_V3
+        ethos_parser_core::TABLE_DETECTION_V6
     );
     // **Grouped by precondition, so the reasoning is stated once.** The ruled rule refuses 481 of
     // `nist-sp-800-53r5`'s 492 pages; repeating a five-line explanation per page would put a
@@ -763,5 +763,19 @@ mod tests {
             .find(|l| l.code == CLASSIFY_SAMPLE_BOUND)
             .expect("declared");
         assert!(l.detail.contains("at most 3 page(s)"), "{}", l.detail);
+    }
+
+    /// The refusal names the rule the profile says ran, not the one it replaced.
+    ///
+    /// It named `ruled-rects-v3` through two bumps of the rule, `-v4` and `-v5`, because the
+    /// constant was spelled here a second time and nothing compared the two.
+    #[test]
+    fn the_ruled_refusal_names_the_profile_rule() {
+        let l = ruled_candidate_refused(&[(
+            1,
+            crate::tables::RuledRefusal::LatticeTooLarge { faces: 5000 },
+        )]);
+        let ruled = ethos_parser_core::Profile::default().table_detection.ruled;
+        assert!(l.detail.contains(&format!("`{ruled}`")), "{}", l.detail);
     }
 }

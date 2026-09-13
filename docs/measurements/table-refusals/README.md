@@ -468,12 +468,98 @@ covered grid, or a partial grid with a column line left undrawn. **Neither is a 
 failure**, and closing them needs ink this engine can read as a boundary rather than a different way
 of counting the ink it already has.
 
+## 4g. T6 — `-v5` on the documents the benchmark does not hold
+
+§4f's 100% precision was measured here, on 200 documents whose tables are not NIST's. Reviewing
+the release that would ship `-v5`, every ruled table it emitted on the **gate corpus** was read
+rather than scored — and every one was false.
+
+### What it emitted
+
+| document | page | shape | cells | cells with text |
+| --- | --- | --- | ---: | ---: |
+| `nist-sp-800-207`, `-218` | 3 | 14 × 5 | 13 | 13 |
+| `nist-sp-800-161r1` | 4 | 14 × 5 | 13 | 13 |
+| `nist-sp-800-53Ar5` | 3 | 14 × 9 | 13 | 13 |
+| `nist-sp-800-171r3` | 15, 16 | 2 × 4, 2 × 7 | 2 | 0 |
+
+The first four are NIST's disclaimer box. Its producer shades **each line** of the paragraph with
+its own full-width rectangle, draws the box's sides as 0.96pt segments per line, and underlines the
+URL on the last line with a 0.48pt rectangle. Every cell spans every column, and each cell's text is
+one line of the paragraph. `171r3`'s two are pairs of 3pt full-width bars with the whitespace
+between them.
+
+### Why band selection made them
+
+The lattice is **page-wide**. The disclaimer's column lines are x = 7 200 and 20 202, the ends of
+the URL's underline, and x = 26 808 and 37 440, from a rule 95pt further down. None divides the box.
+Under `-v4` the empty bands those lines implied were faces nothing covered, and the stack was
+refused. `-v5` dropped every band no rectangle occupies — which is right for §4e's separated rows —
+and what remained was a stack whose every surviving face its own shading covered. The two-band
+floor did not stop it, because it counts bands and the page had five.
+
+### What `-v5` lost, found the same way
+
+A 3 × 3 grid built only of filled rules was probed at 20, 50 and 100 centipoints thick, with and
+without a border: `-v4` emits 3 × 3 at every thickness, `-v5` emits **nothing and refuses nothing**.
+A rule folds both edges into one lattice line and occupies no face, so selection by faces keeps no
+band at all. On the benchmark that was `01030000000120.pdf` (3 × 5) and `01030000000121.pdf`
+(2 × 2), both holding a table, both emitted by `-v4`.
+
+### `-v6`
+
+- **A rule keeps the bands it crosses.** A rectangle collapsing to one line on one axis and spanning
+  two or more on the other marks the bands along its length. One thick on both axes already
+  occupies those faces, so no other page's selection moves.
+- **A grid must be divided inside itself on both axes**: some rectangle with an edge on an interior
+  column line must span a kept row, and some rectangle with an edge on an interior row line must
+  span a kept column. The underline's ends lie on column lines and span no row, so they do not
+  count.
+
+### Measured — `rule_ab.py`
+
+| benchmark, 200 documents | ruled | any rule | holding a table | not |
+| --- | ---: | ---: | ---: | ---: |
+| `-v4` | 2 | 7 | 7 | 0 |
+| `-v5` | 10 | 12 | 12 | 0 |
+| **`-v6`** | **12** | **14** | **14** | **0** |
+
+`-v4`'s two come back at `-v4`'s shapes, and every `-v5` table stays.
+
+| gate corpus, 8 documents | ruled tables | fabricated | pages refused on the four largest |
+| --- | ---: | ---: | --- |
+| `-v4` | 0 | 0 | 238 · 168 · 724 · 82 |
+| `-v5` | 6 | **6** | 81 · 56 · 672 · 20 |
+| **`-v6`** | **0** | **0** | 193 · 147 · 714 · 22 |
+
+(`161r1`, `37r2`, `53Ar5`, `171r3`.) **No page `-v6` refuses is one `-v4` did not**, on any document
+in the three populations. Over 41 distinct PDFs from `../ethos`, `../ethos-oracle` and
+`../docuShell`, `-v6` removes one more disclaimer (`nist-sp-800-63b`) and adds nothing. The 43
+engine fixtures emit the same tables and refuse the same pages; two change bytes, because the
+refusal now names `-v6` instead of `-v3` and its explanation stops saying tracing replaced faces.
+
+### What this does not settle
+
+The gate corpus has no table ground truth, so this is a precision reading with no recall beside it,
+and "read every emitted table" scales only while there are six. The refusal counts rise back toward
+`-v4`'s on the NIST documents because a rule crossing a page now keeps bands `-v5` dropped; those
+pages were refused before `-v5` too, and are declared rather than silent.
+
 ## 5. Reproducing
 
 ```bash
 cargo build --release --locked
 ETHOS_BENCH_CORPUS=~/ethos-external-benchmarks/opendataloader-bench \
   docs/measurements/table-refusals/refusals.py
+```
+
+§4g compares engines rather than reading one, so it takes a binary per arm — build each at its
+commit:
+
+```bash
+ETHOS_BENCH_CORPUS=~/ethos-external-benchmarks/opendataloader-bench \
+  docs/measurements/table-refusals/rule_ab.py v5=<binary> v6=target/release/ethos-parser \
+  --extra ../ethos/fixtures --extra ../ethos-oracle --extra ../docuShell
 ```
 
 The engine is deterministic and the script only reads its output, so two runs agree exactly. The

@@ -339,6 +339,7 @@ const CORE: &[&str] = &[
     "TABLE_DETECTION_V3",
     "TABLE_DETECTION_V4",
     "TABLE_DETECTION_V5",
+    "TABLE_DETECTION_V6",
     "TEXT_CODE_RULE_V1",
     "TableCellPosition",
     "TableCellRecord",
