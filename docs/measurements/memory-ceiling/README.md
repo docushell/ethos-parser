@@ -484,9 +484,10 @@ where the buffer is still counted. An interaction, not a fix.
 **Verification is the load path's dominant cost: 55–64% of the wall time on every read command at
 every size, and about the canonical payload's size in memory — 805 MiB on 53Ar5.** The
 805 MiB is the canonical payload's size exactly — `fingerprint()` rebuilds all of it to hash it and
-throw it away. With `sha2` 0.10 dispatching to the ARMv8 SHA-2 instructions on this machine,
-hashing 805 MB should take well under a second, so most of the ~10 s is the re-serialization; that
-split is inferred, not measured.
+throw it away. ~~With `sha2` 0.10 dispatching to the ARMv8 SHA-2 instructions on this machine,
+hashing 805 MB should take well under a second~~ — **wrong, see §13: 0.10 never used those
+instructions here, and the hash was a measured 1.1 s of it.** Most of the ~10 s is still the
+re-serialization; the rest of that split is inferred, not measured.
 
 **Freeing the 950 MB file buffer early does nothing** — §9's lesson a third time. In this engine,
 memory comes down by not allocating, not by freeing sooner.
@@ -579,3 +580,51 @@ grounding check` each exit 0, where they returned 1 and 2 — and it carries its
 spans, and is 6.6 MiB instead of 151.4. `ground` on the three next-largest gate documents is
 byte-identical to before. Under the cap nothing changes. The schema's other limits are still not
 enforced by the projection; none is reached by this corpus.
+
+## 13. The hash was running in software, and moving to `sha2` 0.11 is 9–13% of every command
+
+**Run 2026-09-13 at `15ebe51` (0.55.0) against the same tree with `sha2 = "0.11"`.** Both release
+builds at equal version; interleaved; every run's output hashed.
+
+§12 said `sha2` 0.10 dispatches to the ARMv8 SHA-2 instructions on this machine. It does not. Its
+`sha256.rs` selects a backend at compile time: x86 gets runtime SHA-NI detection, but on `aarch64`
+the hardware path sits behind `#[cfg(all(feature = "asm", target_arch = "aarch64"))]`, and this
+workspace does not enable `asm` (which would pull `sha2-asm` and a `cc` build script). Every
+`aarch64` build this repository has shipped hashed SHA-256 with the portable implementation. `sha2`
+0.11 detects the extension at run time through `cpufeatures` with no feature flag, and 0.11.0 was
+already in `Cargo.lock` through `lopdf` — so the change adds no crate and removes seven:
+`sha2` 0.10.9, `digest` 0.10.7, `block-buffer` 0.10.4, `crypto-common` 0.1.7, `generic-array`
+0.14.7, `cpufeatures` 0.2.17 and `version_check` 0.9.5.
+
+| command | document | 0.10 wall | 0.11 wall | Δ |
+| --- | --- | ---: | ---: | ---: |
+| `extract` | 53Ar5 | 9.37 s | 8.18 s | **−12.7%** |
+| `extract` | 161r1 | 2.77 s | 2.46 s | −11.3% |
+| `extract` | 171r3 | 0.87 s | 0.76 s | −12.8% |
+| `ground` | 53Ar5 (950 MiB) | 11.02 s | 9.94 s | **−9.8%** |
+| `markdown` | 53Ar5 | 10.42 s | 9.52 s | −8.7% |
+| `ground` | 161r1 | 3.21 s | 2.92 s | −9.0% |
+| `ground` | 171r3 | 0.97 s | 0.89 s | −8.9% |
+| MCP `node_get`, per call | 53Ar5 | 9.06–9.48 s | 7.97–8.22 s | −11% |
+
+Three runs per arm (five for `extract` 171r3); MCP is two alternating sessions of three calls each.
+Peak RSS and footprint move by at most 11 MiB either way, which is noise: the hash never allocated
+the memory, it only spent the time. `extract` hashes the payload once to seal it and the read
+commands once to verify it, and on 53Ar5 both save about the same 1.1–1.2 s, which is what one
+software pass over the 805 MiB payload was costing.
+
+**Byte-identical**: `ci/artifact-bytes.py` over all 268 artifacts equal before and after, every A/B
+run's output digest equal across arms, and an `x86_64-apple-darwin` build under Rosetta 2 produces
+the same bytes as native. `profile_sha256` does not move — no profile field names the hash
+implementation.
+
+**What this is not.** It does not change the split §12 inferred: verification's re-serialization
+is still most of its cost, and only not rebuilding the payload — or not verifying twice — removes
+that. On Intel Macs nothing changes: 0.10 already detected SHA-NI there, and 0.11 does the same.
+
+The MCP figure comes from [`mcpsession.py`](mcpsession.py), which drives one server through N calls
+and refuses to report a run in which any call returned a tool error. Its first version did not, and
+a mis-split shell argument produced a "baseline" of 0.0 s per call and 2.4 MiB from calls that all
+failed instantly; a separate reading of 14 s per call was taken while ten other processes shared
+the machine. Neither is published.
+

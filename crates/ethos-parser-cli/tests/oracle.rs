@@ -35,8 +35,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sha2::{Digest, Sha256};
-
 /// Fixtures owned by the Ethos corpus. The M6 oracle criterion counts exactly these.
 const ETHOS_OWNED_FIXTURE_COUNT: usize = 15;
 
@@ -382,7 +380,7 @@ fn hash_failures(manifest: &serde_json::Value) -> Vec<String> {
             continue;
         };
 
-        let got = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let got = format!("sha256:{}", ethos_parser_core::sha256_hex_bytes(&bytes));
         if got != want {
             failures.push(format!(
                 "{id}: hash mismatch\n     manifest: {want}\n     on disk:  {got}"

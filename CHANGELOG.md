@@ -19,6 +19,23 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **SHA-256 uses the CPU's SHA-2 instructions on Apple silicon: every command is 9–13% faster.**
+  `sha2` 0.10 enabled the ARMv8 backend only behind its `asm` feature, which this workspace never
+  set, so every `aarch64` build hashed in portable code — and every `extract` hashes the payload to
+  seal it and every read command hashes it again to verify it. `sha2` 0.11 detects the extension at
+  run time. Interleaved on the largest gate document: `extract` 9.37 → 8.18 s (−12.7%), `ground`
+  11.02 → 9.94 s (−9.8%), `markdown` −8.7%, MCP `node_get` about −11% per call; −9 to −13% on the
+  smaller documents. Memory does not move. **Byte-identical** over all 268 artifacts, and an
+  `x86_64` build under Rosetta 2 agrees with native. 0.11.0 was already in the dependency graph
+  through `lopdf`, so this adds no crate and removes seven the old version needed. `docs/measurements/memory-ceiling/`
+  §13, which also withdraws §12's statement that 0.10 used those instructions. A PATCH.
+
+---
+
 ## [0.55.0] — the cut's horizontal half reaches the wire, and the first version released
 
 **The first release.** Tagged `v0.55.0`, with `aarch64` and `x86_64` macOS binaries — each built,
