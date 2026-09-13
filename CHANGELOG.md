@@ -3,8 +3,9 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Nothing is tagged or published.** Version numbers are in-tree; creating a tag or a release is a
-separate, deliberate act. Nothing is on crates.io, npm or PyPI.
+**0.55.0 is the first version released** — tagged, with macOS binaries on the repository's GitHub
+Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is in-tree only. Nothing is on
+crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
@@ -18,11 +19,24 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased] — the cut's horizontal half reaches the wire
+## [0.55.0] — the cut's horizontal half reaches the wire, and the first version released
 
-**Not a version yet.** `profile_sha256` has moved, so by this file's own header these artifacts are
-already non-comparable with 0.54.0's; assigning the number is the owner's deliberate act and it
-carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-version.sh`).
+**The first release.** Tagged `v0.55.0`, with `aarch64` and `x86_64` macOS binaries — each built,
+executed on this host and compared byte for byte against the native build by
+`ci/release-artifacts.sh` — and nothing on a registry. Linux and Windows are not shipped: nothing
+here can execute them, and a binary nobody has run is an untested claim for an engine whose product
+is byte-identical reruns. `profile_sha256` is `sha256:daada698…`.
+
+**A MINOR, because readers and emitters changed.** Every PDF text run carries the `block` its page's
+leading-gap cut placed it in, where the cut opened more than one; the ruled table rule accepts
+either shape of grid evidence, stops reading inter-cell whitespace as rows, and stops reading a
+stack of shaded lines as a grid; a grounding box's height is scaled by the rendered em rather than
+the `Tf` operand; and `ground` withholds spans past `ethos.grounding.v1`'s cap instead of emitting
+an artifact the verifier refuses.
+
+**And the memory ceiling, byte-identically.** Four changes that move no emitted byte take the worst
+gate document's peak from **6.49 GiB to 3.65**, every command that loads a representation from
+about the payload's size less, and MCP `extract` on a 4.6 MB PDF from 8.7 GiB to 1.1.
 
 ### Added
 
@@ -32,6 +46,12 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   reversing P14: it says two runs are in different blocks and never that either is a paragraph.
   Absent wherever the rule declined, which — unlike `region` — is the ordinary case, because a page
   of uniform body text has no gap wide enough to open a second block and is supposed to have none.
+
+  **Breaking in two ways a MINOR allows.** `TextRunAttributes` is not `#[non_exhaustive]`, so a
+  downstream crate building one with a struct literal stops compiling. And it denies unknown
+  fields, so a 0.54.0 reader — the library, its `ground`/`markdown`/`html`, or an SDK pinned to it —
+  refuses a PDF representation from this build rather than ignoring `block`. Artifacts are already
+  non-comparable across the version by `profile_sha256`; this makes them non-readable backwards too.
 
   The rule is a gap of at least **1.6 × the band's own modal leading**, in integers (`5·gap ≥
   8·leading`). Measured on the one gate document able to carry a real paragraph label:
@@ -45,8 +65,17 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   gap, so numbering its leaves would put one index on every line — *a line number wearing a block's
   name*. The criterion changed, not the machinery.
 
-- **`READING_ORDER_RULE_V3`** — `gutter-columns-v3`. Added to the public freeze and
+- **`READING_ORDER_RULE_V3`** — `gutter-columns-v3`, and **`TABLE_DETECTION_V4`**,
+  **`TABLE_DETECTION_V5`** and **`TABLE_DETECTION_V6`** — the three ruled rule ids this release
+  passed through, each kept as spelled because artifacts name it. Added to the public freeze and
   [`PUBLIC-API.md`](docs/PUBLIC-API.md).
+
+- **`ci/release-artifacts.sh`** — builds and packages release binaries and labels each target in
+  `SHA256SUMS.txt` **`verified`** (built, executed on the build host, every artifact digest over the
+  gate corpus equal to the native build's) or **`compiled`** (built, never run). A target whose
+  link step fails is reported rather than omitted. A script and not a workflow, because Actions
+  cannot allocate a runner on this account and a `release.yml` would be a file that has never
+  executed; a workflow can call it unchanged.
 
 ### Changed
 
@@ -73,19 +102,19 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   refusal**. On the benchmark that was a true 3 × 5 and a true 2 × 2. A rule now keeps the bands it
   crosses; a rectangle thick on both axes already occupied them, so no other page's selection moves.
 
-  Measured with the new `docs/measurements/table-refusals/rule_ab.py`. Benchmark documents emitting
-  a table go **12 → 14, every one holding a table in ground truth, zero false positives** — precision
+  Measured with the new `docs/measurements/table-refusals/rule_ab.py`. Benchmark documents emitting a
+  table go **12 → 14, every one holding a table in ground truth, zero false positives** — precision
   100%, recall 33%; ruled tables alone 10 → 12, `-v4`'s two back at `-v4`'s shapes. **On the gate
   corpus all six `-v5` tables are gone and none is added**, and over 41 further PDFs from the Ethos
   corpora it removes one more disclaimer and adds nothing. Every page `-v6` refuses is a page `-v4`
-  refused. Compared byte for byte at equal profile, ten fixtures move: the six gate PDFs whose tables
-  or refused pages change, and four — both IRS forms, `background-panel-not-a-grid` and
+  refused. Compared byte for byte at equal profile, ten fixtures move: the six gate PDFs whose
+  tables or refused pages change, and four — both IRS forms, `background-panel-not-a-grid` and
   `ruled-table-overlap` — whose tables and refused pages are identical and whose refusal only reads
-  differently, below. No office fixture moves. **The refusal limitation also named `ruled-rects-v3` through both
-  bumps of this rule** — the constant was spelled a second time in `limitations.rs` and nothing
-  compared the two. It names the profile's rule now, and a test holds them together. Its explanation
-  also said tracing *replaced* the face test, which it sits beside; it says so now. New public
-  constant `TABLE_DETECTION_V6`.
+  differently, below. No office fixture moves. **The refusal limitation also named `ruled-rects-v3`
+  through both bumps of this rule** — the constant was spelled a second time in `limitations.rs` and
+  nothing compared the two. It names the profile's rule now, and a test holds them together. Its
+  explanation also said tracing *replaced* the face test, which it sits beside; it says so now. New
+  public constant `TABLE_DETECTION_V6`.
 
 - **`table_detection.ruled` `ruled-rects-v4` → `ruled-rects-v5`: the grid's own rows, not every
   band its edges imply.** `-v4` clustered every rectangle edge into lines and treated every band
@@ -106,12 +135,16 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   step: two faces in a line is two boxes. Selection makes that shape reachable, since a page of
   framed form fields collapses to an N × 1. Without the floor the benchmark emits **17 documents
   with four false positives, every one single column**; with it, **12 with none**. It costs one true
-  1 × 3, a lone header row geometry cannot tell from three boxes in a row.
+  1 × 3, a lone header row geometry cannot tell from three boxes in a row. **So a single-row or
+  single-column ruled grid 0.54.0 emitted is now no candidate at all** — no table, and no
+  `ruled-table-candidate-refused` naming it, on the floor's own judgement that a stack of boxes is an
+  ordinary page. On pages still refused, the detail's cell count is the kept grid's.
 
   Documents emitting a table go **7 → 12, all twelve with a table in ground truth, zero false
-  positives** — precision 100%, recall 29%. **Zero false positives on the benchmark only:** on the gate corpus
-  this rule emitted six tables and all six were fabricated — see `-v6` above, which removes them. Across this entry's two ruled changes: **5 → 12
-  documents, 2.4× the recall, fabrication at zero throughout.**
+  positives** — precision 100%, recall 29%. **Zero false positives on the benchmark only:** on the
+  gate corpus this rule emitted six tables and all six were fabricated — see `-v6` above, which
+  removes them. Across this entry's two ruled changes: **5 → 12 documents, 2.4× the recall,
+  fabrication at zero on the benchmark throughout.**
   `background-panel-not-a-grid` refuses at every step.
 
 - **`table_detection.ruled` `ruled-rects-v3` → `ruled-rects-v4`: the ruled rule takes either of
@@ -134,7 +167,9 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   positives**. Tracing cannot fabricate: the lattice is built from rectangle edges, so a line
   nothing drew is not a lattice line. The enclosing rectangle counts toward the four outer lines,
   which it draws by definition, and helps no interior line —
-  `background-panel-not-a-grid` still refuses under both paths.
+  `background-panel-not-a-grid` still refuses under both paths. **The refusal reads differently on
+  every page it names**: the kind `a cell the ink does not draw` becomes `a grid line the ink does
+  not trace`, and each page's detail names the first line its ink does not carry.
 
   The gain was small, and the first diagnosis for it — one page-wide lattice traced across logos
   and borders — was wrong: T4 found the refused pages draw complete grids whose rows have whitespace
@@ -175,13 +210,15 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   bindings hold `Arc<PdfTaggedLocator>` now, so 5,661 locators exist instead of 1.65M clones. The
   clone sites are unchanged — they were already `found.clone()` and are pointer clones now.
   −22.0% at `--max-pages 128`, −16.1% / −14.9% / −14.6% on the three mid-sized documents, −6.9% on
-  a six-page form. Wall time moves 3–9%, largest on the densest document.
+  a six-page form. Wall time falls 2.6–8.6% (interleaved, median of five), largest on the densest
+  document; a 36% fall two sequential runs showed was machine state, and is not claimed.
 
   **`StructuralLocator::PdfTagged` now carries an `Arc`**, which is source-breaking for a
   downstream crate matching that variant. Thirteen in-tree sites are updated. By
   [`RELEASING.md`](docs/RELEASING.md) §4 the rule is output-based and byte-identical means PATCH, as
   0.37.1's "the run buffers move instead of cloning" was — but that rule measures bytes and says
-  nothing about compilation, so the label is the owner's call rather than this entry's.
+  nothing about compilation. It ships inside 0.55.0, a MINOR on other grounds, so this version did
+  not have to settle that; a PATCH that changed a public type's shape would.
 
 - **MCP stopped parsing every artifact back into a tree.** `tool_extract` handed the canonical
   bytes to `serde_json::from_slice` so they could sit in a `json!` response, then serialized the
@@ -209,7 +246,6 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   from 6.49 GiB when this work began. **Reserving the output at its final size — the change first
   proposed — was measured beside it and bought nothing on any axis, and is not shipped.**
 
-
 - **A representation's fingerprint is hashed as a stream.** `verify_fingerprint` rebuilt the
   payload's canonical bytes in full to hash them and threw them away — 805 MiB on the largest gate
   document — about the payload's size in memory for every command that loads a representation:
@@ -228,6 +264,15 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   bytes it keeps for the emit path, so the two routes must agree or every sealed artifact would fail
   its own verification, and a test states it outright. A PATCH: no emitted byte moves.
 
+- **The PDF reader keeps each glyph's advance instead of summing them away.**
+  `ShownText::code_advances` holds the per-code deltas `show_text` used to add into one total and
+  discard, which is what a sub-run extent — a word box — has to be built from. Aligned with the
+  codes, not the characters, because a code may decode to more than one; `scalar_code_mismatch`
+  flags exactly that, and fires zero times over the four gate fixtures' 155 000 nodes, so anything
+  indexing these by character cannot prove it is wrong on this corpus. Crate-internal and on no
+  wire: a `debug_assert` where the run is consumed checks one entry per code and that the entries
+  account for the total. `ci/artifact-bytes.py --small` is byte-identical over 236 artifacts.
+
 ### Fixed
 
 - **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that
@@ -235,13 +280,22 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   **82 909** of them on `nist-sp-800-207`, whose body text is 13.3pt. The *width* was already
   carried through the CTM, so the two axes of one rectangle were in different spaces, which is why
   adding only the text matrix would still have been wrong. Scaling is now by the vertical component
-  of the text rendering matrix (§9.4.4). No test caught this: geometry sits outside
+  of the text rendering matrix (§9.4.4), so a size carried in the text matrix or the CTM measures
+  as one carried in the operand does. No test caught this: geometry sits outside
   `representation_c14n_sha256`, and the one height test exercises only the operand-carried path.
+
+  On that document the 82 909 measured run boxes go from 110–123 centipoints tall to **665–3 103,
+  median 1 329**, none at or below 2pt. Every measured box in `extract`, and every `ground` span
+  and element box built from one, moves — **while `representation_c14n_sha256` does not**, so a
+  consumer comparing that fingerprint will not see this change; `profile_sha256` is the one that
+  moves. The wire `font_size` still carries the raw `Tf` operand, deliberately.
 
 - **Three files claimed 0.50.0 against a 0.54.0 tree** — `README.md`, `docs/README.md` and
   `docs/CAPABILITY.md`, the last of which opens with a rule requiring it to move with the version.
-  `ci/doc-version.sh` now enforces that in both `ci/gate.sh` and CI.
-
+  `ci/doc-version.sh` now checks every stated version against the workspace in both `ci/gate.sh`
+  and CI — those three and `packages/node/package.json`, which cannot move alone (its vendor digests
+  and docushell's pin move with it). A claim whose pattern stops matching fails as a blind check
+  instead of passing. `packages/python/pyproject.toml` is exempt: its version is dynamic.
 
 - **`ground` emitted an artifact the Ethos verifier refused for large documents.**
   `ethos.grounding.v1` caps `spans` at a million, and the projection never looked: the 733-page gate
@@ -266,10 +320,38 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
 
 ### Measurements
 
-- **`docs/measurements/table-refusals/`** — the unruled rule refuses on 199 of 200 documents and
-  emits a table on 5 of the 42 that hold one. Crossed with ground truth, no lattice metric separates
-  a table page from a prose page, and three of five are inverted. A table candidate has to be built
-  inside a bounded region; a page is the wrong scope.
+- **`docs/measurements/cross-architecture/`** — output does not depend on the instruction set.
+  An `x86_64-apple-darwin` build from the pinned 1.88.0, executed under Rosetta 2, matches native
+  `aarch64-apple-darwin` on **412 comparisons over 86 documents with zero mismatches**: `extract`
+  and `classify` from a PDF, `markdown`, `html` and `ground` from a representation, and 22 refusals
+  compared by their stderr. It is the axis integer centipoints exist to settle, and it had never
+  been tested. The operating-system axis has not been: Linux and Windows remain unbuilt and
+  unexecuted. The instrument's first run was an overclaim — 344 comparisons, 194 of them `markdown`
+  and `html` refusing a PDF they were handed — and was corrected before this figure.
+
+- **`docs/measurements/omnidocbench/`** — "684 of the 981 pages carry a text layer, the other 237
+  score 1.0" did not reconcile: 684 + 237 is 921, the pages the harness scores, not the corpus. Three
+  populations were sharing one denominator — 981 in the corpus, 921 scored, 756 carrying text
+  objects — and each is now named where it is used.
+
+- **`docs/measurements/table-refusals/`** — six studies of why this engine finds so few tables,
+  which drove the three ruled changes above.
+
+  **T1–T1b, against 0.54.0:** the engine emitted a table on 5 of the 42 benchmark documents that
+  hold one, all five from the ruled rule; the unruled rule refused on 199 of 200, every refusal
+  `gutter_below_floor`. Table and prose pages share a 416-centipoint median gutter only because
+  `gutter_fault` reports the leftmost sub-floor gap, which on any prose page is word spacing — so
+  `COLUMN_GUTTER_MIN` is not the lever. Crossed with ground truth, no lattice metric separates a
+  table page from a prose page, and three of five are inverted.
+
+  **T2:** scoping the unruled candidate to a block, as T1b predicted, shrinks the lattice 30–40× and
+  still emits nothing — zero candidates would emit at either scope. The fold tolerance and the
+  gutter floor contradict each other, and occupancy sits at a median 54% on table and prose blocks
+  alike. **T3:** a perfect unruled rule could address at most 12 of the 42, at a measured ceiling of
+  17% precision, since prose blocks outnumber table blocks 10.6 to 1; 30 of the 42 draw rectangles
+  the ruled rule refused on one clause, so the rework went there. **T4:** those refusals were not a
+  page-wide lattice crossing logos, as `-v4` first diagnosed, but whitespace rows the lattice
+  invented. **T5** is `-v5`; **T6** is `-v6`, and adds `rule_ab.py`.
 
 - **`docs/measurements/block-subdivision/probe3b.py`** — the instrument behind
   [`19`](docs/19-BLOCK-SUBDIVISION-SCOPE.md) §11.2's numbers, which had never been committed. Its
@@ -280,18 +362,20 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
 
 - **`docs/measurements/memory-ceiling/`** — this file's own memory figure was wrong, and is
   withdrawn. `ci/bench.py` shipped "peak RSS runs roughly **300x** the input"; measured over the
-  eight gate documents it runs **143x to 933x**, a 6.5x spread, and after role-path sharing 133x to
-  655x. It is a corpus median and never was a bound. "~4.7 MiB per page" was also a median — the
-  real range was 3.20 to 9.07, now 2.98 to 6.89.
+  eight gate documents it runs **143x to 933x**, a 6.5x spread, and on the engine that ships 135x
+  to 524x. It is a corpus median and never was a bound. "~4.7 MiB per page" was also a median — the
+  real range was 3.20 to 9.07, now 3.01 to 6.58.
 
   Three things nobody had measured. The corpus's worst case had only ever been extrapolated: it is
-  **6.5 GiB for a 7.12 MiB input**, now 4.56. Peak is **linear in admitted pages within one
+  **6.5 GiB for a 7.12 MiB input**, now 3.65. Peak is **linear in admitted pages within one
   document**, so there is no superlinear retention — the cross-document spread is content density.
-  And **`--max-pages` leaves a floor it cannot lower**: `--max-pages 0` costs 221 MiB on the
+  And **`--max-pages` leaves a floor it cannot lower**: `--max-pages 0` costs 222 MiB on the
   733-page document, because `structure::read` and `tree_mcids_by_page` are built above the
   `let budget`. So the two ceilings in the tree do not compose into a memory bound — nothing maps a
   permitted 2 GiB input onto a peak figure, and a caller who needs a hard memory ceiling still does
-  not have one.
+  not have one. `extract --help` gives a sizing rule instead of a ratio: about 7 MiB per admitted
+  page plus 0.35 MiB per page in the document, which over-predicts the worst gate document by 44% —
+  loose, in the safe direction.
 
   Four proposals died with a measurement rather than an argument, recorded so the slice is not
   spent twice: streaming the artifact buffer (950 MiB at an instant that sits 1.1–2.1 GiB below the
@@ -311,7 +395,6 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   not by freeing sooner. Baseline footprint also runs 13–22% below RSS, so the RSS-based sizing
   rule over-provisions on macOS — the safe direction.
 
-
 - **The read side had never been measured, and verification is most of it.** `ground`, `markdown`,
   `html` and MCP's `ground` and `node_get` load a representation and verify its fingerprint by
   rebuilding the whole canonical payload. On the largest gate document `ground` peaks at 4.17 GiB —
@@ -320,15 +403,19 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   **55–64% of the wall time on every read command at every size**: `ground` on that document runs
   18.4 s with it and 8.3 s without. Freeing the source buffer early does nothing. A streaming hash
   would not help, because c14n stages `nodes` in full to sort keys; hashing the input's own bytes
-  would, but is not verdict-identical — about 25 fields parse an explicit empty value the same as its
-  absence — so the fix is left as an owner's choice among three options.
-  `docs/measurements/memory-ceiling/` §12. `grounding-check` peaks at 12.7–13.5x its input, the
-  worst ratio in the engine, from parsing its artifact twice. **Found on the way, and not fixed:**
-  `ground` emits a grounding artifact the Ethos verifier refuses for the largest gate document —
-  1,619,510 spans against `ethos.grounding.v1`'s 1,000,000 cap, which the projection does not
-  enforce — so grounding fails silently for documents past roughly 450–750 pages while `ground`
-  exits 0. Confirmed by the engine's own check, an exact count, and `ethos grounding check`. What
-  `ground` should do past the cap is an owner's decision.
+  would, but is not verdict-identical — about 25 fields parse an explicit empty value the same as
+  its absence — so the fix is left as an owner's choice among three options. *The memory half has
+  since shipped — "A representation's fingerprint is hashed as a stream", under Changed, found a
+  route around the staging this sentence describes: `ground` on the largest document now peaks at
+  3299 MiB, below `extract`'s 3717, so the 531 MiB headline no longer holds. The wall-time half has
+  not.* `docs/measurements/memory-ceiling/` §12. `grounding-check` peaks at 12.7–13.5x its input,
+  the worst ratio in the engine, from parsing its artifact twice. **Found on the way, and fixed in
+  this release** (see Fixed): `ground` emits a grounding artifact the Ethos verifier refuses for the
+  largest gate document — 1,619,510 spans against `ethos.grounding.v1`'s 1,000,000 cap, which the
+  projection does not enforce — so grounding fails silently for documents past roughly 450–750 pages
+  while `ground` exits 0. Confirmed by the engine's own check, an exact count, and `ethos grounding
+  check`.
+
 ---
 
 ## [0.54.0] — a word gap the page opened by moving the cursor
