@@ -34,6 +34,28 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   through `lopdf`, so this adds no crate and removes seven the old version needed. `docs/measurements/memory-ceiling/`
   §13, which also withdraws §12's statement that 0.10 used those instructions. A PATCH.
 
+- **MCP stops re-verifying a representation it already verified: repeat `ground` and `node_get`
+  calls are 52–66% faster.** Verification rebuilds and hashes the whole payload, and it was two-thirds
+  of a `node_get` — 5.5 s of 8.3 on the largest gate document. The server now remembers the SHA-256
+  of every path-form buffer that parsed and verified, and a call whose own bytes hash to one of them
+  skips `verify_fingerprint` and nothing else: it still reads, parses and structurally checks its
+  bytes and answers from them. Not the path, inode, size or mtime — a same-length rewrite with its
+  mtime restored is verified again — and not the declared fingerprint. Inline input is verified every
+  call. At most 64 digests, about 6 KiB; no document, tree, path or buffer is kept, and no argument or
+  reply can name a digest. **Every reply is byte-identical to a fresh server's**, which a stdio test
+  replays across a whole session against one-shot servers. Interleaved on 53Ar5: first sight of a file
+  +2.3%, later `node_get` calls 12.78 → 4.86 s (−61.9%), later `ground` calls −52.1%; −65% on the
+  smaller documents. **One pre-set line was breached, and it ships by the owner's decision:** back-to-back
+  calls on the 950 MiB representation peak ~650 MiB higher (4823 vs 4174 MiB RSS), because each call now
+  reads the next file before macOS has returned the previous call's freed tree — at 4 s between calls
+  it is +290 MiB, at 8 s zero, and the smaller documents are unaffected. `docs/00-NORTH-STAR.md`
+  decision 24 amends v1.2's *"not a session"*: no answer depends on an earlier call, only its cost.
+  One bit leaks through latency — that these exact bytes were verified earlier in this process.
+  Keeping the verified tree, for millisecond repeat calls, was refused. Eight wrong implementations —
+  a length-only key, a prefix or head-and-tail hash, hashing before parsing, inserting before
+  verifying, skipping whenever the ledger is non-empty, FIFO eviction, a ledger per line — each fail a
+  test. `docs/measurements/memory-ceiling/` §14. A PATCH.
+
 ---
 
 ## [0.55.0] — the cut's horizontal half reaches the wire, and the first version released

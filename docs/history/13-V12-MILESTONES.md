@@ -79,6 +79,9 @@ no coordinate reaches the text side.
 **Statelessness is not a limitation here.** Every call is self-contained and the server keeps no
 document cache, so **passing the artifact back is the session.** That also means the handle law has
 no back door: there is no server-side table of documents whose keys a model could enumerate.
+**Amended 2026-09-13 by [decision 24](../00-NORTH-STAR.md):** the server now remembers the SHA-256
+of path-form bytes that already verified, so a repeat call skips re-verification. It keeps no
+document, and no argument or reply can name a digest.
 
 ## S2 — Python SDK
 
