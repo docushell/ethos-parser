@@ -520,6 +520,16 @@ measurement's:
 | B. hash the input span; fall back to today's check on mismatch | −805 MiB | mostly gone | accepts crafted inputs today's check rejects |
 | C. make parsing lossless for canonical input, then B | −805 MiB | mostly gone | a stricter reader — a MINOR, and more work |
 
+**Option A landed afterwards** (branch `perf/streaming-fingerprint`).
+`RepresentationPayload::fingerprint` now writes the payload's eight members straight into a hashing
+sink in the order c14n sorts them, serializing each node directly into the sink's 64 KiB buffer, so
+verification's peak is a block rather than the document. Measured against the build before it:
+`ground` on the largest gate document 4093 → 3299 MiB (−19%), `markdown` −766 MiB, 161r1 −226 MiB,
+171r3 −70 MiB, wall time within noise (−1.3% to +1.4%), output byte-identical. A first version that
+copied each node through a scratch buffer saved the same memory at 4–7% of wall clock; removing the
+copy removed the cost. It saves memory, not time: the node walk is still most of a load's wall
+clock, and options B and C remain the only routes to that — at the semantics they cost.
+
 ### `grounding-check` has the worst ratio in the engine
 
 | document | grounding artifact | peak RSS / footprint | RSS / input |
