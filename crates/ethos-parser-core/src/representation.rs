@@ -2047,9 +2047,73 @@ impl RepresentationPayload {
     ///
     /// Propagates [`Self::canonical_bytes`].
     pub fn fingerprint(&self) -> Result<Sha256Hex, EngineError> {
-        let bytes = self.canonical_bytes()?;
-        Ok(Sha256Hex::from_hex(&sha256_hex_bytes(&bytes))
+        let mut sink = crate::c14n::Sha256Sink::new();
+        self.write_canonical(&mut sink)?;
+        Ok(Sha256Hex::from_hex(&sink.finish())
             .expect("sha256 hex is always 64 lowercase hex digits"))
+    }
+
+    /// Write this payload's canonical bytes into `sink` without ever holding them all.
+    ///
+    /// **Why this exists rather than hashing [`Self::canonical_bytes`].** c14n sorts an object's
+    /// keys by staging every field of it first, so canonicalizing a payload materializes `nodes` —
+    /// 99.9% of the artifact, 805 MiB on the largest gate document — before a byte could reach a
+    /// hasher. A generic streaming sink would not help for that reason. This writes the eight
+    /// members in the order c14n sorts them and serializes each value — each node, one at a time —
+    /// straight into the sink, which hashes 64 KiB at a time, so the peak is a block rather than the
+    /// document.
+    ///
+    /// **Serializing straight into the sink is the measured part.** A first version serialized each
+    /// node into a scratch buffer and copied it in: the same memory saved, at 4-7% of wall clock.
+    /// Hashing in blocks alone changed nothing; removing the copy removed the cost.
+    ///
+    /// `seal` still takes the materialized route, because it keeps those bytes for the emit path.
+    /// The two must agree byte for byte or every sealed artifact would fail its own verification,
+    /// which is what the fixtures prove on every run.
+    ///
+    /// **The destructuring is the guard.** A ninth field fails to compile here rather than being
+    /// hashed by `canonical_bytes` and silently skipped by this. The member names need no escaping:
+    /// they are ASCII identifiers, and `write_string` would emit them unchanged.
+    fn write_canonical(&self, sink: &mut crate::c14n::Sha256Sink) -> Result<(), EngineError> {
+        let Self {
+            identity,
+            source,
+            processing_run,
+            coordinate_system,
+            pages,
+            nodes,
+            tables,
+            assurance,
+        } = self;
+
+        let malformed = |e: crate::c14n::C14nError| EngineError::Malformed {
+            what: "representation payload".into(),
+            detail: e.to_string(),
+        };
+
+        sink.push(b"{\"assurance\":");
+        sink.canonical(assurance).map_err(malformed)?;
+        sink.push(b",\"coordinate_system\":");
+        sink.canonical(coordinate_system).map_err(malformed)?;
+        sink.push(b",\"identity\":");
+        sink.canonical(identity).map_err(malformed)?;
+        sink.push(b",\"nodes\":[");
+        for (i, node) in nodes.iter().enumerate() {
+            if i > 0 {
+                sink.push(b",");
+            }
+            sink.canonical(node).map_err(malformed)?;
+        }
+        sink.push(b"],\"pages\":");
+        sink.canonical(pages).map_err(malformed)?;
+        sink.push(b",\"processing_run\":");
+        sink.canonical(processing_run).map_err(malformed)?;
+        sink.push(b",\"source\":");
+        sink.canonical(source).map_err(malformed)?;
+        sink.push(b",\"tables\":");
+        sink.canonical(tables).map_err(malformed)?;
+        sink.push(b"}");
+        Ok(())
     }
 }
 
@@ -3216,6 +3280,21 @@ mod tests {
         );
         let reparsed: DocumentRepresentation = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(reparsed.to_canonical_bytes().unwrap(), bytes);
+    }
+
+    /// **The streamed fingerprint is the digest of the materialized bytes.**
+    ///
+    /// `seal` hashes `canonical_bytes()`; `verify_fingerprint` hashes the same value as a stream.
+    /// Every sealed-then-verified fixture would fail if those parted, so this only states the
+    /// property the suite already leans on — including the empty case, where the node array is the
+    /// one member with nothing in it.
+    #[test]
+    fn the_streamed_fingerprint_equals_the_digest_of_the_canonical_bytes() {
+        for p in [simple().payload().clone(), payload(vec![], vec![])] {
+            let materialized =
+                Sha256Hex::from_hex(&sha256_hex_bytes(&p.canonical_bytes().unwrap())).unwrap();
+            assert_eq!(p.fingerprint().unwrap(), materialized);
+        }
     }
 
     #[test]

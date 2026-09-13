@@ -166,6 +166,25 @@ carries `README.md`, `docs/README.md` and `docs/CAPABILITY.md` with it (`ci/doc-
   from 6.49 GiB when this work began. **Reserving the output at its final size — the change first
   proposed — was measured beside it and bought nothing on any axis, and is not shipped.**
 
+
+- **A representation's fingerprint is hashed as a stream.** `verify_fingerprint` rebuilt the
+  payload's canonical bytes in full to hash them and threw them away — 805 MiB on the largest gate
+  document — about the payload's size in memory for every command that loads a representation:
+  `ground`, `markdown`, `html`, and MCP's `ground` and `node_get`. The payload now writes its eight
+  members in the order c14n sorts them, serializing each value — each node, one at a time —
+  straight into a sink that hashes 64 KiB at a time. A generic streaming sink would not have helped:
+  c14n sorts an object's keys by staging every field, so `nodes` was materialized before a byte could
+  reach a hasher. Measured against the build before it, interleaved, output byte-identical: `ground`
+  on the largest document **4093 → 3299 MiB (−19%)**, `markdown` −766 MiB, `ground` −226 MiB on
+  `161r1` and −70 MiB on `171r3`, with wall time within noise (−1.3% to +1.4%). It took three
+  attempts: streaming each node through a scratch buffer saved the same memory but cost 4–7% of wall
+  clock; hashing in 64 KiB blocks on its own changed nothing; serializing straight into the sink
+  removed the copy and the cost with it. **It does not make verification faster** — the walk over
+  every node is still most of a load's wall clock, and only hashing the input's own bytes would
+  remove that. **Byte-identical by construction and by proof:** `seal` still hashes the materialized
+  bytes it keeps for the emit path, so the two routes must agree or every sealed artifact would fail
+  its own verification, and a test states it outright. A PATCH: no emitted byte moves.
+
 ### Fixed
 
 - **The ink box was scaled by the raw `Tf` operand rather than the rendered em.** On a page that

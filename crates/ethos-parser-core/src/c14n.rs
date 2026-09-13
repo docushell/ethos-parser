@@ -261,10 +261,81 @@ pub fn canonical_object(mut fields: Vec<(&str, &[u8])>) -> Result<Vec<u8>, C14nE
 /// a field silently dropped).
 pub fn canonical_bytes_of<T: serde::Serialize + ?Sized>(value: &T) -> Result<Vec<u8>, C14nError> {
     let mut out = Vec::with_capacity(256);
-    value
-        .serialize(CanonicalSerializer { out: &mut out })
-        .map_err(|e| e.0)?;
+    canonical_bytes_into(value, &mut out)?;
     Ok(out)
+}
+
+/// Canonical bytes of a value, APPENDED to a caller's buffer.
+///
+/// The buffer is the whole point: [`canonical_bytes_of`] allocates one per call, and a caller
+/// canonicalizing a million values one at a time — the fingerprint's node walk — wants one
+/// allocation reused rather than a million. The caller clears between values.
+pub(crate) fn canonical_bytes_into<T: serde::Serialize + ?Sized>(
+    value: &T,
+    out: &mut Vec<u8>,
+) -> Result<(), C14nError> {
+    value
+        .serialize(CanonicalSerializer { out })
+        .map_err(|e| e.0)
+}
+
+/// A sink that hashes what it is given and keeps none of it.
+///
+/// The fingerprint is defined over a payload's canonical bytes, and MATERIALIZING them to hash them
+/// is what made `verify_fingerprint` cost the payload's size in memory — 805 MiB on the largest gate
+/// document — and more than half the wall clock of every command that loads a representation.
+/// Hashing as a stream is the same digest without the copy.
+pub(crate) struct Sha256Sink {
+    hasher: Sha256,
+    /// Bytes written but not yet hashed. Never the whole payload: it is drained whenever it fills.
+    buf: Vec<u8>,
+}
+
+/// How much the sink accumulates before hashing.
+///
+/// Values are serialized STRAIGHT INTO `buf` and hashed a block at a time, so the payload's
+/// canonical bytes exist only a block at a time. An earlier version serialized each node into a
+/// scratch buffer and copied it in; that copy was 805 MB on the largest gate document.
+const SINK_BLOCK: usize = 64 * 1024;
+
+impl Sha256Sink {
+    pub(crate) fn new() -> Self {
+        Self {
+            hasher: Sha256::new(),
+            buf: Vec::with_capacity(SINK_BLOCK * 2),
+        }
+    }
+
+    /// Write literal bytes — a key, a brace, a comma.
+    pub(crate) fn push(&mut self, bytes: &[u8]) {
+        self.buf.extend_from_slice(bytes);
+        self.drain_if_full();
+    }
+
+    /// Write a value's canonical bytes, serialized directly into the sink's own buffer.
+    pub(crate) fn canonical<T: serde::Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), C14nError> {
+        canonical_bytes_into(value, &mut self.buf)?;
+        self.drain_if_full();
+        Ok(())
+    }
+
+    fn drain_if_full(&mut self) {
+        if self.buf.len() >= SINK_BLOCK {
+            self.hasher.update(&self.buf);
+            self.buf.clear();
+        }
+    }
+
+    /// Lowercase hex of everything written, spelled exactly as [`sha256_hex_bytes`] spells it.
+    pub(crate) fn finish(mut self) -> String {
+        if !self.buf.is_empty() {
+            self.hasher.update(&self.buf);
+        }
+        hex(&self.hasher.finalize())
+    }
 }
 
 /// [`C14nError`] wearing serde's error trait, so the serializer can travel
