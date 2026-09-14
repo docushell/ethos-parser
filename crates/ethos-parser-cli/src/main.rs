@@ -341,17 +341,22 @@ struct OverlayArgs {
 pub(crate) const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Read a caller-supplied file, refusing one that is over [`MAX_SOURCE_BYTES`].
+pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError> {
+    read_source_within(path, MAX_SOURCE_BYTES)
+}
+
+/// Read a caller-supplied file, refusing one that is over `max` bytes.
 ///
 /// `metadata` first, so an oversized file is refused without being read. **The read is bounded
 /// too**, because `metadata` only knows a regular file's size: `/dev/zero`, a pipe or a device has
 /// none, and was read without limit until memory ran out. Reading one byte past the ceiling is how
 /// such a source is caught, after holding up to the ceiling. A regular file's buffer is reserved
 /// from its length, fallibly, as `fs::read` reserved it.
-pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError> {
+fn read_source_within(path: &std::path::Path, max: u64) -> Result<Vec<u8>, EngineError> {
     use std::io::Read as _;
     let over = || EngineError::ResourceLimit {
         limit: format!("source bytes for `{}`", path.display()),
-        configured: MAX_SOURCE_BYTES.to_string(),
+        configured: max.to_string(),
     };
     let io = |e: std::io::Error| EngineError::Io {
         detail: format!("{}: {e}", path.display()),
@@ -360,7 +365,7 @@ pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError
         .ok()
         .filter(|m| m.is_file())
         .map(|m| m.len());
-    if size.is_some_and(|len| len > MAX_SOURCE_BYTES) {
+    if size.is_some_and(|len| len > max) {
         return Err(over());
     }
     let mut bytes = Vec::new();
@@ -368,13 +373,16 @@ pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError
         .try_reserve_exact(size.unwrap_or(0) as usize)
         .map_err(|e| io(e.into()))?;
     std::fs::File::open(path)
-        .and_then(|f| f.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut bytes))
+        .and_then(|f| f.take(max + 1).read_to_end(&mut bytes))
         .map_err(io)?;
-    if bytes.len() as u64 > MAX_SOURCE_BYTES {
+    if bytes.len() as u64 > max {
         return Err(over());
     }
     Ok(bytes)
 }
+
+/// Ethos's `max_file_bytes`, which caps `grounding check`'s `--source-artifact`: 256 MiB.
+const GROUNDING_CHECK_MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -903,11 +911,16 @@ fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
         Err(e) => return fail(&e),
     };
 
-    let source = match &args.source_artifact {
-        None => None,
-        Some(p) => match read_source(p) {
-            Ok(b) => Some(b),
-            Err(e) => return fail(&e),
+    // Ethos judges the artifact before it reads the source, so an artifact it refuses is reported
+    // whatever the source path holds, and a source it cannot read, or over its 256 MiB, refuses
+    // only a valid artifact. A failed read is therefore kept until the verdict is known. The one
+    // difference left: this opens the source even for an artifact that turns out invalid, which a
+    // path that blocks on open, such as a FIFO with no writer, can tell apart.
+    let (source, unread) = match &args.source_artifact {
+        None => (None, None),
+        Some(p) => match read_source_within(p, GROUNDING_CHECK_MAX_SOURCE_BYTES) {
+            Ok(b) => (Some(b), None),
+            Err(e) => (None, Some(e)),
         },
     };
 
@@ -918,6 +931,9 @@ fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
         // different and wrong statement about a file that is not a document at all.
         Err(e) => return fail(&e),
     };
+    if let (ethos_parser_grounding::Structure::Valid, Some(e)) = (report.structure, &unread) {
+        return fail(e);
+    }
 
     match report.to_canonical_bytes() {
         Ok(bytes) => {

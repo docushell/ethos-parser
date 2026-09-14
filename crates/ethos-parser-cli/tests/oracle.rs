@@ -935,6 +935,68 @@ fn a_non_pdf_source_artifact_is_refused_by_both() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **Both judge the artifact before they read the source.** An invalid artifact is reported whatever
+/// `--source-artifact` names; a valid one is refused, with no report, for a source that is missing
+/// or over Ethos's 256 MiB. The engine used to read the source first, and under a 2 GiB ceiling.
+#[test]
+fn the_source_is_read_only_for_a_valid_artifact_by_both() {
+    let manifest = read_manifest();
+    let pdf = corpus_root(&manifest, "conformance").join("synthetic/simple-text/document.pdf");
+    let dir = scratch("source-order");
+    let valid = ground_fixture(&pdf, &dir).expect("simple-text grounds");
+    let invalid = dir.join("invalid.json");
+    let text = std::fs::read_to_string(&valid).expect("read");
+    std::fs::write(&invalid, text.replacen("\"1.0.0\"", "\"9.9.9\"", 1)).expect("write");
+    let missing = dir.join("missing.pdf");
+    let oversized = dir.join("oversized.pdf");
+    let file = std::fs::File::create(&oversized).expect("create");
+    file.set_len(256 * 1024 * 1024 + 1).expect("a sparse file");
+
+    for (artifact, source, reported) in [
+        (&invalid, &missing, true),
+        (&invalid, &oversized, true),
+        (&valid, &missing, false),
+        (&valid, &oversized, false),
+    ] {
+        let label = format!(
+            "{} with {}",
+            artifact.file_name().unwrap().to_string_lossy(),
+            source.file_name().unwrap().to_string_lossy()
+        );
+        let flag: &std::ffi::OsStr = "--source-artifact".as_ref();
+        let ours = run_engine(&[
+            "grounding-check".as_ref(),
+            artifact.as_ref(),
+            flag,
+            source.as_ref(),
+        ]);
+        let theirs = run_oracle(&[
+            "grounding".as_ref(),
+            "check".as_ref(),
+            artifact.as_ref(),
+            flag,
+            source.as_ref(),
+        ]);
+        assert_ne!(ours.status.code(), Some(0), "{label}: engine");
+        assert_ne!(theirs.status.code(), Some(0), "{label}: ethos");
+        if reported {
+            let a = extract_report(&ours.stdout, "engine");
+            let b = extract_report(&theirs.stdout, "ethos");
+            assert_eq!(
+                (&a["structure"], &a["error"]["code"], &a["error"]["path"]),
+                (&b["structure"], &b["error"]["code"], &b["error"]["path"]),
+                "{label}"
+            );
+        } else {
+            assert!(
+                ours.stdout.is_empty() && theirs.stdout.is_empty(),
+                "{label}: neither reports on a valid artifact whose source it cannot take"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **Double-run byte identity over the whole path, on files.**
 ///
 /// `classify → extract → ground → grounding-check`, twice, into two directories, comparing the
@@ -1175,6 +1237,62 @@ fn adversarial_inputs_agree_on_verdict_code_and_path() {
         (
             "a byte order mark",
             Box::new(|s: &str| format!("\u{feff}{s}")),
+        ),
+        // Each case below got a different code from the engine until it ran Ethos's seed, in
+        // stream order, and classified as Ethos does.
+        (
+            "an integer at i64::MIN",
+            Box::new(|s: &str| {
+                s.replacen("\"rotation\":0", "\"rotation\":-9223372036854775808", 1)
+            }),
+        ),
+        (
+            "an unknown key, repeated",
+            Box::new(|s: &str| s.replacen('{', "{\"zzz\":1,\"zzz\":1,", 1)),
+        ),
+        (
+            "a null before its key repeats",
+            Box::new(|s: &str| {
+                s.replacen(
+                    "\"name\":\"ethos-parser\"",
+                    "\"name\":null,\"name\":\"ethos-parser\"",
+                    1,
+                )
+            }),
+        ),
+        (
+            "two unknown keys, out of sorted order",
+            Box::new(|s: &str| s.replacen('{', "{\"zzz\":1,\"aaa\":1,", 1)),
+        ),
+        (
+            "nesting past serde_json's own limit",
+            Box::new(|s: &str| {
+                s.replacen(
+                    '{',
+                    &format!("{{\"zzz\":{}{},", "[".repeat(130), "]".repeat(130)),
+                    1,
+                )
+            }),
+        ),
+        (
+            "a type error quoting unknown field",
+            Box::new(|s: &str| s.replacen("\"index\":1", "\"index\":\"unknown field\"", 1)),
+        ),
+        (
+            "a million and one items under an unknown key",
+            Box::new(|s: &str| {
+                s.replacen('{', &format!("{{\"zzz\":[{}0],", "0,".repeat(1_000_000)), 1)
+            }),
+        ),
+        (
+            "an array root claiming absent spans",
+            Box::new(|_: &str| {
+                format!(
+                    "[\"ethos.grounding.v1\",\"1.0.0\",[\"application/pdf\",\"sha256:{}\"],[\"n\",\"v\"],\
+                     [true,false,false],[\"centipoint\",\"top-left\"],[],[]]",
+                    "0".repeat(64)
+                )
+            }),
         ),
     ];
 
