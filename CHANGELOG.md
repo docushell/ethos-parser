@@ -23,6 +23,22 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ### Fixed
 
+- **A path that is not a regular file no longer hangs MCP or exhausts memory.** The 2 GiB source
+  ceiling was checked against metadata, which knows only a regular file's size, so `/dev/zero`, a
+  pipe or a device was read without limit — the MCP server reached 2.8 GiB in three seconds and
+  kept going. The read itself is now bounded one byte past the ceiling for `extract`, `markdown`,
+  `html`, `ground`, `grounding-check` and MCP; `classify` and `overlay` read through
+  `Document::open`, which has no ceiling, and are not covered here. CLI pipes and process
+  substitution still work, and `ground` on the largest gate representation is unchanged
+  (+0.7 MiB, byte-identical). In MCP, where a model names the path, a path that exists and is not a
+  regular file is refused before it is opened — on Unix; Windows reports anything but a directory as a
+  file: `/dev/stdin` read the server's own protocol stream and
+  a FIFO with no writer blocked the open forever. **An inline `representation` is no longer copied
+  three times**: the request is moved into the tool rather than cloned, and `ground` on an 82 MiB
+  representation passed inline peaks at 1,413 MiB where it peaked at 4,867, with an identical reply
+  (by path it is 276 MiB either way). Not done, deliberately: a cap on request line length — the host
+  frames and holds every line, so any cap chosen here would be arbitrary. A PATCH.
+
 - **`ground` kept inside `ethos.grounding.v1`'s other limits, which it never looked at (G2).**
   0.55.0 enforced the span cap and nothing else, so a document past any other limit still exited 0
   with an artifact the verifier refuses whole. Every limit a record this engine wrote can reach is

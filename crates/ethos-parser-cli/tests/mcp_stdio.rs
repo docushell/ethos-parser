@@ -691,3 +691,67 @@ fn every_reply_in_a_session_is_the_reply_a_fresh_server_gives() {
     assert_eq!(child.wait().expect("exits").code(), Some(0));
     assert!(asked >= 10, "only {asked} calls were compared");
 }
+
+/// **A path a model names must be a regular file.** A FIFO with no writer blocked the open forever
+/// and `/dev/stdin` read this server's own protocol stream, so either one hung the session. Both tools
+/// now refuse such a path at once. The replies are awaited on a thread with a deadline, so the old
+/// behaviour fails this test instead of hanging it.
+#[cfg(unix)]
+#[test]
+fn a_path_that_is_not_a_regular_file_is_refused_at_once() {
+    use std::io::{BufRead, BufReader};
+
+    let dir = stdio_scratch("not-a-file");
+    let fifo = dir.join("fifo");
+    let made = Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success());
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("runs");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let requests = [
+        call("extract", json!({ "path": fifo }), 1),
+        call("ground", json!({ "representation": fifo }), 2),
+        call("extract", json!({ "path": "/dev/stdin" }), 3),
+        // A character device: refused before it is opened, not read up to the ceiling.
+        call("extract", json!({ "path": "/dev/null" }), 4),
+    ];
+    for request in &requests {
+        writeln!(stdin, "{request}").expect("write");
+    }
+    stdin.flush().expect("flush");
+
+    let stdout = child.stdout.take().expect("stdout");
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().take(4) {
+            let _ = tx.send(line.expect("a line"));
+        }
+    });
+    for _ in &requests {
+        let line = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| {
+                let _ = child.kill();
+                panic!("the server did not answer: a non-regular path hung it")
+            });
+        let reply: Value = serde_json::from_str(&line).expect("json");
+        assert_eq!(reply["result"]["isError"], json!(true), "{reply}");
+        assert!(
+            reply["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .contains("not a regular file"),
+            "{reply}"
+        );
+    }
+    drop(stdin);
+    assert_eq!(child.wait().expect("exits").code(), Some(0));
+}

@@ -153,7 +153,7 @@ fn serve_with(
 
 /// One line in, at most one response out.
 fn handle_line(line: &str, ledger: &mut ledger::Ledger) -> Option<Reply> {
-    let request: Value = match serde_json::from_str(line) {
+    let mut request: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         // No id to answer with, so this is the one case that answers with a null id — the JSON-RPC
         // spec's own provision for an unparseable request.
@@ -166,14 +166,19 @@ fn handle_line(line: &str, ledger: &mut ledger::Ledger) -> Option<Reply> {
         }
     };
 
+    // `params` is moved out rather than cloned: an inline representation is the bulk of the
+    // request, and every copy of it is another tree the size of the artifact.
     let id = request.get("id").cloned();
+    let params = request
+        .get_mut("params")
+        .map(Value::take)
+        .unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
-    let params = request.get("params").cloned().unwrap_or(Value::Null);
 
     // A notification has no `id`. It is acted on and not answered.
     let id = id?;
 
-    Some(match dispatch(method, &params, ledger) {
+    Some(match dispatch(method, params, ledger) {
         Ok(Outcome::Value(result)) => {
             Reply::Json(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
         }
@@ -287,7 +292,7 @@ impl From<&EngineError> for Failure {
     }
 }
 
-fn dispatch(method: &str, params: &Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
+fn dispatch(method: &str, params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
     match method {
         "initialize" => Ok(Outcome::Value(json!({
             "protocolVersion": PROTOCOL_VERSION,
@@ -382,17 +387,20 @@ fn tools() -> Value {
     ])
 }
 
-fn call_tool(params: &Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
+fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, Failure> {
+    let mut args = params
+        .get_mut("arguments")
+        .map(Value::take)
+        .unwrap_or(json!({}));
     let name = params
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`name` is required"))?;
-    let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
     let outcome = match name {
         "extract" => tool_extract(&args),
-        "ground" => tool_ground(&args, ledger),
-        "node_get" => tool_node_get(&args, ledger),
+        "ground" => tool_ground(&mut args, ledger),
+        "node_get" => tool_node_get(&mut args, ledger),
         other => return Err(Failure::new(INVALID_PARAMS, format!("no tool `{other}`"))),
     };
 
@@ -427,7 +435,7 @@ fn tool_extract(args: &Value) -> Result<(String, Artifact), Failure> {
     // wrong-cause refusal three CLI slices had already retired for their formats.
     // The same ceiling the CLI applies (v2-S15). MCP is a long-lived process handling untrusted
     // documents repeatedly, so an unbounded read here is the one that matters most.
-    let head = crate::read_source(std::path::Path::new(path)).map_err(|e| Failure::from(&e))?;
+    let head = read_supplied_file(path).map_err(|e| Failure::from(&e))?;
     // The default profile: MCP exposes no knobs, so an artifact from this surface is the
     // unbounded one, exactly as it was before `extract --max-pages` existed.
     let artifact = crate::representation_for_bytes(&head, &ethos_parser_core::Profile::default())
@@ -445,7 +453,10 @@ fn tool_extract(args: &Value) -> Result<(String, Artifact), Failure> {
 }
 
 /// A representation → `ethos.grounding.v1`.
-fn tool_ground(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Artifact), Failure> {
+fn tool_ground(
+    args: &mut Value,
+    ledger: &mut ledger::Ledger,
+) -> Result<(String, Artifact), Failure> {
     let repr = representation_arg(args, ledger)?;
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
     let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
@@ -501,7 +512,10 @@ fn ground_summary(projection: &ethos_parser_grounding::Projection) -> String {
 /// The representation is re-validated (fingerprint) and the id is looked up among *that*
 /// artifact's own nodes. Not found is an error, deliberately: an empty result would tell a model
 /// its guess was merely unlucky.
-fn tool_node_get(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Artifact), Failure> {
+fn tool_node_get(
+    args: &mut Value,
+    ledger: &mut ledger::Ledger,
+) -> Result<(String, Artifact), Failure> {
     let repr = representation_arg(args, ledger)?;
     let node_id = args.get("node_id").and_then(Value::as_str).ok_or_else(|| {
         Failure::new(INVALID_PARAMS, "`node_id` is required and must be a string")
@@ -544,25 +558,41 @@ fn tool_node_get(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, A
 /// unless these exact bytes already verified in this process — verifies that one buffer. The
 /// ledger is never given the path. An inline object is verified every time, exactly as before.
 fn representation_arg(
-    args: &Value,
+    args: &mut Value,
     ledger: &mut ledger::Ledger,
 ) -> Result<DocumentRepresentation, Failure> {
     let raw = args
-        .get("representation")
+        .get_mut("representation")
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`representation` is required"))?;
 
     match raw {
         Value::String(path) => {
-            let bytes = crate::read_source(std::path::Path::new(path))
+            let bytes = read_supplied_file(path)
                 .map_err(|e| Failure::new(INVALID_PARAMS, format!("{path}: {e}")))?;
             ledger.load(bytes)
         }
         other => {
-            let repr: DocumentRepresentation = serde_json::from_value(other.clone())
+            let repr: DocumentRepresentation = serde_json::from_value(other.take())
                 .map_err(|e| Failure::new(INVALID_PARAMS, format!("representation: {e}")))?;
             repr.verify_fingerprint().map_err(|e| Failure::from(&e))?;
             Ok(repr)
         }
+    }
+}
+
+/// Read a path a tool argument named — **a regular file, and nothing else.**
+///
+/// A model chooses these paths. `/dev/stdin` would read this server's own protocol stream, and a
+/// FIFO with no writer blocks the open forever, so either one hung the session. A CLI caller names
+/// its own pipes and keeps them; here a path that exists and is not a regular file is refused before
+/// it is opened. A missing path falls through to the read, so its error reads as it always did.
+/// Unix only in effect: Windows reports anything that is not a directory as a file.
+fn read_supplied_file(path: &str) -> Result<Vec<u8>, EngineError> {
+    match std::fs::metadata(path) {
+        Ok(meta) if !meta.is_file() => Err(EngineError::Io {
+            detail: format!("{path}: not a regular file, so this server will not read it"),
+        }),
+        _ => crate::read_source(std::path::Path::new(path)),
     }
 }
 

@@ -326,8 +326,9 @@ struct OverlayArgs {
 /// path that reads the file in the first place had nothing.
 ///
 /// 2 GiB is far above any document this engine is meant for and far below "whatever the caller
-/// names". It is a refusal by name rather than an allocation on the caller's behalf, which is the
-/// difference between a diagnosable exit 2 and an OOM kill with no stderr.
+/// names". For a regular file it is a refusal by name rather than an allocation on the caller's
+/// behalf, which is the difference between a diagnosable exit 2 and an OOM kill with no stderr; a
+/// source with no size is refused by the bounded read, having held up to the ceiling.
 ///
 /// This bounds the SOURCE. The dominant cost of an extract is not the file — peak memory tracks
 /// page count at 3.0 to 6.6 MiB per page, which is what `extract --max-pages` exists to bound.
@@ -341,22 +342,38 @@ pub(crate) const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Read a caller-supplied file, refusing one that is over [`MAX_SOURCE_BYTES`].
 ///
-/// `metadata` first, so an oversized file is refused without being read. The race between the
-/// stat and the read is real and deliberately not chased: a file that grows past the ceiling in
-/// between is still bounded by the read itself failing or by the ceiling being 2 GiB, and a
-/// `read`-then-check would have to allocate the thing it means to refuse.
+/// `metadata` first, so an oversized file is refused without being read. **The read is bounded
+/// too**, because `metadata` only knows a regular file's size: `/dev/zero`, a pipe or a device has
+/// none, and was read without limit until memory ran out. Reading one byte past the ceiling is how
+/// such a source is caught, after holding up to the ceiling. A regular file's buffer is reserved
+/// from its length, fallibly, as `fs::read` reserved it.
 pub(crate) fn read_source(path: &std::path::Path) -> Result<Vec<u8>, EngineError> {
-    if let Ok(meta) = std::fs::metadata(path) {
-        if meta.is_file() && meta.len() > MAX_SOURCE_BYTES {
-            return Err(EngineError::ResourceLimit {
-                limit: format!("source bytes for `{}`", path.display()),
-                configured: MAX_SOURCE_BYTES.to_string(),
-            });
-        }
-    }
-    std::fs::read(path).map_err(|e| EngineError::Io {
+    use std::io::Read as _;
+    let over = || EngineError::ResourceLimit {
+        limit: format!("source bytes for `{}`", path.display()),
+        configured: MAX_SOURCE_BYTES.to_string(),
+    };
+    let io = |e: std::io::Error| EngineError::Io {
         detail: format!("{}: {e}", path.display()),
-    })
+    };
+    let size = std::fs::metadata(path)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len());
+    if size.is_some_and(|len| len > MAX_SOURCE_BYTES) {
+        return Err(over());
+    }
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(size.unwrap_or(0) as usize)
+        .map_err(|e| io(e.into()))?;
+    std::fs::File::open(path)
+        .and_then(|f| f.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(io)?;
+    if bytes.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(over());
+    }
+    Ok(bytes)
 }
 
 fn main() -> ExitCode {
