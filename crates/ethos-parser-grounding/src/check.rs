@@ -411,6 +411,9 @@ fn reject_unknown_fields(value: &serde_json::Value) -> Result<(), (String, Strin
     Ok(())
 }
 
+/// Nesting at or past this depth is `limit_exceeded`, in [`strict_value`] and [`strictly_clean`].
+const MAX_DEPTH: usize = 64;
+
 /// The value-level refusals Ethos makes **during deserialization**, before any field is typed.
 ///
 /// Its `StrictValueSeed` rejects nulls and floats outright, and caps integer magnitude, string
@@ -425,8 +428,6 @@ fn reject_unknown_fields(value: &serde_json::Value) -> Result<(), (String, Strin
 /// Both call such an input invalid, with an error, and the four fields the oracle compares are
 /// identical; only the code can differ, and only when an artifact is broken in two ways at once.
 fn strict_value(value: &serde_json::Value, depth: usize) -> Result<(), (String, String)> {
-    const MAX_DEPTH: usize = 64;
-
     match value {
         serde_json::Value::Null => Err(("invalid_json".to_string(), "/".to_string())),
         serde_json::Value::Number(n) => {
@@ -470,6 +471,70 @@ fn strict_value(value: &serde_json::Value, depth: usize) -> Result<(), (String, 
     }
 }
 
+/// Whether [`strict_value`] would pass these bytes' parsed value, decided while streaming them.
+///
+/// Nothing is built: the `serde_json::Value` of an artifact was `grounding-check`'s peak, at up to
+/// 13.5 times the artifact's bytes. The rules are `strict_value`'s, applied to each value as it is
+/// read — the numbers by calling it. `false` covers malformed JSON too.
+fn strictly_clean(bytes: &[u8]) -> bool {
+    use serde::de::{DeserializeSeed, Error as _, IgnoredAny, MapAccess, SeqAccess, Visitor};
+
+    /// A value at this depth. Null and floats fall to `Visitor`'s defaults, which refuse them.
+    struct Strict(usize);
+
+    impl<'de> DeserializeSeed<'de> for Strict {
+        type Value = ();
+        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+
+    impl<'de> Visitor<'de> for Strict {
+        type Value = ();
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a value strict_value accepts")
+        }
+        fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<(), E> {
+            strict_value(&v.into(), self.0).map_err(|_| E::custom("refused"))
+        }
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<(), E> {
+            strict_value(&v.into(), self.0).map_err(|_| E::custom("refused"))
+        }
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<(), E> {
+            if v.len() > limits::MAX_STRING_BYTES {
+                return Err(E::custom("refused"));
+            }
+            Ok(())
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+            if self.0 >= MAX_DEPTH {
+                return Err(A::Error::custom("refused"));
+            }
+            while seq.next_element_seed(Strict(self.0 + 1))?.is_some() {}
+            Ok(())
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+            if self.0 >= MAX_DEPTH {
+                return Err(A::Error::custom("refused"));
+            }
+            // Keys are not values: `strict_value` never looks at them either.
+            while map.next_key::<IgnoredAny>()?.is_some() {
+                map.next_value_seed(Strict(self.0 + 1))?;
+            }
+            Ok(())
+        }
+    }
+
+    let mut de = serde_json::Deserializer::from_slice(bytes);
+    Strict(0)
+        .deserialize(&mut de)
+        .and_then(|()| de.end())
+        .is_ok()
+}
+
 /// Parse, with Ethos's lexical refusals.
 fn parse(bytes: &[u8]) -> Result<GroundingSource, Box<ValidationReport>> {
     if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
@@ -478,6 +543,17 @@ fn parse(bytes: &[u8]) -> Result<GroundingSource, Box<ValidationReport>> {
             "/",
             "input begins with a UTF-8 byte order mark",
         )));
+    }
+
+    // Every artifact that parses takes this route, and builds no `Value`. It accepts exactly what
+    // the checks below accept: a clean scan leaves `strict_value` nothing to refuse, and a typed
+    // parse that succeeds leaves `reject_unknown_fields` nothing to find, because every type it
+    // walks is `deny_unknown_fields` with the keys it allows. Anything else goes below unchanged,
+    // so its report is the one it always was.
+    if strictly_clean(bytes) {
+        if let Ok(artifact) = serde_json::from_slice::<GroundingSource>(bytes) {
+            return Ok(artifact);
+        }
     }
 
     // Value-level refusals first, then unknown fields with their paths, then the typed parse.
@@ -1274,6 +1350,96 @@ mod tests {
         assert_eq!(
             grounding_check(dup, None).unwrap().error.unwrap().code,
             "duplicate_key"
+        );
+    }
+
+    #[test]
+    fn a_value_the_typed_parse_accepts_is_still_refused_before_typing() {
+        // Each of these types cleanly, so only `strictly_clean` stands between it and the route that
+        // skips `strict_value`.
+        type Case = (
+            &'static str,
+            &'static str,
+            Box<dyn Fn(&mut serde_json::Value)>,
+        );
+        let cases: Vec<Case> = vec![
+            (
+                "null for an absent array",
+                "invalid_json",
+                Box::new(|v| v["spans"] = serde_json::Value::Null),
+            ),
+            (
+                "null for an absent field",
+                "invalid_json",
+                Box::new(|v| v["elements"][0]["page"] = serde_json::Value::Null),
+            ),
+            (
+                "an integer past 2^53-1",
+                "limit_exceeded",
+                Box::new(|v| v["pages"][0]["width"] = 9_007_199_254_740_992_i64.into()),
+            ),
+            (
+                "a negative integer past -(2^53-1)",
+                "limit_exceeded",
+                Box::new(|v| v["elements"][0]["bbox"][0] = (-9_007_199_254_740_992_i64).into()),
+            ),
+            (
+                "a string past the byte limit",
+                "limit_exceeded",
+                Box::new(|v| v["producer"]["version"] = "é".repeat(8193).into()),
+            ),
+        ];
+        for (label, code, mutate) in cases {
+            let mut v: serde_json::Value = serde_json::from_slice(&valid_bytes()).unwrap();
+            mutate(&mut v);
+            let bytes = serde_json::to_vec(&v).unwrap();
+            assert!(
+                serde_json::from_slice::<GroundingSource>(&bytes).is_ok(),
+                "{label}: the typed parse must accept it, or this case tests nothing"
+            );
+            let e = grounding_check(&bytes, None).unwrap().error.unwrap();
+            assert_eq!((e.code.as_str(), e.path.as_str()), (code, "/"), "{label}");
+        }
+    }
+
+    #[test]
+    fn every_key_the_typed_structs_write_is_one_the_walk_allows() {
+        // A typed parse that succeeds is taken as `reject_unknown_fields` finding nothing. That holds
+        // only while no wire type carries a key the walk does not list, so every field is written here.
+        let mut g: GroundingSource = serde_json::from_slice(&valid_bytes()).unwrap();
+        g.elements = vec![Element {
+            id: "e1".into(),
+            page: Some("p1".into()),
+            bbox: Some([10, 10, 100, 100]),
+            kind: "text_run".into(),
+            text: Some("hello".into()),
+            locator: Some("l".into()),
+        }];
+        g.spans = Some(vec![Span {
+            id: "s1".into(),
+            page: "p1".into(),
+            bbox: [10, 10, 100, 100],
+            text: "hello".into(),
+            element: Some("e1".into()),
+            char_start: Some(0),
+            char_end: Some(5),
+        }]);
+        g.tables = Some(vec![Table {
+            id: "t1".into(),
+            page: "p1".into(),
+            bbox: [10, 10, 100, 100],
+            cells: vec![crate::Cell {
+                row: 0,
+                col: 0,
+                row_span: 1,
+                col_span: 1,
+                bbox: [10, 10, 100, 100],
+                text: "hello".into(),
+            }],
+        }]);
+        assert_eq!(
+            reject_unknown_fields(&serde_json::to_value(&g).unwrap()),
+            Ok(())
         );
     }
 
