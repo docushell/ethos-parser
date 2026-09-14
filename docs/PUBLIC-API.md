@@ -251,7 +251,7 @@ per row, the way the four below name theirs, and that is a slice rather than a s
 
 | Subcommand | Library call | Library-only proof | CLI-equals-library proof |
 | --- | --- | --- | --- |
-| `ethos-parser classify <pdf>` | `Document::open` → `ethos_parser_pdf::classify` → `Classification::to_canonical_bytes` | `library_surface.rs::classify_is_reachable_and_canonical_from_the_library` | `classify_cli.rs::the_cli_output_matches_the_library` |
+| `ethos-parser classify <pdf>` | `Document::open_bytes` on the bounded read → `ethos_parser_pdf::classify` → `Classification::to_canonical_bytes` | `library_surface.rs::classify_is_reachable_and_canonical_from_the_library` | `classify_cli.rs::the_cli_output_matches_the_library` |
 | `ethos-parser extract <pdf>` | `Document::open` → `ethos_parser_pdf::extract` → `ethos_parser_pdf::to_representation` → `DocumentRepresentation::to_canonical_bytes` | `library_surface.rs::extract_and_represent_are_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser ground <repr>` | `serde_json::from_slice::<DocumentRepresentation>` → `verify_fingerprint` → `ethos_parser_grounding::project` → `ethos_parser_grounding::to_canonical_bytes` | `library_surface.rs::project_is_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser grounding-check <json> [--source-artifact <pdf>]` | `ethos_parser_grounding::grounding_check`, or `grounding_check_reading_source` with a source → `ValidationReport::to_canonical_bytes` / `exit_code` | `library_surface.rs::grounding_check_is_reachable_and_canonical_from_the_library` | `oracle.rs::oracle_agrees_on_all_ethos_owned_fixtures` |
