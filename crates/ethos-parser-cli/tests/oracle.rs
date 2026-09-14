@@ -1336,7 +1336,7 @@ fn a_document_past_the_span_cap_grounds_to_an_artifact_both_checkers_accept() {
 /// text in the artifact's first element, which both must refuse — so the acceptance is the
 /// degradation's doing, not a checker that stopped looking. The tables half of that control is held
 /// by the engine's checker (`a_pdf_artifact_with_its_tables_withheld_is_valid`), not by Ethos. Small inputs, so not `#[ignore]`d.
-/// Page-less G2 is not oracle-tested: the pinned Ethos predates schema 1.1.0.
+/// Page-less G2 is `page_less_degradations_ground_to_artifacts_both_checkers_accept`.
 #[test]
 fn schema_limit_degradations_ground_to_artifacts_both_checkers_accept() {
     let profile = ethos_parser_core::Profile::default();
@@ -1391,4 +1391,260 @@ fn schema_limit_degradations_ground_to_artifacts_both_checkers_accept() {
         ours != 0 && theirs != 0,
         "both must refuse the shape G2 replaces: {ours} {theirs}"
     );
+}
+
+/// Every committed Office document: the one file in each directory under `fixtures/office`.
+fn office_fixtures() -> Vec<PathBuf> {
+    let office = repo_root().join("fixtures/office");
+    let mut documents: Vec<PathBuf> = std::fs::read_dir(&office)
+        .expect("fixtures/office")
+        .map(|d| d.expect("entry").path())
+        .filter(|d| d.is_dir())
+        .flat_map(|d| std::fs::read_dir(d).expect("a fixture directory"))
+        .map(|f| f.expect("entry").path())
+        .collect();
+    documents.sort();
+    assert!(
+        !documents.is_empty(),
+        "no Office document under {}",
+        office.display()
+    );
+    documents
+}
+
+/// **Page-less artifacts — schema 1.1.0 — agree with the oracle.** Every committed Office document
+/// grounds to a 1.1.0 artifact both checkers accept, with the same counts and digest, and between
+/// them the documents carry all eight page-less media types the schema admits. The pin before
+/// v0.6.0 predated 1.1.0 and refused each of them, `unknown_field` at `/elements/0/locator`, while
+/// the engine's checker accepted them: a disagreement no test measured.
+#[test]
+fn page_less_artifacts_agree_with_the_oracle() {
+    let mut media_types = std::collections::BTreeSet::new();
+    for document in office_fixtures() {
+        let label = document
+            .strip_prefix(repo_root())
+            .unwrap_or(&document)
+            .display()
+            .to_string();
+        let dir = scratch("page-less");
+        let grounding = ground_fixture(&document, &dir).unwrap_or_else(|e| panic!("{label}: {e}"));
+        let g: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&grounding).expect("read")).expect("json");
+        assert_eq!(g["schema_version"], "1.1.0", "{label} grounds page-less");
+        media_types.insert(
+            g["source"]["media_type"]
+                .as_str()
+                .expect("media type")
+                .to_string(),
+        );
+
+        let (agreement, ours, theirs) = compare(&grounding, None, &label);
+        assert_eq!(
+            (agreement.structure.as_str(), ours, theirs),
+            ("valid", 0, 0),
+            "{label}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let admitted = ethos_parser_grounding::PAGE_LESS_MEDIA_TYPES.map(str::to_string);
+    assert_eq!(
+        media_types,
+        admitted.into(),
+        "every admitted page-less media type is exercised"
+    );
+}
+
+/// **Page-less G2: a run past the string limit is omitted to an artifact both checkers accept, and
+/// the shape it replaces is refused by both.** A DOCX document's second run is lengthened to 16,386
+/// bytes and re-sealed; `ground` omits it, and both must accept what it wrote. Restoring the text to
+/// the artifact's first element must be refused by both. The locator limit stays held by the
+/// engine's own test (`a_page_less_element_past_a_string_limit_is_omitted`): a run's part name
+/// cannot be lengthened in an extracted document without breaking the part it belongs to.
+#[test]
+fn page_less_degradations_ground_to_artifacts_both_checkers_accept() {
+    let docx = repo_root().join("fixtures/office/simple-paragraphs/document.docx");
+    let repr = ethos_parser_office::read(&std::fs::read(&docx).expect("read")).expect("reads");
+    let mut payload = repr.payload().clone();
+    let long = "\u{e9}".repeat(8_193);
+    payload.nodes[1].text = long.clone();
+    let edited = ethos_parser_core::DocumentRepresentation::seal(payload, repr.geometry().to_vec())
+        .expect("re-seals");
+
+    let dir = scratch("page-less-limits");
+    let repr_path = dir.join("repr.json");
+    std::fs::write(&repr_path, edited.to_canonical_bytes().expect("canonical")).expect("write");
+    let out = run_engine(&["ground".as_ref(), repr_path.as_ref()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let grounding = dir.join("grounding.json");
+    std::fs::write(&grounding, &out.stdout).expect("write grounding");
+
+    let mut g: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(g["schema_version"], "1.1.0");
+    assert_eq!(
+        g["elements"].as_array().map(Vec::len),
+        Some(repr.payload().nodes.len() - 1),
+        "the lengthened run is omitted"
+    );
+    let (_, ours, theirs) = compare(&grounding, None, "simple-paragraphs, degraded");
+    assert_eq!(
+        (ours, theirs),
+        (0, 0),
+        "both checkers must accept the degraded artifact"
+    );
+
+    g["elements"][0]["text"] = serde_json::Value::String(long);
+    let restored = dir.join("restored.json");
+    std::fs::write(&restored, serde_json::to_vec(&g).expect("json")).expect("write");
+    let (_, ours, theirs) = compare(
+        &restored,
+        None,
+        "simple-paragraphs, over-long text restored",
+    );
+    assert!(
+        ours != 0 && theirs != 0,
+        "both must refuse the shape G2 replaces: {ours} {theirs}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Schema 1.1.0's rules, broken one at a time, get the same code and path from both.** The
+/// page-less shape on a DOCX artifact, and the paginated shape 1.1.0 now states on a PDF one.
+#[test]
+fn schema_1_1_0_rules_agree_on_code_and_path() {
+    type Break = (
+        &'static str,
+        &'static str,
+        &'static str,
+        Box<dyn Fn(&mut serde_json::Value)>,
+    );
+    let dir = scratch("schema-1-1-0");
+    let docx = repo_root().join("fixtures/office/simple-paragraphs/document.docx");
+    let pdf = repo_root().join("fixtures/engine/markdown-two-blocks/document.pdf");
+    let page =
+        serde_json::json!({"id": "p1", "index": 1, "width": 30000, "height": 14400, "rotation": 0});
+    let cases: Vec<(&Path, Break)> = vec![
+        (
+            &docx,
+            (
+                "a page on a page-less source",
+                "invalid_invariant",
+                "/pages",
+                Box::new(move |g| g["pages"] = serde_json::json!([page.clone()])),
+            ),
+        ),
+        (
+            &docx,
+            (
+                "an element with a bbox",
+                "invalid_field",
+                "/elements/0",
+                Box::new(|g| g["elements"][0]["bbox"] = serde_json::json!([0, 0, 10, 10])),
+            ),
+        ),
+        (
+            &docx,
+            (
+                "an element without its locator",
+                "invalid_field",
+                "/elements/0/locator",
+                Box::new(|g| {
+                    g["elements"][0]
+                        .as_object_mut()
+                        .expect("element")
+                        .remove("locator");
+                }),
+            ),
+        ),
+        (
+            &docx,
+            (
+                "a locator past 2,048 bytes",
+                "invalid_field",
+                "/elements/0/locator",
+                Box::new(|g| g["elements"][0]["locator"] = "x".repeat(2_049).into()),
+            ),
+        ),
+        (
+            &docx,
+            (
+                "a page-less media type under 1.0.0",
+                "invalid_field",
+                "/source",
+                Box::new(|g| g["schema_version"] = "1.0.0".into()),
+            ),
+        ),
+        (
+            &docx,
+            (
+                "a media type outside the admitted eight",
+                "invalid_field",
+                "/source",
+                Box::new(|g| g["source"]["media_type"] = "image/png".into()),
+            ),
+        ),
+        (
+            &pdf,
+            (
+                "a locator on a paginated element",
+                "invalid_field",
+                "/elements/0/locator",
+                Box::new(|g| g["elements"][0]["locator"] = "l".into()),
+            ),
+        ),
+        (
+            &pdf,
+            (
+                "a paginated element without its page",
+                "invalid_field",
+                "/elements/0",
+                Box::new(|g| {
+                    g["elements"][0]
+                        .as_object_mut()
+                        .expect("element")
+                        .remove("page");
+                }),
+            ),
+        ),
+    ];
+
+    for (source, (label, code, path, mutate)) in cases {
+        let grounding = ground_fixture(source, &dir).unwrap_or_else(|e| panic!("{label}: {e}"));
+        let mut g: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&grounding).expect("read")).expect("json");
+        mutate(&mut g);
+        let broken = dir.join("broken.json");
+        std::fs::write(&broken, serde_json::to_vec(&g).expect("json")).expect("write");
+
+        let ours = extract_report(
+            &run_engine(&["grounding-check".as_ref(), broken.as_ref()]).stdout,
+            "engine",
+        );
+        let theirs = extract_report(
+            &run_oracle(&["grounding".as_ref(), "check".as_ref(), broken.as_ref()]).stdout,
+            "ethos",
+        );
+        let reason = |r: &serde_json::Value| {
+            (
+                r["structure"].clone(),
+                r["error"]["code"].clone(),
+                r["error"]["path"].clone(),
+            )
+        };
+        assert_eq!(
+            reason(&ours),
+            reason(&theirs),
+            "{label}: the checkers disagree"
+        );
+        assert_eq!(
+            reason(&ours),
+            ("invalid".into(), code.into(), path.into()),
+            "{label}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }
