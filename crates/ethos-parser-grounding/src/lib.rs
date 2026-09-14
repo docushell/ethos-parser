@@ -73,8 +73,8 @@
 pub mod check;
 
 pub use check::{
-    grounding_check, Counts, ReportError, SourceBinding, Structure, ValidationReport,
-    VALIDATION_ARTIFACT_TYPE, VALIDATION_SCHEMA_VERSION,
+    grounding_check, grounding_check_reading_source, Counts, ReportError, SourceBinding, Structure,
+    ValidationReport, VALIDATION_ARTIFACT_TYPE, VALIDATION_SCHEMA_VERSION,
 };
 
 use serde::{Deserialize, Serialize};

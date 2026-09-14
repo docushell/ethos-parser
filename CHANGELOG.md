@@ -3,7 +3,7 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 was the first version released, and 0.56.0 the second** — each tagged, with macOS binaries on
+**0.55.0 was the first version released, 0.56.0 the second and 0.57.0 the third** — each tagged, with macOS binaries on
 the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
 in-tree only. Nothing is on crates.io, npm or PyPI.
 
@@ -16,6 +16,100 @@ the unit of work that had acceptance criteria. The per-slice reasoning behind ea
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.57.0] — `grounding-check` answers as Ethos does, in a third of the memory
+
+**A MINOR, because a reader's output changed.** `grounding-check` gives Ethos v0.6.0's report byte for
+byte on a valid artifact, and its verdict, error code and path on an invalid one, on every input
+measured; on 198 of 3,681 mutated artifacts 0.56.0 gave a different code or path. **Every artifact
+0.56.0 judged valid gets a byte-identical report** — 162 of 162 in that corpus — unless it is bound
+to a source over 256 MiB (below). Of the 3,519 invalid ones, 1,352 keep their report byte for byte
+and 1,969 keep code and path but not `message`: 1,379 fixed sentences now quote the parser
+(`array limit exceeded at line 1 column …`), 492 type and missing-field errors lose their
+`at line … column …`, and 97 repeated fields read `duplicate object key` where they named the field.
+`profile_sha256` is `sha256:de706c10…`, moved by the version alone.
+
+**And lighter.** On a valid artifact `grounding-check` peaks at 3.8–4.1× its input where it peaked at
+13.2–13.5×, and is 44–47% faster; one refused while scanning, as 53Ar5 is for its spans, now costs
+about its own size. The oracle pin moved to Ethos v0.6.0, so the test suite checks page-less
+artifacts against the pinned verifier for the first time.
+
+### Fixed
+
+- **`grounding-check` answers as Ethos v0.6.0 does, fault for fault.** It re-implemented
+  `parse_grounding_json` from its rules rather than its walk, and differed wherever the rules did not
+  decide the order. The single faults 0.56.0 reported differently:
+  - an integer at `i64::MIN`: `limit_exceeded` became `invalid_field`, `invalid_invariant` or
+    `invalid_bbox` in a release build, because `i64::abs` wrapped — and a debug build panicked;
+  - an array past a million items was `limit_exceeded` at `/tables/N/cells` for cells, rather than at
+    `/`; past a million spans, elements or pages only the message changed;
+  - nesting 128 levels deep or more was `invalid_json`, not `limit_exceeded`;
+  - a fixed-length array with an extra item, such as a five-number `bbox`, was `invalid_json`, not
+    `invalid_field`;
+  - a type error quoting a string that contains `EOF`, `trailing` or `invalid unicode` was
+    `invalid_json`, and one quoting `unknown field` was `invalid_field` where Ethos, which classifies
+    by the error's text, says `unknown_field` — this follows Ethos, quirk included;
+  - a repeated unknown key was `unknown_field`, not `duplicate_key`;
+  - an artifact written as a JSON array without `spans` or `tables` was `invalid_field` where Ethos
+    reports it valid, or its real fault;
+  - in a `cargo test --workspace` build, of two unknown keys the one first in the bytes was named,
+    not the one first in sorted order.
+
+  So were artifacts with two faults where 0.56.0 named the one its rules checked first — a million
+  and one items under an unknown key was `unknown_field` — and Ethos names whichever the bytes reach
+  first. The checker now runs Ethos's walk: one visitor holds its value rules and messages; a scan
+  that builds nothing, then the typed parse, still answers every artifact that parses; one that does
+  not is answered by a pass that names the first refusal without building, or, when there is none, by
+  Ethos's build with each object's keys sorted the way its map iterates. Library callers of
+  `grounding_check` get the same codes, paths and messages, and **`GroundingSource`'s `spans` and
+  `tables` now default when absent**, as Ethos's do, so an array-form artifact without them
+  deserializes where it failed — a reader change. Against Ethos v0.6.0: the 198 of 3,681 disagree no
+  longer, and no input that agreed disagrees now; 19 of 1,645 page-less and PDF mutations became 0 of
+  1,866; an adversarial search built more than 25,000 inputs to break the claim and found no
+  divergence in the checker. Fifteen cases are pinned in a unit test with every expectation read from
+  `ethos grounding check`, and eight join the oracle's adversarial test, which fails against 0.56.0's
+  code. Not copied: Ethos's `grounding check <path> -V` exits 0 without checking anything. A MINOR.
+
+- **`grounding-check` reads `--source-artifact` when Ethos does: only for a valid artifact.** 0.56.0
+  read the source first, under the 2 GiB source ceiling, so an invalid artifact with a missing or
+  unreadable source got no report and exit 2, one whose source blocks on read got no answer, and a
+  source between 256 MiB and 2 GiB was hashed and bound. Now an invalid artifact is reported, exit 1,
+  without its source being read, and a valid one is refused with no report, exit 2, for a source that
+  cannot be read or is over 256 MiB, Ethos's `max_file_bytes`. **New for library callers:**
+  `grounding_check_reading_source` takes the source as a callback and calls it only for a valid
+  artifact; `grounding_check` is unchanged. Checked against Ethos with a missing source, a sparse
+  256 MiB + 1 source beginning `%PDF-`, and a FIFO held open and never written. A MINOR.
+
+### Changed
+
+- **`grounding-check` builds no `serde_json::Value` for an artifact that parses.** The tree its value
+  checks walked was the peak, at 13.2–13.5× a valid input. Against 0.56.0, medians of five interleaved
+  runs:
+
+  | grounding artifact | peak RSS | wall |
+  | --- | --- | --- |
+  | nist-sp-800-171r3, 15.3 MiB | 205.9 → 62.2 MiB | 0.19 → 0.10 s |
+  | nist-sp-800-37r2, 37.4 MiB | 492.5 → 142.8 MiB | 0.42 → 0.22 s |
+  | nist-sp-800-161r1, 47.8 MiB | 639.4 → 194.3 MiB | 0.55 → 0.30 s |
+  | nist-sp-800-53Ar5, 151.4 MiB, refused for 1.6 million spans | 1,922.8 → 153.9 MiB | 1.36 → 0.45 s |
+
+  An artifact refused while scanning builds nothing either — 161r1 with junk after it, 540.3 →
+  50.3 MiB — but one that scans cleanly and fails its typed parse still builds the tree, now Ethos's
+  sorted and duplicate-checked one: 161r1 with an unknown key at its root peaks at 540 MiB, about 11×
+  its input, as before, and takes 0.30 → 0.45 s. `docs/measurements/memory-ceiling/` §12 records
+  these runs, made with `gcheckab.py`, and the `gcdiff.py` corpus behind the counts above. A PATCH on
+  its own.
+
+- **The oracle is Ethos v0.6.0, `8adda91`.** `ETHOS_ORACLE_REF` moved for the first time since it was
+  set, from `5cb9f9b`, which predated grounding schema 1.1.0 and refused every page-less artifact this
+  engine emits — `unknown_field` at `/elements/0/locator` — while the engine's checker accepted them.
+  `oracle.rs` now checks all 16 committed Office documents, covering the eight page-less media types,
+  page-less G2, and eight 1.1.0 rules broken one at a time; each fails against the old pin. Closes the
+  page-less half of the "not covered" note on 0.56.0's G2 entry; the half about hand-built ids and
+  overlapping cells stands. `ethos --version` prints 0.6.0 for both builds, so `ci/gate.sh` now also
+  prints the commit `../ethos-oracle` is at. No output change; a PATCH on its own.
 
 ---
 

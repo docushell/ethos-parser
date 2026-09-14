@@ -482,6 +482,9 @@ const GROUNDING: &[&str] = &[
     "check",
     "from_presence",
     "grounding_check",
+    // 0.57.0. The source is read by a callback only once the artifact is valid, which is the order
+    // Ethos's CLI uses and the only way a caller holding a path gets it.
+    "grounding_check_reading_source",
     "is_lossy",
     "project",
     "to_array",

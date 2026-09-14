@@ -936,8 +936,10 @@ fn a_non_pdf_source_artifact_is_refused_by_both() {
 }
 
 /// **Both judge the artifact before they read the source.** An invalid artifact is reported whatever
-/// `--source-artifact` names; a valid one is refused, with no report, for a source that is missing
-/// or over Ethos's 256 MiB. The engine used to read the source first, and under a 2 GiB ceiling.
+/// `--source-artifact` names — including a FIFO that would block any read; a valid one is refused,
+/// with no report, for a source that is missing or over Ethos's 256 MiB. The oversized source
+/// begins `%PDF-`, so it is refused for its size and not as a non-PDF. The engine used to read the
+/// source first, and under a 2 GiB ceiling.
 #[test]
 fn the_source_is_read_only_for_a_valid_artifact_by_both() {
     let manifest = read_manifest();
@@ -949,7 +951,11 @@ fn the_source_is_read_only_for_a_valid_artifact_by_both() {
     std::fs::write(&invalid, text.replacen("\"1.0.0\"", "\"9.9.9\"", 1)).expect("write");
     let missing = dir.join("missing.pdf");
     let oversized = dir.join("oversized.pdf");
-    let file = std::fs::File::create(&oversized).expect("create");
+    std::fs::write(&oversized, b"%PDF-1.7\n").expect("write");
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&oversized)
+        .expect("open");
     file.set_len(256 * 1024 * 1024 + 1).expect("a sparse file");
 
     for (artifact, source, reported) in [
@@ -991,6 +997,56 @@ fn the_source_is_read_only_for_a_valid_artifact_by_both() {
             assert!(
                 ours.stdout.is_empty() && theirs.stdout.is_empty(),
                 "{label}: neither reports on a valid artifact whose source it cannot take"
+            );
+        }
+    }
+
+    // A FIFO held open for writing and never written: any read of it blocks, so a checker that read
+    // the source before judging the artifact would never answer.
+    #[cfg(unix)]
+    {
+        let fifo = dir.join("silent.fifo");
+        let made = Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo runs");
+        assert!(made.success(), "mkfifo");
+        let _writer = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .expect("hold the FIFO open");
+        let oracle = resolve_ethos_binary().unwrap_or_else(|e| panic!("{e}"));
+        for (who, mut command) in [
+            ("engine", Command::new(env!("CARGO_BIN_EXE_ethos-parser"))),
+            ("ethos", Command::new(oracle)),
+        ] {
+            if who == "engine" {
+                command.arg("grounding-check");
+            } else {
+                command.args(["grounding", "check"]);
+            }
+            let mut child = command
+                .arg(&invalid)
+                .arg("--source-artifact")
+                .arg(&fifo)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("spawns");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while child.try_wait().expect("waits").is_none() {
+                if std::time::Instant::now() > deadline {
+                    let _ = child.kill();
+                    panic!("{who} read the source of an invalid artifact and blocked on it");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            let out = child.wait_with_output().expect("output");
+            assert_eq!(
+                extract_report(&out.stdout, who)["structure"],
+                "invalid",
+                "{who}"
             );
         }
     }
