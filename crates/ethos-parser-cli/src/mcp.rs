@@ -450,30 +450,50 @@ fn tool_ground(args: &Value, ledger: &mut ledger::Ledger) -> Result<(String, Art
     let projection = ethos_parser_grounding::project(&repr).map_err(|e| Failure::from(&e))?;
     let bytes = ethos_parser_grounding::to_canonical_bytes(&projection.source)
         .map_err(|e| Failure::from(&e))?;
+    let summary = ground_summary(&projection);
+    Ok((summary, Artifact::Bytes(bytes)))
+}
+
+/// The words `ground` reports: the count of elements, the geometry omission, and one clause for
+/// each thing the schema's limits took.
+///
+/// **The one place this sentence is written.** The Python and Node LangChain adapters return it
+/// verbatim from this server's reply rather than composing their own, so the test that pins it here
+/// is the pin for all three. The destructure is exhaustive on purpose: a field added to
+/// [`ethos_parser_grounding::Projection`] fails to compile here until this summary says what it
+/// reports about it.
+fn ground_summary(projection: &ethos_parser_grounding::Projection) -> String {
+    let ethos_parser_grounding::Projection {
+        source,
+        omission,
+        spans_withheld,
+        elements_omitted,
+        tables_withheld,
+    } = projection;
     let mut summary = format!(
         "{} element(s) with a measured box; {} omitted for having none.",
-        projection.source.elements.len(),
-        projection.omission.nodes_omitted
+        source.elements.len(),
+        omission.nodes_omitted
     );
-    if let Some(w) = projection.spans_withheld {
+    if let Some(w) = spans_withheld {
         summary.push_str(&format!(
             " {} span(s) withheld, more than the {} the schema admits: elements only.",
             w.spans, w.limit
         ));
     }
-    if let Some(o) = projection.elements_omitted {
+    if let Some(o) = elements_omitted {
         summary.push_str(&format!(
             " {} element(s) omitted, a string over the schema's byte limit.",
             o.elements
         ));
     }
-    if let Some(t) = projection.tables_withheld {
+    if let Some(t) = tables_withheld {
         summary.push_str(&format!(
             " {} table(s) withheld, over the schema's limits: no tables.",
             t.tables
         ));
     }
-    Ok((summary, Artifact::Bytes(bytes)))
+    summary
 }
 
 /// **The handle law, made mechanical.**
@@ -1406,6 +1426,59 @@ mod tests {
         assert_eq!(
             out, expected,
             "a session's replies are three fresh servers' replies"
+        );
+    }
+
+    /// **The whole `ground` sentence, every clause firing, in the order a reader meets them.**
+    ///
+    /// The SDK adapters return this text verbatim, so this is where its wording is pinned — and the
+    /// only place G1's clause can be, since firing it for real takes a million spans. Built on a real
+    /// projection with its declarations set, so the base counts are a projection's own.
+    #[test]
+    fn the_ground_summary_names_every_declaration_in_order() {
+        let pdf = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/engine/markdown-two-blocks/document.pdf"
+        ))
+        .expect("fixture");
+        let repr = crate::representation_for_bytes(&pdf, &ethos_parser_core::Profile::default())
+            .expect("extracts");
+        let base = ethos_parser_grounding::project(&repr).expect("projects");
+        assert_eq!(
+            ground_summary(&base),
+            "2 element(s) with a measured box; 0 omitted for having none.",
+            "nothing fired, so no clause and no trailing space"
+        );
+
+        let every = ethos_parser_grounding::Projection {
+            spans_withheld: Some(ethos_parser_grounding::SpansWithheld {
+                spans: 1_000_001,
+                limit: 1_000_000,
+                limitation_code: ethos_parser_grounding::SPANS_WITHHELD_OVER_LIMIT,
+            }),
+            elements_omitted: Some(ethos_parser_grounding::ElementsOmitted {
+                elements: 3,
+                spans: 4,
+                text_limit: 16_384,
+                locator_limit: 2_048,
+                limitation_code: ethos_parser_grounding::ELEMENTS_OMITTED_OVER_LIMIT,
+            }),
+            tables_withheld: Some(ethos_parser_grounding::TablesWithheld {
+                tables: 5,
+                table_limit: 100_000,
+                oversized_cells: 1,
+                oversized_grids: 0,
+                string_limit: 16_384,
+                limitation_code: ethos_parser_grounding::TABLES_WITHHELD_OVER_LIMIT,
+            }),
+            ..base
+        };
+        assert_eq!(
+            ground_summary(&every),
+            "2 element(s) with a measured box; 0 omitted for having none. 1000001 span(s) \
+             withheld, more than the 1000000 the schema admits: elements only. 3 element(s) \
+             omitted, a string over the schema's byte limit. 5 table(s) withheld, over the \
+             schema's limits: no tables."
         );
     }
 }

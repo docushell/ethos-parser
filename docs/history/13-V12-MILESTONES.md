@@ -100,6 +100,9 @@ chosen shape is one process spawn per call, which nobody has measured a need to 
 
 The same reasoning refuses an MCP client here: **MCP is a process and this is a library. They are
 two callers of one binary, not layers.**
+**Amended 2026-09-14:** the three SDK functions still wrap the CLI, but the LangChain `ground` tool
+now makes one `tools/call` to `ethos-parser mcp`, because the summary it returns is the server's own
+words — see CHANGELOG [Unreleased], "The LangChain `ground` tool's summary".
 
 **`ground` takes the artifact `extract` returned.** It does not take a quote and it does not take a
 page, because the CLI subcommand takes neither — **a locator-shaped argument would be the corollary
@@ -183,7 +186,9 @@ should break loudly rather than silently downgrade the split.**
 byte-for-byte against what the MCP server emits, on one fixture where nothing is omitted and one
 where everything is. That is what stops a second adapter inventing a richer sentence than the first —
 and it is also the proof that the omitted count, computed out here as nodes minus elements, equals
-the engine's own count. **Counting geometry rows instead would re-encode the groundability rule in
+the engine's own count. **Amended 2026-09-14:** it was not — both fixtures were single-run blocks, and
+once an element became a block (0.49.0) nodes minus elements stopped being the omission; the `ground`
+tool now returns `ethos-parser mcp`'s own reply text. **Counting geometry rows instead would re-encode the groundability rule in
 two more languages, and a count derived from a different question than the one being asked is a count
 that goes wrong the first time a second absence variant appears.**
 

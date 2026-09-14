@@ -38,7 +38,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { FIXTURE_PDF, PACKAGE_ROOT, REPO_ROOT, clone, engineBinary } from "./helpers.js";
-import { extract, ground, nodeGet } from "../src/index.js";
+import { c14nBytes, sha256Hex } from "../src/c14n.js";
+import { EngineFailed, extract, ground, nodeGet } from "../src/index.js";
 
 /** The same list `mcp.rs`, `mcp_stdio.rs`, `handle-law.test.js` and the Python suite ban. */
 const BANNED_ARGUMENT_NAMES = [
@@ -158,12 +159,20 @@ test("ground and node_get put the artifact in the artifact", options, async () =
 
 // --- `content` carries nothing a pipeline would bind to -----------------------------------------
 
-for (const name of ["markdown-two-blocks", "off-page-and-offset-box"]) {
+for (const name of [
+  "markdown-two-blocks",
+  "off-page-and-offset-box",
+  // Four runs in two blocks. Nodes-minus-elements, which this adapter used to report as the
+  // omission, says 2 here; the engine omitted none.
+  "untagged-shredded-line",
+  // Five nodes, four without a measured box: a non-zero omission, counted by the engine.
+  "stroke-ruled-field-boxes",
+]) {
   test(`the summaries are the ones MCP emits (${name})`, options, async () => {
-    // Byte-for-byte against `ethos-parser mcp`, on a document where nothing is omitted and one where
-    // everything is. This is what stops the second adapter inventing a richer sentence than the
-    // first — and it is also the proof that `ground`'s omitted count, computed out here as
-    // nodes-minus-elements, equals the engine's own `omission.nodes_omitted`.
+    // Byte-for-byte against `ethos-parser mcp`, including documents whose blocks merge runs. This is
+    // what stops the second adapter inventing a richer sentence than the first. The first two
+    // fixtures are single-run blocks with nothing omitted, which is why they never noticed that
+    // nodes-minus-elements stopped being the omission count when an element became a block.
     const pdf = join(REPO_ROOT, "fixtures", "engine", name, "document.pdf");
     const representation = extract(pdf);
     const tools = byName();
@@ -330,8 +339,10 @@ test("the default import does not reach langchain", () => {
   // No `options`: this one holds whether or not the peer is installed, and it is the promise S2
   // and S3 made — the default install pulls nothing. The tools live on a subpath precisely so
   // that `import "ethos-parser"` never touches the peer.
-  const source = readFileSync(join(PACKAGE_ROOT, "src", "index.js"), "utf8");
-  assert.equal(source.includes("langchain"), false, "the default entry point mentions langchain");
+  for (const file of ["index.js", "engine.js"]) {
+    const source = readFileSync(join(PACKAGE_ROOT, "src", file), "utf8");
+    assert.equal(source.includes("langchain"), false, `the default entry point's ${file} mentions langchain`);
+  }
 
   const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
   assert.deepEqual(manifest.dependencies ?? {}, {}, "runtime dependencies must stay empty");
@@ -347,4 +358,160 @@ test("this slice added no LangGraph dependency", () => {
   assert.equal(manifest.includes("langgraph"), false);
   const source = readFileSync(join(PACKAGE_ROOT, "src", "langchain.js"), "utf8");
   assert.equal(/from "@langchain\/langgraph/.test(source), false);
+});
+
+// --- `ground`'s summary is MCP's own, including what the schema's limits took ----------------------
+
+function fixtureRepresentation(name) {
+  return clone(extract(join(REPO_ROOT, "fixtures", "engine", name, "document.pdf")));
+}
+
+/** Recompute the fingerprint of an edited representation, so the engine accepts the edit. */
+function resealed(representation) {
+  representation.representation_c14n_sha256 = `sha256:${sha256Hex(representation.representation)}`;
+  return representation;
+}
+
+function setText(node, text) {
+  node.text = text;
+  node.attributes.text_run.char_codes = [...text].map((c) => c.codePointAt(0));
+}
+
+/**
+ * A representation with a run — and, on a table, the cell holding it — past the schema's
+ * 16,384-byte string limit, re-sealed. 8,193 two-byte characters are 16,386 bytes.
+ */
+function lengthened(name) {
+  const representation = fixtureRepresentation(name);
+  const payload = representation.representation;
+  const longText = "é".repeat(8193);
+  let target = payload.nodes[0];
+  if (payload.tables.length > 0) {
+    const cell = payload.tables[0].cells[0];
+    cell.text = longText;
+    target = payload.nodes.find((n) => n.id === cell.node_ids[0]);
+  }
+  setText(target, longText);
+  return resealed(representation);
+}
+
+for (const [name, tablesWithheld] of [
+  ["markdown-two-blocks", false],
+  ["ruled-table-grid", true],
+]) {
+  test(`a degraded ground summary is MCP's own (${name})`, options, async () => {
+    // A degradation fires and the tool's words are still MCP's, byte for byte. The old adapter
+    // called the omitted element one "omitted for having none", a box it never lacked. The oracle is
+    // a live MCP call with the object inline — a different route from the tool's path.
+    const representation = lengthened(name);
+    const oracle = mcp([["tools/call", { name: "ground", arguments: { representation } }]])[0]
+      .content[0].text;
+    assert.ok(oracle.includes("element(s) omitted, a string over the schema's byte limit"), oracle);
+    assert.equal(oracle.includes("table(s) withheld"), tablesWithheld, oracle);
+
+    const tools = byName();
+    const message = await call(tools.ground, { representation });
+    assert.equal(message.content, oracle);
+    assert.deepEqual(message.artifact, ground(representation));
+
+    const directory = await mkdtemp(join(tmpdir(), "ethos-node-test-"));
+    try {
+      const path = join(directory, "representation.json");
+      writeFileSync(path, c14nBytes(representation));
+      assert.equal((await call(tools.ground, { representation: path })).content, oracle);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test("a line separator in the text does not split the reply", options, async () => {
+  // Canonical JSON writes U+2028, U+0085 and U+2029 literally. A reply carrying them is still one
+  // reply, and the tool reads it whole.
+  const representation = fixtureRepresentation("markdown-two-blocks");
+  const node = representation.representation.nodes[0];
+  setText(node, `${node.text}\u2028\u0085\u2029`);
+  resealed(representation);
+  const oracle = mcp([["tools/call", { name: "ground", arguments: { representation } }]])[0];
+  const message = await call(byName().ground, { representation });
+  assert.equal(message.content, oracle.content[0].text);
+  assert.deepEqual(message.artifact, oracle.structuredContent);
+});
+
+test("a refused record throws what ground throws", options, async () => {
+  // Edited without re-sealing, so refused — and the tool throws exactly what `ground()` throws, exit
+  // status and the engine's own stderr, not a sentence reworded here.
+  const edited = fixtureRepresentation("markdown-two-blocks");
+  edited.representation.nodes[0].text = "Tampered";
+  let fromSdk;
+  try {
+    ground(edited);
+  } catch (e) {
+    fromSdk = e;
+  }
+  assert.ok(fromSdk instanceof EngineFailed, "ground() must refuse the edit with its own class");
+  await assert.rejects(
+    () => call(byName().ground, { representation: edited }),
+    (error) => {
+      assert.ok(error instanceof EngineFailed, "the tool throws the SDK's class, not a lookalike");
+      assert.equal(error.status, 2);
+      assert.equal(error.status, fromSdk.status);
+      assert.equal(error.stderr, fromSdk.stderr);
+      assert.match(error.stderr, /representation_c14n_sha256/);
+      return true;
+    },
+  );
+});
+
+test("the ground tool spawns mcp once with a path", options, async () => {
+  // A shim stands in for the binary and logs each run: one `mcp`, handed a path and never the
+  // object, and `ground` only on a refusal.
+  // Built before the shim is in place, so the log holds only what the tool runs.
+  const representation = fixtureRepresentation("markdown-two-blocks");
+  const directory = await mkdtemp(join(tmpdir(), "ethos-node-test-"));
+  const saved = { ETHOS_PARSER: process.env.ETHOS_PARSER, LOG: process.env.LOG, REAL: process.env.REAL };
+  try {
+    const log = join(directory, "runs.log");
+    const shim = join(directory, "ethos-parser");
+    writeFileSync(
+      shim,
+      "#!/bin/sh\n" +
+        'echo "$1" >> "$LOG"\n' +
+        'if [ "$1" = mcp ]; then body=$(cat); echo "${#body}" >> "$LOG"; ' +
+        "printf '%s\\n' \"$body\" | \"$REAL\" \"$@\"; else exec \"$REAL\" \"$@\"; fi\n",
+      { mode: 0o755 },
+    );
+    process.env.ETHOS_PARSER = shim;
+    process.env.LOG = log;
+    process.env.REAL = engineBinary;
+
+    await call(byName().ground, { representation });
+    let runs = readFileSync(log, "utf8").split(/\s+/).filter(Boolean);
+    assert.equal(runs[0], "mcp");
+    assert.equal(runs.length, 2, runs.join(" "));
+    assert.ok(Number(runs[1]) < 4096, "the request carries a path, not the representation");
+
+    writeFileSync(log, "");
+    const edited = clone(representation);
+    edited.representation.nodes[0].text = "Tampered";
+    await assert.rejects(() => call(byName().ground, { representation: edited }), {
+      name: "EngineFailed",
+    });
+    runs = readFileSync(log, "utf8").split(/\s+/).filter(Boolean);
+    assert.deepEqual([runs[0], runs[2]], ["mcp", "ground"], runs.join(" "));
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the ground summary is not formatted here", () => {
+  // The sentence lives in `mcp.rs` alone. An adapter that formats it again is the drift this change
+  // removes.
+  const source = readFileSync(join(PACKAGE_ROOT, "src", "langchain.js"), "utf8");
+  assert.equal(source.includes("omitted for having none"), false);
+  assert.equal(source.includes("with a measured box"), false);
 });
