@@ -104,7 +104,7 @@ export {
  * and `package.json`. An SDK claiming a version the engine does not is the same class of lie
  * `parser_version` exists to prevent.
  */
-export const version = "0.55.0";
+export const version = "0.56.0";
 
 /** The `artifact_type` `ethos-parser extract` stamps on a representation. */
 export const REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0";

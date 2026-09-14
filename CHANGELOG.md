@@ -3,9 +3,9 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 is the first version released** — tagged, with macOS binaries on the repository's GitHub
-Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is in-tree only. Nothing is on
-crates.io, npm or PyPI.
+**0.55.0 was the first version released, and 0.56.0 the second** — each tagged, with macOS binaries on
+the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
+in-tree only. Nothing is on crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
@@ -19,7 +19,19 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased]
+## [0.56.0] — the grounding schema's limits kept, and MCP safe to hand a path
+
+**A MINOR, because an emitter changed.** `ground` used to exit 0 with an artifact the verifier refuses
+for any document past one of `ethos.grounding.v1`'s limits other than the span cap; it now omits,
+withholds or refuses, and says which (G2). The LangChain `ground` tool in both SDKs returns
+`ethos-parser mcp`'s own summary, which had miscounted omissions since 0.49.0. Every artifact inside
+the limits is byte-identical to 0.55.0's at equal version. `profile_sha256` is `sha256:73998…`, moved
+by the version alone.
+
+**And faster, and harder to break.** SHA-256 runs on the CPU's SHA-2 instructions on Apple silicon,
+9–13% off `extract`, `ground`, `markdown` and MCP `node_get` as measured. MCP remembers which exact bytes already verified, so repeat calls on one
+representation are 52–66% faster. A path a model names can no longer hang the server or exhaust its
+memory, and an inline representation is no longer copied three times.
 
 ### Fixed
 
@@ -37,7 +49,9 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   three times**: the request is moved into the tool rather than cloned, and `ground` on an 82 MiB
   representation passed inline peaks at 1,413 MiB where it peaked at 4,867, with an identical reply
   (by path it is 276 MiB either way). Not done, deliberately: a cap on request line length — the host
-  frames and holds every line, so any cap chosen here would be arbitrary. A PATCH.
+  frames and holds every line, so any cap chosen here would be arbitrary. A MINOR on its own — MCP now
+  refuses paths 0.55.0 read, and a source over 2 GiB with no size is refused where 0.55.0 read it;
+  the section is already one for G2.
 
 - **`ground` kept inside `ethos.grounding.v1`'s other limits, which it never looked at (G2).**
   0.55.0 enforced the span cap and nothing else, so a document past any other limit still exited 0
@@ -61,13 +75,21 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   13 fixtures the schema-conformance test grounds are asserted to engage no degradation. Proven on
   tables this engine detected, re-sealed with a run and a cell past the limit: the engine's checker
   and the Ethos verifier both accept the degraded artifact, and both refuse it with the over-long
-  text placed back in an element. The caps are one internal value, so tests exercise the element,
-  page and grid caps at their call sites; fourteen wrong implementations were each shown to fail a
+  text placed back in an element. The caps are one internal value, so tests exercise the element
+  and page caps at their call sites, and the table, cell and grid caps in the function that decides
+  them; fourteen wrong implementations were each shown to fail a
   test — among them `>=` for `>`, characters for bytes, a run's text measured instead of its
   block's, the element cap counted before omission, an id gap, an empty `tables` array for an absent
-  one, one table withheld of several, and the newline left out of the artifact ceiling. `docs/01-CONTRACT.md` §11 names the second omission reason — a length
-  against a published limit, never a judgement of the text. New public items `ElementsOmitted`,
-  `TablesWithheld`, `ELEMENTS_OMITTED_OVER_LIMIT`, `TABLES_WITHHELD_OVER_LIMIT`, frozen and documented.
+  one, one table withheld of several, and the newline left out of the artifact ceiling.
+  **Unlike withheld spans or tables, an element omitted for its length leaves no trace in the artifact
+  or the representation**: a pipeline that keeps only the artifact and discards stderr cannot tell.
+  `docs/01-CONTRACT.md` §11 names the second omission reason — a length against a published limit,
+  never a judgement of the text. New public items `ElementsOmitted`, `TablesWithheld`,
+  `ELEMENTS_OMITTED_OVER_LIMIT`, `TABLES_WITHHELD_OVER_LIMIT`, frozen and documented. **Breaking for
+  library callers:** `Projection` gains `elements_omitted` and `tables_withheld` and is not
+  `#[non_exhaustive]`, so a struct literal or an exhaustive pattern stops compiling; `project()` newly
+  returns `EngineError::ResourceLimit` for pages and elements, and the artifact ceiling is enforced by
+  `to_canonical_bytes`, not by `project()`.
   **An emitter and exit-code change, so a MINOR** — although the only outputs that move are ones no
   verifier accepted. Closes the "not covered" note on 0.55.0's G1 entry. **Not covered:** a
   hand-built record can still carry an id past 256 bytes or overlapping cells, which no limit a real
@@ -106,7 +128,8 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ### Changed
 
-- **SHA-256 uses the CPU's SHA-2 instructions on Apple silicon: every command is 9–13% faster.**
+- **SHA-256 uses the CPU's SHA-2 instructions on Apple silicon: `extract`, `ground`, `markdown` and
+  MCP `node_get` are 9–13% faster.**
   `sha2` 0.10 enabled the ARMv8 backend only behind its `asm` feature, which this workspace never
   set, so every `aarch64` build hashed in portable code — and every `extract` hashes the payload to
   seal it and every read command hashes it again to verify it. `sha2` 0.11 detects the extension at
@@ -127,8 +150,8 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   call. At most 64 digests, about 6 KiB; no document, tree, path or buffer is kept, and no argument or
   reply can name a digest. **Every reply is byte-identical to a fresh server's**, which a stdio test
   replays across a whole session against one-shot servers. Interleaved on 53Ar5: first sight of a file
-  +2.3%, later `node_get` calls 12.78 → 4.86 s (−61.9%), later `ground` calls −52.1%; −65% on the
-  smaller documents. **One pre-set line was breached, and it ships by the owner's decision:** back-to-back
+  +2.3%, later `node_get` calls 12.78 → 4.86 s (−61.9%; −65% on the smaller
+  documents), later `ground` calls −52.1%. **One pre-set line was breached, and it ships by the owner's decision:** back-to-back
   calls on the 950 MiB representation peak ~650 MiB higher (4823 vs 4174 MiB RSS), because each call now
   reads the next file before macOS has returned the previous call's freed tree — at 4 s between calls
   it is +290 MiB, at 8 s zero, and the smaller documents are unaffected. `docs/00-NORTH-STAR.md`

@@ -583,7 +583,7 @@ enforced by the projection; none is reached by this corpus. *Since enforced (G2)
 cells or too many tables withhold the tables, and too many pages or elements — or an artifact over
 256 MiB — is refused; see `ethos-parser-grounding`'s crate docs.*
 
-## 13. The hash was running in software, and moving to `sha2` 0.11 is 9–13% of every command
+## 13. The hash was running in software, and moving to `sha2` 0.11 is 9–13% of each command measured
 
 **Run 2026-09-13 at `15ebe51` (0.55.0) against the same tree with `sha2 = "0.11"`.** Both release
 builds at equal version; interleaved; every run's output hashed.

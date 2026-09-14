@@ -141,8 +141,9 @@ The catch with MCP is that the model picks the arguments. A tool that accepted a
 bounding box would make the model the citation authority in one step, and the result would look
 exactly like a real citation. So no tool argument anywhere names a coordinate. The engine mints
 every locator itself, hands it back as an opaque id, and re-checks it on the way in: `node_get`
-verifies the artifact's fingerprint — once per distinct byte string per server process — then
-looks up the id among the nodes parsed from *those* bytes. An
+verifies the artifact's fingerprint — for a path, once per distinct byte string while it is among the
+last 64 this process verified; for an inline artifact, every call — then looks up the id among the
+nodes parsed from *those* bytes. An
 id the engine did not mint is an error, never a nearest match.
 
 **Python and Node SDKs** ([`packages/python/`](packages/python/),
@@ -164,7 +165,7 @@ bucket. A gap is never dressed up as a success.
 
 ## Where things stand
 
-Version 0.55.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.56.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
 **Tables, stated as a capability rather than as an average.** The engine does four things, and the
 fourth is the one to read first:
