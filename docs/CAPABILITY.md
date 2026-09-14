@@ -1,6 +1,6 @@
 # What this engine can and cannot do
 
-**These tables describe 0.56.0.** When the workspace version moves, this page moves with it or it
+**These tables describe 0.57.0.** When the workspace version moves, this page moves with it or it
 is wrong.
 
 This is the honest inventory — the answer to *"what does ethos-parser actually do today?"* It is not
@@ -20,7 +20,7 @@ Everything below runs locally, with no network and no renderer.
 | **Extract (office)** | DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF and EPUB into the same record, each addressed the way its own format addresses itself: `{part, paragraph, run}` for Word, `{part, sheet, row, column}` for a workbook, `{part, shape, paragraph, run}` for a slide, and so on | `extract` |
 | **Office pages** | `pages` is always `[]` for office formats. No spreadsheet print range, slide, soft page break or RTF `\page` is ever turned into a page record | — |
 | **Grounding** | Emits `ethos.grounding.v1` in both shapes: the paginated 1.0.0 shape for PDFs, and the page-less 1.1.0 shape for office documents, where each element carries its native locator instead of geometry. A DOCX quote extracted here, grounded here, and checked by the sibling verifier comes back `grounded` | `ground` |
-| **Grounding check** | A validator that agrees byte-for-byte with `ethos grounding check`. Measured against 15 Ethos-owned fixtures; 12 reach an artifact and are compared, and the rest fail closed rather than being skipped | `grounding-check` |
+| **Grounding check** | A validator whose report is byte-identical to `ethos grounding check`'s for a valid artifact, and has the same verdict, code and path for an invalid one, whose message is its own. Measured against 15 Ethos-owned fixtures — 12 reach an artifact and are compared, and the rest fail closed rather than being skipped — all 16 committed Office documents, and 3,681 mutated artifacts. The source is read only for a valid artifact, as Ethos reads it | `grounding-check` |
 | **Markdown / HTML** | Both artifacts carry an anchor map — every byte is either `source` or `syntax` — plus a census of what did not make it. Both are projected from the representation, so office documents project too. **Headings project only where the document declares a level**: a PDF's tagged `/H1`..`/H6` and an EPUB's own `<h1>`..`<h6>`. ODT/ODS/ODP put the *fact* of a heading on the wire without its level and project as paragraphs rather than guess one; DOCX carries no heading at all, because the reader keeps no `<w:pStyle>` | `markdown`, `html` |
 | **Verify** | Shells out to the pinned Ethos CLI and relays its bytes verbatim. The engine does not verify anything itself | `verify` |
 | **Overlay** | An annotated copy of a PDF showing what was detected, including a note counting what has **no** box to draw | `overlay` |

@@ -575,6 +575,24 @@ identical memory); 53Ar5 — refused for its 1.6 million spans — 489.4 → **1
 161r1 with junk after it 540.3 → **50.2 MiB**, 0.34 → 0.24 s; 161r1 with an unknown key at its root
 the same 540 MiB and 0.37 → 0.46 s, which is Ethos's sorted, duplicate-checked tree being built.
 
+**Released as 0.57.0, and measured against 0.56.0 directly** rather than through the build between,
+[`gcheckab.py`](gcheckab.py), medians of 5 interleaved:
+
+| grounding artifact | peak RSS | wall |
+| --- | --- | --- |
+| nist-sp-800-171r3, 15.3 MiB | 205.9 → 62.2 MiB | 0.186 → 0.104 s |
+| nist-sp-800-37r2, 37.4 MiB | 492.5 → 142.8 MiB | 0.416 → 0.220 s |
+| nist-sp-800-161r1, 47.8 MiB | 639.4 → 194.3 MiB | 0.545 → 0.295 s |
+| nist-sp-800-53Ar5, 151.4 MiB, refused for its spans | 1922.8 → 153.9 MiB | 1.357 → 0.452 s |
+| 161r1 with an unknown key at its root | 540.3 → 540.4 MiB | 0.301 → 0.451 s |
+| 161r1 with junk after it | 540.3 → 50.3 MiB | 0.271 → 0.239 s |
+
+The report counts in 0.57.0's CHANGELOG entry are [`gcdiff.py`](gcdiff.py)'s mutations of
+`ruled-table-grid`, `markdown-two-blocks` and `irs-fw9`'s grounding artifacts, **in that order** —
+one random generator serves every seed, so another order is another corpus. Of 3,681: 162 valid in both, every report byte-identical; 3,519 invalid in
+both, of which 198 changed code or path, 1,352 kept the report byte for byte, and 1,969 kept code and
+path but not the message.
+
 ### Found on the way: `ground` emits an artifact its own checker rejects
 
 On the largest gate document, `ground` writes a grounding artifact that `ethos.grounding.v1` rejects
