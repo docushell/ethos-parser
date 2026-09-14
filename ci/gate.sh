@@ -99,7 +99,8 @@ export RUSTFLAGS="-D warnings"
 if [ -z "${ETHOS_BIN:-}" ] && [ -x ../ethos-oracle/target/release/ethos ]; then
   ETHOS_BIN="$(cd ../ethos-oracle/target/release && pwd)/ethos"
   export ETHOS_BIN
-  printf 'gate: oracle at %s (%s)\n' "$ETHOS_BIN" "$("$ETHOS_BIN" --version 2>/dev/null || echo '?')"
+  printf 'gate: oracle at %s (%s, %s)\n' "$ETHOS_BIN" "$("$ETHOS_BIN" --version 2>/dev/null || echo '?')" \
+    "$(git -C ../ethos-oracle rev-parse --short=12 HEAD 2>/dev/null || echo 'commit ?')"
 fi
 
 step=0
