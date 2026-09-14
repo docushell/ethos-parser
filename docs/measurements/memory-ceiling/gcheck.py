@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Peak memory of `grounding-check` over grounding artifacts `ground` produced.
 
-`grounding_check` parses the grounding artifact TWICE — into a `serde_json::Value` tree
+`grounding_check` parsed the grounding artifact TWICE — into a `serde_json::Value` tree
 (check.rs:483), then into the typed `GroundingSource` (check.rs:511) — the tree-multiplier shape
-MCP had before it was fixed. Run without the optional source PDF: that step only hashes the PDF,
+MCP had before it was fixed; an artifact that parses no longer builds the tree (README §12). Run without the optional source PDF: that step only hashes the PDF,
 which costs nothing next to the two parses. The exit code is recorded, not treated as a failure,
 because it reports validation findings. Median of 3. Usage: gcheck.py BINARY GROUNDINGS_DIR doc ...
 """

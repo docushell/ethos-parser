@@ -544,6 +544,29 @@ clock, and options B and C remain the only routes to that — at the semantics t
 then into the typed `GroundingSource` (`check.rs:511)` — the tree-multiplier shape §10 removed from
 MCP. Not changed here.
 
+**Fixed afterwards** (branch `perf/grounding-check-single-parse`). The tree was the peak, not the two
+parses together: it is dropped before the typed parse, and a build that skipped it peaked at 62 MiB
+on 171r3. The tree and its two walks are now built only for an artifact that fails to parse. A scan
+that allocates nothing applies `strict_value`'s rules while streaming the bytes; if it is clean, a
+typed parse that succeeds is the answer, because every type `reject_unknown_fields` walks denies
+unknown fields with exactly the keys it allows. Anything else takes the old path unchanged. One
+binary pair, [`gcheck.py`](gcheck.py) for memory, [`gcheckab.py`](gcheckab.py) for wall (medians of
+5, interleaved):
+
+| document | grounding artifact | peak RSS / footprint | RSS / input | wall |
+| --- | --- | --- | --- | --- |
+| nist-sp-800-171r3 | 15.3 MiB | 205.9 / 177.8 → **62.2 / 61.0** | 13.5x → **4.1x** | 0.195 → 0.108 s |
+| nist-sp-800-37r2 | 37.4 | 491.9 / 425.4 → **142.7 / 141.5** | 13.1x → **3.8x** | 0.440 → 0.230 s |
+| nist-sp-800-161r1 | 47.8 | 639.4 / 539.1 → **194.2 / 193.1** | 13.4x → **4.1x** | 0.572 → 0.305 s |
+| nist-sp-800-53Ar5 | 151.4 | 1922.8 / 1691.5 → **489.4 / 488.5** | 12.7x → **3.2x** | 1.433 → 0.583 s |
+
+Reports are byte-identical, and not only on these: [`gcdiff.py`](gcdiff.py) ran 3,681 mutated
+artifacts through both binaries — each strict-value rule, unknown and repeated keys, two faults at
+once, raw byte edits, 13 report codes in all — and exit code, stdout and stderr agreed on every one.
+**The cost falls on an artifact that fails to parse**: it pays the scan — and, if that passed, a typed
+parse as far as the fault — before the old path, so 161r1 with an unknown key at its root or junk after it peaks where
+it did (540 MiB) and takes ~75 ms longer (0.31 → 0.38 s).
+
 ### Found on the way: `ground` emits an artifact its own checker rejects
 
 On the largest gate document, `ground` writes a grounding artifact that `ethos.grounding.v1` rejects
