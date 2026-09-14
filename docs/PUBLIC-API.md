@@ -156,7 +156,7 @@ wrote, and retyping them by hand is how a consumer silently stops matching.
 | Projection | `project`, `Projection`, `OmissionReport` (with `is_lossy`), `SpansWithheld`, `ElementsOmitted`, `TablesWithheld`, `to_canonical_bytes` |
 | Artifact | `GroundingSource`, `Source`, `Producer`, `GroundingCapabilities`, `GroundingCoordinateSystem`, `Page`, `Element`, `Span`, `Table`, `Cell` |
 | Emittable geometry | `GroundedBox`, with `from_presence` and `to_array` — and `from_presence` is its **only** constructor, taking a `GeometryPresence` |
-| Validator (`check`) | `grounding_check`, `ValidationReport`, `Structure`, `SourceBinding`, `Counts`, `ReportError` |
+| Validator (`check`) | `grounding_check`, `grounding_check_reading_source`, `ValidationReport`, `Structure`, `SourceBinding`, `Counts`, `ReportError` |
 | Constants | `GROUNDING_ARTIFACT_TYPE`, `SOURCE_MEDIA_TYPE`, `GROUNDING_SCHEMA_VERSION`, `GROUNDING_SCHEMA_VERSION_PAGE_LESS`, `PAGE_LESS_MEDIA_TYPES`, `GEOMETRY_ABSENT_OMITTED`, `SPANS_WITHHELD_OVER_LIMIT`, `ELEMENTS_OMITTED_OVER_LIMIT`, `TABLES_WITHHELD_OVER_LIMIT`, `VALIDATION_ARTIFACT_TYPE`, `VALIDATION_SCHEMA_VERSION`, `CRATE_NAME` |
 
 **Internal, do not use:** `grounded_box` as a module. It is private already, and that privacy is
@@ -254,7 +254,7 @@ per row, the way the four below name theirs, and that is a slice rather than a s
 | `ethos-parser classify <pdf>` | `Document::open` → `ethos_parser_pdf::classify` → `Classification::to_canonical_bytes` | `library_surface.rs::classify_is_reachable_and_canonical_from_the_library` | `classify_cli.rs::the_cli_output_matches_the_library` |
 | `ethos-parser extract <pdf>` | `Document::open` → `ethos_parser_pdf::extract` → `ethos_parser_pdf::to_representation` → `DocumentRepresentation::to_canonical_bytes` | `library_surface.rs::extract_and_represent_are_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser ground <repr>` | `serde_json::from_slice::<DocumentRepresentation>` → `verify_fingerprint` → `ethos_parser_grounding::project` → `ethos_parser_grounding::to_canonical_bytes` | `library_surface.rs::project_is_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
-| `ethos-parser grounding-check <json> [--source-artifact <pdf>]` | `ethos_parser_grounding::grounding_check` → `ValidationReport::to_canonical_bytes` / `exit_code` | `library_surface.rs::grounding_check_is_reachable_and_canonical_from_the_library` | `oracle.rs::oracle_agrees_on_all_ethos_owned_fixtures` |
+| `ethos-parser grounding-check <json> [--source-artifact <pdf>]` | `ethos_parser_grounding::grounding_check`, or `grounding_check_reading_source` with a source → `ValidationReport::to_canonical_bytes` / `exit_code` | `library_surface.rs::grounding_check_is_reachable_and_canonical_from_the_library` | `oracle.rs::oracle_agrees_on_all_ethos_owned_fixtures` |
 
 `--diagnostics` is the one flag with no library equivalent to call, because it *is* the shell's
 job: `ethos_parser_core::diagnostics::DiagnosticsRun` assembles the observation and the CLI chooses the

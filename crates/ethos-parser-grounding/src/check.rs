@@ -223,6 +223,34 @@ pub fn grounding_check(
     grounding_json: &[u8],
     source_pdf_bytes: Option<&[u8]>,
 ) -> Result<ValidationReport, EngineError> {
+    check_then_bind(
+        grounding_json,
+        source_pdf_bytes.map(|bytes| move || Ok(bytes)),
+    )
+}
+
+/// [`grounding_check`], with the source read by `read_source` **only once the artifact is valid**.
+///
+/// Ethos's `grounding check` reads `--source-artifact` after it has judged the artifact, so an
+/// invalid artifact is reported whatever the source path holds and costs no read: a source that is
+/// missing, too large, or blocks is never touched. This is that order for a caller holding a path
+/// rather than bytes.
+///
+/// # Errors
+///
+/// As [`grounding_check`], and whatever `read_source` returns, unchanged and with no report — it is
+/// called for a valid artifact only.
+pub fn grounding_check_reading_source<S: AsRef<[u8]>>(
+    grounding_json: &[u8],
+    read_source: impl FnOnce() -> Result<S, EngineError>,
+) -> Result<ValidationReport, EngineError> {
+    check_then_bind(grounding_json, Some(read_source))
+}
+
+fn check_then_bind<S: AsRef<[u8]>>(
+    grounding_json: &[u8],
+    read_source: Option<impl FnOnce() -> Result<S, EngineError>>,
+) -> Result<ValidationReport, EngineError> {
     if grounding_json.len() > limits::MAX_INPUT_BYTES {
         return Err(EngineError::ResourceLimit {
             limit: "grounding input bytes".into(),
@@ -244,6 +272,8 @@ pub fn grounding_check(
         return Ok(*report);
     }
 
+    let source = read_source.map(|read| read()).transpose()?;
+    let source_pdf_bytes = source.as_ref().map(AsRef::as_ref);
     if let Some(bytes) = source_pdf_bytes {
         if !bytes.starts_with(b"%PDF-") {
             return Err(EngineError::Unsupported {
@@ -1252,6 +1282,34 @@ mod tests {
 
         let not_checked = grounding_check(&bytes, None).unwrap();
         assert_eq!(not_checked.source_binding, SourceBinding::NotChecked);
+    }
+
+    #[test]
+    fn the_source_is_read_only_for_a_valid_artifact() {
+        // Ethos's order: an invalid artifact is answered without its source ever being read.
+        let reads = std::cell::Cell::new(0);
+        let source = || {
+            reads.set(reads.get() + 1);
+            Ok::<&[u8], EngineError>(b"%PDF-1.7 fake")
+        };
+        let invalid = grounding_check_reading_source(b"{", source).unwrap();
+        assert_eq!((invalid.structure, reads.get()), (Structure::Invalid, 0));
+
+        let valid = grounding_check_reading_source(&valid_bytes(), source).unwrap();
+        assert_eq!(
+            (valid.source_binding, reads.get()),
+            (SourceBinding::Matched, 1)
+        );
+
+        let unreadable = grounding_check_reading_source(&valid_bytes(), || {
+            Err::<&[u8], _>(EngineError::Io {
+                detail: "unreadable".into(),
+            })
+        });
+        assert!(
+            matches!(unreadable, Err(EngineError::Io { .. })),
+            "{unreadable:?}"
+        );
     }
 
     #[test]

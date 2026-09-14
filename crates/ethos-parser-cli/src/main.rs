@@ -911,29 +911,23 @@ fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
         Err(e) => return fail(&e),
     };
 
-    // Ethos judges the artifact before it reads the source, so an artifact it refuses is reported
-    // whatever the source path holds, and a source it cannot read, or over its 256 MiB, refuses
-    // only a valid artifact. A failed read is therefore kept until the verdict is known. The one
-    // difference left: this opens the source even for an artifact that turns out invalid, which a
-    // path that blocks on open, such as a FIFO with no writer, can tell apart.
-    let (source, unread) = match &args.source_artifact {
-        None => (None, None),
-        Some(p) => match read_source_within(p, GROUNDING_CHECK_MAX_SOURCE_BYTES) {
-            Ok(b) => (Some(b), None),
-            Err(e) => (None, Some(e)),
-        },
+    // Ethos reads the source only once it has judged the artifact valid, so an invalid artifact is
+    // reported whatever the source path holds, and a source it cannot read, or over its 256 MiB,
+    // refuses only a valid artifact, with no report.
+    let checked = match &args.source_artifact {
+        None => ethos_parser_grounding::grounding_check(&grounding, None),
+        Some(p) => ethos_parser_grounding::grounding_check_reading_source(&grounding, || {
+            read_source_within(p, GROUNDING_CHECK_MAX_SOURCE_BYTES)
+        }),
     };
-
-    let report = match ethos_parser_grounding::grounding_check(&grounding, source.as_deref()) {
+    let report = match checked {
         Ok(r) => r,
-        // A non-PDF source, or an input past the accepted ceiling. Ethos refuses these before
-        // writing any report and so does this: "these bytes are not the source" would be a
-        // different and wrong statement about a file that is not a document at all.
+        // A source that is not a PDF, cannot be read or is too large, or an input past the accepted
+        // ceiling. Ethos refuses these before writing any report and so does this: "these bytes are
+        // not the source" would be a different and wrong statement about a file that is not a
+        // document at all.
         Err(e) => return fail(&e),
     };
-    if let (ethos_parser_grounding::Structure::Valid, Some(e)) = (report.structure, &unread) {
-        return fail(e);
-    }
 
     match report.to_canonical_bytes() {
         Ok(bytes) => {
