@@ -19,9 +19,11 @@
 //! magic number. The office crate has had `zip::MAX_INFLATED_BYTES` since v2-S13 for exactly this
 //! reason; the path that reads the file in the first place had nothing.
 //!
-//! The refusal has to come from `metadata`, not from the read: checking after reading would have
-//! to allocate the thing it means to refuse, which is the same defect
-//! `zip::read_entry`'s `Vec::with_capacity(declared)` had.
+//! For a regular file the refusal has to come from `metadata`, not from the read: checking after
+//! reading would have to allocate the thing it means to refuse, which is the same defect
+//! `zip::read_entry`'s `Vec::with_capacity(declared)` had. A source with no size — a pipe, a
+//! device — has no metadata to check, so the read is bounded too, and that one test does hold the
+//! ceiling before it is refused.
 //!
 //! **The fixture is sparse**, so this suite asserts a 3 GiB refusal while occupying no disk.
 //! `set_len` past the end of a file allocates nothing on APFS or ext4; the bytes are never
@@ -138,4 +140,16 @@ fn a_file_exactly_at_the_ceiling_passes_the_size_check() {
         !stderr.contains("resource_limit"),
         "a file exactly at the ceiling is inside it; the check is `>`, not `>=`. Got: {stderr}"
     );
+}
+
+/// **A source with no size is bounded by the read.** `/dev/zero` is not a regular file, so its
+/// metadata carries no length for the check above, and it was read until memory ran out. It is now
+/// refused one byte past the ceiling, by name.
+#[cfg(unix)]
+#[test]
+fn a_source_with_no_size_is_refused_at_the_ceiling_rather_than_read_forever() {
+    let out = extract(&PathBuf::from("/dev/zero"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("resource_limit"), "{stderr}");
 }
