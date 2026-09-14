@@ -25,7 +25,9 @@
 //! `07-VERIFY-BOUNDARY.md` is why it cannot be made here: `ethos-parser-cli/tests/oracle.rs` agrees with
 //! the pinned Ethos CLI on this exact schema, so an engine-only revision would produce artifacts
 //! the verifier does not speak while both still called themselves `ethos.grounding.v1`. Option (a)
-//! is therefore **blocked on an Ethos-side revision** and is recorded as owned, not as refused.
+//! was therefore **blocked on an Ethos-side revision** and recorded as owned, not as refused.
+//! Ethos made that revision — schema 1.1.0 — and the oracle pin reached it at v0.6.0, where
+//! `oracle.rs` checks this engine's page-less artifacts against it.
 //!
 //! Adding an optional `page` to the engine's copy would be the lying artifact S5 refused for loose
 //! boxes, wearing a different field.

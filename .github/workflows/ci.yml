@@ -31,9 +31,12 @@ env:
   # visible. Unpinned, every run silently tests against whatever `main` is at that instant and
   # no ethos-parser commit records which verifier answered.
   #
-  # 5cb9f9b == ethos 0.6.0 work ("fix(ci): repair the release workflow's Windows version step").
-  # Bump deliberately, in its own commit, and re-run the oracle test when you do.
-  ETHOS_ORACLE_REF: "5cb9f9bce4f6eb551632792289bf70ed4bd8c363"
+  # 8adda91 == ethos v0.6.0, the release tag ("Make the release lane testable...", #239).
+  # Bump deliberately, in its own commit. `ethos --version` cannot tell two builds of one version
+  # apart, so re-run every test that reads ETHOS_BIN — oracle, verify_relay, markdown_cli,
+  # html_cli, grounding, mcp_stdio — with ETHOS_BIN set to a build of the new ref, and move
+  # ../ethos-oracle to it before trusting ci/gate.sh.
+  ETHOS_ORACLE_REF: "8adda91cd01baae487c9f2b18e4054b58a378a20"
 
 jobs:
   check:
