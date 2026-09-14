@@ -56,10 +56,37 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
   verifier accepted. Closes the "not covered" note on 0.55.0's G1 entry. **Not covered:** a
   hand-built record can still carry an id past 256 bytes or overlapping cells, which no limit a real
   document meets reaches; page-less artifacts are checked against the engine's checker only, as the
-  pinned Ethos predates schema 1.1.0; and the Python and Node LangChain adapters build their
-  `ground` summary from node and element counts and read no stderr, so they neither carry G1's or
-  G2's declarations nor match MCP's summary when one fires — they would call an omitted over-long
-  element one with no box.
+  pinned Ethos predates schema 1.1.0. The SDK LangChain adapters' `ground` summaries are fixed below.
+
+- **The LangChain `ground` tool's summary is `ethos-parser mcp`'s own, in both SDKs.** Since 0.49.0,
+  when an element became a block, the Python and Node adapters reported nodes minus elements as
+  "omitted for having none" — wrong on every document whose blocks merge runs: `irs-fw9` said 763
+  where the engine omitted 127, `nist-sp-800-207` 87,472 where it omitted 8,095. They also lacked
+  0.55.0's G1 clause and G2's two, and called an element omitted for its length one with no box.
+  Their byte-for-byte pin never saw any of it, because both of its fixtures were single-run blocks
+  with nothing omitted. The tool now makes one `tools/call` to `ethos-parser mcp` **by path, never
+  inline** — the server holds an inline argument several times over — and returns that reply's text
+  and `structuredContent`, so the words are MCP's by construction, including any clause added later.
+  On a refusal it runs `ethos-parser ground` on the same path, so the error raised is `ground()`'s
+  own. MCP's sentence is now built in one function, `ground_summary`, whose exhaustive destructure of
+  `Projection` fails to compile when a field is added, and a unit test pins the full sentence with
+  every clause firing — the first pin anywhere of G1's wording. New pins in both suites:
+  `untagged-shredded-line` and `stroke-ruled-field-boxes` against MCP, re-sealed records past the
+  string limit on `markdown-two-blocks` and `ruled-table-grid`, a reply carrying U+2028, the refusal
+  raising `ground()`'s error, a shim proving one `mcp` run with a small request, and a scan that the
+  adapters no longer format the sentence; five fail against the old adapters. Node's process
+  machinery moved into a private `src/engine.js` so the tools can reuse it without a fourth export —
+  with `run` taking optional stdin and `ground`'s temp-file handling extracted as
+  `withRepresentationPath` — and three source scans were repointed at it: two would have passed
+  vacuously on `index.js` alone, and the `maxBuffer` check, which had been matching a doc comment
+  rather than the option, would have gone red. `ground()` in both SDKs now passes `--` before the
+  path, so a path beginning with `-` is a path to the CLI as it is to MCP.
+  `ci/sdk-suites.sh` now prints a failing Node suite's log instead of exiting before it. The ground
+  tool's own failures change where they must: a timeout or a stdout ceiling names `mcp`, a refusal
+  costs a second run, a path that is not valid Unicode fails as a JSON-RPC error in Node, and in
+  Python a path whose filesystem bytes are not UTF-8 is refused by name rather than sent as a different
+  file. The tool's output moves for the same input, which is a MINOR on its own; the section is
+  already a MINOR for G2, and no version string moves in this change.
 
 ### Changed
 

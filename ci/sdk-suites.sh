@@ -105,8 +105,13 @@ fi
 #     a guard that read its own subject wrongly and passed forever, which is the defect this whole
 #     block exists to remove. It was measured failing that way before it was measured working.
 node_log=$( mktemp )
-( cd packages/node && node --test ) > "$node_log" 2>&1
-node_status=$?
+# Inside `if`, because this script runs under `set -e`: a bare failing subshell exits the script
+# before its log is printed, so a red suite would fail with nothing to read.
+if ( cd packages/node && node --test ) > "$node_log" 2>&1; then
+  node_status=0
+else
+  node_status=$?
+fi
 cat "$node_log"
 node_skips=$( sed -n 's/.*skipped[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$node_log" | tail -1 )
 rm -f "$node_log"

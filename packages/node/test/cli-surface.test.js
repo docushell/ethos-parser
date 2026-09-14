@@ -39,7 +39,7 @@ import { EngineFailed, EngineNotFound, NotARepresentation, extract, ground } fro
 import { c14nBytes } from "../src/c14n.js";
 
 /** What `import "ethos-parser"` reaches. The langchain subpath is deliberately not here. */
-const DEFAULT_ENTRY_SOURCES = ["src/index.js", "src/c14n.js"];
+const DEFAULT_ENTRY_SOURCES = ["src/index.js", "src/c14n.js", "src/engine.js"];
 
 /** Every source in the package, for the rules that bind regardless of entry point. */
 const ALL_SOURCES = [...DEFAULT_ENTRY_SOURCES, "src/langchain.js"];
@@ -127,8 +127,10 @@ test("stdout larger than one megabyte is not truncated", () => {
   // `spawnSync`'s default `maxBuffer` is 1 MiB and a real document's representation is bigger
   // than that. Silent truncation would arrive as a JSON parse error standing in for a size limit
   // nobody chose, so the option is set and this is the assertion that it is set.
-  const source = readFileSync(join(PACKAGE_ROOT, "src", "index.js"), "utf8");
-  assert.match(source, /maxBuffer:\s*Infinity/);
+  // Matched on the spawn option itself. The pattern this replaced, `maxBuffer: Infinity`, matched
+  // only a doc comment once the option became a bound, and so asserted nothing.
+  const source = readFileSync(join(PACKAGE_ROOT, "src", "engine.js"), "utf8");
+  assert.match(source, /maxBuffer:\s*maxBuffer === 0 \? Infinity : maxBuffer/);
 });
 
 // --- the surface this slice refused ------------------------------------------------------------
@@ -307,8 +309,12 @@ test("no binary anywhere is a named failure", async (t) => {
 test("the engine inherits the environment rather than one this package composed", () => {
   // No `env:` anywhere: handing the engine an environment this package assembled would be one
   // more input to a deterministic parser that nobody declared.
-  const source = readFileSync(join(PACKAGE_ROOT, "src", "index.js"), "utf8");
-  assert.equal(/^\s*env:/m.test(source), false, "a spawn call sets `env:`");
+  for (const file of ALL_SOURCES) {
+    const source = readFileSync(join(PACKAGE_ROOT, file), "utf8");
+    // Wherever the option appears in an object literal — `env: x`, shorthand `env,`, or one line —
+    // and not in a comment, where `env` follows a backtick.
+    assert.equal(/(^|[{,])\s*env\s*[:,}]/m.test(source), false, `a spawn call in ${file} sets \`env\``);
+  }
 });
 
 test("it is the engine that runs", () => {

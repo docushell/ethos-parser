@@ -28,14 +28,20 @@ parser memo §16.7's LangChain row names that split directly. So these tools are
 | ``content`` text | the tool's ``content`` — **counts, and nothing a pipeline would bind to** |
 
 A box in ``content`` is a locator a model can edit and then cite. That is the failure this whole
-version is arranged to prevent, and it is why the summary strings below are copied from
-``ethos-parser-cli/src/mcp.rs`` rather than written afresh: MCP already decided the words, and a second
-adapter with a richer sentence is a second thing to keep honest forever.
+version is arranged to prevent, and it is why no summary here is written afresh: MCP already decided
+the words, and a second adapter with a richer sentence is a second thing to keep honest forever.
+``extract``'s and ``node_get``'s summaries are counts copied from ``ethos-parser-cli/src/mcp.rs`` and
+built from the artifact; ``ground``'s is ``ethos-parser mcp``'s own reply text, because it states
+facts the artifact does not carry.
 
 # It is not a third implementation
 
-Every tool calls :mod:`ethos_parser` — the same functions a shell would reach through the CLI.
-Nothing here spawns `ethos-parser`, and nothing here talks to MCP. If a tool returned bytes the SDK
+``extract`` and ``node_get`` call :mod:`ethos_parser` — the same functions a shell would reach
+through the CLI. ``ground`` asks ``ethos-parser mcp`` for one ``tools/call``, by path and never with
+the object, and takes the summary and the artifact from that one reply. It has to: since v2.2-S7 an
+element is a block of runs, so no count this adapter could compute equals the engine's omission, and
+the schema-limit declarations exist only in the projection. On a refusal it runs ``ethos-parser
+ground`` on the same path, so the error raised is the SDK's own. If a tool returned bytes the SDK
 would not, the tool would be wrong.
 
 # There is no LangGraph adapter, deliberately
@@ -63,8 +69,8 @@ Importing this module without it is a named failure, never a silent skip.
 import json
 import os
 
+from . import EngineError, _parse, _representation_path, _run
 from . import extract as _extract
-from . import ground as _ground
 from . import node_get as _node_get
 
 try:
@@ -192,18 +198,94 @@ def _tool_extract(path):
 
 
 def _tool_ground(representation):
-    artifact = _ground(representation)
-    # `nodes - elements`, which is the question the summary asks: how many nodes did not become
-    # elements. Counting geometry rows instead would re-encode `GeometryPresence::is_groundable`
-    # out here, and a count derived from a different question than the one being asked is a count
-    # that goes wrong the first time a second absence variant appears. `tests/test_langchain.py`
-    # pins this string against the one `ethos-parser mcp` emits, which uses the engine's own
-    # `omission.nodes_omitted`.
-    omitted = _node_count(representation) - len(artifact["elements"])
-    summary = "{} element(s) with a measured box; {} omitted for having none.".format(
-        len(artifact["elements"]), omitted
+    # The summary and the artifact both come from `ethos-parser mcp`'s one reply, so the words are
+    # MCP's by construction — the omission count, and every schema-limit clause, now and later.
+    # `nodes - elements`, which this used to compute, stopped being the omission when an element
+    # became a block, and the limit declarations were never in the artifact to count.
+    with _representation_path(representation) as path:
+        result = _mcp_ground(_mcp_path(path))
+        if result.get("isError") is True:
+            # A refusal. `ethos-parser ground` on the same bytes raises exactly what `ground()`
+            # would — exit status, code and stderr — rather than a sentence reworded here.
+            _run(["ground", "--", path])
+            raise EngineError(
+                "`ethos-parser mcp` refused this representation but `ethos-parser ground` "
+                "projected it: {}".format(_mcp_text(result))
+            )
+    content = result.get("content")
+    artifact = result.get("structuredContent")
+    if not (
+        isinstance(content, list)
+        and len(content) == 1
+        and isinstance(content[0], dict)
+        and isinstance(content[0].get("text"), str)
+        and isinstance(artifact, dict)
+    ):
+        raise EngineError("`ethos-parser mcp` replied to `ground` in a shape this adapter does not know")
+    return content[0]["text"], artifact
+
+
+def _mcp_path(path):
+    """The path as ``ethos-parser mcp`` must receive it to open the file ``ethos-parser ground`` opens.
+
+    The CLI gets a path as the bytes the operating system encodes it to, and the server gets a JSON
+    string and opens its UTF-8 bytes. Those agree only when the encoded bytes are UTF-8, which is not
+    so under a Latin-1 locale. So the string sent is decoded from the bytes the CLI would open, and a
+    path whose bytes are not UTF-8 is refused here by name rather than sent as a different file.
+    """
+    try:
+        return os.fsencode(path).decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise EngineError(
+            "this path's bytes are not UTF-8, so `ethos-parser mcp` cannot be handed it as JSON; "
+            "call `ethos_parser.ground()` for the artifact instead: {}".format(e)
+        ) from e
+
+
+def _mcp_ground(path):
+    """One ``tools/call`` to ``ethos-parser mcp``, by path, and its ``result``.
+
+    No ``initialize``: the server answers a call without one, and each extra reply line would be a
+    copy of nothing. The representation is sent **by path, never inline** — the server holds an
+    inline argument as a parsed request several times over.
+
+    The reply is one line, parsed whole. It is split on nothing: canonical JSON writes U+2028 and
+    U+0085 literally, and a text-mode line split would cut a reply carrying one.
+    """
+    request = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "ground", "arguments": {"representation": path}},
+            }
+        ).encode("ascii")
+        + b"\n"
     )
-    return summary, artifact
+    stdout = _run(["mcp"], stdin=request)
+    if not stdout.endswith(b"\n") or stdout.count(b"\n") != 1:
+        raise EngineError("`ethos-parser mcp` did not reply with exactly one line to one call")
+    envelope = _parse(stdout)
+    if not isinstance(envelope, dict):
+        raise EngineError("`ethos-parser mcp` replied with something that is not an object")
+    if "error" in envelope:
+        error = envelope["error"] or {}
+        raise EngineError(
+            "`ethos-parser mcp` refused the call: {} {}".format(error.get("code"), error.get("message"))
+        )
+    result = envelope.get("result")
+    if envelope.get("id") != 1 or not isinstance(result, dict):
+        raise EngineError("`ethos-parser mcp` replied to a call this adapter did not make")
+    return result
+
+
+def _mcp_text(result):
+    content = result.get("content")
+    if isinstance(content, list) and content and isinstance(content[0], dict):
+        return str(content[0].get("text", ""))
+    return ""
+
 
 
 def _tool_node_get(representation, node_id):
@@ -211,17 +293,3 @@ def _tool_node_get(representation, node_id):
     # The kind, and nothing else. **The id stays in the artifact** — a summary carrying it would
     # be handing the model a handle through the one channel it can rewrite.
     return "1 node, kind `{}`.".format(node["kind"]), node
-
-
-def _node_count(representation):
-    """How many nodes the representation carries, for the omission arithmetic above.
-
-    Accepts what the SDK accepts. A path is read rather than re-projected: `ground` has already
-    run and refused anything malformed, so this only ever counts an artifact the engine wrote.
-    """
-    if isinstance(representation, dict):
-        payload = representation.get("representation")
-    else:
-        with open(os.fspath(representation), "rb") as handle:
-            payload = json.load(handle).get("representation")
-    return len(payload["nodes"])

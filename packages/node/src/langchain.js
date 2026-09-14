@@ -29,15 +29,21 @@
  * | `content` text | the tool's `content` — **counts, and nothing a pipeline would bind to** |
  *
  * A box in `content` is a locator a model can edit and then cite. That is the failure this whole
- * version is arranged to prevent, and it is why the summary strings below are copied from
- * `ethos-parser-cli/src/mcp.rs` rather than written afresh.
+ * version is arranged to prevent, and it is why no summary here is written afresh. `extract`'s and
+ * `node_get`'s are counts copied from `ethos-parser-cli/src/mcp.rs` and built from the artifact;
+ * `ground`'s is `ethos-parser mcp`'s own reply text, because it states facts the artifact does not
+ * carry.
  *
  * # It is not a third implementation
  *
- * Every tool calls `./index.js` — the same functions a shell would reach through the CLI. Nothing
- * here spawns `ethos-parser`, and nothing here talks to MCP. `packages/python/src/ethos_parser/
- * langchain.py` is the contract, exactly as the Python SDK is the contract for `./index.js`; the
- * only differences are the ones the frameworks force.
+ * `extract` and `node_get` call `./index.js` — the same functions a shell would reach through the
+ * CLI. `ground` asks `ethos-parser mcp` for one `tools/call`, by path and never with the object, and
+ * takes the summary and the artifact from that one reply: since v2.2-S7 an element is a block of
+ * runs, so no count this adapter could compute equals the engine's omission, and the schema-limit
+ * declarations exist only in the projection. On a refusal it runs `ethos-parser ground` on the same
+ * path, so the error thrown is the SDK's own. `packages/python/src/ethos_parser/langchain.py` is the
+ * contract, exactly as the Python SDK is the contract for `./index.js`; the only differences are
+ * the ones the frameworks force.
  *
  * # There is no LangGraph adapter, deliberately
  *
@@ -61,9 +67,8 @@
  * runs at module load, so it fails where Python's `ImportError` fails.
  */
 
-import { readFileSync } from "node:fs";
-
-import { extract as sdkExtract, ground as sdkGround, nodeGet as sdkNodeGet } from "./index.js";
+import { EngineError, parse, run, withRepresentationPath } from "./engine.js";
+import { extract as sdkExtract, nodeGet as sdkNodeGet } from "./index.js";
 
 let tool;
 try {
@@ -163,18 +168,38 @@ const IMPLEMENTATIONS = {
   },
 
   ground({ representation }) {
-    const artifact = sdkGround(representation);
-    // `nodes - elements`, which is the question the summary asks: how many nodes did not become
-    // elements. Counting geometry rows instead would re-encode `GeometryPresence::is_groundable`
-    // out here, and a count derived from a different question than the one being asked is a count
-    // that goes wrong the first time a second absence variant appears. `test/langchain.test.js`
-    // pins this string against the one `ethos-parser mcp` emits, which uses the engine's own
-    // `omission.nodes_omitted`.
-    const omitted = nodeCount(representation) - artifact.elements.length;
-    return [
-      `${artifact.elements.length} element(s) with a measured box; ${omitted} omitted for having none.`,
-      artifact,
-    ];
+    // The summary and the artifact both come from `ethos-parser mcp`'s one reply, so the words are
+    // MCP's by construction — the omission count, and every schema-limit clause, now and later.
+    // `nodes - elements`, which this used to compute, stopped being the omission when an element
+    // became a block, and the limit declarations were never in the artifact to count.
+    const result = withRepresentationPath(representation, (path) => {
+      const reply = mcpGround(path);
+      if (reply.isError === true) {
+        // A refusal. `ethos-parser ground` on the same bytes throws exactly what `ground()` would —
+        // exit status, code and stderr — rather than a sentence reworded here.
+        run(["ground", "--", path]);
+        throw new EngineError(
+          "`ethos-parser mcp` refused this representation but `ethos-parser ground` projected it: " +
+            mcpText(reply),
+        );
+      }
+      return reply;
+    });
+    const content = result.content;
+    const artifact = result.structuredContent;
+    if (
+      !Array.isArray(content) ||
+      content.length !== 1 ||
+      content[0] === null ||
+      typeof content[0] !== "object" ||
+      typeof content[0].text !== "string" ||
+      artifact === null ||
+      typeof artifact !== "object" ||
+      Array.isArray(artifact)
+    ) {
+      throw new EngineError("`ethos-parser mcp` replied to `ground` in a shape this adapter does not know");
+    }
+    return [content[0].text, artifact];
   },
 
   node_get({ representation, node_id: nodeId }) {
@@ -204,15 +229,45 @@ export function tools() {
 }
 
 /**
- * How many nodes the representation carries, for the omission arithmetic above.
+ * One `tools/call` to `ethos-parser mcp`, by path, and its `result`.
  *
- * Accepts what the SDK accepts. A path is read rather than re-projected: `ground` has already run
- * and refused anything malformed, so this only ever counts an artifact the engine wrote.
+ * No `initialize`: the server answers a call without one, and each extra reply line would be a copy
+ * of nothing. The representation is sent **by path, never inline** — the server holds an inline
+ * argument as a parsed request several times over. The reply is one line, parsed whole and split
+ * on nothing.
  */
-function nodeCount(representation) {
-  const payload =
-    typeof representation === "string"
-      ? JSON.parse(readFileSync(representation, "utf8")).representation
-      : representation.representation;
-  return payload.nodes.length;
+function mcpGround(path) {
+  const request = Buffer.from(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "ground", arguments: { representation: path } },
+    }) + "\n",
+    "utf8",
+  );
+  const stdout = run(["mcp"], request);
+  if (stdout.length === 0 || stdout[stdout.length - 1] !== 0x0a || stdout.indexOf(0x0a) !== stdout.length - 1) {
+    throw new EngineError("`ethos-parser mcp` did not reply with exactly one line to one call");
+  }
+  const envelope = parse(stdout);
+  if (envelope === null || typeof envelope !== "object" || Array.isArray(envelope)) {
+    throw new EngineError("`ethos-parser mcp` replied with something that is not an object");
+  }
+  if ("error" in envelope) {
+    const error = envelope.error ?? {};
+    throw new EngineError(`\`ethos-parser mcp\` refused the call: ${error.code} ${error.message}`);
+  }
+  const result = envelope.result;
+  if (envelope.id !== 1 || result === null || typeof result !== "object" || Array.isArray(result)) {
+    throw new EngineError("`ethos-parser mcp` replied to a call this adapter did not make");
+  }
+  return result;
+}
+
+function mcpText(result) {
+  const content = result.content;
+  return Array.isArray(content) && content[0] && typeof content[0] === "object"
+    ? String(content[0].text ?? "")
+    : "";
 }

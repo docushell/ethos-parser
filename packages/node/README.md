@@ -82,12 +82,17 @@ only counts in `.content`:
 | Tool | `content` | `artifact` |
 | --- | --- | --- |
 | `extract` | `{n} page(s), {m} node(s). Locators are in the artifact.` | `DocumentRepresentation v0` |
-| `ground` | `{n} element(s) with a measured box; {m} omitted for having none.` | `ethos.grounding.v1` |
+| `ground` | `ethos-parser mcp`'s own reply text: `{n} element(s) with a measured box; {m} omitted for having none.`, then a clause for each thing the schema's limits took — spans withheld, elements omitted, tables withheld | `ethos.grounding.v1` |
 | `node_get` | ``1 node, kind `{kind}`.`` | the node record |
 
 A box in `content` is a locator the model can edit and then cite, which is the whole hazard. The
-summaries and argument schemas are MCP's own, verbatim — including `node_id` rather than `nodeId`,
-because the tool argument is the wire and one wire has one name.
+argument schemas are MCP's own, verbatim — including `node_id` rather than `nodeId`, because the tool
+argument is the wire and one wire has one name — and so are the summaries' words: `ground`'s is the
+text `ethos-parser mcp` itself replied with, since it states facts the artifact does not carry, and
+`extract`'s is compared byte for byte in a test. `node_get` spells the kind the way the artifact
+does (`text_run`). The `ground` tool starts `ethos-parser mcp` and sends it a path, never the
+object; if the record is refused it runs `ethos-parser ground` on the same path, so the error thrown
+is `ground()`'s own.
 
 Importing `ethos-parser/langchain` without the peer fails with the install command in the message.
 There is no `verify` tool and no LangGraph adapter.

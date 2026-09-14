@@ -49,8 +49,10 @@ forever. ``verify`` is not here for a stronger reason — it relays the pinned E
 function named ``verify`` would look like this package had an opinion about whether a claim is
 supported. It does not, and neither does the engine.
 
-There is no MCP client here either. MCP is a process; this is a library. They are two callers of
-the same binary, not layers.
+The three functions here are not an MCP client. MCP is a process; this is a library, and they are
+two callers of the same binary. The ``ground`` tool in :mod:`ethos_parser.langchain` is the one
+exception: it makes one ``tools/call`` to ``ethos-parser mcp``, because the words it returns are the
+server's.
 
 # Locating the binary
 
@@ -61,6 +63,7 @@ reason is the same: resolving to a binary nobody chose means relaying bytes from
 chose. Nothing here downloads or vendors one.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -236,30 +239,47 @@ def ground(representation):
     ``verify_fingerprint`` every other subcommand runs, rather than by a second check here that
     could drift from it.
 
-    Nodes with no measurable ink box are omitted from the projection and counted by the engine
-    on stderr; the representation this came from is where that declaration lives, which is the
-    CLI's own arrangement and not a drop introduced here.
+    On success the engine may write up to four declarations to stderr, and this function returns
+    the artifact and discards them: nodes omitted for having no measurable ink box, which the
+    representation's ``geometry-absent-not-groundable`` limitation also carries; spans withheld
+    past the schema's span cap, which the artifact shows as ``capabilities.spans`` false without
+    the count; elements omitted for a string past the schema's byte limit, which leaves no trace in
+    the artifact or the representation; and tables withheld past the schema's limits, shown as
+    ``capabilities.tables`` false without the count. The ``ground`` tool in
+    :mod:`ethos_parser.langchain` carries ``ethos-parser mcp``'s summary of all four.
 
     :param representation: the artifact object, or a path to it.
     :returns: the parsed ``ethos.grounding.v1`` artifact.
     :raises EngineFailed: the representation was refused, fingerprint included.
     """
-    if isinstance(representation, dict):
-        # Written as canonical bytes — this package's one serializer, the same one the
-        # fingerprint is computed over — so what reaches the engine is what the engine printed.
-        try:
-            body = c14n_bytes(representation)
-        except CanonicalizationError as e:
-            raise NotARepresentation(
-                "this object will not canonicalize, so it is not the artifact `extract` "
-                "printed: {}".format(e)
-            ) from e
-        with tempfile.TemporaryDirectory(prefix="ethos-parser-") as directory:
-            path = os.path.join(directory, "representation.json")
-            with open(path, "wb") as handle:
-                handle.write(body)
-            return _parse(_run(["ground", path]))
-    return _parse(_run(["ground", os.fspath(representation)]))
+    with _representation_path(representation) as path:
+        # `--` so a path beginning with `-` is a path, as it is to `ethos-parser mcp`, and never a flag.
+        return _parse(_run(["ground", "--", path]))
+
+
+@contextlib.contextmanager
+def _representation_path(representation):
+    """A path to the representation's bytes, for as long as the ``with`` block runs.
+
+    A path is used as given. An object is written as canonical bytes — this package's one
+    serializer, the same one the fingerprint is computed over — so what reaches the engine is what
+    the engine printed, and removed afterwards.
+    """
+    if not isinstance(representation, dict):
+        yield os.fspath(representation)
+        return
+    try:
+        body = c14n_bytes(representation)
+    except CanonicalizationError as e:
+        raise NotARepresentation(
+            "this object will not canonicalize, so it is not the artifact `extract` "
+            "printed: {}".format(e)
+        ) from e
+    with tempfile.TemporaryDirectory(prefix="ethos-parser-") as directory:
+        path = os.path.join(directory, "representation.json")
+        with open(path, "wb") as handle:
+            handle.write(body)
+        yield path
 
 
 def node_get(representation, node_id):
@@ -400,8 +420,12 @@ def _timeout_seconds():
     return None if value == 0 else value
 
 
-def _run(args):
-    """Run a subcommand and return its stdout. A non-zero exit is raised, never swallowed."""
+def _run(args, stdin=None):
+    """Run a subcommand and return its stdout. A non-zero exit is raised, never swallowed.
+
+    ``stdin`` is bytes to write to the engine, for the one caller that speaks to ``ethos-parser
+    mcp``; every other call passes nothing, as before.
+    """
     binary = _binary()
     timeout = _timeout_seconds()
     try:
@@ -413,6 +437,7 @@ def _run(args):
         # and forgetting it leaves the engine running after the caller has given up.
         completed = subprocess.run(
             [binary] + list(args),
+            input=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
