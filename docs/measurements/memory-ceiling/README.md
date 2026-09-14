@@ -567,6 +567,14 @@ once, raw byte edits, 13 report codes in all — and exit code, stdout and stder
 parse as far as the fault — before the old path, so 161r1 with an unknown key at its root or junk after it peaks where
 it did (540 MiB) and takes ~75 ms longer (0.31 → 0.38 s).
 
+**Then the old path became Ethos's walk** (branch `fix/grounding-check-ethos-drift`), and that moved
+the invalid side again. The tree is now built only when the scan passed and the typed parse did not,
+because only then can it matter; an artifact the scan refuses is answered by a second pass that
+builds nothing. Against the build above, same method: valid artifacts within noise (+1-4% wall,
+identical memory); 53Ar5 — refused for its 1.6 million spans — 489.4 → **153.9 MiB**, 0.56 → 0.45 s;
+161r1 with junk after it 540.3 → **50.2 MiB**, 0.34 → 0.24 s; 161r1 with an unknown key at its root
+the same 540 MiB and 0.37 → 0.46 s, which is Ethos's sorted, duplicate-checked tree being built.
+
 ### Found on the way: `ground` emits an artifact its own checker rejects
 
 On the largest gate document, `ground` writes a grounding artifact that `ethos.grounding.v1` rejects

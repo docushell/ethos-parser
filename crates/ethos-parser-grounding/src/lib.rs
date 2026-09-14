@@ -345,7 +345,7 @@ pub struct GroundingSource {
     pub elements: Vec<Element>,
     /// Spans. **Present iff `capabilities.spans`** — a rule the consuming verifier enforces, so
     /// an empty array and an absent key mean different things and only one of them is legal.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spans: Option<Vec<Span>>,
     /// Tables. **Absent iff `!capabilities.tables`**. An empty array here is not "no tables
     /// found", it is a claim to have looked — and since v1-S2 that claim covers both the ruled
@@ -356,7 +356,7 @@ pub struct GroundingSource {
     /// Ethos's, so the projection stays a move of cells, boxes and text. The rule id lives on the
     /// representation's `TableRecord::detection_rule`, which is where a consumer that needs it
     /// looks.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tables: Option<Vec<Table>>,
 }
 

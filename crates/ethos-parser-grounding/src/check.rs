@@ -411,131 +411,176 @@ fn reject_unknown_fields(value: &serde_json::Value) -> Result<(), (String, Strin
     Ok(())
 }
 
-/// Nesting at or past this depth is `limit_exceeded`, in [`strict_value`] and [`strictly_clean`].
+/// Nesting at or past this depth is `limit_exceeded`.
 const MAX_DEPTH: usize = 64;
 
-/// The value-level refusals Ethos makes **during deserialization**, before any field is typed.
+/// Ethos's `StrictValueSeed`, rule for rule, refusing **in the order the bytes arrive**.
 ///
-/// Its `StrictValueSeed` rejects nulls and floats outright, and caps integer magnitude, string
-/// **bytes** and nesting depth — then `parse_grounding_json` maps whatever the deserializer said
-/// onto a code: anything mentioning "limit exceeded" becomes `limit_exceeded`, everything else
-/// becomes `invalid_json`, both at path `/`.
+/// Nulls and floats are refused outright; integer magnitude (as `unsigned_abs`, so `i64::MIN` is
+/// over it), string bytes, nesting depth and array length are capped; a key repeated within one
+/// object is refused. The messages matter: [`parse_as_ethos`] classifies them exactly as
+/// `parse_grounding_json` does — "duplicate object key", then anything saying "limit exceeded",
+/// then everything else as invalid JSON.
 ///
-/// Doing this as a walk over the parsed value rather than inside a deserializer reaches the same
-/// verdicts by a different route. **One ordering difference survives and is not worth chasing:**
-/// Ethos's deserializer is streaming, so on an input with two different faults it reports
-/// whichever appears first in the bytes, while this walk reports whichever rule comes first here.
-/// Both call such an input invalid, with an error, and the four fields the oracle compares are
-/// identical; only the code can differ, and only when an artifact is broken in two ways at once.
-fn strict_value(value: &serde_json::Value, depth: usize) -> Result<(), (String, String)> {
-    match value {
-        serde_json::Value::Null => Err(("invalid_json".to_string(), "/".to_string())),
-        serde_json::Value::Number(n) => {
-            if !n.is_i64() && !n.is_u64() {
-                // A float. Ethos refuses these at the value level, not as a typed-field mismatch.
-                return Err(("invalid_json".to_string(), "/".to_string()));
-            }
-            let magnitude = n.as_i64().map(i64::abs).unwrap_or(i64::MAX);
-            if magnitude > limits::MAX_SAFE_INT
-                || n.as_u64().is_some_and(|v| v > limits::MAX_SAFE_INT as u64)
-            {
-                return Err(("limit_exceeded".to_string(), "/".to_string()));
-            }
-            Ok(())
-        }
-        serde_json::Value::String(s) => {
-            if s.len() > limits::MAX_STRING_BYTES {
-                return Err(("limit_exceeded".to_string(), "/".to_string()));
-            }
-            Ok(())
-        }
-        serde_json::Value::Array(items) => {
-            if depth >= MAX_DEPTH {
-                return Err(("limit_exceeded".to_string(), "/".to_string()));
-            }
-            for item in items {
-                strict_value(item, depth + 1)?;
-            }
-            Ok(())
-        }
-        serde_json::Value::Object(map) => {
-            if depth >= MAX_DEPTH {
-                return Err(("limit_exceeded".to_string(), "/".to_string()));
-            }
-            for v in map.values() {
-                strict_value(v, depth + 1)?;
-            }
-            Ok(())
-        }
-        serde_json::Value::Bool(_) => Ok(()),
+/// Building the value is separate from refusing, so each [`Pass`] does only what its caller needs.
+#[derive(Clone, Copy)]
+struct Strict {
+    depth: usize,
+    pass: Pass,
+}
+
+/// What a [`Strict`] walk does beyond applying the value rules.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    /// Nothing: no value, and repeated keys go unlooked-for. [`parse`] says why that is enough.
+    Scan,
+    /// Repeated keys too, so its first error is the seed's first error, found without building.
+    Refusals,
+    /// Everything the seed does: refuses as [`Pass::Refusals`] does, and builds the value with each
+    /// object's members **in sorted key order** — the order Ethos's `BTreeMap`-backed map iterates
+    /// in, whether or not this build unifies serde_json's `preserve_order` — so
+    /// `reject_unknown_fields` names the same key and `from_value` meets fields in the same order.
+    Build,
+}
+
+impl<'de> serde::de::DeserializeSeed<'de> for Strict {
+    type Value = Option<serde_json::Value>;
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+        d.deserialize_any(self)
     }
 }
 
-/// Whether [`strict_value`] would pass these bytes' parsed value, decided while streaming them.
-///
-/// Nothing is built: the `serde_json::Value` of an artifact was `grounding-check`'s peak, at up to
-/// 13.5 times the artifact's bytes. The rules are `strict_value`'s, applied to each value as it is
-/// read — the numbers by calling it. `false` covers malformed JSON too.
-fn strictly_clean(bytes: &[u8]) -> bool {
-    use serde::de::{DeserializeSeed, Error as _, IgnoredAny, MapAccess, SeqAccess, Visitor};
+impl<'de> serde::de::Visitor<'de> for Strict {
+    type Value = Option<serde_json::Value>;
 
-    /// A value at this depth. Null and floats fall to `Visitor`'s defaults, which refuse them.
-    struct Strict(usize);
-
-    impl<'de> DeserializeSeed<'de> for Strict {
-        type Value = ();
-        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
-            d.deserialize_any(self)
-        }
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("strict JSON value")
     }
-
-    impl<'de> Visitor<'de> for Strict {
-        type Value = ();
-        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("a value strict_value accepts")
-        }
-        fn visit_bool<E>(self, _: bool) -> Result<(), E> {
-            Ok(())
-        }
-        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<(), E> {
-            strict_value(&v.into(), self.0).map_err(|_| E::custom("refused"))
-        }
-        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<(), E> {
-            strict_value(&v.into(), self.0).map_err(|_| E::custom("refused"))
-        }
-        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<(), E> {
-            if v.len() > limits::MAX_STRING_BYTES {
-                return Err(E::custom("refused"));
-            }
-            Ok(())
-        }
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-            if self.0 >= MAX_DEPTH {
-                return Err(A::Error::custom("refused"));
-            }
-            while seq.next_element_seed(Strict(self.0 + 1))?.is_some() {}
-            Ok(())
-        }
-        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-            if self.0 >= MAX_DEPTH {
-                return Err(A::Error::custom("refused"));
-            }
-            // Keys are not values: `strict_value` never looks at them either.
-            while map.next_key::<IgnoredAny>()?.is_some() {
-                map.next_value_seed(Strict(self.0 + 1))?;
-            }
-            Ok(())
-        }
+    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+        Ok(self.built(|| v.into()))
     }
-
-    let mut de = serde_json::Deserializer::from_slice(bytes);
-    Strict(0)
-        .deserialize(&mut de)
-        .and_then(|()| de.end())
-        .is_ok()
+    fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        if v.unsigned_abs() > limits::MAX_SAFE_INT as u64 {
+            return Err(E::custom("integer limit exceeded"));
+        }
+        Ok(self.built(|| v.into()))
+    }
+    fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        if v > limits::MAX_SAFE_INT as u64 {
+            return Err(E::custom("integer limit exceeded"));
+        }
+        Ok(self.built(|| v.into()))
+    }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Self::Value, E> {
+        Err(E::custom("floating point values are not allowed"))
+    }
+    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        if v.len() > limits::MAX_STRING_BYTES {
+            return Err(E::custom("string limit exceeded"));
+        }
+        Ok(self.built(|| v.into()))
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+        Err(E::custom("null values are not allowed"))
+    }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        use serde::de::Error as _;
+        let inner = self.inner::<A::Error>()?;
+        let (mut len, mut out) = (0, Vec::new());
+        // Counted after each item is read, as Ethos does: a fault inside the item past the limit
+        // is reported before the limit is.
+        while let Some(item) = seq.next_element_seed(inner)? {
+            if len >= limits::MAX_ELEMENTS {
+                return Err(A::Error::custom("array limit exceeded"));
+            }
+            len += 1;
+            out.extend(item);
+        }
+        Ok(self.built(|| serde_json::Value::Array(out)))
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        use serde::de::Error as _;
+        let inner = self.inner::<A::Error>()?;
+        if self.pass == Pass::Scan {
+            while map.next_key::<serde::de::IgnoredAny>()?.is_some() {
+                map.next_value_seed(inner)?;
+            }
+            return Ok(None);
+        }
+        let mut keys = std::collections::HashSet::new();
+        let mut members = Vec::new();
+        while let Some(key) = map.next_key_seed(Key)? {
+            if !keys.insert(key.clone()) {
+                return Err(A::Error::custom("duplicate object key"));
+            }
+            if let Some(value) = map.next_value_seed(inner)? {
+                members.push((key.into_owned(), value));
+            }
+        }
+        Ok(self.built(|| {
+            members.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+            serde_json::Value::Object(members.into_iter().collect())
+        }))
+    }
 }
 
-/// Parse, with Ethos's lexical refusals.
+impl Strict {
+    /// The seed for a container's members, or the depth refusal Ethos makes on entering it.
+    fn inner<E: serde::de::Error>(self) -> Result<Self, E> {
+        if self.depth >= MAX_DEPTH {
+            return Err(E::custom("depth limit exceeded"));
+        }
+        Ok(Self {
+            depth: self.depth + 1,
+            ..self
+        })
+    }
+
+    fn built(self, value: impl FnOnce() -> serde_json::Value) -> Option<serde_json::Value> {
+        (self.pass == Pass::Build).then(value)
+    }
+
+    /// Walk all of `bytes`, then require that nothing follows the value.
+    fn walk(self, bytes: &[u8]) -> Result<Option<serde_json::Value>, WalkError> {
+        use serde::de::DeserializeSeed as _;
+        let mut de = serde_json::Deserializer::from_slice(bytes);
+        let value = self.deserialize(&mut de).map_err(WalkError::Value)?;
+        de.end().map_err(WalkError::Trailing)?;
+        Ok(value)
+    }
+}
+
+/// Where a [`Strict::walk`] stopped: inside the value, or after it.
+enum WalkError {
+    Value(serde_json::Error),
+    Trailing(serde_json::Error),
+}
+
+/// An object key, borrowed from the input unless it has escapes, so looking for a repeated one
+/// allocates only the keys a build keeps.
+struct Key;
+
+impl<'de> serde::de::DeserializeSeed<'de> for Key {
+    type Value = std::borrow::Cow<'de, str>;
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+        d.deserialize_str(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for Key {
+    type Value = std::borrow::Cow<'de, str>;
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("an object key")
+    }
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E> {
+        Ok(v.into())
+    }
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+        Ok(v.to_owned().into())
+    }
+}
+
+/// Parse, with Ethos's lexical refusals: `parse_grounding_json` up to, not including, `validate`.
 fn parse(bytes: &[u8]) -> Result<GroundingSource, Box<ValidationReport>> {
     if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
         return Err(Box::new(ValidationReport::invalid(
@@ -545,74 +590,75 @@ fn parse(bytes: &[u8]) -> Result<GroundingSource, Box<ValidationReport>> {
         )));
     }
 
-    // Every artifact that parses takes this route, and builds no `Value`. It accepts exactly what
-    // the checks below accept: a clean scan leaves `strict_value` nothing to refuse, and a typed
-    // parse that succeeds leaves `reject_unknown_fields` nothing to find, because every type it
-    // walks is `deny_unknown_fields` with the keys it allows. Anything else goes below unchanged,
-    // so its report is the one it always was.
-    if strictly_clean(bytes) {
+    // Every artifact that parses takes this route, and builds no `Value` — which was
+    // `grounding-check`'s peak, at up to 13.5 times the artifact's bytes. It accepts exactly what
+    // `parse_as_ethos` accepts. The scan applies every rule of the seed but one, repeated keys, and
+    // a typed parse that succeeds has none: every object it reads is a derived struct, which
+    // refuses a repeated field and, being `deny_unknown_fields`, any other. For the same reason it
+    // leaves `reject_unknown_fields` nothing to find, since every type that walk visits allows
+    // exactly its keys. And the typed parse accepts the bytes exactly when it accepts the value the
+    // seed would build.
+    let scan = Strict {
+        depth: 0,
+        pass: Pass::Scan,
+    };
+    let scanned = scan.walk(bytes).is_ok();
+    if scanned {
         if let Ok(artifact) = serde_json::from_slice::<GroundingSource>(bytes) {
             return Ok(artifact);
         }
     }
+    // A scan that refused found a fault the seed finds too, so Ethos's answer is a refusal, and
+    // `Pass::Refusals` names it without building. A scan that passed leaves the seed only a repeated
+    // key to refuse, so the one pass that builds looks for it on the way.
+    parse_as_ethos(bytes, if scanned { Pass::Build } else { Pass::Refusals })
+}
 
-    // Value-level refusals first, then unknown fields with their paths, then the typed parse.
-    // The order is Ethos's, and it decides the code an artifact with more than one fault gets.
-    match serde_json::from_slice::<serde_json::Value>(bytes) {
-        Ok(value) => {
-            if let Err((code, path)) = strict_value(&value, 0) {
-                return Err(Box::new(ValidationReport::invalid(
-                    &code,
-                    &path,
-                    "value refused before typing: null, float, or a limit",
-                )));
-            }
-            if let Err((code, path)) = reject_unknown_fields(&value) {
-                return Err(Box::new(ValidationReport::invalid(
-                    &code,
-                    &path,
-                    "object carries a field outside the contract",
-                )));
-            }
-        }
-        Err(e) => {
+/// `parse_grounding_json`'s steps after the BOM, in its order and with its classification.
+///
+/// With [`Pass::Build`] this is Ethos's walk exactly. With [`Pass::Refusals`] it refuses without
+/// building, which reaches the same answer — every refusal is decided by the bytes read so far,
+/// never by what has been built — and keeps an artifact refused for a limit, such as more than a
+/// million spans, from costing a value of everything before the limit. Should that pass refuse
+/// nothing, the value is built after all.
+fn parse_as_ethos(bytes: &[u8], pass: Pass) -> Result<GroundingSource, Box<ValidationReport>> {
+    let invalid = |code: &str, path: &str, message: &str| {
+        Box::new(ValidationReport::invalid(code, path, message))
+    };
+
+    let value = match (Strict { depth: 0, pass }).walk(bytes) {
+        Ok(Some(value)) => value,
+        Ok(None) => return parse_as_ethos(bytes, Pass::Build),
+        Err(WalkError::Value(e)) => {
             let text = e.to_string();
-            let code = if text.contains("duplicate") {
+            let code = if text.contains("duplicate object key") {
                 "duplicate_key"
+            } else if text.contains("limit exceeded") {
+                "limit_exceeded"
             } else {
                 "invalid_json"
             };
-            return Err(Box::new(ValidationReport::invalid(code, "/", &text)));
+            return Err(invalid(code, "/", &text));
         }
+        Err(WalkError::Trailing(e)) => return Err(invalid("invalid_json", "/", &e.to_string())),
+    };
+    if let Err((code, path)) = reject_unknown_fields(&value) {
+        return Err(invalid(
+            &code,
+            &path,
+            "object carries a field outside the contract",
+        ));
     }
-
-    match serde_json::from_slice::<GroundingSource>(bytes) {
-        Ok(a) => Ok(a),
-        Err(e) => {
-            let text = e.to_string();
-            // serde's derived impls reject a repeated struct field and an unrecognised one
-            // (every type here is `deny_unknown_fields`), so the two codes Ethos reports for
-            // those cases are reachable from the same parse rather than needing a second pass.
-            // Matched with the backtick serde always puts around the offending NAME. Without
-            // it, a document whose *value* is the string "duplicate field" steers its own error
-            // code — the input choosing how it is reported, which is not a classification.
-            let (code, path) = if text.contains("duplicate field `") {
-                ("duplicate_key", "/")
-            } else if text.contains("unknown field `") {
-                ("unknown_field", "/")
-            } else if text.starts_with("expected value")
-                || text.contains("EOF")
-                || text.contains("invalid unicode")
-                || text.contains("trailing")
-            {
-                ("invalid_json", "/")
-            } else {
-                // Wrong type, missing required field, float where an integer belongs.
-                ("invalid_field", "/")
-            };
-            Err(Box::new(ValidationReport::invalid(code, path, &text)))
-        }
-    }
+    // Ethos's two-way rule, verbatim, including that the text it reads can quote the input.
+    serde_json::from_value::<GroundingSource>(value).map_err(|e| {
+        let text = e.to_string();
+        let code = if text.contains("unknown field") {
+            "unknown_field"
+        } else {
+            "invalid_field"
+        };
+        invalid(code, "/", &text)
+    })
 }
 
 /// Ethos's `validate`, rule for rule and **in its order**.
@@ -1353,10 +1399,122 @@ mod tests {
         );
     }
 
+    /// **Ethos's answer, in each of the ways this checker used to give a different one.** Every
+    /// expectation was read from `ethos grounding check` v0.6.0 on these exact bytes, and 10 of these
+    /// 15 differed before the checker ran Ethos's seed: stream order decides between two faults, the
+    /// classification reads the error text as Ethos does, keys are walked in sorted order, and an
+    /// array root's absent `spans` and `tables` default as Ethos's do.
+    #[test]
+    fn parsing_answers_as_ethos_does() {
+        let base = String::from_utf8(valid_bytes()).unwrap();
+        let edit = |from: &str, to: &str| {
+            assert!(base.contains(from), "{from}");
+            base.replacen(from, to, 1)
+        };
+        let root = |members: &str| format!("{{{members}{}", &base[1..]);
+        let deep = format!("{}{}", "[".repeat(130), "]".repeat(130));
+        let items = |n: usize, last: &str| format!("[{}{last}]", "0,".repeat(n));
+        let sha = format!("sha256:{}", sha256_hex_bytes(b"%PDF-1.7 fake"));
+        let array_root = |spans: bool| {
+            format!(
+                r#"["ethos.grounding.v1","1.0.0",["application/pdf","{sha}"],["n","v"],[{spans},false,false],["centipoint","top-left"],[],[]]"#
+            )
+        };
+        /// (label, input, the code and path Ethos reports, or `None` for valid)
+        type Case = (&'static str, String, Option<(&'static str, &'static str)>);
+        let cases: Vec<Case> = vec![
+            (
+                "an integer at i64::MIN",
+                edit(r#""width":30000"#, r#""width":-9223372036854775808"#),
+                Some(("limit_exceeded", "/")),
+            ),
+            (
+                "an unknown key, repeated",
+                root(r#""zzz":1,"zzz":1,"#),
+                Some(("duplicate_key", "/")),
+            ),
+            (
+                "a null before its key repeats",
+                edit(r#""kind":"text_run""#, r#""kind":"text_run","text":null"#),
+                Some(("invalid_json", "/")),
+            ),
+            (
+                "two unknown keys, out of order",
+                root(r#""zzz":1,"aaa":1,"#),
+                Some(("unknown_field", "/aaa")),
+            ),
+            (
+                "nesting past serde_json's own limit",
+                root(&format!(r#""zzz":{deep},"#)),
+                Some(("limit_exceeded", "/")),
+            ),
+            (
+                "a null, then that nesting",
+                root(&format!(r#""zzz":[null,{deep}],"#)),
+                Some(("invalid_json", "/")),
+            ),
+            (
+                "a bbox with a fifth item",
+                edit("[10,10,100,100]", "[10,10,100,100,1]"),
+                Some(("invalid_field", "/")),
+            ),
+            (
+                "a type error quoting \"unknown field\"",
+                edit(r#""index":1"#, r#""index":"unknown field""#),
+                Some(("unknown_field", "/")),
+            ),
+            (
+                "a type error quoting \"EOF\"",
+                edit(r#""index":1"#, r#""index":"EOF""#),
+                Some(("invalid_field", "/")),
+            ),
+            (
+                "a million and one items",
+                root(&format!(r#""zzz":{},"#, items(1_000_000, "0"))),
+                Some(("limit_exceeded", "/")),
+            ),
+            (
+                "a million items",
+                root(&format!(r#""zzz":{},"#, items(999_999, "0"))),
+                Some(("unknown_field", "/zzz")),
+            ),
+            (
+                "a null as the item past a million",
+                root(&format!(r#""zzz":{},"#, items(1_000_000, "null"))),
+                Some(("invalid_json", "/")),
+            ),
+            (
+                "an array root claiming absent spans",
+                array_root(true),
+                Some(("invalid_capabilities", "/capabilities")),
+            ),
+            ("an array root claiming nothing", array_root(false), None),
+            (
+                "an unknown key, then a float",
+                edit(r#""element":"e1""#, r#""zzz":1,"element":"e1""#).replacen(
+                    r#""width":30000"#,
+                    r#""width":0.5"#,
+                    1,
+                ),
+                Some(("invalid_json", "/")),
+            ),
+        ];
+        for (label, input, expected) in cases {
+            let r = grounding_check(input.as_bytes(), None).unwrap();
+            let got = r.error.as_ref().map(|e| (e.code.as_str(), e.path.as_str()));
+            assert_eq!(got, expected, "{label}");
+            assert_eq!(
+                r.structure == Structure::Valid,
+                expected.is_none(),
+                "{label}"
+            );
+        }
+    }
+
     #[test]
     fn a_value_the_typed_parse_accepts_is_still_refused_before_typing() {
-        // Each of these types cleanly, so only `strictly_clean` stands between it and the route that
-        // skips `strict_value`.
+        // Each of these types cleanly, so only the scan stands between it and the route that skips
+        // the seed.
         type Case = (
             &'static str,
             &'static str,
