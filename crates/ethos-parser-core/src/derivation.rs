@@ -167,16 +167,31 @@ pub enum GeometryAbsence {
     ///
     /// **Nothing is clamped and nothing is dropped.** Clamping would fabricate a coordinate the
     /// document does not contain (Workbench rule 3), and dropping the run would be a silent
-    /// erasure. The run stays in the artifact with its text, its `origin`, its region and its
-    /// [`crate::TextFinding::OffPage`] — which the engine already raised for exactly this content,
-    /// against the visible box, before deciding to refuse the document over it. What is absent is
-    /// the box, and this says why.
+    /// erasure. The run stays in the artifact with its text, its `origin` and its region, and with
+    /// its [`crate::TextFinding::OffPage`] where its origin is off the visible page too — which the
+    /// engine already raised for exactly that content, against the visible box, before deciding to
+    /// refuse the document over it. That finding tests the origin alone, so a run that starts on
+    /// the page and whose box runs past its edge carries none. What is absent is the box, and this
+    /// says why.
     ///
     /// Not a declarable limitation and not groundable, on the same footing as
     /// [`Self::NotReportedByStructureTree`]: a run whose box lies off the page cannot enter an
     /// `ethos.grounding.v1` projection, and `off-page-text` in the assurance block is where a
     /// consumer reading a summary learns how much of the document this reached.
     MeasuredOffPage,
+    /// The reader measured the run, and its baseline runs along neither axis of the declared
+    /// coordinate system, so no `[x0, y0, x1, y1]` equals the rectangle its pen extent and font
+    /// envelope cover (docs/22 §9 items 1 and 2).
+    ///
+    /// That rectangle is itself turned, and its bounding box would claim page area the text does
+    /// not cover — the refusal an image placed at an angle already gets in the PDF reader. A shear
+    /// of the glyphs does not trigger it: a fake italic's baseline is still horizontal, and it
+    /// keeps its box.
+    ///
+    /// **It is not a reader failure**, so it is neither a declarable limitation nor groundable,
+    /// on the footing of [`Self::MeasuredOffPage`]: the reader read the run and its geometry
+    /// perfectly well, and what is missing is a spelling for it on the wire.
+    NotAxisAligned,
 }
 
 /// Geometry that was measured, or a typed reason it was not.
@@ -377,6 +392,11 @@ mod tests {
              not a gap in what this reader could measure — counting it would inflate the \
              ink-measurement limitation exactly as NoInkToMeasure would have"
         );
+        assert!(
+            !GeometryPresence::Absent(GeometryAbsence::NotAxisAligned).is_declarable_limitation(),
+            "a turned run was measured; the wire has no turned rectangle, and that is not a \
+             reader failure"
+        );
         let r = QRect::new(0, 0, 10, 10).unwrap();
         assert!(!GeometryPresence::Measured(r).is_declarable_limitation());
     }
@@ -390,6 +410,7 @@ mod tests {
             GeometryAbsence::NotApplicableToKind,
             GeometryAbsence::CapabilityNotEnabled,
             GeometryAbsence::NotReportedByStructureTree,
+            GeometryAbsence::NotAxisAligned,
         ] {
             assert!(!GeometryPresence::Absent(a).is_groundable());
         }
@@ -403,6 +424,7 @@ mod tests {
             GeometryPresence::Absent(GeometryAbsence::NotApplicableToKind),
             GeometryPresence::Absent(GeometryAbsence::CapabilityNotEnabled),
             GeometryPresence::Absent(GeometryAbsence::NotReportedByStructureTree),
+            GeometryPresence::Absent(GeometryAbsence::NotAxisAligned),
         ];
         for c in cases {
             let v = serde_json::to_value(c).unwrap();
@@ -410,6 +432,11 @@ mod tests {
             let back: GeometryPresence = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(back, c);
         }
+        assert_eq!(
+            serde_json::to_string(&GeometryAbsence::NotAxisAligned).unwrap(),
+            "\"not_axis_aligned\"",
+            "the wire spelling is contract §5.2's and the draft schema's"
+        );
     }
 
     #[test]

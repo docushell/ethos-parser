@@ -402,7 +402,42 @@ pub fn to_representation(
                 )
         })
         .count() as u32;
-    let ink_absent = unmeasurable + no_advance + no_ink + off_page;
+    // docs/22 §9 items 1 and 2. An off-page run carries the `off-page-text` finding only where its
+    // ORIGIN is off the visible page, which is all that finding tests. A turned run can start on
+    // the page and have its box run past the edge, and the off-page sentence must not claim a
+    // finding for it that the artifact does not carry.
+    let off_page_unflagged = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| {
+            n.kind == NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::MeasuredOffPage
+                    )
+                )
+                && matches!(&n.attributes, ethos_parser_core::NodeAttributes::TextRun(a)
+                    if !a.findings.contains(&ethos_parser_core::TextFinding::OffPage))
+        })
+        .count() as u32;
+    // docs/22 §9 items 1 and 2. A fifth reason, counted for the reason `off_page` is: a run whose
+    // baseline is turned off both axes WAS measured and has no `[x0, y0, x1, y1]` spelling, and
+    // the seal refuses a document whose non-groundable nodes the declaration does not count.
+    let not_axis_aligned = geometry
+        .iter()
+        .zip(&nodes)
+        .filter(|(g, n)| {
+            n.kind == NodeKind::TextRun
+                && matches!(
+                    g.presence,
+                    ethos_parser_core::GeometryPresence::Absent(
+                        ethos_parser_core::GeometryAbsence::NotAxisAligned
+                    )
+                )
+        })
+        .count() as u32;
+    let ink_absent = unmeasurable + no_advance + no_ink + off_page + not_axis_aligned;
     let non_text = nodes.iter().filter(|n| n.kind != NodeKind::TextRun).count() as u32;
     // Nodes whose geometry is absent because their KIND has none — an annotation, a
     // form field, an image. `check_structure` requires the geometry declaration
@@ -440,6 +475,8 @@ pub fn to_representation(
             no_advance,
             no_ink,
             off_page,
+            off_page_unflagged,
+            not_axis_aligned,
             text_total,
             kind_absent,
         ));
@@ -520,11 +557,14 @@ fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn geometry_absent_limitation(
     unmeasurable: u32,
     no_advance: u32,
     no_ink: u32,
     off_page: u32,
+    off_page_unflagged: u32,
+    not_axis_aligned: u32,
     total: u32,
     kind_absent: u32,
 ) -> Limitation {
@@ -539,10 +579,17 @@ fn geometry_absent_limitation(
     // it. Splitting the ascent/descent bucket without touching this line would have produced a
     // sentence reading "Three reasons" above four — the exact defect the paragraph above
     // describes, introduced by the slice that quotes it.
-    let (split_count, split_slices) = match off_page > 0 {
-        true => ("Four", "v1-S6.2, D4-S5, v2.2-S3"),
-        false => ("Three", "v1-S6.2, v2.2-S3"),
-    };
+    //
+    // docs/22 §9 items 1 and 2 add a fifth, and the same rule holds: each reason joins the count
+    // and the slice list only on a document that has it. The slice label is the release that
+    // ships it.
+    let reasons = 3 + usize::from(off_page > 0) + usize::from(not_axis_aligned > 0);
+    let split_count = ["Three", "Four", "Five"][reasons - 3];
+    let split_slices = format!(
+        "v1-S6.2{}, v2.2-S3{}",
+        if off_page > 0 { ", D4-S5" } else { "" },
+        if not_axis_aligned > 0 { ", 0.58.0" } else { "" },
+    );
     Limitation::document(
         codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
         format!(
@@ -566,8 +613,9 @@ fn geometry_absent_limitation(
              a run of spaces — so no box exists to be missing. Only the first two are limitations \
              of this reader. Before any of them were split, an artifact reported their sum under \
              a sentence that read as though the reader had failed every time.",
-            unmeasurable + no_advance + no_ink + off_page
-        ) + &off_page_clause(off_page)
+            unmeasurable + no_advance + no_ink + off_page + not_axis_aligned
+        ) + &off_page_clause(off_page, off_page_unflagged)
+            + &not_axis_aligned_clause(not_axis_aligned)
             + &kind_absent_clause(kind_absent),
     )
 }
@@ -578,19 +626,54 @@ fn geometry_absent_limitation(
 /// draws nothing off-page carries the sentence it always carried, byte for byte. Only a document
 /// that has some pays for the third reason — which is also why the two-reason sentence above is
 /// left standing rather than rewritten to say three.
-fn off_page_clause(off_page: u32) -> String {
+///
+/// `unflagged` counts the runs among them with no `off-page-text` finding: their origin is on the
+/// visible page, which is all that finding tests, and the box runs past the edge. At zero the
+/// sentence is the one it always was, byte for byte (docs/22 §9 items 1 and 2).
+fn off_page_clause(off_page: u32, unflagged: u32) -> String {
     if off_page == 0 {
         return String::new();
     }
+    let provenance = if unflagged == 0 {
+        "Each of these runs is in the artifact with its text, its origin and an `off-page-text` \
+         finding; what is absent is the box, and `GeometryAbsence::MeasuredOffPage` is the reason."
+            .to_string()
+    } else {
+        format!(
+            "Each of these runs is in the artifact with its text and its origin, and {} of them \
+             with an `off-page-text` finding; the other {unflagged} have their origin inside the \
+             visible page, which is what that finding tests — the run starts on the page and its \
+             box runs past the edge. What is absent is the box, and \
+             `GeometryAbsence::MeasuredOffPage` is the reason.",
+            off_page - unflagged
+        )
+    };
     format!(
         "\n\n\
          A further {off_page} node(s) WERE measured and are not on the page: the font supplied \
          metrics, the run draws ink, and the document places the box outside its own page box, so \
          no page-relative rectangle exists to report. This is a property of the document rather \
          than a shortfall of this reader — a page extracted from a wider original is the case in \
-         practice — and it is neither clamped to fit nor dropped. Each of these runs is in the \
-         artifact with its text, its origin and an `off-page-text` finding; what is absent is the \
-         box, and `GeometryAbsence::MeasuredOffPage` is the reason."
+         practice — and it is neither clamped to fit nor dropped. {provenance}"
+    )
+}
+
+/// The sentence for runs whose baseline runs along neither axis (docs/22 §9 items 1 and 2).
+///
+/// Empty at zero, for the reason [`off_page_clause`] is: a document with no such run carries the
+/// sentence it always carried.
+fn not_axis_aligned_clause(not_axis_aligned: u32) -> String {
+    if not_axis_aligned == 0 {
+        return String::new();
+    }
+    format!(
+        "\n\n\
+         A further {not_axis_aligned} node(s) WERE measured and do not run along an axis: the \
+         baseline is turned off the page's x and y axes, so the rectangle the pen extent and font \
+         envelope cover is itself turned and no [x0, y0, x1, y1] box equals it — its bounding box \
+         would claim page area the text does not cover, the refusal an image placed at an angle \
+         already gets. Each run is in the artifact with its text and its origin; what is absent is \
+         the box, and `GeometryAbsence::NotAxisAligned` is the reason."
     )
 }
 
@@ -662,7 +745,7 @@ mod tests {
 
         // And the declaration it produces names that population rather than
         // silently reporting zero text nodes.
-        let limitation = geometry_absent_limitation(0, 0, 0, 0, 1, kind_absent);
+        let limitation = geometry_absent_limitation(0, 0, 0, 0, 0, 0, 1, kind_absent);
         assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
         assert!(
             limitation.detail.contains("their KIND has none"),
@@ -679,7 +762,7 @@ mod tests {
     /// three clauses, which is the v2-S13.3 defect: a statement that stopped being true.
     #[test]
     fn the_off_page_reason_is_counted_and_the_reason_count_follows_it() {
-        let none = geometry_absent_limitation(1, 0, 0, 0, 1, 0);
+        let none = geometry_absent_limitation(1, 0, 0, 0, 0, 0, 1, 0);
         assert!(
             none.detail.contains("**Three reasons"),
             "no off-page box means three clauses, not four — v2.2-S3 added one and the count \
@@ -688,7 +771,7 @@ mod tests {
         );
         assert!(!none.detail.contains("are not on the page"));
 
-        let some = geometry_absent_limitation(0, 0, 0, 2, 3, 0);
+        let some = geometry_absent_limitation(0, 0, 0, 2, 0, 0, 3, 0);
         assert!(
             some.detail.starts_with("2 of 3 text node(s)"),
             "an off-page box counts toward the omitted total: {}",
@@ -713,11 +796,102 @@ mod tests {
     fn the_ink_sentence_counts_text_nodes_on_both_sides() {
         // One unmeasurable text run in a document that also holds two annotations:
         // the sentence is about text, so the total is 1, not 3.
-        let limitation = geometry_absent_limitation(1, 0, 0, 0, 1, 2);
+        let limitation = geometry_absent_limitation(1, 0, 0, 0, 0, 0, 1, 2);
         assert!(
             limitation.detail.starts_with("1 of 1 text node(s)"),
             "the denominator was diluted by non-text nodes: {}",
             limitation.detail
+        );
+    }
+
+    /// **The off-axis reason is counted, and the count of reasons follows it** (docs/22 §9
+    /// items 1 and 2).
+    #[test]
+    fn the_off_axis_reason_is_counted_and_the_reason_count_follows_it() {
+        let alone = geometry_absent_limitation(0, 0, 0, 0, 0, 1, 1, 0);
+        assert!(
+            alone.detail.starts_with("1 of 1 text node(s)"),
+            "{}",
+            alone.detail
+        );
+        assert!(alone.detail.contains("**Four reasons"), "{}", alone.detail);
+        assert!(
+            alone.detail.contains("(v1-S6.2, v2.2-S3, 0.58.0)"),
+            "{}",
+            alone.detail
+        );
+        assert!(
+            alone
+                .detail
+                .contains("1 node(s) WERE measured and do not run along an axis"),
+            "{}",
+            alone.detail
+        );
+
+        let both = geometry_absent_limitation(0, 0, 0, 2, 0, 1, 4, 0);
+        assert!(
+            both.detail.starts_with("3 of 4 text node(s)"),
+            "{}",
+            both.detail
+        );
+        assert!(
+            both.detail.contains("**Five reasons"),
+            "five clauses must be introduced as five: {}",
+            both.detail
+        );
+        assert!(
+            both.detail.contains("(v1-S6.2, D4-S5, v2.2-S3, 0.58.0)"),
+            "{}",
+            both.detail
+        );
+
+        let neither = geometry_absent_limitation(1, 0, 0, 0, 0, 0, 1, 0);
+        assert!(
+            neither.detail.contains("**Three reasons"),
+            "{}",
+            neither.detail
+        );
+        assert!(
+            neither.detail.contains("(v1-S6.2, v2.2-S3)"),
+            "{}",
+            neither.detail
+        );
+        assert!(
+            !neither.detail.contains("NotAxisAligned"),
+            "{}",
+            neither.detail
+        );
+    }
+
+    /// **The off-page sentence names the finding only where the artifact carries it.**
+    ///
+    /// `off-page-text` tests a run's origin, so a turned run that starts on the page and runs past
+    /// its edge is `MeasuredOffPage` without it. Where every off-page run has the finding the
+    /// sentence is the one 0.57.0 wrote, pinned as a literal so no golden moves for a case this did
+    /// not change.
+    #[test]
+    fn the_off_page_sentence_names_the_finding_only_where_it_exists() {
+        assert_eq!(
+            off_page_clause(3, 0),
+            "\n\nA further 3 node(s) WERE measured and are not on the page: the font supplied \
+             metrics, the run draws ink, and the document places the box outside its own page \
+             box, so no page-relative rectangle exists to report. This is a property of the \
+             document rather than a shortfall of this reader — a page extracted from a wider \
+             original is the case in practice — and it is neither clamped to fit nor dropped. \
+             Each of these runs is in the artifact with its text, its origin and an \
+             `off-page-text` finding; what is absent is the box, and \
+             `GeometryAbsence::MeasuredOffPage` is the reason."
+        );
+
+        let mixed = off_page_clause(3, 1);
+        assert!(
+            mixed.contains("2 of them with an `off-page-text` finding"),
+            "{mixed}"
+        );
+        assert!(mixed.contains("the other 1"), "{mixed}");
+        assert!(
+            !mixed.contains("its origin and an `off-page-text` finding"),
+            "a finding the artifact does not carry must not be claimed: {mixed}"
         );
     }
     use super::*;

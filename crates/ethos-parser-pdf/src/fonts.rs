@@ -328,7 +328,25 @@ impl Font {
         }
     }
 
-    /// The measured ink box for a run, in text space, given a font size and baseline origin.
+    /// The measured ink box for a run, in the declared top-left system, from its baseline origin,
+    /// the pen's travel `pen` and the glyphs' y axis `up` — both vectors already in that system —
+    /// and the rendered em.
+    ///
+    /// The box is the pen extent along the baseline × the font's ascent-to-descent envelope
+    /// across it, on the side `up` points. A shear of the glyph axis does not change it (a fake
+    /// italic keeps its box), and a zero perpendicular component takes the negative side.
+    ///
+    /// **A baseline along neither axis has no box.** Its rectangle is turned, no
+    /// `[x0, y0, x1, y1]` equals it, and a bounding box would claim page area the text does not
+    /// cover — [`GeometryAbsence::NotAxisAligned`], the refusal a turned image already gets.
+    ///
+    /// **The tolerance is a corner bound.** A corner at distance `s` across the baseline moves
+    /// `|cross| · s / |along|` along the axis, and the far end moves `|cross|` across it, so
+    /// `|cross| · max(|along|, h) < ε · |along|` puts every corner of an accepted rectangle within
+    /// one centipoint, per coordinate and before rounding, of the turned rectangle's. `|along|`
+    /// rather than the travel's full length makes the bound conservative. It is not the
+    /// quantized-corner rule `images.rs` uses: that depends on where rounding boundaries fall,
+    /// and it would retype an upright run narrower than a quantum from `NotReportedByReader`.
     ///
     /// # Errors
     ///
@@ -337,8 +355,9 @@ impl Font {
     pub fn ink_box(
         &self,
         origin_x_pt: f64,
-        baseline_y_pt: f64,
-        width_pt: f64,
+        origin_y_pt: f64,
+        pen: (f64, f64),
+        up: (f64, f64),
         em_scale_pt: f64,
     ) -> GeometryPresence {
         let FontInk::Measured {
@@ -351,11 +370,9 @@ impl Font {
             return GeometryPresence::Absent(*why);
         };
 
-        if width_pt <= 0.0 {
-            // A zero-width run covers no area, so there is no box — and since v1-S6.2 it says
-            // which kind of nothing that is. It was `NotReportedByReader`, which claims the reader
-            // failed; the reader did not fail, the run has no extent.
-            return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
+        // Unreachable from a document: a non-finite advance refuses it before a box is asked for.
+        if !pen.0.is_finite() || !pen.1.is_finite() {
+            return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
         }
 
         // Ascent/descent are glyph-space units per em; scale by the RENDERED em height.
@@ -367,17 +384,57 @@ impl Font {
         // `/F1 1 Tf` draw identical pages, and this measured the second at a tenth of the first —
         // about a point tall, on every run of every document written that way.
         //
-        // The width never had the bug: `content.rs` multiplies the accumulated advance by
-        // `ctm.x_scale()`. So the two axes of one rectangle disagreed, which is why fixing only
-        // the text matrix (and not the CTM) would still have been wrong.
-        let top_pt = baseline_y_pt - (ascent / GLYPH_SPACE_UNITS) * em_scale_pt;
-        let bottom_pt = baseline_y_pt - (descent / GLYPH_SPACE_UNITS) * em_scale_pt;
+        // The pen's travel never had that bug, and since docs/22 §9 items 1 and 2 it is a vector
+        // carried through the text matrix, the CTM and `/Rotate`, so the two axes of one rectangle
+        // are in one space whichever way the run is turned.
+        let (ascent_pt, descent_pt) = envelope_pt(*ascent, *descent, em_scale_pt);
+
+        let horizontal = pen.0.abs() >= pen.1.abs();
+        let (along, cross, up_positive) = if horizontal {
+            (pen.0, pen.1, up.1 > 0.0)
+        } else {
+            (pen.1, pen.0, up.0 > 0.0)
+        };
+
+        if along == 0.0 {
+            // A run that travels nowhere covers no area, so there is no box — and since v1-S6.2 it
+            // says which kind of nothing that is. It was `NotReportedByReader`, which claims the
+            // reader failed; the reader did not fail, the run has no extent. Dominance puts
+            // `cross` at zero here too.
+            return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
+        }
+
+        // An envelope that overflowed (a rendered em past f64) is an unquantizable box, as it was
+        // through 0.57.0 — and says so before the axis test, which would read its NaN product as a
+        // turned baseline and blame the direction of a run that may be upright.
+        if !ascent_pt.is_finite() || !descent_pt.is_finite() {
+            return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
+        }
+
+        // Accepted only when the bound is provably under the tolerance: an incomparable (NaN)
+        // product refuses the box rather than building one.
+        let h = ascent_pt.abs().max(descent_pt.abs());
+        let corner_drift = cross.abs() * along.abs().max(h);
+        let tolerance = crate::content::COORD_EPSILON * along.abs();
+        if corner_drift.partial_cmp(&tolerance) != Some(std::cmp::Ordering::Less) {
+            return GeometryPresence::Absent(GeometryAbsence::NotAxisAligned);
+        }
+
+        let (x0_pt, y0_pt, x1_pt, y1_pt) = edges(
+            origin_x_pt,
+            origin_y_pt,
+            horizontal,
+            along,
+            up_positive,
+            ascent_pt,
+            descent_pt,
+        );
 
         let (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) = (
-            quantize(origin_x_pt, QUANTUM_PER_POINT),
-            quantize(top_pt, QUANTUM_PER_POINT),
-            quantize(origin_x_pt + width_pt, QUANTUM_PER_POINT),
-            quantize(bottom_pt, QUANTUM_PER_POINT),
+            quantize(x0_pt, QUANTUM_PER_POINT),
+            quantize(y0_pt, QUANTUM_PER_POINT),
+            quantize(x1_pt, QUANTUM_PER_POINT),
+            quantize(y1_pt, QUANTUM_PER_POINT),
         ) else {
             return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
         };
@@ -387,6 +444,57 @@ impl Font {
             // A degenerate rectangle is refused rather than nudged into validity.
             Err(_) => GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
         }
+    }
+}
+
+/// Ascent and descent, glyph-space units per em, as lengths at the rendered em.
+///
+/// Its own function so the operation order every upright box was quantized from is under test
+/// with [`edges`]: `(a / 1000) × em`, never `a × em / 1000` or `a × (em / 1000)`.
+fn envelope_pt(ascent: f64, descent: f64, em_scale_pt: f64) -> (f64, f64) {
+    (
+        (ascent / GLYPH_SPACE_UNITS) * em_scale_pt,
+        (descent / GLYPH_SPACE_UNITS) * em_scale_pt,
+    )
+}
+
+/// The four unquantized edges `(x0, y0, x1, y1)` of an axis-aligned run box.
+///
+/// `along` runs from the origin along x when `horizontal`, else along y, and may be negative; the
+/// envelope lies on the positive side of the baseline when `up_positive`, else on the negative.
+///
+/// **Operation order is load-bearing.** On an upright run this is `(ox, oy − ascent_pt,
+/// ox + along, oy − descent_pt)` with `ascent_pt` from [`envelope_pt`] — the 0.57.0 expressions
+/// exactly, and a regrouping moves last bits that quantization can turn into a centipoint.
+/// `upright_edges_are_bitwise_the_legacy_expressions` pins both functions.
+fn edges(
+    origin_x_pt: f64,
+    origin_y_pt: f64,
+    horizontal: bool,
+    along: f64,
+    up_positive: bool,
+    ascent_pt: f64,
+    descent_pt: f64,
+) -> (f64, f64, f64, f64) {
+    let (o_along, o_across) = if horizontal {
+        (origin_x_pt, origin_y_pt)
+    } else {
+        (origin_y_pt, origin_x_pt)
+    };
+    let (a0, a1) = if along > 0.0 {
+        (o_along, o_along + along)
+    } else {
+        (o_along + along, o_along)
+    };
+    let (c0, c1) = if up_positive {
+        (o_across + descent_pt, o_across + ascent_pt)
+    } else {
+        (o_across - ascent_pt, o_across - descent_pt)
+    };
+    if horizontal {
+        (a0, c0, a1, c1)
+    } else {
+        (c0, a0, c1, a1)
     }
 }
 
@@ -926,7 +1034,7 @@ mod tests {
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
         // A 24pt font with no metrics gets no box, not a 24pt-tall one.
-        let g = f.ink_box(72.0, 72.0, 100.0, 24.0);
+        let g = f.ink_box(72.0, 72.0, (100.0, 0.0), (0.0, -24.0), 24.0);
         assert_eq!(
             g,
             GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
@@ -944,7 +1052,7 @@ mod tests {
                 source: "font-descriptor",
             },
         );
-        let g = f.ink_box(72.0, 100.0, 50.0, 10.0);
+        let g = f.ink_box(72.0, 100.0, (50.0, 0.0), (0.0, -10.0), 10.0);
         let r = g.measured().expect("a measured box");
         // Top is above the baseline (smaller y in a top-left system), bottom below.
         assert!(r.y0() < r.y1());
@@ -966,7 +1074,164 @@ mod tests {
                 source: "font-descriptor",
             },
         );
-        assert!(f.ink_box(72.0, 100.0, 0.0, 10.0).measured().is_none());
+        assert!(f
+            .ink_box(72.0, 100.0, (0.0, 0.0), (0.0, -10.0), 10.0)
+            .measured()
+            .is_none());
+    }
+
+    fn helvetica_metrics() -> Font {
+        font_with(
+            WidthSource::Absent { reason: "x".into() },
+            FontInk::Measured {
+                ascent: 718.0,
+                descent: -207.0,
+                source: "font-descriptor",
+            },
+        )
+    }
+
+    fn rect(g: GeometryPresence) -> [i64; 4] {
+        let r = g
+            .measured()
+            .unwrap_or_else(|| panic!("a measured box, got {g:?}"));
+        [r.x0(), r.y0(), r.x1(), r.y1()]
+    }
+
+    /// **The upright edges are the 0.57.0 expressions, bit for bit** (docs/22 §9 items 1 and 2).
+    ///
+    /// `envelope_pt` and `edges` rebuilt the arithmetic every upright box was quantized from, and a
+    /// regrouping moves last bits that quantization can turn into a centipoint: over this grid's
+    /// 128 distinct (origin, em, ascent-or-descent) edges, `oy − a·em/1000` changes 13 and
+    /// `oy − a·(em/1000)` changes 7. The awkward values are deliberate — round ones survive any
+    /// order.
+    #[test]
+    fn upright_edges_are_bitwise_the_legacy_expressions() {
+        let origins = [72.12345, 611.98, 0.1 + 0.2, f64::from(350.3f32)];
+        let ems = [9.96 * 0.24, 10.0, f64::from(7.97f32), 11.955];
+        let metrics = [
+            (718.0, -207.0),
+            (891.0, -216.0),
+            (683.0, -217.0),
+            (905.0, -212.0),
+        ];
+        let widths = [0.24 * 123.456, 50.0];
+        let mut compared = 0;
+        for (i, &ox) in origins.iter().enumerate() {
+            let oy = origins[(i + 1) % origins.len()];
+            for &em in &ems {
+                for &(ascent, descent) in &metrics {
+                    for &w in &widths {
+                        // Verbatim from 0.57.0's `ink_box`.
+                        let legacy = (
+                            ox,
+                            oy - (ascent / GLYPH_SPACE_UNITS) * em,
+                            ox + w,
+                            oy - (descent / GLYPH_SPACE_UNITS) * em,
+                        );
+                        let (ascent_pt, descent_pt) = envelope_pt(ascent, descent, em);
+                        let got = edges(ox, oy, true, w, false, ascent_pt, descent_pt);
+                        for (g, l) in [
+                            (got.0, legacy.0),
+                            (got.1, legacy.1),
+                            (got.2, legacy.2),
+                            (got.3, legacy.3),
+                        ] {
+                            assert_eq!(
+                                g.to_bits(),
+                                l.to_bits(),
+                                "origin ({ox}, {oy}) em {em} metrics {ascent}/{descent} width {w}"
+                            );
+                            compared += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(compared, 512);
+    }
+
+    /// The box lies along whichever axis the pen travels, on the side the glyph tops point.
+    #[test]
+    fn the_box_follows_the_baseline_along_either_axis() {
+        let f = helvetica_metrics();
+        let at = |pen, up| rect(f.ink_box(100.0, 100.0, pen, up, 10.0));
+
+        // Upright: +x, tops toward smaller y.
+        assert_eq!(at((50.0, -0.0), (0.0, -10.0)), [10000, 9282, 15000, 10207]);
+        // Upside down: −x, tops toward larger y.
+        assert_eq!(at((-50.0, 0.0), (0.0, 10.0)), [5000, 9793, 10000, 10718]);
+        // Mirrored: −x, tops still toward smaller y.
+        assert_eq!(at((-50.0, 0.0), (0.0, -10.0)), [5000, 9282, 10000, 10207]);
+        // Up the page (toward smaller y), tops toward smaller x.
+        assert_eq!(at((0.0, -50.0), (-10.0, 0.0)), [9282, 5000, 10207, 10000]);
+        // Down the page, tops toward larger x.
+        assert_eq!(at((0.0, 50.0), (10.0, 0.0)), [9793, 10000, 10718, 15000]);
+        // Down the page, tops toward smaller x.
+        assert_eq!(at((0.0, 50.0), (-10.0, 0.0)), [9282, 10000, 10207, 15000]);
+        // A sheared glyph axis — a fake italic — keeps the upright box.
+        assert_eq!(at((50.0, 0.0), (2.0, -10.0)), [10000, 9282, 15000, 10207]);
+        // A singular glyph matrix, its y axis along the baseline, takes the negative side, as
+        // 0.57.0 put every box.
+        assert_eq!(at((50.0, 0.0), (10.0, 0.0)), [10000, 9282, 15000, 10207]);
+        assert_eq!(at((0.0, 50.0), (0.0, 10.0)), [9282, 10000, 10207, 15000]);
+
+        // And the legacy golden, from its own origin.
+        assert_eq!(
+            rect(f.ink_box(72.0, 100.0, (50.0, 0.0), (0.0, -10.0), 10.0)),
+            [7200, 9282, 12200, 10207]
+        );
+    }
+
+    /// A baseline along neither axis has no box, and the tolerance is a corner bound.
+    #[test]
+    fn a_baseline_off_both_axes_has_no_box() {
+        let f = helvetica_metrics();
+        let up = (0.0, -10.0);
+        let at = |pen, up| f.ink_box(100.0, 100.0, pen, up, 10.0);
+        let off_axis = GeometryPresence::Absent(GeometryAbsence::NotAxisAligned);
+
+        assert_eq!(at((35.36, -35.36), up), off_axis, "45 degrees");
+        assert!(at((50.0, 0.0099), up).measured().is_some(), "just inside");
+        assert_eq!(at((50.0, 0.0101), up), off_axis, "just outside");
+        // A short run is judged by its corners across the baseline, not by the pen alone:
+        // 0.009 × 7.18 is not under 0.01 × 2.2.
+        assert_eq!(at((2.2, 0.009), up), off_axis, "the corner bound");
+        assert_eq!(
+            rect(at((2.2, 0.003), up)),
+            [10000, 9282, 10220, 10207],
+            "a short run inside the bound"
+        );
+        assert_eq!(
+            rect(at((0.0099, 50.0), (10.0, 0.0))),
+            [9793, 10000, 10718, 15000],
+            "the bound holds along y too"
+        );
+        assert_eq!(
+            at((0.0, 0.0), up),
+            GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure)
+        );
+        assert_eq!(
+            at((f64::NAN, 0.0), up),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
+        );
+        // An upright run whose rendered em overflowed has an unquantizable box, as through
+        // 0.57.0 — not a turned baseline, which `0 × ∞` would otherwise read it as.
+        assert_eq!(
+            f.ink_box(100.0, 100.0, (50.0, 0.0), up, f64::INFINITY),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+            "an overflowed envelope"
+        );
+
+        // A font without metrics answers for itself before any direction is looked at.
+        let absent = font_with(
+            WidthSource::Absent { reason: "x".into() },
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+        );
+        assert_eq!(
+            absent.ink_box(100.0, 100.0, (35.0, 35.0), up, 10.0),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
+        );
     }
 
     #[test]

@@ -83,6 +83,14 @@ impl Matrix {
         )
     }
 
+    /// Transform a vector, not a point: no translation.
+    ///
+    /// A text run's travel is a direction and a length, and §8.3.2 carries it through only the
+    /// linear part of a matrix. [`Self::apply`] would add the matrix's origin to it.
+    pub fn apply_linear(self, x: f64, y: f64) -> (f64, f64) {
+        (self.a * x + self.c * y, self.b * x + self.d * y)
+    }
+
     /// The horizontal scale this matrix applies, for turning a text-space advance into user
     /// space.
     pub fn x_scale(self) -> f64 {
@@ -297,6 +305,17 @@ mod tests {
         let n = Matrix::new(2.0, 0.0, 0.0, 5.0, 0.0, 0.0);
         assert!(approx(n.x_scale(), 2.0), "x borrowed y");
         assert!(approx(n.y_scale(), 5.0), "y borrowed x");
+    }
+
+    /// A vector moves as the difference of two points does, and no more.
+    #[test]
+    fn apply_linear_is_apply_without_the_translation() {
+        let m = Matrix::new(2.0, 3.0, 5.0, 7.0, 11.0, 13.0);
+        let (ox, oy) = m.apply(0.0, 0.0);
+        for (x, y) in [(1.0, 0.0), (0.0, 1.0), (4.0, -9.0), (-17.0, 23.0)] {
+            let (px, py) = m.apply(x, y);
+            assert_eq!(m.apply_linear(x, y), (px - ox, py - oy), "({x}, {y})");
+        }
     }
 
     #[test]

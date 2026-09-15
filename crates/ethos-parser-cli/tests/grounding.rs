@@ -431,6 +431,34 @@ fn a_node_without_measurable_geometry_is_kept_counted_and_declared() {
     schema_subset::validate(&as_value(&p.source)).expect("empty elements is legal");
 }
 
+/// **Turned text grounds along its baseline, and a run along neither axis is omitted and counted**
+/// (docs/22 §9 items 1 and 2).
+///
+/// Six of `rotated-and-mirrored-text`'s seven runs have an axis-aligned box — four of them typed
+/// `no_ink_to_measure` through 0.57.0 and omitted for it — and the 45-degree run has none, so it
+/// is the one node the projection leaves out.
+#[test]
+fn turned_text_grounds_and_an_off_axis_run_is_omitted() {
+    let repr = represent(&engine_fx("rotated-and-mirrored-text"));
+    let p = ethos_parser_grounding::project(&repr).expect("projects");
+
+    assert_eq!(p.omission.nodes_total, 7);
+    assert_eq!(p.omission.nodes_omitted, 1, "only the diagonal run");
+    assert_eq!(
+        p.source.elements.len(),
+        6,
+        "no two runs share a line, so each grounded run is its own element"
+    );
+    assert!(
+        p.source
+            .elements
+            .iter()
+            .all(|e| e.text.as_deref() != Some("Diagonal")),
+        "a run with no axis-aligned box never enters the artifact"
+    );
+    schema_subset::validate(&as_value(&p.source)).expect("the artifact validates");
+}
+
 /// The omission **selects**, proved inside a single artifact with mixed geometry.
 ///
 /// The version of this test that compared two all-or-nothing documents proved nothing: an emitter

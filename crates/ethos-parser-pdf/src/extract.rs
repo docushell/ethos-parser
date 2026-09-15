@@ -368,6 +368,11 @@ fn extract_page(
                 shown.advance.is_some(),
                 "code_advances and advance must agree on presence"
             );
+            debug_assert_eq!(
+                shown.displacement.is_some(),
+                shown.advance.is_some(),
+                "displacement and advance must agree on presence"
+            );
             if let (Some(per), Some(total)) = (&shown.code_advances, shown.advance) {
                 debug_assert_eq!(
                     per.len(),
@@ -381,10 +386,10 @@ fn extract_page(
                 );
             }
 
-            let geometry = match (font, shown.advance) {
+            let geometry = match (font, shown.displacement) {
                 // v1-S6.2. **A run that draws no ink has no ink box.** `ink_box` builds its
-                // rectangle from the font's ascent/descent envelope stretched over the run's
-                // advance — not from glyph outlines — so for a run of spaces it produced a
+                // rectangle from the font's ascent/descent envelope stretched over the pen's
+                // travel — not from glyph outlines — so for a run of spaces it produced a
                 // rectangle around nothing and labelled it `Measured`. On `nist-sp-800-53r5` 3 450
                 // of those landed past the page edge and the seal refused the whole document: 491
                 // of 492 pages unreadable over content that draws nothing.
@@ -398,7 +403,16 @@ fn extract_page(
                         ethos_parser_core::GeometryAbsence::NoInkToMeasure,
                     )
                 }
-                (Some(f), Some(w)) => f.ink_box(ox_pt, oy_pt, w, shown.em_scale_pt),
+                // docs/22 §9 items 1 and 2. The travel and the glyph axis are user-space vectors,
+                // so they take the linear part of the same `/Rotate` the origin just took — a
+                // quarter-turned page turns the box with it instead of laying it along x.
+                (Some(f), Some((dx, dy))) => f.ink_box(
+                    ox_pt,
+                    oy_pt,
+                    geom.to_top_left_linear(dx, dy),
+                    geom.to_top_left_linear(shown.glyph_up.0, shown.glyph_up.1),
+                    shown.em_scale_pt,
+                ),
                 // No advance means no width, so there is no box to measure — and a box guessed
                 // from the font size is exactly what this project refuses.
                 _ => ethos_parser_core::GeometryPresence::Absent(
@@ -417,9 +431,10 @@ fn extract_page(
             // invariant is what catches a genuine transform bug, and it keeps that job unchanged.
             // This decides the narrower question the seal cannot see — whether the box is
             // *reportable* — while the page is still in scope, and answers it with the same typed
-            // absence the rest of this function uses. The run keeps its text, its origin and its
-            // `OffPage` finding, which this engine already raised for this content against the
-            // visible box.
+            // absence the rest of this function uses. The run keeps its text and its origin, and
+            // its `OffPage` finding where this engine raised one against the visible box — which
+            // tests the origin alone, so a run that starts on the page and whose box runs past its
+            // edge carries none.
             let geometry = match geometry {
                 ethos_parser_core::GeometryPresence::Measured(r) if !geom.contains(r) => {
                     ethos_parser_core::GeometryPresence::Absent(
@@ -1850,6 +1865,19 @@ impl PageGeometry {
         }
     }
 
+    /// Map a user-space vector into the declared top-left system: the linear part of
+    /// [`Self::to_top_left`], with the box origin's translation left out.
+    ///
+    /// For a run's travel and its glyphs' y axis, which are directions rather than places.
+    fn to_top_left_linear(&self, dx: f64, dy: f64) -> (f64, f64) {
+        match self.rotation {
+            90 => (dy, dx),
+            180 => (-dx, dy),
+            270 => (-dy, -dx),
+            _ => (dx, -dy),
+        }
+    }
+
     /// Whether a quantized box lies inside this page, by **the seal's own predicate** (D4-S5).
     ///
     /// Deliberately a restatement rather than a near-miss.
@@ -1962,6 +1990,33 @@ mod tests {
             (300.0, 0.0),
             "top-left -> top-right"
         );
+    }
+
+    /// A vector lands where the difference of its two endpoints lands, at every rotation and on a
+    /// box whose origin is not (0, 0) — so the translation really is what was left out.
+    #[test]
+    fn the_linear_part_maps_a_vector_as_the_point_map_does() {
+        let media = PageBox::from_corners(10.0, 20.0, 310.0, 420.0);
+        for rotation in [0i64, 90, 180, 270] {
+            let g = PageGeometry {
+                media,
+                visible: media,
+                rotation,
+                display_width: 300.0,
+                display_height: 400.0,
+            };
+            for (x, y) in [(10.0, 20.0), (72.0, 350.0)] {
+                for (dx, dy) in [(1.0, 0.0), (0.0, 1.0), (25.0, -7.0), (-3.0, 40.0)] {
+                    let (ax, ay) = g.to_top_left(x, y);
+                    let (bx, by) = g.to_top_left(x + dx, y + dy);
+                    assert_eq!(
+                        g.to_top_left_linear(dx, dy),
+                        (bx - ax, by - ay),
+                        "rotation {rotation}: ({dx}, {dy}) from ({x}, {y})"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

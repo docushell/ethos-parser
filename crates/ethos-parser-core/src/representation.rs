@@ -781,6 +781,12 @@ pub struct PdfLocator {
     /// Advance width in centipoints, or **absent** when the document carries no widths.
     ///
     /// `None` is not zero. Absent means the reader does not know, and says so.
+    ///
+    /// **Known defect.** It is measured along the text matrix's x before any rotation: on a page
+    /// turned by its CTM or its `/Rotate`, this is the length in the unrotated frame, not an
+    /// extent in the declared system, and text turned by its own text matrix advances 0 or less.
+    /// The run's box is built from the travel as a vector and does not share it. Recorded, and not
+    /// yet decided, in `docs/22-WORD-BOXES-SCOPE.md` (§9 item 2, and the amendment that fixed it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advance: Option<i64>,
 }

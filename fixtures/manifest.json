@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 43,
+    "engine_owned": 44,
     "gate": 8
   },
   "fixtures": [
@@ -487,6 +487,15 @@
       "sha256": "sha256:94e623ce48fa9524c39d2b13d2cf71e4c400b870975433d44b5d8a8a23c39947",
       "owner": "engine",
       "notes": "A run with REAL ink metrics drawn at negative x, so its MEASURED box falls outside the /MediaBox — not the crop box (crop-box-smaller-than-media) and not around whitespace (whitespace-past-the-page-edge). The case six of two hundred DP-Bench documents met in the wild, each producing no artifact at all until D4-S5."
+    },
+    {
+      "id": "rotated-and-mirrored-text",
+      "root": "engine",
+      "group": "engine",
+      "path": "rotated-and-mirrored-text/document.pdf",
+      "sha256": "sha256:b2262264e40d038bcfaa7676ffeaf19c4bd0ae094ec56ed0121442aa5f777cd1",
+      "owner": "engine",
+      "notes": "docs/22 §9 items 1 and 2 golden. Seven runs with REAL ink metrics on a 300x300 page, each turned a different way: upright, a quarter turn up and down the page, upside down and mirrored by the text matrix, 45 degrees, and a quarter turn by the CTM. Expect a box along each run's own baseline, `not_axis_aligned` on the 45-degree run, and the upright run's box unchanged. Through 0.57.0 the box was built from the advance's x alone: the four turned by the text matrix were typed `no_ink_to_measure` and the CTM-turned run got a box along x. No other engine fixture draws text off +x."
     },
     {
       "id": "simple-font-two-byte-tounicode",

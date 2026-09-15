@@ -123,7 +123,7 @@ profile declares that rendering authoritative. No such profile exists.
 
 ### 5.2 Typed absence
 
-A missing box is a **type**, never a sentinel and never a substitute. Six variants say *why* the
+A missing box is a **type**, never a sentinel and never a substitute. Seven variants say *why* the
 geometry is not there:
 
 | Variant | Meaning |
@@ -134,6 +134,7 @@ geometry is not there:
 | `CapabilityNotEnabled` | The profile has it switched off |
 | `NotReportedByStructureTree` | The node came from the tag tree, which names no coordinate (v2-S24) |
 | `MeasuredOffPage` | Measured, and the **document** draws it outside its own page, so no page-relative rectangle exists (D4-S5) |
+| `NotAxisAligned` | Measured, and the run's baseline runs along neither axis, so no `[x0, y0, x1, y1]` equals its turned rectangle and a bounding box would claim area the text does not cover (0.58.0) |
 
 Hard rules:
 

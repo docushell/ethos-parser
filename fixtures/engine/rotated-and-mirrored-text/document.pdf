@@ -1,0 +1,36 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 300 >>
+stream
+BT /F1 12 Tf 1 0 0 1 20 20 Tm (Upright) Tj 0 1 -1 0 40 60 Tm (Turned) Tj 0 -1 1 0 80 240 Tm (Downward) Tj -1 0 0 -1 250 270 Tm (Inverted) Tj -1 0 0 1 280 200 Tm (Mirrored) Tj 0.7071 0.7071 -0.7071 0.7071 150 120 Tm (Diagonal) Tj ET q 0 1 -1 0 300 0 cm BT /F1 12 Tf 1 0 0 1 100 180 Tm (Rolled) Tj ET Q
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500 500] /FontDescriptor 6 0 R >>
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 /Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 88 /FontBBox [-166 -225 1000 931] >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000592 00000 n 
+0000001129 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+1285
+%%EOF

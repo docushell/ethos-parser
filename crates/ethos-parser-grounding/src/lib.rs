@@ -673,7 +673,7 @@ fn union_of(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
 /// granularities — coarse citable elements and finer spans inside them — and until grouping
 /// existed the two coincided: a run *was* the element and *was* the span, which left a consumer
 /// wanting to highlight one quoted sentence holding 970 glyph-run rectangles on `irs-fw9` and no
-/// rectangle for the sentence. It now holds 334 elements over those same 970 spans.
+/// rectangle for the sentence. At 0.57.0 it held 334 elements over those same 970 spans.
 ///
 /// The grouping is [`ethos_parser_core::markdown::geometric_blocks`], called rather than restated
 /// so this and the projections cannot disagree about what one piece of ink is. An element's box is

@@ -16,6 +16,24 @@ rotated text on the eight gate documents as drawing nothing.
 
 Nothing here was built. §7 names what reopens word boxes.
 
+**Since this was written.** The body stands as measured at 0.57.0 on 2026-09-15; each change it led
+to is recorded below with the version it ships in.
+
+- **§9 items 1 and 2, rotated text — fixed for 0.58.0, in one change** rather than the two §9 and
+  §11 ask for, because both are one data path and a split would ship a build that ignores the CTM or
+  `/Rotate` on purpose. A run's box follows the pen's travel as a vector through its text matrix, CTM
+  and `/Rotate`, on the side its glyph tops point; a baseline along neither axis gets a new
+  `GeometryAbsence::NotAxisAligned`; upright boxes are bit for bit unchanged. Against 0.57.0: the
+  31,699 visible `no_ink_to_measure` runs on the seven documents and 4,685 on `nist-sp-800-53Ar5` are
+  measured, every one a vertical box; the 52,644 `nist-sp-800-53Ar5` note runs turn vertical; no run
+  of any corpus is `not_axis_aligned`; `nist-sp-800-207` grounds 6,332 elements where it grounded
+  3,532, the new ones pieces of its vertical `/Artifact` note. Corrections to §9: negative `Tf` or
+  `Tz`, and a text-matrix turn the CTM cancels, also typed text `no_ink_to_measure`; a mirroring CTM
+  laid the box the wrong way along its baseline, and upside-down text put it on the wrong side; the
+  only `/Rotate` text measured, conformance `rotation-90`, turns 1.04 pt past its page, so it becomes
+  `measured_off_page` and loses its horizontal grounding element instead of gaining a box.
+  `PdfLocator::advance` still measures before rotation, a known defect left open.
+
 ---
 
 ## 1. The question

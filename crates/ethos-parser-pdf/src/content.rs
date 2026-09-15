@@ -61,7 +61,25 @@ pub struct ShownText {
     /// Baseline origin in **user space**, before the page transform.
     pub origin: (f64, f64),
     /// Advance in user space, or `None` when the font carries no widths.
+    ///
+    /// A length along the text matrix's x only, scaled by `ctm.x_scale()`: it keeps no direction,
+    /// so a run turned by its text matrix advances 0 or less here. [`Self::displacement`] is the
+    /// same travel as a vector, and it is what a box is built from.
     pub advance: Option<f64>,
+    /// The pen's travel over the run in **user space**, as a vector, or `None` exactly when
+    /// [`Self::advance`] is.
+    ///
+    /// PDF 32000-1 §9.4.4 moves the text matrix by `[1 0 0 1 tx 0] × Tm` after each glyph, so the
+    /// travel is a text-space vector that the text matrix turns and the CTM carries on. Summing
+    /// only `Tm.e` kept its x and lost its y, and `ctm.x_scale()` kept the CTM's length and lost
+    /// its direction: text drawn up the page advanced 0, and text drawn under a turned CTM got a
+    /// box along x. On upright text this is bit for bit `(advance, ±0)`.
+    pub displacement: Option<(f64, f64)>,
+    /// The rendered glyph's y axis in user space: the text rendering matrix's second row,
+    /// `(c, d)`.
+    ///
+    /// Which side of the baseline the ascent lies on. Upright glyphs point it +y.
+    pub glyph_up: (f64, f64),
     /// The same advance, per code, in the same space — or `None` on the same condition.
     ///
     /// **Aligned with [`Self::codes`], not with [`Self::text`].** A code may decode to more than
@@ -92,9 +110,9 @@ pub struct ShownText {
     ///
     /// The vertical scale of the text rendering matrix — `Tfs` composed with the text matrix and
     /// the CTM, per §9.4.4 — so ascent and descent scaled by this land in the space the origin is
-    /// already in. `origin` is `(trm.e, trm.f)` and the advance is multiplied by `ctm.x_scale()`;
-    /// this is the third side of that same triangle, and without it the box's height and width
-    /// were in different spaces.
+    /// already in. `origin` is `(trm.e, trm.f)` and the box's length along its baseline is
+    /// [`Self::displacement`], carried through the CTM; this is the third side of that same
+    /// triangle, and without it the box's height and width were in different spaces.
     pub em_scale_pt: f64,
     /// Marked-content id in force, if any.
     pub mcid: Option<i64>,
@@ -693,6 +711,8 @@ impl<'a> Interpreter<'a> {
         let mut text = String::new();
         let mut kept_codes = Vec::with_capacity(codes.len());
         let mut advance_total = 0.0f64;
+        // The y half of the same travel, which `advance_total` never read (docs/22 §9 item 1).
+        let mut advance_total_f = 0.0f64;
         let mut per_code = Vec::with_capacity(codes.len());
         let mut advance_known = true;
 
@@ -728,9 +748,11 @@ impl<'a> Interpreter<'a> {
                 Some(w0) => {
                     let is_space = code == 32;
                     let before = self.ts.text_matrix.e;
+                    let before_f = self.ts.text_matrix.f;
                     self.ts.advance(w0, is_space);
                     let delta = self.ts.text_matrix.e - before;
                     advance_total += delta;
+                    advance_total_f += self.ts.text_matrix.f - before_f;
                     per_code.push(delta);
                 }
                 None => advance_known = false,
@@ -743,6 +765,9 @@ impl<'a> Interpreter<'a> {
             codes: kept_codes,
             origin,
             advance: advance_known.then_some(advance_total * scale),
+            displacement: advance_known
+                .then(|| self.gs.ctm.apply_linear(advance_total, advance_total_f)),
+            glyph_up: (trm.c, trm.d),
             code_advances: advance_known
                 .then(|| per_code.iter().map(|d| d * scale).collect::<Vec<_>>()),
             font_id,
@@ -868,7 +893,7 @@ fn num(operands: &[lopdf::Object], i: usize) -> Result<f64, EngineError> {
 /// (`docs/01-CONTRACT.md` §4). Coordinates closer together than the artifact can express are the
 /// same coordinate, and using a different tolerance here than the wire uses would let the
 /// interpreter distinguish points the artifact cannot.
-const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT as f64;
+pub(crate) const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT as f64;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < COORD_EPSILON
@@ -1207,6 +1232,103 @@ mod tests {
         }
         let summed: f64 = per.iter().sum();
         assert!(approx_eq(summed, sh.advance.unwrap()));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The pen's travel as a vector (docs/22 §9 items 1 and 2)
+    // ---------------------------------------------------------------------------------------
+
+    fn approx_pair(got: (f64, f64), want: (f64, f64)) -> bool {
+        approx_eq(got.0, want.0) && approx_eq(got.1, want.1)
+    }
+
+    /// A text matrix turned a quarter moves the pen up the page, and the travel says so.
+    #[test]
+    fn a_turned_text_matrix_moves_the_pen_along_y() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 0 1 -1 0 50 50 Tm (AB) Tj ET"))
+            .unwrap();
+
+        let sh = &i.shown[0];
+        let d = sh.displacement.expect("widths are known");
+        assert!(
+            approx_pair(d, (0.0, 10.0)),
+            "two 5pt glyphs up +y, got {d:?}"
+        );
+        assert!(
+            approx_pair(sh.glyph_up, (-10.0, 0.0)),
+            "the glyph tops point -x, got {:?}",
+            sh.glyph_up
+        );
+        // The wire advance keeps its legacy value, measured along the text matrix's x alone.
+        // Re-expressing it is left open — a known defect recorded in docs/22 — not this change.
+        assert_eq!(sh.advance, Some(0.0));
+    }
+
+    /// A CTM turned a quarter carries the travel with it; `x_scale` kept only its length.
+    #[test]
+    fn a_turned_ctm_carries_the_displacement_with_it() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("0 1 -1 0 200 0 cm BT /F1 10 Tf 50 50 Td (AB) Tj ET"))
+            .unwrap();
+
+        let sh = &i.shown[0];
+        let d = sh.displacement.expect("widths are known");
+        assert!(
+            approx_pair(d, (0.0, 10.0)),
+            "the CTM turns +x to +y, got {d:?}"
+        );
+        assert!(
+            approx_pair(sh.glyph_up, (-10.0, 0.0)),
+            "got {:?}",
+            sh.glyph_up
+        );
+        assert_eq!(sh.advance, Some(10.0), "the legacy advance is a length");
+    }
+
+    /// **On upright text the travel is the legacy advance, bit for bit.**
+    ///
+    /// Every box an upright run has ever had was quantized from `advance_total * ctm.x_scale()`,
+    /// and the box is now built from `displacement.0`. With `Tm.b` and `CTM.b` zero and `CTM.a`
+    /// positive, `ctm.a * total + ctm.c * ±0` is `total * sqrt(a * a)` exactly, because a binary64
+    /// `sqrt(x²)` is `|x|`. An approximate comparison would pass a change that moved the last bit
+    /// and, through quantization, a centipoint on some document.
+    #[test]
+    fn upright_displacement_is_bitwise_the_legacy_advance() {
+        let fonts = one_font();
+        let mut cases = 0;
+        for ctm in [
+            "1 0 0 1 0 0",
+            "0.24 0 0 0.24 0 0",
+            "1 0 0 -1 0 792",
+            "1.3 0 0.4 0.9 0 0",
+        ] {
+            for tm in ["1 0 0 1 72 700", "9.96 0 0 9.96 30 40", "1 0 0.2 1 5 5"] {
+                for tc in ["0", "0.37"] {
+                    for tz in ["100", "83"] {
+                        for tf in ["10", "1"] {
+                            let src = format!(
+                                "q {ctm} cm BT /F1 {tf} Tf {tc} Tc {tz} Tz {tm} Tm (AB CDEF) Tj ET Q"
+                            );
+                            let mut i = Interpreter::new(&fonts);
+                            i.run(&ops(&src)).unwrap();
+                            let sh = &i.shown[0];
+                            let advance = sh.advance.expect("widths are known");
+                            let (dx, dy) = sh.displacement.expect("present with the advance");
+                            assert!(
+                                dx.to_bits() == advance.to_bits() || (dx == 0.0 && advance == 0.0),
+                                "{src}: displacement {dx:e} is not the legacy advance {advance:e}"
+                            );
+                            assert_eq!(dy, 0.0, "{src}");
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 96);
     }
 
     /// Fail-closed means *nothing* survives, including text shown before the bad token.
