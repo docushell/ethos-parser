@@ -857,7 +857,7 @@
             "column": 0,
             "rowspan": 1,
             "colspan": 1,
-            "text": "Rate lock policies vary by lender. Choosing to lock or float your rate can make an important difference in your monthly payment. To avoid surprises, ask: “What does it mean if I lock my rate today?” “What rate lock time frame does this Loan Estimate provide?” “Is a shorter or longer rate lock available, and at what cost?” “What if my closing is delayed and the rate lock expires?” “I f I lock my rate, are there any conditions under which my rate could still change?”"
+            "text": "Rate lock policies vary by lender. Choosing to lock or float your rate can make an important difference in your monthly payment. To avoid surprises, ask: “What does it mean if I lock my rate today?” “What rate lock time frame does this Loan Estimate provide?” “Is a shorter or longer rate lock available, and at what cost?” “What if my closing is delayed and the rate lock expires?” “If I lock my rate, are there any conditions under which my rate could still change?”"
           }
         ]
       },
@@ -1063,7 +1063,7 @@
             "column": 0,
             "rowspan": 1,
             "colspan": 1,
-            "text": "If your Loan Estimate is revised you should look it over to see what changed. Ask your lender: “C an you explain why I received a new Loan Estimate?” “H ow is my loan transaction different from what I was originally expecting?” “H ow does this change my loan amount, interest rate, monthly payment, cash to close, and other loan features?”"
+            "text": "If your Loan Estimate is revised you should look it over to see what changed. Ask your lender: “Can you explain why I received a new Loan Estimate?” “How is my loan transaction different from what I was originally expecting?” “How does this change my loan amount, interest rate, monthly payment, cash to close, and other loan features?”"
           }
         ]
       },

@@ -52,6 +52,21 @@ to is recorded below with the version it ships in.
   pen at its refused code — `content.rs` returns before advancing that code and the codes after it —
   so later runs on the line sit left of where the page draws them (a `Tw` probe's next run at 55 pt,
   drawn at 65 pt).
+- **§9 item 4, a `TJ`-gap space on the wrong run — fixed for 0.58.0.** A `TJ` number writes its
+  flagged space onto the last run only if a string with codes was drawn since the pen was last
+  placed (`BT`, `Td`, `TD`, `T*`, `Tm`, the line move of `'` and `"`, or a `cm` or `Q` that changes
+  the CTM). A string later dropped as undecodable still counts, so no two words fuse across lost
+  text. Against the build before it, over 322 PDFs (the eight gate documents, 44 engine and 35
+  oracle fixtures, gate-zero, 200 opendataloader-bench, 25 probes), 60 runs in 6 documents lose
+  their space (`nist-sp-800-161r1` 44, `nist-sp-800-171r3` 3, `cfpb-home-loan-toolkit` 8, and bench
+  `01030000000001`, `…02` and `…04` 2, 1 and 2), plus probe p25; no box or id moves, nor the count
+  of extracted nodes or of grounding elements and spans. 'i ncluded', 'Y OUR' and 'Gar cía' now
+  read whole. One Markdown and HTML block break is new: `171r3`'s 'ad d' becomes 'ad' ‖ 'd'. Two
+  cfpb tagged cells change, and their labels were regenerated to match; every table score is
+  unchanged. Corrections to §9: the shape in real documents is not another line's run but a
+  same-line `Tm` placing the pen again before a large negative number (p25's shape occurs in no
+  measured document). 47 of the seven's 189 synthesized spaces were that shape, every one inside a
+  word or beside a drawn space, so 47 of item 5's 189 runs no longer carry one.
 
 ---
 

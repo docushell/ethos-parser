@@ -263,6 +263,17 @@ pub struct Interpreter<'a> {
     mc_stack: Vec<MarkedContent>,
     /// Runs collected so far.
     pub shown: Vec<ShownText>,
+    /// Whether a string has put at least one code on the page since the pen was last placed.
+    ///
+    /// A `TJ` number moves the pen from where it stands (PDF 32000-1 §9.4.3), so it opens a gap
+    /// after text only when text was drawn since. `BT`, `Td`, `TD`, `T*`, `Tm`, the line move of
+    /// `'` and `"`, and a `cm` or `Q` that changes the CTM place the pen and clear this. Every
+    /// string with codes sets it, including a run later dropped for an undecodable code.
+    ///
+    /// A dropped run is not in [`Self::shown`], and its pen is short: the refused code and every
+    /// code after it do not advance. The gap after it is then written onto the last run kept, as
+    /// before, because suppressing it would fuse two words across text the reader lost.
+    text_drawn_since_placement: bool,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
     pub undecodable: Vec<String>,
     /// Axis-aligned rectangles this page painted, in user space (v1-S1).
@@ -320,6 +331,7 @@ impl<'a> Interpreter<'a> {
             ts: TextState::default(),
             mc_stack: Vec::new(),
             shown: Vec::new(),
+            text_drawn_since_placement: false,
             undecodable: Vec::new(),
             rects: Vec::new(),
             segments: Vec::new(),
@@ -474,15 +486,28 @@ impl<'a> Interpreter<'a> {
             // --- graphics state: affects glyph placement through the CTM ---
             SaveState => self.gs_stack.push(self.gs),
             RestoreState => {
-                self.gs = self.gs_stack.pop().unwrap_or_default();
+                let restored = self.gs_stack.pop().unwrap_or_default();
+                // A CTM change moves where the next glyph lands (§9.4.4), so it places the pen.
+                // Exact comparison: an epsilon would be a threshold, and NaN compares unequal.
+                if restored.ctm != self.gs.ctm {
+                    self.text_drawn_since_placement = false;
+                }
+                self.gs = restored;
             }
             ConcatMatrix => {
                 let m = matrix_operands(operands)?;
-                self.gs.ctm = m.then(self.gs.ctm);
+                let ctm = m.then(self.gs.ctm);
+                if ctm != self.gs.ctm {
+                    self.text_drawn_since_placement = false;
+                }
+                self.gs.ctm = ctm;
             }
 
             // --- text object boundaries ---
-            BeginText => self.ts.begin_text(),
+            BeginText => {
+                self.ts.begin_text();
+                self.text_drawn_since_placement = false;
+            }
             EndText => {}
 
             // --- text state ---
@@ -502,17 +527,23 @@ impl<'a> Interpreter<'a> {
             NextLine => {
                 let (tx, ty) = (num(operands, 0)?, num(operands, 1)?);
                 self.ts.next_line_offset(tx, ty);
+                self.text_drawn_since_placement = false;
             }
             NextLineSetLeading => {
                 let (tx, ty) = (num(operands, 0)?, num(operands, 1)?);
                 self.ts.leading = -ty;
                 self.ts.next_line_offset(tx, ty);
+                self.text_drawn_since_placement = false;
             }
             SetTextMatrix => {
                 let m = matrix_operands(operands)?;
                 self.ts.set_matrix(m);
+                self.text_drawn_since_placement = false;
             }
-            NextLineByLeading => self.ts.next_line(),
+            NextLineByLeading => {
+                self.ts.next_line();
+                self.text_drawn_since_placement = false;
+            }
 
             // --- text showing: all four, including the one pdf-inspector omits ---
             ShowText => {
@@ -525,6 +556,7 @@ impl<'a> Interpreter<'a> {
             }
             NextLineShowText => {
                 self.ts.next_line();
+                self.text_drawn_since_placement = false;
                 let bytes = string_operand(operands, 0)?;
                 self.show(&bytes, &[])?;
             }
@@ -533,6 +565,7 @@ impl<'a> Interpreter<'a> {
                 self.ts.word_spacing = num(operands, 0)?;
                 self.ts.char_spacing = num(operands, 1)?;
                 self.ts.next_line();
+                self.text_drawn_since_placement = false;
                 let bytes = string_operand(operands, 2)?;
                 self.show(&bytes, &[])?;
             }
@@ -704,6 +737,9 @@ impl<'a> Interpreter<'a> {
         if codes.is_empty() {
             return Ok(());
         }
+        // Set before decoding, so a run dropped below still counts as drawn: its text was on the
+        // page, and the pen moved for the codes before the refused one.
+        self.text_drawn_since_placement = true;
         // PDF 32000-1 §9.3.3: `Tw` is added to the SINGLE-BYTE code 32 only. A simple font's
         // codes are one byte (§9.6). A composite font reaches an advance only under Identity-H or
         // Identity-V (`fonts::load_cid_widths`), whose codes are all two bytes, so none of its
@@ -845,6 +881,11 @@ impl<'a> Interpreter<'a> {
     /// A sufficiently negative adjustment opens a word gap that the document never wrote as a
     /// space glyph. Emitting the space unflagged would put a character in the evidence the
     /// document does not contain, so it is inserted **and flagged at the point of creation**.
+    ///
+    /// The gap is measured from the pen, so it follows the text drawn since the pen was last
+    /// placed. After a placement with nothing drawn, the number measures from the new origin and
+    /// says nothing about the space after an earlier run: a space there would be invented, inside
+    /// a word ('i ncluded', 'Y OUR') or beside a space the document drew.
     fn show_adjusted(&mut self, items: &[lopdf::Object]) -> Result<(), EngineError> {
         for item in items {
             match item {
@@ -855,9 +896,11 @@ impl<'a> Interpreter<'a> {
                         lopdf::Object::Real(r) => f64::from(*r),
                         _ => unreachable!(),
                     };
-                    if amount <= TJ_SPACE_GAP_THOUSANDTHS {
+                    if amount <= TJ_SPACE_GAP_THOUSANDTHS && self.text_drawn_since_placement {
                         // Attach the synthesized space to the run that just ended, so the flag
-                        // sits with the character rather than being reconstructed later.
+                        // sits with the character rather than being reconstructed later. Only
+                        // when text was drawn since the pen was placed: otherwise this number
+                        // opens a gap from the new origin, not after that run.
                         if let Some(last) = self.shown.last_mut() {
                             let idx = last.text.chars().count() as u32;
                             last.text.push(' ');
@@ -1601,6 +1644,191 @@ mod tests {
         assert!(
             i.shown.is_empty(),
             "a negative adjustment with no preceding run must not invent one"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // A TJ gap follows the pen (docs/22-WORD-BOXES-SCOPE.md §9 item 4)
+    // ---------------------------------------------------------------------------------------
+
+    /// Every run's text and flagged indices, so a row is compared whole.
+    fn texts_and_flags(i: &Interpreter<'_>) -> Vec<(String, Vec<u32>)> {
+        i.shown
+            .iter()
+            .map(|s| (s.text.clone(), s.synthesized_indices.clone()))
+            .collect()
+    }
+
+    fn run_of(text: &str, flags: &[u32]) -> (String, Vec<u32>) {
+        (text.to_string(), flags.to_vec())
+    }
+
+    /// After the pen is placed again, a `TJ` number measures from the new origin (PDF 32000-1
+    /// §9.4.3), so it is no evidence of a gap after the run drawn before. The corpus shape is the
+    /// `Tm` row: a producer re-placing the pen on the same line wrote 'i ncluded' and 'Y OUR'.
+    #[test]
+    fn a_tj_gap_after_the_pen_was_placed_again_writes_no_space() {
+        let fonts = one_font();
+        for (op, src) in [
+            ("BT", "BT /F1 10 Tf (ab) Tj ET BT [-400 (cd)] TJ ET"),
+            ("Td", "BT /F1 10 Tf (ab) Tj 0 -12 Td [-400 (cd)] TJ ET"),
+            ("TD", "BT /F1 10 Tf (ab) Tj 0 -12 TD [-400 (cd)] TJ ET"),
+            ("T*", "BT /F1 10 Tf 12 TL (ab) Tj T* [-400 (cd)] TJ ET"),
+            (
+                "Tm",
+                "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [-400 (cd)] TJ ET",
+            ),
+            ("'", "BT /F1 10 Tf 12 TL (ab) Tj () ' [-400 (cd)] TJ ET"),
+            (
+                "\"",
+                "BT /F1 10 Tf 12 TL (ab) Tj 0 0 () \" [-400 (cd)] TJ ET",
+            ),
+            (
+                "a cm that moves",
+                "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 -12 cm [-400 (cd)] TJ ET",
+            ),
+            (
+                "a Q restoring a CTM a cm changed",
+                "BT /F1 10 Tf q 1 0 0 1 0 12 cm (ab) Tj Q [-400 (cd)] TJ ET",
+            ),
+            (
+                "BT on another line (probe p25)",
+                "BT /F1 10 Tf 50 50 Td (ab) Tj ET BT /F1 10 Tf 50 100 Td [-400 (cd)] TJ ET",
+            ),
+        ] {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(src)).unwrap_or_else(|e| panic!("{op}: {e}"));
+            assert_eq!(
+                texts_and_flags(&i),
+                [run_of("ab", &[]), run_of("cd", &[])],
+                "{op} placed the pen, so the number opened no gap after 'ab': {src}"
+            );
+            if op == "Tm" {
+                // The number still moves the pen: only the space is withheld.
+                assert!(
+                    approx_eq(i.shown[1].origin.0, 4.0),
+                    "-400 at 10 pt moves 'cd' 4 pt from the new origin, got {}",
+                    i.shown[1].origin.0
+                );
+            }
+        }
+    }
+
+    /// A number with nothing between it and the last run but operators that leave the pen where
+    /// it stands still opens a gap after that run. The colour row is the corpus shape: 147
+    /// synthesized spaces cross only `rg`/`RG`/`g`/`G`/`k`/`K`, all genuine word gaps.
+    ///
+    /// `BI`/`ID`/`EI` is not covered: lopdf collapses the inline image into one operation, and a
+    /// unit-test stream for it is fragile.
+    #[test]
+    fn a_tj_gap_the_pen_opened_from_the_last_run_still_writes_its_space() {
+        let fonts = one_font();
+        let between = |x: &str| format!("BT /F1 10 Tf (ab) Tj {x} [-400 (cd)] TJ ET");
+        let rows = [
+            (
+                "same array",
+                "BT /F1 10 Tf [(ab) -400 (cd)] TJ ET".to_string(),
+            ),
+            (
+                "across TJ",
+                "BT /F1 10 Tf [(ab)] TJ [-400 (cd)] TJ ET".to_string(),
+            ),
+            ("Tj then TJ", between("")),
+            (
+                "trailing number",
+                "BT /F1 10 Tf [(ab) -400] TJ (cd) Tj ET".to_string(),
+            ),
+            ("colour", between("0 0 0.5 rg 0 0 0.5 RG")),
+            ("gray and cmyk", between("0 g 0 G 0 0 0 1 k 0 0 0 1 K")),
+            ("Tf", between("/F1 12 Tf")),
+            ("Tc", between("1 Tc")),
+            ("Tw", between("2 Tw")),
+            ("Tz", between("90 Tz")),
+            ("TL", between("14 TL")),
+            ("Ts", between("3 Ts")),
+            ("Tr", between("3 Tr")),
+            (
+                "marked content",
+                between("/Span <</MCID 1>> BDC EMC /P BMC EMC /X MP"),
+            ),
+            ("q alone", between("q")),
+            (
+                "q, colour, Q with the CTM unchanged",
+                between("q 1 0 0 rg Q"),
+            ),
+            ("an identity cm", between("1 0 0 1 0 0 cm")),
+            ("general graphics state", between("1 w [] 0 d /GS0 gs")),
+            (
+                "path, paint, clip, shading, XObject, Type 3, compatibility",
+                between(
+                    "0 0 m 10 0 l 0 0 1 1 2 2 c h S 0 0 5 5 re W n /Sh0 sh /Im0 Do 0 0 d0 BX EX",
+                ),
+            ),
+            (
+                "an empty string",
+                "BT /F1 10 Tf (ab) Tj [() -400 (cd)] TJ ET".to_string(),
+            ),
+        ];
+        for (what, src) in rows {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(&src)).unwrap_or_else(|e| panic!("{what}: {e}"));
+            assert_eq!(
+                texts_and_flags(&i),
+                [run_of("ab ", &[2]), run_of("cd", &[])],
+                "{what} left the pen where 'ab' ended, so the gap is after 'ab': {src}"
+            );
+        }
+    }
+
+    /// Once the pen is placed, the next string it draws is what a following number measures from.
+    /// A string later dropped as undecodable counts too: its text was on the page, and suppressing
+    /// the gap after it would fuse the last kept run with the next one across text the reader
+    /// lost (the 01030000000159 shape).
+    #[test]
+    fn a_placed_pen_is_anchored_by_the_next_string_it_draws() {
+        let fonts = one_font();
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [-400 (cd) -400 (ef)] TJ ET",
+        ))
+        .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])]
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 TL (ab) Tj (cd) ' [-400 (ef)] TJ ET"))
+            .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])],
+            "' draws 'cd' after its line move, so the gap is after 'cd'"
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf 12 TL (ab) Tj 0 0 (cd) \" [-400 (ef)] TJ ET",
+        ))
+        .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])],
+            "\" draws 'cd' after its line move, so the gap is after 'cd'"
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [<81> -400 (cd)] TJ ET",
+        ))
+        .unwrap();
+        // WinAnsi leaves 0x81 unmapped, so this proves the drop path was reached.
+        assert_eq!(i.dropped_runs, 1, "the <81> run must be dropped");
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab ", &[2]), run_of("cd", &[])],
+            "a dropped string still drew text, so the gap after it lands on the last run kept"
         );
     }
 }
