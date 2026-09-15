@@ -767,6 +767,10 @@ fn number(obj: Option<&lopdf::Object>) -> Option<f64> {
 /// `opendataloader-bench` corpus declare `Identity-H` — which is the claim
 /// [`Font::split_codes`]'s comment already made in prose (*"right for Identity-H, which is what
 /// real documents overwhelmingly use"*) and that this is the first slice to put a number on.
+///
+/// Widening this past Identity also widens where word spacing can apply: `Interpreter::show` gives
+/// no composite font's code 32 any `Tw`, because Identity codes are two bytes. Revisit that gate in
+/// the same change.
 fn load_cid_widths(doc: &lopdf::Document, fd: &lopdf::Dictionary, id: &str) -> WidthSource {
     let encoding = fd.get(b"Encoding").ok().and_then(|o| o.as_name().ok());
     if !matches!(encoding, Some(b"Identity-H") | Some(b"Identity-V")) {

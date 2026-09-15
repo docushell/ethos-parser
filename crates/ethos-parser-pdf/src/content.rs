@@ -704,6 +704,14 @@ impl<'a> Interpreter<'a> {
         if codes.is_empty() {
             return Ok(());
         }
+        // PDF 32000-1 §9.3.3: `Tw` is added to the SINGLE-BYTE code 32 only. A simple font's
+        // codes are one byte (§9.6). A composite font reaches an advance only under Identity-H or
+        // Identity-V (`fonts::load_cid_widths`), whose codes are all two bytes, so none of its
+        // codes takes `Tw`: not `<0020>`, and not a byte 0x20 the interim `/ToUnicode`-derived
+        // split read alone (`composite-font-codes-from-tounicode`). If composite advances ever
+        // reach a CMap with single-byte codes, this must ask the code's own length instead
+        // (docs/22-WORD-BOXES-SCOPE.md §9).
+        let word_spacing_applies = font.kind == crate::fonts::FontKind::Simple;
 
         let trm = self.ts.rendering_matrix(self.gs.ctm);
         let origin = (trm.e, trm.f);
@@ -746,7 +754,7 @@ impl<'a> Interpreter<'a> {
 
             match font.advance_glyph_space(code) {
                 Some(w0) => {
-                    let is_space = code == 32;
+                    let is_space = word_spacing_applies && code == 32;
                     let before = self.ts.text_matrix.e;
                     let before_f = self.ts.text_matrix.f;
                     self.ts.advance(w0, is_space);
@@ -1069,6 +1077,33 @@ mod tests {
         m
     }
 
+    /// A composite font decoding through `tounicode`, with Identity-style CID widths of 500.
+    ///
+    /// Its code length is whatever that CMap's codespace makes `Font::split_codes` read.
+    fn one_composite_font(tounicode: &[u8]) -> BTreeMap<String, std::sync::Arc<Font>> {
+        use crate::fonts::{Decoder, FontKind, WidthSource};
+        use ethos_parser_core::GeometryAbsence;
+
+        let mut m = BTreeMap::new();
+        m.insert(
+            "F1".to_string(),
+            std::sync::Arc::new(Font {
+                id: "F1".into(),
+                kind: FontKind::Composite,
+                decoder: Decoder::ToUnicode(
+                    crate::cmap::ToUnicode::parse(tounicode).expect("test ToUnicode parses"),
+                ),
+                widths: WidthSource::Cid {
+                    spans: BTreeMap::new(),
+                    default: 500.0,
+                },
+                builtin_encoding_assumed: None,
+                ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            }),
+        );
+        m
+    }
+
     // ---------------------------------------------------------------------------------------
     // v1-S1 — path capture
     // ---------------------------------------------------------------------------------------
@@ -1232,6 +1267,76 @@ mod tests {
         }
         let summed: f64 = per.iter().sum();
         assert!(approx_eq(summed, sh.advance.unwrap()));
+    }
+
+    /// `Tw` reaches a single-byte code 32 only (PDF 32000-1 §9.3.3; docs/22-WORD-BOXES-SCOPE.md §9
+    /// item 3).
+    ///
+    /// Every glyph in (i) to (iii) is 500/1000 em at 10 pt under `10 Tw`, so a code 32 that took
+    /// word spacing advances 15 and one that did not advances 5; (iv) is Courier, 600/1000 em. All
+    /// values are exact in binary floating point.
+    #[test]
+    fn word_spacing_is_added_to_a_single_byte_code_32_only() {
+        // (i) A simple font: code 32 is one byte and takes `Tw`; its neighbours do not.
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td (A A) Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65]);
+        assert_eq!(sh.code_advances, Some(vec![5.0, 15.0, 5.0]));
+        assert_eq!(sh.advance, Some(25.0));
+
+        // (ii) A composite font with a two-byte codespace: the same code 32, in two bytes.
+        let fonts = one_composite_font(
+            b"1 begincodespacerange <0000> <ffff> endcodespacerange \
+              2 beginbfchar <0001> <0041> <0020> <0042> endbfchar",
+        );
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td <000100200001> Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![1, 32, 1], "the same code 32, in two bytes");
+        assert_eq!(sh.code_advances, Some(vec![5.0, 5.0, 5.0]));
+        assert_eq!(sh.advance, Some(15.0));
+
+        // (iii) A composite font whose `/ToUnicode` declares no codespace, so the interim split
+        // reads one byte at a time. The byte 0x20 still takes no `Tw`.
+        let fonts = one_composite_font(b"2 beginbfchar <41> <0041> <20> <0042> endbfchar");
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td <412041> Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65], "the split really was one byte");
+        assert_eq!(
+            sh.code_advances.as_ref().map(|a| a[1]),
+            Some(5.0),
+            "a composite font under Identity defines no single-byte code (PDF 32000-1 §9.7.5.2), \
+             so its byte 0x20 takes no word spacing"
+        );
+        assert_eq!(sh.advance, Some(15.0));
+
+        // (iv) A simple font as documents usually ship one: decoding through a `/ToUnicode`, with
+        // standard-14 widths instead of `/Widths`. The gate reads the font's kind, not its decoder
+        // or its width source, so code 32 still takes `Tw`.
+        let mut courier = (*one_font()["F1"]).clone();
+        courier.decoder = crate::fonts::Decoder::ToUnicode(
+            crate::cmap::ToUnicode::parse(b"2 beginbfchar <41> <0041> <20> <0020> endbfchar")
+                .expect("test ToUnicode parses"),
+        );
+        let metrics = crate::afm::for_base_font("Courier").expect("Courier is standard 14");
+        courier.widths = crate::fonts::WidthSource::Standard14 {
+            face: metrics.face,
+            metrics,
+        };
+        let fonts = BTreeMap::from([("F1".to_string(), std::sync::Arc::new(courier))]);
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td (A A) Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65]);
+        assert_eq!(sh.code_advances, Some(vec![6.0, 16.0, 6.0]));
+        assert_eq!(sh.advance, Some(28.0));
     }
 
     // ---------------------------------------------------------------------------------------

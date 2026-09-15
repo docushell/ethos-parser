@@ -33,6 +33,25 @@ to is recorded below with the version it ships in.
   only `/Rotate` text measured, conformance `rotation-90`, turns 1.04 pt past its page, so it becomes
   `measured_off_page` and loses its horizontal grounding element instead of gaining a box.
   `PdfLocator::advance` still measures before rotation, a known defect left open.
+- **§9 item 3, word spacing on two-byte codes — fixed for 0.58.0.** `Tw` now reaches only a simple
+  font's code 32: every composite font this engine advances is Identity-H or Identity-V, whose codes
+  are all two bytes. p26 advances 1500, not 2500. Against the build before it, over 327 PDFs (the
+  eight gate documents, 44 engine and 35 oracle fixtures, gate-zero, 200 opendataloader-bench, the
+  24 `probes.py` probes and 6 `Tw` probes generated out of tree), one real document moved:
+  `cfpb-home-loan-toolkit` page 17 shows `=` as `<0020>` under `-0.017 Tw` at 11 pt, so that run
+  advances 0.187 pt further and the nine runs after it on the line move right onto the origins an
+  independent reader draws, to the centipoint; its Markdown and HTML differ only in
+  `representation_sha256`, and its tables and grounding counts are unchanged. That reader is
+  PyMuPDF, run out of tree because it is AGPL (decision #14), as were the census and the 65 pt
+  below. Corrections to §9: the eight gate and 200 bench documents show a two-byte 0x0020 under
+  non-zero `Tw` in 20 strings on 2 documents, each unmapped by its `/ToUnicode` and so never
+  advanced — the live case sat outside that count. The defect was wider than `<0020>`: a byte 0x20
+  the `/ToUnicode`-derived split read alone took `Tw` too, a lone zero-width `<0020>` got a
+  `Measured` box made only of `Tw`, negative `Tw` typed a drawn glyph `no_ink_to_measure`, and the
+  shift outlived a run later dropped as undecodable. Newly found, not fixed: a dropped run stops the
+  pen at its refused code — `content.rs` returns before advancing that code and the codes after it —
+  so later runs on the line sit left of where the page draws them (a `Tw` probe's next run at 55 pt,
+  drawn at 65 pt).
 
 ---
 
