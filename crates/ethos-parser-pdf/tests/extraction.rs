@@ -306,6 +306,96 @@ fn a_matrix_carried_type_size_produces_a_real_box() {
     );
 }
 
+/// One page drawing `(abcde)` at (50, 50), 10 pt, in a Type 3 font whose five codes all name one
+/// CharProc, with the given `/FontMatrix`, `/Widths` entry, descriptor ascent/descent and glyph.
+fn type3_page(
+    font_matrix: &str,
+    widths: &str,
+    ascent: i64,
+    descent: i64,
+    charproc: &str,
+) -> Vec<u8> {
+    let stream = |data: &str| format!("<< /Length {} >>\nstream\n{data}\nendstream", data.len());
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] \
+           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream("BT /F1 10 Tf 50 50 Td (abcde) Tj ET").into_bytes(),
+        format!(
+            "<< /Type /Font /Subtype /Type3 /FontBBox [0 {descent} {widths} {ascent}] \
+             /FontMatrix [{font_matrix}] /CharProcs << /a 7 0 R >> /Encoding << /Type /Encoding \
+             /Differences [97 /a /a /a /a /a] >> /FirstChar 97 /LastChar 101 \
+             /Widths [{widths} {widths} {widths} {widths} {widths}] /FontDescriptor 6 0 R \
+             /Resources << >> >>"
+        )
+        .into_bytes(),
+        format!(
+            "<< /Type /FontDescriptor /FontName /T3 /Flags 4 /FontBBox [0 {descent} {widths} \
+             {ascent}] /ItalicAngle 0 /Ascent {ascent} /Descent {descent} /CapHeight {ascent} \
+             /StemV 10 >>"
+        )
+        .into_bytes(),
+        stream(charproc).into_bytes(),
+    ];
+    pdf_from_objects(&objects)
+}
+
+/// **A Type 3 box is kept only where its `/FontMatrix` leaves the vertical at the default**
+/// (docs/22 §9 item 6).
+///
+/// The same five glyphs, 7 pt tall at 10 pt, drawn twice: once in a 1000-unit glyph space, once in
+/// p20's 100-unit one. At the default both readings of the descriptor agree and the box is the
+/// ink. Under `0.01` the specification's reading and LibreOffice 7.5-7.6's disagree by a factor of
+/// ten, and nothing in the file says which one it is — so there is no box, and the advance, which
+/// the matrix does state, is unchanged.
+#[test]
+fn a_type3_box_is_kept_only_at_the_default_font_matrix() {
+    let profile = Profile::default();
+    let run = |pdf: Vec<u8>| {
+        let d = Document::open_bytes(&pdf, &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        let rs = runs(&a);
+        assert_eq!(rs.len(), 1, "one run");
+        assert_eq!(rs[0].text, "aaaaa");
+        assert_eq!(
+            rs[0].locator.advance,
+            Some(2500),
+            "5 glyphs of half an em at 10 pt"
+        );
+        rs[0].geometry
+    };
+
+    let default = run(type3_page(
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    ));
+    let rect = default
+        .measured()
+        .unwrap_or_else(|| panic!("the default matrix keeps its box, got {default:?}"));
+    assert_eq!(
+        [rect.x0(), rect.y0(), rect.x1(), rect.y1()],
+        [5000, 34300, 7500, 35200],
+        "baseline y 350 in the top-left system, 7 pt above and 2 pt below"
+    );
+
+    assert_eq!(
+        run(type3_page(
+            "0.01 0 0 0.01 0 0",
+            "50",
+            70,
+            -20,
+            "50 0 0 -20 50 70 d1 0 0 50 70 re f",
+        )),
+        GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+        "under 0.01 the envelope's units are unstated, so neither 0.9 pt nor 9 pt is a measurement"
+    );
+}
+
 /// Structural: no code path assigns a box dimension from the font size.
 #[test]
 fn no_source_line_derives_a_box_from_the_font_size() {

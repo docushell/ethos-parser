@@ -26,7 +26,8 @@
 //! 1. **The embedded font program**, read with `skrifa`. This is the glyphs the document
 //!    actually carries, so its metrics describe the ink that will actually be drawn.
 //! 2. **`FontDescriptor` `/Ascent` and `/Descent`**, then `/FontBBox`. Author-declared rather
-//!    than measured from outlines, but still *stated by the document* rather than by us.
+//!    than measured from outlines, but still *stated by the document* rather than by us. A Type 3
+//!    font's envelope from either step is then gated on its `/FontMatrix` in `load_font`.
 //! 3. **Nothing.** [`GeometryAbsence::NotReportedByReader`], declared and counted.
 //!
 //! Each step is narrower than the last, and the last is honest rather than helpful.

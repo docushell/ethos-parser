@@ -67,6 +67,26 @@ to is recorded below with the version it ships in.
   same-line `Tm` placing the pen again before a large negative number (p25's shape occurs in no
   measured document). 47 of the seven's 189 synthesized spaces were that shape, every one inside a
   word or beside a drawn space, so 47 of item 5's 189 runs no longer carry one.
+- **§9 item 6, a Type 3 font's height — refused, not mapped, for 0.58.0.** A Type 3 font keeps its
+  ascent/descent envelope only where its `/FontMatrix` leaves the vertical at the 1000-unit default
+  (b = 0, d = 0.001 at single precision, f = 0; an absent or non-array matrix keeps it), whichever
+  source supplied it — descriptor, embedded program or decision #22's standard-14 fill; elsewhere
+  its runs that draw ink are `not_reported_by_reader` (whitespace stays `no_ink_to_measure`) and
+  their advances are unchanged. Correction to §9: the direction it implies, carrying ascent and
+  descent through the matrix, was wrong. Nothing in a Type 3 font says which units its descriptor
+  uses: LibreOffice 7.5 and 7.6 write thousandths of text space under a 1/UPEM matrix (read in its
+  source, measured only on a probe built from it), where mapping would shrink an exact 12 pt box to
+  5.86 pt; Ghostscript writes a glyph-space `/FontBBox`, and pdf.js reads one each way. So p20's
+  0.9 pt box is withdrawn, and so would a right LibreOffice-era one be. Against the build before it,
+  over 351 PDFs (the seven smaller gate documents, 44 engine and 35 oracle fixtures, gate-zero, 200
+  opendataloader-bench, the 24 probes and 31 Type 3 probes and producer files, three of those qpdf
+  QDF rewrites of the Ghostscript ones), 17 documents changed, every one a synthetic probe: 16 runs
+  measured and one `no_ink_to_measure` (a quarter-turned matrix) become `not_reported_by_reader`.
+  Every real file is byte-identical, `ci/artifact-bytes.py` too over all 272 fixture artifacts; the
+  real Type 3 fonts either sit at the default (matplotlib, the oracle ligature fixture) or carried
+  no envelope (Skia in bench `01030000000163` and a Chrome emoji print, Ghostscript). The
+  not-groundable limitation's "no `/FontBBox`" is false for these runs and is kept, since rewording
+  it moves nearly every PDF artifact.
 
 ---
 

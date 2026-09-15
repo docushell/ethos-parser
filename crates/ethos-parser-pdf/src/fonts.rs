@@ -176,7 +176,9 @@ pub struct Font {
     /// §9.6.6.2 specifies for a NONSYMBOLIC font. Carries the base font name for the
     /// document-scoped limitation's detail, the same shape `WidthSource::Absent` uses.
     pub builtin_encoding_assumed: Option<String>,
-    /// Measured ink extent for this font, in glyph space, or a typed absence.
+    /// Measured ink extent for this font, in thousandths of an em — the 1000-unit glyph space; a
+    /// Type 3 font keeps one only where its /FontMatrix vertical is that space (`load_font` step
+    /// 3c) — or a typed absence.
     ///
     /// Font-level rather than per-glyph: a per-glyph ink box needs the glyph outline, which is
     /// M-later work. This is the font's ascent/descent envelope, and it is **measured** — from
@@ -187,7 +189,9 @@ pub struct Font {
 /// A font's vertical ink extent, measured or typed-absent.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontInk {
-    /// Ascent and descent in glyph-space units, and where they came from.
+    /// Ascent and descent in thousandths of an em — the 1000-unit glyph space; a Type 3 font keeps
+    /// one only where its /FontMatrix vertical is that space (`load_font` step 3c) — and where
+    /// they came from.
     Measured {
         /// Highest ink above the baseline.
         ascent: f64,
@@ -588,7 +592,8 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     //     typed absence, so nothing the document actually stated is overwritten.
     //
     //     Composite fonts are excluded: their advances are CID-keyed via `/W` and `/DW`, so an
-    //     AFM code lookup would be measuring a different thing under the same name.
+    //     AFM code lookup would be measuring a different thing under the same name. A Type 3
+    //     font's envelope, from step 3 or from here, is then subject to 3c.
     if matches!(FontKind::from_subtype(&subtype), FontKind::Simple) {
         if let Some(metrics) = base_font_name(fd)
             .as_deref()
@@ -608,6 +613,14 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
                 };
             }
         }
+    }
+
+    // 3c. A Type 3 font keeps an envelope only where its glyph space is vertically the default
+    //     (`type3_vertical_is_default`), whichever step supplied it: the descriptor, an embedded
+    //     program, or 3b's standard-14 face. 3b's width fill is not gated: a Type 3 font must
+    //     carry /Widths (PDF 32000-1 Table 112), so that fill reaches only a malformed one.
+    if subtype == "Type3" && !type3_vertical_is_default(doc, fd) {
+        ink = FontInk::Absent(GeometryAbsence::NotReportedByReader);
     }
 
     // 4. Did this font get `StandardEncoding` without the specification licensing it? PDF 32000-1
@@ -749,6 +762,27 @@ fn number(obj: Option<&lopdf::Object>) -> Option<f64> {
         lopdf::Object::Real(r) => Some(f64::from(*r)),
         _ => None,
     }
+}
+
+/// Whether a Type 3 font's /FontMatrix carries glyph-space y to text space as the 1000-unit
+/// glyph space of every other font does (PDF 32000-1 §9.2.4): b = 0, d = 0.001, f = 0.
+///
+/// Only there do the two readings of a Type 3 font's vertical metrics agree: thousandths of text
+/// space (LibreOffice 7.5-7.6 writes its descriptor so under a 1/UPEM matrix; pdf.js reads
+/// `/Ascent` so) and the font's own glyph space (§9.6.5). Elsewhere nothing in the file says
+/// which it is, so a box built there would rest on a guess. a, c and e reach only x, where the box
+/// is the pen's origin and advance, not the ink (docs/22 §3): a large e can draw a glyph outside
+/// its box. A matrix absent or not an array is the default `load_widths` reads the widths at. d is
+/// compared at single precision, which is how a PDF real is held; b, d and f take no tolerance.
+fn type3_vertical_is_default(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> bool {
+    let Some(matrix) = resolve_array(doc, fd.get(b"FontMatrix").ok()) else {
+        return true;
+    };
+    let matrix: Option<Vec<f64>> = matrix.iter().map(|o| number(Some(o))).collect();
+    matches!(
+        matrix.as_deref(),
+        Some(&[_, b, _, d, _, f]) if b == 0.0 && d as f32 == 0.001_f32 && f == 0.0
+    )
 }
 
 /// A composite font's widths, from its descendant CIDFont (v2.2-S3, PDF 32000-1 §9.7.4.3).
@@ -1601,5 +1635,192 @@ mod tests {
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
+    }
+
+    /// A Type 3 font dictionary: code 97, width 500, an optional `/FontMatrix`, an optional
+    /// descriptor stating Ascent 700 / Descent -200, and an optional `/BaseFont`.
+    fn type3_font(
+        matrix: Option<Vec<lopdf::Object>>,
+        descriptor: bool,
+        base_font: Option<&str>,
+    ) -> lopdf::Dictionary {
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type3".to_vec()));
+        fd.set("FirstChar", lopdf::Object::Integer(97));
+        fd.set(
+            "Widths",
+            lopdf::Object::Array(vec![lopdf::Object::Integer(500)]),
+        );
+        if let Some(m) = matrix {
+            fd.set("FontMatrix", lopdf::Object::Array(m));
+        }
+        if descriptor {
+            let mut desc = lopdf::Dictionary::new();
+            desc.set("Ascent", lopdf::Object::Integer(700));
+            desc.set("Descent", lopdf::Object::Integer(-200));
+            fd.set("FontDescriptor", lopdf::Object::Dictionary(desc));
+        }
+        if let Some(name) = base_font {
+            fd.set("BaseFont", lopdf::Object::Name(name.as_bytes().to_vec()));
+        }
+        fd
+    }
+
+    /// A matrix array: whole entries as integers, the rest as reals.
+    fn matrix(entries: &[f32]) -> Vec<lopdf::Object> {
+        entries
+            .iter()
+            .map(|&v| {
+                if v.fract() == 0.0 {
+                    lopdf::Object::Integer(v as i64)
+                } else {
+                    lopdf::Object::Real(v)
+                }
+            })
+            .collect()
+    }
+
+    /// **A Type 3 font keeps its envelope only where every reading of it agrees** (docs/22 §9
+    /// item 6).
+    ///
+    /// Nothing in a Type 3 font says which units its descriptor uses. The specification reads it in
+    /// the font's own glyph space; LibreOffice 7.5-7.6 writes thousandths of text space under a
+    /// 1/UPEM matrix. The two agree only when the matrix's vertical is the 1000-unit default
+    /// (b = 0, d = 0.001, f = 0). Mapping through the matrix would be wrong on LibreOffice, and
+    /// reading thousandths regardless of the matrix wrong on p20, so elsewhere the envelope is
+    /// refused. b, d and f take no tolerance, and a matrix held as an indirect object is resolved.
+    #[test]
+    fn a_type3_font_keeps_an_envelope_only_where_its_font_matrix_vertical_is_the_default() {
+        let load = |m: Option<Vec<lopdf::Object>>| {
+            load_font(&lopdf::Document::new(), "F1", &type3_font(m, true, None)).expect("loads")
+        };
+        let kept = FontInk::Measured {
+            ascent: 700.0,
+            descent: -200.0,
+            source: "font-descriptor",
+        };
+        for (label, m) in [
+            ("default", Some(matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0]))),
+            ("no /FontMatrix", None),
+            (
+                "a, c and e set",
+                Some(matrix(&[0.0008, 0.0, 0.0002, 0.001, 5.0, 0.0])),
+            ),
+        ] {
+            assert_eq!(load(m).ink, kept, "{label}: the vertical is the default");
+        }
+
+        let refused: Vec<(&str, Vec<lopdf::Object>)> = vec![
+            ("p20", matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0])),
+            (
+                "LibreOffice 7.5",
+                matrix(&[0.000_488_281_25, 0.0, 0.0, 0.000_488_281_25, 0.0, 0.0]),
+            ),
+            ("Integer", matrix(&[1.0, 0.0, 0.0, 1.0, 0.0, 0.0])),
+            ("shear-b", matrix(&[0.001, 0.0001, 0.0, 0.001, 0.0, 0.0])),
+            ("Skia flip", matrix(&[0.001, 0.0, 0.0, -0.001, 0.0, 0.0])),
+            ("offset-f", matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.1])),
+            (
+                "b just off zero",
+                matrix(&[0.001, f32::MIN_POSITIVE, 0.0, 0.001, 0.0, 0.0]),
+            ),
+            (
+                "f just off zero",
+                matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, f32::MIN_POSITIVE]),
+            ),
+            (
+                "near-default",
+                matrix(&[0.001, 0.0, 0.0, 0.000_999_99, 0.0, 0.0]),
+            ),
+            ("four elements", matrix(&[0.001, 0.0, 0.0, 0.001])),
+            (
+                "seven numbers",
+                matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0]),
+            ),
+            ("seven with a name", {
+                let mut m = matrix(&[0.001, 0.0, 0.0]);
+                m.push(lopdf::Object::Name(b"n".to_vec()));
+                m.extend(matrix(&[0.001, 0.0, 0.0]));
+                m
+            }),
+        ];
+        for (label, m) in refused {
+            let font = load(Some(m));
+            assert_eq!(
+                font.ink,
+                FontInk::Absent(GeometryAbsence::NotReportedByReader),
+                "{label}: the file does not say which units its envelope is in"
+            );
+            if label == "p20" {
+                assert!(
+                    matches!(
+                        font.widths,
+                        WidthSource::Widths { type3_scale_x: Some(sx), .. }
+                            if sx == f64::from(0.01_f32)
+                    ),
+                    "the gate touches the envelope only; widths still go through the matrix: {:?}",
+                    font.widths
+                );
+            }
+        }
+
+        let mut doc = lopdf::Document::new();
+        let p20 = matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0]);
+        let p20 = doc.add_object(lopdf::Object::Array(p20));
+        let mut fd = type3_font(None, true, None);
+        fd.set("FontMatrix", lopdf::Object::Reference(p20));
+        assert_eq!(
+            load_font(&doc, "F1", &fd).expect("loads").ink,
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            "p20's matrix as an indirect object is resolved, as `load_widths` resolves it"
+        );
+    }
+
+    /// **Decision #22's standard-14 envelope is refused too**: the gate asks which units a Type 3
+    /// font's glyph space leaves an envelope in, not which step supplied it. At the default matrix
+    /// it is kept, as #22 gives it.
+    #[test]
+    fn a_type3_font_named_for_a_standard_14_face_gets_no_envelope_under_a_non_default_matrix() {
+        let load = |entries: &[f32]| {
+            let fd = type3_font(Some(matrix(entries)), false, Some("Helvetica"));
+            load_font(&lopdf::Document::new(), "F1", &fd).expect("loads")
+        };
+        assert_eq!(
+            load(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0]).ink,
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            "3c runs after 3b, so the AFM fill is refused with the rest"
+        );
+        assert!(
+            matches!(
+                load(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0]).ink,
+                FontInk::Measured { .. }
+            ),
+            "at the default matrix decision #22's envelope stands"
+        );
+    }
+
+    /// **Only a Type 3 font's `/FontMatrix` is read.** The key means nothing on any other font.
+    #[test]
+    fn a_font_matrix_on_any_other_font_is_never_read() {
+        let mut desc = lopdf::Dictionary::new();
+        desc.set("Ascent", lopdf::Object::Integer(718));
+        desc.set("Descent", lopdf::Object::Integer(-207));
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type1".to_vec()));
+        fd.set(
+            "FontMatrix",
+            lopdf::Object::Array(matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0])),
+        );
+        fd.set("FontDescriptor", lopdf::Object::Dictionary(desc));
+        let kept = FontInk::Measured {
+            ascent: 718.0,
+            descent: -207.0,
+            source: "font-descriptor",
+        };
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.ink, kept, "Type1");
+        fd.remove(b"Subtype");
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.ink, kept, "no /Subtype");
     }
 }
