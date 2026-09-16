@@ -234,6 +234,15 @@ pub struct TaggedTableRecord {
     /// is not invented, and the reason it is missing is a property of the source rather than a gap
     /// in this reader.
     pub geometry: ethos_parser_core::GeometryPresence,
+    /// Whose statement the grid is, read off the `/Table` element itself (auto-tagging S1).
+    ///
+    /// `Extracted` for an author's tags — the document's own statement, a stronger class than any
+    /// grid inferred over ink — and `Computed` only where the element carries this engine's owner
+    /// attribute, which the writer never puts on a table (`docs/23-AUTO-TAGGING-SCOPE.md` §3.2).
+    /// Carried on the record rather than restored as a constant downstream so a tagged table can
+    /// never launder an engine-written element into the author's; written on every record with no
+    /// default, by decision #20.
+    pub derivation: ethos_parser_core::DerivationClass,
 }
 
 /// One `/TD` or `/TH` of a tagged table (v2-S24).

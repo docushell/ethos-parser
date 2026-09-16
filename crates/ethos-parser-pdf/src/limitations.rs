@@ -460,6 +460,60 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
     )
 }
 
+/// The document-scoped disclosure for a structure tree this engine's own writer created
+/// (auto-tagging S1, `docs/23-AUTO-TAGGING-SCOPE.md` §4.2).
+///
+/// A disclosure in the limitation slot on the precedent of
+/// [`tagged_table_without_geometric_table`] (v2-S24), and like that code it still names something
+/// missing: an author's structure. Declared beside — never instead of — the `derivation` every
+/// `pdf_tagged` locator carries, so a consumer reading only the assurance block learns whose tree
+/// the role paths came from. `untagged_structure_tree_absent` is not declared with it: a tree was
+/// read and a role path exists, so that code's detail would be false on both counts.
+///
+/// `elements` is how many elements carry the owner attribute and `tree_elements` how many the
+/// tree holds in all. The writer tags only a document with no tree, so on its output the two are
+/// equal and the detail says every role path is this engine's; a tree that mixes an author's
+/// elements with this engine's — a shape nothing produces, and nothing forbids a hand from
+/// producing — is said to be mixed rather than described by a sentence that would be false of it.
+pub fn structure_tree_engine_written(
+    elements: u32,
+    tree_elements: u32,
+    runs: u32,
+    rules: &std::collections::BTreeSet<String>,
+) -> Limitation {
+    let rules = if rules.is_empty() {
+        "no `/Rule` name".to_string()
+    } else {
+        let list: Vec<&str> = rules.iter().map(String::as_str).collect();
+        format!("`/Rule` {}", list.join(", "))
+    };
+    let whose = if elements >= tree_elements {
+        "The input carried no author structure tree — the writer tags only such a document — so \
+         EVERY role path in this artifact is this engine's own block cut read back and NONE is \
+         the author's: a `/Div` here says where a stretch of text lies, never what it is."
+            .to_string()
+    } else {
+        format!(
+            "The other {} element(s) of the tree carry no such attribute, so this tree MIXES an \
+             author's elements with this engine's — a shape the writer never produces, because \
+             it tags only a document with no tree — and each locator's `derivation` says which \
+             element cited it.",
+            tree_elements.saturating_sub(elements)
+        )
+    };
+    Limitation::document(
+        ethos_parser_core::codes::STRUCTURE_TREE_ENGINE_WRITTEN,
+        format!(
+            "This document's structure tree is THIS ENGINE'S OWN, read back out of the file: \
+             {elements} of its {tree_elements} structure element(s) carry an attribute object \
+             owned by `/EthosParser` with `/Derivation /Computed` ({rules}), and {runs} text \
+             run(s) bind under them with `derivation: computed` on their `pdf_tagged` locator. \
+             {whose} A reader that does not read the owner attribute sees author structure; this \
+             declaration and the class on every tagged locator are what say otherwise."
+        ),
+    )
+}
+
 /// The document-scoped limitation for an XFA packet this profile does not parse (v1-S4).
 ///
 /// **Detected, declared, never parsed** (checklist L15). XFA is an XML form description living

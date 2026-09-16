@@ -171,9 +171,13 @@ pub fn to_representation(
                 rows: t.rows,
                 columns: t.columns,
                 cells,
-                // **Extracted, not Computed** — the grid is the document's own statement, read off
-                // its tags, not an inference over ink. The stronger class is the honest one.
-                derivation: ethos_parser_core::DerivationClass::Extracted,
+                // The class the extractor read off the `/Table` element itself: **Extracted**
+                // for an author's tags — the grid is the document's own statement, read off its
+                // tags and not inferred over ink, and the stronger class is the honest one — and
+                // `Computed` only where the element carries this engine's own owner attribute
+                // (auto-tagging S1). Copied rather than written as a constant here, so a tagged
+                // table can never launder an engine-written element into the author's.
+                derivation: t.derivation,
                 detection_rule: t.rule.to_string(),
                 // NotApplicable: no geometry to compare against the structural derivation.
                 locator_check: t.check.clone(),

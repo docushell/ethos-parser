@@ -210,6 +210,8 @@ struct PageYield {
     encoding_detail: String,
     mcids_unbound: u32,
     unclaimed_tree_items: u32,
+    /// Runs bound under an element this engine's own writer created (auto-tagging S1).
+    computed_bound: u32,
     props_by_name: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
@@ -252,6 +254,7 @@ fn extract_page(
     let mut stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)> = Vec::new();
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
+    let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
@@ -519,6 +522,23 @@ fn extract_page(
                     .count(),
             ),
         );
+        // Auto-tagging S1. Runs whose binding is this engine's own tag read back — the count
+        // `structure-tree-engine-written` names. Counted off the locators the join produced,
+        // never off the tree alone, because only the join knows which citations a run answered.
+        computed_bound = declare(
+            computed_bound,
+            declared_len(
+                runs.iter()
+                    .filter(|r| {
+                        matches!(
+                            &r.structural,
+                            Some(ethos_parser_core::StructuralLocator::PdfTagged(t))
+                                if t.derivation == DerivationClass::Computed
+                        )
+                    })
+                    .count(),
+            ),
+        );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
@@ -779,6 +799,10 @@ fn extract_page(
                 rule: ethos_parser_core::TABLE_DETECTION_TAGGED_V1.to_string(),
                 check: crate::tables::tagged_not_applicable_check(),
                 geometry: crate::tables::TAGGED_TABLE_GEOMETRY,
+                // Whose element the `/Table` is, as the walk read it off the element's own
+                // attributes (auto-tagging S1). `Extracted` on every document the writer
+                // produces, because it never emits a `/Table`; read rather than assumed.
+                derivation: tagged.derivation,
             });
         }
         // v2-S24. The repurposed disclosure: a page that emitted a tagged table carries a table
@@ -925,6 +949,7 @@ fn extract_page(
         encoding_detail,
         mcids_unbound,
         unclaimed_tree_items,
+        computed_bound,
         props_by_name,
         tagged_without_geometric,
         unresolved_field_parents,
@@ -1002,6 +1027,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // Counted while binding, declared afterwards, and only when non-zero.
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
+    // Auto-tagging S1. Runs bound under this engine's own elements, summed like `mcids_unbound`.
+    let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
@@ -1245,6 +1272,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         }
         mcids_unbound = declare(mcids_unbound, y.mcids_unbound);
         unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
+        computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
@@ -1290,6 +1318,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // v1-S3. Four facts about the structure tree, each declared only where it is true. A
     // capability that says "this profile looks" is worth having only if the artifact also says
     // what the looking found, and "found nothing" has more than one cause.
+    //
+    // Auto-tagging S1 adds a fifth, on the `Some` arm only: a tree this engine's own writer
+    // created is declared as such, and `untagged-structure-tree-absent` stays on the `None` arm
+    // alone — a tree was read, so its detail would be false (scope §4.2).
     match structure.as_ref() {
         None => limitations.push(lim::untagged_structure_tree_absent()),
         Some(tree) => {
@@ -1299,7 +1331,14 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             if unclaimed_tree_items > 0 {
                 limitations.push(lim::structure_item_without_content(unclaimed_tree_items));
             }
-            let _ = tree;
+            if let Some(written) = &tree.engine_written {
+                limitations.push(lim::structure_tree_engine_written(
+                    written.elements,
+                    declared_len(tree.elements),
+                    computed_bound,
+                    &written.rules,
+                ));
+            }
         }
     }
     if props_by_name > 0 {
