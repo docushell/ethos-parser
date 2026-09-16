@@ -79,6 +79,7 @@ target/release/ethos-parser ground repr.json > grounding.json
 | `grounding-check` | Validate a grounding file's structure and its link to the source bytes | 0 / 1 / 2 |
 | `verify` | Hand a citation check to the pinned Ethos verifier and relay its answer | 0 / 1 / 2 |
 | `overlay` | An annotated copy of the PDF showing what was found — and what has no box | 0 / 2 |
+| `tag` | A copy of an untagged PDF with a structure tree written over it from the block cut — one `/Div` per block, marked as computed, so `extract` reads it back as this engine's own. Fills absence only: a PDF that already has a tree is refused ([`docs/23-AUTO-TAGGING-SCOPE.md`](docs/23-AUTO-TAGGING-SCOPE.md)) | 0 / 2 |
 | `mcp` | Serve `extract`, `ground` and `node_get` to an agent over stdio | 0 / 2 |
 
 Exit codes always mean the same thing: **0** it worked, **1** it ran and the answer is no, **2** it
