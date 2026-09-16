@@ -1070,7 +1070,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // "~4.7 MiB per page" above is the median of a spread. Measured pre-Arc it was 3.20 to 9.07
     // MiB/page with the 733-page document at 6.5 GiB; after the role-path sharing below it was
     // 2.98 to 6.89 at 4.56 GiB, and since c14n stopped copying the payload's largest field it is
-    // 3.01 to 6.58, with that document at 3.65 GiB. Within ONE document the marginal cost per
+    // 3.01 to 6.58, with that document at 3.65 GiB — 3.01 to 6.75 and 3.64 GiB re-measured at
+    // 0.58.0, within noise of the last figure. Within ONE document the marginal cost per
     // admitted page IS constant — a pre-Arc `--max-pages` ladder gives 8.4 to 9.2 MiB/page from
     // 128 pages up, and the two post-Arc points (128 and 733) give 5.95 — so there is no
     // superlinear retention here and the cross-document spread is content density.
@@ -1086,7 +1087,11 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // admitting no pages has no run whose path could be shared, which is a check on the mechanism
     // rather than a repeat reading. The budget is read at the `let budget` below, but
     // `structure::read` and `tree_mcids_by_page` are built above it over the WHOLE document, so
-    // that term never responds to the flag. See `docs/measurements/memory-ceiling/`.
+    // that term never responds to the flag. It is not most of the floor, though: measured at
+    // 0.58.0 against `classify --sample-pages 0`, which opens the document and reads no tree,
+    // the tree is 28 MiB of the 221, and the other 193 MiB is the source bytes and lopdf's
+    // object graph, built in `Document::open_bytes` before this function runs — a cost no budget
+    // consulted here can lower. See `docs/measurements/memory-ceiling/` §5 and §15.
     use rayon::prelude::*;
     let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
         .pages()
