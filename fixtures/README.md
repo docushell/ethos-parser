@@ -12,7 +12,7 @@ skips and never quietly uses a different file.
 | --- | --- | --- | --- |
 | `conformance` | `../ethos/fixtures` | `ETHOS_FIXTURES` | The 15 Ethos-owned fixtures. The oracle criterion counts exactly these |
 | `benchmark` | `../ethos/benchmarks/gate-zero/corpus` | `ETHOS_BENCH_CORPUS` | 4 large real-world PDFs. Not part of the oracle count |
-| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 37 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
+| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 45 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
 | `gate` | `fixtures/gate` | `ETHOS_GATE_CORPUS` | 8 tagged public documents for the table gate — **committed here**, because a corpus you publish numbers about has to be one anyone can re-measure |
 
 `fixtures/office/` holds 16 small office packages for the v2 readers and the mutation harness, and
@@ -63,6 +63,7 @@ not obvious from the name:
 | `invisible-render-mode` | Text under render mode 3: present, flagged, never filtered out |
 | `off-page-and-offset-box` | A media box whose origin is not `(0,0)`, plus a smaller crop box — the coordinate repair and the off-page finding in one page |
 | `composite-font-cid-widths`, `composite-font-non-identity-cmap` | A `/Type0` font whose widths live on its descendant CIDFont as `/W` and `/DW`, and the same descendant under a CMap this profile cannot read — see below |
+| `leading-gap-two-blocks` | Six lines in one column, three at a 14 pt leading, a 28 pt gap, three more: the leading-gap half of the block cut opens exactly two blocks, and the fixture states the numbers it is cut against — see below |
 
 Why the upstream corpus cannot cover the table cases: **no fixture in it contains a single path
 operator**, so nothing there exercises ruled detection at all.
@@ -98,6 +99,35 @@ whose whole content is `q /Xf1 Do Q` came out empty with `pages_failed: 0`. The 
 this engine writes, including ones for documents containing no XObject at all: it states the
 policy, not the cost. `form-xobjects-not-descended` is document-scoped and carries a count, and the
 fixture asserts both halves — present here, absent on the two above.
+
+### The leading-gap fixture is the first one authored for the block cut
+
+`leading-gap-two-blocks` is six single-run lines in one column, in a font declaring real ink
+metrics so every run reaches the grounding artifact: three lines at a 14 pt leading, a 28 pt gap,
+three more at 14 pt. In the rule's own units (`blocks.rs`: centipoints, top-left origin) the
+baselines are 2000, 3400, 4800, 7600, 9000 and 10400, so:
+
+| | |
+| --- | --- |
+| gaps | 1400, 1400, 2800, 1400, 1400 |
+| modal leading | 1400 — four of five gaps, so the share is 4/5 against a floor of 1/4, and 1400 clears the 600 floor |
+| threshold | 8/5 × 1400 = 2240 |
+| cuts | one, at the 2800 gap |
+| blocks | runs 1–3 are block 1, runs 4–6 are block 2, `region` absent on all six |
+
+**It is not the first fixture whose page the cut divides, and the census that found that is the
+reason it states its numbers.** Measured with the 0.58.0 binary over the 44 engine fixtures and the
+14 conformance fixtures that open: three engine fixtures already come out in two blocks by the
+leading-gap half — `both-table-rules` (the gap between its two tables), `rotated-and-mirrored-text`
+(seven turned runs scattered down a page) and `stroke-ruled-worksheet` (a worksheet's row pitch) —
+each by accident of a layout authored for something else, and four more only by the vertical cut,
+one block per column band: the two-column pair, `unruled-near-miss` and the oracle's
+`synthetic/two-columns`. None of the seven states its leading or its gap, so none can say which gap
+opened a block or that the threshold was cleared on purpose, and a change to `CUT_NUM`/`CUT_DEN` or
+to the modal-leading guard would move them without any fixture saying why. The two-run fixtures
+(`markdown-two-blocks`, `markdown-hyphen-break`) cannot cut at all: one gap is its own modal leading,
+and a gap never clears 1.6 times itself. That pair is the negative half of the wire tests in
+`crates/ethos-parser-pdf/tests/extraction.rs`, and this fixture is the positive half.
 
 ### The composite-font pair is about a shape neither corpus had
 

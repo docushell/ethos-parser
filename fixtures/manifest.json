@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 44,
+    "engine_owned": 45,
     "gate": 8
   },
   "fixtures": [
@@ -586,6 +586,15 @@
       "sha256": "sha256:27fb8f92f77fa11f56aad179ed811c41765c44592bc945d99ed2e68f2676f10a",
       "owner": "engine",
       "notes": "An /L / /LI / /Lbl / /LBody structure tree with a nested /L under an /LBody and one item whose body is two marked runs. Neither corpus tags a list anywhere, so this is the only document that reaches the v1.1-S2 list branch; a projection that grew list markers from bullet glyphs instead would be reading layout, which is the refusal L29 makes about font-size headings one level up."
+    },
+    {
+      "id": "leading-gap-two-blocks",
+      "root": "engine",
+      "group": "engine",
+      "path": "leading-gap-two-blocks/document.pdf",
+      "sha256": "sha256:a180f4a7ef8fba2cd4bad919598b1cbe571622cbb79aa1d5d3fc9ab1a7d10adb",
+      "owner": "engine",
+      "notes": "The block cut's own fixture (OPEN-WORK \u00a72.2). Six single-run lines in one column in a font declaring real ink metrics: three at a 14 pt leading, a 28 pt gap, three more at 14 pt. In the rule's units the baselines are 2000, 3400, 4800, 7600, 9000 and 10400 centipoints, so the modal leading is 1400 (four of five gaps), the threshold is 8/5 x 1400 = 2240, and the one 2800 gap is the only one that clears it: runs 1-3 are block 1 and runs 4-6 are block 2, checkable by hand. The first fixture AUTHORED for the leading-gap half of the cut. Three earlier engine fixtures (both-table-rules, rotated-and-mirrored-text, stroke-ruled-worksheet) also come out in two blocks by that half, each by accident of a layout built for something else, and four more (the two-column pair, unruled-near-miss, plus the oracle's synthetic/two-columns) only by the vertical cut; none states its leading or its gap, so none could pin which gap opened a block."
     },
     {
       "id": "cfpb-home-loan-toolkit",
