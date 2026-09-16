@@ -613,12 +613,17 @@ pub struct Capabilities {
     pub spans: bool,
     /// Spans carry character offsets into their element's text. (grounding-aligned)
     ///
-    /// **v0: false.** M5 built `DocumentRepresentation v0` and left this false on purpose: v0
-    /// performs no line or block grouping, so an element and a span are the *same object* and an
-    /// offset would always be `0..len` — advertising sub-element addressing the engine cannot do.
-    /// Ethos's own validator also ties the two together (offsets present must equal the
-    /// capability), so claiming it would oblige every span to carry them. It flips at v1, when
-    /// grouping makes elements coarser than spans and the offsets start carrying information.
+    /// **True since 0.58.0**, and the claim is exact: every span a projection emits carries
+    /// `char_start`/`char_end`, where its text lies in its element's text, in Unicode scalars, end
+    /// exclusive. It binds no box tighter. An artifact claims it only while it carries spans: past
+    /// the million-span cap it has none, and `ethos.grounding.v1` refuses offsets without spans.
+    /// The page-less profiles set it false because their artifact carries no spans.
+    ///
+    /// It was false in two steps, for two reasons. M4 narrowed it because v0 had no element/span
+    /// hierarchy for an offset to index into. M5 built the hierarchy and kept it false, because v0
+    /// did no grouping: an element and a span were the *same object*, so an offset would always
+    /// have been `0..len`. v2.2-S7 made the element the block and the span the run, and that is
+    /// what gives an offset information.
     pub char_offsets: bool,
     /// Tables are detected and emitted. (grounding-aligned)
     ///
@@ -748,14 +753,14 @@ impl Capabilities {
     /// structural address on the strength of a best-effort `mcid`. Narrowing a declaration when
     /// the evidence does not support it is the mechanism working, not a regression.
     ///
-    /// **`structural_locators` has been `true` since v1-S3**, when the tagged-structure tree
-    /// landed and the address stopped being best-effort. `char_offsets` is still `false`. This
-    /// comment opened *"Note how much is `false`"* and described both as narrowed, three lines
-    /// above a literal that had said `structural_locators: true` since v1-S3 — repaired at
-    /// v2-S13.3.
+    /// **Both narrowed flags are `true` again.** `structural_locators` since v1-S3, when the
+    /// tagged-structure tree landed and the address stopped being best-effort; `char_offsets`
+    /// since 0.58.0, proved on a run whose bytes, codes and scalars disagree. This comment opened
+    /// *"Note how much is `false`"* and described both as narrowed, three lines above a literal
+    /// that had said `structural_locators: true` since v1-S3 — repaired at v2-S13.3.
     pub const V0: Self = Self {
         spans: true,
-        char_offsets: false,
+        char_offsets: true,
         tables: true,
         measured_ink_boxes: true,
         multi_column_reading_order: true,
@@ -2014,10 +2019,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.capabilities.spans = false),
             ),
             (
-                // Mutated toward `true`: `char_offsets` is false in V0, and a mutation to the
-                // value a field already holds tests nothing.
+                // Mutated toward `false` since 0.58.0 flipped it — a mutation to the value a
+                // field already holds tests nothing.
                 "capabilities.char_offsets",
-                Box::new(|p: &mut Profile| p.capabilities.char_offsets = true),
+                Box::new(|p: &mut Profile| p.capabilities.char_offsets = false),
             ),
             (
                 // Mutated toward `false`: `tables` is TRUE as of v1-S1, and a mutation to the
@@ -2175,7 +2180,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":false,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.57.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.57.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v1","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -2970,11 +2975,19 @@ mod tests {
              the engine does at limits and how fast, not which rule produced an artifact.\n\n\
              Moved again at 0.57.0: the version, and nothing else. No rule id moved since 0.56.0 — \
              `grounding-check` now answers as Ethos v0.6.0 does, which changes a validation \
-             report, not which rule produced an artifact."
+             report, not which rule produced an artifact.\n\n\
+             Moved again for character offsets: `capabilities.char_offsets` false -> true — the \
+             claim M4 narrowed away because v0 had no element/span hierarchy, and M5 kept false \
+             because element and span were one object. v2.2-S7 (0.49.0) made the element the \
+             block; `docs/22-WORD-BOXES-SCOPE.md` §8 is the evidence for the flip. Every span \
+             `ground` emits now carries `char_start`/`char_end` in Unicode scalars, and \
+             `char-offsets-not-emitted` leaves this profile's limitations. No box and no character \
+             moves. The eight page-less profiles keep `false`, so this flip moves none of their \
+             hashes; like every profile, they move only with the version."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:de706c10009dac90a6ba0d97d0aa1295b272a5d192afb69713f1a742c888a0b1"
+            "sha256:144f12f5782814c1bdb2cb15c8126e3cea90b2f65f7af180ce67d28c2d8e0075"
         );
     }
 
@@ -3152,12 +3165,14 @@ mod tests {
             c.multi_column_reading_order,
             "v1-S5 orders by page geometry under a versioned rule"
         );
+        // Flipped once the element became the block and the span the run. M4 narrowed it for one
+        // reason (no hierarchy) and M5 kept it false for another (element and span were the same
+        // object, so an offset would always be 0..len); v2.2-S7 spent both.
         assert!(
-            !c.char_offsets,
-            "v0 emits runs with no element/span hierarchy, so there is nothing an offset could \
-             index into. M5 built the record and left this false: with no line grouping an \
-             element and a span are the same object, so an offset would always be 0..len. It \
-             flips at v1 with grouping — and with a test"
+            c.char_offsets,
+            "flipped once the element became the block and the span the run: every span `ground` \
+             emits says where its text lies in its element's — proved by \
+             char_offsets_index_the_element_text_in_unicode_scalars"
         );
         // Flipped at v1-S3. Through v1-S2 this was false and the reason was exact: an `mcid`
         // captured from `BDC` is not a structural address, because with the tree unread it

@@ -112,6 +112,39 @@ to is recorded below with the version it ships in.
   advance). Closing it needs a new fixture. No emitted byte moves: 323 PDFs byte-identical across
   extract, classify, overlay, ground, markdown, html and exit codes, and all 272 fixture artifacts
   identical.
+- **§8, `char_offsets` — built and turned on for 0.58.0, pending the owner's acceptance.** §8 makes
+  the flip the owner's call, and no acceptance is recorded yet, here or in
+  [`00-NORTH-STAR.md`](00-NORTH-STAR.md). Every span a PDF grounding artifact carries now says where
+  its text lies in its element's, `char_start` inclusive and `char_end` exclusive, in Unicode
+  scalars. The offsets come from a scalar cursor over **every** member of the block, boxless runs
+  included, and the artifact claims the capability as `char_offsets && spans_emitted`. Against the
+  build before it, over 328 PDFs (the seven smaller gate documents, 44 engine and 35 oracle
+  fixtures, gate-zero, 200 opendataloader-bench, 24 `probes.py` probes and 8 built out of tree for
+  this question), 324 grounding artifacts gained 2,447,419 offsets and nothing else: stripping
+  `char_start`/`char_end` and resetting the flag gives the base bytes on all 324, and no node, box,
+  id, element text or span text moves anywhere — 0 changed nodes over the whole corpus. Recomputed
+  independently out of tree from the **base** representation, 0 of the 2,447,419 disagree. 280,617
+  spans carry an offset pair a UTF-8 byte cursor would have written differently and 6,974 hold
+  non-ASCII text; 13,089 carry a space the reader synthesized. 36,745 of the 220,826 elements hold
+  boxless text — 32,365 at an edge, 22,068 in the interior, 17,688 both — the members a boxed-only
+  cursor would skip. Both checkers call every one of the 324 valid and source-matched.
+  `nist-sp-800-53Ar5`, past the million-span cap, carries neither spans nor offsets and both
+  checkers accept it; all 16 Office grounding artifacts are byte-identical. On `irs-fw9` Ethos
+  returns all five checks with identical status and evidence and drops `missing_char_offsets` with
+  the `capability_limited` warning it was the only cause of. The cost: artifacts grow 29.9%
+  (`nist-sp-800-161r1` 53.37 MB → 69.23 MB, the largest 130.46 MB, none within 10% of the 256 MiB
+  ceiling) and `grounding-check` on `161r1` goes 0.29 s → 0.53 s (Ethos 0.72 s → 1.07 s).
+  Corrections to §8: the offsets are **not** found by searching the element string, as `variants.py`
+  did — the projection knows each member's position and a search is ambiguous wherever a run's text
+  repeats. That is an argument, not a measurement — a search from the previous span's end agrees on
+  all 2,447,419 spans, and neither checker can tell the two apart — so a unit test pins the member
+  cursor. The proof cannot live in `crates/ethos-parser-pdf/tests/capabilities.rs`, which has no
+  grounding dependency, so that table's row names
+  `char_offsets_index_the_element_text_in_unicode_scalars` in `ethos-parser-cli`'s oracle suite,
+  where the real `extract` and `ground` binaries write the artifact and the pinned Ethos decides;
+  and §8 understates the reach — correcting the stale limitation detail changes one field of every
+  **Office** representation, and every format's Markdown and HTML move their profile and
+  representation digests.
 
 ---
 

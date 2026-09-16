@@ -438,6 +438,16 @@ fields and nothing else:
 **`bbox` is `[x0, y0, x1, y1]`** — left, top, right, bottom — in integer centipoints. Not
 `[x, y, w, h]`.
 
+**`char_start` and `char_end` count Unicode scalars** into the owning element's text — not UTF-8
+bytes, not UTF-16 code units (a JavaScript `text.length`), and not character codes. `char_start` is
+inclusive and `char_end` exclusive, so `element.text` sliced by scalars over `char_start..char_end`
+is exactly `span.text`, which is the rule the consuming validator applies. Every member of the
+element counts, a run with no box included, because the element's text is every member's
+concatenated; a space the reader synthesized is a character of its run's text and counts as one
+(§10; PDF 32000-1 §9.4.3 — a `TJ` number shows no glyph, so a code index would be wrong). Both are
+present on every span exactly when `capabilities.char_offsets` is true, and an artifact claims that
+capability only while it carries spans.
+
 **On zero-area boxes, the engine is deliberately stricter than the oracle.** The verifier's rectangle
 constructor rejects only inverted boxes, so a degenerate `x0 == x1` box is accepted on the grounding
 path, and the schema does not exclude it either. So this is not a shared error — it is something this

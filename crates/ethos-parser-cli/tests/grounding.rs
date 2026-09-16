@@ -302,7 +302,9 @@ fn the_field_exact_literals_are_what_the_schema_names() {
     // array's business, and on this fixture (no ruling lines) it found none.
     assert!(g.capabilities.tables, "v1-S1 looks for ruled tables");
     assert!(g.capabilities.spans);
-    assert!(!g.capabilities.char_offsets);
+    // 0.58.0: every span says where its text lies in its element's, in Unicode scalars — proved
+    // end to end by `char_offsets_index_the_element_text_in_unicode_scalars`.
+    assert!(g.capabilities.char_offsets);
     assert_eq!(g.producer.name, "ethos-parser");
 }
 
@@ -820,11 +822,48 @@ fn the_artifact_satisfies_the_invariants_the_schema_cannot_express() {
             !g.capabilities.char_offsets || g.capabilities.spans,
             "{label}"
         );
+        let element_text: std::collections::BTreeMap<&str, &str> = g
+            .elements
+            .iter()
+            .filter_map(|e| e.text.as_deref().map(|t| (e.id.as_str(), t)))
+            .collect();
         for s in g.spans.iter().flatten() {
             assert_eq!(
                 s.char_start.is_some() || s.char_end.is_some(),
                 g.capabilities.char_offsets,
                 "{label}: offsets present must equal the capability"
+            );
+            if !g.capabilities.char_offsets {
+                continue;
+            }
+            // The rule the verifier applies, applied here: the offsets are complete, ordered, and
+            // the element's text SLICED BY SCALARS is exactly the span's text. On these fixtures it
+            // cannot tell a wrong cursor from the right one: their 15 spans are ASCII and each is
+            // its element's only span, so a byte cursor and a boxed-only cursor write the same
+            // numbers. The unit and the member cursor are pinned by the grounding crate's
+            // `offsets_count_every_member_of_the_block_in_unicode_scalars` and
+            // `offsets_come_from_each_members_position_not_from_searching_the_text`, and end to
+            // end by `char_offsets_index_the_element_text_in_unicode_scalars`.
+            let (start, end) = (
+                s.char_start.expect("claimed") as usize,
+                s.char_end.expect("claimed") as usize,
+            );
+            assert!(start <= end, "{label}: {start}..{end} is not ordered");
+            let id = s.element.as_deref().expect("a span names its element");
+            let text = element_text.get(id).unwrap_or_else(|| {
+                panic!(
+                    "{label}: span {} names element {id}, which carries no text",
+                    s.id
+                )
+            });
+            assert_eq!(
+                text.chars()
+                    .skip(start)
+                    .take(end - start)
+                    .collect::<String>(),
+                s.text,
+                "{label}: span {} does not lie at {start}..{end} of its element's text",
+                s.id
             );
         }
 

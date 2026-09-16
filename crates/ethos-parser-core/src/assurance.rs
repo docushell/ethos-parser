@@ -488,13 +488,13 @@ impl Capabilities {
         if !char_offsets {
             out.push(Limitation::profile(
                 codes::CHAR_OFFSETS_NOT_EMITTED,
-                "Spans carry no character offsets into a parent element's text. The hierarchy \
-                 exists — a projection emits an element and a span per run, and the span names \
-                 its element — but v0 performs no line or block grouping, so the two are the \
-                 SAME object and an offset would always be 0..len. Emitting it would advertise \
-                 sub-element addressing this profile cannot do. It becomes informative at v1, \
-                 when grouping makes elements coarser than spans. A consumer needing \
-                 `char_start`/`char_end` must not infer them from concatenation order.",
+                "This profile claims no character offsets, so no span in an `ethos.grounding.v1` \
+                 artifact projected from a record it produced carries `char_start`/`char_end`, \
+                 and the artifact states `capabilities.char_offsets: false`. For a source without \
+                 pages that follows from the schema rather than from this profile: grounding \
+                 schema 1.1.0 admits no spans there, so an offset has nothing to sit on even \
+                 though the record carries runs. A consumer needing `char_start`/`char_end` must \
+                 not infer them from concatenation order.",
             ));
         }
         if markdown {
@@ -1624,6 +1624,51 @@ mod tests {
                 .any(|l| l.code == codes::READING_ORDER_GEOMETRIC_ONLY),
             "the true-capability partner must not be declared by a profile that has the \
              capability off — it would describe a rule that did not run"
+        );
+    }
+
+    /// **Both halves of the retirement** (0.58.0), the twin of the one directly above.
+    ///
+    /// The default profile no longer says its spans carry no offsets, because they do. A profile
+    /// that claims the capability off still says it — the eight page-less ones do, and for them
+    /// it is the schema's answer rather than this engine's. What the detail must NOT still say is
+    /// the reason v2.2-S7 spent: that an element and a span are one object, so an offset would be
+    /// `0..len`. A reader ACTS on a stale limitation.
+    #[test]
+    fn the_char_offsets_limitation_retires_with_the_capability_and_not_before() {
+        let on = Assurance::new(Capabilities::V0, 1, processed(1), Vec::new()).unwrap();
+        assert!(
+            !on.limitations
+                .iter()
+                .any(|l| l.code == codes::CHAR_OFFSETS_NOT_EMITTED),
+            "the default profile emits offsets and must not declare that it does not"
+        );
+
+        let off = Assurance::new(
+            Capabilities {
+                char_offsets: false,
+                ..Capabilities::V0
+            },
+            1,
+            processed(1),
+            Vec::new(),
+        )
+        .unwrap();
+        let l = off
+            .limitations
+            .iter()
+            .find(|l| l.code == codes::CHAR_OFFSETS_NOT_EMITTED)
+            .expect("a profile claiming no offsets must still say so");
+        assert_eq!(l.scope, LimitationScope::Profile);
+        assert!(
+            !l.detail.contains("0..len") && !l.detail.contains("no line or block grouping"),
+            "the spent reason must be GONE rather than reworded: {}",
+            l.detail
+        );
+        assert!(
+            l.detail.contains("must not infer"),
+            "what a consumer must not do is the part that is still true: {}",
+            l.detail
         );
     }
 
