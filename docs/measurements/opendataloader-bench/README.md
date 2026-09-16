@@ -1,8 +1,8 @@
 # Running ethos-parser against `opendataloader-bench`
 
-The adapter and scorer behind the numbers below, committed so they can be re-derived rather than
-believed — the same correction [`../block-subdivision/`](../block-subdivision/) makes for its own
-measurement, and the one [`17-D1-SCOPE.md`](../../17-D1-SCOPE.md) and
+The adapter, scorer and census behind the numbers below, committed so they can be re-derived rather
+than believed — the same correction [`../block-subdivision/`](../block-subdivision/) makes for its
+own measurement, and the one [`17-D1-SCOPE.md`](../../17-D1-SCOPE.md) and
 [`18-INTERNING-SCOPE.md`](../../18-INTERNING-SCOPE.md) still need.
 
 ## This is an instrument, not a leaderboard entry
@@ -30,11 +30,135 @@ cargo build --release                                                       # in
 cp docs/measurements/opendataloader-bench/pdf_parser_ethos_parser.py <bench>/src/
 # register in <bench>/src/engine_registry.py — and do NOT touch the existing `ethos` entry,
 # which is the Ethos verifier CLI, a different tool:
-#   ENGINES["ethos-parser"] = "0.46.0"
+#   ENGINES["ethos-parser"] = "0.58.0"
 #   _ENGINE_MODULES["ethos-parser"] = "pdf_parser_ethos_parser"
 
 ETHOS_BENCH=<bench> <bench>/.venv/bin/python docs/measurements/opendataloader-bench/score.py
+ETHOS_PARSER_BIN=target/release/ethos-parser python3 docs/measurements/opendataloader-bench/census.py <bench>/pdfs
 ```
+
+`score.py` imports the harness's three evaluators and this adapter directly, so it needs the
+harness's virtualenv and not its registry; the registry entry is for the harness's own driver.
+`ETHOS_PARSER_BIN` pins the binary for both scripts — without it the adapter takes
+`target/release/ethos-parser` from this checkout, whatever version that build is. `score.py` prints
+the band decision #18 asks for beside each macro, and every document whose ground truth holds a
+table with its TEDS; `census.py` prints the limitation-code and groundability tables and needs only
+the standard library.
+
+## What it measured at 0.58.0
+
+Measured 2026-09-16 with the `aarch64-apple-darwin` release build of 0.58.0 — the binary inside
+`ethos-parser-0.58.0-aarch64-apple-darwin.tar.gz`, sha256 `03b752ed…`, `--version` 0.58.0 — the
+adapter and `score.py` as committed beside this file, and the harness at its commit `7af1d8f`. The
+exact commands, run from this repository's root:
+
+```bash
+ETHOS_BENCH=<bench> ETHOS_PARSER_BIN=target/aarch64-apple-darwin/release/ethos-parser \
+  <bench>/.venv/bin/python docs/measurements/opendataloader-bench/score.py
+ETHOS_PARSER_BIN=target/aarch64-apple-darwin/release/ethos-parser \
+  python3 docs/measurements/opendataloader-bench/census.py <bench>/pdfs
+```
+
+| metric | ethos-parser | what it means here |
+| --- | --- | --- |
+| **NID** reading order | **0.8697** | 200/200 documents, 0 empty predictions; band 0.0068..0.9973, median 0.9238 |
+| **TEDS** table structure | **0.1704** | 42 documents hold a table in ground truth: 14 non-zero, **28 at zero**, 4 above 0.9 |
+| **MHS** heading hierarchy | **0.0000** | 107 documents hold a heading in ground truth; 0 of 200 carry `/StructTreeRoot` |
+| speed | 36 ms/document | one run on a machine that was not quiet — load average 1.9–3.5 on 12 cores, other sessions active — and no A/B, so it is not comparable to the 0.46.0 figure or to anything else |
+
+### The bands, with the worst document named (decision #18)
+
+**NID 0.0068..0.9973, median 0.9238.** Worst `01030000000141`: its page is one embedded image over
+a 7-byte text layer — `classify` reports `sparse-text` and `embedded-images`, and `extract` finds
+two text runs, `and` and `.org` — so the 2 374 characters of its ground truth are in the picture
+and not in the file's text. Best `01030000000024`, a page of body text with no image and no table.
+
+**TEDS 0.0000..0.9802, median 0.0000, 28 of 42 at exactly zero.** Best `01030000000053`. The worst
+is a tie of 28, all named. Every document whose ground truth holds a table:
+
+| TEDS | document |
+| ---: | --- |
+| 0.9802 | `01030000000053` |
+| 0.9761 | `01030000000052` |
+| 0.9552 | `01030000000082` |
+| 0.9351 | `01030000000084` |
+| 0.6040 | `01030000000081` |
+| 0.5828 | `01030000000083` |
+| 0.4389 | `01030000000046` |
+| 0.4342 | `01030000000047` |
+| 0.3496 | `01030000000045` |
+| 0.2857 | `01030000000121` |
+| 0.2318 | `01030000000051` |
+| 0.1579 | `01030000000120` |
+| 0.1458 | `01030000000188` |
+| 0.0802 | `01030000000127` |
+| 0.0000 | the other 28: `01030000000` followed by 064, 078, 088, 089, 090, 110, 116, 117, 119, 122, 128, 130, 132, 146, 147, 149, 150, 165, 166, 170, 178, 180, 182, 187, 189, 190, 197, 200 |
+
+The 14 non-zero documents are exactly the 14 on which `extract` emits a table — one table each —
+and every one of the 14 holds a table in ground truth: no document emits a table its ground truth
+lacks. The 28 at zero emit no table, and score zero for that and not for a wrong grid. The shape
+the 0.46.0 record described still holds — accepted grids score, refused pages score nothing — but
+the accepted set is no longer only near-perfect: ten of the 14 sit between 0.08 and 0.60, and why
+each of those differs from its ground truth was not examined here.
+
+### What moved since 0.46.0, and the reason where one is recorded
+
+| | 0.46.0 | 0.58.0 | reason, from the CHANGELOG |
+| --- | ---: | ---: | --- |
+| NID | 0.8490 | **0.8697** | block assembly on untagged input changed four times: 0.47.0 joins runs along one baseline, 0.53.0 widens the reach cap by one glyph, 0.54.0 stops a cursor-moved word gap breaking a block, 0.55.0 adds the leading-gap block cut. Every document here is untagged, so all four apply; which of them moved NID was not measured per release on this corpus |
+| TEDS | 0.1038 | **0.1704** | 0.55.0's `ruled-rects-v3` → `-v6`, measured there on this corpus with `rule_ab.py`: documents emitting a table 5 → 14, every one holding a table in ground truth |
+| TEDS non-zero / at zero | 5 / 37 | **14 / 28** | the same. The 0.46.0 record has no per-document list, so which of its five near-perfect documents are among today's four above 0.9 cannot be said from the record |
+| MHS | 0.0000 | 0.0000 | L29 stands; 0 of 200 carry a structure tree |
+| speed | ~26 ms, quiet | 36 ms, loaded | not compared — the 0.46.0 note on timing applies |
+
+### The limitation census at 0.58.0
+
+`census.py` over all 200 documents: 200 artifacts, 14 emitting a table. Ten codes fire on every
+artifact and are named rather than counted — `backend-xref-strict-20-byte`,
+`form-xobject-text-not-descended`, `image-payload-not-embedded`, `low-contrast-not-detected`,
+`markdown-table-spans-flattened`, `page-raster-not-emitted`, `predefined-cmaps-not-vendored`,
+`reading-order-geometric-only`, `undrawn-table-edges-not-supplied` and, on this corpus only because
+no document has a structure tree, `untagged-structure-tree-absent`. The document-scoped ones, beside
+the 0.46.0 table above:
+
+| code | 0.46.0 | 0.58.0 | |
+| --- | ---: | ---: | --- |
+| `untagged-structure-tree-absent` | 200 | 200 | why MHS is 0 |
+| `unruled-table-candidate-refused` | 199 | 199 | |
+| `geometry-absent-not-groundable` | 183 | 183 | **157** documents carry a text node with no ink box; on the other 26 the detail reads `0 of N text node(s)`, and the absent geometry is an image's or an annotation's (`not_applicable_to_kind`), which `non-text-nodes-not-projected` already declares |
+| `non-text-nodes-not-projected` | 125 | 125 | |
+| `composite-font-codes-from-tounicode` | 50 | 50 | |
+| `form-xobjects-not-descended` | 46 | 46 | |
+| `ruled-table-candidate-refused` | 57 | **31** | 0.55.0, two causes it records: nine more documents emit a table (5 → 14), and since `-v5` a single-row or single-column grid is no candidate, so it is neither emitted nor refused. Which of the 26 fewer refusals fell to which was not measured here |
+| `broken-font-encoding` | 25 | 25 | |
+| `mcid-property-list-by-name` | not in that table | 11 | a marked-content property list supplied by name through `/Properties`, which this profile does not resolve |
+| `off-page-text` | not in that table | 7 | runs whose origin is outside the page's visible box, a code older than 0.46.0 (the 0.42.1 entry already names it); six of the seven carry `measured_off_page` nodes, and on `01030000000199` the one such run is whitespace, typed `no_ink_to_measure` |
+| `inline-images-not-emitted` | not in that table | 4 | `BI … ID … EI` images, counted and not emitted |
+| `stroke-ruled-table-candidate-refused` | not in that table | 4 | the stroke-ruled rule refused a grid the page's ruling lines implied |
+| `font-widths-absent` | 1 | **0** | 0.51.0 holds the standard-14 metrics and 0.52.0 the WinAnsi glyph names. Which document carried the code at 0.46.0 was not recorded, so this reason is read off the CHANGELOG, not measured |
+| `symbolic-font-builtin-encoding-assumed` | did not exist | 0 | added at 0.48.0; fires on no document here |
+
+Whether the four codes the 0.46.0 table does not list fired then is not in the record.
+
+| text nodes with no measured ink box | 0.46.0 | 0.58.0 |
+| --- | ---: | ---: |
+| of 109 500 text nodes | 8 770 (8.0%) | **8 696 (7.9%)** |
+| `no_ink_to_measure` | 5 592, "whitespace runs" | 5 519 — every one whitespace-only, counted this time rather than inferred from the name |
+| `measured_off_page` | 3 047 | 3 047 |
+| `not_reported_by_reader` — the only reason that is this reader's | 130 | 130 |
+
+The 74 fewer are the 74 runs the 0.58.0 CHANGELOG counts on this corpus going `no_ink_to_measure`
+→ measured under the turned-text fix: text turned by its text matrix advanced 0 or less and was
+typed as drawing nothing. The 0.46.0 record's three reasons sum to 8 769 against its 8 770, so one
+node's reason went unrecorded then; the three above sum to 8 696.
+
+### What this run found
+
+One thing, recorded and not judged: `geometry-absent-not-groundable` fires on 26 documents whose
+every text node has a box. The trigger is any absent geometry entry, an image's or an annotation's
+included, while the detail counts text nodes and reads `0 of N` — a limitation declaring an
+omission of zero nodes. Not fixed here. The census's 183 is the code's count; 157 is the count of
+documents the limitation is about.
 
 ## What it measured at 0.46.0
 
