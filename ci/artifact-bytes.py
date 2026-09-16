@@ -5,6 +5,7 @@
     ci/artifact-bytes.py > before.sha256       # record
     ci/artifact-bytes.py --check before.sha256 # compare, exit 1 on any difference
     ci/artifact-bytes.py --small               # skip the large gate PDFs
+    ci/artifact-bytes.py --without nist-sp-800-53Ar5   # leave out one gate PDF; repeatable
 
     # the no-byte-change proof, the shape ci/code-lines.py already uses
     ci/artifact-bytes.py > /tmp/a && git stash && cargo build --release --locked \\
@@ -41,29 +42,55 @@ would compare clean against a run that dropped different ones.
 a version bump whether or not a byte of behaviour changed. That is the identity mechanism working.
 It also means this file answers exactly one question — *did this code change alter the output?* —
 and answers it only when both sides are built at the same version.
+
+# It runs on Windows too
+
+CI's `cross-os-digests` job runs this on Linux, macOS and Windows and requires the three lists to
+be byte-identical. So what it writes must not depend on the host: the binary carries `.exe` on
+Windows, the null device is `os.devnull` rather than `/dev/null`, inputs are sorted by
+case-sensitive path component where Windows pathlib would ignore case, and the list is written with
+`\\n` line endings, where Python on Windows would otherwise translate each one to `\\r\\n`.
+
+Two host differences remain. Glob matching ignores case on Windows too, so a fixture whose name
+differed from `*.pdf` or `document.pdf` only by case would be read there and not on Linux; none
+does. And a crash is recorded as the host reports it, a negative signal number on Linux and macOS
+and an NTSTATUS above 255 on Windows, so the same crash on every system still differs. CI's
+identity step therefore names any such row as a crash before it compares the lists.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import pathlib
 import subprocess
 import sys
+from typing import Iterable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-BINARY = ROOT / "target" / "release" / "ethos-parser"
+BINARY = ROOT / "target" / "release" / ("ethos-parser.exe" if os.name == "nt" else "ethos-parser")
+GATE = ROOT / "fixtures" / "gate"
 PROJECTIONS = ("ground", "markdown", "html")
 CHUNK = 1 << 20
 
 
-def inputs(small: bool) -> list[pathlib.Path]:
+def ordered(paths: Iterable[pathlib.Path]) -> list[pathlib.Path]:
+    """Sorted by case-sensitive path component on every host, which is how POSIX pathlib sorts.
+
+    Windows pathlib ignores case, so a fixture named `Zeta` beside `alpha` would move rows there
+    and nowhere else.
+    """
+    return sorted(paths, key=lambda path: path.parts)
+
+
+def inputs(small: bool, without: frozenset[str]) -> list[pathlib.Path]:
     """Every document in the tree, in a fixed order so two runs' lines align."""
     found: list[pathlib.Path] = []
     if not small:
-        found += sorted((ROOT / "fixtures" / "gate").glob("*.pdf"))
-    found += sorted((ROOT / "fixtures" / "engine").glob("*/document.pdf"))
-    for path in sorted((ROOT / "fixtures" / "office").glob("*/*")):
+        found += ordered(path for path in GATE.glob("*.pdf") if path.stem not in without)
+    found += ordered((ROOT / "fixtures" / "engine").glob("*/document.pdf"))
+    for path in ordered((ROOT / "fixtures" / "office").glob("*/*")):
         if path.is_file() and path.suffix not in {".py", ".md", ".json"}:
             found.append(path)
     return found
@@ -71,7 +98,7 @@ def inputs(small: bool) -> list[pathlib.Path]:
 
 def run(args: list[str], stdin_path: pathlib.Path | None = None) -> tuple[str, int]:
     """`(sha256 of stdout, exit code)`, streamed so a gigabyte artifact costs a megabyte here."""
-    with open(stdin_path, "rb") if stdin_path else open("/dev/null", "rb") as source:
+    with open(stdin_path, "rb") if stdin_path else open(os.devnull, "rb") as source:
         proc = subprocess.Popen(
             [str(BINARY), *args],
             stdin=source,
@@ -85,9 +112,9 @@ def run(args: list[str], stdin_path: pathlib.Path | None = None) -> tuple[str, i
         return digest.hexdigest(), proc.wait()
 
 
-def emit(small: bool, workdir: pathlib.Path) -> list[str]:
+def emit(small: bool, without: frozenset[str], workdir: pathlib.Path) -> list[str]:
     lines: list[str] = []
-    for source in inputs(small):
+    for source in inputs(small, without):
         name = source.relative_to(ROOT).as_posix()
         # The extract is kept on disk because the three projections consume it, not the document.
         extract = workdir / (name.replace("/", "_") + ".extract.json")
@@ -115,6 +142,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", type=pathlib.Path, help="compare against a recorded digest list")
     ap.add_argument("--small", action="store_true", help="skip the large gate PDFs")
+    ap.add_argument(
+        "--without",
+        action="append",
+        default=[],
+        metavar="STEM",
+        help="leave out the gate PDF with this file stem; repeatable",
+    )
     args = ap.parse_args()
 
     if not BINARY.exists():
@@ -124,11 +158,20 @@ def main() -> int:
         )
         return 2
 
+    # A name that matches nothing leaves nothing out, and would say nothing about it.
+    unknown = sorted(set(args.without) - {path.stem for path in GATE.glob("*.pdf")})
+    if unknown:
+        print(f"engine: --without names no gate PDF: {', '.join(unknown)}", file=sys.stderr)
+        return 2
+
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        lines = emit(args.small, pathlib.Path(tmp))
+        lines = emit(args.small, frozenset(args.without), pathlib.Path(tmp))
 
+    # `\n` on every host. Python on Windows writes `\r\n` for each `\n` by default, and a digest
+    # list is compared as bytes across operating systems.
+    sys.stdout.reconfigure(newline="\n")
     if not args.check:
         print("\n".join(lines))
         return 0

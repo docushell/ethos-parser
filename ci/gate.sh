@@ -70,6 +70,9 @@
 #     them again buys a label and not a check. **Two are not subsets and are therefore steps 1 and
 #     2**: `v0-no-confidence` and `v0-no-verify` are greps over source text that no test executes.
 #
+#   * **`cross-os-digests` and `cross-os-identity`.** They compare the engine's artifact digests
+#     across Linux, macOS and Windows. One host runs one leg, and one leg compares nothing.
+#
 # # Order
 #
 # Steps 3 to 7 are the `check` job's five, in the order that job runs them. The two greps have no

@@ -10,11 +10,16 @@ Rosetta 2. Instrument: [`crossarch.py`](crossarch.py).
 
 ## 1. Why this was run, and what it is a substitute for
 
-Plan item 6.1 — three-OS byte-identity — is `BLOCKED`, and not on a decision. GitHub Actions
-cannot allocate a runner on this account, and this host has no cross toolchain for Linux or
-Windows: no zig, no Docker, no mingw-w64, no musl-gcc. Cross-compiling one anyway would produce a
-binary nobody has ever executed, which for an engine whose product is byte-identical reruns is an
-untested claim wearing an artifact's clothes.
+When this was run, plan item 6.1 — three-OS byte-identity — was `BLOCKED`, and not on a decision.
+GitHub Actions could not allocate a runner on this account, and this host has no cross toolchain
+for Linux or Windows: no zig, no Docker, no mingw-w64, no musl-gcc. Cross-compiling one anyway
+would produce a binary nobody has ever executed, which for an engine whose product is
+byte-identical reruns is an untested claim wearing an artifact's clothes.
+
+**The runner half no longer holds.** Since the repository went public (around 2026-09-13),
+push-triggered jobs run. `.github/workflows/ci.yml` now carries the operating-system axis as two
+jobs, `cross-os-digests` and `cross-os-identity`: Linux, macOS and Windows, compared byte for byte.
+They have not run yet, so §4's "not licensed" stands until they have.
 
 But the claim 6.1 exists to prove is that **output does not depend on the machine**, and that
 splits into two independent axes: the operating system, and the instruction set. The second needs

@@ -86,7 +86,7 @@ because they are real work whatever version they end up in.
 
 | Plan item | Status | What remains, and what it waits on |
 | --- | --- | --- |
-| 6.1 Cross-OS byte identity | **ready** | CI's `check` job runs the suite on Linux, but no artifact digest is compared across operating systems. Needed: a job that builds on ubuntu, macOS and Windows and compares digests over the gate, engine and conformance fixtures, with a guard against every comparison being a refusal. A separate job need not appear in `ci/gate.sh`. Also check whether the gate harness runs on Windows at all |
+| 6.1 Cross-OS byte identity | **evidence** | The jobs exist and have never run, so nothing is proven yet. `ci.yml`'s `cross-os-digests` builds the release engine on `ubuntu-latest`, `macos-latest` and `windows-latest` and runs `ci/artifact-bytes.py` on each; `cross-os-identity` fails if the three digest lists differ by a byte, if any row records a crash, or if any list carries fewer than 257 non-empty, exit-0 artifacts (260 of 264 today), so a run of refusals cannot pass. Inputs: 66 documents — every engine and office fixture, and six of the eight gate PDFs. **Not covered:** `nist-sp-800-53Ar5` and `nist-sp-800-161r1` (runner time and memory) and the Ethos conformance corpus. Windows fixes made for it: `fixtures/** -text` in `.gitattributes`, because a CRLF checkout made the engine refuse all 42 hand-built ASCII PDFs; and `.exe`, `os.devnull` and LF output in `ci/artifact-bytes.py`. The gate harness on Windows: all workspace targets, tests included, type-check for `x86_64-pc-windows-gnu`, but nothing has been linked or run there, `ci/gate.sh` and the test suite included. **Waits on:** the first push to `main` |
 | 6.2 Memory ceiling | mostly done | The published sizing rule over-predicts the worst case by 44% (a choice to change it). Whether a caller-settable byte ceiling or a PDF decompression ceiling is wanted (owner). Measure the `--max-pages` floor: the structure tree's share of memory under the page budget (ready). Verify-path wall time: option B (hash the input span) or C (lossless parse, then B) (owner; option A shipped in 0.55.0) |
 | 6.3 GitHub Releases, three platforms | **ready** | Linux and Windows release binaries. Runners now run on the public repository. Labelling them `verified` rather than `compiled` depends on 6.1 |
 | 6.4 PyPI wheel | owner | D4 and D8. **Irreversible** |
@@ -119,7 +119,9 @@ because they are real work whatever version they end up in.
 
 ## 5. Ready now — no decision needed
 
-- **6.1:** the cross-OS digest job; then **6.3**, Linux and Windows release binaries.
+- **6.1:** the cross-OS digest jobs (`cross-os-digests`, `cross-os-identity`) exist and are
+  unverified until they run on a push to `main`. Read that first run, and fix what it finds. Then
+  **6.3**, Linux and Windows release binaries.
 - **Re-measure the table band on the current build.** The accuracy harness prints macro cell-F1
   **69‰** where `table-gate-v1.md` records **70‰** (cfpb 244‰ against 259‰). The gap is older than
   0.58.0's work. No twelve-document F1 was re-stated after ruled-rects-v4 to v6, although
@@ -155,7 +157,6 @@ because they are real work whatever version they end up in.
 | `16-D4-SCOPE.md` §9 | The S0 row says "the milestones — done", but its header says no milestones document exists |
 | `table-gate-v1.md` header | Says "the geometric chase stays parked" above its own ruled-rects-v4 to v6 sections |
 | `RELEASING.md` | Says "on a private repository". Its advice to reverse a release by deleting it has not been checked against immutable releases |
-| `measurements/cross-architecture/README.md` | Says CI cannot allocate a runner. That no longer holds for push-triggered jobs |
 | `draft-schemas/derivation-class.draft.json` | Still says "ink boxes from font metrics", which contract §6 no longer says |
 | `04-ARCHITECTURE.md` | Names `ttf-parser`; the engine reads fonts with `skrifa` |
 | `history/11-V11-MILESTONES.md`, `13-V12-MILESTONES.md`, `14-V2-SCOPE.md`, `15-V2-MILESTONES.md` | Still say "v1 is not done", which #18 settled. Only `09-V1-MILESTONES.md` carries the pointer |
