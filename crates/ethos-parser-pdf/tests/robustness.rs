@@ -422,7 +422,8 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// leave the cross-reference table resolving. The v2-S21 measurement above stands as recorded;
 /// only the population moved. `rotated-and-mirrored-text` (0.58.0) joins them the same way, and
 /// with it and the two fixtures decision #22 and v2.2-S5 added — `absent-font-widths` and
-/// `untagged-shredded-line` — the set is **67**.
+/// `untagged-shredded-line` — the set is **67**. `leading-gap-two-blocks`, the block cut's own
+/// fixture (OPEN-WORK §2.2), joins the same way and makes it **68**.
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -461,7 +462,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 67] = [
+const EXPECTED_SURVIVORS: [&str; 68] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -487,6 +488,7 @@ const EXPECTED_SURVIVORS: [&str; 67] = [
     "irs-f1040sd-2025/junk-after-eof",
     "irs-form-1040-2025/junk-after-eof",
     "irs-fw9/junk-after-eof",
+    "leading-gap-two-blocks/junk-after-eof",
     "markdown-hyphen-break/junk-after-eof",
     "markdown-table-cells/junk-after-eof",
     "markdown-two-blocks/junk-after-eof",
@@ -865,8 +867,13 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        71,
-        "the manifest should declare 71 fixtures across FOUR roots. 0.58.0 moved this from 70 by \
+        72,
+        "the manifest should declare 72 fixtures across FOUR roots. OPEN-WORK §2.2 moved this from \
+         71 by adding `leading-gap-two-blocks`, the first fixture authored for the leading-gap \
+         half of the block cut: six lines at a stated leading with one stated gap, so the two \
+         blocks it comes out in are checkable against `blocks.rs` by hand, where the three engine \
+         fixtures that already came out in two blocks did so by accident of a layout built for \
+         something else. 0.58.0 moved this from 70 by \
          adding `rotated-and-mirrored-text`, the only engine fixture whose text does not run along \
          +x: the box was built from the advance's x alone, so text turned by its text matrix was \
          typed as drawing nothing and text turned by its CTM got a box along x, and no engine \

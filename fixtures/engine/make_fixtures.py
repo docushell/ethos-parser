@@ -137,6 +137,16 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              fixture whose text does not run along +x — so the only one that sees
                              a box built from the advance's x alone, which typed the first four
                              `no_ink_to_measure` and laid the last along x (docs/22 §9) [0.58.0]
+  leading-gap-two-blocks     SIX single-run lines in one column with REAL ink metrics: three at a
+                             14 pt leading, a 28 pt gap, three more at 14 pt. The band's modal
+                             leading is 1400 centipoints and the one 2800 gap clears 8/5 of it, so
+                             the leading-gap half of the block cut opens exactly two blocks of
+                             three lines. The first fixture AUTHORED for that cut: three earlier
+                             ones (`both-table-rules`, `rotated-and-mirrored-text`,
+                             `stroke-ruled-worksheet`) come out in two blocks by accident of a
+                             layout built for something else, and none states its leading or
+                             its gap, so none can say which gap opened a block or that the
+                             threshold was cleared on purpose                  [OPEN-WORK §2.2]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -977,6 +987,32 @@ FIXTURES = {
         "0.7071 0.7071 -0.7071 0.7071 150 120 Tm (Diagonal) Tj ET "
         "q 0 1 -1 0 300 0 cm BT /F1 12 Tf 1 0 0 1 100 180 Tm (Rolled) Tj ET Q"
     ),
+    # The block cut's own fixture (OPEN-WORK §2.2): six single-run lines in one column, three at
+    # a 14 pt leading, then a 28 pt gap, then three more at 14 pt. In the rule's own units —
+    # centipoints, top-left origin, on the 720 pt page MEDIA gives it — the baselines are 2000,
+    # 3400, 4800, 7600, 9000 and 10400:
+    #
+    #     gaps            1400 1400 2800 1400 1400
+    #     modal leading   1400   (four of five gaps: share 4/5 >= 1/4, and 1400 >= 600)
+    #     threshold       8/5 x 1400 = 2240
+    #
+    # The 2800 gap clears the threshold and the 1400 gaps do not, so exactly one cut falls
+    # between the third line and the fourth: lines 1-3 are block 1 and lines 4-6 are block 2,
+    # and every run's block can be checked against `blocks.rs` by hand. Plain words, one `Tj` per
+    # line, written top to bottom so stream order and reading order agree and nothing but the gap
+    # is being tested. No earlier fixture states its leading or its gap: three come out in two
+    # blocks by accident (see the header), and the two-run ones cannot, because one gap is its
+    # own leading and a gap never clears 1.6 times itself.
+    "leading-gap-two-blocks": (
+        "BT /F1 12 Tf "
+        "1 0 0 1 72 700 Tm (Water finds its level) Tj "
+        "1 0 0 1 72 686 Tm (and stone keeps its shape) Tj "
+        "1 0 0 1 72 672 Tm (through the long season) Tj "
+        "1 0 0 1 72 644 Tm (Wind moves the grass) Tj "
+        "1 0 0 1 72 630 Tm (and light moves the shade) Tj "
+        "1 0 0 1 72 616 Tm (across the open field) Tj "
+        "ET"
+    ),
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -1389,6 +1425,9 @@ MEDIA = {
     "whitespace-past-the-page-edge": (0, 0, 300, 144),
     # Square, so a run turned a quarter has as much room as an upright one.
     "rotated-and-mirrored-text": (0, 0, 300, 300),
+    # Tall enough that a baseline at 700 keeps its measured ink on the page (ascent 718 at 12 pt
+    # is 8.6 pt), and no wider than it needs to be: the longest line is 25 glyphs at 6 pt.
+    "leading-gap-two-blocks": (0, 0, 300, 720),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -1432,6 +1471,9 @@ DESCRIPTORS = {
     "ink-past-the-media-box": "metrics",
     # Real metrics, so every turned run has a box to build — or a typed reason it has none.
     "rotated-and-mirrored-text": "metrics",
+    # Real metrics so all six runs reach the grounding artifact, as `measured-ink-box` does. The
+    # cut reads origins only, so the metrics change nothing about which block a run lands in.
+    "leading-gap-two-blocks": "metrics",
 }
 
 
