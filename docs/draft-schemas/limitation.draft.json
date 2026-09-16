@@ -25,6 +25,7 @@
         "predefined-cmaps-not-vendored",
         "form-xobject-text-not-descended",
         "form-xobjects-not-descended",
+        "block-subdivision-leading-gap-only",
         "font-widths-absent",
         "garbled-reason-not-detected",
         "multi-column-reason-not-detected"

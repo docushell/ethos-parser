@@ -284,6 +284,26 @@ pub mod codes {
     /// profile at v1-S5 — the same move `stroke-ruled-tables-not-detected` made when the
     /// alignment rule retired `unruled-tables-not-detected`.
     pub const READING_ORDER_GEOMETRIC_ONLY: &str = "reading-order-geometric-only";
+    /// The leading-gap block cut reads vertical whitespace against a band's modal leading and
+    /// nothing else (0.55.0's `TextRunAttributes::block`).
+    ///
+    /// The partner of [`READING_ORDER_GEOMETRIC_ONLY`] for the cut's horizontal half, and declared
+    /// for the same reason: the field says less than its name may suggest, and a consumer must
+    /// not read past it. Four things it states, none of which was on the wire before it existed —
+    /// they stood in `blocks.rs` comments, where no consumer reads. The index is computed from
+    /// vertical whitespace against the band's own modal leading only. There is **no indent
+    /// branch**, so a paragraph break marked by indentation with no extra leading opens no block.
+    /// Recall was measured on **one document**: 63.7% of real paragraph breaks at 100% precision
+    /// on `nist-sp-800-207`, the only gate document able to carry a real paragraph label. And a
+    /// block is **not a paragraph** — no role may be read from it (P14), the line
+    /// `docs/19-BLOCK-SUBDIVISION-SCOPE.md` §6 draws.
+    ///
+    /// Profile-scoped, because every one of those is true of every document this build reads.
+    /// Declared by the PDF crate beside its other extract-time profile limitations rather than
+    /// derived from a capability here: the capability turns the reading-order rule on, which rule
+    /// runs under it is the profile's `reading_order_rule`, and `ethos-parser-core` interprets
+    /// neither.
+    pub const BLOCK_SUBDIVISION_LEADING_GAP_ONLY: &str = "block-subdivision-leading-gap-only";
     /// [`crate::Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
 
