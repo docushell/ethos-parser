@@ -61,14 +61,35 @@ pub struct ShownText {
     /// Baseline origin in **user space**, before the page transform.
     pub origin: (f64, f64),
     /// Advance in user space, or `None` when the font carries no widths.
+    ///
+    /// A length along the text matrix's x only, scaled by `ctm.x_scale()`: it keeps no direction,
+    /// so a run turned by its text matrix advances 0 or less here. [`Self::displacement`] is the
+    /// same travel as a vector, and it is what a box is built from.
     pub advance: Option<f64>,
+    /// The pen's travel over the run in **user space**, as a vector, or `None` exactly when
+    /// [`Self::advance`] is.
+    ///
+    /// PDF 32000-1 §9.4.4 moves the text matrix by `[1 0 0 1 tx 0] × Tm` after each glyph, so the
+    /// travel is a text-space vector that the text matrix turns and the CTM carries on. Summing
+    /// only `Tm.e` kept its x and lost its y, and `ctm.x_scale()` kept the CTM's length and lost
+    /// its direction: text drawn up the page advanced 0, and text drawn under a turned CTM got a
+    /// box along x. On upright text this is bit for bit `(advance, ±0)`.
+    pub displacement: Option<(f64, f64)>,
+    /// The rendered glyph's y axis in user space: the text rendering matrix's second row,
+    /// `(c, d)`.
+    ///
+    /// Which side of the baseline the ascent lies on. Upright glyphs point it +y.
+    pub glyph_up: (f64, f64),
     /// The same advance, per code, in the same space — or `None` on the same condition.
     ///
-    /// **Aligned with [`Self::codes`], not with [`Self::text`].** A code may decode to more than
-    /// one character (a ligature code, or any `ToUnicode` entry mapping to a string), which is
-    /// exactly what `extract.rs` records as `scalar_code_mismatch`. So the *n*th entry here is the
-    /// advance of the *n*th code, and indexing it by a character offset is wrong on any run where
-    /// that flag is set.
+    /// **Aligned with [`Self::codes`], not with [`Self::text`].** The *n*th entry is the advance of
+    /// the *n*th code, and a code may decode to more than one character (a ligature code, or any
+    /// `ToUnicode` entry mapping to a string), so indexing this by a character offset is wrong on
+    /// any run holding such a code. `extract.rs`'s `scalar_code_mismatch` is not the test for that:
+    /// it compares two counts, so a synthesized space sets it on a run whose codes are all single,
+    /// and a code whose `ToUnicode` destination is empty — which `cmap.rs` accepts — decodes to no
+    /// character and can offset one that decodes to several. Nothing here records how many
+    /// characters each code produced.
     ///
     /// `Some` only when [`Self::advance`] is `Some`, and then `len() == codes.len()` and the
     /// entries sum to it. The two travel together because a code with no width advances nothing
@@ -92,9 +113,9 @@ pub struct ShownText {
     ///
     /// The vertical scale of the text rendering matrix — `Tfs` composed with the text matrix and
     /// the CTM, per §9.4.4 — so ascent and descent scaled by this land in the space the origin is
-    /// already in. `origin` is `(trm.e, trm.f)` and the advance is multiplied by `ctm.x_scale()`;
-    /// this is the third side of that same triangle, and without it the box's height and width
-    /// were in different spaces.
+    /// already in. `origin` is `(trm.e, trm.f)` and the box's length along its baseline is
+    /// [`Self::displacement`], carried through the CTM; this is the third side of that same
+    /// triangle, and without it the box's height and width were in different spaces.
     pub em_scale_pt: f64,
     /// Marked-content id in force, if any.
     pub mcid: Option<i64>,
@@ -245,6 +266,17 @@ pub struct Interpreter<'a> {
     mc_stack: Vec<MarkedContent>,
     /// Runs collected so far.
     pub shown: Vec<ShownText>,
+    /// Whether a string has put at least one code on the page since the pen was last placed.
+    ///
+    /// A `TJ` number moves the pen from where it stands (PDF 32000-1 §9.4.3), so it opens a gap
+    /// after text only when text was drawn since. `BT`, `Td`, `TD`, `T*`, `Tm`, the line move of
+    /// `'` and `"`, and a `cm` or `Q` that changes the CTM place the pen and clear this. Every
+    /// string with codes sets it, including a run later dropped for an undecodable code.
+    ///
+    /// A dropped run is not in [`Self::shown`], and its pen is short: the refused code and every
+    /// code after it do not advance. The gap after it is then written onto the last run kept, as
+    /// before, because suppressing it would fuse two words across text the reader lost.
+    text_drawn_since_placement: bool,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
     pub undecodable: Vec<String>,
     /// Axis-aligned rectangles this page painted, in user space (v1-S1).
@@ -302,6 +334,7 @@ impl<'a> Interpreter<'a> {
             ts: TextState::default(),
             mc_stack: Vec::new(),
             shown: Vec::new(),
+            text_drawn_since_placement: false,
             undecodable: Vec::new(),
             rects: Vec::new(),
             segments: Vec::new(),
@@ -456,15 +489,28 @@ impl<'a> Interpreter<'a> {
             // --- graphics state: affects glyph placement through the CTM ---
             SaveState => self.gs_stack.push(self.gs),
             RestoreState => {
-                self.gs = self.gs_stack.pop().unwrap_or_default();
+                let restored = self.gs_stack.pop().unwrap_or_default();
+                // A CTM change moves where the next glyph lands (§9.4.4), so it places the pen.
+                // Exact comparison: an epsilon would be a threshold, and NaN compares unequal.
+                if restored.ctm != self.gs.ctm {
+                    self.text_drawn_since_placement = false;
+                }
+                self.gs = restored;
             }
             ConcatMatrix => {
                 let m = matrix_operands(operands)?;
-                self.gs.ctm = m.then(self.gs.ctm);
+                let ctm = m.then(self.gs.ctm);
+                if ctm != self.gs.ctm {
+                    self.text_drawn_since_placement = false;
+                }
+                self.gs.ctm = ctm;
             }
 
             // --- text object boundaries ---
-            BeginText => self.ts.begin_text(),
+            BeginText => {
+                self.ts.begin_text();
+                self.text_drawn_since_placement = false;
+            }
             EndText => {}
 
             // --- text state ---
@@ -484,17 +530,23 @@ impl<'a> Interpreter<'a> {
             NextLine => {
                 let (tx, ty) = (num(operands, 0)?, num(operands, 1)?);
                 self.ts.next_line_offset(tx, ty);
+                self.text_drawn_since_placement = false;
             }
             NextLineSetLeading => {
                 let (tx, ty) = (num(operands, 0)?, num(operands, 1)?);
                 self.ts.leading = -ty;
                 self.ts.next_line_offset(tx, ty);
+                self.text_drawn_since_placement = false;
             }
             SetTextMatrix => {
                 let m = matrix_operands(operands)?;
                 self.ts.set_matrix(m);
+                self.text_drawn_since_placement = false;
             }
-            NextLineByLeading => self.ts.next_line(),
+            NextLineByLeading => {
+                self.ts.next_line();
+                self.text_drawn_since_placement = false;
+            }
 
             // --- text showing: all four, including the one pdf-inspector omits ---
             ShowText => {
@@ -507,6 +559,7 @@ impl<'a> Interpreter<'a> {
             }
             NextLineShowText => {
                 self.ts.next_line();
+                self.text_drawn_since_placement = false;
                 let bytes = string_operand(operands, 0)?;
                 self.show(&bytes, &[])?;
             }
@@ -515,6 +568,7 @@ impl<'a> Interpreter<'a> {
                 self.ts.word_spacing = num(operands, 0)?;
                 self.ts.char_spacing = num(operands, 1)?;
                 self.ts.next_line();
+                self.text_drawn_since_placement = false;
                 let bytes = string_operand(operands, 2)?;
                 self.show(&bytes, &[])?;
             }
@@ -686,6 +740,17 @@ impl<'a> Interpreter<'a> {
         if codes.is_empty() {
             return Ok(());
         }
+        // Set before decoding, so a run dropped below still counts as drawn: its text was on the
+        // page, and the pen moved for the codes before the refused one.
+        self.text_drawn_since_placement = true;
+        // PDF 32000-1 §9.3.3: `Tw` is added to the SINGLE-BYTE code 32 only. A simple font's
+        // codes are one byte (§9.6). A composite font reaches an advance only under Identity-H or
+        // Identity-V (`fonts::load_cid_widths`), whose codes are all two bytes, so none of its
+        // codes takes `Tw`: not `<0020>`, and not a byte 0x20 the interim `/ToUnicode`-derived
+        // split read alone (`composite-font-codes-from-tounicode`). If composite advances ever
+        // reach a CMap with single-byte codes, this must ask the code's own length instead
+        // (docs/22-WORD-BOXES-SCOPE.md §9).
+        let word_spacing_applies = font.kind == crate::fonts::FontKind::Simple;
 
         let trm = self.ts.rendering_matrix(self.gs.ctm);
         let origin = (trm.e, trm.f);
@@ -693,6 +758,8 @@ impl<'a> Interpreter<'a> {
         let mut text = String::new();
         let mut kept_codes = Vec::with_capacity(codes.len());
         let mut advance_total = 0.0f64;
+        // The y half of the same travel, which `advance_total` never read (docs/22 §9 item 1).
+        let mut advance_total_f = 0.0f64;
         let mut per_code = Vec::with_capacity(codes.len());
         let mut advance_known = true;
 
@@ -726,11 +793,13 @@ impl<'a> Interpreter<'a> {
 
             match font.advance_glyph_space(code) {
                 Some(w0) => {
-                    let is_space = code == 32;
+                    let is_space = word_spacing_applies && code == 32;
                     let before = self.ts.text_matrix.e;
+                    let before_f = self.ts.text_matrix.f;
                     self.ts.advance(w0, is_space);
                     let delta = self.ts.text_matrix.e - before;
                     advance_total += delta;
+                    advance_total_f += self.ts.text_matrix.f - before_f;
                     per_code.push(delta);
                 }
                 None => advance_known = false,
@@ -743,6 +812,9 @@ impl<'a> Interpreter<'a> {
             codes: kept_codes,
             origin,
             advance: advance_known.then_some(advance_total * scale),
+            displacement: advance_known
+                .then(|| self.gs.ctm.apply_linear(advance_total, advance_total_f)),
+            glyph_up: (trm.c, trm.d),
             code_advances: advance_known
                 .then(|| per_code.iter().map(|d| d * scale).collect::<Vec<_>>()),
             font_id,
@@ -812,6 +884,11 @@ impl<'a> Interpreter<'a> {
     /// A sufficiently negative adjustment opens a word gap that the document never wrote as a
     /// space glyph. Emitting the space unflagged would put a character in the evidence the
     /// document does not contain, so it is inserted **and flagged at the point of creation**.
+    ///
+    /// The gap is measured from the pen, so it follows the text drawn since the pen was last
+    /// placed. After a placement with nothing drawn, the number measures from the new origin and
+    /// says nothing about the space after an earlier run: a space there would be invented, inside
+    /// a word ('i ncluded', 'Y OUR') or beside a space the document drew.
     fn show_adjusted(&mut self, items: &[lopdf::Object]) -> Result<(), EngineError> {
         for item in items {
             match item {
@@ -822,9 +899,11 @@ impl<'a> Interpreter<'a> {
                         lopdf::Object::Real(r) => f64::from(*r),
                         _ => unreachable!(),
                     };
-                    if amount <= TJ_SPACE_GAP_THOUSANDTHS {
+                    if amount <= TJ_SPACE_GAP_THOUSANDTHS && self.text_drawn_since_placement {
                         // Attach the synthesized space to the run that just ended, so the flag
-                        // sits with the character rather than being reconstructed later.
+                        // sits with the character rather than being reconstructed later. Only
+                        // when text was drawn since the pen was placed: otherwise this number
+                        // opens a gap from the new origin, not after that run.
                         if let Some(last) = self.shown.last_mut() {
                             let idx = last.text.chars().count() as u32;
                             last.text.push(' ');
@@ -868,7 +947,7 @@ fn num(operands: &[lopdf::Object], i: usize) -> Result<f64, EngineError> {
 /// (`docs/01-CONTRACT.md` §4). Coordinates closer together than the artifact can express are the
 /// same coordinate, and using a different tolerance here than the wire uses would let the
 /// interpreter distinguish points the artifact cannot.
-const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT as f64;
+pub(crate) const COORD_EPSILON: f64 = 1.0 / ethos_parser_core::QUANTUM_PER_POINT as f64;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < COORD_EPSILON
@@ -1044,6 +1123,33 @@ mod tests {
         m
     }
 
+    /// A composite font decoding through `tounicode`, with Identity-style CID widths of 500.
+    ///
+    /// Its code length is whatever that CMap's codespace makes `Font::split_codes` read.
+    fn one_composite_font(tounicode: &[u8]) -> BTreeMap<String, std::sync::Arc<Font>> {
+        use crate::fonts::{Decoder, FontKind, WidthSource};
+        use ethos_parser_core::GeometryAbsence;
+
+        let mut m = BTreeMap::new();
+        m.insert(
+            "F1".to_string(),
+            std::sync::Arc::new(Font {
+                id: "F1".into(),
+                kind: FontKind::Composite,
+                decoder: Decoder::ToUnicode(
+                    crate::cmap::ToUnicode::parse(tounicode).expect("test ToUnicode parses"),
+                ),
+                widths: WidthSource::Cid {
+                    spans: BTreeMap::new(),
+                    default: 500.0,
+                },
+                builtin_encoding_assumed: None,
+                ink: crate::fonts::FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            }),
+        );
+        m
+    }
+
     // ---------------------------------------------------------------------------------------
     // v1-S1 — path capture
     // ---------------------------------------------------------------------------------------
@@ -1207,6 +1313,208 @@ mod tests {
         }
         let summed: f64 = per.iter().sum();
         assert!(approx_eq(summed, sh.advance.unwrap()));
+    }
+
+    /// A code that decodes to several characters advances the pen once.
+    ///
+    /// `/Differences` names the `fi` glyph for code 100 (`d`), so `(dle)` is three codes and the
+    /// four characters of `file`. An entry per character would misalign every advance after the
+    /// ligature, and a total by character would be one glyph too wide.
+    #[test]
+    fn a_code_decoding_to_several_characters_advances_the_pen_once() {
+        use crate::encoding::{BaseEncoding, SimpleEncoding};
+        use crate::fonts::Decoder;
+
+        let mut font = (*one_font()["F1"]).clone();
+        font.decoder = Decoder::Simple(SimpleEncoding::new(
+            BaseEncoding::WinAnsi,
+            BTreeMap::from([(100u8, "fi".to_string())]),
+        ));
+        let fonts = BTreeMap::from([("F1".to_string(), std::sync::Arc::new(font))]);
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 0 0 Td (dle) Tj ET")).unwrap();
+
+        let sh = &i.shown[0];
+        assert_eq!(sh.text, "file");
+        assert_eq!(sh.codes, vec![100, 108, 101]);
+
+        let per = sh.code_advances.as_ref().expect("this font carries widths");
+        assert_eq!(per.len(), 3, "one entry per code, not per character");
+        for (n, a) in per.iter().enumerate() {
+            assert!(approx_eq(*a, 5.0), "code {n} advanced {a}, expected 5.0");
+        }
+        assert!(
+            approx_eq(sh.advance.expect("advance is known"), 15.0),
+            "three glyphs, not four"
+        );
+    }
+
+    /// `Tw` reaches a single-byte code 32 only (PDF 32000-1 §9.3.3; docs/22-WORD-BOXES-SCOPE.md §9
+    /// item 3).
+    ///
+    /// Every glyph in (i) to (iii) is 500/1000 em at 10 pt under `10 Tw`, so a code 32 that took
+    /// word spacing advances 15 and one that did not advances 5; (iv) is Courier, 600/1000 em. All
+    /// values are exact in binary floating point.
+    #[test]
+    fn word_spacing_is_added_to_a_single_byte_code_32_only() {
+        // (i) A simple font: code 32 is one byte and takes `Tw`; its neighbours do not.
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td (A A) Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65]);
+        assert_eq!(sh.code_advances, Some(vec![5.0, 15.0, 5.0]));
+        assert_eq!(sh.advance, Some(25.0));
+
+        // (ii) A composite font with a two-byte codespace: the same code 32, in two bytes.
+        let fonts = one_composite_font(
+            b"1 begincodespacerange <0000> <ffff> endcodespacerange \
+              2 beginbfchar <0001> <0041> <0020> <0042> endbfchar",
+        );
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td <000100200001> Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![1, 32, 1], "the same code 32, in two bytes");
+        assert_eq!(sh.code_advances, Some(vec![5.0, 5.0, 5.0]));
+        assert_eq!(sh.advance, Some(15.0));
+
+        // (iii) A composite font whose `/ToUnicode` declares no codespace, so the interim split
+        // reads one byte at a time. The byte 0x20 still takes no `Tw`.
+        let fonts = one_composite_font(b"2 beginbfchar <41> <0041> <20> <0042> endbfchar");
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td <412041> Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65], "the split really was one byte");
+        assert_eq!(
+            sh.code_advances.as_ref().map(|a| a[1]),
+            Some(5.0),
+            "a composite font under Identity defines no single-byte code (PDF 32000-1 §9.7.5.2), \
+             so its byte 0x20 takes no word spacing"
+        );
+        assert_eq!(sh.advance, Some(15.0));
+
+        // (iv) A simple font as documents usually ship one: decoding through a `/ToUnicode`, with
+        // standard-14 widths instead of `/Widths`. The gate reads the font's kind, not its decoder
+        // or its width source, so code 32 still takes `Tw`.
+        let mut courier = (*one_font()["F1"]).clone();
+        courier.decoder = crate::fonts::Decoder::ToUnicode(
+            crate::cmap::ToUnicode::parse(b"2 beginbfchar <41> <0041> <20> <0020> endbfchar")
+                .expect("test ToUnicode parses"),
+        );
+        let metrics = crate::afm::for_base_font("Courier").expect("Courier is standard 14");
+        courier.widths = crate::fonts::WidthSource::Standard14 {
+            face: metrics.face,
+            metrics,
+        };
+        let fonts = BTreeMap::from([("F1".to_string(), std::sync::Arc::new(courier))]);
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 10 Tw 0 0 Td (A A) Tj ET"))
+            .unwrap();
+        let sh = &i.shown[0];
+        assert_eq!(sh.codes, vec![65, 32, 65]);
+        assert_eq!(sh.code_advances, Some(vec![6.0, 16.0, 6.0]));
+        assert_eq!(sh.advance, Some(28.0));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The pen's travel as a vector (docs/22 §9 items 1 and 2)
+    // ---------------------------------------------------------------------------------------
+
+    fn approx_pair(got: (f64, f64), want: (f64, f64)) -> bool {
+        approx_eq(got.0, want.0) && approx_eq(got.1, want.1)
+    }
+
+    /// A text matrix turned a quarter moves the pen up the page, and the travel says so.
+    #[test]
+    fn a_turned_text_matrix_moves_the_pen_along_y() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 0 1 -1 0 50 50 Tm (AB) Tj ET"))
+            .unwrap();
+
+        let sh = &i.shown[0];
+        let d = sh.displacement.expect("widths are known");
+        assert!(
+            approx_pair(d, (0.0, 10.0)),
+            "two 5pt glyphs up +y, got {d:?}"
+        );
+        assert!(
+            approx_pair(sh.glyph_up, (-10.0, 0.0)),
+            "the glyph tops point -x, got {:?}",
+            sh.glyph_up
+        );
+        // The wire advance keeps its legacy value, measured along the text matrix's x alone.
+        // Re-expressing it is left open — a known defect recorded in docs/22 — not this change.
+        assert_eq!(sh.advance, Some(0.0));
+    }
+
+    /// A CTM turned a quarter carries the travel with it; `x_scale` kept only its length.
+    #[test]
+    fn a_turned_ctm_carries_the_displacement_with_it() {
+        let fonts = one_font();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("0 1 -1 0 200 0 cm BT /F1 10 Tf 50 50 Td (AB) Tj ET"))
+            .unwrap();
+
+        let sh = &i.shown[0];
+        let d = sh.displacement.expect("widths are known");
+        assert!(
+            approx_pair(d, (0.0, 10.0)),
+            "the CTM turns +x to +y, got {d:?}"
+        );
+        assert!(
+            approx_pair(sh.glyph_up, (-10.0, 0.0)),
+            "got {:?}",
+            sh.glyph_up
+        );
+        assert_eq!(sh.advance, Some(10.0), "the legacy advance is a length");
+    }
+
+    /// **On upright text the travel is the legacy advance, bit for bit.**
+    ///
+    /// Every box an upright run has ever had was quantized from `advance_total * ctm.x_scale()`,
+    /// and the box is now built from `displacement.0`. With `Tm.b` and `CTM.b` zero and `CTM.a`
+    /// positive, `ctm.a * total + ctm.c * ±0` is `total * sqrt(a * a)` exactly, because a binary64
+    /// `sqrt(x²)` is `|x|`. An approximate comparison would pass a change that moved the last bit
+    /// and, through quantization, a centipoint on some document.
+    #[test]
+    fn upright_displacement_is_bitwise_the_legacy_advance() {
+        let fonts = one_font();
+        let mut cases = 0;
+        for ctm in [
+            "1 0 0 1 0 0",
+            "0.24 0 0 0.24 0 0",
+            "1 0 0 -1 0 792",
+            "1.3 0 0.4 0.9 0 0",
+        ] {
+            for tm in ["1 0 0 1 72 700", "9.96 0 0 9.96 30 40", "1 0 0.2 1 5 5"] {
+                for tc in ["0", "0.37"] {
+                    for tz in ["100", "83"] {
+                        for tf in ["10", "1"] {
+                            let src = format!(
+                                "q {ctm} cm BT /F1 {tf} Tf {tc} Tc {tz} Tz {tm} Tm (AB CDEF) Tj ET Q"
+                            );
+                            let mut i = Interpreter::new(&fonts);
+                            i.run(&ops(&src)).unwrap();
+                            let sh = &i.shown[0];
+                            let advance = sh.advance.expect("widths are known");
+                            let (dx, dy) = sh.displacement.expect("present with the advance");
+                            assert!(
+                                dx.to_bits() == advance.to_bits() || (dx == 0.0 && advance == 0.0),
+                                "{src}: displacement {dx:e} is not the legacy advance {advance:e}"
+                            );
+                            assert_eq!(dy, 0.0, "{src}");
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 96);
     }
 
     /// Fail-closed means *nothing* survives, including text shown before the bad token.
@@ -1374,6 +1682,191 @@ mod tests {
         assert!(
             i.shown.is_empty(),
             "a negative adjustment with no preceding run must not invent one"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // A TJ gap follows the pen (docs/22-WORD-BOXES-SCOPE.md §9 item 4)
+    // ---------------------------------------------------------------------------------------
+
+    /// Every run's text and flagged indices, so a row is compared whole.
+    fn texts_and_flags(i: &Interpreter<'_>) -> Vec<(String, Vec<u32>)> {
+        i.shown
+            .iter()
+            .map(|s| (s.text.clone(), s.synthesized_indices.clone()))
+            .collect()
+    }
+
+    fn run_of(text: &str, flags: &[u32]) -> (String, Vec<u32>) {
+        (text.to_string(), flags.to_vec())
+    }
+
+    /// After the pen is placed again, a `TJ` number measures from the new origin (PDF 32000-1
+    /// §9.4.3), so it is no evidence of a gap after the run drawn before. The corpus shape is the
+    /// `Tm` row: a producer re-placing the pen on the same line wrote 'i ncluded' and 'Y OUR'.
+    #[test]
+    fn a_tj_gap_after_the_pen_was_placed_again_writes_no_space() {
+        let fonts = one_font();
+        for (op, src) in [
+            ("BT", "BT /F1 10 Tf (ab) Tj ET BT [-400 (cd)] TJ ET"),
+            ("Td", "BT /F1 10 Tf (ab) Tj 0 -12 Td [-400 (cd)] TJ ET"),
+            ("TD", "BT /F1 10 Tf (ab) Tj 0 -12 TD [-400 (cd)] TJ ET"),
+            ("T*", "BT /F1 10 Tf 12 TL (ab) Tj T* [-400 (cd)] TJ ET"),
+            (
+                "Tm",
+                "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [-400 (cd)] TJ ET",
+            ),
+            ("'", "BT /F1 10 Tf 12 TL (ab) Tj () ' [-400 (cd)] TJ ET"),
+            (
+                "\"",
+                "BT /F1 10 Tf 12 TL (ab) Tj 0 0 () \" [-400 (cd)] TJ ET",
+            ),
+            (
+                "a cm that moves",
+                "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 -12 cm [-400 (cd)] TJ ET",
+            ),
+            (
+                "a Q restoring a CTM a cm changed",
+                "BT /F1 10 Tf q 1 0 0 1 0 12 cm (ab) Tj Q [-400 (cd)] TJ ET",
+            ),
+            (
+                "BT on another line (probe p25)",
+                "BT /F1 10 Tf 50 50 Td (ab) Tj ET BT /F1 10 Tf 50 100 Td [-400 (cd)] TJ ET",
+            ),
+        ] {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(src)).unwrap_or_else(|e| panic!("{op}: {e}"));
+            assert_eq!(
+                texts_and_flags(&i),
+                [run_of("ab", &[]), run_of("cd", &[])],
+                "{op} placed the pen, so the number opened no gap after 'ab': {src}"
+            );
+            if op == "Tm" {
+                // The number still moves the pen: only the space is withheld.
+                assert!(
+                    approx_eq(i.shown[1].origin.0, 4.0),
+                    "-400 at 10 pt moves 'cd' 4 pt from the new origin, got {}",
+                    i.shown[1].origin.0
+                );
+            }
+        }
+    }
+
+    /// A number with nothing between it and the last run but operators that leave the pen where
+    /// it stands still opens a gap after that run. The colour row is the corpus shape: 147
+    /// synthesized spaces cross only `rg`/`RG`/`g`/`G`/`k`/`K`, all genuine word gaps.
+    ///
+    /// `BI`/`ID`/`EI` is not covered: lopdf collapses the inline image into one operation, and a
+    /// unit-test stream for it is fragile.
+    #[test]
+    fn a_tj_gap_the_pen_opened_from_the_last_run_still_writes_its_space() {
+        let fonts = one_font();
+        let between = |x: &str| format!("BT /F1 10 Tf (ab) Tj {x} [-400 (cd)] TJ ET");
+        let rows = [
+            (
+                "same array",
+                "BT /F1 10 Tf [(ab) -400 (cd)] TJ ET".to_string(),
+            ),
+            (
+                "across TJ",
+                "BT /F1 10 Tf [(ab)] TJ [-400 (cd)] TJ ET".to_string(),
+            ),
+            ("Tj then TJ", between("")),
+            (
+                "trailing number",
+                "BT /F1 10 Tf [(ab) -400] TJ (cd) Tj ET".to_string(),
+            ),
+            ("colour", between("0 0 0.5 rg 0 0 0.5 RG")),
+            ("gray and cmyk", between("0 g 0 G 0 0 0 1 k 0 0 0 1 K")),
+            ("Tf", between("/F1 12 Tf")),
+            ("Tc", between("1 Tc")),
+            ("Tw", between("2 Tw")),
+            ("Tz", between("90 Tz")),
+            ("TL", between("14 TL")),
+            ("Ts", between("3 Ts")),
+            ("Tr", between("3 Tr")),
+            (
+                "marked content",
+                between("/Span <</MCID 1>> BDC EMC /P BMC EMC /X MP"),
+            ),
+            ("q alone", between("q")),
+            (
+                "q, colour, Q with the CTM unchanged",
+                between("q 1 0 0 rg Q"),
+            ),
+            ("an identity cm", between("1 0 0 1 0 0 cm")),
+            ("general graphics state", between("1 w [] 0 d /GS0 gs")),
+            (
+                "path, paint, clip, shading, XObject, Type 3, compatibility",
+                between(
+                    "0 0 m 10 0 l 0 0 1 1 2 2 c h S 0 0 5 5 re W n /Sh0 sh /Im0 Do 0 0 d0 BX EX",
+                ),
+            ),
+            (
+                "an empty string",
+                "BT /F1 10 Tf (ab) Tj [() -400 (cd)] TJ ET".to_string(),
+            ),
+        ];
+        for (what, src) in rows {
+            let mut i = Interpreter::new(&fonts);
+            i.run(&ops(&src)).unwrap_or_else(|e| panic!("{what}: {e}"));
+            assert_eq!(
+                texts_and_flags(&i),
+                [run_of("ab ", &[2]), run_of("cd", &[])],
+                "{what} left the pen where 'ab' ended, so the gap is after 'ab': {src}"
+            );
+        }
+    }
+
+    /// Once the pen is placed, the next string it draws is what a following number measures from.
+    /// A string later dropped as undecodable counts too: its text was on the page, and suppressing
+    /// the gap after it would fuse the last kept run with the next one across text the reader
+    /// lost (the 01030000000159 shape).
+    #[test]
+    fn a_placed_pen_is_anchored_by_the_next_string_it_draws() {
+        let fonts = one_font();
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [-400 (cd) -400 (ef)] TJ ET",
+        ))
+        .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])]
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 12 TL (ab) Tj (cd) ' [-400 (ef)] TJ ET"))
+            .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])],
+            "' draws 'cd' after its line move, so the gap is after 'cd'"
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf 12 TL (ab) Tj 0 0 (cd) \" [-400 (ef)] TJ ET",
+        ))
+        .unwrap();
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab", &[]), run_of("cd ", &[2]), run_of("ef", &[])],
+            "\" draws 'cd' after its line move, so the gap is after 'cd'"
+        );
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(
+            "BT /F1 10 Tf (ab) Tj 1 0 0 1 0 0 Tm [<81> -400 (cd)] TJ ET",
+        ))
+        .unwrap();
+        // WinAnsi leaves 0x81 unmapped, so this proves the drop path was reached.
+        assert_eq!(i.dropped_runs, 1, "the <81> run must be dropped");
+        assert_eq!(
+            texts_and_flags(&i),
+            [run_of("ab ", &[2]), run_of("cd", &[])],
+            "a dropped string still drew text, so the gap after it lands on the last run kept"
         );
     }
 }

@@ -302,7 +302,9 @@ fn the_field_exact_literals_are_what_the_schema_names() {
     // array's business, and on this fixture (no ruling lines) it found none.
     assert!(g.capabilities.tables, "v1-S1 looks for ruled tables");
     assert!(g.capabilities.spans);
-    assert!(!g.capabilities.char_offsets);
+    // 0.58.0: every span says where its text lies in its element's, in Unicode scalars — proved
+    // end to end by `char_offsets_index_the_element_text_in_unicode_scalars`.
+    assert!(g.capabilities.char_offsets);
     assert_eq!(g.producer.name, "ethos-parser");
 }
 
@@ -429,6 +431,34 @@ fn a_node_without_measurable_geometry_is_kept_counted_and_declared() {
 
     // And the artifact is still schema-valid with an empty elements array.
     schema_subset::validate(&as_value(&p.source)).expect("empty elements is legal");
+}
+
+/// **Turned text grounds along its baseline, and a run along neither axis is omitted and counted**
+/// (docs/22 §9 items 1 and 2).
+///
+/// Six of `rotated-and-mirrored-text`'s seven runs have an axis-aligned box — four of them typed
+/// `no_ink_to_measure` through 0.57.0 and omitted for it — and the 45-degree run has none, so it
+/// is the one node the projection leaves out.
+#[test]
+fn turned_text_grounds_and_an_off_axis_run_is_omitted() {
+    let repr = represent(&engine_fx("rotated-and-mirrored-text"));
+    let p = ethos_parser_grounding::project(&repr).expect("projects");
+
+    assert_eq!(p.omission.nodes_total, 7);
+    assert_eq!(p.omission.nodes_omitted, 1, "only the diagonal run");
+    assert_eq!(
+        p.source.elements.len(),
+        6,
+        "no two runs share a line, so each grounded run is its own element"
+    );
+    assert!(
+        p.source
+            .elements
+            .iter()
+            .all(|e| e.text.as_deref() != Some("Diagonal")),
+        "a run with no axis-aligned box never enters the artifact"
+    );
+    schema_subset::validate(&as_value(&p.source)).expect("the artifact validates");
 }
 
 /// The omission **selects**, proved inside a single artifact with mixed geometry.
@@ -792,11 +822,48 @@ fn the_artifact_satisfies_the_invariants_the_schema_cannot_express() {
             !g.capabilities.char_offsets || g.capabilities.spans,
             "{label}"
         );
+        let element_text: std::collections::BTreeMap<&str, &str> = g
+            .elements
+            .iter()
+            .filter_map(|e| e.text.as_deref().map(|t| (e.id.as_str(), t)))
+            .collect();
         for s in g.spans.iter().flatten() {
             assert_eq!(
                 s.char_start.is_some() || s.char_end.is_some(),
                 g.capabilities.char_offsets,
                 "{label}: offsets present must equal the capability"
+            );
+            if !g.capabilities.char_offsets {
+                continue;
+            }
+            // The rule the verifier applies, applied here: the offsets are complete, ordered, and
+            // the element's text SLICED BY SCALARS is exactly the span's text. On these fixtures it
+            // cannot tell a wrong cursor from the right one: their 15 spans are ASCII and each is
+            // its element's only span, so a byte cursor and a boxed-only cursor write the same
+            // numbers. The unit and the member cursor are pinned by the grounding crate's
+            // `offsets_count_every_member_of_the_block_in_unicode_scalars` and
+            // `offsets_come_from_each_members_position_not_from_searching_the_text`, and end to
+            // end by `char_offsets_index_the_element_text_in_unicode_scalars`.
+            let (start, end) = (
+                s.char_start.expect("claimed") as usize,
+                s.char_end.expect("claimed") as usize,
+            );
+            assert!(start <= end, "{label}: {start}..{end} is not ordered");
+            let id = s.element.as_deref().expect("a span names its element");
+            let text = element_text.get(id).unwrap_or_else(|| {
+                panic!(
+                    "{label}: span {} names element {id}, which carries no text",
+                    s.id
+                )
+            });
+            assert_eq!(
+                text.chars()
+                    .skip(start)
+                    .take(end - start)
+                    .collect::<String>(),
+                s.text,
+                "{label}: span {} does not lie at {start}..{end} of its element's text",
+                s.id
             );
         }
 

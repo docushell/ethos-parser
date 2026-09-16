@@ -45,9 +45,10 @@ pub const SOURCE_FONT_BBOX: &str = "standard-14-afm-font-bbox";
 pub struct Core14 {
     /// The Core-14 name this face was matched under, e.g. `Helvetica`.
     pub face: &'static str,
-    /// Highest ink above the baseline, in glyph space.
+    /// Ascent above the baseline, in glyph space: the AFM's `Ascender`, or its `FontBBox` top.
     pub ascent: f64,
-    /// Lowest ink below the baseline, in glyph space. Negative.
+    /// Descent below the baseline, in glyph space: `Descender`, or the `FontBBox` bottom.
+    /// Negative.
     pub descent: f64,
     /// Which AFM key the vertical envelope came from.
     pub vertical_source: &'static str,

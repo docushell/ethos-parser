@@ -781,6 +781,12 @@ pub struct PdfLocator {
     /// Advance width in centipoints, or **absent** when the document carries no widths.
     ///
     /// `None` is not zero. Absent means the reader does not know, and says so.
+    ///
+    /// **Known defect.** It is measured along the text matrix's x before any rotation: on a page
+    /// turned by its CTM or its `/Rotate`, this is the length in the unrotated frame, not an
+    /// extent in the declared system, and text turned by its own text matrix advances 0 or less.
+    /// The run's box is built from the travel as a vector and does not share it. Recorded, and not
+    /// yet decided, in `docs/22-WORD-BOXES-SCOPE.md` (§9 item 2, and the amendment that fixed it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advance: Option<i64>,
 }
@@ -864,11 +870,12 @@ pub struct PdfImageLocator {
 /// # Not [`crate::derivation::GeometryPresence`], and not [`AnnotationRect`]
 ///
 /// Three kinds of box now exist in this record and the whole point is that they stay apart.
-/// `GeometryPresence::Measured` means **ink measured from font metrics**. [`AnnotationRect`]
-/// means **a rectangle the author declared** in a dictionary. This means **the page's own
-/// transformation matrix, applied to the unit square** every PDF image is defined on
-/// (32000-1 §8.9.5.2) — computed by this engine from evidence the content stream supplies, which
-/// is a third provenance and gets a third type.
+/// `GeometryPresence::Measured` means **a box measured from the document's own metrics and
+/// drawing** — for a text run, its pen advance over the font's ascent-to-descent envelope, which
+/// is not glyph ink (`docs/01-CONTRACT.md` §5.3). [`AnnotationRect`] means **a rectangle the
+/// author declared** in a dictionary. This means **the page's own transformation matrix, applied
+/// to the unit square** every PDF image is defined on (32000-1 §8.9.5.2) — computed by this engine
+/// from evidence the content stream supplies, which is a third provenance and gets a third type.
 ///
 /// **It is never the bitmap's pixel dimensions.** A 4000×3000 photograph scaled into a 2cm
 /// thumbnail is 2cm of page, and reporting its pixel count as a box would be the pdf-inspector
@@ -1463,7 +1470,9 @@ pub struct TextRunAttributes {
     ///
     /// **Not 1:1 with `text`.** A ligature is one code and several scalars.
     pub char_codes: Vec<u32>,
-    /// True when `text.chars().count() != char_codes.len()`. Declared, not reconciled.
+    /// True when `text.chars().count() != char_codes.len()`, counting Unicode scalar values.
+    /// Declared, not reconciled. A comparison of two counts, not a mapping: a character in
+    /// `synthesized` has no code and sets it too.
     pub scalar_code_mismatch: bool,
     /// Characters this reader inserted, by index into `text`. Empty for verbatim text.
     pub synthesized: Vec<SynthesizedAt>,

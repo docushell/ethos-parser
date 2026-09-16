@@ -257,7 +257,7 @@
         },
         "char_offsets": {
           "type": "boolean",
-          "$comment": "FALSE in v0, and it was true in the M1 sketch. v0 emits runs with native locators and no element/span hierarchy, so there is nothing for an offset to index into. It flips at M5 with DocumentRepresentation v0 — and with a test. Narrowing a declaration when the evidence does not support it is the mechanism working, not a regression."
+          "$comment": "true since 0.58.0 — proof: char_offsets_index_the_element_text_in_unicode_scalars. Every span a projection emits carries char_start/char_end, where its text lies in its element's text, in Unicode scalars (not UTF-8 bytes, not UTF-16 code units, not character codes), end exclusive. It was FALSE from M4, when the M1 sketch's true was narrowed because v0 had no element/span hierarchy to index into, and stayed false through M5 because an element and a span were the same object so an offset was always 0..len; v2.2-S7 made the element the block and the span the run. The page-less profiles keep false: grounding schema 1.1.0 admits no spans, so an offset has nothing to sit on."
         },
         "tables": {
           "type": "boolean",
@@ -364,7 +364,7 @@
       },
       "capabilities": {
         "annotations": true,
-        "char_offsets": false,
+        "char_offsets": true,
         "form_fields": true,
         "html": true,
         "images": true,

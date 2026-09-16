@@ -264,10 +264,22 @@ fn a_matrix_carried_type_size_produces_a_real_box() {
     }
     let a = extract_ok(path);
 
+    // The height ACROSS each run's own baseline. Since docs/22 §9 items 1 and 2 this document's
+    // vertical margin note has boxes too — 2 800 runs, 280 of them a glyph or two long — and for
+    // a run drawn up the page `y1 - y0` is its length, not its envelope. A vertical box is the one
+    // whose origin sits on a horizontal edge between its x edges.
     let mut heights: Vec<i64> = runs(&a)
         .iter()
-        .filter_map(|r| r.geometry.measured())
-        .map(|rect| rect.y1() - rect.y0())
+        .filter_map(|r| r.geometry.measured().map(|rect| (r, rect)))
+        .map(|(r, rect)| {
+            let (ox, oy) = (r.locator.origin_x, r.locator.origin_y);
+            let vertical = rect.x0() < ox && ox < rect.x1() && (oy == rect.y0() || oy == rect.y1());
+            if vertical {
+                rect.x1() - rect.x0()
+            } else {
+                rect.y1() - rect.y0()
+            }
+        })
         .collect();
     assert!(
         heights.len() > 1_000,
@@ -291,6 +303,96 @@ fn a_matrix_carried_type_size_produces_a_real_box() {
     assert!(
         median > 400,
         "median box height {median}cp is under 4pt; the vertical scale is wrong"
+    );
+}
+
+/// One page drawing `(abcde)` at (50, 50), 10 pt, in a Type 3 font whose five codes all name one
+/// CharProc, with the given `/FontMatrix`, `/Widths` entry, descriptor ascent/descent and glyph.
+fn type3_page(
+    font_matrix: &str,
+    widths: &str,
+    ascent: i64,
+    descent: i64,
+    charproc: &str,
+) -> Vec<u8> {
+    let stream = |data: &str| format!("<< /Length {} >>\nstream\n{data}\nendstream", data.len());
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] \
+           /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream("BT /F1 10 Tf 50 50 Td (abcde) Tj ET").into_bytes(),
+        format!(
+            "<< /Type /Font /Subtype /Type3 /FontBBox [0 {descent} {widths} {ascent}] \
+             /FontMatrix [{font_matrix}] /CharProcs << /a 7 0 R >> /Encoding << /Type /Encoding \
+             /Differences [97 /a /a /a /a /a] >> /FirstChar 97 /LastChar 101 \
+             /Widths [{widths} {widths} {widths} {widths} {widths}] /FontDescriptor 6 0 R \
+             /Resources << >> >>"
+        )
+        .into_bytes(),
+        format!(
+            "<< /Type /FontDescriptor /FontName /T3 /Flags 4 /FontBBox [0 {descent} {widths} \
+             {ascent}] /ItalicAngle 0 /Ascent {ascent} /Descent {descent} /CapHeight {ascent} \
+             /StemV 10 >>"
+        )
+        .into_bytes(),
+        stream(charproc).into_bytes(),
+    ];
+    pdf_from_objects(&objects)
+}
+
+/// **A Type 3 box is kept only where its `/FontMatrix` leaves the vertical at the default**
+/// (docs/22 §9 item 6).
+///
+/// The same five glyphs, 7 pt tall at 10 pt, drawn twice: once in a 1000-unit glyph space, once in
+/// p20's 100-unit one. At the default both readings of the descriptor agree and the box is the
+/// ink. Under `0.01` the specification's reading and LibreOffice 7.5-7.6's disagree by a factor of
+/// ten, and nothing in the file says which one it is — so there is no box, and the advance, which
+/// the matrix does state, is unchanged.
+#[test]
+fn a_type3_box_is_kept_only_at_the_default_font_matrix() {
+    let profile = Profile::default();
+    let run = |pdf: Vec<u8>| {
+        let d = Document::open_bytes(&pdf, &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+        let rs = runs(&a);
+        assert_eq!(rs.len(), 1, "one run");
+        assert_eq!(rs[0].text, "aaaaa");
+        assert_eq!(
+            rs[0].locator.advance,
+            Some(2500),
+            "5 glyphs of half an em at 10 pt"
+        );
+        rs[0].geometry
+    };
+
+    let default = run(type3_page(
+        "0.001 0 0 0.001 0 0",
+        "500",
+        700,
+        -200,
+        "500 0 0 -200 500 700 d1 0 0 500 700 re f",
+    ));
+    let rect = default
+        .measured()
+        .unwrap_or_else(|| panic!("the default matrix keeps its box, got {default:?}"));
+    assert_eq!(
+        [rect.x0(), rect.y0(), rect.x1(), rect.y1()],
+        [5000, 34300, 7500, 35200],
+        "baseline y 350 in the top-left system, 7 pt above and 2 pt below"
+    );
+
+    assert_eq!(
+        run(type3_page(
+            "0.01 0 0 0.01 0 0",
+            "50",
+            70,
+            -20,
+            "50 0 0 -20 50 70 d1 0 0 50 70 re f",
+        )),
+        GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+        "under 0.01 the envelope's units are unstated, so neither 0.9 pt nor 9 pt is a measurement"
     );
 }
 
@@ -414,6 +516,14 @@ fn the_ligature_fixture_declares_its_scalar_code_mismatch() {
         vec![1, 2, 3, 4, 5, 6, 3, 7, 5],
         "nine codes, as the content stream writes them"
     );
+    // Type 3 /Widths [600 350 500 500 500 250 300] from code 1: codes 1 2 3 4 5 6 3 7 5 sum to
+    // 4000 thousandths of 24pt, 96pt. The `fi` code advances once each time it appears; an advance
+    // per character would add two more 500s and reach 12000.
+    assert_eq!(
+        r.locator.advance,
+        Some(9600),
+        "one advance per code, however many characters it decodes to"
+    );
     assert_eq!(r.text.chars().count(), 11, "eleven characters");
     assert!(
         r.scalar_code_mismatch,
@@ -498,6 +608,114 @@ fn a_rotated_page_reports_its_rotation_and_transformed_geometry() {
     // And it lands inside the page.
     assert!(r.locator.origin_x <= page.width);
     assert!(r.locator.origin_y <= page.height);
+
+    // docs/22 §9 item 2. The box turns with the page, and turned it runs past the page's edge.
+    // The pen runs up user x from 36 to 145.044, which /Rotate 90 lays along display y from 36
+    // to 145.044 — past a display height of 144. Ethos's own `layout.json` for this fixture has
+    // [6824, 3742, 8489, 14488], past 14400 too. So the box is measured and un-emittable, exactly
+    // as D4-S5 answers ink the document draws off its page. Through 0.57.0 it was a horizontal
+    // box that fit, which was the wrong rectangle.
+    assert_eq!(
+        r.geometry,
+        GeometryPresence::Absent(GeometryAbsence::MeasuredOffPage),
+        "the turned box runs past the page, and is not laid along x to fit"
+    );
+    assert!(
+        !r.findings
+            .contains(&ethos_parser_core::TextFinding::OffPage),
+        "the origin (7200, 3600) is on the page, and the finding tests the origin"
+    );
+    let repr = ethos_parser_pdf::to_representation(&a, &Profile::default())
+        .expect("a turned box past the page still seals");
+    let declared = repr
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE)
+        .expect("the run is not groundable, so the gap is declared");
+    for expected in [
+        "1 of 1 text node(s)",
+        "**Four reasons",
+        "(v1-S6.2, D4-S5, v2.2-S3)",
+        "have their origin inside the visible page",
+    ] {
+        assert!(
+            declared.detail.contains(expected),
+            "missing `{expected}`: {}",
+            declared.detail
+        );
+    }
+    assert!(
+        !declared
+            .detail
+            .contains("its origin and an `off-page-text` finding"),
+        "the sentence must not claim a finding this run does not carry: {}",
+        declared.detail
+    );
+}
+
+/// **`/Rotate` turns the side a box lies on, not only the line it lies along.**
+///
+/// `rotation-90`, the only `/Rotate` text in any corpus, runs past its page, so it pins no box.
+/// These two pages show the same upright run, `(AB)` at user (50, 60), 10 pt, 5 pt per glyph,
+/// Helvetica's 718/−207. A quarter turn lays the pen down the page with the glyph tops toward +x;
+/// a half turn lays it toward −x with the tops toward +y. Carrying the pen through `/Rotate` but
+/// not the glyphs' y axis would keep both lines and put both boxes on the far side of them.
+#[test]
+fn a_rotated_page_puts_the_box_on_the_side_the_glyph_tops_point() {
+    let widths: String = std::iter::repeat_n("500", 95).collect::<Vec<_>>().join(" ");
+    let stream = b"BT /F1 10 Tf 1 0 0 1 50 60 Tm (AB) Tj ET";
+    let page = |rotate: u32| {
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Rotate {rotate} \
+             /Resources << /Font << /F1 6 0 R >> >> /Contents 5 0 R >>"
+        )
+        .into_bytes()
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>".to_vec(),
+        page(90),
+        page(180),
+        format!("<< /Length {} >>\nstream\n", stream.len())
+            .into_bytes()
+            .into_iter()
+            .chain(stream.iter().copied())
+            .chain(b"\nendstream".iter().copied())
+            .collect(),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    ];
+
+    let profile = Profile::default();
+    let d = Document::open_bytes(&pdf_from_objects(&objects), &profile).expect("opens");
+    let a = ethos_parser_pdf::extract(&d, &profile).expect("extracts");
+    let rect = |i: usize| {
+        let r = &a.pages[i].runs[0];
+        assert_eq!(r.text, "AB");
+        let b = r
+            .geometry
+            .measured()
+            .unwrap_or_else(|| panic!("page {i} should be measured, got {:?}", r.geometry));
+        [b.x0(), b.y0(), b.x1(), b.y1()]
+    };
+
+    assert_eq!(a.pages[0].rotation, 90);
+    assert_eq!(
+        rect(0),
+        [5793, 5000, 6718, 6000],
+        "down the page from (60, 50), tops toward +x: x 60 − 2.07 to 60 + 7.18"
+    );
+    assert_eq!(a.pages[1].rotation, 180);
+    assert_eq!(
+        rect(1),
+        [14000, 5793, 15000, 6718],
+        "toward −x from (150, 60), tops toward +y: y 60 − 2.07 to 60 + 7.18"
+    );
 }
 
 #[test]
@@ -1256,7 +1474,11 @@ fn pdf_with_only_unmappable_text() -> Vec<u8> {
         )
         .into_bytes(),
     ];
+    pdf_from_objects(&objects)
+}
 
+/// A well-formed PDF from its objects, numbered from 1 in order, with computed xref offsets.
+fn pdf_from_objects(objects: &[Vec<u8>]) -> Vec<u8> {
     let mut out = b"%PDF-1.7\n".to_vec();
     let mut offsets = Vec::new();
     for (i, body) in objects.iter().enumerate() {
@@ -3607,8 +3829,32 @@ fn ink_the_document_draws_off_the_page_reports_why_rather_than_refusing_the_docu
     );
 
     // And the document seals, which is the assertion that failed before the repair.
-    ethos_parser_pdf::to_representation(&a, &Profile::default())
+    let repr = ethos_parser_pdf::to_representation(&a, &Profile::default())
         .expect("a page that draws off-canvas still produces a representation");
+
+    // Its off-page run starts off the page too, so it carries the finding, and the sentence
+    // saying so is 0.57.0's — not the branch for a run whose origin is on the page.
+    let declared = repr
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE)
+        .expect("the off-page run is not groundable, so the gap is declared");
+    assert!(
+        declared
+            .detail
+            .contains("its origin and an `off-page-text` finding"),
+        "{}",
+        declared.detail
+    );
+    assert!(
+        !declared
+            .detail
+            .contains("have their origin inside the visible page"),
+        "{}",
+        declared.detail
+    );
 }
 
 /// **Nothing is dropped and nothing is clamped — the run is still evidence.**
@@ -3697,6 +3943,134 @@ fn every_measured_box_this_reader_emits_survives_the_seal() {
         checked > 20,
         "the sweep must actually reach the corpus — it checked {checked}"
     );
+}
+
+// -------------------------------------------------------------------------------------------
+// docs/22 §9 items 1 and 2: turned text
+// -------------------------------------------------------------------------------------------
+
+/// **A turned run's box lies along its own baseline, on the side its glyph tops point.**
+///
+/// Through 0.57.0 the box was built from the advance, which reads only `Tm.e` and scales it by the
+/// CTM's length: text turned by its text matrix advanced 0 or less and was typed
+/// `no_ink_to_measure`, the absence that says nothing was drawn, and text turned by its CTM got a
+/// box laid along x. Each run is found by its text, so a reorder cannot make this pass.
+#[test]
+fn turned_text_gets_a_box_along_its_baseline() {
+    let a = extract_ok(engine_fx("rotated-and-mirrored-text"));
+    let r = runs(&a);
+    assert_eq!(r.len(), 7);
+    let run = |text: &str| {
+        *r.iter()
+            .find(|x| x.text == text)
+            .unwrap_or_else(|| panic!("the fixture draws `{text}`"))
+    };
+    let rect = |text: &str| {
+        let g = run(text).geometry;
+        let b = g
+            .measured()
+            .unwrap_or_else(|| panic!("`{text}` should be measured, got {g:?}"));
+        [b.x0(), b.y0(), b.x1(), b.y1()]
+    };
+
+    assert_eq!(
+        rect("Upright"),
+        [2000, 27138, 6200, 28248],
+        "the control, as 0.57.0 had it"
+    );
+    assert_eq!(
+        rect("Turned"),
+        [3138, 20400, 4248, 24000],
+        "up the page, tops toward -x"
+    );
+    assert_eq!(
+        rect("Downward"),
+        [7752, 6000, 8862, 10800],
+        "down the page, tops toward +x"
+    );
+    assert_eq!(rect("Inverted"), [20200, 2752, 25000, 3862], "upside down");
+    assert_eq!(
+        rect("Mirrored"),
+        [23200, 9138, 28000, 10248],
+        "mirrored, tops still up"
+    );
+    assert_eq!(
+        run("Diagonal").geometry,
+        GeometryPresence::Absent(GeometryAbsence::NotAxisAligned),
+        "45 degrees has no axis-aligned rectangle, and a bounding box would claim page it does \
+         not cover"
+    );
+    assert_eq!(
+        rect("Rolled"),
+        [11138, 16400, 12248, 20000],
+        "turned by the CTM rather than the text matrix, and turned all the same"
+    );
+
+    // `Turned` and `Rolled` are the same picture reached two ways, so their boxes differ by
+    // exactly their origins.
+    let (t, o) = (&run("Turned").locator, &run("Rolled").locator);
+    let (dx, dy) = (o.origin_x - t.origin_x, o.origin_y - t.origin_y);
+    let (bt, bo) = (rect("Turned"), rect("Rolled"));
+    assert_eq!([bt[0] + dx, bt[1] + dy, bt[2] + dx, bt[3] + dy], bo);
+
+    // The wire advance keeps its 0.57.0 value, measured along the text matrix's x before any
+    // rotation. Re-expressing it in the declared frame is left open — a known defect recorded in
+    // docs/22 — and not decided here.
+    for (text, advance) in [
+        ("Upright", 4200),
+        ("Turned", 0),
+        ("Downward", 0),
+        ("Inverted", -4800),
+        ("Mirrored", -4800),
+        ("Diagonal", 3394),
+        ("Rolled", 3600),
+    ] {
+        assert_eq!(run(text).locator.advance, Some(advance), "{text}");
+    }
+}
+
+/// **A run along neither axis is counted, declared, and sealed** — not typed as a reader failure.
+///
+/// The seal refuses a document whose non-groundable nodes the geometry declaration does not
+/// count, so an uncounted `NotAxisAligned` would cost the whole artifact. The grounding half —
+/// six elements, the diagonal omitted — is asserted where the projection is reachable, in
+/// `ethos-parser-cli`'s `grounding.rs`.
+#[test]
+fn an_off_axis_run_is_counted_and_declared() {
+    let a = extract_ok(engine_fx("rotated-and-mirrored-text"));
+    let diagonal = runs(&a)
+        .into_iter()
+        .find(|r| r.text == "Diagonal")
+        .expect("the fixture draws `Diagonal`");
+    assert!(!diagonal.geometry.is_declarable_limitation());
+    assert!(!diagonal.geometry.is_groundable());
+
+    let repr = ethos_parser_pdf::to_representation(&a, &Profile::default())
+        .expect("a document with a run along neither axis still seals");
+    let declared = repr
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE)
+        .expect("the diagonal run is not groundable, so the gap is declared");
+    assert!(
+        declared.detail.starts_with("1 of 7 text node(s)"),
+        "{}",
+        declared.detail
+    );
+    for expected in [
+        "**Four reasons",
+        "(v1-S6.2, v2.2-S3, 0.58.0)",
+        "1 node(s) WERE measured and do not run along an axis",
+        "`GeometryAbsence::NotAxisAligned` is the reason",
+    ] {
+        assert!(
+            declared.detail.contains(expected),
+            "missing `{expected}`: {}",
+            declared.detail
+        );
+    }
 }
 
 // -------------------------------------------------------------------------------------------

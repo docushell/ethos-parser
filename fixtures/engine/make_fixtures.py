@@ -131,6 +131,12 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              where a MEASURED box sits outside the crop box — which is what makes
                              it catch a page reporting one box's dimensions beside the other
                              box's coordinates                                       [v1-S6]
+  rotated-and-mirrored-text  seven runs with REAL ink metrics, each turned a different way: upright,
+                             a quarter turn each way, upside down and mirrored by the text
+                             matrix, 45 degrees, and a quarter turn by the CTM. The only engine
+                             fixture whose text does not run along +x — so the only one that sees
+                             a box built from the advance's x alone, which typed the first four
+                             `no_ink_to_measure` and laid the last along x (docs/22 §9) [0.58.0]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -954,6 +960,23 @@ FIXTURES = {
         "BT /F1 12 Tf 1 0 0 1 -260 100 Tm (Off the left edge) Tj "
         "1 0 0 1 40 60 Tm (On the page) Tj ET"
     ),
+    # docs/22 §9 items 1 and 2's golden: one run per way a baseline can be turned.
+    #
+    # The text matrix turns five of them — a quarter turn up the page, a quarter turn down it,
+    # upside down, mirrored, and 45 degrees — and the CTM turns the seventh. Through 0.57.0 the
+    # advance was read from `Tm.e` alone and scaled by the CTM's length, so the first four advanced
+    # 0 or less and were typed as drawing nothing, the 45-degree run got a foreshortened upright
+    # box, and the CTM-turned run got a box along x. `Upright` is the control: its box must not
+    # move. `Diagonal` has no axis-aligned rectangle at all and must say so.
+    "rotated-and-mirrored-text": (
+        "BT /F1 12 Tf 1 0 0 1 20 20 Tm (Upright) Tj "
+        "0 1 -1 0 40 60 Tm (Turned) Tj "
+        "0 -1 1 0 80 240 Tm (Downward) Tj "
+        "-1 0 0 -1 250 270 Tm (Inverted) Tj "
+        "-1 0 0 1 280 200 Tm (Mirrored) Tj "
+        "0.7071 0.7071 -0.7071 0.7071 150 120 Tm (Diagonal) Tj ET "
+        "q 0 1 -1 0 300 0 cm BT /F1 12 Tf 1 0 0 1 100 180 Tm (Rolled) Tj ET Q"
+    ),
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -1364,6 +1387,8 @@ MEDIA = {
     "crop-box-smaller-than-media": (0, 0, 300, 200),
     "simple-font-two-byte-tounicode": (0, 0, 300, 144),
     "whitespace-past-the-page-edge": (0, 0, 300, 144),
+    # Square, so a run turned a quarter has as much room as an upright one.
+    "rotated-and-mirrored-text": (0, 0, 300, 300),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -1405,6 +1430,8 @@ DESCRIPTORS = {
     # typed-absent box can never be found outside a page, so without these the fixture would
     # assert nothing about the case it exists for.
     "ink-past-the-media-box": "metrics",
+    # Real metrics, so every turned run has a box to build — or a typed reason it has none.
+    "rotated-and-mirrored-text": "metrics",
 }
 
 

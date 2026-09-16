@@ -1457,6 +1457,200 @@ fn the_oracle_agrees_on_an_artifact_with_real_elements_and_spans() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A one-line PDF drawing `stream`, with Helvetica under `/WinAnsiEncoding`.
+///
+/// Built in-test rather than committed as a fixture: the proof below needs a document whose runs
+/// hold multi-byte characters and a TJ gap, and nothing else in the corpus does. No fixture, no
+/// manifest hash and no survivor count moves for it.
+fn one_line_pdf(stream: &[u8]) -> Vec<u8> {
+    let widths = vec!["500"; 224].join(" ");
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        [
+            format!("<< /Length {} >>\nstream\n", stream.len()).into_bytes(),
+            stream.to_vec(),
+            b"\nendstream".to_vec(),
+        ]
+        .concat(),
+        format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 255 /Widths [{widths}] >>"
+        )
+        .into_bytes(),
+    ];
+
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        out.extend_from_slice(o);
+        out.extend_from_slice(b"\nendobj\n");
+    }
+    let xref = out.len();
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for o in &offsets {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+/// **The `char_offsets` proof: an offset indexes the element's text in Unicode scalars.**
+///
+/// This is the named proof for `capabilities.char_offsets` (`ethos-parser-pdf/tests/capabilities.rs`),
+/// and it is here rather than in that crate for the reason the Markdown and HTML proofs are: the
+/// real `extract` and `ground` binaries write the artifact and **the pinned Ethos decides**, which
+/// is the only way to prove the engine and the consuming validator agree about a rule the
+/// validator enforces.
+///
+/// The document is chosen so the unit is visible three ways at once. `[(caf\351) -500 (cr\350me)
+/// -500 (br\373l\351e)] TJ` draws three runs, each holding an `é`-class character, and each TJ gap
+/// becomes a space the reader synthesizes onto the run before it. Three cursors give three
+/// different answers for the same three spans:
+///
+/// | cursor | the three spans' offsets | |
+/// | --- | --- | --- |
+/// | Unicode scalars | `(0,5) (5,11) (11,17)` | **right** — the unit the validator slices by |
+/// | UTF-8 bytes | `(0,6) (6,13) (13,21)` | wrong: `é` is two bytes |
+/// | character codes | `(0,4) (4,9) (9,15)` | wrong: the synthesized space has no code (§9.4.3) |
+///
+/// The premises are read from the representation first, so a reader change that moved a space or
+/// dropped a run fails with a NAMED premise rather than as an offsets mismatch.
+#[test]
+fn char_offsets_index_the_element_text_in_unicode_scalars() {
+    let dir = scratch("char-offsets");
+    let pdf = dir.join("document.pdf");
+    std::fs::write(
+        &pdf,
+        one_line_pdf(
+            b"BT /F1 24 Tf 72 72 Td [(caf\\351) -500 (cr\\350me) -500 (br\\373l\\351e)] TJ ET",
+        ),
+    )
+    .expect("write the proof document");
+    let grounding = ground_fixture(&pdf, &dir).expect("the proof document grounds");
+
+    // PREMISES, from the record. Without these the assertions below could pass on a document that
+    // no longer has multi-byte runs or a synthesized space, and prove nothing.
+    let repr: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("repr.json")).expect("read")).expect("json");
+    let nodes = repr["representation"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .clone();
+    let texts: Vec<&str> = nodes.iter().filter_map(|n| n["text"].as_str()).collect();
+    assert_eq!(
+        texts,
+        ["caf\u{e9} ", "cr\u{e8}me ", "br\u{fb}l\u{e9}e"],
+        "the premise of this proof is three runs whose bytes, codes and scalars disagree"
+    );
+    let synthesized = |i: usize| -> Vec<u64> {
+        nodes[i]["attributes"]["text_run"]["synthesized"]
+            .as_array()
+            .expect("the synthesized list")
+            .iter()
+            .map(|s| s["char_index"].as_u64().expect("an index"))
+            .collect()
+    };
+    assert_eq!(
+        (synthesized(0), synthesized(1), synthesized(2)),
+        (vec![4], vec![5], vec![]),
+        "each TJ gap writes a space onto the run before it, and the last run has none"
+    );
+    for g in repr["geometry"].as_array().expect("geometry") {
+        assert_eq!(
+            g["presence"]["state"], "measured",
+            "every run must be measured, or it would have no span to carry offsets"
+        );
+    }
+    assert_eq!(
+        repr["representation"]["assurance"]["capabilities"]["char_offsets"],
+        serde_json::json!(true),
+        "the record must claim the capability, or the projection emits nothing"
+    );
+    assert!(
+        !repr["representation"]["assurance"]["limitations"]
+            .as_array()
+            .expect("limitations")
+            .iter()
+            .any(|l| l["code"] == "char-offsets-not-emitted"),
+        "and must not still declare the limitation it retired"
+    );
+
+    // ETHOS DECIDES.
+    let (agreement, engine_exit, oracle_exit) = compare(&grounding, Some(&pdf), "char-offsets");
+    assert_eq!(agreement.structure, "valid");
+    assert_eq!(agreement.source_binding, "matched");
+    assert_eq!((engine_exit, oracle_exit), (0, 0));
+
+    let text = std::fs::read_to_string(&grounding).expect("read");
+    let g: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(g["capabilities"]["char_offsets"], serde_json::json!(true));
+    let elements = g["elements"].as_array().expect("elements");
+    assert_eq!(elements.len(), 1, "the three runs are one block");
+    assert_eq!(elements[0]["text"], "caf\u{e9} cr\u{e8}me br\u{fb}l\u{e9}e");
+    let spans: Vec<(&str, u64, u64)> = g["spans"]
+        .as_array()
+        .expect("spans")
+        .iter()
+        .map(|s| {
+            (
+                s["text"].as_str().expect("text"),
+                s["char_start"].as_u64().expect("char_start"),
+                s["char_end"].as_u64().expect("char_end"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        [
+            ("caf\u{e9} ", 0, 5),
+            ("cr\u{e8}me ", 5, 11),
+            ("br\u{fb}l\u{e9}e", 11, 17)
+        ],
+        "scalars: a byte cursor gives (0,6),(6,13),(13,21) and a code cursor (0,4),(4,9),(9,15)"
+    );
+
+    // NEGATIVE CONTROL: the number a BYTE cursor would have written for the first span. Both
+    // checkers must refuse it, with the same code and the same path.
+    assert_eq!(
+        text.matches("\"char_end\":5,").count(),
+        1,
+        "the substitution below must be unambiguous"
+    );
+    let broken = dir.join("byte-offset.json");
+    std::fs::write(&broken, text.replace("\"char_end\":5,", "\"char_end\":6,")).expect("write");
+
+    let ours = run_engine(&["grounding-check".as_ref(), broken.as_ref()]);
+    let theirs = run_oracle(&["grounding".as_ref(), "check".as_ref(), broken.as_ref()]);
+    let a = extract_report(&ours.stdout, "engine");
+    let b = extract_report(&theirs.stdout, "ethos");
+    assert_eq!(a["structure"], "invalid");
+    assert_eq!(a["structure"], b["structure"]);
+    assert_eq!(
+        (a["error"]["code"].as_str(), a["error"]["path"].as_str()),
+        (Some("invalid_offsets"), Some("/spans/0"))
+    );
+    assert_eq!(a["error"]["code"], b["error"]["code"]);
+    assert_eq!(a["error"]["path"], b["error"]["path"]);
+    assert_ne!(ours.status.code(), Some(0));
+    assert_ne!(theirs.status.code(), Some(0));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **A document past the span cap still grounds to an artifact both checkers accept (G1).**
 ///
 /// `nist-sp-800-53Ar5` carries 1,619,510 measured runs, past `ethos.grounding.v1`'s cap of a
@@ -1494,6 +1688,12 @@ fn a_document_past_the_span_cap_grounds_to_an_artifact_both_checkers_accept() {
     assert!(
         g.get("spans").is_none(),
         "and no spans key is emitted beside it"
+    );
+    assert_eq!(
+        g["capabilities"]["char_offsets"],
+        serde_json::json!(false),
+        "offsets go with the spans: they live on spans, and `ethos.grounding.v1` refuses \
+         char_offsets without them"
     );
     assert!(
         g["elements"].as_array().is_some_and(|e| !e.is_empty()),

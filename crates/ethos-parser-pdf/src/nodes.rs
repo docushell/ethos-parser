@@ -34,9 +34,10 @@ pub struct PdfLocator {
     pub origin_y: i64,
     /// Advance width in integer centipoints, or absent when the document carries no widths.
     ///
-    /// `None` is **not** "zero". The standard-14 fonts may omit `/Widths` and expect built-in AFM
-    /// metrics, which this profile does not vendor — so the advance is unknown, and unknown is
-    /// what it says. The origin is unaffected: it comes from the content stream.
+    /// `None` is **not** "zero". It means some code in the run has no width from any source this
+    /// profile reads — `/Widths`, a composite font's `/W` and `/DW`, or the vendored AFM of a
+    /// standard-14 face the document names (decision #22) — so the advance is unknown, and unknown
+    /// is what it says. The origin is unaffected: it comes from the content stream.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advance: Option<i64>,
 }
@@ -76,13 +77,19 @@ pub struct TextRun {
     /// The character codes that produced it, in order.
     ///
     /// **Not 1:1 with `text`.** A ligature is one code and several scalars: the `fi` glyph is
-    /// code `0x03` and characters `f` and `i`. [`Self::scalar_code_mismatch`] declares when they
-    /// differ rather than reconciling them, because reconciling means dropping one or the other.
+    /// code `0x03` and characters `f` and `i`. [`Self::scalar_code_mismatch`] declares when the two
+    /// counts differ rather than reconciling them, because reconciling means dropping one or the
+    /// other.
     pub char_codes: Vec<u32>,
-    /// True when `text.chars().count() != char_codes.len()`.
+    /// True when `text.chars().count() != char_codes.len()` — Unicode scalar values, not UTF-16
+    /// code units or bytes.
     ///
     /// Declared, not silently normalised. LiteParse notes the same caveat in a doc comment; this
     /// puts it on the wire where a consumer can act on it.
+    ///
+    /// **A comparison of two counts, not a mapping.** A character in [`Self::synthesized`] has no
+    /// code and sets it too, so `true` does not by itself mean a code decoded to several
+    /// characters.
     pub scalar_code_mismatch: bool,
     /// Characters this reader inserted. Empty for a run taken verbatim from the document.
     pub synthesized: Vec<SynthesizedChar>,

@@ -147,14 +147,14 @@ fn proof_table() -> Vec<Proof> {
         Proof {
             field: "char_offsets",
             claimed: char_offsets,
-            proof_test: None,
-            why_not: Some(
-                "v0 emits runs and no element/span hierarchy, so there is nothing for an offset \
-                 to index into. M5 built the record and left this false: v0 does no line \
-                 grouping, so an element and a span are the same object and an offset would \
-                 always be 0..len. Ethos's validator also ties the capability to the fields, \
-                 so claiming it would oblige every span to carry offsets. Flips at v1.",
-            ),
+            // 0.58.0. The claim is "every span says where its text lies in its element's", so the
+            // proof is a document where the UNIT matters: runs holding `é` and a space the reader
+            // synthesized from a TJ gap, where a UTF-8 byte offset and a code index both give
+            // different numbers from a Unicode scalar offset. It lives in ethos-parser-cli's
+            // oracle suite: the real `extract` and `ground` binaries write the artifact and the
+            // pinned Ethos decides, as the Markdown and HTML proofs do.
+            proof_test: Some("char_offsets_index_the_element_text_in_unicode_scalars"),
+            why_not: None,
         },
         Proof {
             field: "tables",

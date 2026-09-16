@@ -48,8 +48,7 @@
 //! `FPDFText_GetLooseCharBox` — em boxes, ascent-to-descent, **not ink**, *"for a line of `acme`
 //! the box is as tall as if it contained `Ãj`"*. `docs/01-CONTRACT.md` §5.3 answers that directly:
 //!
-//! > When a box *is* emitted, the artifact says **what kind of box it is** … v0 emits measured ink
-//! > boxes only … **If a future version emits loose boxes, it declares those separately.**
+//! > When a box *is* emitted, the artifact says **what kind of box it is**.
 //!
 //! `ethos.grounding.v1` has no field for that declaration and no room to add one. Loose boxes in
 //! this schema would be *"loose char boxes sold as precise positioning, with nothing in the output
@@ -126,9 +125,11 @@ fn the_grounding_artifact_requires_a_producer_that_names_itself() {
 /// **Wall 2.** The artifact cannot say what kind of box it carries.
 ///
 /// `01-CONTRACT.md` §5.3 requires an emitted box to declare its own semantics. This schema has no
-/// property anywhere that could, which is why the ethos-parser path declares it through `producer`
-/// and its profile instead — and why a foreign producer with *loose* boxes has nothing to declare
-/// it with.
+/// property anywhere that could, which is why a foreign producer with *loose* boxes has nothing to
+/// declare it with. The ethos-parser path carries `producer` and its profile, which is more than
+/// that — but not the declaration either, and §5.3 now records the gap rather than claiming it is
+/// closed: `capabilities.measured_ink_boxes` says a box was produced, not what kind, and the
+/// profile names no versioned rule for the text-run box.
 #[test]
 fn the_grounding_artifact_has_no_way_to_declare_box_semantics() {
     let schema = schema();

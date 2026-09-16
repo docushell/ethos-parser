@@ -52,7 +52,7 @@
 //!
 //! | Past the limit | What happens | Declared as |
 //! | --- | --- | --- |
-//! | a million spans | every span withheld, elements kept | `capabilities.spans: false`, [`Projection::spans_withheld`] |
+//! | a million spans | every span withheld, elements kept | `capabilities.spans: false` and `char_offsets: false`, [`Projection::spans_withheld`] |
 //! | an element's text over 16,384 bytes, or a page-less locator over 2,048 | that element omitted, with its spans | [`Projection::elements_omitted`] |
 //! | 100,000 tables, any cell's text over 16,384 bytes, or a grid of over a million cells | every table withheld | `capabilities.tables: false`, [`Projection::tables_withheld`] |
 //! | 5,000 pages, a million elements, or 256 MiB of artifact with `ground`'s newline | refused: [`EngineError::ResourceLimit`], no artifact | the error |
@@ -312,7 +312,7 @@ pub struct Span {
     pub element: Option<String>,
     /// Start offset in **Unicode scalars** into the element's text.
     ///
-    /// Absent at v0, and that is not an oversight — see [`project`].
+    /// Present exactly when `capabilities.char_offsets` is true — see [`project`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub char_start: Option<u32>,
     /// End offset in Unicode scalars, exclusive.
@@ -516,6 +516,20 @@ fn saturating_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
+/// A scalar offset into an element's text, as the schema's integer.
+///
+/// Cannot fail for an emitted element: its text passed the byte limit above, and a scalar count
+/// never exceeds a byte count. Fails closed rather than saturating, because a saturated offset
+/// would be a false number on the wire — and one the consuming validator would then check against
+/// the element's real text.
+fn offset(n: usize) -> Result<u32, EngineError> {
+    u32::try_from(n).map_err(|_| {
+        malformed(format!(
+            "a character offset of {n} does not fit the grounding schema's integer"
+        ))
+    })
+}
+
 /// Whether tables must be withheld: more than the table cap, any cell over the string limit, or any
 /// table whose grid holds more cells than the cell cap.
 ///
@@ -619,9 +633,10 @@ fn refuse_over(what: &str, count: usize, cap: usize) -> Result<(), EngineError> 
 /// Spans the projection withheld because there were more than `ethos.grounding.v1` admits (G1).
 ///
 /// The artifact then carries its elements — every block, grounded at block granularity — and no
-/// `spans`, with `capabilities.spans: false`. All of them are withheld, never the excess alone:
-/// truncating to the cap would ground some of a document's runs and silently drop the rest, and the
-/// capability is all-or-nothing precisely so an artifact never claims coverage it only partly has.
+/// `spans`, with `capabilities.spans: false`, and `capabilities.char_offsets: false` with them.
+/// All of them are withheld, never the excess alone: truncating to the cap would ground some of a
+/// document's runs and silently drop the rest, and the capability is all-or-nothing precisely so an
+/// artifact never claims coverage it only partly has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpansWithheld {
     /// Spans the projection measured and did not emit.
@@ -673,7 +688,7 @@ fn union_of(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
 /// granularities — coarse citable elements and finer spans inside them — and until grouping
 /// existed the two coincided: a run *was* the element and *was* the span, which left a consumer
 /// wanting to highlight one quoted sentence holding 970 glyph-run rectangles on `irs-fw9` and no
-/// rectangle for the sentence. It now holds 334 elements over those same 970 spans.
+/// rectangle for the sentence. At 0.57.0 it held 334 elements over those same 970 spans.
 ///
 /// The grouping is [`ethos_parser_core::markdown::geometric_blocks`], called rather than restated
 /// so this and the projections cannot disagree about what one piece of ink is. An element's box is
@@ -681,20 +696,18 @@ fn union_of(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
 /// text is their own characters concatenated — a space the page drew is a run with its own text,
 /// so no separator is invented.
 ///
-/// **Why `char_offsets` is still false, and the reason has changed.** Ethos's own validator ties
-/// the capability to the fields: with `char_offsets: true` every span must carry complete offsets
-/// that index its element's text, and with it false no span may carry any. Until v2.2-S7 the
-/// reason was that an offset would always be `0..len`, because element and span were the same
-/// object. **That reason is now spent** — an element holds several spans and an offset into its
-/// text carries real information. What has not happened is the capability flip, which changes a
-/// `grounding-aligned` capability the consuming validator enforces and belongs in its own slice
-/// with its own evidence. Recorded here rather than left as a stale justification, because a
-/// rationale that has outlived its fact is the defect this repository keeps finding in itself.
+/// **A span's offsets are where its text lies in its element's**, `char_start` inclusive and
+/// `char_end` exclusive, in Unicode scalars — the unit the consuming validator slices
+/// `text.chars()` by. Every member of the block advances the count, a run with no box included,
+/// because the element's text is every member's; a space the reader synthesized is a character of
+/// its run's text and counts as one. They are emitted exactly when the record claims
+/// `char_offsets` and the spans travel. They bind no box tighter: a claim cited by element still
+/// resolves to the element's box (`docs/22-WORD-BOXES-SCOPE.md` §4).
 ///
 /// # Errors
 ///
-/// [`EngineError::Malformed`] if a node's parent page is not declared, or if the representation
-/// claims a capability this projection cannot honestly express. [`EngineError::ResourceLimit`] if
+/// [`EngineError::Malformed`] if a node's parent page is not declared, or if an offset would not
+/// fit the schema's integer (unreachable under its byte limit). [`EngineError::ResourceLimit`] if
 /// the document has more pages, or would carry more elements, than `ethos.grounding.v1` admits —
 /// `extract --max-pages` bounds the first.
 pub fn project(repr: &DocumentRepresentation) -> Result<Projection, EngineError> {
@@ -754,8 +767,16 @@ fn project_within(
         // box and cannot be in the union, but its characters are still the block's: it is why
         // `text` here comes from the block and not from the members that survived this filter.
         let mut boxes = Vec::new();
+        // The cursor that places every span's offsets. It counts EVERY member, because
+        // `block.text` is every member's text concatenated: a run with no box still has characters
+        // in the element, so skipping it would shift every later span. The unit is Unicode
+        // scalars, the one `ethos.grounding.v1` slices `text.chars()` by — a UTF-8 byte count is
+        // wrong on every run after an `é` and a UTF-16 count is wrong after any astral character.
+        let mut scalars = 0usize;
         for &i in &block.members {
             let node = &payload.nodes[i];
+            let start = scalars;
+            scalars += node.text.chars().count();
             let presence = repr
                 .geometry_at(i)
                 .ok_or_else(|| malformed(format!("node {i} has no geometry row")))?;
@@ -770,11 +791,17 @@ fn project_within(
                     node.parent.as_str()
                 )));
             }
-            boxes.push((node, bbox));
+            boxes.push((node, bbox, start..scalars));
         }
+        debug_assert_eq!(
+            scalars,
+            block.text.chars().count(),
+            "an element's text is its members' texts concatenated (GeometricBlock), which is what \
+             makes these offsets"
+        );
         // Every member was ungroundable, so the block has no box to be cited by and is omitted
         // whole. Its members are already counted above.
-        let Some((first, first_box)) = boxes.first() else {
+        let Some((first, first_box, _)) = boxes.first() else {
             continue;
         };
         // **G2.** Text the schema will not hold. The block is omitted whole, with its spans, before
@@ -795,7 +822,7 @@ fn project_within(
         let union = boxes
             .iter()
             .skip(1)
-            .fold(first_box.to_array(), |acc, (_, b)| {
+            .fold(first_box.to_array(), |acc, (_, b, _)| {
                 union_of(acc, b.to_array())
             });
 
@@ -811,7 +838,7 @@ fn project_within(
             text: Some(block.text.clone()),
             locator: None,
         });
-        for (node, bbox) in &boxes {
+        for (node, bbox, chars) in &boxes {
             // The span keeps the representation node's own id, so a consumer holding only a
             // grounding artifact can join a span back to the node it came from without a
             // mapping table.
@@ -821,11 +848,18 @@ fn project_within(
                 bbox: bbox.to_array(),
                 text: node.text.clone(),
                 element: Some(element_id.clone()),
-                // Tied to the capability by the consuming validator: `offsets_present` must
-                // equal `capabilities.char_offsets`, so these stay absent exactly while it is
-                // false.
-                char_start: None,
-                char_end: None,
+                // Present exactly when the record claims offsets: the consuming validator
+                // requires `offsets_present == capabilities.char_offsets` on every span.
+                char_start: if caps.char_offsets {
+                    Some(offset(chars.start)?)
+                } else {
+                    None
+                },
+                char_end: if caps.char_offsets {
+                    Some(offset(chars.end)?)
+                } else {
+                    None
+                },
             });
         }
     }
@@ -887,15 +921,6 @@ fn project_within(
         html: _,
     } = caps;
 
-    if char_offsets {
-        return Err(malformed(
-            "the profile claims char_offsets, which this projection does not emit. Ethos's \
-             validator requires every span to carry complete, matching offsets when the \
-             capability is true, so emitting the claim without the fields would produce an \
-             artifact the verifier rejects."
-                .into(),
-        ));
-    }
     // v1-S1: the claim is now honoured rather than refused. `tables: true` means the detector
     // looked, so the array is present — **possibly empty**, which is the artifact saying it
     // looked and found none. `None` and `Some(vec![])` are different artifacts and the consuming
@@ -972,7 +997,11 @@ fn project_within(
             },
             capabilities: GroundingCapabilities {
                 spans: spans_emitted,
-                char_offsets,
+                // Offsets live on spans, so an artifact claims them only while it carries spans.
+                // Past the span cap it carries none, and `ethos.grounding.v1` refuses
+                // `char_offsets` without spans (`check.rs:741`, `invalid_capabilities`). Under the
+                // cap this is the record's claim, and every span above carries its offsets.
+                char_offsets: char_offsets && spans_emitted,
                 tables: tables_emitted,
             },
             coordinate_system: GroundingCoordinateSystem {
@@ -1220,6 +1249,7 @@ mod schema_limit_tests {
         nodes: Vec<Node>,
         pages: Vec<PageRecord>,
         limitations: Vec<Limitation>,
+        capabilities: Capabilities,
     ) -> RepresentationPayload {
         let profile = Profile::default();
         let states = pages
@@ -1251,7 +1281,7 @@ mod schema_limit_tests {
             coordinate_system: CoordinateSystem::V0,
             tables: Vec::new(),
             assurance: Assurance::new(
-                Capabilities::V0,
+                capabilities,
                 pages.iter().map(|p| p.index).max().unwrap_or(0),
                 states,
                 limitations,
@@ -1309,7 +1339,105 @@ mod schema_limit_tests {
             nodes.push(node);
         }
         DocumentRepresentation::seal(
-            payload("application/pdf", nodes, vec![page], Vec::new()),
+            payload(
+                "application/pdf",
+                nodes,
+                vec![page],
+                Vec::new(),
+                Capabilities::V0,
+            ),
+            geometry,
+        )
+        .expect("seals")
+    }
+
+    /// A PDF record of one page holding several BLOCKS, each a run of members joined by a shared
+    /// marked-content id — the construction `tests/schema_limits.rs:312` proves groups separate
+    /// lines into one block. `(text, inked)`: an inked member gets a measured box and becomes a
+    /// span, a boxless one is still the element's text and gets none.
+    fn pdf_blocks(
+        blocks: &[&[(&str, bool)]],
+        capabilities: Capabilities,
+    ) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let page = PageRecord {
+            id: alloc.next(IdKind::Page).unwrap(),
+            index: 1,
+            width: 60000,
+            height: 80000,
+            rotation: 0,
+        };
+        let (mut nodes, mut geometry) = (Vec::new(), Vec::new());
+        let mut k = 0usize;
+        let mut any_absent = false;
+        for (b, members) in blocks.iter().enumerate() {
+            for (text, inked) in members.iter() {
+                let y = 2000 + 3000 * k as i64;
+                let node = Node {
+                    id: alloc.next(IdKind::Span).unwrap(),
+                    kind: NodeKind::TextRun,
+                    parent: page.id.clone(),
+                    ordinal: k as u32 + 1,
+                    text: (*text).to_string(),
+                    // Built from its wire form, like `pdf_runs` above: this crate never names a
+                    // locator type, and `ethos_parser_grounding_has_no_pdf_concept` scans test
+                    // code too.
+                    native_locator: serde_json::from_value(serde_json::json!({
+                        "pdf": { "page": 1, "origin_x": 7200, "origin_y": y, "advance": 1000 }
+                    }))
+                    .expect("a locator"),
+                    structural_locator: serde_json::from_value(serde_json::json!({
+                        "pdf_mcid": b
+                    }))
+                    .expect("a structural locator"),
+                    derivation: DerivationClass::Extracted,
+                    attributes: NodeAttributes::TextRun(TextRunAttributes {
+                        char_codes: text.chars().map(u32::from).collect(),
+                        scalar_code_mismatch: false,
+                        synthesized: Vec::new(),
+                        findings: Vec::new(),
+                        font_id: "F1".into(),
+                        font_size: 1000,
+                        region: None,
+                        block: None,
+                    }),
+                };
+                geometry.push(NodeGeometry {
+                    node: node.id.clone(),
+                    presence: if *inked {
+                        GeometryPresence::Measured(
+                            QRect::new(7200, y - 800, 17200, y + 200).unwrap(),
+                        )
+                    } else {
+                        any_absent = true;
+                        GeometryPresence::Absent(if text.chars().all(char::is_whitespace) {
+                            GeometryAbsence::NoInkToMeasure
+                        } else {
+                            GeometryAbsence::NotReportedByReader
+                        })
+                    },
+                });
+                nodes.push(node);
+                k += 1;
+            }
+        }
+        // The seal requires every typed absence to point at a declared limitation.
+        let limitations = if any_absent {
+            vec![Limitation::document(
+                codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "offsets unit fixture",
+            )]
+        } else {
+            Vec::new()
+        };
+        DocumentRepresentation::seal(
+            payload(
+                "application/pdf",
+                nodes,
+                vec![page],
+                limitations,
+                capabilities,
+            ),
             geometry,
         )
         .expect("seals")
@@ -1356,6 +1484,7 @@ mod schema_limit_tests {
                 nodes,
                 Vec::new(),
                 limitations,
+                Capabilities::V0,
             ),
             geometry,
         )
@@ -1539,5 +1668,173 @@ mod schema_limit_tests {
             ));
             assert!(project_within(&repr, &SCHEMA_LIMITS).is_ok());
         }
+    }
+
+    /// Each emitted span as `(text, char_start, char_end)`, so a test asserts the whole triple
+    /// rather than the offsets alone — an offset is only right about the text it names.
+    fn triples(p: &Projection) -> Vec<(String, Option<u32>, Option<u32>)> {
+        p.source
+            .spans
+            .iter()
+            .flatten()
+            .map(|s| (s.text.clone(), s.char_start, s.char_end))
+            .collect()
+    }
+
+    fn check_exit(p: &Projection) -> i32 {
+        let bytes = to_canonical_bytes(&p.source).expect("canonicalizes");
+        check::grounding_check(&bytes, None)
+            .expect("the check runs")
+            .exit_code()
+    }
+
+    /// **An offset counts EVERY member of the block, in Unicode scalars.**
+    ///
+    /// The element is `«𝑥 naïve café»`: seven members, of which three have a box and become spans.
+    /// The four boxless ones — the guillemets and the two spaces — are the element's characters
+    /// just the same, so a cursor that advanced only over spans would put `𝑥` at 0 and `café` at 6.
+    /// The units are chosen by the consuming validator, which slices `text.chars()`: a UTF-8 byte
+    /// cursor gives (2,6),(7,13),(14,19) and a UTF-16 one (1,3),(4,9),(10,14) — the astral `𝑥` is
+    /// there so the third is wrong too, not just the first two.
+    #[test]
+    fn offsets_count_every_member_of_the_block_in_unicode_scalars() {
+        let members: &[(&str, bool)] = &[
+            ("\u{ab}", false),
+            ("\u{1d465}", true),
+            (" ", false),
+            ("na\u{ef}ve", true),
+            (" ", false),
+            ("caf\u{e9}", true),
+            ("\u{bb}", false),
+        ];
+        let repr = pdf_blocks(&[members], Capabilities::V0);
+        let p = project_within(&repr, &SCHEMA_LIMITS).expect("projects");
+
+        let texts: Vec<&str> = p
+            .source
+            .elements
+            .iter()
+            .filter_map(|e| e.text.as_deref())
+            .collect();
+        assert_eq!(
+            texts,
+            ["\u{ab}\u{1d465} na\u{ef}ve caf\u{e9}\u{bb}"],
+            "one shared marked-content id, so one element holding every member's text"
+        );
+        assert_eq!(texts[0].chars().count(), 14);
+        assert_eq!(
+            texts[0].len(),
+            21,
+            "bytes and scalars disagree, which is what makes the unit visible"
+        );
+
+        assert!(p.source.capabilities.char_offsets);
+        assert_eq!(
+            triples(&p),
+            vec![
+                ("\u{1d465}".to_string(), Some(1), Some(2)),
+                ("na\u{ef}ve".to_string(), Some(3), Some(8)),
+                ("caf\u{e9}".to_string(), Some(9), Some(13)),
+            ],
+            "boxless members advance the cursor; a boxed-only cursor gives (0,1),(1,6),(6,10), a \
+             UTF-8 one (2,6),(7,13),(14,19) and a UTF-16 one (1,3),(4,9),(10,14)"
+        );
+        assert_eq!(check_exit(&p), 0, "and the checker agrees");
+
+        // The other half: a record that claims no offsets carries none, and says so.
+        let off = pdf_blocks(
+            &[members],
+            Capabilities {
+                char_offsets: false,
+                ..Capabilities::V0
+            },
+        );
+        let p = project_within(&off, &SCHEMA_LIMITS).expect("projects");
+        assert!(!p.source.capabilities.char_offsets);
+        // The count first: `all` over an empty iterator is true, so a projection that stopped
+        // emitting spans would satisfy the assertion below without carrying a span at all.
+        assert_eq!(triples(&p).len(), 3, "the same three spans still travel");
+        assert!(
+            triples(&p)
+                .iter()
+                .all(|(_, a, b)| a.is_none() && b.is_none()),
+            "offsets are present exactly when the record claims them"
+        );
+        assert_eq!(check_exit(&p), 0);
+    }
+
+    /// **An offset is a member's position, not the first place its text is found.**
+    ///
+    /// The element is `xabab`: an inked `x`, a boxless `ab` and an inked `ab`, so the second span
+    /// lies at 3..5. A search for its text, from 0 or from the previous span's end, answers 1..3,
+    /// and **both checkers accept that too**: each verifies only that the element's text sliced by
+    /// the offsets is the span's text (`check.rs:955-984`, as Ethos does), which a search satisfies
+    /// by construction. Nothing downstream can catch a search, so this is where the member cursor
+    /// is pinned.
+    #[test]
+    fn offsets_come_from_each_members_position_not_from_searching_the_text() {
+        let repr = pdf_blocks(
+            &[&[("x", true), ("ab", false), ("ab", true)]],
+            Capabilities::V0,
+        );
+        let p = project_within(&repr, &SCHEMA_LIMITS).expect("projects");
+
+        assert_eq!(
+            p.source.elements.first().and_then(|e| e.text.as_deref()),
+            Some("xabab"),
+            "the boxless member is the element's text just the same"
+        );
+        assert_eq!(
+            triples(&p),
+            vec![
+                ("x".to_string(), Some(0), Some(1)),
+                ("ab".to_string(), Some(3), Some(5)),
+            ],
+            "a search for `ab` — from 0 or from the previous span's end — gives (1,3)"
+        );
+        assert_eq!(check_exit(&p), 0, "and the checker accepts it");
+    }
+
+    /// **Offsets are claimed only while the spans travel.**
+    ///
+    /// Past the cap the artifact carries no spans, so it must not claim offsets either: there is
+    /// nothing for them to sit on, and `ethos.grounding.v1` refuses `char_offsets` without `spans`
+    /// outright. Copying the record's claim here would produce `invalid_capabilities`.
+    #[test]
+    fn offsets_are_claimed_only_while_spans_are_emitted() {
+        let past = pdf_blocks(
+            &[&[("ab", true), ("cd", true)], &[("ef", true), ("gh", true)]],
+            Capabilities::V0,
+        );
+        let p = project_within(&past, &small(10, 3)).expect("projects");
+        assert!(p.spans_withheld.is_some(), "four spans past a cap of three");
+        assert_eq!(
+            p.source.capabilities,
+            GroundingCapabilities {
+                spans: false,
+                char_offsets: false,
+                tables: true,
+            }
+        );
+        assert!(p.source.spans.is_none());
+        assert_eq!(check_exit(&p), 0);
+
+        // At the cap the spans travel, and so do their offsets — per element, so the second
+        // element's first span starts at 0 again.
+        let at = pdf_blocks(
+            &[&[("ab", true), ("cd", true)], &[("ef", true)]],
+            Capabilities::V0,
+        );
+        let p = project_within(&at, &small(10, 3)).expect("projects");
+        assert!(p.source.capabilities.char_offsets);
+        assert_eq!(
+            triples(&p),
+            vec![
+                ("ab".to_string(), Some(0), Some(2)),
+                ("cd".to_string(), Some(2), Some(4)),
+                ("ef".to_string(), Some(0), Some(2)),
+            ]
+        );
+        assert_eq!(check_exit(&p), 0);
     }
 }

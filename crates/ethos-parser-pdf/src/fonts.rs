@@ -18,10 +18,12 @@
 //!
 //! 1. **What character is it?** `ToUnicode` if the document ships one, otherwise the simple
 //!    encoding ([`crate::encoding`]). Refused if neither can answer.
-//! 2. **How far does it advance?** `/Widths` from the document. **Refused if absent** — see
+//! 2. **How far does it advance?** `/Widths`, a composite font's `/W` and `/DW`, or the vendored
+//!    AFM of a standard-14 face the document names. **Unknown if none answers** — see
 //!    [`Font::advance_glyph_space`].
-//! 3. **What box does its ink occupy?** Measured from the embedded font program or the
-//!    `FontDescriptor`, else [`ethos_parser_core::GeometryAbsence::NotReportedByReader`].
+//! 3. **What box does the run occupy?** Its pen advance over the font's ascent and descent, from
+//!    the embedded font program, the `FontDescriptor` or a standard-14 AFM — an envelope, not
+//!    glyph outlines — else [`ethos_parser_core::GeometryAbsence::NotReportedByReader`].
 //!
 //! Keeping them separate matters because they fail separately. A font can have perfect widths and
 //! no metrics, and conflating the two is how `height = font_size` gets written.
@@ -176,24 +178,32 @@ pub struct Font {
     /// §9.6.6.2 specifies for a NONSYMBOLIC font. Carries the base font name for the
     /// document-scoped limitation's detail, the same shape `WidthSource::Absent` uses.
     pub builtin_encoding_assumed: Option<String>,
-    /// Measured ink extent for this font, in glyph space, or a typed absence.
+    /// This font's measured ascent and descent, in thousandths of an em — the 1000-unit glyph
+    /// space; a Type 3 font keeps them only where its /FontMatrix vertical is that space
+    /// (`load_font` step 3c) — or a typed absence.
     ///
     /// Font-level rather than per-glyph: a per-glyph ink box needs the glyph outline, which is
-    /// M-later work. This is the font's ascent/descent envelope, and it is **measured** — from
-    /// the embedded program or the descriptor — or absent.
+    /// M-later work. This is the font's ascent/descent envelope, not glyph ink, and it is
+    /// **measured** — from the embedded program, the descriptor, or a standard-14 AFM
+    /// (decision #22) — or absent.
     pub ink: FontInk,
 }
 
-/// A font's vertical ink extent, measured or typed-absent.
+/// A font's ascent-to-descent envelope, measured or typed-absent.
+///
+/// Not glyph ink: every glyph of the font gets the same two numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontInk {
-    /// Ascent and descent in glyph-space units, and where they came from.
+    /// Ascent and descent in thousandths of an em — the 1000-unit glyph space; a Type 3 font keeps
+    /// one only where its /FontMatrix vertical is that space (`load_font` step 3c) — and where
+    /// they came from.
     Measured {
-        /// Highest ink above the baseline.
+        /// Ascent above the baseline.
         ascent: f64,
-        /// Lowest ink below the baseline. Negative.
+        /// Descent below the baseline. Negative.
         descent: f64,
-        /// `embedded-font-program` or `font-descriptor`.
+        /// `embedded-font-program`, `font-descriptor`, [`crate::afm::SOURCE_ASCENDER`] or
+        /// [`crate::afm::SOURCE_FONT_BBOX`].
         source: &'static str,
     },
     /// No metrics available.
@@ -328,7 +338,25 @@ impl Font {
         }
     }
 
-    /// The measured ink box for a run, in text space, given a font size and baseline origin.
+    /// The measured ink box for a run, in the declared top-left system, from its baseline origin,
+    /// the pen's travel `pen` and the glyphs' y axis `up` — both vectors already in that system —
+    /// and the rendered em.
+    ///
+    /// The box is the pen extent along the baseline × the font's ascent-to-descent envelope
+    /// across it, on the side `up` points. A shear of the glyph axis does not change it (a fake
+    /// italic keeps its box), and a zero perpendicular component takes the negative side.
+    ///
+    /// **A baseline along neither axis has no box.** Its rectangle is turned, no
+    /// `[x0, y0, x1, y1]` equals it, and a bounding box would claim page area the text does not
+    /// cover — [`GeometryAbsence::NotAxisAligned`], the refusal a turned image already gets.
+    ///
+    /// **The tolerance is a corner bound.** A corner at distance `s` across the baseline moves
+    /// `|cross| · s / |along|` along the axis, and the far end moves `|cross|` across it, so
+    /// `|cross| · max(|along|, h) < ε · |along|` puts every corner of an accepted rectangle within
+    /// one centipoint, per coordinate and before rounding, of the turned rectangle's. `|along|`
+    /// rather than the travel's full length makes the bound conservative. It is not the
+    /// quantized-corner rule `images.rs` uses: that depends on where rounding boundaries fall,
+    /// and it would retype an upright run narrower than a quantum from `NotReportedByReader`.
     ///
     /// # Errors
     ///
@@ -337,8 +365,9 @@ impl Font {
     pub fn ink_box(
         &self,
         origin_x_pt: f64,
-        baseline_y_pt: f64,
-        width_pt: f64,
+        origin_y_pt: f64,
+        pen: (f64, f64),
+        up: (f64, f64),
         em_scale_pt: f64,
     ) -> GeometryPresence {
         let FontInk::Measured {
@@ -351,11 +380,9 @@ impl Font {
             return GeometryPresence::Absent(*why);
         };
 
-        if width_pt <= 0.0 {
-            // A zero-width run covers no area, so there is no box — and since v1-S6.2 it says
-            // which kind of nothing that is. It was `NotReportedByReader`, which claims the reader
-            // failed; the reader did not fail, the run has no extent.
-            return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
+        // Unreachable from a document: a non-finite advance refuses it before a box is asked for.
+        if !pen.0.is_finite() || !pen.1.is_finite() {
+            return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
         }
 
         // Ascent/descent are glyph-space units per em; scale by the RENDERED em height.
@@ -367,17 +394,57 @@ impl Font {
         // `/F1 1 Tf` draw identical pages, and this measured the second at a tenth of the first —
         // about a point tall, on every run of every document written that way.
         //
-        // The width never had the bug: `content.rs` multiplies the accumulated advance by
-        // `ctm.x_scale()`. So the two axes of one rectangle disagreed, which is why fixing only
-        // the text matrix (and not the CTM) would still have been wrong.
-        let top_pt = baseline_y_pt - (ascent / GLYPH_SPACE_UNITS) * em_scale_pt;
-        let bottom_pt = baseline_y_pt - (descent / GLYPH_SPACE_UNITS) * em_scale_pt;
+        // The pen's travel never had that bug, and since docs/22 §9 items 1 and 2 it is a vector
+        // carried through the text matrix, the CTM and `/Rotate`, so the two axes of one rectangle
+        // are in one space whichever way the run is turned.
+        let (ascent_pt, descent_pt) = envelope_pt(*ascent, *descent, em_scale_pt);
+
+        let horizontal = pen.0.abs() >= pen.1.abs();
+        let (along, cross, up_positive) = if horizontal {
+            (pen.0, pen.1, up.1 > 0.0)
+        } else {
+            (pen.1, pen.0, up.0 > 0.0)
+        };
+
+        if along == 0.0 {
+            // A run that travels nowhere covers no area, so there is no box — and since v1-S6.2 it
+            // says which kind of nothing that is. It was `NotReportedByReader`, which claims the
+            // reader failed; the reader did not fail, the run has no extent. Dominance puts
+            // `cross` at zero here too.
+            return GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure);
+        }
+
+        // An envelope that overflowed (a rendered em past f64) is an unquantizable box, as it was
+        // through 0.57.0 — and says so before the axis test, which would read its NaN product as a
+        // turned baseline and blame the direction of a run that may be upright.
+        if !ascent_pt.is_finite() || !descent_pt.is_finite() {
+            return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
+        }
+
+        // Accepted only when the bound is provably under the tolerance: an incomparable (NaN)
+        // product refuses the box rather than building one.
+        let h = ascent_pt.abs().max(descent_pt.abs());
+        let corner_drift = cross.abs() * along.abs().max(h);
+        let tolerance = crate::content::COORD_EPSILON * along.abs();
+        if corner_drift.partial_cmp(&tolerance) != Some(std::cmp::Ordering::Less) {
+            return GeometryPresence::Absent(GeometryAbsence::NotAxisAligned);
+        }
+
+        let (x0_pt, y0_pt, x1_pt, y1_pt) = edges(
+            origin_x_pt,
+            origin_y_pt,
+            horizontal,
+            along,
+            up_positive,
+            ascent_pt,
+            descent_pt,
+        );
 
         let (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) = (
-            quantize(origin_x_pt, QUANTUM_PER_POINT),
-            quantize(top_pt, QUANTUM_PER_POINT),
-            quantize(origin_x_pt + width_pt, QUANTUM_PER_POINT),
-            quantize(bottom_pt, QUANTUM_PER_POINT),
+            quantize(x0_pt, QUANTUM_PER_POINT),
+            quantize(y0_pt, QUANTUM_PER_POINT),
+            quantize(x1_pt, QUANTUM_PER_POINT),
+            quantize(y1_pt, QUANTUM_PER_POINT),
         ) else {
             return GeometryPresence::Absent(GeometryAbsence::NotReportedByReader);
         };
@@ -387,6 +454,57 @@ impl Font {
             // A degenerate rectangle is refused rather than nudged into validity.
             Err(_) => GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
         }
+    }
+}
+
+/// Ascent and descent, glyph-space units per em, as lengths at the rendered em.
+///
+/// Its own function so the operation order every upright box was quantized from is under test
+/// with [`edges`]: `(a / 1000) × em`, never `a × em / 1000` or `a × (em / 1000)`.
+fn envelope_pt(ascent: f64, descent: f64, em_scale_pt: f64) -> (f64, f64) {
+    (
+        (ascent / GLYPH_SPACE_UNITS) * em_scale_pt,
+        (descent / GLYPH_SPACE_UNITS) * em_scale_pt,
+    )
+}
+
+/// The four unquantized edges `(x0, y0, x1, y1)` of an axis-aligned run box.
+///
+/// `along` runs from the origin along x when `horizontal`, else along y, and may be negative; the
+/// envelope lies on the positive side of the baseline when `up_positive`, else on the negative.
+///
+/// **Operation order is load-bearing.** On an upright run this is `(ox, oy − ascent_pt,
+/// ox + along, oy − descent_pt)` with `ascent_pt` from [`envelope_pt`] — the 0.57.0 expressions
+/// exactly, and a regrouping moves last bits that quantization can turn into a centipoint.
+/// `upright_edges_are_bitwise_the_legacy_expressions` pins both functions.
+fn edges(
+    origin_x_pt: f64,
+    origin_y_pt: f64,
+    horizontal: bool,
+    along: f64,
+    up_positive: bool,
+    ascent_pt: f64,
+    descent_pt: f64,
+) -> (f64, f64, f64, f64) {
+    let (o_along, o_across) = if horizontal {
+        (origin_x_pt, origin_y_pt)
+    } else {
+        (origin_y_pt, origin_x_pt)
+    };
+    let (a0, a1) = if along > 0.0 {
+        (o_along, o_along + along)
+    } else {
+        (o_along + along, o_along)
+    };
+    let (c0, c1) = if up_positive {
+        (o_across + descent_pt, o_across + ascent_pt)
+    } else {
+        (o_across - ascent_pt, o_across - descent_pt)
+    };
+    if horizontal {
+        (a0, c0, a1, c1)
+    } else {
+        (c0, a0, c1, a1)
     }
 }
 
@@ -480,7 +598,8 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     //     typed absence, so nothing the document actually stated is overwritten.
     //
     //     Composite fonts are excluded: their advances are CID-keyed via `/W` and `/DW`, so an
-    //     AFM code lookup would be measuring a different thing under the same name.
+    //     AFM code lookup would be measuring a different thing under the same name. A Type 3
+    //     font's envelope, from step 3 or from here, is then subject to 3c.
     if matches!(FontKind::from_subtype(&subtype), FontKind::Simple) {
         if let Some(metrics) = base_font_name(fd)
             .as_deref()
@@ -500,6 +619,14 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
                 };
             }
         }
+    }
+
+    // 3c. A Type 3 font keeps an envelope only where its glyph space is vertically the default
+    //     (`type3_vertical_is_default`), whichever step supplied it: the descriptor, an embedded
+    //     program, or 3b's standard-14 face. 3b's width fill is not gated: a Type 3 font must
+    //     carry /Widths (PDF 32000-1 Table 112), so that fill reaches only a malformed one.
+    if subtype == "Type3" && !type3_vertical_is_default(doc, fd) {
+        ink = FontInk::Absent(GeometryAbsence::NotReportedByReader);
     }
 
     // 4. Did this font get `StandardEncoding` without the specification licensing it? PDF 32000-1
@@ -643,6 +770,27 @@ fn number(obj: Option<&lopdf::Object>) -> Option<f64> {
     }
 }
 
+/// Whether a Type 3 font's /FontMatrix carries glyph-space y to text space as the 1000-unit
+/// glyph space of every other font does (PDF 32000-1 §9.2.4): b = 0, d = 0.001, f = 0.
+///
+/// Only there do the two readings of a Type 3 font's vertical metrics agree: thousandths of text
+/// space (LibreOffice 7.5-7.6 writes its descriptor so under a 1/UPEM matrix; pdf.js reads
+/// `/Ascent` so) and the font's own glyph space (§9.6.5). Elsewhere nothing in the file says
+/// which it is, so a box built there would rest on a guess. a, c and e reach only x, where the box
+/// is the pen's origin and advance, not the ink (docs/22 §3): a large e can draw a glyph outside
+/// its box. A matrix absent or not an array is the default `load_widths` reads the widths at. d is
+/// compared at single precision, which is how a PDF real is held; b, d and f take no tolerance.
+fn type3_vertical_is_default(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> bool {
+    let Some(matrix) = resolve_array(doc, fd.get(b"FontMatrix").ok()) else {
+        return true;
+    };
+    let matrix: Option<Vec<f64>> = matrix.iter().map(|o| number(Some(o))).collect();
+    matches!(
+        matrix.as_deref(),
+        Some(&[_, b, _, d, _, f]) if b == 0.0 && d as f32 == 0.001_f32 && f == 0.0
+    )
+}
+
 /// A composite font's widths, from its descendant CIDFont (v2.2-S3, PDF 32000-1 §9.7.4.3).
 ///
 /// # Why this refuses every encoding but Identity
@@ -659,6 +807,10 @@ fn number(obj: Option<&lopdf::Object>) -> Option<f64> {
 /// `opendataloader-bench` corpus declare `Identity-H` — which is the claim
 /// [`Font::split_codes`]'s comment already made in prose (*"right for Identity-H, which is what
 /// real documents overwhelmingly use"*) and that this is the first slice to put a number on.
+///
+/// Widening this past Identity also widens where word spacing can apply: `Interpreter::show` gives
+/// no composite font's code 32 any `Tw`, because Identity codes are two bytes. Revisit that gate in
+/// the same change.
 fn load_cid_widths(doc: &lopdf::Document, fd: &lopdf::Dictionary, id: &str) -> WidthSource {
     let encoding = fd.get(b"Encoding").ok().and_then(|o| o.as_name().ok());
     if !matches!(encoding, Some(b"Identity-H") | Some(b"Identity-V")) {
@@ -926,7 +1078,7 @@ mod tests {
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
         // A 24pt font with no metrics gets no box, not a 24pt-tall one.
-        let g = f.ink_box(72.0, 72.0, 100.0, 24.0);
+        let g = f.ink_box(72.0, 72.0, (100.0, 0.0), (0.0, -24.0), 24.0);
         assert_eq!(
             g,
             GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
@@ -944,7 +1096,7 @@ mod tests {
                 source: "font-descriptor",
             },
         );
-        let g = f.ink_box(72.0, 100.0, 50.0, 10.0);
+        let g = f.ink_box(72.0, 100.0, (50.0, 0.0), (0.0, -10.0), 10.0);
         let r = g.measured().expect("a measured box");
         // Top is above the baseline (smaller y in a top-left system), bottom below.
         assert!(r.y0() < r.y1());
@@ -966,7 +1118,164 @@ mod tests {
                 source: "font-descriptor",
             },
         );
-        assert!(f.ink_box(72.0, 100.0, 0.0, 10.0).measured().is_none());
+        assert!(f
+            .ink_box(72.0, 100.0, (0.0, 0.0), (0.0, -10.0), 10.0)
+            .measured()
+            .is_none());
+    }
+
+    fn helvetica_metrics() -> Font {
+        font_with(
+            WidthSource::Absent { reason: "x".into() },
+            FontInk::Measured {
+                ascent: 718.0,
+                descent: -207.0,
+                source: "font-descriptor",
+            },
+        )
+    }
+
+    fn rect(g: GeometryPresence) -> [i64; 4] {
+        let r = g
+            .measured()
+            .unwrap_or_else(|| panic!("a measured box, got {g:?}"));
+        [r.x0(), r.y0(), r.x1(), r.y1()]
+    }
+
+    /// **The upright edges are the 0.57.0 expressions, bit for bit** (docs/22 §9 items 1 and 2).
+    ///
+    /// `envelope_pt` and `edges` rebuilt the arithmetic every upright box was quantized from, and a
+    /// regrouping moves last bits that quantization can turn into a centipoint: over this grid's
+    /// 128 distinct (origin, em, ascent-or-descent) edges, `oy − a·em/1000` changes 13 and
+    /// `oy − a·(em/1000)` changes 7. The awkward values are deliberate — round ones survive any
+    /// order.
+    #[test]
+    fn upright_edges_are_bitwise_the_legacy_expressions() {
+        let origins = [72.12345, 611.98, 0.1 + 0.2, f64::from(350.3f32)];
+        let ems = [9.96 * 0.24, 10.0, f64::from(7.97f32), 11.955];
+        let metrics = [
+            (718.0, -207.0),
+            (891.0, -216.0),
+            (683.0, -217.0),
+            (905.0, -212.0),
+        ];
+        let widths = [0.24 * 123.456, 50.0];
+        let mut compared = 0;
+        for (i, &ox) in origins.iter().enumerate() {
+            let oy = origins[(i + 1) % origins.len()];
+            for &em in &ems {
+                for &(ascent, descent) in &metrics {
+                    for &w in &widths {
+                        // Verbatim from 0.57.0's `ink_box`.
+                        let legacy = (
+                            ox,
+                            oy - (ascent / GLYPH_SPACE_UNITS) * em,
+                            ox + w,
+                            oy - (descent / GLYPH_SPACE_UNITS) * em,
+                        );
+                        let (ascent_pt, descent_pt) = envelope_pt(ascent, descent, em);
+                        let got = edges(ox, oy, true, w, false, ascent_pt, descent_pt);
+                        for (g, l) in [
+                            (got.0, legacy.0),
+                            (got.1, legacy.1),
+                            (got.2, legacy.2),
+                            (got.3, legacy.3),
+                        ] {
+                            assert_eq!(
+                                g.to_bits(),
+                                l.to_bits(),
+                                "origin ({ox}, {oy}) em {em} metrics {ascent}/{descent} width {w}"
+                            );
+                            compared += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(compared, 512);
+    }
+
+    /// The box lies along whichever axis the pen travels, on the side the glyph tops point.
+    #[test]
+    fn the_box_follows_the_baseline_along_either_axis() {
+        let f = helvetica_metrics();
+        let at = |pen, up| rect(f.ink_box(100.0, 100.0, pen, up, 10.0));
+
+        // Upright: +x, tops toward smaller y.
+        assert_eq!(at((50.0, -0.0), (0.0, -10.0)), [10000, 9282, 15000, 10207]);
+        // Upside down: −x, tops toward larger y.
+        assert_eq!(at((-50.0, 0.0), (0.0, 10.0)), [5000, 9793, 10000, 10718]);
+        // Mirrored: −x, tops still toward smaller y.
+        assert_eq!(at((-50.0, 0.0), (0.0, -10.0)), [5000, 9282, 10000, 10207]);
+        // Up the page (toward smaller y), tops toward smaller x.
+        assert_eq!(at((0.0, -50.0), (-10.0, 0.0)), [9282, 5000, 10207, 10000]);
+        // Down the page, tops toward larger x.
+        assert_eq!(at((0.0, 50.0), (10.0, 0.0)), [9793, 10000, 10718, 15000]);
+        // Down the page, tops toward smaller x.
+        assert_eq!(at((0.0, 50.0), (-10.0, 0.0)), [9282, 10000, 10207, 15000]);
+        // A sheared glyph axis — a fake italic — keeps the upright box.
+        assert_eq!(at((50.0, 0.0), (2.0, -10.0)), [10000, 9282, 15000, 10207]);
+        // A singular glyph matrix, its y axis along the baseline, takes the negative side, as
+        // 0.57.0 put every box.
+        assert_eq!(at((50.0, 0.0), (10.0, 0.0)), [10000, 9282, 15000, 10207]);
+        assert_eq!(at((0.0, 50.0), (0.0, 10.0)), [9282, 10000, 10207, 15000]);
+
+        // And the legacy golden, from its own origin.
+        assert_eq!(
+            rect(f.ink_box(72.0, 100.0, (50.0, 0.0), (0.0, -10.0), 10.0)),
+            [7200, 9282, 12200, 10207]
+        );
+    }
+
+    /// A baseline along neither axis has no box, and the tolerance is a corner bound.
+    #[test]
+    fn a_baseline_off_both_axes_has_no_box() {
+        let f = helvetica_metrics();
+        let up = (0.0, -10.0);
+        let at = |pen, up| f.ink_box(100.0, 100.0, pen, up, 10.0);
+        let off_axis = GeometryPresence::Absent(GeometryAbsence::NotAxisAligned);
+
+        assert_eq!(at((35.36, -35.36), up), off_axis, "45 degrees");
+        assert!(at((50.0, 0.0099), up).measured().is_some(), "just inside");
+        assert_eq!(at((50.0, 0.0101), up), off_axis, "just outside");
+        // A short run is judged by its corners across the baseline, not by the pen alone:
+        // 0.009 × 7.18 is not under 0.01 × 2.2.
+        assert_eq!(at((2.2, 0.009), up), off_axis, "the corner bound");
+        assert_eq!(
+            rect(at((2.2, 0.003), up)),
+            [10000, 9282, 10220, 10207],
+            "a short run inside the bound"
+        );
+        assert_eq!(
+            rect(at((0.0099, 50.0), (10.0, 0.0))),
+            [9793, 10000, 10718, 15000],
+            "the bound holds along y too"
+        );
+        assert_eq!(
+            at((0.0, 0.0), up),
+            GeometryPresence::Absent(GeometryAbsence::NoInkToMeasure)
+        );
+        assert_eq!(
+            at((f64::NAN, 0.0), up),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
+        );
+        // An upright run whose rendered em overflowed has an unquantizable box, as through
+        // 0.57.0 — not a turned baseline, which `0 × ∞` would otherwise read it as.
+        assert_eq!(
+            f.ink_box(100.0, 100.0, (50.0, 0.0), up, f64::INFINITY),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+            "an overflowed envelope"
+        );
+
+        // A font without metrics answers for itself before any direction is looked at.
+        let absent = font_with(
+            WidthSource::Absent { reason: "x".into() },
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+        );
+        assert_eq!(
+            absent.ink_box(100.0, 100.0, (35.0, 35.0), up, 10.0),
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByReader)
+        );
     }
 
     #[test]
@@ -1332,5 +1641,192 @@ mod tests {
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
+    }
+
+    /// A Type 3 font dictionary: code 97, width 500, an optional `/FontMatrix`, an optional
+    /// descriptor stating Ascent 700 / Descent -200, and an optional `/BaseFont`.
+    fn type3_font(
+        matrix: Option<Vec<lopdf::Object>>,
+        descriptor: bool,
+        base_font: Option<&str>,
+    ) -> lopdf::Dictionary {
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type3".to_vec()));
+        fd.set("FirstChar", lopdf::Object::Integer(97));
+        fd.set(
+            "Widths",
+            lopdf::Object::Array(vec![lopdf::Object::Integer(500)]),
+        );
+        if let Some(m) = matrix {
+            fd.set("FontMatrix", lopdf::Object::Array(m));
+        }
+        if descriptor {
+            let mut desc = lopdf::Dictionary::new();
+            desc.set("Ascent", lopdf::Object::Integer(700));
+            desc.set("Descent", lopdf::Object::Integer(-200));
+            fd.set("FontDescriptor", lopdf::Object::Dictionary(desc));
+        }
+        if let Some(name) = base_font {
+            fd.set("BaseFont", lopdf::Object::Name(name.as_bytes().to_vec()));
+        }
+        fd
+    }
+
+    /// A matrix array: whole entries as integers, the rest as reals.
+    fn matrix(entries: &[f32]) -> Vec<lopdf::Object> {
+        entries
+            .iter()
+            .map(|&v| {
+                if v.fract() == 0.0 {
+                    lopdf::Object::Integer(v as i64)
+                } else {
+                    lopdf::Object::Real(v)
+                }
+            })
+            .collect()
+    }
+
+    /// **A Type 3 font keeps its envelope only where every reading of it agrees** (docs/22 §9
+    /// item 6).
+    ///
+    /// Nothing in a Type 3 font says which units its descriptor uses. The specification reads it in
+    /// the font's own glyph space; LibreOffice 7.5-7.6 writes thousandths of text space under a
+    /// 1/UPEM matrix. The two agree only when the matrix's vertical is the 1000-unit default
+    /// (b = 0, d = 0.001, f = 0). Mapping through the matrix would be wrong on LibreOffice, and
+    /// reading thousandths regardless of the matrix wrong on p20, so elsewhere the envelope is
+    /// refused. b, d and f take no tolerance, and a matrix held as an indirect object is resolved.
+    #[test]
+    fn a_type3_font_keeps_an_envelope_only_where_its_font_matrix_vertical_is_the_default() {
+        let load = |m: Option<Vec<lopdf::Object>>| {
+            load_font(&lopdf::Document::new(), "F1", &type3_font(m, true, None)).expect("loads")
+        };
+        let kept = FontInk::Measured {
+            ascent: 700.0,
+            descent: -200.0,
+            source: "font-descriptor",
+        };
+        for (label, m) in [
+            ("default", Some(matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0]))),
+            ("no /FontMatrix", None),
+            (
+                "a, c and e set",
+                Some(matrix(&[0.0008, 0.0, 0.0002, 0.001, 5.0, 0.0])),
+            ),
+        ] {
+            assert_eq!(load(m).ink, kept, "{label}: the vertical is the default");
+        }
+
+        let refused: Vec<(&str, Vec<lopdf::Object>)> = vec![
+            ("p20", matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0])),
+            (
+                "LibreOffice 7.5",
+                matrix(&[0.000_488_281_25, 0.0, 0.0, 0.000_488_281_25, 0.0, 0.0]),
+            ),
+            ("Integer", matrix(&[1.0, 0.0, 0.0, 1.0, 0.0, 0.0])),
+            ("shear-b", matrix(&[0.001, 0.0001, 0.0, 0.001, 0.0, 0.0])),
+            ("Skia flip", matrix(&[0.001, 0.0, 0.0, -0.001, 0.0, 0.0])),
+            ("offset-f", matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.1])),
+            (
+                "b just off zero",
+                matrix(&[0.001, f32::MIN_POSITIVE, 0.0, 0.001, 0.0, 0.0]),
+            ),
+            (
+                "f just off zero",
+                matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, f32::MIN_POSITIVE]),
+            ),
+            (
+                "near-default",
+                matrix(&[0.001, 0.0, 0.0, 0.000_999_99, 0.0, 0.0]),
+            ),
+            ("four elements", matrix(&[0.001, 0.0, 0.0, 0.001])),
+            (
+                "seven numbers",
+                matrix(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0]),
+            ),
+            ("seven with a name", {
+                let mut m = matrix(&[0.001, 0.0, 0.0]);
+                m.push(lopdf::Object::Name(b"n".to_vec()));
+                m.extend(matrix(&[0.001, 0.0, 0.0]));
+                m
+            }),
+        ];
+        for (label, m) in refused {
+            let font = load(Some(m));
+            assert_eq!(
+                font.ink,
+                FontInk::Absent(GeometryAbsence::NotReportedByReader),
+                "{label}: the file does not say which units its envelope is in"
+            );
+            if label == "p20" {
+                assert!(
+                    matches!(
+                        font.widths,
+                        WidthSource::Widths { type3_scale_x: Some(sx), .. }
+                            if sx == f64::from(0.01_f32)
+                    ),
+                    "the gate touches the envelope only; widths still go through the matrix: {:?}",
+                    font.widths
+                );
+            }
+        }
+
+        let mut doc = lopdf::Document::new();
+        let p20 = matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0]);
+        let p20 = doc.add_object(lopdf::Object::Array(p20));
+        let mut fd = type3_font(None, true, None);
+        fd.set("FontMatrix", lopdf::Object::Reference(p20));
+        assert_eq!(
+            load_font(&doc, "F1", &fd).expect("loads").ink,
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            "p20's matrix as an indirect object is resolved, as `load_widths` resolves it"
+        );
+    }
+
+    /// **Decision #22's standard-14 envelope is refused too**: the gate asks which units a Type 3
+    /// font's glyph space leaves an envelope in, not which step supplied it. At the default matrix
+    /// it is kept, as #22 gives it.
+    #[test]
+    fn a_type3_font_named_for_a_standard_14_face_gets_no_envelope_under_a_non_default_matrix() {
+        let load = |entries: &[f32]| {
+            let fd = type3_font(Some(matrix(entries)), false, Some("Helvetica"));
+            load_font(&lopdf::Document::new(), "F1", &fd).expect("loads")
+        };
+        assert_eq!(
+            load(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0]).ink,
+            FontInk::Absent(GeometryAbsence::NotReportedByReader),
+            "3c runs after 3b, so the AFM fill is refused with the rest"
+        );
+        assert!(
+            matches!(
+                load(&[0.001, 0.0, 0.0, 0.001, 0.0, 0.0]).ink,
+                FontInk::Measured { .. }
+            ),
+            "at the default matrix decision #22's envelope stands"
+        );
+    }
+
+    /// **Only a Type 3 font's `/FontMatrix` is read.** The key means nothing on any other font.
+    #[test]
+    fn a_font_matrix_on_any_other_font_is_never_read() {
+        let mut desc = lopdf::Dictionary::new();
+        desc.set("Ascent", lopdf::Object::Integer(718));
+        desc.set("Descent", lopdf::Object::Integer(-207));
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type1".to_vec()));
+        fd.set(
+            "FontMatrix",
+            lopdf::Object::Array(matrix(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0])),
+        );
+        fd.set("FontDescriptor", lopdf::Object::Dictionary(desc));
+        let kept = FontInk::Measured {
+            ascent: 718.0,
+            descent: -207.0,
+            source: "font-descriptor",
+        };
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.ink, kept, "Type1");
+        fd.remove(b"Subtype");
+        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        assert_eq!(font.ink, kept, "no /Subtype");
     }
 }
