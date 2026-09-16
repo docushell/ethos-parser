@@ -171,6 +171,40 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              a written sequence that merely enclosed a frame would read back with
                              no id and never bind (docs/23 §3.4); this is the shape the writer
                              has to produce, held by a file that does                  [tagging-S1]
+  untagged-mcid-no-tree      the leading-gap page with its second line inside /P <</MCID 0>> BDC
+                             ... EMC and NO /StructTreeRoot: an id in the content stream whose
+                             meaning the document lost. The writer refuses it (docs/23 §3.6, the
+                             second row); the reader binds the run pdf_mcid                [tagging-S2]
+  untagged-mcid-by-name      the same page with the second line inside /P /MC0 BDC ... EMC and
+                             /Properties << /MC0 << /MCID 0 >> >> on the page: an id the reader
+                             declares by name and does not read. The writer resolves the name
+                             itself and refuses (docs/23 §3.6, the third row)         [tagging-S2]
+  untagged-oc-by-name        the same page with the second line inside /OC /oc1 BDC ... EMC whose
+                             list resolves to an /OCG, no tree: a named list WITHOUT an id is an
+                             optional-content layer and an ordinary frame, so the writer tags the
+                             page and opens the line's sequence inside the frame       [tagging-S2]
+  untagged-artifact-furniture
+                             a running head inside /Artifact BMC ... EMC above the six body lines,
+                             no tree: the head is its own block by the leading-gap cut and every
+                             run of it is furniture, so the writer tags the two body blocks, cites
+                             no element for the head, and encloses the artifact frame in nothing
+                                                                                        [tagging-S2]
+  shared-content-stream      TWO pages whose /Contents is the SAME single reference, media boxes
+                             720 and 760 tall, and a seventh run `\311` on line 2 that page A's
+                             WinAnsi font decodes as E-acute and page B's /Differences font drops:
+                             the writer must give each page its own new stream rather than edit
+                             the shared one in place, and the two plans differ (page A two
+                             sequences, page B three) so an in-place edit would show   [tagging-S2]
+  inline-image-filtered      the leading-gap page with a 2x2 /AHx inline image between its first
+                             and second lines, no tree: BI ... ID ... EI is one opaque token that
+                             ends at the first whitespace-EI-whitespace window, a painting
+                             operator no sequence may enclose, so block 1 is two sequences
+                                                                                        [tagging-S2]
+  leading-gap-nested-frames  the untagged twin of engine-tagged-nested-frames: the same page and
+                             the same /Span and /OC frames, no tree and no written sequences, so
+                             the writer's output can be walked against that fixture's tree. The
+                             generator asserts the tagged stream is this one with the written
+                             sequences inserted                                         [tagging-S2]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -411,8 +445,20 @@ def build_pdf(
         objects.append(body.encode() if isinstance(body, str) else body)
 
     stream = content.encode()
-    objects[3] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)
+    objects[3] = _stream_object(stream)
+    return _assemble(objects)
 
+
+def _stream_object(stream: bytes) -> bytes:
+    return b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)
+
+
+def _assemble(objects) -> bytes:
+    """Number the object bodies from 1, write them, and write the cross-reference table.
+
+    Split out of `build_pdf` for `build_shared_stream_pdf`, the one fixture `build_pdf` cannot
+    express — two pages — so both write their bytes through one tail and cannot drift.
+    """
     out = bytearray(b"%PDF-1.7\n")
     offsets = [0]
     for i, body in enumerate(objects, start=1):
@@ -432,6 +478,93 @@ def build_pdf(
         xref_at,
     )
     return bytes(out)
+
+
+# Auto-tagging S2. The leading-gap page's six lines in one text object, as `leading-gap-two-blocks`
+# writes them, for the fixtures below that put one of them somewhere else.
+LEADING_GAP_LINES = [
+    "1 0 0 1 72 700 Tm (Water finds its level) Tj ",
+    "1 0 0 1 72 686 Tm (and stone keeps its shape) Tj ",
+    "1 0 0 1 72 672 Tm (through the long season) Tj ",
+    "1 0 0 1 72 644 Tm (Wind moves the grass) Tj ",
+    "1 0 0 1 72 630 Tm (and light moves the shade) Tj ",
+    "1 0 0 1 72 616 Tm (across the open field) Tj ",
+]
+
+
+def _line_two_framed(frame_open: str) -> str:
+    """The leading-gap page with its second line in its own text object inside a frame.
+
+    Line 1 in one text object, line 2 in a second text object wrapped in `frame_open ... EMC`,
+    lines 3 to 6 in a third. Three of the writer's refusal-or-frame fixtures differ only in the
+    frame, so the streams are one function of it and the pages differ in nothing else.
+    """
+    return (
+        "BT /F1 12 Tf " + LEADING_GAP_LINES[0] + "ET "
+        + frame_open + " BT /F1 12 Tf " + LEADING_GAP_LINES[1] + "ET EMC "
+        + "BT /F1 12 Tf " + "".join(LEADING_GAP_LINES[2:]) + "ET"
+    )
+
+
+def build_shared_stream_pdf() -> bytes:
+    """Two pages whose /Contents is ONE stream object through a single reference.
+
+    `build_pdf` writes one page, so this is written out by hand in its style. Objects: 1 catalog,
+    2 pages (/Kids [3 0 R 6 0 R]), 3 page A, 4 the one content stream, 5 page A's font, 6 page B,
+    7 page B's font, 8 the Helvetica descriptor both fonts name.
+
+    The stream is the leading-gap page plus a seventh run, `(\311) Tj`, on line 2's baseline.
+    Page A's font is WinAnsi and decodes code 201 as E-acute; page B's carries `/Differences
+    [201 /nonexistentglyphone]`, so the reader drops that run on page B (`broken-font-encoding`)
+    and its operator is foreign there. That is what makes the two pages' plans differ — page A
+    is two sequences, page B three, because block 1's second sequence has to end before the
+    dropped run — and a writer that edited the shared stream in place would give both pages the
+    last plan's bytes. The media boxes differ too (720 and 760 tall), so the two pages' records
+    are distinguishable by origin; the cut itself reads baseline gaps and is the same on both.
+    """
+    widths = " ".join(str(UNIFORM_WIDTH) for _ in range(FIRST_CHAR, LAST_CHAR + 1))
+    stream = (
+        "BT /F1 12 Tf "
+        + LEADING_GAP_LINES[0]
+        + LEADING_GAP_LINES[1]
+        + "(\311) Tj "
+        + "".join(LEADING_GAP_LINES[2:])
+        + "ET"
+    ).encode("latin-1")
+    font = (
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding %s "
+        "/FirstChar %d /LastChar %d /Widths [%s] /FontDescriptor 8 0 R >>"
+    )
+    page = (
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 %d] "
+        "/Resources << /Font << /F1 %d 0 R >> >> /Contents 4 0 R >>"
+    )
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>",
+        (page % (720, 5)).encode(),
+        _stream_object(stream),
+        (font % ("/WinAnsiEncoding", FIRST_CHAR, LAST_CHAR, widths)).encode(),
+        (page % (760, 7)).encode(),
+        (
+            font
+            % (
+                "<< /Type /Encoding /BaseEncoding /WinAnsiEncoding "
+                "/Differences [201 /nonexistentglyphone] >>",
+                FIRST_CHAR,
+                LAST_CHAR,
+                widths,
+            )
+        ).encode(),
+        HELVETICA_DESCRIPTOR,
+    ]
+    return _assemble(objects)
+
+
+# name -> builder, for the fixtures `build_pdf` cannot express.
+HAND_BUILT = {
+    "shared-content-stream": build_shared_stream_pdf,
+}
 
 
 # Auto-tagging S1. The leading-gap page's six lines, block by block, each block in one text
@@ -1093,6 +1226,46 @@ FIXTURES = {
         "1 0 0 1 72 616 Tm (across the open field) Tj "
         "ET EMC"
     ),
+    # Auto-tagging S2. The shapes the writer must refuse or place around, each the leading-gap
+    # page with one thing changed, so the block cut is the known one (lines 1-3, lines 4-6) and
+    # only the changed thing is being tested.
+    #
+    # An id in the content stream and no tree: refused by the writer (docs/23 §3.6, second row).
+    "untagged-mcid-no-tree": _line_two_framed("/P <</MCID 0>> BDC"),
+    # The same id through a named property list the page's /Properties resolves: refused too
+    # (third row). The reader does not resolve the name and declares it; the writer resolves it.
+    "untagged-mcid-by-name": _line_two_framed("/P /MC0 BDC"),
+    # A named list that resolves to an /OCG carries no id: an optional-content layer, an
+    # ordinary frame. The writer tags the page and opens line 2's sequence inside the frame.
+    "untagged-oc-by-name": _line_two_framed("/OC /oc1 BDC"),
+    # A running head marked /Artifact, 70 pt above line 1 on a page tall enough to hold it. The
+    # gaps in the rule's units are 7000, 1400, 1400, 2800, 1400, 1400: the modal leading is 1400
+    # (four of six gaps), the threshold 2240, and both the 7000 and the 2800 clear it, so the head
+    # is block 1 alone, lines 1-3 block 2 and lines 4-6 block 3. Block 1 is furniture entirely and
+    # gets no element; the artifact frame is enclosed in nothing.
+    "untagged-artifact-furniture": (
+        "/Artifact BMC BT /F1 9 Tf 1 0 0 1 72 770 Tm (Running head) Tj ET EMC "
+        "BT /F1 12 Tf " + "".join(LEADING_GAP_LINES) + "ET"
+    ),
+    # A 2x2 8-bit greyscale inline image under /AHx between lines 1 and 2, in its own saved
+    # state. With a filter lopdf sizes nothing and the image's data ends at the first
+    # whitespace-EI-whitespace window, which is what the tokeniser mirrors (docs/23 §3.5); the
+    # image is a painting operator, so block 1 becomes two sequences around it (§3.4).
+    "inline-image-filtered": (
+        "BT /F1 12 Tf " + LEADING_GAP_LINES[0] + "ET "
+        "q 20 0 0 6 72 690 cm BI /W 2 /H 2 /CS /G /BPC 8 /F /AHx ID 00ffff00> EI Q "
+        "BT /F1 12 Tf " + "".join(LEADING_GAP_LINES[1:]) + "ET"
+    ),
+    # The untagged twin of engine-tagged-nested-frames: the same frames, no tree and no written
+    # sequences. An assertion after FIXTURES holds that the tagged stream is this one with the
+    # written sequences inserted, so the writer's output on this page can be walked against that
+    # fixture's tree (docs/24 S2 acceptance 1).
+    "leading-gap-nested-frames": (
+        "/Span BMC BT /F1 12 Tf " + LEADING_GAP_LINES[0] + "ET EMC "
+        "/OC /oc1 BDC BT /F1 12 Tf " + LEADING_GAP_LINES[1] + "ET EMC "
+        "BT /F1 12 Tf " + LEADING_GAP_LINES[2] + "ET "
+        "BT /F1 12 Tf " + "".join(LEADING_GAP_LINES[3:]) + "ET"
+    ),
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -1116,6 +1289,35 @@ FIXTURES = {
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Text under a cyclic tree) Tj ET"
     ),
 }
+
+def _strip_written_sequences(stream: str) -> str:
+    """A tagged stream with the writer's `/Div <</MCID n>> BDC ... EMC` pairs removed.
+
+    Token-walked with a stack, because a written EMC can sit right beside a frame's own EMC and
+    only the nesting says which is which.
+    """
+    tokens = stream.split()
+    out, stack, i = [], [], 0
+    while i < len(tokens):
+        if tokens[i] == "/Div" and tokens[i + 1] == "<</MCID" and tokens[i + 3] == "BDC":
+            stack.append("written")
+            i += 4
+            continue
+        if tokens[i] in ("BDC", "BMC"):
+            stack.append("frame")
+        elif tokens[i] == "EMC":
+            if stack.pop() == "written":
+                i += 1
+                continue
+        out.append(tokens[i])
+        i += 1
+    return " ".join(out)
+
+
+assert _strip_written_sequences(FIXTURES["engine-tagged-nested-frames"]) == " ".join(
+    FIXTURES["leading-gap-nested-frames"].split()
+), "engine-tagged-nested-frames must be leading-gap-nested-frames with the sequences inserted"
+
 
 # Auto-tagging S1. The one attribute object the writer puts on every element it creates
 # (docs/23 §3.3): the owner, the contract's own derivation class as a name, and the rule whose cut
@@ -1456,6 +1658,9 @@ FONT_EXTRA = {
     "engine-tagged-classmap": " /FontDescriptor 10 0 R",
     "engine-tagged-mixed": " /FontDescriptor 10 0 R",
     "engine-tagged-nested-frames": " /FontDescriptor 11 0 R",
+    # Auto-tagging S2. The descriptor rides after the /OCG at 6.
+    "untagged-oc-by-name": " /FontDescriptor 7 0 R",
+    "leading-gap-nested-frames": " /FontDescriptor 7 0 R",
 }
 
 # name -> extra object bodies for the image fixtures. Object 6, like every other extra.
@@ -1513,6 +1718,14 @@ FORM_OBJECTS = {
     ],
 }
 
+# Auto-tagging S2. Extra objects for the untagged fixtures that name an optional-content group:
+# the /OCG at 6 and the Helvetica descriptor at 7, named through FONT_EXTRA as the engine-tagged
+# family names its own.
+UNTAGGED_FRAME_OBJECTS = {
+    "untagged-oc-by-name": ["<< /Type /OCG /Name (layer) >>", HELVETICA_DESCRIPTOR],
+    "leading-gap-nested-frames": ["<< /Type /OCG /Name (layer) >>", HELVETICA_DESCRIPTOR],
+}
+
 # name -> raw fragment spliced into the catalog dictionary.
 CATALOG_EXTRA = {
     "form-field-value": " /AcroForm 6 0 R",
@@ -1523,6 +1736,9 @@ CATALOG_EXTRA = {
     # by default. No /MarkInfo on any engine-tagged catalog: the writer never sets one (docs/23
     # §3.4) and the reader never reads one.
     "engine-tagged-nested-frames": " /OCProperties << /OCGs [10 0 R] /D << /ON [10 0 R] >> >>",
+    # Auto-tagging S2. The same configuration for the untagged pages whose /OCG is object 6.
+    "untagged-oc-by-name": " /OCProperties << /OCGs [6 0 R] /D << /ON [6 0 R] >> >>",
+    "leading-gap-nested-frames": " /OCProperties << /OCGs [6 0 R] /D << /ON [6 0 R] >> >>",
 }
 
 # name -> raw fragment spliced into the page dictionary.
@@ -1591,6 +1807,13 @@ MEDIA = {
     "engine-tagged-classmap": (0, 0, 300, 720),
     "engine-tagged-mixed": (0, 0, 300, 720),
     "engine-tagged-nested-frames": (0, 0, 300, 720),
+    # Auto-tagging S2. The same page again, and once 80 pt taller to hold a running head at 770.
+    "untagged-mcid-no-tree": (0, 0, 300, 720),
+    "untagged-mcid-by-name": (0, 0, 300, 720),
+    "untagged-oc-by-name": (0, 0, 300, 720),
+    "untagged-artifact-furniture": (0, 0, 300, 800),
+    "inline-image-filtered": (0, 0, 300, 720),
+    "leading-gap-nested-frames": (0, 0, 300, 720),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -1601,6 +1824,11 @@ RESOURCES_EXTRA = {
     # Auto-tagging S1. The property list `/OC /oc1 BDC` names, resolved through the page's
     # /Properties — which this reader does not resolve, and declares (`mcid-property-list-by-name`).
     "engine-tagged-nested-frames": " /Properties << /oc1 10 0 R >>",
+    # Auto-tagging S2. A named list carrying an id, which the writer resolves and refuses; and
+    # the /OCG at 6 for the two untagged pages that name a layer.
+    "untagged-mcid-by-name": " /Properties << /MC0 << /MCID 0 >> >>",
+    "untagged-oc-by-name": " /Properties << /oc1 6 0 R >>",
+    "leading-gap-nested-frames": " /Properties << /oc1 6 0 R >>",
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.
@@ -1642,6 +1870,13 @@ DESCRIPTORS = {
     # Real metrics so all six runs reach the grounding artifact, as `measured-ink-box` does. The
     # cut reads origins only, so the metrics change nothing about which block a run lands in.
     "leading-gap-two-blocks": "metrics",
+    # Auto-tagging S2. The same metrics on the writer's fixtures that carry no extra object, so
+    # their runs match the leading-gap page's; the two that name an /OCG carry the descriptor as
+    # their last extra object instead.
+    "untagged-mcid-no-tree": "metrics",
+    "untagged-mcid-by-name": "metrics",
+    "untagged-artifact-furniture": "metrics",
+    "inline-image-filtered": "metrics",
 }
 
 
@@ -1661,6 +1896,7 @@ def main() -> int:
                 or IMAGE_OBJECTS.get(name)
                 or TOUNICODE_OBJECTS.get(name)
                 or COMPOSITE_OBJECTS.get(name)
+                or UNTAGGED_FRAME_OBJECTS.get(name)
             ),
             font_object=COMPOSITE_FONTS.get(name) or RAW_FONTS.get(name),
             font_subtype=FONT_SUBTYPE.get(name, "Type1"),
@@ -1670,6 +1906,12 @@ def main() -> int:
             page_extra=PAGE_EXTRA.get(name, ""),
             resources_extra=RESOURCES_EXTRA.get(name, ""),
         )
+        (d / "document.pdf").write_bytes(pdf)
+        print(f"{name}: {len(pdf)} bytes")
+    for name, build in HAND_BUILT.items():
+        d = root / name
+        d.mkdir(parents=True, exist_ok=True)
+        pdf = build()
         (d / "document.pdf").write_bytes(pdf)
         print(f"{name}: {len(pdf)} bytes")
     return 0

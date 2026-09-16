@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 49,
+    "engine_owned": 56,
     "gate": 8
   },
   "fixtures": [
@@ -631,6 +631,69 @@
       "sha256": "sha256:f5938929e6e6f3436ba9e067cc8235ce7513e88e5a6cba6698f194931b838123",
       "owner": "engine",
       "notes": "Auto-tagging S1. The same page with block 1's first line inside an existing /Span BMC ... EMC and its second inside /OC /oc1 BDC ... EMC whose property list is given BY NAME through the page's /Properties (object 10, an /OCG the catalog's /OCProperties turns on). The written /Div sequence opens INSIDE each frame and closes before its EMC, because the reader binds by the innermost open sequence (docs/23 s3.4): a written sequence that merely enclosed a frame would read back with no id. Block 1 is therefore ids 0, 1 and 2 (/K [0 1 2]) and block 2 is id 3, dense in stream order, and the /ParentTree names an element per id. All six runs bind computed; the named /OC list is declared as mcid-property-list-by-name exactly as any named list is today."
+    },
+    {
+      "id": "untagged-mcid-no-tree",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-mcid-no-tree/document.pdf",
+      "sha256": "sha256:2c6e76ec22dd98acecafaca7e0b63cf57a0e736fd582f28a35b1cebe76900a8d",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, ids_without_a_tree_are_refused). The leading-gap page with its second line in its own text object inside /P <</MCID 0>> BDC ... EMC and NO /StructTreeRoot: a marked-content id whose meaning the document lost. The reader binds that run pdf_mcid 0 and declares untagged-structure-tree-absent; the writer refuses the document by docs/23 s3.6's second row before any byte is written, because writing another id inside the same sequence, or reusing one, would either shadow it or claim the parent tree already indexes it."
+    },
+    {
+      "id": "untagged-mcid-by-name",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-mcid-by-name/document.pdf",
+      "sha256": "sha256:f2480c15ad8ba6ce084a05000bde60041dfb8fb0584a16b12f0cdc89800a1273",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, ids_without_a_tree_are_refused). The same page with the second line inside /P /MC0 BDC ... EMC and /Properties << /MC0 << /MCID 0 >> >> on the page's resources, no tree: an id the reader does not resolve and declares as mcid-property-list-by-name, binding nothing. The writer resolves the name itself through the page's /Properties (inherited through /Parent), finds the id, and refuses by docs/23 s3.6's third row \u2014 an id found is the second row, and a name that resolves to nothing is an id unknown rather than absent."
+    },
+    {
+      "id": "untagged-oc-by-name",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-oc-by-name/document.pdf",
+      "sha256": "sha256:5ee4b247758b9055ae4d2d24d479b8b404ae811597649d5396bccdd8449e0912",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, a named list without an id is placed inside). The same page with the second line inside /OC /oc1 BDC ... EMC whose list resolves through /Properties to object 6, an /OCG the catalog's /OCProperties turns on; no tree. A named list WITHOUT /MCID is an optional-content layer and an ordinary frame (docs/23 s3.6), so the writer tags the page: block 1 is three sequences (line 1's text object, line 2's inside the frame, line 3's inside the text object it shares with block 2) and block 2 one, ids 0-3 in stream order; the reader binds line 2 computed under the written sequence, which is the innermost, and declares the named list exactly as it does today."
+    },
+    {
+      "id": "untagged-artifact-furniture",
+      "root": "engine",
+      "group": "engine",
+      "path": "untagged-artifact-furniture/document.pdf",
+      "sha256": "sha256:4a4681647d60d54f8d53101bccc03146f8a09d69a01bb8d30fde18d9964ac09f",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, an_artifact_run_stays_outside_the_tree). A running head at y=770 inside /Artifact BMC ... EMC above the six body lines on an 800 pt page, no tree. The gaps are 7000, 1400, 1400, 2800, 1400 and 1400 centipoints, the modal leading 1400 and the threshold 2240, so the head is block 1 alone, lines 1-3 block 2 and lines 4-6 block 3. Every run of block 1 is furniture: the reader binds it pdf_artifact, the writer cites no element for it, the artifact frame is enclosed in no written sequence, and the two body blocks come out as they do on leading-gap-two-blocks."
+    },
+    {
+      "id": "shared-content-stream",
+      "root": "engine",
+      "group": "engine",
+      "path": "shared-content-stream/document.pdf",
+      "sha256": "sha256:bb42b96704c79e2b27b94523ee0292b55a4a1673962e902a5c4030101d4f2076",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, a_shared_content_stream_is_not_edited_in_place). Two pages whose /Contents is the SAME single reference (object 4), media boxes 720 and 760 tall, written by hand because build_pdf writes one page. The stream is the leading-gap page plus a seventh run `\\\\311` on line 2's baseline: page A's WinAnsi font reads it as E-acute, page B's font carries /Differences [201 /nonexistentglyphone] and drops it (broken-font-encoding, 1 run). The cut reads baseline gaps and is the same on both pages; what differs is the dropped run's operator, foreign on page B, so page A is two sequences and page B three. The writer must give each page a new stream of its own \u2014 change_page_content would leave the shared object carrying the last page's bytes \u2014 and the self-check must pass on both."
+    },
+    {
+      "id": "inline-image-filtered",
+      "root": "engine",
+      "group": "engine",
+      "path": "inline-image-filtered/document.pdf",
+      "sha256": "sha256:439c6ed888d1ecfa7b6ab5c1c35b17bc9212d1761e7bd8daf8611be71f14c4a1",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance, the tokeniser over a filtered inline image, and an_inline_image_is_never_enclosed). The leading-gap page with a 2x2 8-bit greyscale inline image under /AHx (`BI /W 2 /H 2 /CS /G /BPC 8 /F /AHx ID 00ffff00> EI`) in its own saved state between lines 1 and 2, no tree. With a filter lopdf sizes nothing and the image's data ends at the first whitespace-EI-whitespace window, which the tokeniser mirrors so the two resynchronise at the same byte; the image is a painting operator, so block 1 becomes two sequences around it (ids 0 and 1) and block 2 one (id 2). The reader declares inline-images-not-emitted (1) on both the source and the tagged output."
+    },
+    {
+      "id": "leading-gap-nested-frames",
+      "root": "engine",
+      "group": "engine",
+      "path": "leading-gap-nested-frames/document.pdf",
+      "sha256": "sha256:1440d05ef08ac99569e13ea3acec209fc74a4714760c722e1464863e3dabaf4d",
+      "owner": "engine",
+      "notes": "Auto-tagging S2 (docs/24 S2 acceptance 1, the nested-frames half). The untagged twin of engine-tagged-nested-frames: the same page, block 1's first line inside /Span BMC ... EMC and its second inside /OC /oc1 BDC ... EMC given by name through /Properties (object 6, an /OCG the catalog's /OCProperties turns on), no tree and no written sequences; the generator asserts the tagged fixture's stream is this one with the sequences inserted. The writer's output on it must walk to engine-tagged-nested-frames's tree \u2014 block 1 ids 0, 1 and 2, block 2 id 3, each sequence opened inside its frame \u2014 and read back identically."
     },
     {
       "id": "cfpb-home-loan-toolkit",

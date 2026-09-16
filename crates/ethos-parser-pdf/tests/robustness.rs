@@ -427,6 +427,10 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// fixtures of auto-tagging S1 — the same page under a hand-written structure tree — join the
 /// same way and make it **72**: a structure tree changes nothing about how a damaged xref, a
 /// truncated stream or an injected operator is refused, and each survives `junk-after-eof` alone.
+/// The seven fixtures of auto-tagging S2 — the shapes the writer must refuse or place around,
+/// each the leading-gap page with one thing changed — join the same way and make it **79**:
+/// a marked-content frame, a shared stream or an inline image in the content changes nothing
+/// about how the damage is refused either (83 fixtures, 475 mutants).
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -465,7 +469,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 72] = [
+const EXPECTED_SURVIVORS: [&str; 79] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -491,10 +495,12 @@ const EXPECTED_SURVIVORS: [&str; 72] = [
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
     "ink-past-the-media-box/junk-after-eof",
+    "inline-image-filtered/junk-after-eof",
     "invisible-render-mode/junk-after-eof",
     "irs-f1040sd-2025/junk-after-eof",
     "irs-form-1040-2025/junk-after-eof",
     "irs-fw9/junk-after-eof",
+    "leading-gap-nested-frames/junk-after-eof",
     "leading-gap-two-blocks/junk-after-eof",
     "markdown-hyphen-break/junk-after-eof",
     "markdown-table-cells/junk-after-eof",
@@ -513,6 +519,7 @@ const EXPECTED_SURVIVORS: [&str; 72] = [
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
+    "shared-content-stream/junk-after-eof",
     "show-text-quote-operators/junk-after-eof",
     "simple-font-two-byte-tounicode/junk-after-eof",
     "stroke-ruled-columns-not-drawn/junk-after-eof",
@@ -536,6 +543,10 @@ const EXPECTED_SURVIVORS: [&str; 72] = [
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
+    "untagged-artifact-furniture/junk-after-eof",
+    "untagged-mcid-by-name/junk-after-eof",
+    "untagged-mcid-no-tree/junk-after-eof",
+    "untagged-oc-by-name/junk-after-eof",
     "untagged-shredded-line/junk-after-eof",
     "whitespace-past-the-page-edge/junk-after-eof",
 ];
@@ -874,8 +885,16 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        76,
-        "the manifest should declare 76 fixtures across FOUR roots. Auto-tagging S1 moved this \
+        83,
+        "the manifest should declare 83 fixtures across FOUR roots. Auto-tagging S2 moved this \
+         from 76 by adding the seven shapes the writer must refuse or place around — \
+         `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, \
+         `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered` and \
+         `leading-gap-nested-frames` — each the leading-gap page with one thing changed, so only \
+         that thing is tested: an id in the content stream and no tree, inline and by name; a \
+         named list that is a layer; furniture marked /Artifact; one stream two pages share; a \
+         filtered inline image; and the untagged twin of `engine-tagged-nested-frames`. \
+         Auto-tagging S1 moved this \
          from 72 by adding the four `engine-tagged-*` fixtures — `engine-tagged-blocks`, \
          `engine-tagged-classmap`, `engine-tagged-mixed` and `engine-tagged-nested-frames` — the \
          leading-gap page under the structure tree the writer will emit, written by hand BEFORE \

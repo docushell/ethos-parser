@@ -65,6 +65,7 @@ not obvious from the name:
 | `composite-font-cid-widths`, `composite-font-non-identity-cmap` | A `/Type0` font whose widths live on its descendant CIDFont as `/W` and `/DW`, and the same descendant under a CMap this profile cannot read — see below |
 | `leading-gap-two-blocks` | Six lines in one column, three at a 14 pt leading, a 28 pt gap, three more: the leading-gap half of the block cut opens exactly two blocks, and the fixture states the numbers it is cut against — see below |
 | `engine-tagged-blocks`, `engine-tagged-classmap`, `engine-tagged-mixed`, `engine-tagged-nested-frames` | The leading-gap page carrying the structure tree the auto-tagging writer emits, written by hand before the writer exists — the attribute under `/A`, through `/ClassMap`, beside a foreign owner, and inside existing marked-content frames — see below |
+| `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered`, `leading-gap-nested-frames` | The shapes the auto-tagging writer must refuse or place around: an id in the content stream and no tree, inline and through a named property list; a named list that is a layer, not an id; furniture marked `/Artifact`; one stream shared by two pages; a filtered inline image; and the untagged twin of `engine-tagged-nested-frames` — see below |
 
 Why the upstream corpus cannot cover the table cases: **no fixture in it contains a single path
 operator**, so nothing there exercises ruled detection at all.
@@ -191,6 +192,26 @@ different code paths: `/W`'s array form twice, then `/DW`, then `/W`'s range for
 and not 1000 on purpose** — 1000 is also §9.7.4.3's value for an omitted `/DW`, so at 1000 a
 mutant that ignored the key survived the fixture. The omitted case is covered by a unit test in
 `fonts.rs`, where a dictionary can be built without one.
+
+### The writer's fixtures are the shapes it refuses or places around
+
+Seven pages for auto-tagging S2 (`docs/23-AUTO-TAGGING-SCOPE.md` §3.4–§3.6), each the
+leading-gap page with one thing changed, so the block cut is the known one — lines 1–3, lines
+4–6 — and only the changed thing is being tested:
+
+| Fixture | What is changed | What the writer does |
+| --- | --- | --- |
+| `untagged-mcid-no-tree` | line 2 inside `/P << /MCID 0 >> BDC … EMC`, no `/StructTreeRoot` | refuses: an id whose meaning the document lost (§3.6, second row) |
+| `untagged-mcid-by-name` | line 2 inside `/P /MC0 BDC … EMC`, `/Properties << /MC0 << /MCID 0 >> >>` | resolves the name the reader does not, finds the id, refuses (third row) |
+| `untagged-oc-by-name` | line 2 inside `/OC /oc1 BDC … EMC`, `/oc1` an `/OCG` | tags: a named list without an id is a frame, and line 2's sequence opens inside it |
+| `untagged-artifact-furniture` | a running head inside `/Artifact BMC … EMC` 70 pt above line 1 | tags the two body blocks, cites no element for the head, encloses the frame in nothing |
+| `shared-content-stream` | two pages, one `/Contents` reference, a seventh run page B's font drops | one new stream per page, never the shared object edited; the plans differ (two sequences, three) |
+| `inline-image-filtered` | a 2×2 `/AHx` inline image between lines 1 and 2 | the image is one token ending at the first `EI` window and a painting operator; block 1 is two sequences |
+| `leading-gap-nested-frames` | `engine-tagged-nested-frames` without the tree and the written sequences | its output walks to that fixture's tree; the generator asserts the two streams differ by the sequences alone |
+
+`shared-content-stream` is written out by hand in the generator, because `build_pdf` writes one
+page; the two untagged pages that name a layer carry the `/OCG` at 6 and the descriptor at 7, as
+the engine-tagged family carries its descriptor after its tree.
 
 ## Regenerating
 
