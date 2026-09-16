@@ -5,6 +5,16 @@
 > band**, never the macro on its own. Everything below is the method and the evidence behind that
 > decision; it is the source every reader-facing table number is quoted from. The geometric chase
 > stays parked, and the 489‰ comparator is still somebody else's score on their own corpus.
+>
+> **Amended 2026-09-16.** *"The geometric chase stays parked"* is left as written, and it no longer
+> describes the ruled rule. Between 2026-09-10 and 2026-09-13 that rule moved from `ruled-rects-v3`
+> through `-v4` and `-v5` to `-v6`, each step measured and recorded in the v2-S22 subsections below,
+> and `-v6` is the rule in force. The rework was the owner's choice, recorded in the local
+> implementation plan (untracked) and not in [`00-NORTH-STAR.md`](00-NORTH-STAR.md), so decision
+> #18's *"what stays parked"* still reads as it did on 2026-08-30. Whether #18 is amended to record
+> the rework is an entry pending the owner ([`OPEN-WORK.md`](OPEN-WORK.md) §4); this paragraph
+> records the gap and decides nothing. The twelve-document numbers in this document were not
+> re-measured after the rework (`OPEN-WORK.md` §5). The comparator sentence beside it still holds.
 
 **Measured, and MISSED.** Macro cell-slot F1 is **70‰** over twelve documents, against a published
 comparator of 489‰. **That comparator is not a live shipping floor** — the chase for it is parked,
