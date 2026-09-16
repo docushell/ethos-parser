@@ -112,17 +112,17 @@ to is recorded below with the version it ships in.
   advance). Closing it needs a new fixture. No emitted byte moves: 323 PDFs byte-identical across
   extract, classify, overlay, ground, markdown, html and exit codes, and all 272 fixture artifacts
   identical.
-- **§8, `char_offsets` — built and turned on for 0.58.0, pending the owner's acceptance.** §8 makes
-  the flip the owner's call, and no acceptance is recorded yet, here or in
-  [`00-NORTH-STAR.md`](00-NORTH-STAR.md). Every span a PDF grounding artifact carries now says where
-  its text lies in its element's, `char_start` inclusive and `char_end` exclusive, in Unicode
-  scalars. The offsets come from a scalar cursor over **every** member of the block, boxless runs
-  included, and the artifact claims the capability as `char_offsets && spans_emitted`. Against the
-  build before it, over 328 PDFs (the seven smaller gate documents, 44 engine and 35 oracle
-  fixtures, gate-zero, 200 opendataloader-bench, 24 `probes.py` probes and 8 built out of tree for
-  this question), 324 grounding artifacts gained 2,447,419 offsets and nothing else: stripping
-  `char_start`/`char_end` and resetting the flag gives the base bytes on all 324, and no node, box,
-  id, element text or span text moves anywhere — 0 changed nodes over the whole corpus. Recomputed
+- **§8, `char_offsets` — built and turned on, and ships in 0.58.0 with the owner's acceptance.** §8
+  makes the flip the owner's call, and the owner accepted it on 2026-09-16. Every span a PDF
+  grounding artifact carries now says where its text lies in its element's, `char_start` inclusive
+  and `char_end` exclusive, in Unicode scalars. The offsets come from a scalar cursor over
+  **every** member of the block, boxless runs included, and the artifact claims the capability as
+  `char_offsets && spans_emitted`. Against the build before it, over 328 PDFs (the seven smaller
+  gate documents, 44 engine and 35 oracle fixtures, gate-zero, 200 opendataloader-bench, 24
+  `probes.py` probes and 8 built out of tree for this question), 324 grounding artifacts gained an
+  offset pair on each of their 2,447,419 spans and nothing else: stripping `char_start`/`char_end`
+  and resetting the flag gives the base bytes on all 324, and no node, box, id, element text or
+  span text moves anywhere — 0 changed nodes over the whole corpus. Recomputed
   independently out of tree from the **base** representation, 0 of the 2,447,419 disagree. 280,617
   spans carry an offset pair a UTF-8 byte cursor would have written differently and 6,974 hold
   non-ASCII text; 13,089 carry a space the reader synthesized. 36,745 of the 220,826 elements hold

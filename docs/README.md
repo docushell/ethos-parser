@@ -3,7 +3,7 @@
 Everything the project has decided, and where it is written down. Start with the root
 [`README.md`](../README.md) if you just want to know what the tool does.
 
-**Version 0.57.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
+**Version 0.58.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
 Tables are stated as a capability rather than as one average: the engine reads the tables a document
 declares (combined cell-slot recall 502‰), detects ruled tables where the producer drew them
 (geometric macro 70‰, band 0‰–590‰), emits nothing where neither holds, and fabricates nothing. The
@@ -37,6 +37,7 @@ These describe the engine as it is now. Read them to work on it.
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Where the engine stops and the verifier starts, and the anti-patterns that blur it |
 | [`table-gate-v1.md`](table-gate-v1.md) | How table accuracy is measured, and the result. Quote table numbers from here or not at all |
 | [`CAPABILITY.md`](CAPABILITY.md) | Can and cannot, as two tables. The answer to "what does this actually do?" |
+| [`OPEN-WORK.md`](OPEN-WORK.md) | What is pending and what each item waits on: v2.2's open clause, the local plan's v2.3 items, owner decisions, known defects, stale docs |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen export list per crate. Checked by a test |
 | [`draft-schemas/`](draft-schemas/) | Draft JSON Schemas for every artifact shape. Documentation, not a shipped contract |
 | [`reference/`](reference/) | A stub explaining where the research archive went |
