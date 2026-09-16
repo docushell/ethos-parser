@@ -2035,7 +2035,7 @@ impl PageGeometry {
 /// Same reasoning and the same shape as the structure walk's depth bound: a chain the document
 /// controls must not decide how long this process runs, and a cycle must be survived rather than
 /// spun on.
-const INHERITANCE_MAX_DEPTH: usize = 32;
+pub(crate) const INHERITANCE_MAX_DEPTH: usize = 32;
 
 #[cfg(test)]
 mod tests {

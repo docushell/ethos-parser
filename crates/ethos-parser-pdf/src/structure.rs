@@ -102,8 +102,9 @@ pub(crate) const STRUCT_ATTRIBUTE_OWNER: &str = "EthosParser";
 ///
 /// `DerivationClass::Computed` as a PDF name. Spelled out rather than derived from the enum's
 /// serde form so the wire spelling and the file spelling cannot drift apart silently; the
-/// `engine-tagged-*` fixtures carry it as bytes a human typed.
-const OWNER_DERIVATION_COMPUTED: &str = "Computed";
+/// `engine-tagged-*` fixtures carry it as bytes a human typed. Crate-visible since auto-tagging
+/// S2, so the writer emits the one spelling the reader requires rather than a second copy of it.
+pub(crate) const OWNER_DERIVATION_COMPUTED: &str = "Computed";
 
 /// How deep `/K` nesting may go before this is refused as malformed.
 ///

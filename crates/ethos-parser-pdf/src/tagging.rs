@@ -67,9 +67,12 @@
 //!
 //! # What is here and what is not yet
 //!
-//! The strict decoder, the tokeniser, and [`OpKind`], the per-operator classification the
-//! placement rule of §3.4 reads. The placement rule, the tree, the stamp, the self-check and
-//! `write_tags` are S2 items 4 to 8 and are not in this module yet; nothing here is public.
+//! The strict decoder, the tokeniser, [`OpKind`] — the per-operator classification the placement
+//! rule reads — and, since S2 item 4, the placement rule itself ([`plan_page`]), the splice that
+//! inserts its sequences at token boundaries ([`splice`]), the tree and the stamp ([`write_tree`],
+//! [`stamp_tags`]), with [`sequences_are_well_formed`] as the one statement of what a sequence may
+//! hold, shared by the planner's tests and the self-check. `write_tags` and the self-check are
+//! items 5 to 8 and are not here yet; nothing here is public.
 
 use ethos_parser_core::EngineError;
 use lopdf::{Object, ObjectId, Stream};
@@ -1186,9 +1189,1008 @@ impl OpKind {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The placement rule (scope §3.4): what a sequence may enclose, decided per operation
+// ---------------------------------------------------------------------------------------------
+
+/// The `(region, block)` pair the cut gave a run, as the artifact spells it (S2 item 4).
+///
+/// Keyed as given: both `None` on an unsubdivided single-band page is one block, and
+/// `(Some(r), None)` is one block per band the rule declined to divide. The pair rather than
+/// `block` alone, because a block is numbered within its band and two bands both have a block 1.
+pub(crate) type BlockKey = (Option<u32>, Option<u32>);
+
+/// Whose text one text-showing operation showed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shows {
+    /// No run: the string was empty, or the reader dropped every run the operator showed
+    /// (`broken-font-encoding`). The engine did not read it, so it does not claim it.
+    Nothing,
+    /// Every run it showed is in this block.
+    Block(BlockKey),
+    /// Its runs lie inside an `/Artifact` frame — furniture the author put outside the
+    /// structure (§14.8.2.2), which stays outside.
+    Artifact,
+}
+
+/// The three nestings a sequence may not straddle, as they stand before one operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Nesting {
+    /// The innermost open marked-content frame: the index of its `BMC`/`BDC`, or `None` at the
+    /// top level.
+    pub(crate) frame: Option<usize>,
+    /// How many `q` are open. Signed, so a stray `Q` reads as a dip rather than a wrap.
+    pub(crate) q: i32,
+    /// How many `BT` are open. Signed for the same reason.
+    pub(crate) bt: i32,
+    /// Whether any open frame is an `/Artifact` — the whole stack, as the interpreter asks it.
+    pub(crate) artifact: bool,
+}
+
+/// The nesting before every operation, and after the last one: `ops.len() + 1` entries.
+///
+/// An `EMC` with no open frame pops nothing, as the interpreter's does.
+pub(crate) fn nesting(ops: &[lopdf::content::Operation]) -> Vec<Nesting> {
+    let mut out = Vec::with_capacity(ops.len() + 1);
+    let mut stack: Vec<(usize, bool)> = Vec::new();
+    let mut state = Nesting::default();
+    for (i, op) in ops.iter().enumerate() {
+        out.push(state);
+        match OpKind::of(op) {
+            OpKind::Save => state.q += 1,
+            OpKind::Restore => state.q -= 1,
+            OpKind::BeginText => state.bt += 1,
+            OpKind::EndText => state.bt -= 1,
+            OpKind::BeginMarked { tag, .. } => stack.push((i, tag == b"Artifact")),
+            OpKind::EndMarked => {
+                stack.pop();
+            }
+            _ => {}
+        }
+        state.frame = stack.last().map(|(at, _)| *at);
+        state.artifact = stack.iter().any(|(_, artifact)| *artifact);
+    }
+    out.push(state);
+    out
+}
+
+/// What a `BDC`'s property-list name resolves to through the page's `/Properties` (scope §3.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PropertyList {
+    /// The page's `/Properties`, inherited through `/Parent`, does not hold the name, or the
+    /// entry names an object the document does not hold.
+    Unresolved,
+    /// The entry resolves to something other than a dictionary, named by its variant.
+    NotADictionary(String),
+    /// A dictionary carrying `/MCID`: an id the reader declared by name and did not read.
+    WithId,
+    /// A dictionary without `/MCID` — an optional-content layer — which is an ordinary frame.
+    WithoutId,
+}
+
+/// A page's property lists, resolved as the interpreter does not: the page's own `/Resources`,
+/// or the nearest ancestor's (§7.7.3.4), then `/Properties`, then the name.
+///
+/// Bounded at [`crate::extract::INHERITANCE_MAX_DEPTH`] hops for the reason that bound exists.
+pub(crate) fn page_property_lists<'a>(
+    doc: &'a lopdf::Document,
+    page_dict: &'a lopdf::Dictionary,
+) -> impl Fn(&[u8]) -> PropertyList + 'a {
+    let resources = {
+        let mut found = crate::fonts::resolve_dict(doc, page_dict.get(b"Resources").ok());
+        if found.is_none() {
+            let mut node = crate::fonts::resolve_dict(doc, page_dict.get(b"Parent").ok());
+            for _ in 0..crate::extract::INHERITANCE_MAX_DEPTH {
+                let Some(dict) = node else {
+                    break;
+                };
+                found = crate::fonts::resolve_dict(doc, dict.get(b"Resources").ok());
+                if found.is_some() {
+                    break;
+                }
+                node = crate::fonts::resolve_dict(doc, dict.get(b"Parent").ok());
+            }
+        }
+        found
+    };
+    let properties =
+        resources.and_then(|r| crate::fonts::resolve_dict(doc, r.get(b"Properties").ok()));
+    move |name: &[u8]| {
+        let Some(properties) = &properties else {
+            return PropertyList::Unresolved;
+        };
+        let Ok(entry) = properties.get(name) else {
+            return PropertyList::Unresolved;
+        };
+        match doc.dereference(entry) {
+            Ok((_, Object::Dictionary(d))) => {
+                if d.get(b"MCID").is_ok() {
+                    PropertyList::WithId
+                } else {
+                    PropertyList::WithoutId
+                }
+            }
+            Ok((_, other)) => PropertyList::NotADictionary(other.enum_variant().to_string()),
+            Err(_) => PropertyList::Unresolved,
+        }
+    }
+}
+
+/// Refuse the marked-content ids scope §3.6 names, before any byte is written.
+///
+/// An inline property list carrying `/MCID`, and a named one that resolves to a dictionary
+/// carrying it or to nothing, each refuse the document by name. A named list without an id is
+/// an optional-content layer and an ordinary frame; a `BMC` has no list at all.
+///
+/// # Errors
+///
+/// [`EngineError::Unsupported`] with `what` = `tagging`, naming the page, the operation and the
+/// tag.
+pub(crate) fn refuse_ids(
+    ops: &[lopdf::content::Operation],
+    page: u32,
+    resolve: &dyn Fn(&[u8]) -> PropertyList,
+) -> Result<(), EngineError> {
+    for (i, op) in ops.iter().enumerate() {
+        let OpKind::BeginMarked { tag, props } = OpKind::of(op) else {
+            continue;
+        };
+        let tag = String::from_utf8_lossy(&tag).into_owned();
+        let refuse = |detail: String| EngineError::Unsupported {
+            what: "tagging".into(),
+            detail: format!("page {page}, operation {i}: {detail}"),
+        };
+        match props {
+            MarkedProps::None => {}
+            MarkedProps::Inline(dict) => {
+                if let Ok(mcid) = dict.get(b"MCID") {
+                    return Err(refuse(format!(
+                        "`/{tag} <</MCID {mcid:?}>> BDC` carries a marked-content id in the \
+                         content stream, and the document has no structure tree. The ids \
+                         already have a meaning the document lost; writing another id inside \
+                         the same sequence, or reusing one, would either shadow it or claim the \
+                         parent tree already indexes it (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+                    )));
+                }
+            }
+            MarkedProps::Named(name) => {
+                let name = String::from_utf8_lossy(&name).into_owned();
+                match resolve(name.as_bytes()) {
+                    PropertyList::WithoutId => {}
+                    PropertyList::WithId => {
+                        return Err(refuse(format!(
+                            "`/{tag} /{name} BDC` names a property list that carries `/MCID` \
+                             through the page's `/Properties`, and the document has no \
+                             structure tree: an id the reader declares as \
+                             `mcid-property-list-by-name` and does not read, refused as an \
+                             inline id is (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+                        )))
+                    }
+                    PropertyList::Unresolved => {
+                        return Err(refuse(format!(
+                            "`/{tag} /{name} BDC` names a property list the page's \
+                             `/Properties` (inherited through `/Parent`) does not hold, so \
+                             whether it carries an id cannot be said: an id unknown rather than \
+                             absent (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+                        )))
+                    }
+                    PropertyList::NotADictionary(variant) => {
+                        return Err(refuse(format!(
+                            "`/{tag} /{name} BDC` names a property list that resolves to \
+                             {variant} rather than a dictionary, so whether it carries an id \
+                             cannot be said: an id unknown rather than absent \
+                             (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+                        )))
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whose text each operation showed, from the page's runs and the side table that names each
+/// run's operator (`extract::RunPositions`).
+///
+/// `None` for an operation that is not text-showing. A text-showing operation none of the page's
+/// runs name showed nothing the reader kept. An operation whose runs the cut placed in two blocks
+/// is refused: a sequence holds an operator for one element, and a `TJ` whose strings straddle a
+/// gutter is an operator for two.
+///
+/// # Errors
+///
+/// [`EngineError::Unsupported`] naming the operation and both blocks; [`EngineError::Malformed`]
+/// if the side table names an operation the page does not have or one that shows no text, which
+/// no document can cause.
+pub(crate) fn shows_from_runs(
+    ops: &[lopdf::content::Operation],
+    page: u32,
+    runs: &[crate::nodes::TextRun],
+    positions: &[usize],
+) -> Result<Vec<Option<Shows>>, EngineError> {
+    let mut shows: Vec<Option<Shows>> = ops
+        .iter()
+        .map(|op| matches!(OpKind::of(op), OpKind::TextShow).then_some(Shows::Nothing))
+        .collect();
+    let mut first_run_of: std::collections::BTreeMap<usize, usize> =
+        std::collections::BTreeMap::new();
+    for (i, (run, &at)) in runs.iter().zip(positions).enumerate() {
+        let slot =
+            shows
+                .get_mut(at)
+                .and_then(Option::as_mut)
+                .ok_or_else(|| EngineError::Malformed {
+                    what: "tagging".into(),
+                    detail: format!(
+                    "page {page}: run {i} `{}` names operation {at}, which is not a text-showing \
+                     operation of the page's {} — the side table does not describe this page",
+                    run.text,
+                    ops.len()
+                ),
+                })?;
+        let this = if matches!(
+            run.structural,
+            Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
+        ) {
+            Shows::Artifact
+        } else {
+            Shows::Block((run.region, run.block))
+        };
+        match *slot {
+            Shows::Nothing => {
+                *slot = this;
+                first_run_of.insert(at, i);
+            }
+            already if already == this => {}
+            already => {
+                let earlier = first_run_of.get(&at).copied().unwrap_or(i);
+                let describe = |shows: Shows| match shows {
+                    Shows::Block(key) => format!("block {key:?}"),
+                    Shows::Artifact => "an /Artifact run".to_string(),
+                    Shows::Nothing => "no run".to_string(),
+                };
+                return Err(EngineError::Unsupported {
+                    what: "tagging".into(),
+                    detail: format!(
+                        "page {page}, operation {at} shows runs the cut placed in two blocks \
+                         ({} for `{}` and {} for `{}`), and a marked-content sequence holds an \
+                         operator for one element",
+                        describe(already),
+                        runs[earlier].text,
+                        describe(this),
+                        run.text
+                    ),
+                });
+            }
+        }
+    }
+    Ok(shows)
+}
+
+/// The page's blocks in reading order: first appearance in the artifact's run order, artifact
+/// runs skipped.
+pub(crate) fn blocks_in_reading_order(runs: &[crate::nodes::TextRun]) -> Vec<BlockKey> {
+    let mut order: Vec<BlockKey> = Vec::new();
+    for run in runs {
+        if matches!(
+            run.structural,
+            Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
+        ) {
+            continue;
+        }
+        let key = (run.region, run.block);
+        if !order.contains(&key) {
+            order.push(key);
+        }
+    }
+    order
+}
+
+// ---------------------------------------------------------------------------------------------
+// The sequences
+// ---------------------------------------------------------------------------------------------
+
+/// Where a sequence's boundary came to rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placement {
+    /// At the block's operators, inside a text object it shares.
+    Operators,
+    /// Around whole text objects.
+    TextObject,
+    /// Around `q … Q` pairs enclosing whole text objects.
+    GraphicsState,
+}
+
+/// Why the previous sequence of the same block ended before this one (scope §7.1's buckets).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SplitCause {
+    /// The previous sequence could not leave its text object, because another block shares it.
+    SharedTextObject,
+    /// A `q`/`Q` the two could not be balanced across.
+    GraphicsState,
+    /// An existing marked-content frame opened or closed between them.
+    ExistingFrame,
+    /// A painting operator, an inline image included.
+    PaintingOperator,
+    /// A text-showing operator of another block, or of no run.
+    ForeignRun,
+    /// An `/Artifact` frame, or a run inside one.
+    Artifact,
+}
+
+/// One marked-content sequence the writer will insert.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Sequence {
+    /// The block whose text it holds.
+    pub(crate) block: BlockKey,
+    /// The first enclosed operation.
+    pub(crate) first: usize,
+    /// The last enclosed operation.
+    pub(crate) last: usize,
+    /// Its id: the sequence's rank by `first` on its page, dense from 0.
+    pub(crate) mcid: i64,
+    /// Where its boundary rests.
+    pub(crate) placement: Placement,
+    /// Why the block's previous sequence ended, or `None` for the block's first.
+    pub(crate) split: Option<SplitCause>,
+}
+
+/// One page's sequences and the blocks that own them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct PagePlan {
+    /// In stream order; a sequence's index is its id.
+    pub(crate) sequences: Vec<Sequence>,
+    /// Blocks in reading order, each with its sequence ids ascending — the `/K` of its `/Div`.
+    pub(crate) blocks: Vec<(BlockKey, Vec<i64>)>,
+}
+
+/// Draws nothing, and changes no frame: the operators a sequence may enclose beside its own
+/// block's text, and the only ones a widening may cross.
+fn is_inert(kind: &OpKind) -> bool {
+    matches!(
+        kind,
+        OpKind::Other | OpKind::BeginText | OpKind::EndText | OpKind::Save | OpKind::Restore
+    )
+}
+
+/// Table 108's text-positioning operators: the ones that say where the next text-showing
+/// operator draws, and nothing else.
+fn is_text_positioning(op: &lopdf::content::Operation) -> bool {
+    matches!(op.operator.as_str(), "Td" | "TD" | "Tm" | "T*")
+}
+
+/// Whether the operations strictly between `a` and `b` draw nothing and keep both depths at or
+/// above `s`'s, returning to `s` — with the same frame — by `b`.
+fn gap_is_clear(kinds: &[OpKind], nesting: &[Nesting], a: usize, b: usize, s: Nesting) -> bool {
+    for x in a + 1..b {
+        if !is_inert(&kinds[x]) {
+            return false;
+        }
+        let n = nesting[x];
+        if n.q < s.q || n.bt < s.bt {
+            return false;
+        }
+    }
+    let end = nesting[b];
+    end.q == s.q && end.bt == s.bt && end.frame == s.frame
+}
+
+/// The `BT … ET` enclosing `first..=last` when everything newly enclosed draws nothing, stays
+/// at or above the sequence's depths and in its frame.
+fn enclosing_text_object(
+    kinds: &[OpKind],
+    nesting: &[Nesting],
+    first: usize,
+    last: usize,
+) -> Option<(usize, usize)> {
+    let s = nesting[first];
+    if s.bt < 1 {
+        return None;
+    }
+    let mut i = first;
+    let open = loop {
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+        let n = nesting[i];
+        if kinds[i] == OpKind::BeginText && n.bt == s.bt - 1 {
+            if n.q != s.q || n.frame != s.frame {
+                return None;
+            }
+            break i;
+        }
+        if !is_inert(&kinds[i]) || n.q < s.q || n.bt < s.bt {
+            return None;
+        }
+    };
+    let mut j = last + 1;
+    let close = loop {
+        if j >= kinds.len() {
+            return None;
+        }
+        let n = nesting[j];
+        if kinds[j] == OpKind::EndText && n.bt == s.bt {
+            if n.q != s.q || n.frame != s.frame {
+                return None;
+            }
+            break j;
+        }
+        if !is_inert(&kinds[j]) || n.q < s.q || n.bt < s.bt {
+            return None;
+        }
+        j += 1;
+    };
+    Some((open, close))
+}
+
+/// The `q … Q` enclosing `first..=last` under the same conditions.
+fn enclosing_graphics_state(
+    kinds: &[OpKind],
+    nesting: &[Nesting],
+    first: usize,
+    last: usize,
+) -> Option<(usize, usize)> {
+    let s = nesting[first];
+    if s.q < 1 {
+        return None;
+    }
+    let mut i = first;
+    let open = loop {
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+        let n = nesting[i];
+        if kinds[i] == OpKind::Save && n.q == s.q - 1 {
+            if n.bt != s.bt || n.frame != s.frame {
+                return None;
+            }
+            break i;
+        }
+        if !is_inert(&kinds[i]) || n.q < s.q || n.bt < s.bt {
+            return None;
+        }
+    };
+    let mut j = last + 1;
+    let close = loop {
+        if j >= kinds.len() {
+            return None;
+        }
+        let n = nesting[j];
+        if kinds[j] == OpKind::Restore && n.q == s.q {
+            if n.bt != s.bt || n.frame != s.frame {
+                return None;
+            }
+            break j;
+        }
+        if !is_inert(&kinds[j]) || n.q < s.q || n.bt < s.bt {
+            return None;
+        }
+        j += 1;
+    };
+    Some((open, close))
+}
+
+/// Why two consecutive sequences of one block stayed apart: the first barrier between them by
+/// kind, or, when only inert operators lie between, the depth that kept them apart.
+fn split_cause(
+    kinds: &[OpKind],
+    nesting: &[Nesting],
+    shows: &[Option<Shows>],
+    prev_last: usize,
+    next_first: usize,
+) -> SplitCause {
+    for x in prev_last + 1..next_first {
+        match &kinds[x] {
+            OpKind::Painting | OpKind::InlineImage => return SplitCause::PaintingOperator,
+            OpKind::BeginMarked { tag, .. } => {
+                return if tag == b"Artifact" {
+                    SplitCause::Artifact
+                } else {
+                    SplitCause::ExistingFrame
+                }
+            }
+            OpKind::EndMarked => {
+                return if nesting[x].artifact {
+                    SplitCause::Artifact
+                } else {
+                    SplitCause::ExistingFrame
+                }
+            }
+            OpKind::TextShow => {
+                return match shows[x] {
+                    Some(Shows::Artifact) => SplitCause::Artifact,
+                    _ => SplitCause::ForeignRun,
+                }
+            }
+            _ => {}
+        }
+    }
+    let after = nesting[prev_last + 1];
+    let text_object_kept_them_apart = (prev_last + 1..=next_first)
+        .any(|x| nesting[x].bt < after.bt)
+        || nesting[next_first].bt != after.bt;
+    if text_object_kept_them_apart {
+        SplitCause::SharedTextObject
+    } else {
+        SplitCause::GraphicsState
+    }
+}
+
+/// The placement rule of scope §3.4 over one page.
+///
+/// Each block's text-showing operations are grouped greedily in stream order — the next joins the
+/// open sequence when everything between draws nothing, opens or closes no frame, and keeps both
+/// depths at or above the sequence's before returning to them — and each sequence then opens
+/// before the text-positioning operators (`Td`, `TD`, `Tm`, `T*`) immediately preceding its
+/// first text-showing operator, so its first line's position rides inside it. Every sequence is
+/// widened outward to the enclosing `BT … ET`, then to a `q … Q` enclosing exactly that, while
+/// everything newly enclosed draws nothing, belongs to no other block and sits inside the same
+/// frame at no lower depth; adjacent sequences of one block separated only by such operators at
+/// the same frame and depth merge; the two steps repeat until nothing moves. Ids are the rank by
+/// first operation, dense from 0, and each block's `/K` is its ids ascending.
+///
+/// `order` is the page's blocks in reading order and decides the order of the `/Div` elements;
+/// a block in it with no text-showing operation of its own gets no sequence and no element.
+pub(crate) fn plan_page(
+    ops: &[lopdf::content::Operation],
+    nesting: &[Nesting],
+    shows: &[Option<Shows>],
+    order: &[BlockKey],
+) -> PagePlan {
+    let kinds: Vec<OpKind> = ops.iter().map(OpKind::of).collect();
+
+    // The greedy grouping, per block, in stream order.
+    let mut sequences: Vec<Sequence> = Vec::new();
+    for &block in order {
+        let mut open: Option<(usize, usize)> = None;
+        for (i, show) in shows.iter().enumerate() {
+            if *show != Some(Shows::Block(block)) {
+                continue;
+            }
+            match open {
+                Some((first, last)) if gap_is_clear(&kinds, nesting, last, i, nesting[last]) => {
+                    open = Some((first, i));
+                }
+                Some((first, last)) => {
+                    sequences.push(placed(block, first, last));
+                    open = Some((i, i));
+                }
+                None => open = Some((i, i)),
+            }
+        }
+        if let Some((first, last)) = open {
+            sequences.push(placed(block, first, last));
+        }
+    }
+
+    // The positioning that belongs to the first line rides inside the sequence.
+    for seq in &mut sequences {
+        while seq.first > 0 && is_text_positioning(&ops[seq.first - 1]) {
+            seq.first -= 1;
+        }
+    }
+
+    // Widen and merge until nothing moves. Each step only grows a sequence, so this ends.
+    loop {
+        let mut moved = false;
+        for seq in &mut sequences {
+            loop {
+                let mut widened = false;
+                if let Some((open, close)) =
+                    enclosing_text_object(&kinds, nesting, seq.first, seq.last)
+                {
+                    seq.first = open;
+                    seq.last = close;
+                    widened = true;
+                }
+                while let Some((open, close)) =
+                    enclosing_graphics_state(&kinds, nesting, seq.first, seq.last)
+                {
+                    seq.first = open;
+                    seq.last = close;
+                    widened = true;
+                }
+                if !widened {
+                    break;
+                }
+                moved = true;
+            }
+        }
+        sequences.sort_by_key(|s| s.first);
+        let mut merged: Vec<Sequence> = Vec::with_capacity(sequences.len());
+        for seq in sequences.drain(..) {
+            let joins = merged.last().is_some_and(|prev: &Sequence| {
+                prev.block == seq.block
+                    && gap_is_clear(&kinds, nesting, prev.last, seq.first, nesting[prev.first])
+            });
+            if joins {
+                merged.last_mut().expect("checked above").last = seq.last;
+                moved = true;
+            } else {
+                merged.push(seq);
+            }
+        }
+        sequences = merged;
+        if !moved {
+            break;
+        }
+    }
+
+    // Ids by stream order, placements, and the causes per block.
+    sequences.sort_by_key(|s| s.first);
+    let mut last_of_block: std::collections::BTreeMap<BlockKey, usize> =
+        std::collections::BTreeMap::new();
+    for (rank, seq) in sequences.iter_mut().enumerate() {
+        seq.mcid = i64::try_from(rank).unwrap_or(i64::MAX);
+        seq.placement = match kinds[seq.first] {
+            OpKind::Save => Placement::GraphicsState,
+            OpKind::BeginText => Placement::TextObject,
+            _ => Placement::Operators,
+        };
+        seq.split = last_of_block
+            .get(&seq.block)
+            .map(|&prev_last| split_cause(&kinds, nesting, shows, prev_last, seq.first));
+        last_of_block.insert(seq.block, seq.last);
+    }
+    let blocks: Vec<(BlockKey, Vec<i64>)> = order
+        .iter()
+        .map(|&block| {
+            let ids: Vec<i64> = sequences
+                .iter()
+                .filter(|s| s.block == block)
+                .map(|s| s.mcid)
+                .collect();
+            (block, ids)
+        })
+        .filter(|(_, ids)| !ids.is_empty())
+        .collect();
+    PagePlan { sequences, blocks }
+}
+
+fn placed(block: BlockKey, first: usize, last: usize) -> Sequence {
+    Sequence {
+        block,
+        first,
+        last,
+        mcid: 0,
+        placement: Placement::Operators,
+        split: None,
+    }
+}
+
+/// Scope §3.4 on a page's sequences, as a check: each holds only its block's text-showing
+/// operators and operators that draw nothing, encloses no painting operator, no inline image, no
+/// foreign text and no frame boundary, opens and closes at one frame and depth without dipping
+/// below it, and the ids are dense in stream order.
+///
+/// Shared by the planner's tests and by the self-check on the written page (scope §3.7), where
+/// the sequences are the ones read back out of the output and `shows` comes from the output's own
+/// runs — so the rule is proved on every document rather than on the fixtures alone.
+///
+/// # Errors
+///
+/// The first failing condition, naming the sequence's id and the operation.
+pub(crate) fn sequences_are_well_formed(
+    ops: &[lopdf::content::Operation],
+    nesting: &[Nesting],
+    shows: &[Option<Shows>],
+    sequences: &[Sequence],
+) -> Result<(), String> {
+    let kinds: Vec<OpKind> = ops.iter().map(OpKind::of).collect();
+    let mut previous_last: Option<usize> = None;
+    for (rank, seq) in sequences.iter().enumerate() {
+        let id = seq.mcid;
+        if usize::try_from(id) != Ok(rank) {
+            return Err(format!(
+                "sequence {rank} in stream order carries id {id}: ids must be dense from 0 in \
+                 stream order"
+            ));
+        }
+        if seq.first > seq.last || seq.last >= ops.len() {
+            return Err(format!(
+                "sequence {id} spans operations {}..={} of {}",
+                seq.first,
+                seq.last,
+                ops.len()
+            ));
+        }
+        if previous_last.is_some_and(|prev| prev >= seq.first) {
+            return Err(format!(
+                "sequence {id} starts at operation {} inside the previous sequence",
+                seq.first
+            ));
+        }
+        previous_last = Some(seq.last);
+
+        let s = nesting[seq.first];
+        if s.artifact {
+            return Err(format!(
+                "sequence {id} sits inside an /Artifact frame (operation {})",
+                seq.first
+            ));
+        }
+        let mut own_text = 0usize;
+        for x in seq.first..=seq.last {
+            match &kinds[x] {
+                OpKind::TextShow => match shows.get(x).copied().flatten() {
+                    Some(Shows::Block(block)) if block == seq.block => own_text += 1,
+                    Some(Shows::Block(other)) => {
+                        return Err(format!(
+                            "sequence {id} for block {:?} encloses operation {x}, a \
+                             text-showing operator of block {other:?}",
+                            seq.block
+                        ))
+                    }
+                    Some(Shows::Artifact) => {
+                        return Err(format!(
+                            "sequence {id} encloses operation {x}, a text-showing operator \
+                             inside an /Artifact frame"
+                        ))
+                    }
+                    Some(Shows::Nothing) | None => {
+                        return Err(format!(
+                            "sequence {id} encloses operation {x}, a text-showing operator that \
+                             showed no run this engine kept"
+                        ))
+                    }
+                },
+                OpKind::Painting => {
+                    return Err(format!(
+                        "sequence {id} encloses operation {x}, the painting operator `{}`",
+                        ops[x].operator
+                    ))
+                }
+                OpKind::InlineImage => {
+                    return Err(format!(
+                        "sequence {id} encloses operation {x}, an inline image"
+                    ))
+                }
+                OpKind::BeginMarked { tag, .. } => {
+                    return Err(format!(
+                        "sequence {id} encloses operation {x}, the opening of a{} frame `/{}`",
+                        if tag == b"Artifact" {
+                            "n /Artifact"
+                        } else {
+                            " marked-content"
+                        },
+                        String::from_utf8_lossy(tag)
+                    ))
+                }
+                OpKind::EndMarked => {
+                    return Err(format!(
+                        "sequence {id} encloses operation {x}, the closing of a{} frame",
+                        if nesting[x].artifact {
+                            "n /Artifact"
+                        } else {
+                            " marked-content"
+                        }
+                    ))
+                }
+                _ => {}
+            }
+            let n = nesting[x];
+            if n.q < s.q || n.bt < s.bt {
+                return Err(format!(
+                    "sequence {id} dips below its own depth at operation {x} (q {} bt {} against \
+                     q {} bt {})",
+                    n.q, n.bt, s.q, s.bt
+                ));
+            }
+        }
+        if own_text == 0 {
+            return Err(format!(
+                "sequence {id} encloses no text-showing operator of its block"
+            ));
+        }
+        let e = nesting[seq.last + 1];
+        if e.q != s.q || e.bt != s.bt || e.frame != s.frame {
+            return Err(format!(
+                "sequence {id} opens at frame {:?} q {} bt {} and closes at frame {:?} q {} bt {}",
+                s.frame, s.q, s.bt, e.frame, e.q, e.bt
+            ));
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The splice: inserted at token boundaries, nothing else changed
+// ---------------------------------------------------------------------------------------------
+
+/// The page's bytes with each sequence's `BDC` and `EMC` inserted at its token boundaries.
+///
+/// Before the first enclosed operation's first token: `/Div <</MCID n>> BDC` and a newline. After
+/// the last enclosed operation's operator: a newline, `EMC`, and a newline unless the next byte
+/// already is whitespace. Every byte of the input survives in order; nothing is re-encoded.
+pub(crate) fn splice(bytes: &[u8], t: &Tokenised, sequences: &[Sequence]) -> Vec<u8> {
+    // (offset, closes-before-opens, text): a closing `EMC` and the next sequence's opening `BDC`
+    // can meet at one offset, and the close must come first.
+    let mut insertions: Vec<(usize, u8, Vec<u8>)> = Vec::with_capacity(sequences.len() * 2);
+    for seq in sequences {
+        let open = format!("/Div <</MCID {}>> BDC\n", seq.mcid).into_bytes();
+        insertions.push((t.ops[seq.first].start, 1, open));
+        let at = t.ops[seq.last].end;
+        let mut close = b"\nEMC".to_vec();
+        if bytes
+            .get(at)
+            .is_some_and(|&b| !matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+        {
+            close.push(b'\n');
+        }
+        insertions.push((at, 0, close));
+    }
+    insertions.sort();
+    let mut out =
+        Vec::with_capacity(bytes.len() + insertions.iter().map(|i| i.2.len()).sum::<usize>());
+    let mut cursor = 0usize;
+    for (at, _, text) in insertions {
+        out.extend_from_slice(&bytes[cursor..at]);
+        out.extend_from_slice(&text);
+        cursor = at;
+    }
+    out.extend_from_slice(&bytes[cursor..]);
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
+// The tree (scope §3.2–§3.4) and the stamp (§3.3)
+// ---------------------------------------------------------------------------------------------
+
+/// The attribute object every written element carries (scope §3.3), the rule spelled as the
+/// profile spells it.
+fn attribute(rule: &str) -> lopdf::Dictionary {
+    let mut a = lopdf::Dictionary::new();
+    a.set(
+        "O",
+        Object::Name(crate::structure::STRUCT_ATTRIBUTE_OWNER.as_bytes().to_vec()),
+    );
+    a.set(
+        "Derivation",
+        Object::Name(
+            crate::structure::OWNER_DERIVATION_COMPUTED
+                .as_bytes()
+                .to_vec(),
+        ),
+    );
+    a.set("Rule", Object::string_literal(rule));
+    a
+}
+
+/// Write the structure tree for the pages that received sequences, in page order.
+///
+/// One `/Document` root element and one `/Div` per block in reading order, each carrying the
+/// attribute; a `/StructTreeRoot` whose `/ParentTree` has one key per rewritten page (0-based in
+/// page order) mapping each id to the element that cites it; `/StructParents` on each such page;
+/// `/StructTreeRoot` on the catalog. No `/MarkInfo` is written and one already there is left as
+/// found. Objects are added in a fixed order — the root, the document element, then the `/Div`s
+/// page by page in reading order — so two writes number them alike.
+///
+/// Returns how many structure elements were written.
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] if the catalog or a page dictionary does not resolve.
+pub(crate) fn write_tree(
+    out: &mut lopdf::Document,
+    pages: &[(ObjectId, &PagePlan)],
+    rule: &str,
+) -> Result<u32, EngineError> {
+    let malformed = |detail: String| EngineError::Malformed {
+        what: "tagging".into(),
+        detail,
+    };
+    let root_id = out.new_object_id();
+    let document_id = out.new_object_id();
+
+    let mut divs: Vec<Object> = Vec::new();
+    let mut nums: Vec<Object> = Vec::new();
+    for (key, (page_id, plan)) in pages.iter().enumerate() {
+        let mut by_mcid: Vec<Option<ObjectId>> = vec![None; plan.sequences.len()];
+        for (block, ids) in &plan.blocks {
+            let mut element = lopdf::Dictionary::new();
+            element.set("Type", Object::Name(b"StructElem".to_vec()));
+            element.set("S", Object::Name(b"Div".to_vec()));
+            element.set("P", Object::Reference(document_id));
+            element.set("Pg", Object::Reference(*page_id));
+            element.set(
+                "K",
+                Object::Array(ids.iter().map(|&id| Object::Integer(id)).collect()),
+            );
+            element.set("A", Object::Dictionary(attribute(rule)));
+            let div_id = out.add_object(Object::Dictionary(element));
+            divs.push(Object::Reference(div_id));
+            for &id in ids {
+                let slot = usize::try_from(id)
+                    .ok()
+                    .and_then(|i| by_mcid.get_mut(i))
+                    .ok_or_else(|| {
+                        malformed(format!(
+                            "block {block:?} cites id {id}, which its page's {} sequence(s) do \
+                             not include",
+                            plan.sequences.len()
+                        ))
+                    })?;
+                *slot = Some(div_id);
+            }
+        }
+        let mut refs = Vec::with_capacity(by_mcid.len());
+        for (id, slot) in by_mcid.iter().enumerate() {
+            let div_id = slot.ok_or_else(|| {
+                malformed(format!(
+                    "id {id} on page object {page_id:?} belongs to no block"
+                ))
+            })?;
+            refs.push(Object::Reference(div_id));
+        }
+        nums.push(Object::Integer(i64::try_from(key).unwrap_or(i64::MAX)));
+        nums.push(Object::Array(refs));
+        out.get_dictionary_mut(*page_id)
+            .map_err(|e| malformed(format!("page object {page_id:?}: {e}")))?
+            .set(
+                "StructParents",
+                Object::Integer(i64::try_from(key).unwrap_or(i64::MAX)),
+            );
+    }
+
+    let mut document = lopdf::Dictionary::new();
+    document.set("Type", Object::Name(b"StructElem".to_vec()));
+    document.set("S", Object::Name(b"Document".to_vec()));
+    document.set("P", Object::Reference(root_id));
+    document.set("K", Object::Array(divs.clone()));
+    document.set("A", Object::Dictionary(attribute(rule)));
+    out.set_object(document_id, Object::Dictionary(document));
+
+    let mut parent_tree = lopdf::Dictionary::new();
+    parent_tree.set("Nums", Object::Array(nums));
+    let mut root = lopdf::Dictionary::new();
+    root.set("Type", Object::Name(b"StructTreeRoot".to_vec()));
+    root.set("K", Object::Array(vec![Object::Reference(document_id)]));
+    root.set("ParentTree", Object::Dictionary(parent_tree));
+    root.set(
+        "ParentTreeNextKey",
+        Object::Integer(i64::try_from(pages.len()).unwrap_or(i64::MAX)),
+    );
+    out.set_object(root_id, Object::Dictionary(root));
+
+    out.catalog_mut()
+        .map_err(|e| malformed(format!("the catalog does not resolve: {e}")))?
+        .set("StructTreeRoot", Object::Reference(root_id));
+
+    Ok(u32::try_from(1 + divs.len()).unwrap_or(u32::MAX))
+}
+
+/// The catalog stamp of scope §3.3: which bytes the tags were computed from and under which
+/// profile. Provenance, never the derivation — the reader does not consult it.
+pub(crate) fn stamp_tags(
+    out: &mut lopdf::Document,
+    source_sha256: &str,
+    profile_sha256: &str,
+    parser_version: &str,
+) -> Result<(), EngineError> {
+    let mut stamp = lopdf::Dictionary::new();
+    stamp.set("ArtifactType", Object::string_literal(TAGS_ARTIFACT_TYPE));
+    stamp.set("SourceSha256", Object::string_literal(source_sha256));
+    stamp.set("ProfileSha256", Object::string_literal(profile_sha256));
+    stamp.set("ParserVersion", Object::string_literal(parser_version));
+    out.catalog_mut()
+        .map_err(|e| EngineError::Malformed {
+            what: "tagging".into(),
+            detail: format!("the catalog does not resolve: {e}"),
+        })?
+        .set("EthosParserTags", Object::Dictionary(stamp));
+    Ok(())
+}
+
+/// The writer's artifact type, stamped on the catalog (scope §8): what moves when the written
+/// shape — the role, the attribute keys, the placement rule — changes.
+pub const TAGS_ARTIFACT_TYPE: &str = "ethos.parser.tags.v0";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nodes::TextRun;
     use lopdf::content::{Content, Operation};
 
     fn lossy(bytes: &[u8]) -> String {
@@ -2119,5 +3121,964 @@ mod tests {
         assert!(opened >= 89, "{opened} documents opened");
         assert!(pages >= 1_567, "{pages} pages tokenised");
         assert!(ops >= 6_697_547, "{ops} operations checked");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The placement rule, on synthetic streams
+    // ---------------------------------------------------------------------------------------
+
+    const BLOCK_A: BlockKey = (None, Some(1));
+    const BLOCK_B: BlockKey = (None, Some(2));
+
+    /// The legend every synthetic stream below is read by: a shown string's first letter names
+    /// its owner — `a`/`b` a block, `h` a run inside an /Artifact frame, `x` a run the reader
+    /// dropped or an empty string.
+    fn legend(text: &str) -> Option<Shows> {
+        match text.chars().next() {
+            Some('a') => Some(Shows::Block(BLOCK_A)),
+            Some('b') => Some(Shows::Block(BLOCK_B)),
+            Some('h') => Some(Shows::Artifact),
+            Some('x') => Some(Shows::Nothing),
+            _ => panic!("the legend does not know `{text}`"),
+        }
+    }
+
+    /// The text a text-showing operation shows, for the legend.
+    fn shown_text(op: &Operation) -> String {
+        let mut out = String::new();
+        for operand in &op.operands {
+            match operand {
+                Object::String(bytes, _) => out.push_str(&lossy(bytes)),
+                Object::Array(items) => {
+                    for item in items {
+                        if let Object::String(bytes, _) = item {
+                            out.push_str(&lossy(bytes));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    struct Synthetic {
+        ops: Vec<Operation>,
+        t: Tokenised,
+        nest: Vec<Nesting>,
+        shows: Vec<Option<Shows>>,
+        /// Blocks by first appearance in the stream, which a test may override.
+        order: Vec<BlockKey>,
+    }
+
+    fn synthetic(src: &[u8], owner: impl Fn(&str) -> Option<Shows>) -> Synthetic {
+        let t = ok(src);
+        let ops = Content::decode(src).expect("decodes").operations;
+        agrees_with_lopdf(&t, &ops).expect("agrees");
+        let nest = nesting(&ops);
+        let mut order = Vec::new();
+        let shows: Vec<Option<Shows>> = ops
+            .iter()
+            .map(|op| {
+                if !matches!(OpKind::of(op), OpKind::TextShow) {
+                    return None;
+                }
+                let s = owner(&shown_text(op));
+                if let Some(Shows::Block(key)) = s {
+                    if !order.contains(&key) {
+                        order.push(key);
+                    }
+                }
+                s
+            })
+            .collect();
+        Synthetic {
+            ops,
+            t,
+            nest,
+            shows,
+            order,
+        }
+    }
+
+    /// Plan and splice a synthetic stream, holding everything a written page must hold: the plan
+    /// passes the shared §3.4 check, the spliced bytes re-tokenise, agree with lopdf and hold
+    /// exactly two more operations per sequence, and read back by the interpreter's own rule —
+    /// the innermost open sequence's id — every block's text carries the id of the sequence the
+    /// plan put its operator in and nothing else carries one.
+    fn tagged_in_order(
+        src: &[u8],
+        owner: impl Fn(&str) -> Option<Shows>,
+        order: Option<&[BlockKey]>,
+    ) -> (String, PagePlan) {
+        let s = synthetic(src, owner);
+        let order = order.unwrap_or(&s.order);
+        let plan = plan_page(&s.ops, &s.nest, &s.shows, order);
+        sequences_are_well_formed(&s.ops, &s.nest, &s.shows, &plan.sequences)
+            .unwrap_or_else(|e| panic!("{:?}: {e}", lossy(src)));
+        for (block, ids) in &plan.blocks {
+            assert!(ids.windows(2).all(|w| w[0] < w[1]), "{block:?}: {ids:?}");
+        }
+        let out = splice(src, &s.t, &plan.sequences);
+        let t2 = ok(&out);
+        assert_eq!(
+            t2.ops.len(),
+            s.ops.len() + 2 * plan.sequences.len(),
+            "two operations per sequence and nothing else: {:?}",
+            lossy(&out)
+        );
+        let ops2 = Content::decode(&out)
+            .expect("the spliced stream decodes")
+            .operations;
+        let mut original = 0usize;
+        // `Some(id)` for a written frame, `None` for one the stream already had.
+        let mut stack: Vec<Option<i64>> = Vec::new();
+        for op in &ops2 {
+            match OpKind::of(op) {
+                OpKind::BeginMarked {
+                    tag,
+                    props: MarkedProps::Inline(d),
+                } if tag == b"Div" && d.get(b"MCID").is_ok() => {
+                    stack.push(d.get(b"MCID").ok().and_then(|o| o.as_i64().ok()));
+                    continue;
+                }
+                OpKind::BeginMarked { .. } => stack.push(None),
+                OpKind::EndMarked => {
+                    if let Some(Some(_)) = stack.last() {
+                        stack.pop();
+                        continue;
+                    }
+                    stack.pop();
+                }
+                OpKind::TextShow => {
+                    let innermost = stack.last().copied().flatten();
+                    let expected = plan
+                        .sequences
+                        .iter()
+                        .find(|q| q.first <= original && original <= q.last)
+                        .map(|q| q.mcid);
+                    assert_eq!(
+                        innermost,
+                        expected,
+                        "operation {original} `{}` reads back under {innermost:?}",
+                        shown_text(op)
+                    );
+                    match s.shows[original] {
+                        Some(Shows::Block(_)) => {
+                            assert!(expected.is_some(), "operation {original} is left untagged")
+                        }
+                        _ => assert!(expected.is_none(), "operation {original} is not a block's"),
+                    }
+                }
+                _ => {}
+            }
+            original += 1;
+        }
+        assert_eq!(
+            original,
+            s.ops.len(),
+            "every original operation is still there"
+        );
+        (String::from_utf8(out).expect("ASCII in, ASCII out"), plan)
+    }
+
+    fn tagged(src: &[u8], owner: impl Fn(&str) -> Option<Shows>) -> (String, PagePlan) {
+        tagged_in_order(src, owner, None)
+    }
+
+    fn splits(plan: &PagePlan) -> Vec<Option<SplitCause>> {
+        plan.sequences.iter().map(|s| s.split).collect()
+    }
+
+    fn placements(plan: &PagePlan) -> Vec<Placement> {
+        plan.sequences.iter().map(|s| s.placement).collect()
+    }
+
+    #[test]
+    fn a_block_across_two_whole_text_objects_is_one_sequence() {
+        let (out, plan) = tagged(b"BT (a1) Tj ET BT (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nBT (a1) Tj ET BT (a2) Tj ET\nEMC"
+        );
+        assert_eq!(plan.sequences.len(), 1);
+        assert_eq!(placements(&plan), [Placement::TextObject]);
+        assert_eq!(splits(&plan), [None]);
+        assert_eq!(plan.blocks, vec![(BLOCK_A, vec![0])]);
+    }
+
+    #[test]
+    fn a_block_written_as_one_saved_state_per_line_widens_through_the_pairs() {
+        let (out, plan) = tagged(b"q BT (a1) Tj ET Q q BT (a2) Tj ET Q", legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nq BT (a1) Tj ET Q q BT (a2) Tj ET Q\nEMC"
+        );
+        assert_eq!(placements(&plan), [Placement::GraphicsState]);
+        // A colour set inside the saved state, and a save nested inside the text object, widen
+        // the same way: the order of the two steps is decided by what encloses what.
+        let (out, _) = tagged(b"q 0 g BT (a1) Tj ET Q BT q 1 g (a2) Tj Q ET", legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nq 0 g BT (a1) Tj ET Q BT q 1 g (a2) Tj Q ET\nEMC"
+        );
+    }
+
+    #[test]
+    fn a_painting_operator_between_two_lines_splits_the_block() {
+        let (out, plan) = tagged(b"BT (a1) Tj ET /Im1 Do BT (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nBT (a1) Tj ET\nEMC /Im1 Do /Div <</MCID 1>> BDC\nBT (a2) Tj \
+             ET\nEMC"
+        );
+        assert_eq!(splits(&plan), [None, Some(SplitCause::PaintingOperator)]);
+        assert_eq!(plan.blocks, vec![(BLOCK_A, vec![0, 1])]);
+        // A path painted, and a shading, split the same way; a path merely constructed and
+        // clipped does not.
+        let (_, plan) = tagged(b"BT (a1) Tj ET 0 0 1 1 re f BT (a2) Tj ET", legend);
+        assert_eq!(splits(&plan), [None, Some(SplitCause::PaintingOperator)]);
+        let (_, plan) = tagged(b"BT (a1) Tj ET /Sh sh BT (a2) Tj ET", legend);
+        assert_eq!(splits(&plan), [None, Some(SplitCause::PaintingOperator)]);
+        let (out, _) = tagged(b"BT (a1) Tj ET 0 0 1 1 re W n BT (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nBT (a1) Tj ET 0 0 1 1 re W n BT (a2) Tj ET\nEMC"
+        );
+    }
+
+    #[test]
+    fn an_inline_image_is_never_enclosed() {
+        let src = b"BT (a1) Tj ET BI /W 1 /H 1 /CS /G /BPC 8 ID \xff EI BT (a2) Tj ET";
+        let s = synthetic(src, legend);
+        let plan = plan_page(&s.ops, &s.nest, &s.shows, &s.order);
+        assert_eq!(splits(&plan), [None, Some(SplitCause::PaintingOperator)]);
+        let image = s
+            .ops
+            .iter()
+            .position(|o| o.operator == "BI")
+            .expect("the image is one operation");
+        assert!(
+            plan.sequences
+                .iter()
+                .all(|q| image < q.first || q.last < image),
+            "the image sits between the sequences: {:?}",
+            plan.sequences
+        );
+        let out = splice(src, &s.t, &plan.sequences);
+        assert_eq!(
+            out,
+            b"/Div <</MCID 0>> BDC\nBT (a1) Tj ET\nEMC BI /W 1 /H 1 /CS /G /BPC 8 ID \xff EI \
+              /Div <</MCID 1>> BDC\nBT (a2) Tj ET\nEMC"
+                .as_slice()
+        );
+    }
+
+    #[test]
+    fn a_named_frame_splits_the_block_and_the_sequence_sits_inside_it() {
+        let src = b"BT (a1) Tj ET /OC /oc1 BDC BT (a2) Tj ET EMC BT (a3) Tj ET";
+        let resolve = |name: &[u8]| {
+            assert_eq!(name, b"oc1");
+            PropertyList::WithoutId
+        };
+        let ops = Content::decode(src).unwrap().operations;
+        refuse_ids(&ops, 1, &resolve).expect("a named list without an id is a frame");
+        let (out, plan) = tagged(src, legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nBT (a1) Tj ET\nEMC /OC /oc1 BDC /Div <</MCID 1>> BDC\nBT \
+             (a2) Tj ET\nEMC EMC /Div <</MCID 2>> BDC\nBT (a3) Tj ET\nEMC"
+        );
+        assert_eq!(
+            splits(&plan),
+            [
+                None,
+                Some(SplitCause::ExistingFrame),
+                Some(SplitCause::ExistingFrame)
+            ]
+        );
+        let frame = ops.iter().position(|o| o.operator == "BDC").unwrap();
+        let s = synthetic(src, legend);
+        assert_eq!(
+            s.nest[plan.sequences[1].first].frame,
+            Some(frame),
+            "the second sequence opens inside the frame"
+        );
+        assert_eq!(s.nest[plan.sequences[0].first].frame, None);
+        assert_eq!(s.nest[plan.sequences[2].first].frame, None);
+    }
+
+    #[test]
+    fn an_artifact_frame_between_two_lines_splits_and_is_never_enclosed() {
+        let src = b"BT (a1) Tj ET /Artifact BMC BT (h1) Tj ET EMC BT (a2) Tj ET";
+        let (out, plan) = tagged(src, legend);
+        assert_eq!(
+            out,
+            "/Div <</MCID 0>> BDC\nBT (a1) Tj ET\nEMC /Artifact BMC BT (h1) Tj ET EMC /Div \
+             <</MCID 1>> BDC\nBT (a2) Tj ET\nEMC"
+        );
+        assert_eq!(splits(&plan), [None, Some(SplitCause::Artifact)]);
+        // Furniture with no frame of its own — a run the page marked /Artifact by nesting — is
+        // foreign too, and named as such.
+        let (_, plan) = tagged(b"BT (a1) Tj (h1) Tj (a2) Tj ET", legend);
+        assert_eq!(splits(&plan), [None, Some(SplitCause::Artifact)]);
+    }
+
+    #[test]
+    fn a_foreign_operator_inside_the_text_object_splits_at_the_operators() {
+        let (out, plan) = tagged(b"BT (a1) Tj (b1) Tj (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n(a1) Tj\nEMC /Div <</MCID 1>> BDC\n(b1) Tj\nEMC /Div \
+             <</MCID 2>> BDC\n(a2) Tj\nEMC ET"
+        );
+        assert_eq!(
+            splits(&plan),
+            [None, None, Some(SplitCause::ForeignRun)],
+            "the third sequence is block A's second, ended by block B's operator"
+        );
+        assert_eq!(
+            placements(&plan),
+            [
+                Placement::Operators,
+                Placement::Operators,
+                Placement::Operators
+            ]
+        );
+        assert_eq!(
+            plan.blocks,
+            vec![(BLOCK_A, vec![0, 2]), (BLOCK_B, vec![1])],
+            "ids dense in stream order, each block's ascending"
+        );
+        // A dropped or empty run is foreign the same way, and is never enclosed.
+        let (out, plan) = tagged(b"BT (a1) Tj (x1) Tj (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n(a1) Tj\nEMC (x1) Tj /Div <</MCID 1>> BDC\n(a2) \
+             Tj\nEMC ET"
+        );
+        assert_eq!(splits(&plan), [None, Some(SplitCause::ForeignRun)]);
+    }
+
+    #[test]
+    fn a_shared_text_object_keeps_a_block_from_leaving_it() {
+        // Block A's first line shares a text object with block B; its second has one of its own.
+        // The first sequence cannot widen past B's operator, so the two never meet at one depth.
+        let (out, plan) = tagged(b"BT (b1) Tj (a1) Tj ET BT (a2) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n(b1) Tj\nEMC /Div <</MCID 1>> BDC\n(a1) Tj\nEMC ET /Div \
+             <</MCID 2>> BDC\nBT (a2) Tj ET\nEMC"
+        );
+        assert_eq!(
+            splits(&plan),
+            [None, None, Some(SplitCause::SharedTextObject)]
+        );
+        // An unbalanced save between two text objects of one block is the graphics-state cause.
+        let (_, plan) = tagged(b"BT (a1) Tj ET q BT (a2) Tj ET", legend);
+        assert_eq!(splits(&plan), [None, Some(SplitCause::GraphicsState)]);
+    }
+
+    #[test]
+    fn the_sequence_opens_before_the_first_lines_positioning() {
+        // The convention `engine-tagged-blocks` is written to: inside a shared text object the
+        // sequence opens before the `Tm` of its first line and after the `Tf` that serves every
+        // block, so its own position rides inside it and state that persists past it does not.
+        let (out, plan) = tagged(
+            b"BT /F1 12 Tf 1 0 0 1 72 700 Tm (a1) Tj 1 0 0 1 72 686 Tm (a2) Tj 1 0 0 1 72 644 \
+              Tm (b1) Tj ET",
+            legend,
+        );
+        assert_eq!(
+            out,
+            "BT /F1 12 Tf /Div <</MCID 0>> BDC\n1 0 0 1 72 700 Tm (a1) Tj 1 0 0 1 72 686 Tm \
+             (a2) Tj\nEMC /Div <</MCID 1>> BDC\n1 0 0 1 72 644 Tm (b1) Tj\nEMC ET"
+        );
+        assert_eq!(plan.blocks, vec![(BLOCK_A, vec![0]), (BLOCK_B, vec![1])]);
+        // Every operator of Table 108 is positioning; a text-state operator between the
+        // positioning and the text ends the walk back.
+        let (out, _) = tagged(b"BT 0 -14 Td (a1) Tj 0 -14 TD T* (b1) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n0 -14 Td (a1) Tj\nEMC /Div <</MCID 1>> BDC\n0 -14 TD T* \
+             (b1) Tj\nEMC ET"
+        );
+        let (out, _) = tagged(b"BT 1 0 0 1 0 0 Tm /F1 12 Tf (a1) Tj (b1) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT 1 0 0 1 0 0 Tm /F1 12 Tf /Div <</MCID 0>> BDC\n(a1) Tj\nEMC /Div <</MCID 1>> \
+             BDC\n(b1) Tj\nEMC ET"
+        );
+    }
+
+    #[test]
+    fn ids_follow_stream_order_and_elements_follow_reading_order() {
+        // The two-column shape: block B is written first, and block A is read first.
+        let (out, plan) = tagged_in_order(
+            b"BT (b1) Tj (b2) Tj (a1) Tj (a2) Tj ET",
+            legend,
+            Some(&[BLOCK_A, BLOCK_B]),
+        );
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n(b1) Tj (b2) Tj\nEMC /Div <</MCID 1>> BDC\n(a1) Tj (a2) \
+             Tj\nEMC ET"
+        );
+        assert_eq!(plan.blocks, vec![(BLOCK_A, vec![1]), (BLOCK_B, vec![0])]);
+        // Interleaved, so each block is several sequences and every `/K` stays ascending.
+        let (_, plan) = tagged_in_order(
+            b"BT (b1) Tj (a1) Tj (b2) Tj (a2) Tj ET",
+            legend,
+            Some(&[BLOCK_A, BLOCK_B]),
+        );
+        assert_eq!(
+            plan.blocks,
+            vec![(BLOCK_A, vec![1, 3]), (BLOCK_B, vec![0, 2])]
+        );
+        // A block in the reading order with no operator of its own gets no element.
+        let (_, plan) = tagged_in_order(b"BT (a1) Tj ET", legend, Some(&[BLOCK_B, BLOCK_A]));
+        assert_eq!(plan.blocks, vec![(BLOCK_A, vec![0])]);
+    }
+
+    #[test]
+    fn the_splice_inserts_at_token_boundaries_and_nothing_else_moves() {
+        // Operations that abut without whitespace, a comment, and a trailing newline: the
+        // inserted tokens land where the tokeniser said an operation starts and ends.
+        let (out, _) = tagged(b"BT(a1)Tj(b1)Tj%note\nET\n", legend);
+        assert_eq!(
+            out,
+            "BT/Div <</MCID 0>> BDC\n(a1)Tj\nEMC\n/Div <</MCID 1>> BDC\n(b1)Tj\nEMC\n%note\nET\n"
+        );
+        // Whitespace already after the last operator gets no second newline, and a space there
+        // is kept as it was.
+        let (out, _) = tagged(b"BT (a1) Tj\n(b1) Tj ET", legend);
+        assert_eq!(
+            out,
+            "BT /Div <</MCID 0>> BDC\n(a1) Tj\nEMC\n/Div <</MCID 1>> BDC\n(b1) Tj\nEMC ET"
+        );
+    }
+
+    #[test]
+    fn nesting_tracks_frames_depths_and_artifacts() {
+        let ops = Content::decode(b"q BT /Artifact BMC /Span BDC (h) Tj EMC EMC ET Q EMC Q")
+            .unwrap()
+            .operations;
+        let n = nesting(&ops);
+        assert_eq!(n.len(), ops.len() + 1);
+        let at = |i: usize| (n[i].frame, n[i].q, n[i].bt, n[i].artifact);
+        assert_eq!(at(0), (None, 0, 0, false), "before q");
+        assert_eq!(at(2), (None, 1, 1, false), "before the artifact BMC");
+        assert_eq!(at(3), (Some(2), 1, 1, true), "before the nested BDC");
+        assert_eq!(at(4), (Some(3), 1, 1, true), "the whole stack is asked");
+        assert_eq!(at(6), (Some(2), 1, 1, true), "before the outer EMC");
+        assert_eq!(at(7), (None, 1, 1, false), "before ET");
+        assert_eq!(at(9), (None, 0, 0, false), "a stray EMC pops nothing");
+        assert_eq!(at(10), (None, 0, 0, false), "before the stray Q");
+        assert_eq!(at(11), (None, -1, 0, false), "and a stray Q dips");
+    }
+
+    #[test]
+    fn ids_in_the_content_stream_are_refused_by_name() {
+        let refused = |src: &[u8], resolve: &dyn Fn(&[u8]) -> PropertyList, needle: &str| {
+            let ops = Content::decode(src).unwrap().operations;
+            let e = refuse_ids(&ops, 3, resolve).expect_err("refused");
+            assert_eq!(e.code(), "unsupported");
+            let msg = e.to_string();
+            assert!(
+                msg.starts_with("unsupported tagging: page 3, operation "),
+                "{msg}"
+            );
+            assert!(msg.contains(needle), "{msg}");
+        };
+        let never = |_: &[u8]| panic!("an inline list is not resolved");
+        refused(
+            b"BT /P <</MCID 0>> BDC (a) Tj EMC ET",
+            &never,
+            "carries a marked-content id in the content stream",
+        );
+        refused(
+            b"/Span /MC0 BDC EMC",
+            &|_: &[u8]| PropertyList::WithId,
+            "`/Span /MC0 BDC` names a property list that carries `/MCID`",
+        );
+        refused(
+            b"/P /MC1 BDC EMC",
+            &|_: &[u8]| PropertyList::Unresolved,
+            "does not hold, so whether it carries an id cannot be said",
+        );
+        refused(
+            b"/P /MC2 BDC EMC",
+            &|_: &[u8]| PropertyList::NotADictionary("Stream".into()),
+            "resolves to Stream rather than a dictionary",
+        );
+        // A named list without an id, a `BMC`, and a `BDC` whose second operand is neither a
+        // name nor a dictionary are frames, not refusals.
+        let ops = Content::decode(b"/OC /oc1 BDC /Artifact BMC /Span 5 BDC EMC EMC EMC")
+            .unwrap()
+            .operations;
+        refuse_ids(&ops, 3, &|_: &[u8]| PropertyList::WithoutId).expect("frames only");
+    }
+
+    fn a_run(text: &str, region: Option<u32>, block: Option<u32>, artifact: bool) -> TextRun {
+        use ethos_parser_core::{GeometryAbsence, GeometryPresence, PdfArtifactLocator};
+        let mut alloc = ethos_parser_core::IdAllocator::new(
+            ethos_parser_core::Profile::default()
+                .profile_sha256()
+                .unwrap(),
+        );
+        TextRun {
+            id: alloc.next(ethos_parser_core::IdKind::Span).unwrap(),
+            text: text.to_string(),
+            char_codes: text.bytes().map(u32::from).collect(),
+            scalar_code_mismatch: false,
+            synthesized: Vec::new(),
+            font_id: "F1".into(),
+            font_size: 1200,
+            locator: crate::nodes::PdfLocator {
+                page: 1,
+                origin_x: 7200,
+                origin_y: 2000,
+                advance: Some(1000),
+            },
+            geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
+            region,
+            block,
+            mcid: None,
+            structural: artifact.then_some(ethos_parser_core::StructuralLocator::PdfArtifact(
+                PdfArtifactLocator { mcid: None },
+            )),
+            derivation: ethos_parser_core::DerivationClass::Extracted,
+            findings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn what_each_operator_shows_comes_from_the_runs_and_their_positions() {
+        let ops = Content::decode(b"BT (a) Tj [(b) (c)] TJ ( ) Tj (h) Tj ET")
+            .unwrap()
+            .operations;
+        let runs = [
+            a_run("a", None, Some(1), false),
+            a_run("b", None, Some(1), false),
+            a_run("c", None, Some(1), false),
+            a_run("h", None, Some(2), true),
+        ];
+        // The empty-looking run at operation 3 was dropped and has no position at all.
+        let positions = [1, 2, 2, 4];
+        let shows = shows_from_runs(&ops, 1, &runs, &positions).expect("consistent");
+        assert_eq!(
+            shows,
+            [
+                None,
+                Some(Shows::Block((None, Some(1)))),
+                Some(Shows::Block((None, Some(1)))),
+                Some(Shows::Nothing),
+                Some(Shows::Artifact),
+                None
+            ]
+        );
+        assert_eq!(
+            blocks_in_reading_order(&runs),
+            [(None, Some(1))],
+            "an artifact run opens no block"
+        );
+
+        // One `TJ` whose strings the cut placed in two blocks is refused by name.
+        let split = [
+            a_run("a", None, Some(1), false),
+            a_run("b", Some(1), Some(1), false),
+            a_run("c", Some(2), Some(1), false),
+        ];
+        let e = shows_from_runs(&ops, 7, &split, &[1, 2, 2]).expect_err("two blocks");
+        assert_eq!(e.code(), "unsupported");
+        assert!(
+            e.to_string().contains(
+                "page 7, operation 2 shows runs the cut placed in two blocks (block (Some(1), \
+                 Some(1)) for `b` and block (Some(2), Some(1)) for `c`)"
+            ),
+            "{e}"
+        );
+        // A position naming an operation that shows nothing cannot come from extraction.
+        let e = shows_from_runs(&ops, 7, &runs[..1], &[0]).expect_err("BT shows nothing");
+        assert_eq!(e.code(), "malformed");
+        assert!(e.to_string().contains("names operation 0"), "{e}");
+    }
+
+    #[test]
+    fn the_well_formedness_check_names_the_first_failing_condition() {
+        let s = synthetic(
+            b"BT (a1) Tj ET /Im Do BT (b1) Tj ET /Artifact BMC BT (h1) Tj ET EMC",
+            legend,
+        );
+        let seq = |block: BlockKey, first: usize, last: usize, mcid: i64| Sequence {
+            block,
+            first,
+            last,
+            mcid,
+            placement: Placement::Operators,
+            split: None,
+        };
+        let check = |seqs: &[Sequence]| {
+            sequences_are_well_formed(&s.ops, &s.nest, &s.shows, seqs).expect_err("ill-formed")
+        };
+        assert_eq!(
+            check(&[seq(BLOCK_A, 0, 2, 1)]),
+            "sequence 0 in stream order carries id 1: ids must be dense from 0 in stream order"
+        );
+        assert!(check(&[seq(BLOCK_A, 0, 4, 0)]).contains("the painting operator `Do`"));
+        assert!(check(&[seq(BLOCK_A, 4, 7, 0)]).contains("text-showing operator of block"));
+        assert!(check(&[seq(BLOCK_A, 0, 0, 0)]).contains("encloses no text-showing operator"));
+        assert!(check(&[seq(BLOCK_A, 0, 1, 0)]).contains("opens at frame None q 0 bt 0 and closes"));
+        assert!(check(&[seq(BLOCK_A, 0, 2, 0), seq(BLOCK_B, 2, 7, 1)])
+            .contains("inside the previous sequence"));
+        assert!(check(&[seq(BLOCK_A, 0, 2, 0), seq(BLOCK_A, 8, 12, 1)])
+            .contains("spans operations 8..=12 of 12"));
+        assert!(check(&[seq(BLOCK_B, 4, 8, 0)]).contains("the opening of an /Artifact frame"));
+        assert!(check(&[seq(BLOCK_A, 9, 11, 0)]).contains("sits inside an /Artifact frame"));
+        // A sequence that leaves one text object and enters the next dips below its own depth,
+        // and the boundary check would not see it: both ends are inside a text object.
+        let two = synthetic(b"BT (a1) Tj ET BT (a2) Tj ET", legend);
+        let e =
+            sequences_are_well_formed(&two.ops, &two.nest, &two.shows, &[seq(BLOCK_A, 1, 4, 0)])
+                .expect_err("straddles");
+        assert!(e.contains("dips below its own depth at operation 3"), "{e}");
+        sequences_are_well_formed(
+            &s.ops,
+            &s.nest,
+            &s.shows,
+            &[seq(BLOCK_A, 0, 2, 0), seq(BLOCK_B, 4, 6, 1)],
+        )
+        .expect("the plan the rule makes");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The placement rule, on the fixtures
+    // ---------------------------------------------------------------------------------------
+
+    /// One page of an engine fixture, planned exactly as the writer plans it, and its spliced
+    /// stream.
+    fn planned_fixture(name: &str, page_number: u32) -> (PagePlan, Vec<u8>, Vec<TextRun>) {
+        let bytes = crate::test_support::engine_fixture(&format!("{name}/document.pdf"));
+        let profile = ethos_parser_core::Profile::default();
+        let doc = crate::document::Document::open_bytes(&bytes, &profile).expect("opens");
+        let (artifact, positions) =
+            crate::extract::extract_with_positions(&doc, &profile).expect("extracts");
+        let page = artifact
+            .pages
+            .iter()
+            .find(|p| p.index == page_number)
+            .expect("the page was processed");
+        let page_id = doc
+            .pages()
+            .iter()
+            .find(|(n, _)| *n == page_number)
+            .map(|(_, id)| *id)
+            .unwrap();
+        let buffer = page_content_strict(doc.inner(), page_id).expect("decodes strictly");
+        let t = tokenise(&buffer).expect("tokenises");
+        let ops = Content::decode(&buffer).unwrap().operations;
+        agrees_with_lopdf(&t, &ops).expect("agrees");
+        let nest = nesting(&ops);
+        let shows = shows_from_runs(&ops, page_number, &page.runs, &positions[&page_number])
+            .expect("consistent");
+        let order = blocks_in_reading_order(&page.runs);
+        let plan = plan_page(&ops, &nest, &shows, &order);
+        sequences_are_well_formed(&ops, &nest, &shows, &plan.sequences).expect("well formed");
+        let out = splice(&buffer, &t, &plan.sequences);
+        (plan, out, page.runs.clone())
+    }
+
+    fn tokens(bytes: &[u8]) -> Vec<String> {
+        lossy(bytes).split_whitespace().map(str::to_owned).collect()
+    }
+
+    /// **Scope §3.4's shared-text-object case, on the block cut's own fixture.** Six `Tj`s in
+    /// one text object, two blocks: two sequences, ids 0 and 1, each opened inside the text
+    /// object before its block's first `Tm` and closed after its last `Tj` — the token sequence
+    /// `engine-tagged-blocks` is written to on `fix/s1-review`, byte for byte apart from the
+    /// newlines the writer puts around each inserted token group.
+    #[test]
+    fn the_leading_gap_page_is_two_sequences_inside_its_one_text_object() {
+        let (plan, out, _) = planned_fixture("leading-gap-two-blocks", 1);
+        assert_eq!(plan.sequences.len(), 2);
+        assert_eq!(
+            placements(&plan),
+            [Placement::Operators, Placement::Operators]
+        );
+        assert_eq!(splits(&plan), [None, None]);
+        assert_eq!(
+            plan.blocks,
+            vec![((None, Some(1)), vec![0]), ((None, Some(2)), vec![1])]
+        );
+        assert_eq!(
+            out,
+            b"BT /F1 12 Tf /Div <</MCID 0>> BDC\n1 0 0 1 72 700 Tm (Water finds its level) Tj \
+              1 0 0 1 72 686 Tm (and stone keeps its shape) Tj 1 0 0 1 72 672 Tm (through the \
+              long season) Tj\nEMC /Div <</MCID 1>> BDC\n1 0 0 1 72 644 Tm (Wind moves the \
+              grass) Tj 1 0 0 1 72 630 Tm (and light moves the shade) Tj 1 0 0 1 72 616 Tm \
+              (across the open field) Tj\nEMC ET\n"
+                .as_slice()
+        );
+        assert_eq!(
+            tokens(&out),
+            tokens(
+                b"BT /F1 12 Tf /Div <</MCID 0>> BDC 1 0 0 1 72 700 Tm (Water finds its level) \
+                  Tj 1 0 0 1 72 686 Tm (and stone keeps its shape) Tj 1 0 0 1 72 672 Tm \
+                  (through the long season) Tj EMC /Div <</MCID 1>> BDC 1 0 0 1 72 644 Tm \
+                  (Wind moves the grass) Tj 1 0 0 1 72 630 Tm (and light moves the shade) Tj \
+                  1 0 0 1 72 616 Tm (across the open field) Tj EMC ET"
+            ),
+            "the convention of the revised engine-tagged-blocks stream"
+        );
+    }
+
+    /// The two-column page: one text object shared by two bands written right column first.
+    /// Each band is one block and one sequence; ids follow the stream (the right column is 0)
+    /// and the elements follow the reading order (the left column's `/Div` first).
+    #[test]
+    fn the_two_column_page_is_one_sequence_per_band_with_the_left_element_first() {
+        let (plan, out, runs) = planned_fixture("two-column-15-lines", 1);
+        assert_eq!(runs.len(), 15);
+        assert_eq!(plan.sequences.len(), 2);
+        assert_eq!(
+            plan.blocks,
+            vec![((Some(1), Some(1)), vec![1]), ((Some(2), Some(2)), vec![0])],
+            "each band is one block, numbered per page in reading order"
+        );
+        assert_eq!(
+            placements(&plan),
+            [Placement::Operators, Placement::Operators]
+        );
+        let text = lossy(&out);
+        assert!(
+            text.contains("/Div <</MCID 0>> BDC\n1 0 0 1 240 260 Tm (R1) Tj"),
+            "{text}"
+        );
+        assert!(
+            text.contains("(R7) Tj\nEMC /Div <</MCID 1>> BDC\n1 0 0 1 40 260 Tm (L1) Tj"),
+            "{text}"
+        );
+        assert!(text.ends_with("(L8) Tj\nEMC ET\n"), "{text}");
+    }
+
+    /// Four runs on one baseline, each in its own text object: the block cut does not divide
+    /// a single line, so the page is one block, and four whole text objects separated by nothing
+    /// widen and merge into one sequence.
+    #[test]
+    fn the_shredded_line_is_one_sequence_over_its_four_text_objects() {
+        let (plan, out, runs) = planned_fixture("untagged-shredded-line", 1);
+        let keys: std::collections::BTreeSet<BlockKey> =
+            runs.iter().map(|r| (r.region, r.block)).collect();
+        assert_eq!(keys.len(), 1, "one block: {keys:?}");
+        assert_eq!(plan.sequences.len(), 1, "{:?}", plan.sequences);
+        assert_eq!(placements(&plan), [Placement::TextObject]);
+        assert_eq!(
+            out,
+            b"/Div <</MCID 0>> BDC\nBT /F1 24 Tf 72 100 Td (Yar) Tj ET BT /F1 24 Tf 108 100 Td \
+              (ro) Tj ET BT /F1 24 Tf 132 100 Td (w) Tj ET BT /F1 24 Tf 184 100 Td (Separate) \
+              Tj ET\nEMC\n"
+                .as_slice()
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The tree and the stamp
+    // ---------------------------------------------------------------------------------------
+
+    /// A document with `pages` empty pages under a catalog, as lopdf builds one.
+    fn blank_document(pages: usize) -> (lopdf::Document, Vec<ObjectId>) {
+        let mut doc = lopdf::Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let mut kids = Vec::new();
+        for _ in 0..pages {
+            let mut page = lopdf::Dictionary::new();
+            page.set("Type", Object::Name(b"Page".to_vec()));
+            page.set("Parent", Object::Reference(pages_id));
+            kids.push(doc.add_object(Object::Dictionary(page)));
+        }
+        let mut tree = lopdf::Dictionary::new();
+        tree.set("Type", Object::Name(b"Pages".to_vec()));
+        tree.set(
+            "Kids",
+            Object::Array(kids.iter().map(|k| Object::Reference(*k)).collect()),
+        );
+        tree.set("Count", Object::Integer(pages as i64));
+        doc.set_object(pages_id, Object::Dictionary(tree));
+        let mut catalog = lopdf::Dictionary::new();
+        catalog.set("Type", Object::Name(b"Catalog".to_vec()));
+        catalog.set("Pages", Object::Reference(pages_id));
+        let catalog_id = doc.add_object(Object::Dictionary(catalog));
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+        (doc, kids)
+    }
+
+    fn dict_of(doc: &lopdf::Document, o: &Object) -> lopdf::Dictionary {
+        doc.dereference(o)
+            .expect("resolves")
+            .1
+            .as_dict()
+            .expect("a dictionary")
+            .clone()
+    }
+
+    #[test]
+    fn the_tree_is_one_document_over_one_div_per_block_with_a_parent_tree() {
+        let (mut doc, pages) = blank_document(3);
+        let seq = |block: BlockKey, mcid: i64| Sequence {
+            block,
+            first: 0,
+            last: 0,
+            mcid,
+            placement: Placement::Operators,
+            split: None,
+        };
+        // Page 1: block A is ids 0 and 2, block B is id 1. Page 2 has no sequence and is not
+        // rewritten. Page 3: one block, one sequence.
+        let first = PagePlan {
+            sequences: vec![seq(BLOCK_A, 0), seq(BLOCK_B, 1), seq(BLOCK_A, 2)],
+            blocks: vec![(BLOCK_A, vec![0, 2]), (BLOCK_B, vec![1])],
+        };
+        let third = PagePlan {
+            sequences: vec![seq(BLOCK_A, 0)],
+            blocks: vec![(BLOCK_A, vec![0])],
+        };
+        let before = doc.max_id;
+        let elements = write_tree(
+            &mut doc,
+            &[(pages[0], &first), (pages[2], &third)],
+            "some-rule-v9",
+        )
+        .expect("writes");
+        assert_eq!(elements, 4, "one /Document and three /Div");
+        assert_eq!(
+            doc.max_id,
+            before + 5,
+            "the root, the document element and three /Div, numbered in that order"
+        );
+
+        let catalog = doc.catalog().unwrap().clone();
+        let root = dict_of(&doc, catalog.get(b"StructTreeRoot").expect("attached"));
+        assert_eq!(
+            root.get(b"Type").unwrap().as_name().unwrap(),
+            b"StructTreeRoot"
+        );
+        assert_eq!(
+            root.get(b"ParentTreeNextKey").unwrap().as_i64().unwrap(),
+            2,
+            "one key per rewritten page"
+        );
+        let document = dict_of(&doc, &root.get(b"K").unwrap().as_array().unwrap()[0]);
+        assert_eq!(document.get(b"S").unwrap().as_name().unwrap(), b"Document");
+        assert_eq!(
+            document.get(b"P").unwrap(),
+            catalog.get(b"StructTreeRoot").unwrap()
+        );
+        let expected_attribute = {
+            let mut a = lopdf::Dictionary::new();
+            a.set("O", Object::Name(b"EthosParser".to_vec()));
+            a.set("Derivation", Object::Name(b"Computed".to_vec()));
+            a.set("Rule", Object::string_literal("some-rule-v9"));
+            a
+        };
+        assert_eq!(
+            document.get(b"A").unwrap().as_dict().unwrap(),
+            &expected_attribute,
+            "the rule string comes from the caller, never a literal"
+        );
+        let divs = document.get(b"K").unwrap().as_array().unwrap().clone();
+        assert_eq!(divs.len(), 3, "blocks in page order, then reading order");
+        let div = |i: usize| dict_of(&doc, &divs[i]);
+        for i in 0..3 {
+            let d = div(i);
+            assert_eq!(d.get(b"Type").unwrap().as_name().unwrap(), b"StructElem");
+            assert_eq!(d.get(b"S").unwrap().as_name().unwrap(), b"Div");
+            assert_eq!(
+                d.get(b"P").unwrap(),
+                &root.get(b"K").unwrap().as_array().unwrap()[0]
+            );
+            assert_eq!(d.get(b"A").unwrap().as_dict().unwrap(), &expected_attribute);
+        }
+        assert_eq!(div(0).get(b"Pg").unwrap(), &Object::Reference(pages[0]));
+        assert_eq!(
+            div(0).get(b"K").unwrap(),
+            &Object::Array(vec![Object::Integer(0), Object::Integer(2)])
+        );
+        assert_eq!(
+            div(1).get(b"K").unwrap(),
+            &Object::Array(vec![Object::Integer(1)])
+        );
+        assert_eq!(div(2).get(b"Pg").unwrap(), &Object::Reference(pages[2]));
+        assert_eq!(
+            div(2).get(b"K").unwrap(),
+            &Object::Array(vec![Object::Integer(0)])
+        );
+
+        // The parent tree indexes each page's ids by position to the element that cites them.
+        let parent_tree = root.get(b"ParentTree").unwrap().as_dict().unwrap();
+        assert_eq!(
+            parent_tree.get(b"Nums").unwrap(),
+            &Object::Array(vec![
+                Object::Integer(0),
+                Object::Array(vec![divs[0].clone(), divs[1].clone(), divs[0].clone()]),
+                Object::Integer(1),
+                Object::Array(vec![divs[2].clone()]),
+            ])
+        );
+        let struct_parents = |page: ObjectId| {
+            doc.get_dictionary(page)
+                .unwrap()
+                .get(b"StructParents")
+                .ok()
+                .cloned()
+        };
+        assert_eq!(struct_parents(pages[0]), Some(Object::Integer(0)));
+        assert_eq!(struct_parents(pages[1]), None, "not rewritten, not keyed");
+        assert_eq!(struct_parents(pages[2]), Some(Object::Integer(1)));
+        assert!(
+            catalog.get(b"MarkInfo").is_err(),
+            "no /MarkInfo is written (scope §3.4)"
+        );
+
+        // The stamp rides on the catalog beside the tree.
+        stamp_tags(&mut doc, "sha256:aa", "sha256:bb", "0.0.0-test").expect("stamps");
+        let stamp = doc
+            .catalog()
+            .unwrap()
+            .get(b"EthosParserTags")
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .clone();
+        let text = |key: &[u8]| lossy(stamp.get(key).unwrap().as_str().unwrap());
+        assert_eq!(text(b"ArtifactType"), TAGS_ARTIFACT_TYPE);
+        assert_eq!(text(b"SourceSha256"), "sha256:aa");
+        assert_eq!(text(b"ProfileSha256"), "sha256:bb");
+        assert_eq!(text(b"ParserVersion"), "0.0.0-test");
+        assert_eq!(TAGS_ARTIFACT_TYPE, "ethos.parser.tags.v0");
+    }
+
+    #[test]
+    fn a_plan_whose_ids_do_not_cover_its_sequences_is_refused_by_the_tree() {
+        let (mut doc, pages) = blank_document(1);
+        let seq = |mcid: i64| Sequence {
+            block: BLOCK_A,
+            first: 0,
+            last: 0,
+            mcid,
+            placement: Placement::Operators,
+            split: None,
+        };
+        let orphan = PagePlan {
+            sequences: vec![seq(0), seq(1)],
+            blocks: vec![(BLOCK_A, vec![0])],
+        };
+        let e = write_tree(&mut doc, &[(pages[0], &orphan)], "r").expect_err("id 1 is nobody's");
+        assert!(e.to_string().contains("id 1 on page object"), "{e}");
+        let beyond = PagePlan {
+            sequences: vec![seq(0)],
+            blocks: vec![(BLOCK_A, vec![0, 5])],
+        };
+        let e = write_tree(&mut doc, &[(pages[0], &beyond)], "r").expect_err("id 5 does not exist");
+        assert!(e.to_string().contains("cites id 5"), "{e}");
     }
 }
