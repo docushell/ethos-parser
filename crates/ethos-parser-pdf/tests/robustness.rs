@@ -414,9 +414,9 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **64** at v2.2-S3, and not one of the four additions since v2-S21 is a
-/// mutation-behaviour change. `ink-past-the-media-box` (D4-S5), `form-xobject-text-drawn`
-/// (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
+/// The pinned set is **67**, and not one of the seven additions since v2-S21 is a
+/// mutation-behaviour change. It was **64** at v2.2-S3: `ink-past-the-media-box` (D4-S5),
+/// `form-xobject-text-drawn` (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
 /// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
 /// `junk-after-eof` exactly as every other engine fixture does — bytes appended past `%%EOF`
 /// leave the cross-reference table resolving. The v2-S21 measurement above stands as recorded;
