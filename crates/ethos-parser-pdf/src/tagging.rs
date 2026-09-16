@@ -52,6 +52,19 @@
 //! resynchronise at the same byte by construction and no inserted operator can land inside image
 //! data.
 //!
+//! # Measured, 2026-09-17
+//!
+//! Over every PDF in `fixtures/engine` (49), `fixtures/gate` (8) and the oracle fixtures (35, of
+//! which 3 exist not to open: a corrupt header, a non-PDF, a password) — 89 documents, 1 567
+//! pages, 76 646 614 bytes of decoded content — the strict decoder returned `get_page_content`'s
+//! bytes on all 1 567 pages and refused none: no page in these corpora carries a filter other than
+//! none or `FlateDecode`, a predictor, a truncated stream or bytes after its deflate data. The
+//! tokeniser placed every byte of all 1 567 pages, agreed with `lopdf` on all 6 697 547
+//! operations, and refused none; `lopdf`'s strict parse succeeded on every one of them, so no page
+//! in these corpora is one its lenient decoder truncates. Every refusal therefore has a unit test
+//! and no corpus example yet; the two corpus tests at the end of this file print the census and
+//! hold those numbers as floors.
+//!
 //! # What is here and what is not yet
 //!
 //! The strict decoder, the tokeniser, and [`OpKind`], the per-operator classification the
@@ -1209,29 +1222,37 @@ mod tests {
     /// The coverage condition of scope §3.5: the spans are in order, each slice ends with its
     /// operator (`EI` for an inline image) and starts on its own first token, and the gaps hold
     /// nothing but whitespace and comments. Shared with the corpus tests.
-    pub(super) fn assert_every_byte_placed(bytes: &[u8], t: &Tokenised) {
+    fn assert_every_byte_placed(label: &str, bytes: &[u8], t: &Tokenised) {
         let mut cursor = 0usize;
         for (i, op) in t.ops.iter().enumerate() {
             assert!(
                 cursor <= op.start && op.start < op.end && op.end <= bytes.len(),
-                "op {i} {op:?} is out of order or out of range (cursor {cursor}, len {})",
+                "{label}: op {i} {op:?} is out of order or out of range (cursor {cursor}, len {})",
                 bytes.len()
             );
             assert_gap_is_blank(bytes, cursor, op.start);
             let slice = &bytes[op.start..op.end];
             if op.operator == "BI" {
-                assert!(slice.starts_with(b"BI"), "op {i}: {:?}", lossy(slice));
-                assert!(slice.ends_with(b"EI"), "op {i}: {:?}", lossy(slice));
+                assert!(
+                    slice.starts_with(b"BI"),
+                    "{label}: op {i}: {:?}",
+                    lossy(slice)
+                );
+                assert!(
+                    slice.ends_with(b"EI"),
+                    "{label}: op {i}: {:?}",
+                    lossy(slice)
+                );
             } else {
                 assert!(
                     slice.ends_with(op.operator.as_bytes()),
-                    "op {i}: {:?} does not end with `{}`",
+                    "{label}: op {i}: {:?} does not end with `{}`",
                     lossy(slice),
                     op.operator
                 );
                 assert!(
                     !b" \t\r\n%".contains(&slice[0]),
-                    "op {i}: {:?} starts on whitespace or a comment",
+                    "{label}: op {i}: {:?} starts on whitespace or a comment",
                     lossy(slice)
                 );
             }
@@ -1255,7 +1276,7 @@ mod tests {
         if let Ok(t) = &result {
             let lenient = Content::decode(bytes).expect("strict succeeded, so lenient does");
             agrees_with_lopdf(t, &lenient.operations).expect("operators agree");
-            assert_every_byte_placed(bytes, t);
+            assert_every_byte_placed(&lossy(bytes), bytes, t);
         }
         result
     }
@@ -1932,5 +1953,171 @@ mod tests {
             "{e}"
         );
         assert!(e.to_string().ends_with("/ASCIIHexDecode"), "{e}");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The corpora: every PDF in fixtures/engine, fixtures/gate and the oracle fixtures
+    // ---------------------------------------------------------------------------------------
+
+    /// Every PDF in the three corpora, opened and handed to `f` with a label; the documents
+    /// that do not open are returned by name rather than skipped. The oracle corpus holds
+    /// fixtures that exist not to open — a corrupt header, a password — and a census that did
+    /// not say so would be a census of a different corpus.
+    fn for_each_corpus_document(
+        mut f: impl FnMut(&str, &crate::document::Document),
+    ) -> (usize, Vec<String>) {
+        use crate::test_support::{corpus_root, pdfs_under};
+        let profile = ethos_parser_core::Profile::default();
+        let mut opened = 0usize;
+        let mut unopened = Vec::new();
+        for root in ["engine", "gate", "conformance"] {
+            let dir = corpus_root(root);
+            let pdfs = pdfs_under(&dir);
+            assert!(
+                !pdfs.is_empty(),
+                "corpus `{root}` at {} holds no PDF. A missing corpus is a failure, never a skip.",
+                dir.display()
+            );
+            for path in pdfs {
+                let label = format!(
+                    "{root}/{}",
+                    path.strip_prefix(&dir).unwrap_or(&path).display()
+                );
+                let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{label}: {e}"));
+                match crate::document::Document::open_bytes(&bytes, &profile) {
+                    Ok(doc) => {
+                        opened += 1;
+                        f(&label, &doc);
+                    }
+                    Err(e) => unopened.push(format!("{label}: {}", e.code())),
+                }
+            }
+        }
+        (opened, unopened)
+    }
+
+    /// **Scope §3.5's first condition, on every page the repository can reach:** the strict
+    /// buffer is `get_page_content`'s byte for byte, or the page is refused by name.
+    ///
+    /// The census — documents, pages, bytes, and every refusal with its reason — is printed so
+    /// the commit that changes any of it can record the numbers; the floors asserted are what
+    /// the corpora held when this was written, so a walk over an empty or moved root fails
+    /// rather than passing on nothing.
+    #[test]
+    fn the_strict_decoder_matches_the_lenient_one_or_refuses_by_name() {
+        let (mut pages, mut equal, mut bytes) = (0usize, 0usize, 0usize);
+        let mut refusals: Vec<String> = Vec::new();
+        let (opened, unopened) = for_each_corpus_document(|label, doc| {
+            for &(number, id) in doc.pages() {
+                pages += 1;
+                let lenient = doc.inner().get_page_content(id);
+                match page_content_strict(doc.inner(), id) {
+                    Ok(strict) => {
+                        assert!(
+                            strict == lenient,
+                            "{label} page {number}: the strict buffer ({} bytes) differs from \
+                             get_page_content's ({} bytes)",
+                            strict.len(),
+                            lenient.len()
+                        );
+                        equal += 1;
+                        bytes += strict.len();
+                    }
+                    Err(e) => {
+                        assert!(
+                            matches!(e.code(), "malformed" | "unsupported"),
+                            "{label} page {number}: {e}"
+                        );
+                        refusals.push(format!("{label} page {number}: {e}"));
+                    }
+                }
+            }
+        });
+        println!(
+            "strict decoder census: {opened} document(s) opened, {} did not open, {pages} \
+             page(s), {equal} equal to get_page_content over {bytes} byte(s), {} refused",
+            unopened.len(),
+            refusals.len()
+        );
+        for u in &unopened {
+            println!("  did not open: {u}");
+        }
+        for r in &refusals {
+            println!("  refused: {r}");
+        }
+        assert!(opened >= 89, "{opened} documents opened");
+        assert!(pages >= 1_567, "{pages} pages walked");
+        assert_eq!(
+            equal + refusals.len(),
+            pages,
+            "every page is one or the other"
+        );
+    }
+
+    /// **Scope §3.5's second condition, on every page whose strict decode succeeds:** the
+    /// tokeniser places every byte exactly when `lopdf`'s strict parse does, and then its
+    /// operators are `lopdf`'s decode's, in order, and its spans cover the buffer.
+    ///
+    /// A page the tokeniser refuses while `lopdf`'s lenient decode succeeds is a page on which
+    /// `extract` interpreted fewer operations than the page holds and said nothing — the shape
+    /// scope §3.5 says the self-check could never catch later. Each such page is printed.
+    #[test]
+    fn the_tokeniser_accounts_for_every_byte_and_agrees_with_lopdf() {
+        let (mut pages, mut ops, mut bytes, mut undecoded) = (0usize, 0usize, 0usize, 0usize);
+        let mut refusals: Vec<String> = Vec::new();
+        let (opened, unopened) = for_each_corpus_document(|label, doc| {
+            for &(number, id) in doc.pages() {
+                let Ok(buffer) = page_content_strict(doc.inner(), id) else {
+                    undecoded += 1;
+                    continue;
+                };
+                let strict = Content::decode_strict(&buffer).is_ok();
+                let lenient = Content::decode(&buffer);
+                let page = format!("{label} page {number}");
+                match tokenise(&buffer) {
+                    Ok(t) => {
+                        assert!(
+                            strict,
+                            "{page}: the tokeniser placed every byte and lopdf's strict parse \
+                             did not"
+                        );
+                        let lenient = lenient.expect("strict parsed, so lenient does");
+                        agrees_with_lopdf(&t, &lenient.operations)
+                            .unwrap_or_else(|e| panic!("{page}: {e}"));
+                        assert_every_byte_placed(&page, &buffer, &t);
+                        pages += 1;
+                        ops += t.ops.len();
+                        bytes += buffer.len();
+                    }
+                    Err(e) => {
+                        assert!(
+                            !strict,
+                            "{page}: lopdf's strict parse placed every byte and the tokeniser \
+                             refused: {e}"
+                        );
+                        refusals.push(format!(
+                            "{page}: {e} (lopdf's lenient decode {})",
+                            match lenient {
+                                Ok(c) => format!("reads {} operation(s)", c.operations.len()),
+                                Err(_) => "fails too".to_string(),
+                            }
+                        ));
+                    }
+                }
+            }
+        });
+        println!(
+            "tokeniser census: {opened} document(s) opened, {} did not open, {pages} page(s) \
+             tokenised, {ops} operation(s), {bytes} byte(s), {undecoded} page(s) not decoded \
+             strictly, {} refused by the tokeniser",
+            unopened.len(),
+            refusals.len()
+        );
+        for r in &refusals {
+            println!("  refused: {r}");
+        }
+        assert!(opened >= 89, "{opened} documents opened");
+        assert!(pages >= 1_567, "{pages} pages tokenised");
+        assert!(ops >= 6_697_547, "{ops} operations checked");
     }
 }
