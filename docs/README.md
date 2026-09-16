@@ -4,6 +4,8 @@ Everything the project has decided, and where it is written down. Start with the
 [`README.md`](../README.md) if you just want to know what the tool does.
 
 **Version 0.58.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
+`tag`, the tenth subcommand, writes a structure tree over an untagged PDF from the block cut, marked
+computed; it fills absence only ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)).
 Tables are stated as a capability rather than as one average, re-measured at 0.58.0: the engine
 reads the tables a document declares (combined cell-slot recall 503‰), detects ruled tables where
 the producer drew them (geometric macro 69‰, band 0‰–590‰), emits nothing where neither holds, and

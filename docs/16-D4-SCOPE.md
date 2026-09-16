@@ -199,6 +199,14 @@ object under `/A` carrying a private owner — the shape `structure.rs` already 
 spans. So *permanently* was wrong, and the original sentence was right: auto-tagging gets its
 documents when somebody starts it. Nobody has. What #23 changed is that starting is now allowed.
 
+**Amended 2026-09-17.** *Nobody has* is no longer true. The second half has its scope —
+[`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md), written 2026-09-16 — and its milestones
+— [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md), the same day — and the code
+followed both, on the branch for the version after 0.58.0. The *not yet* above became *written* on
+that date, and the sentence that the second half would get **no milestones document** is superseded
+by the document itself; both are left standing as the record of what was said and when. What the
+owner still holds is in the scope's §12.
+
 ## 8. Known limitation, declared rather than discovered later
 
 **A flat ordinal is a projection of a tree.** The cut alternates axes to `MAX_CUT_DEPTH`, so a
