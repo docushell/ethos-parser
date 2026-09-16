@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 49,
+    "engine_owned": 51,
     "gate": 8
   },
   "fixtures": [
@@ -601,16 +601,16 @@
       "root": "engine",
       "group": "engine",
       "path": "engine-tagged-blocks/document.pdf",
-      "sha256": "sha256:5d04e2fbc1b21975486c2ea440dbb4ab5d6cc901264aaa47c6cf3d804111d274",
+      "sha256": "sha256:7d0c75a42c32ed1575363e978fceaaa3396547b3d22305eaaca82eea7bbac06a",
       "owner": "engine",
-      "notes": "Auto-tagging S1 (docs/24 S1.5). The leading-gap page carrying the structure tree the writer emits, WRITTEN BY HAND before the writer exists so the reader is tested against a file no shared mistake could have produced: /Document over one /Div per block, every element carrying /A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>, block 1's text object in /Div <</MCID 0>> BDC ... EMC and block 2's under MCID 1, /Pg on the two /Div elements, a /ParentTree with /ParentTreeNextKey 1, /StructParents 0 on the page, and NO /MarkInfo. Same six lines, baselines and metrics font as leading-gap-two-blocks, so the two differ in nothing but the tags. The reader must bind all six runs pdf_tagged under Document/Div with derivation: computed and declare structure-tree-engine-written (3 elements, 6 runs, gutter-columns-v3), never untagged-structure-tree-absent."
+      "notes": "Auto-tagging S1 (docs/24 S1.5). The leading-gap page carrying the structure tree the writer emits, WRITTEN BY HAND before the writer exists so the reader is tested against a file no shared mistake could have produced: /Document over one /Div per block, every element carrying /A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>, block 1's three Tj's in /Div <</MCID 0>> BDC ... EMC and block 2's under MCID 1, both sequences opened and closed INSIDE the page's one text object (docs/23 s3.4: a text object shared between two blocks is split at the operators, inside it, and s3.5: the writer inserts and never re-encodes), /Pg on the two /Div elements, a /ParentTree with /ParentTreeNextKey 1, /StructParents 0 on the page, and NO /MarkInfo. Same six lines, baselines and metrics font as leading-gap-two-blocks, and the same content-stream bytes with only the BDC/EMC tokens inserted (the generator asserts it), so the two differ in nothing but the structure tree and marked-content sequences (no catalog stamp: the s3.3 /EthosParserTags record is the writer's to fill and the reader never reads it). The reader must bind all six runs pdf_tagged under Document/Div with derivation: computed and declare structure-tree-engine-written (3 elements, 6 runs, gutter-columns-v3), never untagged-structure-tree-absent."
     },
     {
       "id": "engine-tagged-classmap",
       "root": "engine",
       "group": "engine",
       "path": "engine-tagged-classmap/document.pdf",
-      "sha256": "sha256:6aebd8cb8c6184a4d76befc9346db599fd9fa5d9a14633c5923d2bc581ed3c58",
+      "sha256": "sha256:ef41fc17c641f4232284c64be6c39efc98ecf08114eaeed3416437c6c5aacddb",
       "owner": "engine",
       "notes": "Auto-tagging S1. The engine-tagged-blocks tree with the attribute FACTORED into a class: /C /EthosBlock on every element, the one attribute object on the root's /ClassMap, and no /A anywhere. This is the shape a tool that deduplicates attribute dictionaries produces and the *ignored* case decision #23 names; scope docs/23 s4.1 has the reader accept the attribute wherever PDF 32000-1 lets it be placed. Must read identically to engine-tagged-blocks: same six bindings, same declarations."
     },
@@ -619,7 +619,7 @@
       "root": "engine",
       "group": "engine",
       "path": "engine-tagged-mixed/document.pdf",
-      "sha256": "sha256:07a4babb1bfcbbd235363e4addffbdbeff36aaee3d0c328d11abb2a9e7e7ca74",
+      "sha256": "sha256:0a1ac14b138260a859b48210815cfffbda185f29a0daf0daf83f30bc58def42b",
       "owner": "engine",
       "notes": "Auto-tagging S1. The engine-tagged-blocks tree with a FOREIGN owner inline, /A << /O /Layout /Placement /Block >> on every element, and the engine's class through /C /EthosBlock with the same /ClassMap. /A decides only when it carries the engine's owner and here it does not, so /C decides. Must read identically to engine-tagged-blocks."
     },
@@ -631,6 +631,24 @@
       "sha256": "sha256:f5938929e6e6f3436ba9e067cc8235ce7513e88e5a6cba6698f194931b838123",
       "owner": "engine",
       "notes": "Auto-tagging S1. The same page with block 1's first line inside an existing /Span BMC ... EMC and its second inside /OC /oc1 BDC ... EMC whose property list is given BY NAME through the page's /Properties (object 10, an /OCG the catalog's /OCProperties turns on). The written /Div sequence opens INSIDE each frame and closes before its EMC, because the reader binds by the innermost open sequence (docs/23 s3.4): a written sequence that merely enclosed a frame would read back with no id. Block 1 is therefore ids 0, 1 and 2 (/K [0 1 2]) and block 2 is id 3, dense in stream order, and the /ParentTree names an element per id. All six runs bind computed; the named /OC list is declared as mcid-property-list-by-name exactly as any named list is today."
+    },
+    {
+      "id": "tagged-widget-objr",
+      "root": "engine",
+      "group": "engine",
+      "path": "tagged-widget-objr/document.pdf",
+      "sha256": "sha256:b7689a95f166df554dc145919b75c1e86943c3d5b5ceff609b365de488663427",
+      "owner": "engine",
+      "notes": "Auto-tagging S1 (review). The form-field-value page under an AUTHOR'S structure tree whose one content item is an /OBJR: /Document over a /Form element whose /K is << /Type /OBJR /Obj 10 0 R /Pg 3 0 R >> citing the widget, /StructParent 0 on the widget and /ParentTree << /Nums [0 8 0 R] >> mapping that key to the element, no attribute anywhere, no marked content on the page, NO /MarkInfo. The only fixture whose tree cites an object rather than a marked-content id, so the locator the /OBJR arm mints is read by a test at all: the form_field node's structural locator must be pdf_tagged with mcid -1, role path Document/Form and derivation: extracted, and structure-tree-engine-written must be absent."
+    },
+    {
+      "id": "engine-tagged-widget-objr",
+      "root": "engine",
+      "group": "engine",
+      "path": "engine-tagged-widget-objr/document.pdf",
+      "sha256": "sha256:14e1a2269865779d95088c4fc1ac8c2748117eaec717ba001b2c6a0fad5b003d",
+      "owner": "engine",
+      "notes": "Auto-tagging S1 (review). The tagged-widget-objr tree with /A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >> on both elements, a shape the writer never produces (it tags blocks, not widgets, docs/23 s3.1) and nothing forbids. The /OBJR arm carries the class of the element that cites it, and only a Computed case proves the class is carried rather than constant: the form_field node's locator must say derivation: computed, and structure-tree-engine-written must be declared naming 2 of 2 elements and 0 text runs, since the count is of runs and this tree binds none."
     },
     {
       "id": "cfpb-home-loan-toolkit",

@@ -27,15 +27,16 @@ then tested against S1's reader, and S3 tests the pair.
 **Files.** `crates/ethos-parser-core/src/representation.rs` (`PdfTaggedLocator.derivation`),
 `crates/ethos-parser-core/src/profile.rs` (`STRUCT_TREE_RULE_V2`, the default profile, the pin),
 `crates/ethos-parser-core/src/assurance.rs` (`codes::STRUCTURE_TREE_ENGINE_WRITTEN`),
-`crates/ethos-parser-pdf/src/structure.rs` (owner read under `/A` and `/C`, derivation on
+`crates/ethos-parser-pdf/src/structure.rs` (`STRUCT_ATTRIBUTE_OWNER`, crate-private through S1, its
+spelling pinned by a test against scope §3.3; owner read under `/A` and `/C`, derivation on
 bindings, counts), `crates/ethos-parser-pdf/src/limitations.rs` (`structure_tree_engine_written`),
-`crates/ethos-parser-pdf/src/extract.rs` (declare it), `crates/ethos-parser-pdf/src/represent.rs`
-(a tagged table's derivation from its element), `crates/ethos-parser-pdf/src/lib.rs`
-(`STRUCT_ATTRIBUTE_OWNER`), `fixtures/engine/make_fixtures.py` and `fixtures/manifest.json` (the
-fixtures below), `crates/ethos-parser-pdf/tests/robustness.rs` (the pinned survivors),
-`docs/draft-schemas/document-representation.draft.json`, `docs/draft-schemas/profile.draft.json`,
-`docs/PUBLIC-API.md` (the field), and every test that constructs a `PdfTaggedLocator` by hand
-(`markdown.rs`, `representation.rs`, the grounding and projection tests).
+`crates/ethos-parser-pdf/src/extract.rs` (declare it), `crates/ethos-parser-pdf/src/represent.rs` (a
+tagged table's derivation from its element), `fixtures/engine/make_fixtures.py` and
+`fixtures/manifest.json` (the fixtures below), `crates/ethos-parser-pdf/tests/robustness.rs` (the
+pinned survivors), `docs/draft-schemas/document-representation.draft.json`,
+`docs/draft-schemas/profile.draft.json`, `docs/PUBLIC-API.md` (the field), and every test that
+constructs a `PdfTaggedLocator` by hand (`markdown.rs`, `representation.rs`, the grounding and
+projection tests).
 
 **What lands.**
 
@@ -62,11 +63,14 @@ fixtures below), `crates/ethos-parser-pdf/tests/robustness.rs` (the pinned survi
    sentence that the input carried no author structure tree in its detail.
    `untagged-structure-tree-absent` is not declared for such a document: a tree was read.
 5. Four hand-written fixtures on the `leading-gap-two-blocks` page (six lines, one 28 pt gap;
-   branch `feat/block-cut-leftovers`), in the writer's exact shape and without `/MarkInfo`:
+   branch `feat/block-cut-leftovers`), in the writer's exact tree shape — the catalog stamp of
+   scope §3.3 excepted, which the reader never reads — and without `/MarkInfo`:
    - `engine-tagged-blocks`: `/Document` carrying the attribute under `/A`, two `/Div` children
      each carrying it, `/K [0]` and `/K [1]`, `/Pg`, `/ParentTree` and `/ParentTreeNextKey 1`,
-     `/StructParents 0` on the page, the content stream's two text objects each wrapped in one
-     `/Div << /MCID n >> BDC … EMC`;
+     `/StructParents 0` on the page, the block's `Tj`s in the page's one shared text object with
+     each block's sequence `/Div << /MCID n >> BDC … EMC` opened and closed inside it (scope
+     §3.4: a text object shared between two blocks is split at the operators, inside it, and
+     §3.5: the stream is the untagged page's with the tags inserted and nothing else changed);
    - `engine-tagged-classmap`: the same tree with `/C /EthosBlock` on every element and
      `/ClassMap << /EthosBlock << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3)
      >> >>` on the root, no `/A` anywhere;
@@ -76,6 +80,12 @@ fixtures below), `crates/ethos-parser-pdf/tests/robustness.rs` (the pinned survi
      whose second sits inside `/OC /oc1 BDC … EMC` (given by name through `/Properties`, an
      `/OCG` in the resources), each with the written `/Div` sequence opened inside the frame and
      closed before its `EMC`, so the reader binds both lines.
+   And two more, added by S1's review, on the `form-field-value` page: `tagged-widget-objr`
+   (`/Document` → `/Form` whose `/K` is an `/OBJR` citing the widget, `/StructParent 0` on the
+   widget and the matching `/ParentTree` entry, no attribute, no `/MarkInfo`) and
+   `engine-tagged-widget-objr` (the same tree with the attribute under `/A` on both elements), so
+   the locator an `/OBJR` mints is read in both classes — only the `computed` case proves the
+   `/OBJR` arm carries the citing element's class rather than a constant.
    Each bumps `engine_owned` in `fixtures/manifest.json` and pins its robustness survivors by that
    test's own procedure.
 
@@ -118,7 +128,9 @@ positions, the placement rule, the tree, the stamp, the self-check), `crates/eth
 entry returning the per-run `(page, operator index)` side table beside the artifact, surviving
 `reorder_page`), `crates/ethos-parser-pdf/src/lib.rs` (`write_tags`, `TAGS_ARTIFACT_TYPE`),
 `crates/ethos-parser-cli/src/main.rs` (`tag`), `crates/ethos-parser-cli/tests/public_api.rs`,
-`docs/PUBLIC-API.md`, `docs/04-ARCHITECTURE.md` §2, `docs/CAPABILITY.md`.
+`docs/PUBLIC-API.md`, `docs/04-ARCHITECTURE.md` §2, `docs/CAPABILITY.md`. S2 decides whether
+`STRUCT_ATTRIBUTE_OWNER` stays crate-private in `structure.rs`, where S1 left it, or is re-exported
+from `lib.rs` beside `write_tags` — with a `public_api.rs` entry and a `PUBLIC-API.md` row if so.
 
 **What lands.**
 
