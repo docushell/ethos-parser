@@ -175,10 +175,11 @@ fourth is the one to read first:
 - It **emits nothing** where neither holds.
 - It **fabricates nothing** — 0 cells, measured on every run, not asserted.
 
-The numbers, on twelve tagged public documents (2,068 pages, 172 tagged tables, 15,755 tagged cell
-slots). Reading the tables a document declares recovers **157 of the 172** gold tables and takes
-combined cell-slot recall to **502‰**. The geometric detectors alone score a macro cell-slot F1 of
-**70‰** — but the band is 0‰–590‰ with a median of 0‰, and **ten of the twelve score exactly zero**,
+The numbers, re-measured at 0.58.0 on twelve tagged public documents (2,068 pages, 172 tagged
+tables, 15,755 tagged cell slots). Reading the tables a document declares emits **162 of the 172**
+gold tables from their tags and takes combined cell-slot recall to **503‰**. The geometric detectors
+alone score a macro cell-slot F1 of **69‰** — but the band is 0‰–590‰ with a median of 0‰, and
+**ten of the twelve score exactly zero**,
 because those documents never drew a grid to detect. Two documents supply that entire average, which
 is why the band is printed here and the macro is not offered on its own.
 

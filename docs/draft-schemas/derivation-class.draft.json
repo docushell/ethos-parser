@@ -15,7 +15,7 @@
     {
       "const": "computed",
       "title": "Computed",
-      "description": "Derived deterministically from Extracted values by a versioned rule — reading order, line grouping, ink boxes from font metrics. The rule's version is part of the profile. Produced in v0."
+      "description": "Derived deterministically from Extracted values by a versioned rule — reading order, line grouping, boxes from font metrics (docs/01-CONTRACT.md §5.3: the pen advance along the baseline and the font's ascent and descent across it, not glyph ink). The rule's version is part of the profile. Produced in v0."
     },
     {
       "const": "recognized",

@@ -7,6 +7,12 @@ every v1.1 PR belongs to exactly one slice.
 started because the owner asked for it, **not** because that gate cleared. Nothing here closes v1,
 and no slice here may be cited as evidence that it did.
 
+**Superseded by decision #18 (2026-08-30):** v1 closed on four capability clauses and a published
+band — the engine reads the tables a document declares, detects ruled tables where the producer
+drew the rules, emits nothing where neither holds, and fabricates nothing — not on the macro. The
+paragraph above was true when written and did not survive the decision; it is kept as written. See
+[`00-NORTH-STAR.md`](../00-NORTH-STAR.md) row 18, which is where v1's status is stated.
+
 ---
 
 ## 1. The one sentence

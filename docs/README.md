@@ -4,9 +4,10 @@ Everything the project has decided, and where it is written down. Start with the
 [`README.md`](../README.md) if you just want to know what the tool does.
 
 **Version 0.58.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
-Tables are stated as a capability rather than as one average: the engine reads the tables a document
-declares (combined cell-slot recall 502‰), detects ruled tables where the producer drew them
-(geometric macro 70‰, band 0‰–590‰), emits nothing where neither holds, and fabricates nothing. The
+Tables are stated as a capability rather than as one average, re-measured at 0.58.0: the engine
+reads the tables a document declares (combined cell-slot recall 503‰), detects ruled tables where
+the producer drew them (geometric macro 69‰, band 0‰–590‰), emits nothing where neither holds, and
+fabricates nothing. The
 method and the caveats are in [`table-gate-v1.md`](table-gate-v1.md).
 
 ## New here? Read in this order

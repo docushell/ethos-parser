@@ -225,7 +225,7 @@
       "path": "measured-ink-box/document.pdf",
       "sha256": "sha256:2c909bf14db297c4462ca653331a5bf08bd54300f72800caae63b7e72f590493",
       "owner": "engine",
-      "notes": "Carries a /FontDescriptor with Ascent 718 / Descent -207, so the MEASURED ink path is exercised. Every other fixture takes the typed-absence path (M3)."
+      "notes": "Carries a /FontDescriptor with Ascent 718 / Descent -207, so the MEASURED path is exercised from a descriptor the document declares. When it was added (M3) every other fixture took the typed-absence path. That stopped at v1.1-S1: eight other engine fixtures now declare the same descriptor (make_fixtures.py's descriptor table names them), the composite pair carries it on the CIDFont, and since decision #22 a simple font naming a standard-14 face is measured from the vendored AFM whatever its descriptor says. This remains the fixture that exists for the descriptor path alone."
     },
     {
       "id": "absent-font-metrics",

@@ -12,6 +12,12 @@ answered by measurement and shipped.
 **v1 is not done**, and no slice here closes it. Note that v1's S7 and this document's S7 are
 different slices in different versions.
 
+**Superseded by decision #18 (2026-08-30):** v1 closed on four capability clauses and a published
+band — the engine reads the tables a document declares, detects ruled tables where the producer
+drew the rules, emits nothing where neither holds, and fabricates nothing — not on the macro. The
+paragraph above was true when written and did not survive the decision; it is kept as written. See
+[`00-NORTH-STAR.md`](../00-NORTH-STAR.md) row 18, which is where v1's status is stated.
+
 | Slice | Theme | State |
 | --- | --- | --- |
 | **S0** | The scope document and this one | done |

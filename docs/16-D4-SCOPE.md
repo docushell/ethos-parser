@@ -219,7 +219,7 @@ The limitation is declared on the artifact, not only here.
 
 | Slice | Theme | State |
 | --- | --- | --- |
-| **S0** | This document and the milestones | done |
+| **S0** | This document. *Corrected 2026-09-16: this row said "and the milestones"; there is no milestones document, deliberately — see the header.* | done |
 | **S1** | `arrange_page` returns regions beside the permutation; ordering byte-identical; no wire change | done |
 | **S2** | `region` on `TextRunAttributes`, absent where no cut; rule id to `gutter-columns-v2`; schemas | done |
 | **S3** | The projections stop joining a word **across** a region boundary | done |
