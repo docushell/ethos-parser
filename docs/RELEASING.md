@@ -175,7 +175,7 @@ first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
    the gate corpus equal to the native build's — or `compiled`, built and never run.
    `target/release-artifacts/SHA256SUMS.txt` records which. **Ship only `verified` targets.** A
    compiled-only binary is an untested claim for an engine whose product is byte-identical reruns;
-   Linux and Windows wait for a runner that can execute them (plan item 6.1).
+   Linux and Windows come from the workflow below, which executes them on their own machines.
 
 2. **Push the tag**, then create the release from those files and nothing else:
 
@@ -186,7 +186,61 @@ first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
    ```
 
    The notes say which platforms were verified and which were not built, so no reader infers a
-   platform from its absence.
+   platform from its absence. Pushing the tag also starts the workflow below; a release that is to
+   carry its binaries waits for its `verify` job.
+
+### Linux and Windows binaries come from the workflow
+
+`.github/workflows/release-artifacts.yml` is the machinery for the two platforms this host cannot
+execute. It builds the macOS pair as well, so one run can supply the whole release, and **it
+publishes nothing** — §6 stays true. Its token is `contents: read`, which cannot create or edit a
+release, so that is a fact about the workflow rather than a promise in it.
+
+- **Trigger.** Step 2's `git push origin v0.58.0` starts it: it runs on a `push` of any `v*` tag.
+  It also runs by hand — Actions → *Release artifacts* → *Run workflow* — with `ref` (the tag,
+  branch or SHA to build; empty means the ref it was dispatched from) and `targets`
+  (space-separated; leave one out to skip its runner).
+- **What each runner does.** Checks out the ref, installs the pinned 1.88.0 and asserts the pin,
+  asserts it is the machine its matrix entry names, then runs
+  `ci/release-artifacts.sh --native --tag v0.58.0` — the script from step 1, restricted to the
+  runner's own target. That builds the binary, EXECUTES it over all eight gate documents, writes
+  its `.fingerprint`, refuses if any document was refused, packages the tarball with `LICENSE` and
+  `README.md`, and uploads it as `built-<target>`. `--tag` refuses a tag that does not name
+  Cargo.toml's version. Four runners, each native: `ubuntu-latest` → `x86_64-unknown-linux-gnu`,
+  `windows-latest` → `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`,
+  `macos-15-intel` → `x86_64-apple-darwin`. Nothing is cross-compiled.
+- **`verify`.** Downloads every `built-*` and runs `ci/release-artifacts.sh --assemble dist`. The
+  fingerprints must be whole and byte-identical, and each tarball must digest to what its runner
+  recorded; only then is `SHA256SUMS.txt` written, with every target `verified`. **`verified`
+  here means executed on the runner that built it and every artifact digest equal across every
+  runner** — plan item 6.1's operating-system axis, measured on the release binaries themselves.
+  One differing fingerprint fails the job, names the rows, and labels nothing: no
+  `SHA256SUMS.txt`, no bundle.
+- **Attaching.** The owner downloads `release-bundle` and attaches it with step 2's command:
+
+  ```bash
+  gh run download <run-id> -n release-bundle -D dist
+  gh release create v0.58.0 --title "ethos-parser 0.58.0" --notes-file <notes> \
+    dist/*.tar.gz dist/SHA256SUMS.txt
+  ```
+
+- **When a macOS leg cannot run.** The arm64 runner has 7 GB and the largest gate document's
+  extract peaks at 4.7 GB (`docs/measurements/memory-ceiling`); the Intel label is GitHub's to
+  retire. Leave the leg out of `targets`, build that target locally with step 1, and hold the
+  local binary to the runners' bytes before shipping it:
+
+  ```bash
+  diff target/release-artifacts/ethos-parser-0.58.0-<target>.fingerprint \
+       dist/ethos-parser-0.58.0-x86_64-unknown-linux-gnu.fingerprint
+  grep "<target>" target/release-artifacts/SHA256SUMS.txt >> dist/SHA256SUMS.txt
+  ```
+
+  The `grep` carries over both of the local manifest's lines for that target — its state row and
+  its digest — so the release's one `SHA256SUMS.txt` describes every file attached. The notes say
+  which files came from where.
+- **It has never run.** At the time of writing (0.58.0, 2026-09-16) no run of this workflow
+  exists. Everything above is what the YAML and the script say, not what a run has shown, and
+  none of it is evidence until the first run is read and what it finds is fixed.
 
 **Undoing it**, if something is wrong: `gh release delete v0.55.0`, then `git push --delete origin
 v0.55.0` and `git tag -d v0.55.0`. Fix, and release again under the same number only if nobody
