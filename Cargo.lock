@@ -379,6 +379,7 @@ name = "ethos-parser-pdf"
 version = "0.58.0"
 dependencies = [
  "ethos-parser-core",
+ "flate2",
  "lopdf",
  "rayon",
  "serde",

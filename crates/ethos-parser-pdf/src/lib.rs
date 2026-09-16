@@ -77,6 +77,12 @@ pub(crate) mod represent;
 pub(crate) mod stroke_ruled;
 pub(crate) mod structure;
 pub(crate) mod tables;
+// Auto-tagging S2. The writer's side: the strict decoder and the tokeniser with positions.
+// Nothing in it is public yet, and nothing in the crate calls it yet either — its callers are the
+// placement rule, the tree and `write_tags` (S2 items 4 to 8), so until they land every item in
+// it is dead code to the compiler. The allow goes with the first caller.
+#[allow(dead_code)]
+mod tagging;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;
 pub(crate) mod unruled;
