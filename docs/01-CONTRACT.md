@@ -111,7 +111,7 @@ boxes would make artifact identity hostage to the least reliable number in it.
 | Locator | Required? | What it is |
 | --- | --- | --- |
 | **`NativeLocator`** | **Always, on every node** | The format's own address. For PDF: page, character origin, advance width, in integer centipoints |
-| `StructuralLocator` | Where the node kind defines one | Structure-tree address: role path, `mcid`, table row and column |
+| `StructuralLocator` | Where the node kind defines one | Structure-tree address: role path, `mcid`, table row and column. A PDF tagged address also states its own derivation class — `derivation`: `extracted` for the author's tree, `computed` for an element carrying this engine's owner attribute ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) §4.2) — on every such locator, constant or not, by decision #20: a class the contract requires the artifact to state is spelled out on the wire, and omitting it to restore `extracted` at read time would default a computed address to the highest-trust class |
 | `RenderedLocator` / geometry | Optional | A box, for humans and crops; §5.3 says which kind |
 
 `NativeLocator` is a discriminated union. Adding a format adds a variant plus an adapter profile,
@@ -211,7 +211,7 @@ without laundering into born-digital certainty.
 | Class | Meaning | May author | Notes |
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
-| **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, boxes from font metrics (§5.3) | The rule's version is part of the profile |
+| **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, boxes from font metrics (§5.3), a structure tag this engine wrote and read back ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)) | The rule's version is part of the profile |
 | **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4, own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
 | **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence |
 
@@ -232,6 +232,13 @@ Four hard rules:
 Rules 1 and 2 are the whole of the overwrite rule. The v4 constraint in the `Recognized` row governs
 *where* a node may be placed, not which classes may replace which, so it is deliberately not encoded
 as a class-pair rule.
+
+A structure tag this engine wrote carries its class on the locator and not on the node —
+`Node.derivation` of the text it encloses stays `Extracted`, because the text was read from the
+source's own encoding and only the address was computed — so rule 1 is untouched, and the
+laundering row 21 refused, a computed address read back as an author's, is closed by row 23's
+attribute rather than by a second derivation on the node
+([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) §4.2).
 
 ---
 

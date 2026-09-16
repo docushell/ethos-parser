@@ -100,7 +100,7 @@ Never edit the Ethos repo from this project. Read it for contracts, fixtures and
 | **v1.1** | A Markdown-quoted citation verifies end to end | Safe Markdown, only with the anchor map |
 | **v1.2** | Locators survive every adapter round trip | MCP server, Python and Node SDKs, LangChain tools |
 | **v2** | A DOCX quote and an XLSX cell both bind to an address the file states, with no synthesised pages | Office formats through one shared record |
-| **v2.2** | **Reopened by row 23.** Clause one — a region is emitted wherever the cut divided a page and nowhere else — **met** at 0.42.0. Clause two — a tag this engine writes is one it can read back and ground against — was closed by row 21 and is **open again**, on an attribute object carrying the derivation. **Not built** | Layout and accessibility — geometric block structure shipped, auto-tagging reopened and unstarted |
+| **v2.2** | **Reopened by row 23.** Clause one — a region is emitted wherever the cut divided a page and nowhere else — **met** at 0.42.0. Clause two — a tag this engine writes is one it can read back and ground against — was closed by row 21 and is **open again**, on an attribute object carrying the derivation. **Not built**<br><br>**Built 2026-09-17 on the branch for the next version:** [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) (scope), [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) (slices); clause two's tests and measurements are in the slices' S3–S4 and [`measurements/auto-tagging/`](measurements/auto-tagging/); the owner's rows #25–#27 are proposed in the scope's §12 and not yet recorded | Layout and accessibility — geometric block structure shipped, auto-tagging reopened and unstarted |
 | **v3** | Assist on and assist off produce identical grounded artifacts | Propose-only VLM assist |
 | **v4** | An OCR'd document's fingerprint is provably incomparable with a born-digital parse | OCR under its own profile |
 
@@ -108,7 +108,12 @@ Five versions have full scope and milestone documents: v0, v1, v1.1, v1.2 and v2
 half has a scope document** — [`16-D4-SCOPE.md`](16-D4-SCOPE.md), by decision #19. **Its second half
 has none yet.** Row 21 said it never would, because refused work is not work anybody may build; row
 23 reversed that, so the sentence changed from *never* to *not yet* and a scope document is now the
-next thing owed rather than a thing forbidden. v3 and v4 are still one line each, deliberately.
+next thing owed rather than a thing forbidden. v3 and v4 are still one line each, deliberately. The
+next thing owed was written on 2026-09-16 —
+[`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md), with
+[`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) beside it — so *none yet* above
+is dated rather than deleted: the second half has its scope document now, by the rule this
+paragraph states.
 
 ## 6. Reading order
 
