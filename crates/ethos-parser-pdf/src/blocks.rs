@@ -70,6 +70,17 @@
 //! not own — §4.3's own conclusion.
 //!
 //! **No float.** `gap ≥ 1.6 × leading` is `5 · gap ≥ 8 · leading`.
+//!
+//! # On the wire: `block-subdivision-leading-gap-only`
+//!
+//! Everything this header calls absent or narrow is declared on every PDF extract artifact as the
+//! profile-scoped limitation [`ethos_parser_core::codes::BLOCK_SUBDIVISION_LEADING_GAP_ONLY`],
+//! built in [`crate::limitations::extract_limitations`] from this header and from
+//! [`ethos_parser_core::TextRunAttributes::block`]'s rustdoc: vertical whitespace against the
+//! band's modal leading and nothing else, no indent branch, recall measured on one document at
+//! 63.7% and 100% precision, and a block that is never a paragraph. Until it existed those four
+//! facts stood only here, where no consumer reads. The three texts say one thing; change them
+//! together.
 
 use crate::reading_order::RunGeometry;
 
