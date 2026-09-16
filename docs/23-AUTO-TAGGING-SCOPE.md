@@ -475,6 +475,14 @@ A consumer that reads `/A` is this engine, and §3.7 proves that path on every w
   0.55.0 and 0.58.0 — a MINOR whose wire change is named in the release note and refused by the
   parser, not a shape bump — and the release note says this as 0.58.0's said it for
   `not_axis_aligned`.
+- **The extract artifact follows the same rule.** `TaggedTableRecord.derivation` — the class of
+  §4.1 on the tagged-table record of `ethos.parser.extract.v0`, which `represent.rs` reads to fill
+  the representation's `TableRecord` — is required with no default, and `EXTRACT_SCHEMA_VERSION`
+  stays at 0.4.0 on the precedent of 0.55.0's `TextRun.block`, the release note naming it. The
+  record denies unknown fields from this slice on, so this build refuses a 0.58.0 extract that
+  carries a tagged table (`missing field derivation`) and later shapes refuse each other
+  symmetrically; a 0.58.0 build, whose record did not deny unknown fields, ignores the key. The
+  artifact is a draft library surface with no stored fixtures.
 - **MINOR**, by [`RELEASING.md`](RELEASING.md) §4: a reader changes, a wire field is added, every
   tagged artifact's bytes move. It lands in the version after 0.58.0.
 

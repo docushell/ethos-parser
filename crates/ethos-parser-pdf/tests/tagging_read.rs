@@ -27,8 +27,8 @@
 use std::path::PathBuf;
 
 use ethos_parser_core::{
-    codes, DerivationClass, EngineError, Limitation, LimitationScope, PdfTaggedLocator, Profile,
-    StructuralLocator,
+    codes, DerivationClass, EngineError, GeometryAbsence, GeometryPresence, Limitation,
+    LimitationScope, PdfTaggedLocator, Profile, StructuralLocator, TABLE_DETECTION_TAGGED_V1,
 };
 use ethos_parser_pdf::{Document, ExtractArtifact};
 use lopdf::{Dictionary, Object, ObjectId};
@@ -213,12 +213,91 @@ fn assert_engine_tagged(what: &str, a: &ExtractArtifact, mcids: [i64; 6]) {
 /// object. `save_to` rewrites every object, which is why every test that uses this also reads
 /// the UNEDITED re-serialisation once: the refusal or the change has to be the edit's.
 fn edited(edit: impl FnOnce(&mut lopdf::Document)) -> Vec<u8> {
-    let mut doc =
-        lopdf::Document::load_mem(&engine_fixture("engine-tagged-blocks")).expect("lopdf loads");
+    edited_from("engine-tagged-blocks", edit)
+}
+
+/// Load, edit, and re-serialise any engine fixture.
+fn edited_from(name: &str, edit: impl FnOnce(&mut lopdf::Document)) -> Vec<u8> {
+    let mut doc = lopdf::Document::load_mem(&engine_fixture(name)).expect("lopdf loads");
     edit(&mut doc);
     let mut out = Vec::new();
     doc.save_to(&mut out).expect("lopdf saves");
     out
+}
+
+/// An attribute object under this engine's owner: the writer's shape when `derivation` is
+/// `Computed`, and a shape it never writes otherwise.
+fn owner_attribute(derivation: &[u8], rule: &str) -> Dictionary {
+    let mut a = Dictionary::new();
+    a.set("O", Object::Name(b"EthosParser".to_vec()));
+    a.set("Derivation", Object::Name(derivation.to_vec()));
+    a.set("Rule", Object::string_literal(rule));
+    a
+}
+
+/// The one `/StructElem` whose `/S` is `role`.
+fn elem_with_role(doc: &lopdf::Document, role: &[u8]) -> ObjectId {
+    let ids: Vec<ObjectId> = doc
+        .objects
+        .iter()
+        .filter(|(_, o)| {
+            let Ok(d) = o.as_dict() else {
+                return false;
+            };
+            d.get(b"Type").ok().and_then(|t| t.as_name().ok()) == Some(b"StructElem".as_slice())
+                && d.get(b"S").ok().and_then(|s| s.as_name().ok()) == Some(role)
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(
+        ids.len(),
+        1,
+        "exactly one /{} element",
+        String::from_utf8_lossy(role)
+    );
+    ids[0]
+}
+
+/// The `/StructTreeRoot` dictionary, reached through the catalog.
+fn struct_root_mut(doc: &mut lopdf::Document) -> &mut Dictionary {
+    let root = catalog_mut(doc)
+        .get(b"StructTreeRoot")
+        .expect("the fixture is tagged")
+        .as_reference()
+        .expect("the root is a reference");
+    doc.get_object_mut(root)
+        .expect("root exists")
+        .as_dict_mut()
+        .expect("root is a dictionary")
+}
+
+/// Repaint `tagged-table-agrees`'s four cells in one column with no ruling, so no detector finds
+/// a table and the tree's `/Table` reaches the wire as a tagged-table record.
+///
+/// A tree table is paired by position with the nth table a detector found on its page, and then
+/// becomes that record's `tagged_check` rather than a record of its own. On this page the painted
+/// grid pairs it; with the grid merely stripped the 2x2 of letters still pairs it, because the
+/// unruled rule reads them as a table (`unruled-align-v1`, 2 rows, 2 columns — measured with the
+/// CLI on a stripped copy). Four lines in one column at one x is a shape no rule calls a table.
+/// The same four `Tj`s keep the same mcids, so the cells still claim their text through the
+/// tree's own join, and nothing but the page's geometry moves.
+fn lay_the_cells_in_one_column(doc: &mut lopdf::Document) {
+    // `build_pdf` numbers every engine fixture's content stream 4.
+    let Ok(Object::Stream(stream)) = doc.get_object_mut((4, 0)) else {
+        panic!("object 4 is the content stream");
+    };
+    let plain = String::from_utf8(stream.content.clone()).expect("the stream is plain text");
+    for cell in ["(A) Tj", "(B) Tj", "(C) Tj", "(D) Tj"] {
+        assert!(plain.contains(cell), "the fixture shows {cell}");
+    }
+    stream.set_plain_content(
+        b"BT /F1 12 Tf \
+          /TD <</MCID 0>> BDC 1 0 0 1 50 94 Tm (A) Tj EMC \
+          /TD <</MCID 1>> BDC 1 0 0 1 50 80 Tm (B) Tj EMC \
+          /TD <</MCID 2>> BDC 1 0 0 1 50 66 Tm (C) Tj EMC \
+          /TD <</MCID 3>> BDC 1 0 0 1 50 52 Tm (D) Tj EMC ET"
+            .to_vec(),
+    );
 }
 
 /// The object ids of every `/StructElem` in the document, in object order: 7, 8, 9.
@@ -447,7 +526,16 @@ fn the_owner_without_its_derivation_is_refused() {
     let e = extract_bytes(&without).expect_err("an owned object with no /Derivation is refused");
     assert_eq!(e.code(), "malformed", "{e}");
     let msg = e.to_string();
-    for needle in ["structure element", "`/Div`", "absent", "/EthosParser"] {
+    // The refusal names the OBJECT, not only the role: both `/Div` elements share the role, and
+    // in the writer's shape every element below the root does, so the role alone points at
+    // nothing. `struct_elems(doc)[1]` is object 8.
+    for needle in [
+        "structure element",
+        "8 0 R",
+        "`/Div`",
+        "absent",
+        "/EthosParser",
+    ] {
         assert!(msg.contains(needle), "the refusal names {needle:?}: {msg}");
     }
 
@@ -462,8 +550,150 @@ fn the_owner_without_its_derivation_is_refused() {
     );
     assert_eq!(e.code(), "malformed", "{e}");
     let msg = e.to_string();
-    for needle in ["structure element", "`/Document`", "`/Extracted`"] {
+    for needle in ["structure element", "7 0 R", "`/Document`", "`/Extracted`"] {
         assert!(msg.contains(needle), "the refusal names {needle:?}: {msg}");
+    }
+}
+
+/// **Every owned object in the union is checked, and `/A` decides** (scope §4.1).
+///
+/// One predicate applies over the union of `/A` and the classes reached through `/C`, so a class
+/// this engine owns in a shape it does not write refuses the document even beside a well-formed
+/// `/A` — not a short-circuit on the first owned object found. And when both are well-formed,
+/// `/A` decides: the declaration names its `/Rule` and not the class's. The writer never emits
+/// `/C`, so this holds a hand-made shape, as `an_attribute_under_another_owner_is_an_authors`
+/// does.
+#[test]
+fn a_malformed_class_is_refused_beside_a_well_formed_a() {
+    let with_class = |derivation: &'static [u8]| {
+        edited(move |doc| {
+            let mut map = Dictionary::new();
+            map.set(
+                "X",
+                Object::Dictionary(owner_attribute(derivation, "other-rule-v9")),
+            );
+            struct_root_mut(doc).set("ClassMap", Object::Dictionary(map));
+            let div = struct_elems(doc)[1];
+            elem_mut(doc, div).set("C", Object::Name(b"X".to_vec()));
+        })
+    };
+
+    let e = extract_bytes(&with_class(b"Extracted")).expect_err(
+        "an owned class in a shape the writer never emits is refused beside a valid /A",
+    );
+    assert_eq!(e.code(), "malformed", "{e}");
+    let msg = e.to_string();
+    for needle in [
+        "structure element",
+        "8 0 R",
+        "`/Div`",
+        "`/Extracted`",
+        "/EthosParser",
+    ] {
+        assert!(msg.contains(needle), "the refusal names {needle:?}: {msg}");
+    }
+
+    let a = extract_bytes(&with_class(b"Computed")).expect("two well-formed owned objects extract");
+    assert_engine_tagged("a well-formed class beside /A", &a, [0, 0, 0, 1, 1, 1]);
+    let written = engine_written(&a.assurance.limitations);
+    assert!(
+        !written.detail.contains("other-rule-v9"),
+        "`/A` decides the rule set, so the class's `/Rule` is not declared beside it: {}",
+        written.detail
+    );
+}
+
+/// **An owned `/Table` reads back `Computed` under `tagged-tables-v1`** (scope §4.1 on §3.2).
+///
+/// The writer never emits a `/Table`, and nothing forbids a hand or a later writer from putting
+/// the owner attribute on one, so the shape is held rather than left reachable by accident: the
+/// tagged-table record and the representation's `TableRecord` carry the class the element
+/// states, `detection_rule` still says `tagged-tables-v1`, and the geometry stays typed-absent.
+/// `detection_rule`, not `derivation`, is what separates a tagged table from a geometric one;
+/// `derivation` says whose statement the grid is. The cells are laid in one column with no
+/// ruling in both halves so the tree's `/Table` reaches the wire at all (see
+/// `lay_the_cells_in_one_column`), and the owner attribute is the only difference between them.
+#[test]
+fn an_owned_table_element_reads_back_as_computed_under_the_tagged_rule() {
+    let tagged_records = |bytes: &[u8]| {
+        let a = extract_bytes(bytes).expect("extracts");
+        let on_extract: Vec<DerivationClass> = a
+            .pages
+            .iter()
+            .flat_map(|p| p.tagged_tables.iter())
+            .map(|t| {
+                assert_eq!(t.rule, TABLE_DETECTION_TAGGED_V1);
+                t.derivation
+            })
+            .collect();
+        let repr = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+        let tables = &repr.payload().tables;
+        assert!(
+            tables
+                .iter()
+                .all(|t| t.detection_rule == TABLE_DETECTION_TAGGED_V1),
+            "no detector may find a table on the repainted page, or the tree's /Table pairs with \
+             it and never reaches the wire as its own record: {tables:?}"
+        );
+        let on_wire: Vec<ethos_parser_core::TableRecord> = tables.clone();
+        (a, on_extract, on_wire)
+    };
+
+    let authors = edited_from("tagged-table-agrees", lay_the_cells_in_one_column);
+    let (a, on_extract, on_wire) = tagged_records(&authors);
+    assert_eq!(on_extract, vec![DerivationClass::Extracted]);
+    assert_eq!(
+        on_wire.len(),
+        1,
+        "one tagged table, once the grid is not painted"
+    );
+    assert_eq!(on_wire[0].derivation, DerivationClass::Extracted);
+    assert!(
+        !codes_of(&a.assurance.limitations).contains(&codes::STRUCTURE_TREE_ENGINE_WRITTEN),
+        "an author's table declares nothing engine-written: {:?}",
+        codes_of(&a.assurance.limitations)
+    );
+
+    let owned = edited_from("tagged-table-agrees", |doc| {
+        lay_the_cells_in_one_column(doc);
+        let table = elem_with_role(doc, b"Table");
+        elem_mut(doc, table).set(
+            "A",
+            Object::Dictionary(owner_attribute(b"Computed", "gutter-columns-v3")),
+        );
+    });
+    let (a, on_extract, on_wire) = tagged_records(&owned);
+    assert_eq!(
+        on_extract,
+        vec![DerivationClass::Computed],
+        "the record carries the class its element states"
+    );
+    assert_eq!(on_wire.len(), 1);
+    assert_eq!(
+        on_wire[0].derivation,
+        DerivationClass::Computed,
+        "never restored to the constant on the way to the wire: {:?}",
+        on_wire[0]
+    );
+    assert_eq!(on_wire[0].detection_rule, TABLE_DETECTION_TAGGED_V1);
+    assert!(
+        matches!(
+            on_wire[0].geometry,
+            GeometryPresence::Absent(GeometryAbsence::NotReportedByStructureTree)
+        ),
+        "no box is invented for an owned tagged table either: {:?}",
+        on_wire[0].geometry
+    );
+    // Only the `/Table` carries the owner, so the tree is declared mixed and the declaration
+    // counts one element — and no run: the cells' runs bind under the `/TD` elements, which are
+    // the author's, so `computed` runs are none even though the table is this engine's.
+    let written = engine_written(&a.assurance.limitations);
+    for needle in ["1 of its", "MIXES", "gutter-columns-v3", "0 text run(s)"] {
+        assert!(
+            written.detail.contains(needle),
+            "the declaration must say {needle:?}: {}",
+            written.detail
+        );
     }
 }
 
