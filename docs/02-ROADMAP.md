@@ -87,6 +87,7 @@ decision in [`00-NORTH-STAR.md`](00-NORTH-STAR.md) §2.
 | How does this engine score on a corpus it does not own? | [`measurements/opendataloader-bench/`](measurements/opendataloader-bench/) — an instrument, never a ranking (O26). NID 0.8471, TEDS 0.1038, MHS 0.0000 at 0.44.0, each with the caveat that makes it readable |
 | Can the cut find blocks, not just columns? | [`19-BLOCK-SUBDIVISION-SCOPE.md`](19-BLOCK-SUBDIVISION-SCOPE.md) — measured, three probes run; **not scoped. Decision #21 removed the consumer it was for and #23 gave it back**, so the probes have somewhere to land again |
 | Why are there no word boxes, and when did `char_offsets` turn on? | [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md) — measured and refused for word boxes; `char_offsets` was recommended on the same evidence and **turned on for 0.58.0**, and six reader defects were found on the way |
+| What is still open, and what does each item wait on? | [`OPEN-WORK.md`](OPEN-WORK.md) — the ledger: v2.2's second clause, the local plan's v2.3 items (not a roadmap version), owner decisions, recorded defects |
 
 Every version gets a **scope** document and a **milestones** document before it gets code. Nothing
 past v2 had one until decision #19, which put v2.2's first half in sight by meeting v2. **v3 and v4

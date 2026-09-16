@@ -37,6 +37,7 @@ These describe the engine as it is now. Read them to work on it.
 | [`07-VERIFY-BOUNDARY.md`](07-VERIFY-BOUNDARY.md) | Where the engine stops and the verifier starts, and the anti-patterns that blur it |
 | [`table-gate-v1.md`](table-gate-v1.md) | How table accuracy is measured, and the result. Quote table numbers from here or not at all |
 | [`CAPABILITY.md`](CAPABILITY.md) | Can and cannot, as two tables. The answer to "what does this actually do?" |
+| [`OPEN-WORK.md`](OPEN-WORK.md) | What is pending and what each item waits on: v2.2's open clause, the local plan's v2.3 items, owner decisions, known defects, stale docs |
 | [`PUBLIC-API.md`](PUBLIC-API.md) | The frozen export list per crate. Checked by a test |
 | [`draft-schemas/`](draft-schemas/) | Draft JSON Schemas for every artifact shape. Documentation, not a shipped contract |
 | [`reference/`](reference/) | A stub explaining where the research archive went |
