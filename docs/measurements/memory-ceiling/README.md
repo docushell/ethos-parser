@@ -122,6 +122,10 @@ leaves a floor that grows with the document.** The two ceilings in the tree do n
 peak to any caller-chosen number — `MAX_SOURCE_BYTES` permits a 2 GiB input, and nothing maps
 2 GiB of input onto a memory figure.
 
+*The attribution above is a reading of the code; §15 measured the share. The structure tree is
+27.9 MiB of `53Ar5`'s 221 MiB floor (12.6%); the rest is the source bytes and the parsed object
+graph, which `classify --sample-pages 0` pays too.*
+
 ## 6. A 30% cut, byte-identical
 
 §3 says peak is a tight multiple of what the engine EMITS. That turned out to be the wrong place to
@@ -200,7 +204,7 @@ sizing, the worst observed coefficient is the only safe one:
 
 **Budget 7 MiB per admitted page, plus 0.35 MiB per page in the document.** On `53Ar5` that
 predicts 5.26 GiB against 4.56 GiB measured — over by 15%, which is the direction an estimate for
-provisioning should err.
+provisioning should err. *Restated in §15 with the process floor separated.*
 
 ## 8. What this still does not settle
 
@@ -214,7 +218,9 @@ provisioning should err.
 - **The 838 MiB disagreement is settled in §9**, and neither side was right about today's engine:
   freeing the lopdf object graph earlier RAISES peak footprint, by 668 MiB on `53Ar5`. Refused.
 - **Whether the floor's structure-tree share can be bounded by the page budget.** One audit lens
-  put it at 32.1 MiB of `53Ar5`'s 221 MiB floor and byte-identical; nobody built it.
+  put it at 32.1 MiB of `53Ar5`'s 221 MiB floor and byte-identical; nobody built it. §15 measures
+  the share at 27.9 MiB — 12.6% of the floor, 0.75% of the peak — so that is the most bounding it
+  could save.
 
 Do not re-propose chunking the parallel page fold, streaming the artifact buffer, a different
 allocator, freeing the object graph or the extract sooner, or reserving c14n's output buffer at its
@@ -424,7 +430,9 @@ Its per-page term is the worst coefficient observed, and that is 6.58 on `irs-f1
 two-page form, where the ~13 MiB process floor dominates and adopting has nothing to adopt. On
 `53Ar5` the rule now predicts 5.26 GiB against 3.65 measured, over by 44%. Loose is the safe
 direction for provisioning. Tightening it would mean a two-term rule with a separate process floor,
-which changes what is published rather than re-measuring it, and is not done here.
+which changes what is published rather than re-measuring it, and is not done here. *Done in §15 at
+0.58.0: 7 MiB + 5.4 MiB per admitted page + 0.33 MiB per document page, over by 12.9% on `53Ar5`
+and by 3.6% at its tightest point.*
 
 ## 12. Reading an artifact back in costs more than producing it
 
@@ -754,3 +762,217 @@ changes a reply. The candidate that could remove it for both arms — parsing fr
 no 950 MiB buffer exists — is not measured; serde_json's reader path is slower than `from_slice`,
 so it may cost back what it saves.
 
+## 15. 0.58.0 re-measured, the floor separated, and the rule restated
+
+**Run 2026-09-16 at `b4b4aa9` (0.58.0)** over the eight gate documents, on the machine §2 describes
+(Apple M4 Pro, 12 cores, 48 GiB, macOS 26.6.2, no swap in use). **Every table in this section was
+produced by one binary:
+`target/aarch64-apple-darwin/release/ethos-parser`, whose `--version` prints `ethos-parser 0.58.0`**
+— the binary inside the aarch64 release artifact `target/release-artifacts/SHA256SUMS.txt` marks
+`verified` (sha256 `03b752ed…`, built 18:56 after the 17:45 merge of the release branch). It was
+not rebuilt for this section. `target/release/ethos-parser`, the path `ci/bench.py` uses, was NOT
+used: it prints `ethos-parser 0.57.0` and dates from 2026-09-15, before the release commit.
+
+The machine was shared with other measurements while this ran: the load average was 2.3–3.8 over
+the runs (the raw file records it per invocation). **Every wall time quoted here was taken under
+that load and is not comparable to an earlier section's; peak RSS does not respond to load** and
+is the quantity this section is about. Instruments: [`floor.py`](floor.py) takes the readings and
+[`floorfit.py`](floorfit.py) prints these tables and the rule from them. Raw readings, one row per
+process: [`floor-b4b4aa9.tsv`](floor-b4b4aa9.tsv).
+
+The method is `ci/bench.py`'s: `/usr/bin/time -l` around one process, stdout to `/dev/null`,
+`maximum resident set size` in bytes, `peak memory footprint` read beside it. `classify`,
+`classify --sample-pages 0` and `extract --max-pages 0` ran three times each and the median is
+reported, with the spread; the full extract ran ONCE per document, because the machine was shared,
+plus bench.py's chunk-counted size pass wrapped in `time` as a second sample whose sink is a pipe.
+The ladder points ran once each, and the point that turned out to set the coefficient four times.
+
+### The corpus at 0.58.0, beside §11
+
+| fixture | pages | artifact | peak RSS | §11 | Δ | /input | /artifact | MiB/page | wall (loaded) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 | 2 | 0.64M | 13.5M | 13.2M | +2.6% | 144x | 21.11x | 6.75 | 0.02 s |
+| irs-fw9 | 6 | 0.80M | 18.1M | 18.1M | −0.1% | 135x | 22.65x | 3.01 | 0.02 s |
+| nist-sp-800-218 | 36 | 28.72M | 171.8M | 169.4M | +1.4% | 243x | 5.98x | 4.77 | 0.38 s |
+| nist-sp-800-207 | 59 | 42.67M | **248.2M** | 205.3M | **+20.9%** | 269x | 5.82x | 4.21 | 0.57 s |
+| nist-sp-800-171r3 | 120 | 81.96M | 410.6M | 403.7M | +1.7% | 270x | 5.01x | 3.42 | 1.09 s |
+| nist-sp-800-37r2 | 183 | 207.73M | 914.8M | 914.9M | −0.0% | 423x | 4.40x | 5.00 | 2.77 s |
+| nist-sp-800-161r1 | 327 | 271.65M | 1136.3M | 1129.2M | +0.6% | 246x | 4.18x | 3.48 | 3.57 s |
+| **nist-sp-800-53Ar5** | **733** | 950.50M | **3725.9M** | 3736.2M | −0.3% | 523x | 3.92x | 5.08 | 12.29 s |
+
+The second sample of each, through the pipe: 13.5, 17.5, 171.1, 207.1, 407.0, 914.1, 1134.5 and
+3727.8 MiB in the table's order.
+
+**Seven documents are within −0.3% to +2.6% of §11**, which is this instrument's noise for single
+samples (§4 put two medians 0.2–0.7% apart). The worst case is 3725.9 MiB, 3727.8 on its second
+sample, against §11's 3736.2. **`nist-sp-800-207` is the exception, and the exception is one
+sample:** 248.2 MiB on the first run, then 207.1, 208.6, 204.1 and 204.7 — four of five inside
+204–209 MiB with §11's 205.3 among them. That first sample is a 20% excursion of the kind §11
+recorded on `161r1` (bimodal, 1104–1328 MiB). It stays in every table here, it is the sample the
+rule below is checked against, and the rule clears it by 39%.
+
+The artifact `extract` writes is within ±0.1% of §11's size on every document — `53Ar5`
+996,675,602 bytes against 996,655,081, `161r1` +0.036%, the two forms −0.07% and −0.09%. The
+29.9% growth 0.58.0's CHANGELOG records is in the GROUNDING artifact, an offset pair on each of
+2.4 million spans, which `ground` writes and `extract` does not; the representation gained only
+the rotated-text fix's measured boxes and lost the invented `TJ` spaces. So the peak had no reason
+to move, and it did not. Per page it reads 3.01–6.75 MiB (median 4.49, spread 2.24x), peak over
+artifact 3.92x–5.98x on the six real documents.
+
+Not claimed: the full extracts ran 12–13% faster than `bench-c14n-adopt.tsv`'s medians on every
+document from 36 pages up. A change that flat across documents is the signature §6 identifies as
+machine state — two runs on different days under different load — and not a throughput claim.
+
+### The floor, separated
+
+§5 attributed the floor `--max-pages` cannot lower to the structure tree, because `structure::read`
+runs before the budget is consulted. That was a reading of the code, not a measurement of the
+share. Three commands on the same document separate it:
+
+- **`classify --sample-pages 0`** reads the source under the ceiling, opens it — `lopdf` parses
+  the whole object graph in `Document::open_bytes` — and tallies no page. It never calls
+  `structure::read` (`classify.rs` does not name the module). Its peak is the source bytes, the
+  object graph, and a small artifact.
+- **`classify`** does the same and then tallies the operators of eight pages' decoded content
+  streams. The OPEN-WORK row proposed it as the control; it is not one, see below.
+- **`extract --max-pages 0`** reads and opens the same way, then builds the structure tree and
+  `tree_mcids_by_page` over the whole document, runs a rayon fold that admits no page, and seals an
+  artifact with no pages.
+
+So `max0 − classify0` is the tree plus whatever else `extract` does document-wide that `classify`
+does not. A ninth document sizes that remainder: `fixtures/engine/untagged-shredded-line`, one
+page, no `/StructTreeRoot` (its artifact declares `untagged-structure-tree-absent`), so on it the
+difference is the remainder alone.
+
+| fixture | pages | `classify --sample-pages 0` | `classify` | `extract --max-pages 0` | full extract | max0 − classify0 | share of max0 | max0 − floor, per document page | full − max0, per admitted page |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 | 2 | 5.7M | 7.7M | 6.5M | 13.5M | +0.8M | 12.8% | 0.000 | 3.51 |
+| irs-fw9 | 6 | 6.2M | 7.4M | 7.2M | 18.1M | +1.0M | 14.1% | 0.120 | 1.81 |
+| nist-sp-800-218 | 36 | 12.3M | 22.8M | 13.9M | 171.8M | +1.6M | 11.6% | 0.206 | 4.39 |
+| nist-sp-800-207 | 59 | 10.9M | 16.4M | 12.2M | 248.2M | +1.4M | 11.1% | 0.097 | 4.00 |
+| nist-sp-800-171r3 | 120 | 41.6M | 43.2M | 45.1M | 410.6M | +3.5M | 7.7% | **0.322** | 3.05 |
+| nist-sp-800-37r2 | 183 | 53.0M | 59.6M | 58.7M | 914.8M | +5.6M | 9.6% | 0.285 | 4.68 |
+| nist-sp-800-161r1 | 327 | 60.8M | 68.2M | 64.4M | 1136.3M | +3.6M | 5.6% | 0.177 | 3.28 |
+| nist-sp-800-53Ar5 | 733 | 193.4M | 202.3M | 221.3M | 3727.8M | **+27.9M** | 12.6% | 0.293 | **4.78** |
+| control, untagged, 1 page | 1 | 2.8M | 2.9M | 3.4M | 5.0M | +0.6M | — | — | 1.58 |
+
+Medians of three runs; the widest spread of any three is 1.9 MiB (`161r1`, `classify0`). The full
+extract column is the worse of each document's two samples. Footprint sits 1.4–1.8 MiB below RSS
+on every floor row of the large documents (`53Ar5`: 219.8 against 221.3 at `--max-pages 0`, 192.0
+against 193.4 for `classify0`), so the shares are the same in footprint; on the full extracts it
+is 14–25% below RSS, as §9 found.
+
+**The floor is not the structure tree. It is the parsed document.** `--max-pages 0` on `53Ar5`
+costs 221.3 MiB and `classify --sample-pages 0`, which reads no tree, costs 193.4 of that. The
+tree's share of the floor is **5.6% to 14.1% across the corpus** — `161r1` the smallest share,
+`irs-fw9` the largest at 1.0 of 7.2 MiB — and **27.9 MiB on `53Ar5`, the largest in bytes**, which
+is 12.6% of its floor and 0.75% of its 3725.9 MiB peak. The remainder that is not the tree — the
+rayon pool, the id allocator, a page-state entry per page, sealing an empty artifact — is 0.6 MiB
+on the one-page control. §8's audit lens estimated the tree at 32.1 MiB of the 221; the
+measurement reads 27.9. Bounding the tree by the page budget, the shape §8 left open, could save
+at most that on the worst document, and nothing on the other 87% of the floor: the object graph
+is built in `Document::open_bytes` before `extract` is called, and no budget consulted inside
+`extract` reaches it.
+
+`classify` with its default sample is not a control for this. Its eight-page tally peaks ABOVE
+`extract --max-pages 0` on six of eight documents — `218` at 22.8 against 13.9 MiB, 10.5 MiB of
+decoded content streams — so `max0 − classify` reads negative there and bounds nothing. The
+difference against `--sample-pages 0` is the one used.
+
+**The process floor** is the smallest gate document at `--max-pages 0`: `irs-f1040sd-2025`,
+6.5 MiB. The control peaks at 3.4 MiB, so the process itself is at most that and the form's other
+3 MiB is its own source and graph. Net of the 6.5, the floor grows at **0.10 to 0.32 MiB per
+document page**, worst on `171r3`. §5 gave 0.18–0.32 over `171r3`, `161r1` and `53Ar5`; they read
+0.322, 0.177 and 0.293 now, and the four documents §5 did not net out lie at 0.097 (`207`) to
+0.285 (`37r2`). Taking the control's 3.4 MiB as the floor instead would read 0.35 on `171r3`; the
+rule below is checked against measured peaks, not against the split, so it holds either way.
+
+### What this separates, and what it does not
+
+- It separates the tree's share from the rest of the floor to within the control's 0.6 MiB
+  remainder, measured on one page. The remainder was not measured on a large untagged document,
+  because the corpus has none; the page-state vector is the only part of it that grows with the
+  document.
+- It does not separate `structure::read` from `tree_mcids_by_page`: both sit inside the one
+  difference.
+- It does not separate, inside `classify --sample-pages 0`'s 193 MiB, the 7.1 MiB source buffer
+  from the object graph from the process floor. All three are paid by every command that opens
+  the document.
+- The full extracts are single samples (two counting the pipe sample), and `207` shows what a
+  single sample can do.
+
+### Within one document, the chord is not a bound
+
+§4 established that the marginal cost per admitted page is constant enough to make a per-page
+coefficient usable. Re-taken at 0.58.0, the ladder shows where a coefficient taken from the
+endpoints alone fails:
+
+| fixture | budget | peak RSS | cumulative MiB per admitted page | chord (full − max0)/pages | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| nist-sp-800-171r3 | 8 | 67.8M | 2.83 | 3.05 | 0.93x |
+| nist-sp-800-171r3 | 32 | 148.1M | 3.22 | 3.05 | 1.06x |
+| nist-sp-800-171r3 | 64 | 227.9M | 2.86 | 3.05 | 0.94x |
+| nist-sp-800-53Ar5 | 8 | 242.5M | 2.65 | 4.78 | 0.55x |
+| nist-sp-800-53Ar5 | 32 | 373.4M | 4.75 | 4.78 | 0.99x |
+| nist-sp-800-53Ar5 | 64 | 545.6M | 5.07 | 4.78 | 1.06x |
+| **nist-sp-800-53Ar5** | **128** | **907.1M** | **5.36** | 4.78 | **1.12x** |
+| nist-sp-800-53Ar5 | 256 | 1477.8M | 4.91 | 4.78 | 1.03x |
+| nist-sp-800-53Ar5 | 512 | 2720.7M | 4.88 | 4.78 | 1.02x |
+
+Each point is one run; the 128 point is four (902.1, 902.9, 904.9, 907.1 MiB — the table shows the
+worst), because it sets the coefficient. On `53Ar5` the cumulative cost per admitted page rises
+from 2.65 at 8 pages to 5.36 at 128 and falls back to 4.78 over all 733: **its first 128 pages
+are denser than its average**, the same shape §4 saw at `97fa562` (8.9 at 128 against 8.78
+overall) and §6 at `58a1342` (6.61 against 6.06). A rule built on the chord, 4.8 MiB per admitted
+page, would predict 863 MiB at `--max-pages 128` against 907.1 measured — under by 4.8% — and sit
+under the 256 and 512 points by 0.01% and 0.5%, clearing the 64 point by 1.9%. A bound has to take
+the worst cumulative marginal at ANY budget, and that is what the rule below does.
+
+### The rule
+
+    peak RSS <= 7 MiB + 5.4 MiB x admitted pages + 0.33 MiB x pages in the document
+
+**How each coefficient was chosen — the worst observed, then rounded up; no least squares.** The
+floor is the smallest gate document's `--max-pages 0` median, 6.48 MiB, rounded to 7. The
+per-document-page term is the largest `(max0 − 6.48) / pages` on any gate document, 0.322 on
+`171r3`, rounded to 0.33. The per-admitted-page term is the largest `(peak − max0) / admitted` at
+any budget on any gate document, every full-extract sample included: 5.36 on `53Ar5` at
+`--max-pages 128`, rounded to 5.4. §7's 7 MiB per page was the same method applied to a
+two-page form whose total was mostly the process floor; separating the floor is what moves the
+coefficient from 7 to 5.4 while the rule gets tighter, not looser.
+
+Checked against every point measured here, each at its worst sample:
+
+| fixture | admitted | measured | rule | over by | §7's rule (7 + 0.35, no floor) | over by |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 | 2 | 13.5M | 18M | +36.7% | 15M | +8.9% |
+| irs-fw9 | 6 | 18.1M | 41M | +129.1% | 44M | +144.2% |
+| nist-sp-800-218 | 36 | 171.8M | 213M | +24.1% | 265M | +54.0% |
+| nist-sp-800-207 | 59 | 248.2M | 345M | +39.1% | 434M | +74.7% |
+| nist-sp-800-171r3 | 120 | 410.6M | 695M | +69.2% | 882M | +114.8% |
+| nist-sp-800-171r3 (8 of 120) | 8 | 67.8M | 90M | +32.5% | 98M | +44.6% |
+| nist-sp-800-171r3 (32 of 120) | 32 | 148.1M | 219M | +48.1% | 266M | +79.6% |
+| nist-sp-800-171r3 (64 of 120) | 64 | 227.9M | 392M | +72.1% | 490M | +115.0% |
+| nist-sp-800-37r2 | 183 | 914.8M | 1056M | +15.4% | 1345M | +47.0% |
+| nist-sp-800-161r1 | 327 | 1136.3M | 1881M | +65.5% | 2403M | +111.5% |
+| **nist-sp-800-53Ar5** | 733 | 3727.8M | 4207M | **+12.9%** | 5388M | **+44.5%** |
+| nist-sp-800-53Ar5 (8 of 733) | 8 | 242.5M | 292M | +20.4% | 313M | +28.9% |
+| nist-sp-800-53Ar5 (32 of 733) | 32 | 373.4M | 422M | +12.9% | 481M | +28.7% |
+| nist-sp-800-53Ar5 (64 of 733) | 64 | 545.6M | 594M | +9.0% | 705M | +29.1% |
+| **nist-sp-800-53Ar5 (128 of 733)** | 128 | 907.1M | 940M | **+3.6%** | 1153M | +27.1% |
+| nist-sp-800-53Ar5 (256 of 733) | 256 | 1477.8M | 1631M | +10.4% | 2049M | +38.6% |
+| nist-sp-800-53Ar5 (512 of 733) | 512 | 2720.7M | 3014M | +10.8% | 3841M | +41.2% |
+
+**The rule over-predicts every point, by 3.6% at the tightest — `53Ar5` at `--max-pages 128` —
+and by 12.9% on the corpus's worst case, where §7's rule was over by 44.5%.** On the other
+documents' full extracts it is over by 15% (`37r2`) to 129% (`irs-fw9`), and that spread is
+content density, the same 2.2x §11 measured: a rule that bounds the densest document is loose on
+the sparsest by construction. What it does not promise: it is a bound on this corpus at this
+build, with 3.6% of margin at its tightest point, and a single sample can move 20% (`207`, above).
+A document whose pages are denser than `53Ar5`'s first 128 is outside it.
+
+Published as of this section: the `--max-pages` doc comment in `crates/ethos-parser-cli/src/main.rs`
+and the floor comment in `crates/ethos-parser-pdf/src/extract.rs` carry this rule and this
+attribution of the floor; §7's and §11's rule paragraphs point here. §8's open items are
+unchanged: there is still no ceiling a caller can set, and a page budget cannot reach the object
+graph.
