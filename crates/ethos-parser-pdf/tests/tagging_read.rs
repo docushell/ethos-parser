@@ -19,7 +19,9 @@
 //! (`fixtures/engine/make_fixtures.py`), before the writer exists, so a mistake the writer and
 //! the reader might share cannot pass. The failure modes are made in the test by editing
 //! `engine-tagged-blocks` through `lopdf`, so each is one edit away from the shape that reads
-//! correctly — and a control proves the re-serialisation alone changes nothing.
+//! correctly — and one test, `re_serialising_through_lopdf_changes_nothing`, holds that the
+//! re-serialisation alone changes nothing, so every comparison against `baseline()` has the edit
+//! as its only variable.
 //!
 //! Fixtures resolve through `fixtures/manifest.json`'s `engine` root. **A missing fixture is a
 //! failure, never a skip.**
@@ -210,10 +212,20 @@ fn assert_engine_tagged(what: &str, a: &ExtractArtifact, mcids: [i64; 6]) {
 /// Load, edit, and re-serialise `engine-tagged-blocks`.
 ///
 /// The edit sees the whole document so a test can reach the catalog, an element, or add an
-/// object. `save_to` rewrites every object, which is why every test that uses this also reads
-/// the UNEDITED re-serialisation once: the refusal or the change has to be the edit's.
+/// object. `save_to` rewrites every object, which is why
+/// `re_serialising_through_lopdf_changes_nothing` holds the UNEDITED re-serialisation equal to the
+/// raw fixture and every equality below compares against [`baseline`]: the refusal or the change
+/// has to be the edit's.
 fn edited(edit: impl FnOnce(&mut lopdf::Document)) -> Vec<u8> {
     edited_from("engine-tagged-blocks", edit)
+}
+
+/// What `engine-tagged-blocks` reads as after an edit-free trip through `lopdf`.
+///
+/// The baseline for every equality here, so the one variable between the two sides is the edit
+/// the test is about and never the re-serialisation.
+fn baseline() -> Read {
+    read(&edited(|_| {}))
 }
 
 /// Load, edit, and re-serialise any engine fixture.
@@ -468,20 +480,21 @@ fn a_nested_frame_does_not_hide_the_binding() {
 /// **An author's tag still reads back as the author's** (acceptance 4).
 ///
 /// The other half of the clause: every `pdf_tagged` locator on a document an author tagged says
-/// `extracted`, and no engine-written declaration appears — on the structural-locator golden and
-/// on a tagged table, whose record now carries the class it was read with.
+/// `extracted`, and no engine-written declaration appears — on the structural-locator golden, on
+/// a tagged table, whose record now carries the class it was read with, and on a widget the tree
+/// cites by `/OBJR`. The locators are read off the representation's nodes, whatever their kind,
+/// so the assertion is scope §4.2's "every tagged locator" rather than "every run".
 #[test]
 fn an_authors_tag_still_reads_back_as_extracted() {
     for name in [
         "tagged-structure-roles",
         "tagged-table-agrees",
         "tagged-list-items",
+        "tagged-widget-objr",
     ] {
         let a = extract_bytes(&engine_fixture(name)).expect("extracts");
-        let mut bound = 0;
         for run in a.runs() {
             if let Some(StructuralLocator::PdfTagged(t)) = &run.structural {
-                bound += 1;
                 assert_eq!(
                     t.derivation,
                     DerivationClass::Extracted,
@@ -489,12 +502,25 @@ fn an_authors_tag_still_reads_back_as_extracted() {
                 );
             }
         }
-        assert!(bound > 0, "{name}: the fixture binds at least one run");
         for page in &a.pages {
             for table in &page.tagged_tables {
                 assert_eq!(table.derivation, DerivationClass::Extracted, "{name}");
             }
         }
+        let repr = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+        let mut bound = 0;
+        for node in &repr.payload().nodes {
+            if let Some(StructuralLocator::PdfTagged(t)) = &node.structural_locator {
+                bound += 1;
+                assert_eq!(
+                    t.derivation,
+                    DerivationClass::Extracted,
+                    "{name}: a {:?} node under an author's tree: {t:?}",
+                    node.kind
+                );
+            }
+        }
+        assert!(bound > 0, "{name}: the fixture binds at least one node");
         assert!(
             !codes_of(&a.assurance.limitations).contains(&codes::STRUCTURE_TREE_ENGINE_WRITTEN),
             "{name}: nothing here is this engine's: {:?}",
@@ -503,20 +529,27 @@ fn an_authors_tag_still_reads_back_as_extracted() {
     }
 }
 
+/// **The control: re-serialising through `lopdf` changes nothing.**
+///
+/// Every other test here edits `engine-tagged-blocks` through `lopdf` and reads the result, so a
+/// binding or a declaration that `save_to` itself moved — a filter, an xref repair, a stream
+/// rewrite — would land inside that test's assertion and be reported under its message, blamed
+/// on its edit. This holds the unedited re-serialisation equal to the raw fixture, so
+/// `baseline()` is the raw file's reading and each equality has the edit as its only variable.
+#[test]
+fn re_serialising_through_lopdf_changes_nothing() {
+    assert_eq!(baseline(), read(&engine_fixture("engine-tagged-blocks")));
+}
+
 /// **An owned object in a shape the writer does not emit is refused** (acceptance 5).
 ///
 /// `/Derivation /Computed` is required under `/O /EthosParser`. Removing it from one element,
-/// or setting it to `/Extracted`, is `Malformed` naming the element — not read as the author's,
-/// not skipped. The unedited re-serialisation is read first so the refusal is provably the edit's.
+/// setting it to `/Extracted`, or writing it as the string `(Computed)` — absent, another name,
+/// not a name: the three arms of the refusal — is `Malformed` naming the element, not read as
+/// the author's, not skipped. `re_serialising_through_lopdf_changes_nothing` is the control, so
+/// each refusal is provably the edit's.
 #[test]
 fn the_owner_without_its_derivation_is_refused() {
-    let control = edited(|_| {});
-    assert_eq!(
-        read(&control),
-        read(&engine_fixture("engine-tagged-blocks")),
-        "the control: re-serialising through lopdf changes nothing"
-    );
-
     let without = edited(|doc| {
         let div = struct_elems(doc)[1];
         let mut a = take_attribute(elem_mut(doc, div));
@@ -552,6 +585,171 @@ fn the_owner_without_its_derivation_is_refused() {
     let msg = e.to_string();
     for needle in ["structure element", "7 0 R", "`/Document`", "`/Extracted`"] {
         assert!(msg.contains(needle), "the refusal names {needle:?}: {msg}");
+    }
+
+    // The third arm: a `/Derivation` that is not a name at all. The string `(Computed)` is the
+    // likeliest hand-written mistake — `/Rule` in the same object is a string, and the word is
+    // the right one. `struct_elems(doc)[2]` is object 9.
+    let not_a_name = edited(|doc| {
+        let div = struct_elems(doc)[2];
+        let mut a = take_attribute(elem_mut(doc, div));
+        a.set("Derivation", Object::string_literal("Computed"));
+        elem_mut(doc, div).set("A", Object::Dictionary(a));
+    });
+    let e = extract_bytes(&not_a_name)
+        .expect_err("`/Derivation (Computed)` is a string where the writer puts a name");
+    assert_eq!(e.code(), "malformed", "{e}");
+    let msg = e.to_string();
+    for needle in [
+        "structure element",
+        "9 0 R",
+        "`/Div`",
+        "not a name",
+        "/EthosParser",
+    ] {
+        assert!(msg.contains(needle), "the refusal names {needle:?}: {msg}");
+    }
+}
+
+/// **`/Rule` is read as a string or as a name** (`attribution`'s documented read).
+///
+/// Every fixture writes `/Rule (gutter-columns-v3)`. Rewriting it to the name
+/// `/gutter-columns-v3` on every element must read identically — bindings and declaration alike
+/// — so the declaration's rule list is independent of which spelling a writer chose.
+#[test]
+fn the_rule_is_read_as_a_string_or_a_name() {
+    let as_name = edited(|doc| {
+        for id in struct_elems(doc) {
+            let mut a = take_attribute(elem_mut(doc, id));
+            assert!(
+                matches!(a.get(b"Rule"), Ok(Object::String(..))),
+                "the fixture writes /Rule as a string"
+            );
+            a.set("Rule", Object::Name(b"gutter-columns-v3".to_vec()));
+            elem_mut(doc, id).set("A", Object::Dictionary(a));
+        }
+    });
+    let renamed = read(&as_name);
+    assert_eq!(
+        renamed,
+        baseline(),
+        "`/Rule /gutter-columns-v3` reads as `/Rule (gutter-columns-v3)`"
+    );
+    let written = engine_written(&renamed.limitations);
+    assert!(
+        written.detail.contains("gutter-columns-v3"),
+        "the declaration names the rule whichever way it was spelled: {}",
+        written.detail
+    );
+}
+
+/// **An author's element under an engine element reads as the author's** (scope §4.1, last
+/// paragraph).
+///
+/// The innermost element decides — the one whose `/K` cites the content. With the attribute
+/// taken off the second `/Div` (object 9, `/K 1`), runs 4–6 bind `Extracted` under the same
+/// role path while runs 1–3 still bind `Computed`, and the declaration says the tree MIXES. Like
+/// `an_attribute_under_another_owner_is_an_authors` this pins a declared shape nothing writes:
+/// the writer tags only a document with no tree. It is also the one thing that executes the
+/// mixed-tree sentence of `structure_tree_engine_written`, and with its twin below it guards
+/// against an ancestor's class sticking downward — the regression the all-owned fixtures cannot
+/// see, since the root starts `Extracted`.
+#[test]
+fn an_authors_element_under_an_engine_element_reads_as_the_authors() {
+    let mixed = edited(|doc| {
+        let div = struct_elems(doc)[2];
+        take_attribute(elem_mut(doc, div));
+    });
+    let a = extract_bytes(&mixed).expect("a mixed tree is declared, not refused");
+    let runs: Vec<_> = a.runs().collect();
+    assert_eq!(runs.len(), 6);
+    for (i, run) in runs.iter().enumerate() {
+        let t = tagged(&run.structural);
+        assert_eq!(t.role_path, vec!["Document", "Div"], "run {}", i + 1);
+        let (expected, mcid) = if i < 3 {
+            (DerivationClass::Computed, 0)
+        } else {
+            (DerivationClass::Extracted, 1)
+        };
+        assert_eq!(
+            t.derivation,
+            expected,
+            "run {}: the innermost element decides",
+            i + 1
+        );
+        assert_eq!(t.mcid, mcid, "run {}", i + 1);
+        assert_eq!(
+            run.derivation,
+            DerivationClass::Extracted,
+            "the text is the document's own either way"
+        );
+    }
+    let codes = codes_of(&a.assurance.limitations);
+    for code in NOT_ON_AN_ENGINE_TAGGED_PAGE {
+        assert!(
+            !codes.contains(&code),
+            "`{code}` must not be declared: {codes:?}"
+        );
+    }
+    let written = engine_written(&a.assurance.limitations);
+    for needle in [
+        "2 of its 3 structure element(s)",
+        "3 text run(s)",
+        "MIXES",
+        "The other 1 element(s)",
+        "gutter-columns-v3",
+    ] {
+        assert!(
+            written.detail.contains(needle),
+            "the declaration must say {needle:?}: {}",
+            written.detail
+        );
+    }
+    assert!(
+        !written.detail.contains("NONE is the author's"),
+        "a mixed tree is not described by the all-owned sentence: {}",
+        written.detail
+    );
+}
+
+/// **An engine element under an author's element reads as the engine's** (scope §4.1, last
+/// paragraph).
+///
+/// The other direction: with the attribute taken off `/Document` only, all six runs still bind
+/// `Computed` — each `/Div` is the innermost element citing its runs, and the author's element
+/// above it decides nothing. The declaration counts 2 of 3 elements, all six runs, and says the
+/// tree MIXES.
+#[test]
+fn an_engine_element_under_an_authors_element_reads_as_the_engines() {
+    let mixed = edited(|doc| {
+        let document = struct_elems(doc)[0];
+        take_attribute(elem_mut(doc, document));
+    });
+    let a = extract_bytes(&mixed).expect("a mixed tree is declared, not refused");
+    let runs: Vec<_> = a.runs().collect();
+    assert_eq!(runs.len(), 6);
+    for (i, run) in runs.iter().enumerate() {
+        let t = tagged(&run.structural);
+        assert_eq!(t.role_path, vec!["Document", "Div"], "run {}", i + 1);
+        assert_eq!(
+            t.derivation,
+            DerivationClass::Computed,
+            "run {}: the innermost `/Div` decides, not the author's `/Document` above it",
+            i + 1
+        );
+    }
+    let written = engine_written(&a.assurance.limitations);
+    for needle in [
+        "2 of its 3 structure element(s)",
+        "6 text run(s)",
+        "MIXES",
+        "The other 1 element(s)",
+    ] {
+        assert!(
+            written.detail.contains(needle),
+            "the declaration must say {needle:?}: {}",
+            written.detail
+        );
     }
 }
 
@@ -744,7 +942,7 @@ fn an_attribute_under_another_owner_is_an_authors() {
 /// to the inline form.
 #[test]
 fn an_attribute_behind_a_reference_is_read() {
-    let inline = read(&engine_fixture("engine-tagged-blocks"));
+    let inline = baseline();
 
     let referenced = edited(|doc| {
         for id in struct_elems(doc) {
@@ -792,20 +990,109 @@ fn an_attribute_behind_a_reference_is_read() {
 ///
 /// `/Marked true` is the Tagged PDF conformance claim; the writer sets none and the reader
 /// consults none. With no `/MarkInfo`, with `/Marked true` and with `/Marked false` the document
-/// binds and declares identically.
+/// binds and declares identically — each against the baseline, and the two marked states
+/// against each other, so the three are shown identical rather than only each equal to a third.
 #[test]
 fn mark_info_is_never_read() {
-    let plain = read(&engine_fixture("engine-tagged-blocks"));
-    for marked in [true, false] {
-        let with_mark_info = edited(|doc| {
+    let plain = baseline();
+    let with_mark_info = |marked: bool| {
+        edited(move |doc| {
             let mut info = Dictionary::new();
             info.set("Marked", Object::Boolean(marked));
             catalog_mut(doc).set("MarkInfo", Object::Dictionary(info));
-        });
+        })
+    };
+    let marked_true = read(&with_mark_info(true));
+    let marked_false = read(&with_mark_info(false));
+    assert_eq!(
+        marked_true, plain,
+        "`/MarkInfo << /Marked true >>` must change nothing"
+    );
+    assert_eq!(
+        marked_false, plain,
+        "`/MarkInfo << /Marked false >>` must change nothing"
+    );
+    assert_eq!(
+        marked_true, marked_false,
+        "the three /MarkInfo states bind and declare identically"
+    );
+}
+
+/// **An object the tree cites by `/OBJR` carries its element's class** (scope §4.2: every
+/// tagged locator of every document, not only the runs).
+///
+/// The `/OBJR` arm mints a locator for a whole object — here the widget of the
+/// `form-field-value` page — with `mcid -1` (`OBJECT_CITED_NOT_MARKED`: no marked content is
+/// involved) and the role path of the element citing it. On `tagged-widget-objr` the element is
+/// the author's and the locator says `Extracted`; on `engine-tagged-widget-objr`, where both
+/// elements carry the owner attribute, `Computed` — and only the `Computed` case proves the class
+/// is carried through the arm rather than written as a constant. The engine-owned one declares
+/// `structure-tree-engine-written` with 2 of its 2 elements and 0 text runs: the count is of
+/// runs, and this tree binds none.
+#[test]
+fn an_object_cited_by_the_tree_carries_its_elements_class() {
+    for (name, expected) in [
+        ("tagged-widget-objr", DerivationClass::Extracted),
+        ("engine-tagged-widget-objr", DerivationClass::Computed),
+    ] {
+        let a = extract_bytes(&engine_fixture(name)).expect("extracts");
+        let repr = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+        let fields: Vec<_> = repr
+            .payload()
+            .nodes
+            .iter()
+            .filter(|n| n.kind == ethos_parser_core::NodeKind::FormField)
+            .collect();
+        assert_eq!(fields.len(), 1, "{name}: one widget, one form-field node");
+        let t = tagged(&fields[0].structural_locator);
         assert_eq!(
-            read(&with_mark_info),
-            plain,
-            "`/MarkInfo << /Marked {marked} >>` must change nothing"
+            t.mcid, -1,
+            "{name}: an /OBJR cites the object, not a marked-content id"
         );
+        assert_eq!(t.role_path, vec!["Document", "Form"], "{name}");
+        assert!(
+            t.standard_role_path.is_none(),
+            "{name}: nothing was remapped"
+        );
+        assert!(t.element_id.is_none(), "{name}: the element carries no /ID");
+        assert_eq!(
+            t.derivation, expected,
+            "{name}: the /OBJR arm carries the citing element's class: {t:?}"
+        );
+
+        // The page's one run — the printed label — sits in no sequence and binds nothing,
+        // whichever tree is above it.
+        let runs: Vec<_> = a.runs().collect();
+        assert_eq!(runs.len(), 1, "{name}");
+        assert!(
+            runs[0].structural.is_none(),
+            "{name}: the label is outside any marked-content sequence: {:?}",
+            runs[0].structural
+        );
+
+        let codes = codes_of(&a.assurance.limitations);
+        assert!(
+            !codes.contains(&codes::UNTAGGED_STRUCTURE_TREE_ABSENT),
+            "{name}: a tree was read: {codes:?}"
+        );
+        if expected == DerivationClass::Computed {
+            let written = engine_written(&a.assurance.limitations);
+            for needle in [
+                "2 of its 2 structure element(s)",
+                "0 text run(s)",
+                "gutter-columns-v3",
+            ] {
+                assert!(
+                    written.detail.contains(needle),
+                    "{name}: the declaration must say {needle:?}: {}",
+                    written.detail
+                );
+            }
+        } else {
+            assert!(
+                !codes.contains(&codes::STRUCTURE_TREE_ENGINE_WRITTEN),
+                "{name}: nothing here is this engine's: {codes:?}"
+            );
+        }
     }
 }
