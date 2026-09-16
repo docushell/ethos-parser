@@ -1,0 +1,134 @@
+# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser
+# started 2026-09-16 20:09:41 +0530, 49 s; load average at start (2.25537109375, 3.7509765625, 3.5478515625), at end (2.66845703125, 3.64501953125, 3.51953125)
+# rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
+# fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
+irs-f1040sd-2025	classify	-	1	-	4956	8060928	6455632	-	0
+irs-f1040sd-2025	classify	-	2	-	3926	8060928	6455632	-	0
+irs-f1040sd-2025	classify	-	3	-	3800	7979008	6373712	-	0
+irs-f1040sd-2025	max0	0	1	2	3296	6750208	4931944	-	0
+irs-f1040sd-2025	max0	0	2	2	3179	6799360	4981096	-	0
+irs-f1040sd-2025	max0	0	3	2	3319	6864896	5046632	-	0
+irs-f1040sd-2025	full	-	1	2	15051	14155776	11420032	-	0
+irs-f1040sd-2025	full-size-pass	-	2	2	15154	14106624	11370880	670536	0
+irs-fw9	classify	-	1	-	6101	7782400	6177104	-	1
+irs-fw9	classify	-	2	-	4637	7716864	6111568	-	1
+irs-fw9	classify	-	3	-	4603	7716864	6111568	-	1
+irs-fw9	max0	0	1	6	3963	7553024	5734760	-	0
+irs-fw9	max0	0	2	6	3879	7569408	5751144	-	0
+irs-fw9	max0	0	3	6	3904	7553024	5734760	-	0
+irs-fw9	full	-	1	6	17512	18939904	16187776	-	0
+irs-fw9	full-size-pass	-	2	6	17831	18317312	15565184	836259	0
+nist-sp-800-161r1	classify	-	1	-	61103	71548928	69992832	-	1
+nist-sp-800-161r1	classify	-	2	-	55108	71532544	69992856	-	1
+nist-sp-800-161r1	classify	-	3	-	55541	71499776	69960088	-	1
+nist-sp-800-161r1	max0	0	1	327	64186	67534848	65814960	-	0
+nist-sp-800-161r1	max0	0	2	327	65267	67665920	65946032	-	0
+nist-sp-800-161r1	max0	0	3	327	65472	67354624	65618328	-	0
+nist-sp-800-161r1	full	-	1	327	3566969	1191542784	891520296	-	0
+nist-sp-800-161r1	full-size-pass	-	2	327	3603110	1189658624	882230568	284841338	0
+nist-sp-800-171r3	classify	-	1	-	41103	46481408	44810624	-	1
+nist-sp-800-171r3	classify	-	2	-	37124	45301760	43598184	-	1
+nist-sp-800-171r3	classify	-	3	-	35581	45105152	43434344	-	1
+nist-sp-800-171r3	max0	0	1	120	44193	47267840	45433240	-	0
+nist-sp-800-171r3	max0	0	2	120	44822	47333376	45515160	-	0
+nist-sp-800-171r3	max0	0	3	120	45507	47267840	45367704	-	0
+nist-sp-800-171r3	full	-	1	120	1089975	430571520	331645624	-	0
+nist-sp-800-171r3	full-size-pass	-	2	120	1101481	426754048	326107832	85940720	0
+nist-sp-800-171r3	budget	64	1	120	580272	238960640	208962112	-	0
+nist-sp-800-207	classify	-	1	-	15975	17154048	15515984	-	1
+nist-sp-800-207	classify	-	2	-	12153	17154048	15515984	-	1
+nist-sp-800-207	classify	-	3	-	11907	17104896	15466832	-	1
+nist-sp-800-207	max0	0	1	59	8507	12812288	10977640	-	0
+nist-sp-800-207	max0	0	2	59	8477	12746752	10912104	-	0
+nist-sp-800-207	max0	0	3	59	8548	12828672	10994024	-	0
+nist-sp-800-207	full	-	1	59	566702	260210688	199672432	-	0
+nist-sp-800-207	full-size-pass	-	2	59	584555	217120768	186728976	44743808	0
+nist-sp-800-218	classify	-	1	-	18290	23871488	22249832	-	1
+nist-sp-800-218	classify	-	2	-	14614	23740416	22118760	-	1
+nist-sp-800-218	classify	-	3	-	14415	23871488	22233424	-	1
+nist-sp-800-218	max0	0	1	36	10638	14614528	12779880	-	0
+nist-sp-800-218	max0	0	2	36	10885	14565376	12730728	-	0
+nist-sp-800-218	max0	0	3	36	10528	14434304	12599656	-	0
+nist-sp-800-218	full	-	1	36	378982	180158464	154550824	-	0
+nist-sp-800-218	full-size-pass	-	2	36	383246	179404800	150487568	30120253	0
+nist-sp-800-37r2	classify	-	1	-	54112	62521344	60981656	-	1
+nist-sp-800-37r2	classify	-	2	-	49939	62521344	60981656	-	1
+nist-sp-800-37r2	classify	-	3	-	49756	62881792	61342104	-	1
+nist-sp-800-37r2	max0	0	1	183	56241	61210624	59408816	-	0
+nist-sp-800-37r2	max0	0	2	183	55372	61521920	59703728	-	0
+nist-sp-800-37r2	max0	0	3	183	55889	61571072	59703728	-	0
+nist-sp-800-37r2	full	-	1	183	2772215	959234048	783991936	-	0
+nist-sp-800-37r2	full-size-pass	-	2	183	2773487	958513152	763741312	217817912	0
+nist-sp-800-53Ar5	classify	-	1	-	200873	212090880	210633232	-	1
+nist-sp-800-53Ar5	classify	-	2	-	195678	212123648	210649592	-	1
+nist-sp-800-53Ar5	classify	-	3	-	192666	211959808	210502160	-	1
+nist-sp-800-53Ar5	max0	0	1	733	306477	232046592	230507072	-	0
+nist-sp-800-53Ar5	max0	0	2	733	305883	232243200	230703680	-	0
+nist-sp-800-53Ar5	max0	0	3	733	308249	232013824	230457896	-	0
+nist-sp-800-53Ar5	full	-	1	733	12293298	3906879488	3200044272	-	0
+nist-sp-800-53Ar5	full-size-pass	-	2	733	12492878	3908845568	3191459032	996675602	0
+nist-sp-800-53Ar5	budget	128	1	733	2311712	948846592	687866816	-	0
+control:untagged-shredded-line	classify	-	1	-	735	3080192	1524024	-	0
+control:untagged-shredded-line	classify	-	2	-	343	3080192	1524024	-	0
+control:untagged-shredded-line	classify	-	3	-	347	3031040	1474872	-	0
+control:untagged-shredded-line	max0	0	1	1	621	3538944	1802576	-	0
+control:untagged-shredded-line	max0	0	2	1	553	3604480	1868112	-	0
+control:untagged-shredded-line	max0	0	3	1	493	3637248	1900880	-	0
+control:untagged-shredded-line	full	-	1	1	2407	5259264	2638160	-	0
+control:untagged-shredded-line	full-size-pass	-	2	1	2462	5193728	2572624	11430	0
+# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes classify0
+# started 2026-09-16 20:14:40 +0530, 1 s; load average at start (2.4501953125, 3.0634765625, 3.294921875), at end (2.57421875, 3.07861328125, 3.298828125)
+# rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
+# fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
+irs-f1040sd-2025	classify0	-	1	-	2854	5881856	4292944	-	0
+irs-f1040sd-2025	classify0	-	2	-	2699	5931008	4342096	-	0
+irs-f1040sd-2025	classify0	-	3	-	2671	5947392	4358480	-	0
+irs-fw9	classify0	-	1	-	3303	6488064	4899152	-	0
+irs-fw9	classify0	-	2	-	3000	6455296	4866384	-	0
+irs-fw9	classify0	-	3	-	3057	6488064	4899152	-	0
+nist-sp-800-161r1	classify0	-	1	-	48625	64503808	62996888	-	0
+nist-sp-800-161r1	classify0	-	2	-	48978	62554112	61047192	-	0
+nist-sp-800-161r1	classify0	-	3	-	49265	63766528	62259608	-	0
+nist-sp-800-171r3	classify0	-	1	-	34346	43614208	41959784	-	0
+nist-sp-800-171r3	classify0	-	2	-	34555	43548672	41877888	-	0
+nist-sp-800-171r3	classify0	-	3	-	34437	43941888	42287464	-	0
+nist-sp-800-207	classify0	-	1	-	7057	11419648	9814352	-	0
+nist-sp-800-207	classify0	-	2	-	6851	11386880	9797992	-	0
+nist-sp-800-207	classify0	-	3	-	6849	11354112	9748816	-	0
+nist-sp-800-218	classify0	-	1	-	8100	12861440	11272552	-	0
+nist-sp-800-218	classify0	-	2	-	7824	12877824	11272528	-	0
+nist-sp-800-218	classify0	-	3	-	7611	12926976	11338088	-	0
+nist-sp-800-37r2	classify0	-	1	-	43918	55492608	53985688	-	0
+nist-sp-800-37r2	classify0	-	2	-	44425	55623680	54116760	-	0
+nist-sp-800-37r2	classify0	-	3	-	43509	56475648	54968728	-	0
+nist-sp-800-53Ar5	classify0	-	1	-	190894	202096640	200655352	-	0
+nist-sp-800-53Ar5	classify0	-	2	-	190669	203145216	201720336	-	0
+nist-sp-800-53Ar5	classify0	-	3	-	189641	202817536	201376248	-	0
+control:untagged-shredded-line	classify0	-	1	-	496	2981888	1442104	-	0
+control:untagged-shredded-line	classify0	-	2	-	318	2867200	1327416	-	0
+control:untagged-shredded-line	classify0	-	3	-	340	2965504	1425720	-	0
+# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes full
+# started 2026-09-16 20:14:41 +0530, 2 s; load average at start (2.57421875, 3.07861328125, 3.298828125), at end (2.57421875, 3.07861328125, 3.298828125)
+# rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
+# fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
+nist-sp-800-207	full	-	1	59	569972	218726400	188367424	-	0
+nist-sp-800-207	full	-	2	59	568701	214007808	183632400	-	0
+nist-sp-800-207	full	-	3	59	567835	214630400	184238608	-	0
+# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-171r3': [8, 32], 'nist-sp-800-53Ar5': [8, 32, 64, 256, 512]}
+# started 2026-09-16 20:14:43 +0530, 16 s; load average at start (2.57421875, 3.07861328125, 3.298828125), at end (3.15966796875, 3.1875, 3.33349609375)
+# rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
+# fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
+nist-sp-800-171r3	budget	8	1	120	90241	71041024	65028552	-	0
+nist-sp-800-171r3	budget	32	1	120	312949	155320320	126435808	-	0
+nist-sp-800-53Ar5	budget	8	1	733	402258	254296064	247038528	-	0
+nist-sp-800-53Ar5	budget	32	1	733	750172	391577600	310919864	-	0
+nist-sp-800-53Ar5	budget	64	1	733	1281465	572080128	442581760	-	0
+nist-sp-800-53Ar5	budget	256	1	733	4458109	1549549568	1099515440	-	0
+nist-sp-800-53Ar5	budget	512	1	733	8789000	2852831232	2272577768	-	0
+# floor.py — ethos-parser 0.58.0 — binary /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser — modes ladder — ladders {'nist-sp-800-53Ar5': [128, 128, 128]}
+# started 2026-09-16 20:17:06 +0530, 7 s; load average at start (3.09814453125, 3.09619140625, 3.2705078125), at end (3.41015625, 3.16064453125, 3.2919921875)
+# rss and footprint are bytes from `/usr/bin/time -l`; wall_micros is the engine's own diagnostics line; the full-size-pass row's sink is a pipe, every other row's is /dev/null or a scratch file
+# fixture	mode	budget	run	pages	wall_micros	peak_rss_bytes	peak_footprint_bytes	artifact_bytes	exit
+nist-sp-800-53Ar5	budget	128	1	733	2348412	946700288	691946432	-	0
+nist-sp-800-53Ar5	budget	128	1	733	2354634	945913856	688718808	-	0
+nist-sp-800-53Ar5	budget	128	1	733	2398506	951189504	691635136	-	0
