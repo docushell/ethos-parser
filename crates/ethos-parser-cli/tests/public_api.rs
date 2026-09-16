@@ -311,6 +311,7 @@ const CORE: &[&str] = &[
     "SlotCover",
     "SlotFault",
     "STRUCT_TREE_RULE_V1",
+    "STRUCT_TREE_RULE_V2",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",

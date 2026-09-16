@@ -50,10 +50,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use ethos_parser_core::{EngineError, PdfTaggedLocator};
+use ethos_parser_core::{DerivationClass, EngineError, PdfTaggedLocator};
 use lopdf::{Dictionary, Object, ObjectId};
 
-// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V1` and is NOT restated here, for the same
+// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V2` and is NOT restated here, for the same
 // reason the table rule ids are not: two spellings of one rule id is exactly the drift a versioned
 // id exists to prevent.
 
@@ -361,6 +361,7 @@ impl Walker<'_> {
                                 role_path: role_path.to_vec(),
                                 standard_role_path: mapped.then_some(standard),
                                 element_id: None,
+                                derivation: DerivationClass::Extracted,
                             }),
                         );
                     }
@@ -578,6 +579,7 @@ impl Walker<'_> {
                 role_path: role_path.to_vec(),
                 standard_role_path: mapped.then_some(standard),
                 element_id: element_id.map(str::to_owned),
+                derivation: DerivationClass::Extracted,
             }),
         );
     }

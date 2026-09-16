@@ -925,7 +925,7 @@ impl PaintedRect {
 ///
 /// | Variant | What happened |
 /// | --- | --- |
-/// | [`Self::PdfTagged`] | the tree cites this `(page, mcid)`, so the author placed this text here |
+/// | [`Self::PdfTagged`] | the tree cites this `(page, mcid)`; its `derivation` says whether that tree is the author's or this engine's own |
 /// | [`Self::PdfMcid`] | the content stream gave an id and **the tree did not cite it** |
 /// | [`Self::PdfArtifact`] | the content stream marked this as page furniture, outside the tree |
 /// | absent | the content stream marked nothing here at all |
@@ -982,6 +982,23 @@ pub struct PdfTaggedLocator {
     /// invented would not address anything in the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub element_id: Option<String>,
+    /// Whose tree cited this content: the author's, or this engine's own.
+    ///
+    /// [`DerivationClass::Extracted`] means the element that cites this content is the
+    /// author's — every binding has been that since v1-S3. [`DerivationClass::Computed`] means
+    /// the innermost citing element carries this engine's own owner attribute (`/O /EthosParser`
+    /// under `/A`, or through `/C` and the root's `/ClassMap`), so the role path is this engine's
+    /// block cut read back out of the file and not structure the author declared
+    /// (`docs/23-AUTO-TAGGING-SCOPE.md` §4.2). Decision #23 binds the whole auto-tagging row to
+    /// this distinction: a tag the engine cannot tell from an author's is the launder #21 refused.
+    ///
+    /// **Written on every tagged locator, and never defaulted.** No `skip_serializing_if` and no
+    /// `serde(default)`, by decision #20: a per-node value the contract requires the artifact to
+    /// state is spelled out even where it is constant, and restoring `extracted` at read time
+    /// would default an absent field to the highest-trust class. A representation from before
+    /// this field is therefore refused (`missing field derivation`) rather than read as the
+    /// author's — scope §8.
+    pub derivation: DerivationClass,
 }
 
 /// A node the page marked as an artifact rather than as content.

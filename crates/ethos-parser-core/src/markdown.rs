@@ -2480,6 +2480,7 @@ pub(crate) mod tests {
                         role_path: vec!["Document".into(), r.into()],
                         standard_role_path: None,
                         element_id: None,
+                        derivation: DerivationClass::Extracted,
                     }
                     .into(),
                 )
@@ -2605,6 +2606,7 @@ pub(crate) mod tests {
                 role_path: path.iter().map(|s| (*s).to_string()).collect(),
                 standard_role_path: None,
                 element_id: None,
+                derivation: DerivationClass::Extracted,
             }
             .into(),
         ));
@@ -3741,6 +3743,7 @@ pub(crate) mod tests {
                 role_path: vec!["Document".into(), "P".into()],
                 standard_role_path: None,
                 element_id: None,
+                derivation: DerivationClass::Extracted,
             }
             .into(),
         ))

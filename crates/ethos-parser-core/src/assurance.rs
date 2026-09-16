@@ -350,6 +350,20 @@ pub mod codes {
     /// and a consumer could not tell them from cells reconstructed off the page.
     pub const TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE: &str = "tagged-table-without-geometric-table";
 
+    /// The structure tree this artifact's role paths come from is **this engine's own**, read
+    /// back out of the file (`docs/23-AUTO-TAGGING-SCOPE.md` §4.2).
+    ///
+    /// Document-scoped and conditional. Declared when the tree carries elements owned by
+    /// `/O /EthosParser`: the detail says how many, how many runs bound under them, which rule
+    /// names their attribute carries, and the fact it exists to state — the input carried no
+    /// author structure tree, so every role path here is this engine's block cut read back and
+    /// none is the author's. A disclosure in the limitation slot on the precedent of
+    /// [`TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE`] (v2-S24), and like that code it still names
+    /// something missing: an author's structure. [`UNTAGGED_STRUCTURE_TREE_ABSENT`] is **not**
+    /// declared beside it, because a tree was read and a role path does exist; its detail would
+    /// be false on both counts.
+    pub const STRUCTURE_TREE_ENGINE_WRITTEN: &str = "structure-tree-engine-written";
+
     /// A `BDC` supplied its property list **by name**, so any id in it went unread.
     ///
     /// Document-scoped and conditional. PDF 32000-1 §14.6.2 allows a property list to indirect
