@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Auto-tagging, the writer's side: the page's bytes decoded strictly and tokenised with byte
-//! positions (docs/23-AUTO-TAGGING-SCOPE.md §3.5; docs/24-AUTO-TAGGING-MILESTONES.md S2 items 2
-//! and 3).
+//! Auto-tagging, the writer: the page's bytes decoded strictly and tokenised with byte positions,
+//! the placement rule, the tree, and the self-check (docs/23-AUTO-TAGGING-SCOPE.md §3;
+//! docs/24-AUTO-TAGGING-MILESTONES.md S2 items 2 to 7).
 //!
 //! # The two rules this module holds, and why
 //!
@@ -65,17 +65,22 @@
 //! and no corpus example yet; the two corpus tests at the end of this file print the census and
 //! hold those numbers as floors.
 //!
-//! # What is here and what is not yet
+//! # What is here
 //!
 //! The strict decoder, the tokeniser, [`OpKind`] — the per-operator classification the placement
-//! rule reads — and, since S2 item 4, the placement rule itself ([`plan_page`]), the splice that
-//! inserts its sequences at token boundaries ([`splice`]), the tree and the stamp ([`write_tree`],
-//! [`stamp_tags`]), with [`sequences_are_well_formed`] as the one statement of what a sequence may
-//! hold, shared by the planner's tests and the self-check. `write_tags` and the self-check are
-//! items 5 to 8 and are not here yet; nothing here is public.
+//! rule reads — the placement rule itself ([`plan_page`]), the splice that inserts its sequences
+//! at token boundaries ([`splice`]), the tree and the stamp ([`write_tree`], [`stamp_tags`]), and
+//! [`write_tags`], the one public entry: scope §3.6's refusals in order, one new `FlateDecode`
+//! stream per rewritten page on a fresh clone, one serialisation, and the self-check of §3.7 that
+//! opens the bytes, extracts them again and compares run for run before anything is returned.
+//! [`sequences_are_well_formed`] is the one statement of what a sequence may hold, shared by the
+//! planner's tests and by that self-check, which runs it on the output's own tokens and runs —
+//! so §3.4 is proved on every document rather than on the fixtures alone.
 
-use ethos_parser_core::EngineError;
+use ethos_parser_core::{EngineError, Profile};
 use lopdf::{Object, ObjectId, Stream};
+
+use crate::document::Document;
 
 // ---------------------------------------------------------------------------------------------
 // The strict decoder
@@ -2187,6 +2192,632 @@ pub(crate) fn stamp_tags(
 /// shape — the role, the attribute keys, the placement rule — changes.
 pub const TAGS_ARTIFACT_TYPE: &str = "ethos.parser.tags.v0";
 
+// ---------------------------------------------------------------------------------------------
+// The writer (scope §3.5–§3.7): the refusals in order, one stream per page, the self-check
+// ---------------------------------------------------------------------------------------------
+
+/// One page as the writer planned it: the bytes `extract` interpreted, their tokens, the
+/// sequences, and the id each of the page's runs will bind to.
+struct PlannedPage {
+    number: u32,
+    page_id: ObjectId,
+    buffer: Vec<u8>,
+    tokenised: Tokenised,
+    plan: PagePlan,
+    /// Per run of the page, in the artifact's order: the id of the sequence holding its operator,
+    /// or `None` for a run inside an `/Artifact` frame.
+    run_mcids: Vec<Option<i64>>,
+}
+
+/// The whole document planned: the extract the tags are computed from, and every page.
+struct DocumentPlan {
+    artifact: crate::extract::ExtractArtifact,
+    pages: Vec<PlannedPage>,
+}
+
+impl DocumentPlan {
+    /// The pages that received a sequence, in page order — the ones rewritten and keyed.
+    fn rewritten(&self) -> impl Iterator<Item = &PlannedPage> {
+        self.pages.iter().filter(|p| !p.plan.sequences.is_empty())
+    }
+
+    fn sequenced_runs(&self) -> u32 {
+        let n = self
+            .pages
+            .iter()
+            .flat_map(|p| p.run_mcids.iter())
+            .filter(|m| m.is_some())
+            .count();
+        u32::try_from(n).unwrap_or(u32::MAX)
+    }
+}
+
+fn unsupported(detail: String) -> EngineError {
+    EngineError::Unsupported {
+        what: "tagging".into(),
+        detail,
+    }
+}
+
+fn malformed(detail: String) -> EngineError {
+    EngineError::Malformed {
+        what: "tagging".into(),
+        detail,
+    }
+}
+
+/// Prefix an error's detail with the page it concerns, keeping its kind and `what`.
+fn on_page(number: u32, e: EngineError) -> EngineError {
+    match e {
+        EngineError::Unsupported { what, detail } => EngineError::Unsupported {
+            what,
+            detail: format!("page {number}: {detail}"),
+        },
+        EngineError::Malformed { what, detail } => EngineError::Malformed {
+            what,
+            detail: format!("page {number}: {detail}"),
+        },
+        other => other,
+    }
+}
+
+/// Write this engine's own structure tree into a copy of an untagged document
+/// (docs/23-AUTO-TAGGING-SCOPE.md §3).
+///
+/// The result is the document re-serialised by `lopdf` with, added: one `/Document` element over
+/// one `/Div` per `(page, region, block)` of the reading-order cut, every element carrying
+/// `/A << /O /EthosParser /Derivation /Computed /Rule (…) >>`; each block's text-showing
+/// operators wrapped in `/Div << /MCID n >> BDC … EMC` sequences inserted at token boundaries
+/// into the page's content, which becomes one `FlateDecode` stream; a `/ParentTree`,
+/// `/StructParents` on each rewritten page, and the `/EthosParserTags` provenance stamp on the
+/// catalog. No `/MarkInfo` is written and one already present is left as found. Before the
+/// bytes are returned they are opened and extracted again, and every run, binding, counter and
+/// limitation is compared against the extract the tags were computed from (§3.7).
+///
+/// Every content stream's bytes survive unchanged apart from the inserted tokens; every other
+/// object is re-encoded by `lopdf` (§9). Two calls on one input return the same bytes.
+///
+/// # Errors
+///
+/// In this order, before any byte is written:
+///
+/// - [`EngineError::Unsupported`] with `what` = `tagging`: the catalog already declares
+///   `/StructTreeRoot` — a written tag fills absence only; a run binds a bare marked-content id
+///   (an inline `/MCID` and no tree); a page's `BDC` names a property list carrying `/MCID`, or
+///   one the page's `/Properties` does not hold; an operation shows runs of two blocks; the
+///   profile's page budget leaves a page unprocessed; the document shows no text this engine
+///   reads.
+/// - Whatever [`crate::extract`] refuses, unchanged.
+/// - [`EngineError::Malformed`] or [`EngineError::Unsupported`] from the strict decoder and the
+///   tokeniser, naming the page, the stream and the cause: a `/Contents` entry that is not a
+///   stream, a filter other than none or `FlateDecode`, a stream that does not decode to its end,
+///   a page the tokeniser cannot place to the last byte or reads differently from `lopdf`.
+/// - [`EngineError::Malformed`] with `what` = `tagging self-check`: the output, read back,
+///   differs from the extract it was written from, naming the first differing run or the failing
+///   condition. Nothing is returned in that case.
+pub fn write_tags(doc: &Document, profile: &Profile) -> Result<Vec<u8>, EngineError> {
+    let plan = plan_document(doc, profile)?;
+    let (bytes, elements) = emit(doc, profile, &plan)?;
+    self_check(&bytes, profile, &plan, elements)?;
+    Ok(bytes)
+}
+
+/// Scope §3.6's refusals in order, then every page decoded, tokenised and planned.
+fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, EngineError> {
+    use ethos_parser_core::StructuralLocator;
+
+    let catalog = doc
+        .inner()
+        .catalog()
+        .map_err(|e| malformed(format!("the catalog does not resolve: {e}")))?;
+    if catalog.get(b"StructTreeRoot").is_ok() {
+        return Err(unsupported(
+            "the catalog declares /StructTreeRoot: a written tag fills absence only, and filling \
+             a tree that reaches only some of the content would mean choosing where under the \
+             author's elements the new ones go (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+                .into(),
+        ));
+    }
+
+    let (artifact, positions) = crate::extract::extract_with_positions(doc, profile)?;
+
+    if let Some(state) = artifact
+        .assurance
+        .page_states
+        .iter()
+        .find(|s| !s.state.is_processed())
+    {
+        return Err(unsupported(format!(
+            "page {} was not processed ({:?}): a tag written for some pages would leave a tree \
+             that reaches some of the document, and the document would then be refused as \
+             tagged for the rest of its life. The writer reads the whole document or none of it \
+             (docs/23-AUTO-TAGGING-SCOPE.md §3.6)",
+            state.index, state.state
+        )));
+    }
+    for page in &artifact.pages {
+        for (i, run) in page.runs.iter().enumerate() {
+            if let Some(StructuralLocator::PdfMcid(mcid)) = run.structural {
+                return Err(unsupported(format!(
+                    "page {}, run {i} `{}` carries marked-content id {mcid} and the document has \
+                     no structure tree. The ids already have a meaning the document lost; \
+                     writing another id inside the same sequence, or reusing one, would either \
+                     shadow it or claim the parent tree already indexes it \
+                     (docs/23-AUTO-TAGGING-SCOPE.md §3.6)",
+                    page.index, run.text
+                )));
+            }
+        }
+    }
+
+    let mut pages = Vec::with_capacity(artifact.pages.len());
+    for &(number, page_id) in doc.pages() {
+        let page = artifact
+            .pages
+            .iter()
+            .find(|p| p.index == number)
+            .ok_or_else(|| {
+                malformed(format!(
+                    "page {number} is processed and absent from the artifact"
+                ))
+            })?;
+        let empty = Vec::new();
+        let positions = positions.get(&number).unwrap_or(&empty);
+        if positions.len() != page.runs.len() {
+            return Err(malformed(format!(
+                "page {number}: {} run(s) and {} operator position(s)",
+                page.runs.len(),
+                positions.len()
+            )));
+        }
+
+        let buffer = page_content_strict(doc.inner(), page_id).map_err(|e| on_page(number, e))?;
+        if buffer != doc.inner().get_page_content(page_id) {
+            return Err(malformed(format!(
+                "page {number}: the strictly decoded content ({} bytes) is not the content \
+                 extraction interpreted ({} bytes)",
+                buffer.len(),
+                doc.inner().get_page_content(page_id).len()
+            )));
+        }
+        let tokenised = tokenise(&buffer).map_err(|e| on_page(number, e))?;
+        let ops = lopdf::content::Content::decode(&buffer)
+            .map_err(|e| malformed(format!("page {number}: the content does not decode: {e}")))?
+            .operations;
+        agrees_with_lopdf(&tokenised, &ops).map_err(|e| on_page(number, e))?;
+
+        let page_dict = doc
+            .inner()
+            .get_dictionary(page_id)
+            .map_err(|e| malformed(format!("page {number}: {e}")))?;
+        let resolve = page_property_lists(doc.inner(), page_dict);
+        refuse_ids(&ops, number, &resolve)?;
+
+        let nest = nesting(&ops);
+        let shows = shows_from_runs(&ops, number, &page.runs, positions)?;
+        let order = blocks_in_reading_order(&page.runs);
+        let plan = plan_page(&ops, &nest, &shows, &order);
+
+        let mut run_mcids = Vec::with_capacity(page.runs.len());
+        for (i, (run, &at)) in page.runs.iter().zip(positions).enumerate() {
+            if matches!(run.structural, Some(StructuralLocator::PdfArtifact(_))) {
+                run_mcids.push(None);
+                continue;
+            }
+            let holder = plan
+                .sequences
+                .iter()
+                .find(|s| s.first <= at && at <= s.last)
+                .ok_or_else(|| {
+                    malformed(format!(
+                        "page {number}: run {i} `{}` (operation {at}) is in no sequence",
+                        run.text
+                    ))
+                })?;
+            run_mcids.push(Some(holder.mcid));
+        }
+        pages.push(PlannedPage {
+            number,
+            page_id,
+            buffer,
+            tokenised,
+            plan,
+            run_mcids,
+        });
+    }
+
+    if pages.iter().all(|p| p.plan.sequences.is_empty()) {
+        return Err(unsupported(
+            "the document shows no text run this engine reads outside an /Artifact frame, so \
+             there is no block to tag and a tree would cite nothing"
+                .into(),
+        ));
+    }
+    Ok(DocumentPlan { artifact, pages })
+}
+
+/// A page's spliced bytes deflated at the one fixed level the writer uses.
+fn deflate(bytes: &[u8], number: u32) -> Result<Vec<u8>, EngineError> {
+    use std::io::Write;
+    let io = |e: std::io::Error| EngineError::Io {
+        detail: format!("deflating page {number}: {e}"),
+    };
+    let mut encoder = flate2::write::ZlibEncoder::new(
+        Vec::with_capacity(bytes.len() / 2),
+        flate2::Compression::default(),
+    );
+    encoder.write_all(bytes).map_err(io)?;
+    encoder.finish().map_err(io)
+}
+
+/// Build the output on a fresh clone and serialise it once. Returns the bytes and how many
+/// structure elements the tree holds.
+fn emit(
+    doc: &Document,
+    profile: &Profile,
+    plan: &DocumentPlan,
+) -> Result<(Vec<u8>, u32), EngineError> {
+    // A fresh copy per call, as the overlay takes one: lopdf's writer mutates the document it
+    // saves, so byte identity holds per fresh clone and every build takes one.
+    let mut out = doc.inner().clone();
+
+    // One new stream per rewritten page, and the page's /Contents pointed at it. Never
+    // `change_page_content`, which mutates a stream two pages may share in place.
+    let mut superseded: std::collections::BTreeSet<ObjectId> = std::collections::BTreeSet::new();
+    for page in plan.rewritten() {
+        superseded.extend(out.get_page_contents(page.page_id));
+        let spliced = splice(&page.buffer, &page.tokenised, &page.plan.sequences);
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+        let stream_id = out.add_object(Stream::new(dict, deflate(&spliced, page.number)?));
+        out.get_dictionary_mut(page.page_id)
+            .map_err(|e| malformed(format!("page {}: {e}", page.number)))?
+            .set("Contents", Object::Reference(stream_id));
+    }
+    // The superseded streams no page lists any more, removed from the object map directly:
+    // not `delete_object`, which walks every object per call, and not `prune_objects`, which
+    // would also drop the document's pre-existing orphans.
+    let still_listed: std::collections::BTreeSet<ObjectId> = out
+        .get_pages()
+        .values()
+        .flat_map(|&page_id| out.get_page_contents(page_id))
+        .collect();
+    for id in superseded.difference(&still_listed) {
+        out.objects.remove(id);
+    }
+
+    let rewritten: Vec<(ObjectId, &PagePlan)> =
+        plan.rewritten().map(|p| (p.page_id, &p.plan)).collect();
+    let elements = write_tree(&mut out, &rewritten, &profile.reading_order_rule)?;
+    stamp_tags(
+        &mut out,
+        doc.source_sha256().as_str(),
+        plan.artifact.identity.profile_sha256.as_str(),
+        &profile.parser_version,
+    )?;
+
+    let mut bytes = Vec::new();
+    out.save_to(&mut bytes)
+        .map_err(|e| malformed(format!("serialising the tagged document: {e}")))?;
+    Ok((bytes, elements))
+}
+
+/// The written sequences of an output page, read back out of its operations: each
+/// `/Div << /MCID n >> BDC` and the `EMC` that closes it, in stream order, carrying the block
+/// the plan gave that id.
+fn written_sequences(
+    ops: &[lopdf::content::Operation],
+    plan: &PagePlan,
+) -> Result<Vec<Sequence>, String> {
+    let mut stack: Vec<Option<(usize, i64)>> = Vec::new();
+    let mut found: Vec<Sequence> = Vec::new();
+    for (i, op) in ops.iter().enumerate() {
+        match OpKind::of(op) {
+            OpKind::BeginMarked {
+                tag,
+                props: MarkedProps::Inline(dict),
+            } if tag == b"Div" && dict.get(b"MCID").is_ok() => {
+                let mcid = dict
+                    .get(b"MCID")
+                    .ok()
+                    .and_then(|o| o.as_i64().ok())
+                    .ok_or_else(|| format!("operation {i}: a written id that is not an integer"))?;
+                stack.push(Some((i, mcid)));
+            }
+            OpKind::BeginMarked { .. } => stack.push(None),
+            OpKind::EndMarked => {
+                if let Some(Some((opened, mcid))) = stack.pop() {
+                    let block = usize::try_from(mcid)
+                        .ok()
+                        .and_then(|m| plan.sequences.get(m))
+                        .map(|s| s.block)
+                        .ok_or_else(|| {
+                            format!("operation {opened}: written id {mcid} is not in the plan")
+                        })?;
+                    if i == opened + 1 {
+                        return Err(format!("operation {opened}: written id {mcid} is empty"));
+                    }
+                    found.push(Sequence {
+                        block,
+                        first: opened + 1,
+                        last: i - 1,
+                        mcid,
+                        placement: Placement::Operators,
+                        split: None,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(Some((opened, mcid))) = stack.iter().find(|f| f.is_some()) {
+        return Err(format!(
+            "operation {opened}: written id {mcid} is never closed"
+        ));
+    }
+    found.sort_by_key(|s| s.first);
+    if found.len() != plan.sequences.len() {
+        return Err(format!(
+            "{} written sequence(s) read back, {} planned",
+            found.len(),
+            plan.sequences.len()
+        ));
+    }
+    Ok(found)
+}
+
+/// Scope §3.7: open the bytes, extract, and compare against the extract the tags were computed
+/// from — every run, every binding, the limitations, and the sequences as written.
+fn self_check(
+    bytes: &[u8],
+    profile: &Profile,
+    plan: &DocumentPlan,
+    elements: u32,
+) -> Result<(), EngineError> {
+    use ethos_parser_core::{codes, DerivationClass, PdfTaggedLocator, StructuralLocator};
+
+    let refuse = |detail: String| EngineError::Malformed {
+        what: "tagging self-check".into(),
+        detail,
+    };
+    let out_doc = Document::open_bytes(bytes, profile)
+        .map_err(|e| refuse(format!("the output does not open: {e}")))?;
+    let (output, out_positions) = crate::extract::extract_with_positions(&out_doc, profile)
+        .map_err(|e| refuse(format!("the output does not extract: {e}")))?;
+    let source = &plan.artifact;
+
+    // Every page, in order, the same sequence of runs.
+    if output.pages.len() != source.pages.len() {
+        return Err(refuse(format!(
+            "the output has {} processed page(s) and the source {}",
+            output.pages.len(),
+            source.pages.len()
+        )));
+    }
+    for (was, now) in source.pages.iter().zip(&output.pages) {
+        if was.index != now.index {
+            return Err(refuse(format!(
+                "page {} of the source is page {} of the output",
+                was.index, now.index
+            )));
+        }
+        if was.runs.len() != now.runs.len() {
+            return Err(refuse(format!(
+                "page {}: {} run(s) became {}",
+                was.index,
+                was.runs.len(),
+                now.runs.len()
+            )));
+        }
+        let planned = plan
+            .pages
+            .iter()
+            .find(|p| p.number == was.index)
+            .ok_or_else(|| refuse(format!("page {} was never planned", was.index)))?;
+        for (i, (a, b)) in was.runs.iter().zip(&now.runs).enumerate() {
+            let differs = |field: &str, x: String, y: String| {
+                refuse(format!(
+                    "page {}, run {i} `{}`: {field} was {x} and reads back as {y}",
+                    was.index, a.text
+                ))
+            };
+            if a.text != b.text {
+                return Err(differs(
+                    "text",
+                    format!("{:?}", a.text),
+                    format!("{:?}", b.text),
+                ));
+            }
+            if a.locator.origin_x != b.locator.origin_x {
+                return Err(differs(
+                    "origin_x",
+                    a.locator.origin_x.to_string(),
+                    b.locator.origin_x.to_string(),
+                ));
+            }
+            if a.locator.origin_y != b.locator.origin_y {
+                return Err(differs(
+                    "origin_y",
+                    a.locator.origin_y.to_string(),
+                    b.locator.origin_y.to_string(),
+                ));
+            }
+            if a.locator.advance != b.locator.advance {
+                return Err(differs(
+                    "advance",
+                    format!("{:?}", a.locator.advance),
+                    format!("{:?}", b.locator.advance),
+                ));
+            }
+            if a.font_size != b.font_size {
+                return Err(differs(
+                    "font_size",
+                    a.font_size.to_string(),
+                    b.font_size.to_string(),
+                ));
+            }
+            if a.char_codes != b.char_codes {
+                return Err(differs(
+                    "char_codes",
+                    format!("{:?}", a.char_codes),
+                    format!("{:?}", b.char_codes),
+                ));
+            }
+            if a.synthesized != b.synthesized {
+                return Err(differs(
+                    "synthesized",
+                    format!("{:?}", a.synthesized),
+                    format!("{:?}", b.synthesized),
+                ));
+            }
+            if a.region != b.region {
+                return Err(differs(
+                    "region",
+                    format!("{:?}", a.region),
+                    format!("{:?}", b.region),
+                ));
+            }
+            if a.block != b.block {
+                return Err(differs(
+                    "block",
+                    format!("{:?}", a.block),
+                    format!("{:?}", b.block),
+                ));
+            }
+            // The binding: every sequenced run under this engine's own element with the id the
+            // writer assigned; every other run exactly as it was.
+            match planned.run_mcids.get(i).copied().flatten() {
+                Some(mcid) => {
+                    let expected =
+                        StructuralLocator::PdfTagged(std::sync::Arc::new(PdfTaggedLocator {
+                            mcid,
+                            role_path: vec!["Document".to_string(), "Div".to_string()],
+                            standard_role_path: None,
+                            element_id: None,
+                            derivation: DerivationClass::Computed,
+                        }));
+                    if b.structural.as_ref() != Some(&expected) || b.mcid != Some(mcid) {
+                        return Err(differs(
+                            "binding",
+                            format!("planned as id {mcid} under Document/Div, computed"),
+                            format!("{:?} with mcid {:?}", b.structural, b.mcid),
+                        ));
+                    }
+                }
+                None => {
+                    if a.structural != b.structural || a.mcid != b.mcid {
+                        return Err(differs(
+                            "binding",
+                            format!("{:?} with mcid {:?}", a.structural, a.mcid),
+                            format!("{:?} with mcid {:?}", b.structural, b.mcid),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // The declarations: the source's, with the untagged declaration replaced by the
+    // engine-written one and nothing else moved. `xref-entry-padded` is the one the output
+    // cannot carry — it says the source needed the bounded repair, and a document lopdf wrote
+    // out does not.
+    let codes_now: Vec<&str> = output
+        .assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.as_str())
+        .collect();
+    for absent in [
+        codes::UNTAGGED_STRUCTURE_TREE_ABSENT,
+        codes::STRUCTURE_MCID_UNBOUND,
+        codes::STRUCTURE_ITEM_WITHOUT_CONTENT,
+    ] {
+        if codes_now.contains(&absent) {
+            return Err(refuse(format!(
+                "the output declares `{absent}`, which a document carrying only this engine's \
+                 tree must not"
+            )));
+        }
+    }
+    let rules: std::collections::BTreeSet<String> =
+        std::iter::once(profile.reading_order_rule.clone()).collect();
+    let engine_written = crate::limitations::structure_tree_engine_written(
+        elements,
+        elements,
+        plan.sequenced_runs(),
+        &rules,
+    );
+    let mut expected: Vec<ethos_parser_core::Limitation> = source
+        .assurance
+        .limitations
+        .iter()
+        .filter(|l| l.code != crate::limitations::XREF_ENTRY_PADDED)
+        .map(|l| {
+            if l.code == codes::UNTAGGED_STRUCTURE_TREE_ABSENT {
+                engine_written.clone()
+            } else {
+                l.clone()
+            }
+        })
+        .collect();
+    // In the order `Assurance::new` keeps them, so the comparison is on the list as written.
+    ethos_parser_core::Limitation::normalize(&mut expected);
+    if output.assurance.limitations != expected {
+        let first = expected
+            .iter()
+            .zip(&output.assurance.limitations)
+            .find(|(e, o)| e != o)
+            .map(|(e, o)| {
+                format!(
+                    "expected `{}` ({}) and read back `{}` ({})",
+                    e.code, e.detail, o.code, o.detail
+                )
+            })
+            .unwrap_or_else(|| {
+                format!(
+                    "{} limitation(s) expected and {} read back",
+                    expected.len(),
+                    output.assurance.limitations.len()
+                )
+            });
+        return Err(refuse(format!("the limitations differ: {first}")));
+    }
+
+    // The sequences as written, on the output's own tokens and runs.
+    let out_pages: std::collections::BTreeMap<u32, ObjectId> =
+        out_doc.pages().iter().copied().collect();
+    for page in plan.rewritten() {
+        let page_id = out_pages
+            .get(&page.number)
+            .copied()
+            .ok_or_else(|| refuse(format!("page {} is not in the output", page.number)))?;
+        let buffer = page_content_strict(out_doc.inner(), page_id)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+        let tokenised =
+            tokenise(&buffer).map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+        let ops = lopdf::content::Content::decode(&buffer)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?
+            .operations;
+        agrees_with_lopdf(&tokenised, &ops)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+        let now = output
+            .pages
+            .iter()
+            .find(|p| p.index == page.number)
+            .ok_or_else(|| refuse(format!("page {} is not in the output", page.number)))?;
+        let empty = Vec::new();
+        let positions = out_positions.get(&page.number).unwrap_or(&empty);
+        let shows = shows_from_runs(&ops, page.number, &now.runs, positions)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+        let nest = nesting(&ops);
+        let sequences = written_sequences(&ops, &page.plan)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+        sequences_are_well_formed(&ops, &nest, &shows, &sequences)
+            .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4080,5 +4711,129 @@ mod tests {
         };
         let e = write_tree(&mut doc, &[(pages[0], &beyond)], "r").expect_err("id 5 does not exist");
         assert!(e.to_string().contains("cites id 5"), "{e}");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // The writer's self-check, exercised directly (scope §3.7)
+    // ---------------------------------------------------------------------------------------
+
+    fn opened(name: &str) -> (crate::document::Document, ethos_parser_core::Profile) {
+        let bytes = crate::test_support::engine_fixture(&format!("{name}/document.pdf"));
+        let profile = ethos_parser_core::Profile::default();
+        let doc = crate::document::Document::open_bytes(&bytes, &profile).expect("opens");
+        (doc, profile)
+    }
+
+    /// The output with one page's content stream edited: `edit` sees the decoded bytes and
+    /// returns the bytes to write back, re-deflated as the writer deflates.
+    fn with_page_content_edited(
+        bytes: &[u8],
+        page_number: u32,
+        edit: impl FnOnce(&[u8]) -> Vec<u8>,
+    ) -> Vec<u8> {
+        let mut doc = lopdf::Document::load_mem(bytes).expect("the output loads");
+        let page_id = doc.get_pages()[&page_number];
+        let stream_ids = doc.get_page_contents(page_id);
+        assert_eq!(stream_ids.len(), 1, "one stream per rewritten page");
+        let decoded = page_content_strict(&doc, page_id).expect("the output decodes strictly");
+        // `page_content_strict` appends one `\n` per stream; the stream's own bytes are the rest.
+        let own = &decoded[..decoded.len() - 1];
+        let edited = edit(own);
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+        doc.set_object(
+            stream_ids[0],
+            Stream::new(dict, deflate(&edited, page_number).unwrap()),
+        );
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    }
+
+    /// **The self-check tests the check, not the writer.** The writer's own output passes it;
+    /// the same bytes with one `Tm` operand moved by a point are refused naming the run and the
+    /// field, and with one sequence's tokens removed are refused naming the binding.
+    #[test]
+    fn the_self_check_refuses_a_moved_run() {
+        let (doc, profile) = opened("leading-gap-two-blocks");
+        let plan = plan_document(&doc, &profile).expect("plans");
+        let (bytes, elements) = emit(&doc, &profile, &plan).expect("emits");
+        assert_eq!(elements, 3);
+        self_check(&bytes, &profile, &plan, elements).expect("the writer's own output passes");
+
+        let moved = with_page_content_edited(&bytes, 1, |content| {
+            let text = lossy(content);
+            assert_eq!(text.matches("72 686 Tm").count(), 1);
+            text.replacen("72 686 Tm", "72 687 Tm", 1).into_bytes()
+        });
+        let e = self_check(&moved, &profile, &plan, elements).expect_err("a moved run");
+        assert_eq!(e.code(), "malformed");
+        let msg = e.to_string();
+        assert!(
+            msg.starts_with("malformed tagging self-check: page 1, run 1 `and stone keeps its shape`: origin_y was 3400 and reads back as 3300"),
+            "{msg}"
+        );
+
+        let untagged = with_page_content_edited(&bytes, 1, |content| {
+            let text = lossy(content);
+            let stripped =
+                text.replacen("/Div <</MCID 1>> BDC\n", "", 1)
+                    .replacen("Tj\nEMC ET", "Tj ET", 1);
+            assert_ne!(stripped, text);
+            stripped.into_bytes()
+        });
+        let e = self_check(&untagged, &profile, &plan, elements).expect_err("a lost sequence");
+        let msg = e.to_string();
+        assert!(
+            msg.contains("run 3 `Wind moves the grass`: binding was planned as id 1 under Document/Div, computed and reads back as None"),
+            "{msg}"
+        );
+
+        // A run that reads back under the wrong id is named the same way.
+        let renumbered = with_page_content_edited(&bytes, 1, |content| {
+            lossy(content)
+                .replacen("/Div <</MCID 0>> BDC", "/Div <</MCID 1>> BDC", 1)
+                .replacen(
+                    "/Div <</MCID 1>> BDC\n1 0 0 1 72 644",
+                    "/Div <</MCID 0>> BDC\n1 0 0 1 72 644",
+                    1,
+                )
+                .into_bytes()
+        });
+        let e = self_check(&renumbered, &profile, &plan, elements).expect_err("ids swapped");
+        assert!(
+            e.to_string()
+                .contains("run 0 `Water finds its level`: binding was planned as id 0"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_document_with_nothing_to_tag_is_refused_by_name() {
+        let bytes = crate::test_support::conformance_fixture(
+            "failure/image-only-or-blank-page/document.pdf",
+        );
+        let profile = ethos_parser_core::Profile::default();
+        let doc = crate::document::Document::open_bytes(&bytes, &profile).expect("opens");
+        let e = write_tags(&doc, &profile).expect_err("no text");
+        assert_eq!(e.code(), "unsupported");
+        assert!(
+            e.to_string()
+                .contains("shows no text run this engine reads outside an /Artifact frame"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_budget_that_leaves_a_page_unprocessed_is_refused_by_name() {
+        let (doc, mut profile) = opened("leading-gap-two-blocks");
+        profile.page_budget = ethos_parser_core::PageBudget::AtMost(0);
+        let e = write_tags(&doc, &profile).expect_err("a quarantined page");
+        assert_eq!(e.code(), "unsupported");
+        assert!(
+            e.to_string()
+                .starts_with("unsupported tagging: page 1 was not processed (Quarantined("),
+            "{e}"
+        );
     }
 }

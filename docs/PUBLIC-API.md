@@ -139,16 +139,16 @@ Do not persist it as a record or feed it to a fingerprint — `docs/01-CONTRACT.
 | Kind | Supported items |
 | --- | --- |
 | Handle | `Document` — `open`, `open_bytes`, `source_sha256`, `byte_len`, `page_count` |
-| Stages | `classify`, `extract`, `to_representation`, `build_overlay` |
+| Stages | `classify`, `extract`, `to_representation`, `build_overlay`, `write_tags` — the last writes a copy of an untagged PDF carrying this engine's own `/Document`/`/Div` structure tree, marked computed on every element, fills absence only, and reads its output back before returning it (auto-tagging S2, `docs/23-AUTO-TAGGING-SCOPE.md` §3) |
 | Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord` |
 | Reason vocabulary | `OcrNeedReason`, `LayoutComplexityReason` |
 | Format detection | `check_pdf_magic` · `aims_at_the_pdf_reader` |
 | Modules | `exit` (`SIMPLE`, `NEEDS_ATTENTION`, `COULD_NOT_READ`, `exit_code`) · `limitations` (limitation-code constants and builders) |
-| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `PROCESSOR_NAME`, `CRATE_NAME` |
+| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `TAGS_ARTIFACT_TYPE` (`ethos.parser.tags.v0`, stamped on the tagged document's catalog; it moves when the written shape moves), `PROCESSOR_NAME`, `CRATE_NAME` |
 
 **Internal, do not use:** `ops`, `content`, `cmap`, `encoding`, `fonts`, `metrics`, `text_state`,
 `thresholds`, `nodes`, `magic`, `classify`, `document`, `extract`, `represent`, `reasons`,
-`images`, `overlay`, `reading_order` as
+`images`, `overlay`, `reading_order`, `tagging` as
 *modules*. The items named above are re-exported at the crate root and that is the address to use;
 the module paths are not.
 
