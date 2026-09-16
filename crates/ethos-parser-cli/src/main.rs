@@ -14,11 +14,13 @@
 
 //! `ethos-parser` — the ethos-parser command line.
 //!
-//! **Four subcommands at v0. Nine now**, and this paragraph said four until v2-S13.5. The v0 four
-//! are `classify`, `extract`, `ground` and `grounding-check`; `verify` arrived at v0.1, `markdown`
-//! at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1 and `overlay` with the image work. The `Command`
-//! enum below is the list that cannot go stale, and `crates/ethos-parser-core/src/verifier.rs` has said
-//! *"the other eight subcommands"* since v0.1 — two files in one workspace disagreeing about a
+//! **Four subcommands at v0. Ten now**, and this paragraph said four until v2-S13.5 and nine until
+//! auto-tagging S2. The v0 four are `classify`, `extract`, `ground` and `grounding-check`;
+//! `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `overlay`
+//! with the image work, and `tag` — the writer of `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging
+//! S2. The `Command` enum below is the list that cannot go stale, and
+//! `crates/ethos-parser-core/src/verifier.rs` said *"the other eight subcommands"* from v0.1 until
+//! auto-tagging S2 moved it with this paragraph — two files in one workspace disagreeing about a
 //! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
 //! this one was missed by.
 //!
@@ -165,6 +167,29 @@ enum Command {
     ///
     /// Exit codes: **0** the overlay was written · **2** the document could not be read.
     Overlay(OverlayArgs),
+
+    /// Write this engine's own structure tree into a copy of an untagged PDF (auto-tagging S2).
+    ///
+    /// Emits a PDF — the second subcommand, after `overlay`, whose stdout is not canonical JSON,
+    /// and the only one whose output is a document rather than an artifact — carrying one
+    /// `/Document` element over one `/Div` per block of the reading-order cut, every element
+    /// marked `/A << /O /EthosParser /Derivation /Computed /Rule (…) >>`, each block's text
+    /// wrapped in marked-content sequences inserted into the page's content at token boundaries,
+    /// a `/ParentTree`, and the `/EthosParserTags` provenance stamp. `extract` on the result binds
+    /// every run to a computed `Document/Div` address and declares
+    /// `structure-tree-engine-written`; the text record is unchanged, and the writer proves that
+    /// on its own output before a byte is printed (`docs/23-AUTO-TAGGING-SCOPE.md` §3.7).
+    ///
+    /// **It fills absence only.** A document that already carries `/StructTreeRoot` — an
+    /// author's tree, or this subcommand's own output — is refused, as are marked-content ids
+    /// without a tree, a page the tokeniser cannot account for, and a filter the strict decoder
+    /// does not cover (§3.6). No `/MarkInfo` is written: the result is not a Tagged PDF, and a
+    /// reader that does not read the owner attribute sees author structure (§9). Not exposed
+    /// over MCP or the SDKs (§5).
+    ///
+    /// Exit codes: **0** the tagged PDF was written · **2** the document could not be read, or
+    /// was refused.
+    Tag(TagArgs),
 
     /// Validate a grounding artifact: structure, and optionally its binding to source bytes.
     ///
@@ -318,6 +343,12 @@ struct OverlayArgs {
     path: PathBuf,
 }
 
+#[derive(clap::Args)]
+struct TagArgs {
+    /// The untagged PDF to write a structure tree into.
+    path: PathBuf,
+}
+
 /// A ceiling on the bytes one invocation will read off disk.
 ///
 /// **There was none** until v2-S15: every entry point called `std::fs::read` on a caller-supplied
@@ -391,6 +422,12 @@ fn main() -> ExitCode {
         Command::Overlay(args) => {
             let path = args.path.clone();
             timed(Stage::Extract, diag, &path, || run_overlay(args))
+        }
+        // Under `Extract`, as `overlay` is: the writer runs extraction itself and reports under
+        // the stage whose work it wrote into the file.
+        Command::Tag(args) => {
+            let path = args.path.clone();
+            timed(Stage::Extract, diag, &path, || run_tag(args))
         }
         Command::Classify(args) => {
             let path = args.path.clone();
@@ -502,6 +539,30 @@ fn run_overlay(args: OverlayArgs) -> ExitCode {
             let extract = ethos_parser_pdf::extract(&doc, &profile)?;
             ethos_parser_pdf::build_overlay(&doc, &extract, &profile)
         });
+
+    match result {
+        Ok(bytes) => {
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(&bytes);
+            let _ = out.flush();
+            ExitCode::from(EXTRACTED as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+/// `ethos-parser tag` — the tagged PDF (auto-tagging S2).
+///
+/// The document is opened once through the bounded read and handed to `write_tags`, which runs
+/// extraction itself: the placement rule needs to know which operator showed each run, and that
+/// mapping lives beside the artifact and never on it (`docs/23-AUTO-TAGGING-SCOPE.md` §6), so no
+/// artifact parsed from JSON can reach it. Nothing is printed on a refusal: a partial PDF on
+/// stdout would be a document nobody wrote.
+fn run_tag(args: TagArgs) -> ExitCode {
+    let profile = Profile::default();
+    let result = read_source(&args.path)
+        .and_then(|bytes| Document::open_bytes(&bytes, &profile))
+        .and_then(|doc| ethos_parser_pdf::write_tags(&doc, &profile));
 
     match result {
         Ok(bytes) => {

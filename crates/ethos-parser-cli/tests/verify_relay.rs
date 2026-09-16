@@ -380,7 +380,7 @@ fn an_ungrounded_claim_without_the_gate_still_writes_its_report() {
 /// library-only proof the missing row would cite.
 ///
 /// **No ordinal, on v2-S15's rule.** This said *"like the other four subcommands"* until v2-S17,
-/// and it was wrong under either reading: there are **nine** subcommands, so not four others, and
+/// and it was wrong under either reading: there are **ten** subcommands, so not four others, and
 /// `verify` is not among the four the table does map, so it could not have been naming those
 /// either. Raising the count to eight would have been a new false statement rather than a repair:
 /// `mcp` is a server loop rather than a document pass, `ethos-parser-cli` publishes no library target,
