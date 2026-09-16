@@ -24,7 +24,7 @@ by effort would be invented.
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| **Cut 0.58.0** | **in progress** | Owner accepted both of its wire changes on 2026-09-16: `capabilities.char_offsets` turns on, and the new typed absence `not_axis_aligned`, which 0.57.0 readers refuse. Remaining: CHANGELOG entry, version bump, `profile_sha256` re-pinned at 0.58.0, preflight, macOS artifacts, then tag and GitHub Release (docs/RELEASING.md §8). **Until it is cut, a build of `main` says `parser_version` 0.57.0 under a different `profile_sha256` from the released 0.57.0.** |
+| **Cut 0.58.0** | **in progress** | Owner accepted both of its wire changes on 2026-09-16: `capabilities.char_offsets` turns on, and the new typed absence `not_axis_aligned`, which 0.57.0 readers refuse. The release commit carries the CHANGELOG entry, the version bump and `profile_sha256` re-pinned at 0.58.0. Remaining (docs/RELEASING.md §5.1, §5.2 and §8): `ci/gate.sh` on that commit and its merge to `main`; then, at the merge commit, preflight, macOS artifacts, the tag and the GitHub Release, the last two awaiting the owner's go-ahead. **Until the tag exists, `parser_version` 0.58.0 names a build no release carries.** |
 
 ## 2. v2.2 — layout and accessibility (a roadmap version)
 
@@ -108,7 +108,7 @@ because they are real work whatever version they end up in.
 | **D1:** reverse P14 narrowly for roles on geometric blocks | Plan §5.4 |
 | **D2:** reverse L29 to infer headings from size or font name. The plan's default is to defer | — |
 | **D3:** publish a head-to-head comparison, which reverses O26. Running one needs no decision | Publication only |
-| How a text-run box declares its kind. `docs/01-CONTRACT.md` §5.3 records it as open, and §6's versioned rule for the box is not in the profile | Contract §5.3 and §6 |
+| How a text-run box declares its kind. `docs/01-CONTRACT.md` §5.3 records it as open, and §6's versioned rule for the box is not in the profile. With it, whether the liteparse refusal's Wall 2 (`liteparse_refusal.rs`) and §5.3's "wrong for a citation highlight" should be re-taken, now that both apply to this engine's own box (`d544418` commit message) | Contract §5.3 and §6 |
 | Retire the unruled table rule, and whether `table_detection.unruled` moves off `unruled-align-v1` after the precondition reorder | Table track |
 | The geometric table rework (ruled-rects-v4 to v6) was the owner's choice in the plan only. Record it under #18, because `table-gate-v1.md` still says "the geometric chase stays parked" | Governance |
 | Record or withdraw the plan's D1 to D8. The plan says "#24 onward", but #24 went to the MCP ledger | Governance |

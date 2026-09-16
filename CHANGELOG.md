@@ -3,7 +3,7 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 was the first version released, 0.56.0 the second and 0.57.0 the third** — each tagged, with macOS binaries on
+**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third and 0.58.0 the fourth** — each tagged, with macOS binaries on
 the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
 in-tree only. Nothing is on crates.io, npm or PyPI.
 
@@ -16,6 +16,201 @@ the unit of work that had acceptance criteria. The per-slice reasoning behind ea
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.58.0] — every PDF span says where its text lies, and turned text is boxed along its baseline
+
+**A MINOR, because readers and emitters changed.** Every span a PDF grounding artifact carries now
+has `char_start` and `char_end`, so Ethos reports no `missing_char_offsets` on it. Text turned by
+its text matrix or its CTM gets a box along its own baseline, where it had no box or an upright one
+— `/Rotate` text too, though the only such run in any corpus runs past its page and so now carries
+none — and a baseline along neither axis gets a new typed absence, `not_axis_aligned`. Word
+spacing no longer reaches a two-byte code, a `TJ` gap writes a space only after text drawn since the
+pen was placed, a Type 3 font's height is refused where its `/FontMatrix` vertical is not the
+default, and `classify` and `overlay` read under the 2 GiB source ceiling. The reader changes answer
+the six defects [`docs/22-WORD-BOXES-SCOPE.md`](docs/22-WORD-BOXES-SCOPE.md) §9 recorded: four
+fixed, one refused rather than mapped, and one a documentation defect, corrected in the contract.
+**Two wire changes a 0.57.0 consumer sees, both accepted by the owner on 2026-09-16:**
+`capabilities.char_offsets` is true in the PDF profile and every PDF representation, and on a PDF
+grounding artifact that carries spans; and a 0.57.0 reader refuses a representation carrying
+`not_axis_aligned`, which no real document measured carries. `profile_sha256` is
+`sha256:0a739a77…`, moved for the `char_offsets` flip and for the version.
+
+**How it was measured.** Every engine change but the source-ceiling one was byte-compared across
+`extract`, `classify`, `overlay`, `ground`, `markdown`, `html` and every exit code, over 322 to 351
+PDFs — the gate documents, the engine and oracle fixtures, the gate-zero corpus, 200
+opendataloader-bench documents, synthetic probes and, for the Type 3 change, Ghostscript, matplotlib
+and Chrome Type 3 files. The source-ceiling change compared `classify` and `overlay` — exit code,
+stdout and stderr — over the 86 committed PDFs. The rotated-text fix was compared against 0.57.0 as
+released, and every other change against the build before it at the same version string, so each
+count below is that change's own. Office output changes only in one limitation detail, beside the
+digests and version strings every release moves.
+
+### Changed
+
+- **Every span in a PDF grounding artifact says where its text lies in its element's.** `char_start`
+  is inclusive and `char_end` exclusive, counted in **Unicode scalars** — not UTF-8 bytes, not
+  UTF-16 code units, not character codes — which is the unit `ethos.grounding.v1` slices an
+  element's text by. The cursor counts every member of the block, a run with no box included,
+  because its characters are still the element's; a space the reader synthesized counts as one. An
+  artifact claims `char_offsets` only while it carries spans: **past the million-span cap it carries
+  neither**, because the schema refuses offsets without spans, so the flip changes no byte of
+  `nist-sp-800-53Ar5`'s grounding artifact, and `ground`'s notice on such a document now names
+  `char_offsets` as false beside `spans`. On `irs-fw9`, Ethos `verify` returns all five checks with
+  the status and evidence it returned before, and drops `missing_char_offsets` with the
+  `capability_limited` warning it was the only cause of. `char-offsets-not-emitted` leaves the PDF
+  profile's limitations; the eight page-less profiles keep `char_offsets: false`, and their detail
+  for it no longer gives the spent `0..len` reason — the one limitation detail every Office
+  representation changes; Office grounding artifacts are byte-identical at equal version. Against
+  the build before it, over 328 PDFs: 324 grounding artifacts gained an offset pair on each of their
+  2,447,419 spans and nothing else — stripping the offsets and resetting the flag gives the base
+  bytes on all 324 — and no node, box, id or text moved anywhere. Recomputed out of tree from the
+  base representation, 0 of the 2,447,419 disagree; 280,617 spans carry an offset pair a UTF-8 byte
+  cursor would have written differently. Both checkers call all 324 `valid` and `matched`. **The
+  cost: artifacts grow 29.9%** (251.6 MB → 326.8 MB over the 324; `nist-sp-800-161r1` 53.37 → 69.23
+  MB; the largest 100.25 → 130.46 MB, none within 10% of the 256 MiB ceiling; no growth against
+  0.57.0 as released, whose artifacts also lack the rotated-text fix's new spans, is recorded), and
+  **validation costs more**, because both checkers collect an element's characters once per span:
+  `grounding-check` on `161r1` 0.29 → 0.53 s, Ethos 0.72 → 1.07 s, and `ground` 2.72 → 2.87 s. The
+  schema bounds the worst case: a synthetic million one-scalar spans in 61 maximum-length elements
+  takes `grounding-check` from 0.55–0.81 s to 9.59–14.45 s, and Ethos from 1.32–1.92 s to
+  10.66–15.80 s. **A 0.57.0 representation grounds without offsets**: `ground` follows the claim the
+  representation itself makes, which 0.57.0 wrote as false, so re-extract to get them. Proven by
+  `char_offsets_index_the_element_text_in_unicode_scalars`, where the real `extract` and `ground`
+  write the artifact and the pinned Ethos decides; its negative control writes a byte cursor's
+  offset and both checkers answer `invalid_offsets`. A MINOR.
+
+### Fixed
+
+- **Turned text gets a box along its own baseline, and a baseline off both axes says so (§9 items 1
+  and 2).** A run's box was built from its advance, which reads only the text matrix's `e`: text
+  turned or mirrored by its text matrix advanced 0 or less and was typed `no_ink_to_measure`, the
+  absence that says nothing was drawn, and text turned by its CTM or `/Rotate` got an upright box
+  laid along x. The box now follows the pen's travel as a vector through the text matrix, the CTM
+  and `/Rotate`, on the side the glyph tops point; upright boxes are bit for bit 0.57.0's. Against
+  0.57.0 — 340 PDFs, and `nist-sp-800-53Ar5` alone — 39 documents changed, `classify` and `overlay`
+  on none, and no node's text, order, parent, attributes, findings or locator moved:
+  - `no_ink_to_measure` → measured, every box vertical and every advance still ≤ 0: 31,699 runs on
+    the seven gate documents, 4,685 on `nist-sp-800-53Ar5`, 30,773 on gate-zero and 74 on
+    opendataloader-bench;
+  - measured upright → measured vertical: 52,644, all `nist-sp-800-53Ar5`'s margin note;
+  - → `not_axis_aligned`: 0 on every corpus measured; the new engine fixture
+    `rotated-and-mirrored-text` and two probes carry it by construction;
+  - measured → `measured_off_page`: conformance `rotation-90` and its gate-zero copy, the only
+    `/Rotate` text in any corpus. Its turned box runs 1.04 pt past its page — Ethos's own layout for
+    that fixture runs past it too — so it loses its wrongly horizontal grounding element instead of
+    gaining a box, and the limitation's off-page sentence now says its origin is on the page.
+
+  Grounding gains the newly measured runs — `nist-sp-800-207` 3,532 → 6,332 elements, `-161r1`
+  30,202 → 47,412, `nist-sp-800-53Ar5` 49,525 → 54,172 — and every changed artifact is valid and
+  matched under both checkers, with identical reports. Markdown and HTML differ only in
+  `representation_sha256`; `ground`'s stderr count of omitted nodes moves by each document's
+  transitions; `extract` on `nist-sp-800-161r1` and `-53Ar5` costs the same time and memory. An
+  independent reader, run out of tree because it is AGPL (decision #14), counts the same vertical
+  non-whitespace characters, page by page, as now sit in runs with a vertical box on the five gate
+  and two bench documents it was compared on, and 60,043 of 60,066 on `nist-sp-800-53Ar5`, the 23
+  being page 47 text neither build extracts. **New: `GeometryAbsence::NotAxisAligned`, wire
+  `not_axis_aligned`** — measured, not a declarable limitation, not groundable. **Breaking in the
+  way a MINOR allows:** `GeometryAbsence` is not `#[non_exhaustive]`, so an exhaustive match
+  downstream stops compiling, and a 0.57.0 reader refuses a representation that carries it. **Not
+  fixed:** `PdfLocator::advance` still measures along the text matrix's x before rotation, so on a
+  CTM- or `/Rotate`-turned page it disagrees with the box, and every run above that went from
+  `no_ink_to_measure` to a vertical box still advances 0 or less, so origin plus advance gives no
+  extent there — a known defect, recorded on the field and in docs/22.
+  `docs/measurements/rotated-text/` holds the instruments. A MINOR.
+
+- **Word spacing reaches only a simple font's code 32 (§9 item 3).** A composite font's two-byte
+  code `<0020>` took `Tw`, against PDF 32000-1 §9.3.3, so its run's advance and box were off by `Tw`
+  and every later glyph on the line moved with it. Over 327 PDFs one real document moved: gate-zero
+  `cfpb-home-loan-toolkit` page 17 shows `=` as `<0020>` under `-0.017 Tw`, so that run's advance
+  goes 713 → 731 centipoints and the nine runs after it on the line move 0.187 pt right, onto the
+  origins an independent reader draws them at. Its grounding re-boxes 10 elements and 10 spans with
+  counts unchanged, and its Markdown and HTML differ only in `representation_sha256`. The other six
+  documents that changed are synthetic probes: among them a lone zero-width `<0020>`, which had a
+  `Measured` box made only of `Tw`, and negative `Tw`, which had typed a drawn glyph
+  `no_ink_to_measure`. Nothing changed on the eight gate documents or the 200 bench documents, and
+  simple fonts are bit for bit unchanged. A MINOR.
+
+- **A `TJ` gap writes its space only after text drawn since the pen was placed (§9 item 4).** A `TJ`
+  number at the space threshold wrote a flagged space onto whichever run was shown last, even after
+  `Tm`, `Td` or another operator had placed the pen again, so a producer re-placing the pen on the
+  same line got a space it never drew: 'i ncluded', 'Y OUR', 'Gar cía'. Over 322 PDFs, 60 runs in 6
+  documents lose their space — `nist-sp-800-161r1` 44, `-171r3` 3, gate-zero
+  `cfpb-home-loan-toolkit` 8, and opendataloader-bench `01030000000001`, `…02` and `…04` 2, 1 and
+  2 — and 47 of the 189 synthesized spaces on the seven gate documents are gone. No box, id or count
+  of nodes, elements or spans moves, and `classify`, `overlay` and every exit code are identical.
+  Each of the 60 runs' `scalar_code_mismatch` goes true → false, and the Markdown and HTML coverage
+  counts `whitespace-collapsed-v1` and `source_chars_in_representation` fall by each document's
+  lost spaces. **Two tagged table cells in `cfpb-home-loan-toolkit` change text** ('“I f I lock' →
+  '“If I lock', '“C an you' → '“Can you', and '“H ow' → '“How' twice), so
+  `fixtures/labelled/table-truth.json` was regenerated: exactly those four spaces, and every table
+  score is unchanged. **One Markdown and HTML block break is new:** `nist-sp-800-171r3`'s 'ad d'
+  becomes 'ad' ‖ 'd', because with the invented space gone the declared path's ink-contiguity test
+  refuses a 17-centipoint gap, the same test that already splits the rest of that word. Both forms
+  read two words, the new one invents no character, and grounding reads the word whole. A MINOR.
+
+- **A Type 3 font keeps its height only where its `/FontMatrix` leaves the vertical at the default —
+  refused, not mapped (§9 item 6).** A Type 3 font's ascent and descent were read as thousandths of
+  an em whatever its matrix said, so a 10 pt probe under a 0.01 matrix got a box 0.9 pt tall.
+  Nothing in a Type 3 font says which units its descriptor uses, and producers disagree: LibreOffice
+  7.5 and 7.6 write thousandths of text space under a 1/UPEM matrix, where carrying the envelope
+  through the matrix would shrink an exact 12 pt box to 5.86 pt (read in its source, measured only
+  on a probe built from it). So where the matrix's b, d or f is not the default, the font's runs
+  that draw ink are `not_reported_by_reader`, and their advances are unchanged. Over 351 PDFs, 17
+  documents changed, every one a synthetic probe; **no real document in any corpus moved**, and
+  `ci/artifact-bytes.py` is identical over all 272 fixture artifacts. Withdrawn with the wrong
+  boxes: a right one on a LibreOffice 7.5/7.6-era Type 3 font, which no corpus holds. The
+  not-groundable limitation's "no `/FontBBox`" is false for these runs and is kept, because
+  rewording it moves nearly every PDF artifact. A MINOR.
+
+- **`classify` and `overlay` read their input under the 2 GiB source ceiling.** Both opened their
+  PDF with `Document::open`, whose read has no bound, so the ceiling 0.56.0 put on every other
+  path-reading command never reached them — the gap 0.56.0's entry named. On 0.57.0,
+  `classify /dev/zero` held 5.2 GiB after two seconds and `overlay /dev/zero` 12.8 GiB, both still
+  reading when killed. Both now read as `extract` does: a file over 2 GiB is refused from its
+  metadata without being read, and a source with no size is refused one byte past the ceiling, exit
+  2, `resource_limit`. Exit code, stdout and stderr are equal to 0.57.0's on all 86 committed PDFs,
+  and peak memory is within noise. The library's `Document::open` is unchanged. A refusal where
+  0.57.0 read without limit, so a MINOR on its own.
+
+- **The contract describes the box this engine emits, and a ligature was never the defect (§9 item
+  5).** `docs/01-CONTRACT.md` §5.3 said the engine *"emits measured ink boxes only, from the
+  embedded font program or the font descriptor"*. The box is the font's ascent-to-descent envelope
+  stretched over the pen's travel — the construction §5.3 itself names as the one to avoid — and its
+  sources include `/FontBBox` and the standard-14 AFMs. §5.3 now describes that box, and records,
+  without deciding, that nothing on the wire declares a box's kind and that §6's versioned rule for
+  it is not in the profile; §5.1, §6, §10, `docs/CAPABILITY.md` and the doc comments that repeated
+  the claim are corrected with it. A run holding a code that decodes to several characters is its
+  own advance wide, because each code advances the pen once by its own width: all 29 in
+  `nist-sp-800-53Ar5` (26 exactly, 3 within the centipoint that quantizing two edges allows) and all
+  608 in 79 of the 200 opendataloader-bench documents (473 exactly, 135 within it). The conformance
+  ligature run's advance is now pinned at 9600, and a unit test pins one advance per code. **Not
+  pinned: the box's own width.** No fixture carries a measured box on a multi-character code, so a
+  reader spanning the box over the run's letters would pass every test and is caught only by
+  `docs/measurements/word-boxes/ligatures.py`; closing it needs a new fixture. **0.55.0's entry was
+  wrong the same way:** it said `scalar_code_mismatch` flags exactly a code that decodes to more
+  than one character, but it compares two counts, so a synthesized character sets it too — 15,164 of
+  the 15,772 flagged bench runs are synthesized-only. No emitted byte moves: 323 PDFs are
+  byte-identical against the build before it. A PATCH on its own.
+
+### Not done
+
+- **Word boxes are refused, on measurement**
+  ([`docs/22-WORD-BOXES-SCOPE.md`](docs/22-WORD-BOXES-SCOPE.md) §7 names what reopens them). The
+  pinned verifier resolves a quote to the element before any span, so a word box changes a result
+  only for a claim naming its `span_id` or a page-only `value` equal to the word, and every claim
+  this repository verifies cites by element.
+- Left open, each recorded in [`docs/OPEN-WORK.md`](docs/OPEN-WORK.md): `advance` measured before
+  rotation; a run dropped at an undecodable code stopping the pen short, so later runs on its line
+  sit left of where they are drawn; a code whose `/ToUnicode` destination is empty decoding to no
+  character, which can hide a ligature from `scalar_code_mismatch`; how a text-run box declares its
+  kind, and whether the liteparse refusal's Wall 2 and §5.3's "wrong for a citation highlight"
+  should be re-taken now that both apply to this engine's own box;
+  `docs/draft-schemas/derivation-class.draft.json` still saying "ink boxes from font metrics"; the
+  semver policy for `GeometryAbsence` growing without `#[non_exhaustive]`; Office Markdown and HTML
+  stamping the PDF default profile's `profile_sha256`; and the table accuracy print reading 69‰
+  where `table-gate-v1.md` records 70‰, a gap older than this release.
 
 ---
 
