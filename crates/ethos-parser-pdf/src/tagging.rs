@@ -54,16 +54,17 @@
 //!
 //! # Measured, 2026-09-17
 //!
-//! Over every PDF in `fixtures/engine` (49), `fixtures/gate` (8) and the oracle fixtures (35, of
-//! which 3 exist not to open: a corrupt header, a non-PDF, a password) — 89 documents, 1 567
-//! pages, 76 646 614 bytes of decoded content — the strict decoder returned `get_page_content`'s
-//! bytes on all 1 567 pages and refused none: no page in these corpora carries a filter other than
-//! none or `FlateDecode`, a predictor, a truncated stream or bytes after its deflate data. The
-//! tokeniser placed every byte of all 1 567 pages, agreed with `lopdf` on all 6 697 547
-//! operations, and refused none; `lopdf`'s strict parse succeeded on every one of them, so no page
-//! in these corpora is one its lenient decoder truncates. Every refusal therefore has a unit test
-//! and no corpus example yet; the two corpus tests at the end of this file print the census and
-//! hold those numbers as floors.
+//! Over every PDF in `fixtures/engine` (56, the seven writer fixtures of S2 included: one of them
+//! a filtered inline image, one a stream two pages share), `fixtures/gate` (8) and the oracle
+//! fixtures (35, of which 3 exist not to open: a corrupt header, a non-PDF, a password) — 96
+//! documents, 1 575 pages, 76 649 378 bytes of decoded content — the strict decoder returned
+//! `get_page_content`'s bytes on all 1 575 pages and refused none: no page in these corpora
+//! carries a filter other than none or `FlateDecode`, a predictor, a truncated stream or bytes
+//! after its deflate data. The tokeniser placed every byte of all 1 575 pages, agreed with `lopdf`
+//! on all 6 697 720 operations, and refused none; `lopdf`'s strict parse succeeded on every one of
+//! them, so no page in these corpora is one its lenient decoder truncates. Every refusal therefore
+//! has a unit test and no corpus example yet; the two corpus tests near the end of this file print
+//! the census and hold those numbers as floors.
 //!
 //! # What is here
 //!
@@ -3678,8 +3679,8 @@ mod tests {
         for r in &refusals {
             println!("  refused: {r}");
         }
-        assert!(opened >= 89, "{opened} documents opened");
-        assert!(pages >= 1_567, "{pages} pages walked");
+        assert!(opened >= 96, "{opened} documents opened");
+        assert!(pages >= 1_575, "{pages} pages walked");
         assert_eq!(
             equal + refusals.len(),
             pages,
@@ -3749,9 +3750,9 @@ mod tests {
         for r in &refusals {
             println!("  refused: {r}");
         }
-        assert!(opened >= 89, "{opened} documents opened");
-        assert!(pages >= 1_567, "{pages} pages tokenised");
-        assert!(ops >= 6_697_547, "{ops} operations checked");
+        assert!(opened >= 96, "{opened} documents opened");
+        assert!(pages >= 1_575, "{pages} pages tokenised");
+        assert!(ops >= 6_697_720, "{ops} operations checked");
     }
 
     // ---------------------------------------------------------------------------------------

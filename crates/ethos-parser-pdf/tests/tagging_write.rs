@@ -29,6 +29,7 @@ use std::path::PathBuf;
 
 use ethos_parser_core::{codes, DerivationClass, EngineError, Profile, StructuralLocator};
 use ethos_parser_pdf::{write_tags, Document, ExtractArtifact, TAGS_ARTIFACT_TYPE};
+use lopdf::content::Operation;
 use lopdf::{Dictionary, Object, ObjectId};
 
 // -------------------------------------------------------------------------------------------
@@ -264,6 +265,104 @@ fn tree(bytes: &[u8]) -> Tree {
         parent_tree: entries,
         next_key: root.get(b"ParentTreeNextKey").unwrap().as_i64().unwrap(),
     }
+}
+
+/// The output page's operations, decoded by lopdf.
+fn page_ops(bytes: &[u8], page: u32) -> Vec<Operation> {
+    let doc = lopdf::Document::load_mem(bytes).expect("lopdf loads");
+    let id = doc.get_pages()[&page];
+    lopdf::content::Content::decode(&doc.get_page_content(id))
+        .expect("decodes")
+        .operations
+}
+
+fn page_tokens(bytes: &[u8], page: u32) -> Vec<String> {
+    let doc = lopdf::Document::load_mem(bytes).expect("lopdf loads");
+    let id = doc.get_pages()[&page];
+    String::from_utf8_lossy(&doc.get_page_content(id))
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A written sequence read back out of the operations: its id, the operations it encloses, and
+/// the tag of the frame it opened inside, if any.
+#[derive(Debug)]
+struct Written {
+    mcid: i64,
+    first: usize,
+    last: usize,
+    inside: Option<String>,
+}
+
+fn written_sequences(ops: &[Operation]) -> Vec<Written> {
+    let mut stack: Vec<(String, Option<(i64, usize)>)> = Vec::new();
+    let mut out = Vec::new();
+    for (i, op) in ops.iter().enumerate() {
+        match op.operator.as_str() {
+            "BDC" | "BMC" => {
+                let tag = op
+                    .operands
+                    .first()
+                    .and_then(|o| o.as_name().ok())
+                    .map(|n| String::from_utf8_lossy(n).into_owned())
+                    .unwrap_or_default();
+                let written = match op.operands.get(1) {
+                    Some(Object::Dictionary(d)) if tag == "Div" => d
+                        .get(b"MCID")
+                        .ok()
+                        .and_then(|m| m.as_i64().ok())
+                        .map(|m| (m, i)),
+                    _ => None,
+                };
+                stack.push((tag, written));
+            }
+            "EMC" => {
+                let (_, written) = stack.pop().expect("frames are balanced");
+                if let Some((mcid, opened)) = written {
+                    out.push(Written {
+                        mcid,
+                        first: opened + 1,
+                        last: i - 1,
+                        inside: stack.last().map(|(tag, _)| tag.clone()),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    out.sort_by_key(|w| w.first);
+    out
+}
+
+fn operator_at(ops: &[Operation], operator: &str, tag: Option<&str>) -> usize {
+    ops.iter()
+        .position(|o| {
+            o.operator == operator
+                && tag.is_none_or(|t| {
+                    o.operands.first() == Some(&Object::Name(t.as_bytes().to_vec()))
+                })
+        })
+        .unwrap_or_else(|| panic!("no `{operator}` {tag:?}"))
+}
+
+fn mcids(a: &ExtractArtifact) -> Vec<(u32, String, Option<i64>)> {
+    a.pages
+        .iter()
+        .flat_map(|p| {
+            p.runs
+                .iter()
+                .map(move |r| (p.index, r.text.clone(), r.mcid))
+        })
+        .collect()
+}
+
+fn declaration<'a>(a: &'a ExtractArtifact, code: &str) -> &'a ethos_parser_core::Limitation {
+    a.assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == code)
+        .unwrap_or_else(|| panic!("`{code}` is declared"))
 }
 
 // -------------------------------------------------------------------------------------------
@@ -647,4 +746,290 @@ fn the_two_column_page_gets_one_div_per_band_in_reading_order() {
     assert_eq!(runs[0].mcid, Some(1));
     assert_eq!(runs[8].text, "R1");
     assert_eq!(runs[8].mcid, Some(0));
+}
+
+// -------------------------------------------------------------------------------------------
+// The refusals and placements the writer's own fixtures hold (S2 acceptance)
+// -------------------------------------------------------------------------------------------
+
+/// **Ids in the content stream and no tree are refused, inline and by name** (scope §3.6, rows
+/// two and three). The inline id is caught on the run the reader bound `pdf_mcid`; the named one
+/// is caught by resolving the name the reader declares and does not read.
+#[test]
+fn ids_without_a_tree_are_refused() {
+    let e = tag(&engine_fixture("untagged-mcid-no-tree")).expect_err("an inline id");
+    assert_eq!(e.code(), "unsupported");
+    assert!(
+        e.to_string().starts_with(
+            "unsupported tagging: page 1, run 1 `and stone keeps its shape` carries \
+             marked-content id 0 and the document has no structure tree"
+        ),
+        "{e}"
+    );
+    let e = tag(&engine_fixture("untagged-mcid-by-name")).expect_err("an id by name");
+    assert_eq!(e.code(), "unsupported");
+    let msg = e.to_string();
+    assert!(
+        msg.starts_with("unsupported tagging: page 1, operation "),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("`/P /MC0 BDC` names a property list that carries `/MCID`"),
+        "{msg}"
+    );
+    // The reader itself read both pages without complaint: the refusal is the writer's.
+    for name in ["untagged-mcid-no-tree", "untagged-mcid-by-name"] {
+        assert_eq!(extract(&engine_fixture(name)).runs().count(), 6, "{name}");
+    }
+}
+
+/// **A named list without an id is a frame, and the sequence sits inside it** (scope §3.4,
+/// §3.6): on `untagged-oc-by-name` the writer tags cleanly, line 2's sequence opens as the next
+/// operation after `/OC /oc1 BDC` and closes as the operation before the frame's `EMC`, and the
+/// reader — binding by the innermost open sequence — binds line 2 computed under id 1, while the
+/// named list is declared exactly as it is today.
+#[test]
+fn a_named_list_without_an_id_is_placed_inside() {
+    let written = tagged("untagged-oc-by-name");
+    let ops = page_ops(&written, 1);
+    let seqs = written_sequences(&ops);
+    assert_eq!(
+        seqs.iter().map(|w| w.mcid).collect::<Vec<_>>(),
+        [0, 1, 2, 3]
+    );
+    assert_eq!(seqs[1].inside.as_deref(), Some("OC"), "{seqs:?}");
+    for other in [0, 2, 3] {
+        assert_eq!(seqs[other].inside, None, "{seqs:?}");
+    }
+    let frame = operator_at(&ops, "BDC", Some("OC"));
+    assert_eq!(
+        seqs[1].first,
+        frame + 2,
+        "the written BDC follows the frame's"
+    );
+    assert_eq!(ops[seqs[1].last + 1].operator, "EMC", "the written EMC");
+    assert_eq!(
+        ops[seqs[1].last + 2].operator,
+        "EMC",
+        "and the frame's after it"
+    );
+
+    let t = tree(&written);
+    assert_eq!(t.elements[0].kids.len(), 2);
+    assert_eq!(t.elements[0].kids[0].ids, [0, 1, 2]);
+    assert_eq!(t.elements[0].kids[1].ids, [3]);
+
+    let a = extract(&written);
+    assert_eq!(
+        mcids(&a),
+        [
+            (1, "Water finds its level".into(), Some(0)),
+            (1, "and stone keeps its shape".into(), Some(1)),
+            (1, "through the long season".into(), Some(2)),
+            (1, "Wind moves the grass".into(), Some(3)),
+            (1, "and light moves the shade".into(), Some(3)),
+            (1, "across the open field".into(), Some(3)),
+        ]
+    );
+    for run in a.runs() {
+        match &run.structural {
+            Some(StructuralLocator::PdfTagged(t)) => {
+                assert_eq!(t.derivation, DerivationClass::Computed)
+            }
+            other => panic!("`{}` is not bound: {other:?}", run.text),
+        }
+    }
+    assert_eq!(
+        *declaration(&a, codes::MCID_PROPERTY_LIST_BY_NAME),
+        ethos_parser_pdf::limitations::mcid_property_list_by_name(1),
+        "the frame is the document's, declared as any named list is"
+    );
+}
+
+/// **An artifact run stays outside the tree** (scope §3.4): on `untagged-artifact-furniture`
+/// the head is its own block and furniture entirely, so it gets no element, still binds
+/// `pdf_artifact`, and its frame is enclosed by no written sequence; the two body blocks come
+/// out as on the leading-gap page.
+#[test]
+fn an_artifact_run_stays_outside_the_tree() {
+    let written = tagged("untagged-artifact-furniture");
+    let a = extract(&written);
+    let runs: Vec<_> = a.runs().collect();
+    assert_eq!(runs.len(), 7);
+    assert_eq!(runs[0].text, "Running head");
+    assert_eq!(
+        runs[0].structural,
+        Some(StructuralLocator::PdfArtifact(
+            ethos_parser_core::PdfArtifactLocator { mcid: None }
+        ))
+    );
+    assert_eq!(runs[0].mcid, None);
+    assert_eq!(
+        runs[0].block,
+        Some(1),
+        "the head is block 1 by the leading-gap cut"
+    );
+    for (i, run) in runs.iter().enumerate().skip(1) {
+        assert_eq!(run.mcid, Some(if i <= 3 { 0 } else { 1 }), "`{}`", run.text);
+        assert!(
+            matches!(&run.structural, Some(StructuralLocator::PdfTagged(t)) if t.derivation == DerivationClass::Computed),
+            "`{}`",
+            run.text
+        );
+    }
+    let t = tree(&written);
+    assert_eq!(t.elements[0].kids.len(), 2, "no element for the head");
+    assert_eq!(t.elements[0].kids[0].ids, [0]);
+    assert_eq!(t.elements[0].kids[1].ids, [1]);
+    let detail = &declaration(&a, codes::STRUCTURE_TREE_ENGINE_WRITTEN).detail;
+    assert!(
+        detail.contains("3 of its 3 structure element(s)"),
+        "{detail}"
+    );
+    assert!(detail.contains("6 text run(s)"), "{detail}");
+
+    let ops = page_ops(&written, 1);
+    let seqs = written_sequences(&ops);
+    let artifact = operator_at(&ops, "BMC", Some("Artifact"));
+    assert!(
+        seqs.iter().all(|w| artifact < w.first || w.last < artifact),
+        "the artifact frame is enclosed in nothing: {seqs:?}"
+    );
+    assert_eq!(seqs.len(), 2);
+}
+
+/// **A shared content stream is never edited in place** (scope §3.5): the two pages of
+/// `shared-content-stream` get two distinct new streams whose bytes differ, the shared object is
+/// gone, each page's tree cites its own ids, and the self-check passed on both — page A binds
+/// seven runs, page B six, with the dropped run's operator foreign on B.
+#[test]
+fn a_shared_content_stream_is_not_edited_in_place() {
+    let source = engine_fixture("shared-content-stream");
+    let before = lopdf::Document::load_mem(&source).unwrap();
+    let pages_before = before.get_pages();
+    let shared = before.get_page_contents(pages_before[&1]);
+    assert_eq!(
+        shared,
+        before.get_page_contents(pages_before[&2]),
+        "one stream, two pages"
+    );
+    assert_eq!(shared.len(), 1);
+
+    let written = tag(&source).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    let pages = after.get_pages();
+    let a = after.get_page_contents(pages[&1]);
+    let b = after.get_page_contents(pages[&2]);
+    assert_eq!(a.len(), 1);
+    assert_eq!(b.len(), 1);
+    assert_ne!(a, b, "two streams");
+    assert!(
+        after.get_object(shared[0]).is_err(),
+        "the shared object is gone"
+    );
+    assert_ne!(
+        after.get_page_content(pages[&1]),
+        after.get_page_content(pages[&2]),
+        "and they differ, because the plans differ"
+    );
+    assert_eq!(written_sequences(&page_ops(&written, 1)).len(), 2);
+    assert_eq!(written_sequences(&page_ops(&written, 2)).len(), 3);
+
+    let t = tree(&written);
+    let divs = &t.elements[0].kids;
+    assert_eq!(divs.len(), 4, "two blocks per page");
+    assert_eq!(divs[0].ids, [0]);
+    assert_eq!(divs[1].ids, [1]);
+    assert_eq!(
+        divs[2].ids,
+        [0, 1],
+        "page B's block 1 is split around the dropped run"
+    );
+    assert_eq!(divs[3].ids, [2]);
+    assert_eq!(t.next_key, 2);
+    assert_eq!(
+        t.parent_tree,
+        vec![
+            (0, vec![("Div".into(), 0), ("Div".into(), 1)]),
+            (
+                1,
+                vec![("Div".into(), 2), ("Div".into(), 2), ("Div".into(), 3)]
+            )
+        ]
+    );
+
+    let artifact = extract(&written);
+    let ids = mcids(&artifact);
+    assert_eq!(ids.len(), 13, "seven runs on A, six on B");
+    assert_eq!(
+        ids[2],
+        (1, "É".into(), Some(0)),
+        "page A reads the seventh run"
+    );
+    assert_eq!(ids[7], (2, "Water finds its level".into(), Some(0)));
+    assert_eq!(ids[8], (2, "and stone keeps its shape".into(), Some(0)));
+    assert_eq!(ids[9], (2, "through the long season".into(), Some(1)));
+    assert_eq!(ids[10], (2, "Wind moves the grass".into(), Some(2)));
+    let detail = &declaration(&artifact, codes::STRUCTURE_TREE_ENGINE_WRITTEN).detail;
+    assert!(
+        detail.contains("5 of its 5 structure element(s)"),
+        "{detail}"
+    );
+    assert!(detail.contains("13 text run(s)"), "{detail}");
+    assert!(
+        codes_of(&artifact).contains(&ethos_parser_pdf::limitations::BROKEN_FONT_ENCODING),
+        "the dropped run is still declared"
+    );
+}
+
+/// **An inline image is never enclosed** (scope §3.4, §3.5): on `inline-image-filtered` the
+/// image is one operation outside every written sequence, block 1 is two sequences around it,
+/// and the image is still counted on the tagged output.
+#[test]
+fn an_inline_image_is_never_enclosed() {
+    let written = tagged("inline-image-filtered");
+    let ops = page_ops(&written, 1);
+    let image = operator_at(&ops, "BI", None);
+    let seqs = written_sequences(&ops);
+    assert_eq!(seqs.len(), 3, "{seqs:?}");
+    assert!(
+        seqs.iter().all(|w| image < w.first || w.last < image),
+        "{seqs:?}"
+    );
+    assert!(
+        seqs[0].last < image && image < seqs[1].first,
+        "between block 1's two sequences"
+    );
+    let t = tree(&written);
+    assert_eq!(t.elements[0].kids[0].ids, [0, 1]);
+    assert_eq!(t.elements[0].kids[1].ids, [2]);
+    let a = extract(&written);
+    assert_eq!(
+        mcids(&a).iter().map(|(_, _, m)| *m).collect::<Vec<_>>(),
+        [Some(0), Some(1), Some(1), Some(2), Some(2), Some(2)]
+    );
+    assert_eq!(
+        *declaration(&a, codes::INLINE_IMAGES_NOT_EMITTED),
+        ethos_parser_pdf::limitations::inline_images_not_emitted(1)
+    );
+}
+
+/// **The nested-frames twin walks to its fixture's tree** (acceptance 1, second half): the
+/// writer on `leading-gap-nested-frames` produces `engine-tagged-nested-frames`'s tree, reads
+/// back identically, and its content stream is that fixture's token for token.
+#[test]
+fn the_nested_frames_twin_matches_its_fixture() {
+    let written = tagged("leading-gap-nested-frames");
+    let by_hand = engine_fixture("engine-tagged-nested-frames");
+    assert_eq!(tree(&written), tree(&by_hand));
+    assert_eq!(read(&written), read(&by_hand));
+    assert_eq!(page_tokens(&written, 1), page_tokens(&by_hand, 1));
+    let t = tree(&written);
+    assert_eq!(t.elements[0].kids[0].ids, [0, 1, 2]);
+    assert_eq!(t.elements[0].kids[1].ids, [3]);
+    let seqs = written_sequences(&page_ops(&written, 1));
+    assert_eq!(seqs[0].inside.as_deref(), Some("Span"));
+    assert_eq!(seqs[1].inside.as_deref(), Some("OC"));
+    assert_eq!(seqs[2].inside, None);
+    assert_eq!(seqs[3].inside, None);
 }
