@@ -82,11 +82,14 @@ pub struct ShownText {
     pub glyph_up: (f64, f64),
     /// The same advance, per code, in the same space — or `None` on the same condition.
     ///
-    /// **Aligned with [`Self::codes`], not with [`Self::text`].** A code may decode to more than
-    /// one character (a ligature code, or any `ToUnicode` entry mapping to a string), which is
-    /// exactly what `extract.rs` records as `scalar_code_mismatch`. So the *n*th entry here is the
-    /// advance of the *n*th code, and indexing it by a character offset is wrong on any run where
-    /// that flag is set.
+    /// **Aligned with [`Self::codes`], not with [`Self::text`].** The *n*th entry is the advance of
+    /// the *n*th code, and a code may decode to more than one character (a ligature code, or any
+    /// `ToUnicode` entry mapping to a string), so indexing this by a character offset is wrong on
+    /// any run holding such a code. `extract.rs`'s `scalar_code_mismatch` is not the test for that:
+    /// it compares two counts, so a synthesized space sets it on a run whose codes are all single,
+    /// and a code whose `ToUnicode` destination is empty — which `cmap.rs` accepts — decodes to no
+    /// character and can offset one that decodes to several. Nothing here records how many
+    /// characters each code produced.
     ///
     /// `Some` only when [`Self::advance`] is `Some`, and then `len() == codes.len()` and the
     /// entries sum to it. The two travel together because a code with no width advances nothing
@@ -1310,6 +1313,41 @@ mod tests {
         }
         let summed: f64 = per.iter().sum();
         assert!(approx_eq(summed, sh.advance.unwrap()));
+    }
+
+    /// A code that decodes to several characters advances the pen once.
+    ///
+    /// `/Differences` names the `fi` glyph for code 100 (`d`), so `(dle)` is three codes and the
+    /// four characters of `file`. An entry per character would misalign every advance after the
+    /// ligature, and a total by character would be one glyph too wide.
+    #[test]
+    fn a_code_decoding_to_several_characters_advances_the_pen_once() {
+        use crate::encoding::{BaseEncoding, SimpleEncoding};
+        use crate::fonts::Decoder;
+
+        let mut font = (*one_font()["F1"]).clone();
+        font.decoder = Decoder::Simple(SimpleEncoding::new(
+            BaseEncoding::WinAnsi,
+            BTreeMap::from([(100u8, "fi".to_string())]),
+        ));
+        let fonts = BTreeMap::from([("F1".to_string(), std::sync::Arc::new(font))]);
+
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops("BT /F1 10 Tf 0 0 Td (dle) Tj ET")).unwrap();
+
+        let sh = &i.shown[0];
+        assert_eq!(sh.text, "file");
+        assert_eq!(sh.codes, vec![100, 108, 101]);
+
+        let per = sh.code_advances.as_ref().expect("this font carries widths");
+        assert_eq!(per.len(), 3, "one entry per code, not per character");
+        for (n, a) in per.iter().enumerate() {
+            assert!(approx_eq(*a, 5.0), "code {n} advanced {a}, expected 5.0");
+        }
+        assert!(
+            approx_eq(sh.advance.expect("advance is known"), 15.0),
+            "three glyphs, not four"
+        );
     }
 
     /// `Tw` reaches a single-byte code 32 only (PDF 32000-1 §9.3.3; docs/22-WORD-BOXES-SCOPE.md §9

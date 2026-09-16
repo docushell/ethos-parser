@@ -28,7 +28,7 @@ pub enum DerivationClass {
     /// Read from the source's own encoding. Text, origins, font identity, `mcid`.
     Extracted,
     /// Derived deterministically from `Extracted` values by a versioned rule. Reading order,
-    /// line grouping, ink boxes computed from font metrics.
+    /// line grouping, boxes computed from font metrics ([`GeometryPresence::Measured`]).
     Computed,
     /// Produced by a recognition engine over pixels. **v4.** Runs under its own profile and
     /// may author nodes only where the deterministic reader found no text layer at all.
@@ -208,7 +208,12 @@ pub enum GeometryAbsence {
     deny_unknown_fields
 )]
 pub enum GeometryPresence {
-    /// A measured ink box, from the embedded font program or the font descriptor.
+    /// A box from the document's own metrics and drawing, never from the font size.
+    ///
+    /// For a text run, its pen advance over its font's ascent-to-descent envelope — not glyph
+    /// outlines — with metrics from the embedded font program, the descriptor's `/Ascent` and
+    /// `/Descent` or its `/FontBBox`, or a standard-14 AFM; for a detected table or cell, the
+    /// rectangle its detection rule derived (`docs/01-CONTRACT.md` §5.3).
     Measured(QRect),
     /// No box, and the reason why.
     Absent(GeometryAbsence),

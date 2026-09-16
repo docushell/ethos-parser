@@ -23,14 +23,17 @@
 //!
 //! # Order of preference, and why
 //!
-//! 1. **The embedded font program**, read with `skrifa`. This is the glyphs the document
-//!    actually carries, so its metrics describe the ink that will actually be drawn.
+//! 1. **The embedded font program**, read with `skrifa`. This is the font the document actually
+//!    carries, so its ascent and descent are that font's own — design metrics for the whole font,
+//!    not the ink of any one glyph.
 //! 2. **`FontDescriptor` `/Ascent` and `/Descent`**, then `/FontBBox`. Author-declared rather
 //!    than measured from outlines, but still *stated by the document* rather than by us. A Type 3
 //!    font's envelope from either step is then gated on its `/FontMatrix` in `load_font`.
-//! 3. **Nothing.** [`GeometryAbsence::NotReportedByReader`], declared and counted.
+//! 3. **Nothing.** [`GeometryAbsence::NotReportedByReader`], declared and counted. For a simple
+//!    font naming a standard-14 face, `load_font` step 3b then fills that absence from the
+//!    vendored AFM of the face the document named (decision #22); nothing else refills it.
 //!
-//! Each step is narrower than the last, and the last is honest rather than helpful.
+//! Each step is narrower than the last, and the last answer here is honest rather than helpful.
 
 use ethos_parser_core::GeometryAbsence;
 

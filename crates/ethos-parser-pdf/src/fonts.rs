@@ -18,10 +18,12 @@
 //!
 //! 1. **What character is it?** `ToUnicode` if the document ships one, otherwise the simple
 //!    encoding ([`crate::encoding`]). Refused if neither can answer.
-//! 2. **How far does it advance?** `/Widths` from the document. **Refused if absent** — see
+//! 2. **How far does it advance?** `/Widths`, a composite font's `/W` and `/DW`, or the vendored
+//!    AFM of a standard-14 face the document names. **Unknown if none answers** — see
 //!    [`Font::advance_glyph_space`].
-//! 3. **What box does its ink occupy?** Measured from the embedded font program or the
-//!    `FontDescriptor`, else [`ethos_parser_core::GeometryAbsence::NotReportedByReader`].
+//! 3. **What box does the run occupy?** Its pen advance over the font's ascent and descent, from
+//!    the embedded font program, the `FontDescriptor` or a standard-14 AFM — an envelope, not
+//!    glyph outlines — else [`ethos_parser_core::GeometryAbsence::NotReportedByReader`].
 //!
 //! Keeping them separate matters because they fail separately. A font can have perfect widths and
 //! no metrics, and conflating the two is how `height = font_size` gets written.
@@ -176,28 +178,32 @@ pub struct Font {
     /// §9.6.6.2 specifies for a NONSYMBOLIC font. Carries the base font name for the
     /// document-scoped limitation's detail, the same shape `WidthSource::Absent` uses.
     pub builtin_encoding_assumed: Option<String>,
-    /// Measured ink extent for this font, in thousandths of an em — the 1000-unit glyph space; a
-    /// Type 3 font keeps one only where its /FontMatrix vertical is that space (`load_font` step
-    /// 3c) — or a typed absence.
+    /// This font's measured ascent and descent, in thousandths of an em — the 1000-unit glyph
+    /// space; a Type 3 font keeps them only where its /FontMatrix vertical is that space
+    /// (`load_font` step 3c) — or a typed absence.
     ///
     /// Font-level rather than per-glyph: a per-glyph ink box needs the glyph outline, which is
-    /// M-later work. This is the font's ascent/descent envelope, and it is **measured** — from
-    /// the embedded program or the descriptor — or absent.
+    /// M-later work. This is the font's ascent/descent envelope, not glyph ink, and it is
+    /// **measured** — from the embedded program, the descriptor, or a standard-14 AFM
+    /// (decision #22) — or absent.
     pub ink: FontInk,
 }
 
-/// A font's vertical ink extent, measured or typed-absent.
+/// A font's ascent-to-descent envelope, measured or typed-absent.
+///
+/// Not glyph ink: every glyph of the font gets the same two numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontInk {
     /// Ascent and descent in thousandths of an em — the 1000-unit glyph space; a Type 3 font keeps
     /// one only where its /FontMatrix vertical is that space (`load_font` step 3c) — and where
     /// they came from.
     Measured {
-        /// Highest ink above the baseline.
+        /// Ascent above the baseline.
         ascent: f64,
-        /// Lowest ink below the baseline. Negative.
+        /// Descent below the baseline. Negative.
         descent: f64,
-        /// `embedded-font-program` or `font-descriptor`.
+        /// `embedded-font-program`, `font-descriptor`, [`crate::afm::SOURCE_ASCENDER`] or
+        /// [`crate::afm::SOURCE_FONT_BBOX`].
         source: &'static str,
     },
     /// No metrics available.

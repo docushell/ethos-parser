@@ -516,6 +516,14 @@ fn the_ligature_fixture_declares_its_scalar_code_mismatch() {
         vec![1, 2, 3, 4, 5, 6, 3, 7, 5],
         "nine codes, as the content stream writes them"
     );
+    // Type 3 /Widths [600 350 500 500 500 250 300] from code 1: codes 1 2 3 4 5 6 3 7 5 sum to
+    // 4000 thousandths of 24pt, 96pt. The `fi` code advances once each time it appears; an advance
+    // per character would add two more 500s and reach 12000.
+    assert_eq!(
+        r.locator.advance,
+        Some(9600),
+        "one advance per code, however many characters it decodes to"
+    );
     assert_eq!(r.text.chars().count(), 11, "eleven characters");
     assert!(
         r.scalar_code_mismatch,

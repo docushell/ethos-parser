@@ -634,7 +634,11 @@ pub struct Capabilities {
     /// still declared: an edge the document never drew is not supplied to complete a grid
     /// (`codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED`).
     pub tables: bool,
-    /// Ink boxes come from measured font metrics rather than being absent.
+    /// Text-run boxes come from font metrics rather than being absent.
+    ///
+    /// **Named for ink; the box is not glyph ink.** It is the run's pen advance over its font's
+    /// ascent-to-descent envelope (`docs/01-CONTRACT.md` §5.3). The name is on the wire, and it
+    /// says a box was produced, not what kind.
     pub measured_ink_boxes: bool,
     /// Multi-column reading order is detected.
     ///

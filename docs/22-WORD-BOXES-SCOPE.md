@@ -87,6 +87,31 @@ to is recorded below with the version it ships in.
   no envelope (Skia in bench `01030000000163` and a Chrome emoji print, Ghostscript). The
   not-groundable limitation's "no `/FontBBox`" is false for these runs and is kept, since rewording
   it moves nearly every PDF artifact.
+- **§9 item 5, codes that decode to several characters — a documentation defect, and the contract
+  sentence below it, corrected for 0.58.0 with no engine change.** Correction to §9: the boxes are
+  not the defect. Each code advances the pen once, so a run's box spans the ligature glyph's
+  advance and not its letters', and every such run is its own advance wide — all 29 in
+  `nist-sp-800-53Ar5` (26 exactly, 3 within the centipoint that quantizing the two edges separately
+  allows) and all 608 in 79 of the 200 `opendataloader-bench` documents (473 exactly, 135 within
+  it), measured on this branch's build with `ligatures.py`, which now counts each measured box
+  against its own run's advance and sums over a directory. What was wrong is the writing. §5.3
+  claimed *"measured ink boxes only, from the embedded font program or the font descriptor"* while
+  the box is the ascent-to-descent envelope §5.3 itself names as the failure to avoid, stretched
+  over the pen; it now describes the box as this branch builds it — the pen's travel along the
+  run's baseline, each code advancing once by its own width from `/Widths`, `/W` and `/DW` or a
+  vendored standard-14 AFM, over that envelope on the side the glyph tops point — and records,
+  without deciding, that nothing on the wire declares the box's kind and that §6's versioned rule
+  for it is not in the profile. The 0.55.0 entry's *"flags exactly that"* is corrected the same
+  way: `scalar_code_mismatch` compares two counts, so a synthesized character sets it too — 15,164
+  of the 15,772 flagged bench runs are synthesized-only. Pinned by the conformance ligature run's
+  advance (9600) and a unit test that shows one advance per code for a `/Differences` ligature. The
+  box's own width is measured, not pinned: no fixture in the tree carries a *measured* box on a
+  multi-character code — the conformance ligature is Type 3 and takes the envelope gate above — so
+  a reader that spanned the box over the run's letters would pass every test and is caught only by
+  `ligatures.py` (mutated, probe `p18-ligature`'s box reads 3000 centipoints against a 2500
+  advance). Closing it needs a new fixture. No emitted byte moves: 323 PDFs byte-identical across
+  extract, classify, overlay, ground, markdown, html and exit codes, and all 272 fixture artifacts
+  identical.
 
 ---
 

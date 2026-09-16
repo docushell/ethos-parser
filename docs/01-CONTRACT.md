@@ -112,7 +112,7 @@ boxes would make artifact identity hostage to the least reliable number in it.
 | --- | --- | --- |
 | **`NativeLocator`** | **Always, on every node** | The format's own address. For PDF: page, character origin, advance width, in integer centipoints |
 | `StructuralLocator` | Where the node kind defines one | Structure-tree address: role path, `mcid`, table row and column |
-| `RenderedLocator` / geometry | Optional | An ink box, for humans and crops |
+| `RenderedLocator` / geometry | Optional | A box, for humans and crops; §5.3 says which kind |
 
 `NativeLocator` is a discriminated union. Adding a format adds a variant plus an adapter profile,
 fixtures and inspection behaviour. It does not change the source, run, artifact or verification
@@ -160,9 +160,35 @@ The failure to avoid: a surveyed parser emits loose em boxes — ascent-to-desce
 the box is as tall as if it contained `Ãj`. That is right for line grouping and wrong for a citation
 highlight, and a consumer cannot tell which it got.
 
-This engine emits **measured ink boxes only**, from the embedded font program or the font
-descriptor, and declares them as such. A future version emitting loose boxes declares those
-separately.
+**The box this engine emits for a text run is not glyph ink.** Along the baseline it is the pen:
+from the run's origin to where the pen stands after the run's last code, as a vector carried through
+the text matrix, the CTM and the page's `/Rotate`. Each code — for a composite font, as the declared
+interim `composite-font-codes-from-tounicode` divides the string — advances the pen once, by its own
+width from `/Widths`, a composite font's `/W` and `/DW`, or the vendored AFM of a standard-14 face
+the document names, with the text state applied as PDF 32000-1 §9.4.4 composes it. So a code that
+decodes to several characters, such as a ligature, widens the box by one glyph, not by its letters.
+Across the baseline it is the font's ascent and descent — from the embedded font program, the
+descriptor's `/Ascent` and `/Descent` or its `/FontBBox`, or that AFM — scaled to the rendered em,
+on the side the glyph tops point. Every glyph of a font gets the same two numbers, so **this is the
+ascent-to-descent construction the paragraph above describes**, over the document's own advance.
+
+A rectangle is emitted only where that baseline runs along a page axis, in either direction; a
+baseline along neither gets `NotAxisAligned`, because no `[x0, y0, x1, y1]` equals the turned
+rectangle. A run holding a code of no known width, a font with no ascent and descent — including a
+Type 3 font whose `/FontMatrix` leaves its glyph space vertically other than the 1000-unit default,
+where nothing in the font says which units its descriptor used — a run drawing only whitespace, and
+a box the document draws off its own page each get a typed absence instead (§5.2). Where the reader
+departs from this construction, that is a defect; [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md)
+§9 records the ones found.
+
+A detected table's or cell's box is the rectangle its detection rule measured from the page's ink.
+The table record names that rule, and the profile's `table_detection` names the rules in force.
+
+**Open: the text-run box is not declared as what it is.** The tree calls it an *ink box*, and the
+representation's `assurance.capabilities.measured_ink_boxes` says one was produced; that name is not
+a declaration of kind, and the box is not ink. `ethos.grounding.v1` has no field for a box's kind
+(§11). §6 places boxes from font metrics under a versioned rule, and the profile names none for this
+one. Pending decision.
 
 ### 5.4 The geometric/structural cross-check
 
@@ -185,7 +211,7 @@ without laundering into born-digital certainty.
 | Class | Meaning | May author | Notes |
 | --- | --- | --- | --- |
 | **`Extracted`** | Read from the source's own encoding | Text, origins, font identity, `mcid` | The only class v0 produces |
-| **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, ink boxes from font metrics | The rule's version is part of the profile |
+| **`Computed`** | Derived deterministically from `Extracted` values by a versioned rule | Reading order, line grouping, boxes from font metrics (§5.3) | The rule's version is part of the profile |
 | **`Recognized`** | Produced by a recognition engine over pixels | OCR text and geometry | v4, own profile. **May author only on canvases where the deterministic reader found no text layer at all** |
 | **`Proposed`** | Suggested by a model | Nothing citable, ever | v3. Never evidence |
 
@@ -381,7 +407,7 @@ will one day match a quote against a space the source does not contain.
 | Rule | Detail |
 | --- | --- |
 | **Every synthesized character is flagged at emission** | Where it is created — not reconstructed later, not inferred from spacing |
-| **Glyph codes travel with the text** | `char_codes` alongside the string, with the ligature caveat declared: ligature expansion yields more scalars than codes, so the arrays are not 1:1 and the artifact says so |
+| **Glyph codes travel with the text** | `char_codes` alongside the string, with the ligature caveat declared: ligature expansion yields more scalars than codes, so the arrays are not 1:1. `scalar_code_mismatch` is true when the count of Unicode scalar values and the count of codes differ — which a synthesized character also causes — so it compares counts; it is not a mapping |
 | **A repair is a recorded event or it is a fabrication** | Any normalization the engine performs is declared in the profile and visible in the artifact. A surveyed parser silently repairs orphaned widgets in memory and always flattens widgets — an undeclared document mutation |
 | **Hyphenation rejoin, if performed, is `Computed` and reversible** | The source bytes stay recoverable from the artifact |
 
