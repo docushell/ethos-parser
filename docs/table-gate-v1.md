@@ -15,6 +15,10 @@
 > the rework is an entry pending the owner ([`OPEN-WORK.md`](OPEN-WORK.md) §4); this paragraph
 > records the gap and decides nothing. The twelve-document numbers in this document were not
 > re-measured after the rework (`OPEN-WORK.md` §5). The comparator sentence beside it still holds.
+>
+> **Re-measured 2026-09-16, at 0.58.0.** The twelve-document numbers are re-stated in *The band
+> re-stated at 0.58.0* below: macro **69‰**, combined micro recall **503‰**, the band unchanged.
+> The paragraph above and the 70‰ tables below it are left as written.
 
 **Measured, and MISSED.** Macro cell-slot F1 is **70‰** over twelve documents, against a published
 comparator of 489‰. **That comparator is not a live shipping floor** — the chase for it is parked,
@@ -547,6 +551,146 @@ rather than the extractor.**
 **What this leaves for decision #18:** whether v1's table number is stated as the geometric gate's
 70‰/4‰, or as the capability plus 502‰ combined recall. **This slice reports both and settles
 neither.**
+
+## The band re-stated at 0.58.0 — 2026-09-16
+
+**The twelve-document numbers, re-measured after `ruled-rects-v4` to `-v6`.** The amendment at the
+top of this document says they had not been; this section is that measurement. It was run on
+2026-09-16 at `main` `b4b4aa9` (workspace 0.58.0, the tree the 0.58.0 release commit describes), as
+`cargo test -p ethos-parser-pdf --lib --locked -- --nocapture accuracy::`: exit 0, 14 tests passed.
+The cell-slot table under *The result* above is v2-S20's (0.36.0), and v2-S24's run (`d806f83`,
+0.37.0, 2026-08-26) printed the same macro, micro and band beside its own combined numbers. No
+commit between 0.37.0 and this run records a print.
+
+**Macro cell-slot F1 is 69‰, where *The result* records 70‰.** The harness's cell-slot table, rows
+ordered as *The result* orders them (the harness prints corpus order):
+
+| Document | TP | FP | FN | cell-F1 |
+| --- | --- | --- | --- | --- |
+| `irs-fw9.pdf` | 26 | 2 | 34 | **590‰** |
+| `cfpb-home-loan-toolkit.pdf` | 41 | 135 | 118 | **244‰** |
+| `irs-form-1040-2025.pdf` | 0 | 0 | 40 | 0‰ |
+| `irs-f1040sd-2025.pdf` | 0 | 0 | 60 | 0‰ |
+| `nist-sp-800-63b.pdf` | 0 | 0 | 568 | 0‰ |
+| `nist-sp-800-53r5.pdf` | 0 | 0 | 6,937 | 0‰ |
+| `nist-sp-800-161r1.pdf` | 0 | 0 | 3,853 | 0‰ |
+| `nist-sp-800-171r3.pdf` | 0 | 0 | 1,946 | 0‰ |
+| `nist-sp-800-207.pdf` | 0 | 0 | 114 | 0‰ |
+| `nist-sp-800-218.pdf` | 0 | 0 | 416 | 0‰ |
+| `nist-sp-800-37r2.pdf` | 0 | 0 | 1,035 | 0‰ |
+| `nist-sp-800-53Ar5.pdf` | 0 | 0 | 567 | 0‰ |
+| **MACRO** | | | | **69‰** |
+
+**The band is unchanged: 0‰..590‰, median 0‰, ten of the twelve at 0‰.** The best document is
+`irs-fw9` at **590‰**, its row identical to the record's. The worst are the ten that detect
+nothing — `irs-form-1040-2025`, `irs-f1040sd-2025`, `nist-sp-800-63b`, `nist-sp-800-53r5`,
+`nist-sp-800-161r1`, `nist-sp-800-171r3`, `nist-sp-800-207`, `nist-sp-800-218`, `nist-sp-800-37r2`
+and `nist-sp-800-53Ar5` — every gold slot of each a false negative, 15,536 slots between them, as
+before. Two documents supply all 834 averaged points, where the record's two supplied 849; remove
+`irs-fw9` and the macro is 22‰ (244 / 11), where the record says 23‰. **The one row that moved is
+`cfpb-home-loan-toolkit`: 44 / 136 / 115 → 41 / 135 / 118, 259‰ → 244‰.** Its 159 gold slots are
+what they were; the detectors predict four fewer slots on it (180 → 176), three of which were true
+positives.
+
+**Detection, geometric only**, from the harness's first table. The other ten documents declare 151
+tables and detect none:
+
+| Document | declared | detected | matched | recall | precision |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `cfpb-home-loan-toolkit.pdf` | 17 | 9 | 8 | 470‰ | 888‰ |
+| `irs-fw9.pdf` | 4 | 3 | 3 | 750‰ | 1000‰ |
+| **TOTAL, twelve documents** | **172** | **12** | **11** | **63‰** | **916‰** |
+
+| | 12 documents, v2-S20 (*The result*) | 12 documents, 0.58.0 |
+| --- | --- | --- |
+| Tables detected / matched | 17 / 16 | **12 / 11** |
+| Detection precision | 941‰ | **916‰** |
+| Cells emitted | 208 | **204** |
+| **Fabricated cells** | **0** | **0** |
+| Cross-check disagreements | 0 | **0** (structurally, since v2-S20) |
+| `unruled-align-v1` tables | 0 | **0** |
+
+The record printed no per-document split of its 17 detections. At 0.58.0 they are cfpb's 9 and
+`irs-fw9`'s 3, and the numbers place the five that are gone on cfpb: a detection lost on `irs-fw9`
+would have moved its slot row, and it did not.
+
+**Micro recall, geometric only: 4‰ — 67 of 15,755 gold slots, 15,688 missed.** The record says 70
+of 15,755; the three are cfpb's.
+
+**Combined micro recall, geometric plus tagged: 503‰ — 7,931 true positives, 7,824 missed**, where
+v2-S24 recorded 502‰ and 7,924. **Tagged tables emitted 162, tagged cells 15,641, fabricated 0**,
+where v2-S24 recorded 157, 15,593 and 0. All 172 gold tables name a page, and `extract.rs` emits a
+tagged table for every declared table on its page that no detection paired with by position, so
+172 − 162 = **10 gold tables paired with a geometric detection** (15 at v2-S24): 7 on cfpb and 3 on
+`irs-fw9`, read off the tagged column below. Per document, as the harness prints it:
+
+| Document | geo-recall | comb-recall | tagged tables |
+| --- | ---: | ---: | ---: |
+| `cfpb-home-loan-toolkit.pdf` | 257‰ | 496‰ | 10 |
+| `irs-form-1040-2025.pdf` | 0‰ | 700‰ | 1 |
+| `nist-sp-800-63b.pdf` | 0‰ | 654‰ | 13 |
+| `nist-sp-800-53r5.pdf` | 0‰ | 495‰ | 26 |
+| `irs-f1040sd-2025.pdf` | 0‰ | 1000‰ | 2 |
+| `irs-fw9.pdf` | 433‰ | 450‰ | 1 |
+| `nist-sp-800-161r1.pdf` | 0‰ | 437‰ | 46 |
+| `nist-sp-800-171r3.pdf` | 0‰ | 695‰ | 24 |
+| `nist-sp-800-207.pdf` | 0‰ | 745‰ | 4 |
+| `nist-sp-800-218.pdf` | 0‰ | 372‰ | 4 |
+| `nist-sp-800-37r2.pdf` | 0‰ | 458‰ | 20 |
+| `nist-sp-800-53Ar5.pdf` | 0‰ | 313‰ | 11 |
+
+The ten documents at 0‰ geometric recover between 313‰ (`nist-sp-800-53Ar5`) and 745‰
+(`nist-sp-800-207`) of their gold through the tags, and `irs-f1040sd-2025` recovers all of it — the
+range v2-S24 recorded. The 27‰ separator gap that keeps the combined number short of 1000‰ is what
+it was, and is still not tuned away.
+
+**The verdict line reads `gate is > 489‰: MISS`**, as the harness prints it. The comparator is
+parked ([`00-NORTH-STAR.md`](00-NORTH-STAR.md) row 18) and is TEDS on somebody else's corpus (§2
+above); the printed verdict stays because parking a chase is not passing it.
+
+### What moved, and what is attributed
+
+Everything that moved is on `cfpb-home-loan-toolkit`, in both directions at once: five geometric
+detections gone (17 → 12 corpus-wide, 208 → 204 cells), three geometric true positives with them
+(70 → 67), and five gold tables emitted from their tags instead (157 → 162, 15,593 → 15,641 tagged
+cells), which recover seven more slots than the detections did (7,924 → 7,931). One change in output
+takes the macro 70‰ → 69‰ and the combined recall 502‰ → 503‰.
+
+**Not 0.58.0's work, on its own measurements.** The two 0.58.0 changes that touch cfpb are the ones
+[`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md) §9 items 3 and 4 record. Item 3 (`ea82c1e`, `Tw`
+reaching a composite font's `<0020>`): cfpb page 17's `=` run advances 0.187 pt further, and its
+tables and grounding counts are unchanged. Item 4 (`f8d861d`, the `TJ`-gap space): two cfpb tagged
+cells lose their invented spaces ('“I f I lock' → '“If I lock' on page 15; '“C an you', '“H ow is'
+and '“H ow does' on page 20), `fixtures/labelled/table-truth.json` was regenerated by exactly those
+four deleted spaces, and the commit records the whole printed measurement identical before and
+after — and already reading 69‰, cfpb 244‰ and 503‰ (7,931) on the branch's parent. That branch is
+cut from `e1032a3`, v0.57.0. So the move lies between v2-S24's run (`d806f83`, 0.37.0, 2026-08-26)
+and v0.57.0 (2026-09-14).
+
+**Not attributed to a commit.** No commit message in that window records a run of this harness. A
+text or box change can move a slot between true positive and false negative but cannot on its own
+remove a detection — the ruled rule builds its lattice from rectangles and the stroke rule its bands
+from stroked segments, and both read runs only to fill cells by origin — and four predicted slots
+are gone, so the change is in what the geometric rules accept. `stroke_ruled.rs` changed in the
+window only under the 0.41.0 rename (`46414a3`). The commits that change what the ruled rule emits
+are the four shipped in 0.55.0: `4da0674` (an oversized lattice refused as oversized; "no table
+changes anywhere" on the eight `fixtures/gate/` documents), `2a53416` (`-v4`, a widening — either
+shape of evidence suffices, so nothing `-v3` emitted is lost), `7bd1a79` (`-v5`: a band no rectangle
+occupies is dropped, and a grid needs two bands on both axes — recorded costing "one true 1x3, a
+lone header row" on opendataloader-bench) and `b742566` (`-v6`: a grid must be divided by the ink,
+and a rule keeps the bands it crosses; both `-v5` floors stay). Their measurements are
+opendataloader-bench, the engine fixtures and the eight `fixtures/gate/` documents, and cfpb is in
+none of those — it lives in the gate-zero benchmark root (`fixtures/README.md`,
+`ETHOS_BENCH_CORPUS`). The `-v6` commit also compared `-v6` against `-v5` over "41 more PDFs from
+the Ethos corpora" and found it removes one more disclaimer and adds nothing; the 41 are not named,
+and `-v5` against `-v3` was not measured there. So `-v5`'s floors are the candidate the records
+point at, and a candidate is not an attribution: naming the commit needs this harness run at each of
+the four and at their parent, which this section does not do.
+
+**What this section does not change.** The macro is still the least informative true statement
+about this corpus, for the reason the header gives. The reader-facing quotes — `CAPABILITY.md`,
+`README.md` and `docs/README.md` — now carry 69‰, 503‰ and 162 of 172 with the same band. Decision
+#18's clauses stand as written, and its numbers are the 2026-08-30 record, not rewritten here.
 
 ## Why the number is what it is
 
