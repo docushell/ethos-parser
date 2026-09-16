@@ -64,6 +64,7 @@ not obvious from the name:
 | `off-page-and-offset-box` | A media box whose origin is not `(0,0)`, plus a smaller crop box — the coordinate repair and the off-page finding in one page |
 | `composite-font-cid-widths`, `composite-font-non-identity-cmap` | A `/Type0` font whose widths live on its descendant CIDFont as `/W` and `/DW`, and the same descendant under a CMap this profile cannot read — see below |
 | `leading-gap-two-blocks` | Six lines in one column, three at a 14 pt leading, a 28 pt gap, three more: the leading-gap half of the block cut opens exactly two blocks, and the fixture states the numbers it is cut against — see below |
+| `engine-tagged-blocks`, `engine-tagged-classmap`, `engine-tagged-mixed`, `engine-tagged-nested-frames` | The leading-gap page carrying the structure tree the auto-tagging writer emits, written by hand before the writer exists — the attribute under `/A`, through `/ClassMap`, beside a foreign owner, and inside existing marked-content frames — see below |
 
 Why the upstream corpus cannot cover the table cases: **no fixture in it contains a single path
 operator**, so nothing there exercises ruled detection at all.
@@ -128,6 +129,41 @@ to the modal-leading guard would move them without any fixture saying why. The t
 (`markdown-two-blocks`, `markdown-hyphen-break`) cannot cut at all: one gap is its own modal leading,
 and a gap never clears 1.6 times itself. That pair is the negative half of the wire tests in
 `crates/ethos-parser-pdf/tests/extraction.rs`, and this fixture is the positive half.
+
+### The engine-tagged family is the writer's shape, written by hand first
+
+`engine-tagged-blocks` is `leading-gap-two-blocks` — the same six lines, baselines and metrics
+font — carrying the structure tree the auto-tagging writer emits (`docs/23-AUTO-TAGGING-SCOPE.md`
+§3.3–§3.4): `/Document` over one `/Div` per block, every element carrying
+`/A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>`, each block's text object
+in one `/Div << /MCID n >> BDC … EMC`, a `/ParentTree`, `/StructParents` on the page, and no
+`/MarkInfo`. It was written by hand **before the writer exists**, on purpose: a reader tested
+against a file the writer produced could pass on a mistake the two share, and this file cannot
+have one. The reader must bind all six runs `pdf_tagged` under `Document/Div` with
+`derivation: computed`, runs 1–3 to mcid 0 and 4–6 to mcid 1, and declare
+`structure-tree-engine-written` rather than `untagged-structure-tree-absent`.
+
+The three siblings hold the same page under the same tree and move only where the attribute sits,
+which is what the reader has to be indifferent to:
+
+| Fixture | Where the attribute is |
+| --- | --- |
+| `engine-tagged-classmap` | on the root's `/ClassMap` as `/EthosBlock`, reached through `/C` on every element; no `/A` anywhere |
+| `engine-tagged-mixed` | a foreign owner inline (`/A << /O /Layout /Placement /Block >>`) and the engine's class through `/C` — `/A` decides only when it carries the engine's owner |
+| `engine-tagged-nested-frames` | under `/A` as in `-blocks`, but block 1's first line sits inside `/Span BMC … EMC` and its second inside `/OC /oc1 BDC … EMC` given by name, the written `/Div` sequence opened inside each frame; block 1 is ids 0, 1, 2 and block 2 is id 3 |
+
+The first two must read identically to `-blocks`, bindings and declarations alike. The third
+binds all six runs `computed` and declares the named `/OC` list as `mcid-property-list-by-name`,
+exactly as any named list is declared today. The failure modes — the owner without its
+`/Derivation`, the owner renamed, the attribute behind a reference, a `/MarkInfo` added — are
+made in the tests by editing `-blocks` through `lopdf`, so each is one edit away from the file
+that reads correctly (`crates/ethos-parser-pdf/tests/tagging_read.rs`).
+
+**Object 6 is the tree, so the descriptor cannot take its usual number.** `build_pdf` refuses a
+fixture that wants both, and the list fixture went without metrics for that reason; this family
+carries the same Helvetica descriptor as its tree's last extra object (10, or 11 where the `/OCG`
+takes 10) and names it through `FONT_EXTRA`, so all six runs keep the measured ink boxes the
+untagged page has.
 
 ### The composite-font pair is about a shape neither corpus had
 

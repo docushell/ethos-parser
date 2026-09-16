@@ -147,6 +147,30 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              layout built for something else, and none states its leading or
                              its gap, so none can say which gap opened a block or that the
                              threshold was cleared on purpose                  [OPEN-WORK §2.2]
+  engine-tagged-blocks       the leading-gap page carrying the structure tree the auto-tagging
+                             writer emits, written BY HAND: /Document over two /Div elements, each
+                             block's text object in one /Div <</MCID n>> BDC ... EMC, every
+                             element carrying /A << /O /EthosParser /Derivation /Computed /Rule
+                             (gutter-columns-v3) >>, a /ParentTree, /StructParents, and NO
+                             /MarkInfo. The reader is tested against a file a human wrote in the
+                             writer's exact shape, so a mistake the writer and the reader might
+                             share cannot pass (docs/24 S1)                          [tagging-S1]
+  engine-tagged-classmap     the SAME tree with /C /EthosBlock on every element and the attribute
+                             on the root's /ClassMap, no /A anywhere — the factored form a tool
+                             that deduplicates attribute dictionaries produces, which the reader
+                             must read exactly as the inline one                      [tagging-S1]
+  engine-tagged-mixed        the SAME tree with a foreign owner inline (/A << /O /Layout
+                             /Placement /Block >>) and the engine class through /C: /A decides
+                             only when it carries the engine's owner, and here it does not, so
+                             /C decides                                               [tagging-S1]
+  engine-tagged-nested-frames
+                             the SAME page with block 1's first line inside /Span BMC ... EMC and
+                             its second inside /OC /oc1 BDC ... EMC given BY NAME through
+                             /Properties, the written /Div sequence opened INSIDE each frame and
+                             closed before its EMC. The reader binds by the innermost sequence, so
+                             a written sequence that merely enclosed a frame would read back with
+                             no id and never bind (docs/23 §3.4); this is the shape the writer
+                             has to produce, held by a file that does                  [tagging-S1]
 
 Deliberately standard-14 Helvetica with /Widths supplied, so advance is computable and the
 Tz fixture can assert a real difference.
@@ -179,6 +203,17 @@ LAST_CHAR = 126
 # The third is NOT reachable by simply omitting the descriptor: it proves the reader looked at a
 # descriptor, found nothing usable in it, and still refused to invent a box.
 DESCRIPTOR_KINDS = (None, "metrics", "no-metrics")
+
+# Real Helvetica ascent/descent, declared BY THE DOCUMENT so the extractor reads them rather than
+# assuming them. `build_pdf` writes it as object 6 for a fixture whose `descriptor` is "metrics";
+# the engine-tagged family, whose object 6 is a structure tree, carries the same bytes as its LAST
+# extra object and names that number through FONT_EXTRA. One literal, so the two paths cannot
+# drift into two descriptors.
+HELVETICA_DESCRIPTOR = (
+    b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
+    b"/Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 88 "
+    b"/FontBBox [-166 -225 1000 931] >>"
+)
 
 # The face a "no-metrics" fixture must name, and it deliberately is NOT one of the standard 14.
 #
@@ -358,11 +393,7 @@ def build_pdf(
         # Real Helvetica ascent/descent, declared BY THE DOCUMENT so the extractor reads them
         # rather than assuming them. This is the fixture that exercises the measured-ink path;
         # every other one exercises typed absence.
-        objects.append(
-            b"<< /Type /FontDescriptor /FontName /Helvetica /Flags 32 "
-            b"/Ascent 718 /Descent -207 /ItalicAngle 0 /StemV 88 "
-            b"/FontBBox [-166 -225 1000 931] >>"
-        )
+        objects.append(HELVETICA_DESCRIPTOR)
     elif descriptor == "no-metrics":
         # A descriptor that is present and structurally valid and says NOTHING about ink extent:
         # no /Ascent, no /Descent, no /FontBBox, and no embedded font program to read them from.
@@ -402,6 +433,21 @@ def build_pdf(
     )
     return bytes(out)
 
+
+# Auto-tagging S1. The leading-gap page's six lines, block by block, each block in one text
+# object wrapped in the sequence the writer emits. Shared by three fixtures below.
+ENGINE_TAGGED_STREAM = (
+    "/Div <</MCID 0>> BDC BT /F1 12 Tf "
+    "1 0 0 1 72 700 Tm (Water finds its level) Tj "
+    "1 0 0 1 72 686 Tm (and stone keeps its shape) Tj "
+    "1 0 0 1 72 672 Tm (through the long season) Tj "
+    "ET EMC "
+    "/Div <</MCID 1>> BDC BT /F1 12 Tf "
+    "1 0 0 1 72 644 Tm (Wind moves the grass) Tj "
+    "1 0 0 1 72 630 Tm (and light moves the shade) Tj "
+    "1 0 0 1 72 616 Tm (across the open field) Tj "
+    "ET EMC"
+)
 
 # name -> (content, wants_font_descriptor)
 FIXTURES = {
@@ -1013,6 +1059,40 @@ FIXTURES = {
         "1 0 0 1 72 616 Tm (across the open field) Tj "
         "ET"
     ),
+    # Auto-tagging S1. The leading-gap page again, with the marked-content sequences the writer
+    # emits (docs/23 §3.4): block 1's three lines in one text object wrapped in
+    # `/Div <</MCID 0>> BDC ... EMC`, block 2's in a second wrapped with MCID 1, so mcid 0 is
+    # block 1 and mcid 1 is block 2 and the join can be checked against the tree by eye. Same
+    # baselines, same words, same font as the untagged page — the only thing added is the
+    # sequences, so the S2 acceptance test can compare the writer's output against this shape.
+    # The three tree variants below share this stream: what differs between them is only where
+    # the attribute sits.
+    "engine-tagged-blocks": ENGINE_TAGGED_STREAM,
+    "engine-tagged-classmap": ENGINE_TAGGED_STREAM,
+    "engine-tagged-mixed": ENGINE_TAGGED_STREAM,
+    # The same page with block 1's first line inside an existing `/Span BMC ... EMC` and its
+    # second inside `/OC /oc1 BDC ... EMC` whose property list is given BY NAME. The written
+    # `/Div` sequence opens INSIDE each frame and closes before the frame's EMC, because the reader
+    # binds by the innermost open sequence: a written sequence that merely enclosed the frame would
+    # read back with no id and never bind. Block 1 is therefore three sequences (ids 0, 1, 2) and
+    # block 2 stays one (id 3); ids are dense, per page, in stream order, as the parent tree
+    # indexes them.
+    "engine-tagged-nested-frames": (
+        "/Span BMC /Div <</MCID 0>> BDC BT /F1 12 Tf "
+        "1 0 0 1 72 700 Tm (Water finds its level) Tj "
+        "ET EMC EMC "
+        "/OC /oc1 BDC /Div <</MCID 1>> BDC BT /F1 12 Tf "
+        "1 0 0 1 72 686 Tm (and stone keeps its shape) Tj "
+        "ET EMC EMC "
+        "/Div <</MCID 2>> BDC BT /F1 12 Tf "
+        "1 0 0 1 72 672 Tm (through the long season) Tj "
+        "ET EMC "
+        "/Div <</MCID 3>> BDC BT /F1 12 Tf "
+        "1 0 0 1 72 644 Tm (Wind moves the grass) Tj "
+        "1 0 0 1 72 630 Tm (and light moves the shade) Tj "
+        "1 0 0 1 72 616 Tm (across the open field) Tj "
+        "ET EMC"
+    ),
     # v1-S6's OFF-PAGE golden, which is also the coordinate-repair golden.
     #
     # /MediaBox is [0 20 300 220] and /CropBox is [0 40 300 200], so:
@@ -1037,6 +1117,17 @@ FIXTURES = {
     ),
 }
 
+# Auto-tagging S1. The one attribute object the writer puts on every element it creates
+# (docs/23 §3.3): the owner, the contract's own derivation class as a name, and the rule whose cut
+# the element is. The reader requires exactly `/Derivation /Computed` under this owner.
+ENGINE_ATTRIBUTE = "<< /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>"
+
+# The parent tree the writer emits for the leading-gap page: one page (key 0, the page's
+# /StructParents), its ids in order, each naming the element whose /K cites it. This engine's own
+# reader walks /K and never consults it; it is here because the tree is the shape PDF 32000-1
+# §14.7 describes, so a reader that does consult it finds what it expects.
+ENGINE_PARENT_TREE = "/ParentTree << /Nums [0 [8 0 R 9 0 R]] >> /ParentTreeNextKey 1"
+
 # v1-S3. Structure-tree objects, numbered from 6 (see build_pdf). The first entry is always the
 # /StructTreeRoot, because that is the number the catalog names.
 #
@@ -1044,6 +1135,58 @@ FIXTURES = {
 # stream side by side and check the (page, mcid) join by eye — which is the whole property these
 # fixtures exist to pin.
 STRUCTURE = {
+    # Auto-tagging S1. The tree the writer emits for the leading-gap page, in the exact shape
+    # docs/23 §3.3-§3.4 fix: /Document over one /Div per block, every element carrying the
+    # attribute under /A, /Pg on the elements that hold content, a /ParentTree, and no /MarkInfo.
+    # Object 10 is the Helvetica descriptor with real metrics (object 6 is the tree, so it cannot
+    # take the descriptor's usual number); FONT_EXTRA names it, so all six runs keep the measured
+    # ink boxes the untagged page has and the two pages differ in nothing but the tags.
+    "engine-tagged-blocks": [
+        "<< /Type /StructTreeRoot /K 7 0 R %s >>" % ENGINE_PARENT_TREE,
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] /A %s >>" % ENGINE_ATTRIBUTE,
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 0 /A %s >>" % ENGINE_ATTRIBUTE,
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 1 /A %s >>" % ENGINE_ATTRIBUTE,
+        HELVETICA_DESCRIPTOR,
+    ],
+    # The same tree with the attribute factored into a class: /C /EthosBlock on every element,
+    # the object once on the root's /ClassMap, and no /A anywhere. A tool that deduplicates
+    # attribute dictionaries produces this, and it is the *ignored* case decision #23 names — the
+    # reader must read it exactly as the inline form.
+    "engine-tagged-classmap": [
+        "<< /Type /StructTreeRoot /K 7 0 R %s /ClassMap << /EthosBlock %s >> >>"
+        % (ENGINE_PARENT_TREE, ENGINE_ATTRIBUTE),
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] /C /EthosBlock >>",
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 0 /C /EthosBlock >>",
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 1 /C /EthosBlock >>",
+        HELVETICA_DESCRIPTOR,
+    ],
+    # The same tree with a FOREIGN owner inline and the engine's class through /C. /A decides only
+    # when it carries the engine's owner; /O /Layout is somebody else's attribute, so /C decides,
+    # and the page reads exactly as the other two.
+    "engine-tagged-mixed": [
+        "<< /Type /StructTreeRoot /K 7 0 R %s /ClassMap << /EthosBlock %s >> >>"
+        % (ENGINE_PARENT_TREE, ENGINE_ATTRIBUTE),
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] "
+        "/A << /O /Layout /Placement /Block >> /C /EthosBlock >>",
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 0 "
+        "/A << /O /Layout /Placement /Block >> /C /EthosBlock >>",
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K 1 "
+        "/A << /O /Layout /Placement /Block >> /C /EthosBlock >>",
+        HELVETICA_DESCRIPTOR,
+    ],
+    # The -blocks tree over the nested-frames stream: block 1 is three sequences (ids 0, 1, 2)
+    # because two of its lines sit in existing frames, block 2 is one (id 3), and the parent tree
+    # names an element per id. Object 10 is the optional-content group `/oc1` names through the
+    # page's /Properties, which pushes the descriptor to 11.
+    "engine-tagged-nested-frames": [
+        "<< /Type /StructTreeRoot /K 7 0 R "
+        "/ParentTree << /Nums [0 [8 0 R 8 0 R 8 0 R 9 0 R]] >> /ParentTreeNextKey 1 >>",
+        "<< /Type /StructElem /S /Document /P 6 0 R /K [8 0 R 9 0 R] /A %s >>" % ENGINE_ATTRIBUTE,
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K [0 1 2] /A %s >>" % ENGINE_ATTRIBUTE,
+        "<< /Type /StructElem /S /Div /P 7 0 R /Pg 3 0 R /K [3] /A %s >>" % ENGINE_ATTRIBUTE,
+        "<< /Type /OCG /Name (layer) >>",
+        HELVETICA_DESCRIPTOR,
+    ],
     # The four states a structural locator can be in, one run each. A tagged document is not
     # uniformly tagged, and every one of these four is a different fact:
     #
@@ -1307,6 +1450,12 @@ FONT_SUBTYPE = {
 # name -> extra keys spliced into the font dictionary.
 FONT_EXTRA = {
     "simple-font-two-byte-tounicode": " /ToUnicode 6 0 R",
+    # Auto-tagging S1. The descriptor rides as the tree's last extra object (see STRUCTURE), so
+    # the font names it there instead of at 6.
+    "engine-tagged-blocks": " /FontDescriptor 10 0 R",
+    "engine-tagged-classmap": " /FontDescriptor 10 0 R",
+    "engine-tagged-mixed": " /FontDescriptor 10 0 R",
+    "engine-tagged-nested-frames": " /FontDescriptor 11 0 R",
 }
 
 # name -> extra object bodies for the image fixtures. Object 6, like every other extra.
@@ -1370,6 +1519,10 @@ CATALOG_EXTRA = {
     "stroke-ruled-field-boxes": " /AcroForm 6 0 R",
     "form-orphan-widget": " /AcroForm 6 0 R",
     "form-xfa-stub": " /AcroForm 6 0 R",
+    # Auto-tagging S1. The optional-content configuration that makes `/oc1` a real layer, on
+    # by default. No /MarkInfo on any engine-tagged catalog: the writer never sets one (docs/23
+    # §3.4) and the reader never reads one.
+    "engine-tagged-nested-frames": " /OCProperties << /OCGs [10 0 R] /D << /ON [10 0 R] >> >>",
 }
 
 # name -> raw fragment spliced into the page dictionary.
@@ -1382,6 +1535,11 @@ PAGE_EXTRA = {
     # v1-S6. The crop box the off-page finding is measured against.
     "off-page-and-offset-box": " /CropBox [0 40 300 200]",
     "crop-box-smaller-than-media": " /CropBox [50 50 250 150]",
+    # Auto-tagging S1. The page's key into the root's /ParentTree.
+    "engine-tagged-blocks": " /StructParents 0",
+    "engine-tagged-classmap": " /StructParents 0",
+    "engine-tagged-mixed": " /StructParents 0",
+    "engine-tagged-nested-frames": " /StructParents 0",
 }
 
 
@@ -1428,6 +1586,11 @@ MEDIA = {
     # Tall enough that a baseline at 700 keeps its measured ink on the page (ascent 718 at 12 pt
     # is 8.6 pt), and no wider than it needs to be: the longest line is 25 glyphs at 6 pt.
     "leading-gap-two-blocks": (0, 0, 300, 720),
+    # The same page, four times: the engine-tagged family differs from it in nothing but the tags.
+    "engine-tagged-blocks": (0, 0, 300, 720),
+    "engine-tagged-classmap": (0, 0, 300, 720),
+    "engine-tagged-mixed": (0, 0, 300, 720),
+    "engine-tagged-nested-frames": (0, 0, 300, 720),
 }
 
 # name -> /Resources fragment. Only the image fixtures declare an /XObject.
@@ -1435,6 +1598,9 @@ RESOURCES_EXTRA = {
     "image-xobject-drawn": " /XObject << /Im1 6 0 R >>",
     "image-declared-not-drawn": " /XObject << /Im1 6 0 R >>",
     "form-xobject-text-drawn": " /XObject << /Xf1 6 0 R >>",
+    # Auto-tagging S1. The property list `/OC /oc1 BDC` names, resolved through the page's
+    # /Properties — which this reader does not resolve, and declares (`mcid-property-list-by-name`).
+    "engine-tagged-nested-frames": " /Properties << /oc1 10 0 R >>",
 }
 
 # name -> /Differences array body. Only the broken-encoding fixture carries one.
@@ -1452,7 +1618,9 @@ DESCRIPTORS = {
     # v1.1-S2. Real metrics so the CELL runs are groundable elements; without them the cell-quote
     # golden would watch the verifier find nothing and refuse both halves, proving nothing about
     # cells. This is also why the list fixture has no descriptor: a /FontDescriptor and a
-    # structure tree both claim object 6, and build_pdf refuses a fixture that wants both.
+    # structure tree both claim object 6, and build_pdf refuses a fixture that wants both. The
+    # engine-tagged family has both anyway, by carrying the descriptor as its tree's LAST extra
+    # object and naming that number through FONT_EXTRA — see HELVETICA_DESCRIPTOR.
     "markdown-table-cells": "metrics",
     # v1.1-S3. Real metrics so BOTH halves of the broken word reach `ethos.grounding.v1`. Without
     # them the elements array is empty, the verifier finds nothing, and the golden would refuse

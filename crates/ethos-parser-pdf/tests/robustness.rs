@@ -423,7 +423,10 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// only the population moved. `rotated-and-mirrored-text` (0.58.0) joins them the same way, and
 /// with it and the two fixtures decision #22 and v2.2-S5 added — `absent-font-widths` and
 /// `untagged-shredded-line` — the set is **67**. `leading-gap-two-blocks`, the block cut's own
-/// fixture (OPEN-WORK §2.2), joins the same way and makes it **68**.
+/// fixture (OPEN-WORK §2.2), joins the same way and makes it **68**. The four `engine-tagged-*`
+/// fixtures of auto-tagging S1 — the same page under a hand-written structure tree — join the
+/// same way and make it **72**: a structure tree changes nothing about how a damaged xref, a
+/// truncated stream or an injected operator is refused, and each survives `junk-after-eof` alone.
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -462,7 +465,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 68] = [
+const EXPECTED_SURVIVORS: [&str; 72] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -473,6 +476,10 @@ const EXPECTED_SURVIVORS: [&str; 68] = [
     "composite-font-cid-widths/junk-after-eof",
     "composite-font-non-identity-cmap/junk-after-eof",
     "crop-box-smaller-than-media/junk-after-eof",
+    "engine-tagged-blocks/junk-after-eof",
+    "engine-tagged-classmap/junk-after-eof",
+    "engine-tagged-mixed/junk-after-eof",
+    "engine-tagged-nested-frames/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/junk-after-eof",
@@ -867,8 +874,14 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        72,
-        "the manifest should declare 72 fixtures across FOUR roots. OPEN-WORK §2.2 moved this from \
+        76,
+        "the manifest should declare 76 fixtures across FOUR roots. Auto-tagging S1 moved this \
+         from 72 by adding the four `engine-tagged-*` fixtures — `engine-tagged-blocks`, \
+         `engine-tagged-classmap`, `engine-tagged-mixed` and `engine-tagged-nested-frames` — the \
+         leading-gap page under the structure tree the writer will emit, written by hand BEFORE \
+         the writer exists so the reader is tested against a file no mistake the two might share \
+         could have produced: the owner attribute under `/A`, through `/ClassMap`, beside a \
+         foreign owner, and inside existing marked-content frames. OPEN-WORK §2.2 moved this from \
          71 by adding `leading-gap-two-blocks`, the first fixture authored for the leading-gap \
          half of the block cut: six lines at a stated leading with one stated gap, so the two \
          blocks it comes out in are checkable against `blocks.rs` by hand, where the three engine \

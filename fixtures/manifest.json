@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 45,
+    "engine_owned": 49,
     "gate": 8
   },
   "fixtures": [
@@ -595,6 +595,42 @@
       "sha256": "sha256:a180f4a7ef8fba2cd4bad919598b1cbe571622cbb79aa1d5d3fc9ab1a7d10adb",
       "owner": "engine",
       "notes": "The block cut's own fixture (OPEN-WORK \u00a72.2). Six single-run lines in one column in a font declaring real ink metrics: three at a 14 pt leading, a 28 pt gap, three more at 14 pt. In the rule's units the baselines are 2000, 3400, 4800, 7600, 9000 and 10400 centipoints, so the modal leading is 1400 (four of five gaps), the threshold is 8/5 x 1400 = 2240, and the one 2800 gap is the only one that clears it: runs 1-3 are block 1 and runs 4-6 are block 2, checkable by hand. The first fixture AUTHORED for the leading-gap half of the cut. Three earlier engine fixtures (both-table-rules, rotated-and-mirrored-text, stroke-ruled-worksheet) also come out in two blocks by that half, each by accident of a layout built for something else, and four more (the two-column pair, unruled-near-miss, plus the oracle's synthetic/two-columns) only by the vertical cut; none states its leading or its gap, so none could pin which gap opened a block."
+    },
+    {
+      "id": "engine-tagged-blocks",
+      "root": "engine",
+      "group": "engine",
+      "path": "engine-tagged-blocks/document.pdf",
+      "sha256": "sha256:5d04e2fbc1b21975486c2ea440dbb4ab5d6cc901264aaa47c6cf3d804111d274",
+      "owner": "engine",
+      "notes": "Auto-tagging S1 (docs/24 S1.5). The leading-gap page carrying the structure tree the writer emits, WRITTEN BY HAND before the writer exists so the reader is tested against a file no shared mistake could have produced: /Document over one /Div per block, every element carrying /A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>, block 1's text object in /Div <</MCID 0>> BDC ... EMC and block 2's under MCID 1, /Pg on the two /Div elements, a /ParentTree with /ParentTreeNextKey 1, /StructParents 0 on the page, and NO /MarkInfo. Same six lines, baselines and metrics font as leading-gap-two-blocks, so the two differ in nothing but the tags. The reader must bind all six runs pdf_tagged under Document/Div with derivation: computed and declare structure-tree-engine-written (3 elements, 6 runs, gutter-columns-v3), never untagged-structure-tree-absent."
+    },
+    {
+      "id": "engine-tagged-classmap",
+      "root": "engine",
+      "group": "engine",
+      "path": "engine-tagged-classmap/document.pdf",
+      "sha256": "sha256:6aebd8cb8c6184a4d76befc9346db599fd9fa5d9a14633c5923d2bc581ed3c58",
+      "owner": "engine",
+      "notes": "Auto-tagging S1. The engine-tagged-blocks tree with the attribute FACTORED into a class: /C /EthosBlock on every element, the one attribute object on the root's /ClassMap, and no /A anywhere. This is the shape a tool that deduplicates attribute dictionaries produces and the *ignored* case decision #23 names; scope docs/23 s4.1 has the reader accept the attribute wherever PDF 32000-1 lets it be placed. Must read identically to engine-tagged-blocks: same six bindings, same declarations."
+    },
+    {
+      "id": "engine-tagged-mixed",
+      "root": "engine",
+      "group": "engine",
+      "path": "engine-tagged-mixed/document.pdf",
+      "sha256": "sha256:07a4babb1bfcbbd235363e4addffbdbeff36aaee3d0c328d11abb2a9e7e7ca74",
+      "owner": "engine",
+      "notes": "Auto-tagging S1. The engine-tagged-blocks tree with a FOREIGN owner inline, /A << /O /Layout /Placement /Block >> on every element, and the engine's class through /C /EthosBlock with the same /ClassMap. /A decides only when it carries the engine's owner and here it does not, so /C decides. Must read identically to engine-tagged-blocks."
+    },
+    {
+      "id": "engine-tagged-nested-frames",
+      "root": "engine",
+      "group": "engine",
+      "path": "engine-tagged-nested-frames/document.pdf",
+      "sha256": "sha256:f5938929e6e6f3436ba9e067cc8235ce7513e88e5a6cba6698f194931b838123",
+      "owner": "engine",
+      "notes": "Auto-tagging S1. The same page with block 1's first line inside an existing /Span BMC ... EMC and its second inside /OC /oc1 BDC ... EMC whose property list is given BY NAME through the page's /Properties (object 10, an /OCG the catalog's /OCProperties turns on). The written /Div sequence opens INSIDE each frame and closes before its EMC, because the reader binds by the innermost open sequence (docs/23 s3.4): a written sequence that merely enclosed a frame would read back with no id. Block 1 is therefore ids 0, 1 and 2 (/K [0 1 2]) and block 2 is id 3, dense in stream order, and the /ParentTree names an element per id. All six runs bind computed; the named /OC list is declared as mcid-property-list-by-name exactly as any named list is today."
     },
     {
       "id": "cfpb-home-loan-toolkit",
