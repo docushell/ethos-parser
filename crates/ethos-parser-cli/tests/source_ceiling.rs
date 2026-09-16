@@ -61,37 +61,47 @@ fn sparse(name: &str, len: u64) -> PathBuf {
     path
 }
 
-fn extract(path: &PathBuf) -> Output {
+fn run(subcommand: &str, path: &PathBuf) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
-        .arg("extract")
+        .arg(subcommand)
         .arg(path)
         .output()
         .expect("the engine binary runs")
 }
 
+fn extract(path: &PathBuf) -> Output {
+    run("extract", path)
+}
+
+/// Every subcommand that opens a PDF by path. `classify` and `overlay` reached `Document::open`,
+/// whose `std::fs::read` has no ceiling, through 0.57.0.
+const PDF_READERS: [&str; 3] = ["extract", "classify", "overlay"];
+
 /// **An oversized file is refused by name, and refused without being read.**
 #[test]
 fn a_file_over_the_ceiling_is_a_named_resource_limit() {
     let path = sparse("over", MAX_SOURCE_BYTES + 1);
-    let out = extract(&path);
-    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let outs = PDF_READERS.map(|sub| (sub, run(sub, &path)));
     let _ = std::fs::remove_file(&path);
 
-    assert_eq!(
-        out.status.code(),
-        Some(2),
-        "an unreadable source is exit 2; stderr: {stderr}"
-    );
-    assert!(
-        stderr.contains("resource_limit"),
-        "the refusal must carry the `resource_limit` code so a caller can route it, rather than \
-         arriving as an OOM kill with no stderr at all; got: {stderr}"
-    );
-    assert!(
-        stderr.contains(&MAX_SOURCE_BYTES.to_string()),
-        "the refusal must name the ceiling it enforced, or the caller cannot tell how far over \
-         the file was; got: {stderr}"
-    );
+    for (sub, out) in outs {
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{sub}: an unreadable source is exit 2; stderr: {stderr}"
+        );
+        assert!(
+            stderr.contains("resource_limit"),
+            "{sub}: the refusal must carry the `resource_limit` code so a caller can route it, \
+             rather than arriving as an OOM kill with no stderr at all; got: {stderr}"
+        );
+        assert!(
+            stderr.contains(&MAX_SOURCE_BYTES.to_string()),
+            "{sub}: the refusal must name the ceiling it enforced, or the caller cannot tell how \
+             far over the file was; got: {stderr}"
+        );
+    }
 }
 
 /// The ceiling must not have made ordinary documents unreadable — the failure mode of a bound
@@ -148,8 +158,10 @@ fn a_file_exactly_at_the_ceiling_passes_the_size_check() {
 #[cfg(unix)]
 #[test]
 fn a_source_with_no_size_is_refused_at_the_ceiling_rather_than_read_forever() {
-    let out = extract(&PathBuf::from("/dev/zero"));
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert_eq!(out.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("resource_limit"), "{stderr}");
+    for sub in PDF_READERS {
+        let out = run(sub, &PathBuf::from("/dev/zero"));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{sub}: {stderr}");
+        assert!(stderr.contains("resource_limit"), "{sub}: {stderr}");
+    }
 }

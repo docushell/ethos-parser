@@ -467,8 +467,10 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
 
     // Opened once. M3's `extract` will take this same handle rather than reopening
     // (docs/04-ARCHITECTURE.md §2.1) — two loads can disagree, and a classifier that saw a
-    // different object graph from the extractor is a silent divergence with no diagnostic.
-    let result = Document::open(&args.path, &profile)
+    // different object graph from the extractor is a silent divergence with no diagnostic. Read
+    // through `read_source`, as `extract` is: `Document::open` reads a path with no ceiling.
+    let result = read_source(&args.path)
+        .and_then(|bytes| Document::open_bytes(&bytes, &profile))
         .and_then(|doc| ethos_parser_pdf::classify(&doc, &profile));
 
     match &result {
@@ -494,10 +496,12 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
 /// the digest is a fact.
 fn run_overlay(args: OverlayArgs) -> ExitCode {
     let profile = Profile::default();
-    let result = Document::open(&args.path, &profile).and_then(|doc| {
-        let extract = ethos_parser_pdf::extract(&doc, &profile)?;
-        ethos_parser_pdf::build_overlay(&doc, &extract, &profile)
-    });
+    let result = read_source(&args.path)
+        .and_then(|bytes| Document::open_bytes(&bytes, &profile))
+        .and_then(|doc| {
+            let extract = ethos_parser_pdf::extract(&doc, &profile)?;
+            ethos_parser_pdf::build_overlay(&doc, &extract, &profile)
+        });
 
     match result {
         Ok(bytes) => {
