@@ -1,0 +1,298 @@
+corpus	doc	bytes	encrypted	needs_secret	enc_method	enc_r	pages	page_cs	resource_cs	image_cs	patterns	shadings
+gate	irs-f1040sd-2025.pdf	97968	0	0			2				0	0
+gate	irs-fw9.pdf	140815	0	0			6				0	0
+gate	nist-sp-800-161r1.pdf	4845469	0	0			327	ICCBased=408;Indexed:ICCBased=29	ICCBased=408;Indexed:ICCBased=29	DeviceGray=72;DeviceRGB=1;ICCBased=3;Indexed:ICCBased=69	0	0
+gate	nist-sp-800-171r3.pdf	1593213	0	0			120	Indexed:DeviceRGB=2	Indexed:DeviceRGB=2	DeviceGray=44;DeviceRGB=1;Indexed:DeviceRGB=43	0	0
+gate	nist-sp-800-207.pdf	966908	0	0			59	ICCBased=73;Indexed:ICCBased=9	ICCBased=73;Indexed:ICCBased=9	DeviceGray=6;ICCBased=3;Indexed:ICCBased=9	0	0
+gate	nist-sp-800-218.pdf	739891	0	0			36	ICCBased=65;Indexed:ICCBased=4	ICCBased=65;Indexed:ICCBased=4	DeviceGray=6;Indexed:ICCBased=6	0	0
+gate	nist-sp-800-37r2.pdf	2270327	0	0			183	ICCBased=341;Indexed:ICCBased=196	ICCBased=341;Indexed:ICCBased=196	DeviceGray=68;ICCBased=7;Indexed:ICCBased=62	0	2
+gate	nist-sp-800-53Ar5.pdf	7469808	0	0			733	ICCBased=805;Indexed:ICCBased=1	ICCBased=164;Indexed:ICCBased=1	DeviceGray=2;ICCBased=1;Indexed:ICCBased=1	0	3
+engine	absent-font-metrics/document.pdf	1170	0	0			1				0	0
+engine	absent-font-widths/document.pdf	625	0	0			1				0	0
+engine	annotation-contents/document.pdf	1389	0	0			1				0	0
+engine	background-panel-not-a-grid/document.pdf	1175	0	0			1				0	0
+engine	both-table-rules/document.pdf	1300	0	0			1				0	0
+engine	broken-font-encoding/document.pdf	1192	0	0			1				0	0
+engine	composite-font-cid-widths/document.pdf	1394	0	0			1				0	0
+engine	composite-font-non-identity-cmap/document.pdf	1397	0	0			1				0	0
+engine	crop-box-smaller-than-media/document.pdf	1264	0	0			1				0	0
+engine	form-field-value/document.pdf	1297	0	0			1				0	0
+engine	form-orphan-widget/document.pdf	1287	0	0			1				0	0
+engine	form-xfa-stub/document.pdf	1390	0	0			1				0	0
+engine	form-xobject-text-drawn/document.pdf	1328	0	0			1				0	0
+engine	horizontal-scaling-tz/document.pdf	1072	0	0			1				0	0
+engine	image-declared-not-drawn/document.pdf	1261	0	0			1			DeviceGray=1	0	0
+engine	image-xobject-drawn/document.pdf	1298	0	0			1			DeviceGray=1	0	0
+engine	ink-past-the-media-box/document.pdf	1280	0	0			1				0	0
+engine	invisible-render-mode/document.pdf	1132	0	0			1				0	0
+engine	markdown-hyphen-break/document.pdf	1291	0	0			1				0	0
+engine	markdown-table-cells/document.pdf	1511	0	0			1				0	0
+engine	markdown-two-blocks/document.pdf	1273	0	0			1				0	0
+engine	measured-ink-box/document.pdf	1226	0	0			1				0	0
+engine	off-page-and-offset-box/document.pdf	1113	0	0			1				0	0
+engine	rotated-and-mirrored-text/document.pdf	1489	0	0			1				0	0
+engine	ruled-table-grid/document.pdf	1352	0	0			1				0	0
+engine	ruled-table-overlap/document.pdf	1156	0	0			1				0	0
+engine	ruled-wins-shared-region/document.pdf	1181	0	0			1				0	0
+engine	show-text-quote-operators/document.pdf	1069	0	0			1				0	0
+engine	simple-font-two-byte-tounicode/document.pdf	1440	0	0			1				0	0
+engine	stroke-ruled-columns-not-drawn/document.pdf	1457	0	0			1				0	0
+engine	stroke-ruled-field-boxes/document.pdf	1786	0	0			1				0	0
+engine	stroke-ruled-worksheet/document.pdf	1658	0	0			1				0	0
+engine	synthesized-space-tj/document.pdf	1035	0	0			1				0	0
+engine	tagged-cycle/document.pdf	1337	0	0			1				0	0
+engine	tagged-list-items/document.pdf	3071	0	0			1				0	0
+engine	tagged-rolemap/document.pdf	1526	0	0			1				0	0
+engine	tagged-structure-roles/document.pdf	1656	0	0			1				0	0
+engine	tagged-table-agrees/document.pdf	2117	0	0			1				0	0
+engine	tagged-table-disagrees/document.pdf	2403	0	0			1				0	0
+engine	two-column-14-lines/document.pdf	1377	0	0			1				0	0
+engine	two-column-15-lines/document.pdf	1403	0	0			1				0	0
+engine	unruled-near-miss/document.pdf	1172	0	0			1				0	0
+engine	untagged-shredded-line/document.pdf	1333	0	0			1				0	0
+engine	whitespace-past-the-page-edge/document.pdf	1286	0	0			1				0	0
+oracle	failure/corrupt-header-valid/document.pdf	9	0	0			unreadable	unreadable	unreadable	unreadable	unreadable	unreadable
+oracle	failure/image-only-or-blank-page/document.pdf	431	0	0			1				0	0
+oracle	failure/invalid-header/document.pdf	10	0	0			unreadable	unreadable	unreadable	unreadable	unreadable	unreadable
+oracle	failure/memory-limit-simulated/document.pdf	585	0	0			1				0	0
+oracle	failure/password-protected/document.pdf	1362	1	1	AESv3	6	unreadable	unreadable	unreadable	unreadable	unreadable	unreadable
+oracle	foreign/opendataloader/real/source.pdf	10538	0	0			1		ICCBased=1		0	0
+oracle	synthetic/heading-export/document.pdf	655	0	0			1				0	0
+oracle	synthetic/hyphenated-line-break/document.pdf	601	0	0			1				0	0
+oracle	synthetic/ligature-fi-embedded-font/document.pdf	2124	0	0			1				0	0
+oracle	synthetic/list-items/document.pdf	635	0	0			1				0	0
+oracle	synthetic/rotation-90/document.pdf	598	0	0			1				0	0
+oracle	synthetic/simple-text/document.pdf	585	0	0			1				0	0
+oracle	synthetic/table-regular-grid/document.pdf	729	0	0			1				0	0
+oracle	synthetic/two-columns/document.pdf	679	0	0			1				0	0
+oracle	synthetic/two-lines/document.pdf	611	0	0			1				0	0
+oracle	trust-benchmark/v1/documents/synthetic-01/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-02/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-03/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-04/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-05/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-06/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-07/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-08/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-09/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-10/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-11/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-12/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-13/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-14/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-15/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-16/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-17/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-18/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-19/document.pdf	1043	0	0			2				0	0
+oracle	trust-benchmark/v1/documents/synthetic-20/document.pdf	1043	0	0			2				0	0
+gate-zero	cfpb-home-loan-toolkit.pdf	1602781	0	0			28	ICCBased=26	ICCBased=72		0	0
+gate-zero	hyphenated-line-break.pdf	601	0	0			1				0	0
+gate-zero	irs-form-1040-2025.pdf	220237	0	0			2				0	0
+gate-zero	ligature-fi-embedded-font.pdf	2124	0	0			1				0	0
+gate-zero	nist-sp-800-53r5.pdf	6073678	0	0			492	ICCBased=970;Indexed:ICCBased=490	ICCBased=970;Indexed:ICCBased=490	DeviceGray=7;Indexed:ICCBased=7	0	0
+gate-zero	nist-sp-800-63b.pdf	1480377	0	0			80	ICCBased=140;Indexed:ICCBased=28	ICCBased=140;Indexed:ICCBased=28	DeviceGray=68;DeviceRGB=1;ICCBased=10;Indexed:ICCBased=58	0	0
+gate-zero	rotation-90.pdf	598	0	0			1				0	0
+gate-zero	simple-text.pdf	585	0	0			1				0	0
+gate-zero	two-columns.pdf	679	0	0			1				0	0
+gate-zero	two-lines.pdf	611	0	0			1				0	0
+odl-bench	01030000000001.pdf	88466	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000002.pdf	88415	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000003.pdf	90581	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000004.pdf	56400	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000005.pdf	213760	0	0			1			DeviceCMYK=2	0	0
+odl-bench	01030000000006.pdf	296819	0	0			1			DeviceCMYK=1	0	0
+odl-bench	01030000000007.pdf	34950	0	0			1				0	0
+odl-bench	01030000000008.pdf	149389	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000009.pdf	220047	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000010.pdf	475068	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000011.pdf	183687	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000012.pdf	343505	0	0			1	ICCBased=1	ICCBased=1	ICCBased=2	0	0
+odl-bench	01030000000013.pdf	305072	0	0			1	ICCBased=1	ICCBased=1	ICCBased=4	0	0
+odl-bench	01030000000014.pdf	311724	0	0			1	ICCBased=1	ICCBased=1	ICCBased=2	0	0
+odl-bench	01030000000015.pdf	307142	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000016.pdf	40042	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000017.pdf	132199	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1	0	0
+odl-bench	01030000000018.pdf	51050	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000019.pdf	44497	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000020.pdf	22380	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000021.pdf	44252	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000022.pdf	23578	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000023.pdf	23537	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000024.pdf	36175	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000025.pdf	35752	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000026.pdf	23135	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000027.pdf	69392	0	0			1	ICCBased=1;Indexed:ICCBased=3	ICCBased=1;Indexed:ICCBased=3	Indexed:ICCBased=3	0	0
+odl-bench	01030000000028.pdf	76149	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000029.pdf	76118	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000030.pdf	85356	0	0			1	ICCBased=1;Indexed:ICCBased=2	ICCBased=1;Indexed:ICCBased=2	Indexed:ICCBased=2	0	0
+odl-bench	01030000000031.pdf	92678	0	0			1	ICCBased=1;Indexed:ICCBased=1	ICCBased=1;Indexed:ICCBased=1	Indexed:ICCBased=1	0	0
+odl-bench	01030000000032.pdf	58311	0	0			1				0	0
+odl-bench	01030000000033.pdf	87845	0	0			1				0	0
+odl-bench	01030000000034.pdf	73436	0	0			1				0	0
+odl-bench	01030000000035.pdf	74712	0	0			1				0	0
+odl-bench	01030000000036.pdf	69262	0	0			1	Separation:DeviceCMYK=1	DeviceN:DeviceCMYK=1;Separation:DeviceCMYK=1		0	2
+odl-bench	01030000000037.pdf	86534	0	0			1	Separation:DeviceCMYK=1	DeviceN:DeviceCMYK=1;Separation:DeviceCMYK=1		0	2
+odl-bench	01030000000038.pdf	111984	0	0			1	Separation:DeviceCMYK=1	DeviceN:DeviceCMYK=2;Separation:DeviceCMYK=1		0	4
+odl-bench	01030000000039.pdf	72301	0	0			1	Separation:DeviceCMYK=1	DeviceN:DeviceCMYK=1;Separation:DeviceCMYK=1		0	2
+odl-bench	01030000000040.pdf	89579	0	0			1				0	0
+odl-bench	01030000000041.pdf	73614	0	0			1				0	0
+odl-bench	01030000000042.pdf	92394	0	0			1				0	0
+odl-bench	01030000000043.pdf	67608	0	0			1				0	0
+odl-bench	01030000000044.pdf	81994	0	0			1	Separation:DeviceCMYK=1	Separation:DeviceCMYK=1		0	0
+odl-bench	01030000000045.pdf	113003	0	0			1				0	0
+odl-bench	01030000000046.pdf	137011	0	0			1				0	0
+odl-bench	01030000000047.pdf	115606	0	0			1				0	0
+odl-bench	01030000000048.pdf	27665	0	0			1				0	0
+odl-bench	01030000000049.pdf	28618	0	0			1				0	0
+odl-bench	01030000000050.pdf	27833	0	0			1				0	0
+odl-bench	01030000000051.pdf	41942	0	0			1				0	0
+odl-bench	01030000000052.pdf	35050	0	0			1				0	0
+odl-bench	01030000000053.pdf	41643	0	0			1				0	0
+odl-bench	01030000000054.pdf	143372	0	0			1				0	0
+odl-bench	01030000000055.pdf	225937	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000056.pdf	156235	0	0			1			DeviceGray=1;Indexed:DeviceRGB=1	0	0
+odl-bench	01030000000057.pdf	149578	0	0			1			DeviceGray=1;Indexed:DeviceRGB=1	0	0
+odl-bench	01030000000058.pdf	156167	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000059.pdf	189330	0	0			1			DeviceGray=2;DeviceRGB=2	0	0
+odl-bench	01030000000060.pdf	181480	0	0			1			DeviceGray=2;DeviceRGB=2	0	0
+odl-bench	01030000000061.pdf	233012	0	0			1			DeviceGray=2;DeviceRGB=2	0	0
+odl-bench	01030000000062.pdf	304925	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000063.pdf	230042	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000064.pdf	140397	0	0			1				0	0
+odl-bench	01030000000065.pdf	447083	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000066.pdf	159229	0	0			1			DeviceGray=1;DeviceRGB=1	0	0
+odl-bench	01030000000067.pdf	49682	0	0			1				0	0
+odl-bench	01030000000068.pdf	82476	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000069.pdf	121828	0	0			1			DeviceGray=1;DeviceRGB=1	0	0
+odl-bench	01030000000070.pdf	102177	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000071.pdf	87823	0	0			1				0	0
+odl-bench	01030000000072.pdf	145165	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000073.pdf	103853	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000074.pdf	86417	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000075.pdf	71165	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000076.pdf	29085	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000077.pdf	30561	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000078.pdf	71349	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000079.pdf	91147	0	0			1				0	0
+odl-bench	01030000000080.pdf	100546	0	0			1				0	0
+odl-bench	01030000000081.pdf	117413	0	0			1				0	0
+odl-bench	01030000000082.pdf	83331	0	0			1				0	0
+odl-bench	01030000000083.pdf	87427	0	0			1				0	0
+odl-bench	01030000000084.pdf	62263	0	0			1				0	0
+odl-bench	01030000000085.pdf	58137	0	0			1	Indexed:DeviceRGB=1	Indexed:DeviceRGB=1	DeviceGray=1;Indexed:DeviceRGB=1	0	0
+odl-bench	01030000000086.pdf	118530	0	0			1				0	0
+odl-bench	01030000000087.pdf	115580	0	0			1				0	0
+odl-bench	01030000000088.pdf	62718	0	0			1				0	0
+odl-bench	01030000000089.pdf	60390	0	0			1				0	0
+odl-bench	01030000000090.pdf	62621	0	0			1				0	0
+odl-bench	01030000000091.pdf	96408	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000092.pdf	91072	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000093.pdf	73894	0	0			1				0	0
+odl-bench	01030000000094.pdf	77104	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000095.pdf	112678	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=2;ICCBased=2	0	0
+odl-bench	01030000000096.pdf	235201	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000097.pdf	124026	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000098.pdf	237150	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000099.pdf	149455	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000100.pdf	141643	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000101.pdf	91185	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000102.pdf	113280	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000103.pdf	177019	0	0			1			DeviceGray=3;DeviceRGB=3	1	0
+odl-bench	01030000000104.pdf	123531	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000105.pdf	228945	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000106.pdf	395594	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000107.pdf	88052	0	0			1			DeviceGray=2;ICCBased=2	0	0
+odl-bench	01030000000108.pdf	223482	0	0			1	ICCBased=1	ICCBased=5	ICCBased=1	0	0
+odl-bench	01030000000109.pdf	87786	0	0			1				0	0
+odl-bench	01030000000110.pdf	105767	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000111.pdf	146231	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000112.pdf	139407	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000113.pdf	1196497	0	0			1		Indexed:DeviceRGB=11	DeviceGray=18;DeviceRGB=12;Indexed:DeviceRGB=14	0	0
+odl-bench	01030000000114.pdf	770095	0	0			1		Indexed:DeviceRGB=1	DeviceGray=5;DeviceRGB=7;Indexed:DeviceRGB=1	0	0
+odl-bench	01030000000115.pdf	200137	0	0			1			DeviceGray=1;DeviceRGB=1	0	0
+odl-bench	01030000000116.pdf	305815	0	0			1			DeviceRGB=1	0	0
+odl-bench	01030000000117.pdf	189140	0	0			1				0	0
+odl-bench	01030000000118.pdf	326903	0	0			1	Indexed:DeviceRGB=1	Indexed:DeviceRGB=1	DeviceGray=4;DeviceRGB=4;Indexed:DeviceRGB=1	0	0
+odl-bench	01030000000119.pdf	79270	0	0			1				0	0
+odl-bench	01030000000120.pdf	267043	0	0			1	Indexed:DeviceRGB=3	Indexed:DeviceRGB=3	DeviceGray=4;Indexed:DeviceRGB=4	0	0
+odl-bench	01030000000121.pdf	315205	0	0			1				0	0
+odl-bench	01030000000122.pdf	282847	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000123.pdf	48446	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000124.pdf	67768	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000125.pdf	16426	0	0			1				0	0
+odl-bench	01030000000126.pdf	54001	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000127.pdf	40244	0	0			1				0	0
+odl-bench	01030000000128.pdf	59795	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000129.pdf	40957	0	0			1				0	0
+odl-bench	01030000000130.pdf	60054	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000131.pdf	159885	0	0			1			ICCBased=2	0	0
+odl-bench	01030000000132.pdf	373820	0	0			1	ICCBased=1	ICCBased=1	ICCBased=2	0	0
+odl-bench	01030000000133.pdf	237377	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000134.pdf	631921	0	0			1	ICCBased=1	ICCBased=2	ICCBased=3	0	0
+odl-bench	01030000000135.pdf	29037	0	0			1				0	0
+odl-bench	01030000000136.pdf	467921	0	0			1	ICCBased=1	ICCBased=4	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000137.pdf	257900	0	0			1	ICCBased=1	ICCBased=4	DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000138.pdf	434222	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000139.pdf	4433735	0	0			1	ICCBased=1	ICCBased=3	DeviceGray=2;ICCBased=5;Indexed:ICCBased=1	0	0
+odl-bench	01030000000140.pdf	950318	0	0			1	ICCBased=1	ICCBased=8	DeviceGray=6;ICCBased=7	0	0
+odl-bench	01030000000141.pdf	1601248	0	0			1			DeviceCMYK=1	0	0
+odl-bench	01030000000142.pdf	63365	0	0			1				0	0
+odl-bench	01030000000143.pdf	45258	0	0			1				0	0
+odl-bench	01030000000144.pdf	43265	0	0			1				0	0
+odl-bench	01030000000145.pdf	52337	0	0			1				0	0
+odl-bench	01030000000146.pdf	215254	0	0			1			DeviceRGB=2	0	0
+odl-bench	01030000000147.pdf	183205	0	0			1			DeviceRGB=3	0	0
+odl-bench	01030000000148.pdf	213994	0	0			1			DeviceGray=2;DeviceRGB=4	0	0
+odl-bench	01030000000149.pdf	144917	0	0			1			DeviceRGB=2	0	0
+odl-bench	01030000000150.pdf	178876	0	0			1			DeviceRGB=2	0	0
+odl-bench	01030000000151.pdf	80506	0	0			1			ICCBased=1	0	0
+odl-bench	01030000000152.pdf	115580	0	0			1			DeviceGray=1;ICCBased=2	0	0
+odl-bench	01030000000153.pdf	69911	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000154.pdf	73747	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000155.pdf	124891	0	0			1	ICCBased=1	ICCBased=11		0	0
+odl-bench	01030000000156.pdf	42464	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000157.pdf	42290	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000158.pdf	60083	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000159.pdf	39449	0	0			1				0	0
+odl-bench	01030000000160.pdf	28530	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000161.pdf	28538	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000162.pdf	40811	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000163.pdf	1247372	0	0			1			DeviceGray=1;DeviceRGB=3	0	0
+odl-bench	01030000000164.pdf	28928	0	0			1				0	0
+odl-bench	01030000000165.pdf	97009	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000166.pdf	92161	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000167.pdf	49877	0	0			1				0	0
+odl-bench	01030000000168.pdf	92535	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000169.pdf	71180	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000170.pdf	69255	0	0			1			DeviceGray=1;ICCBased=1	0	0
+odl-bench	01030000000171.pdf	291359	0	0			1	ICCBased=1	ICCBased=25	DeviceGray=1;ICCBased=2	0	0
+odl-bench	01030000000172.pdf	327477	0	0			1	ICCBased=1	ICCBased=28	DeviceGray=2;ICCBased=2	0	0
+odl-bench	01030000000173.pdf	299193	0	0			1	ICCBased=1	ICCBased=1	ICCBased=2	0	0
+odl-bench	01030000000174.pdf	777841	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000175.pdf	644159	0	0			1	ICCBased=1	ICCBased=1	ICCBased=2	0	0
+odl-bench	01030000000176.pdf	406031	0	0			1	ICCBased=1	ICCBased=1	ICCBased=1	0	0
+odl-bench	01030000000177.pdf	107837	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=1;ICCBased=2	0	0
+odl-bench	01030000000178.pdf	49645	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000179.pdf	129473	0	0			1	ICCBased=1	ICCBased=2	ICCBased=1	0	0
+odl-bench	01030000000180.pdf	66937	0	0			1	ICCBased=1	ICCBased=2		0	0
+odl-bench	01030000000181.pdf	105934	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000182.pdf	131353	0	0			1	ICCBased=1	ICCBased=1		0	0
+odl-bench	01030000000183.pdf	167109	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=3;ICCBased=3	0	0
+odl-bench	01030000000184.pdf	248753	0	0			1	ICCBased=1	ICCBased=1	DeviceGray=9;ICCBased=9	0	0
+odl-bench	01030000000185.pdf	107787	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000186.pdf	256708	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1	DeviceGray=1;DeviceRGB=1	0	0
+odl-bench	01030000000187.pdf	71370	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000188.pdf	114941	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000189.pdf	71529	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000190.pdf	85792	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000191.pdf	84621	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000192.pdf	65607	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000193.pdf	47856	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000194.pdf	45348	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000195.pdf	52383	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000196.pdf	52496	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000197.pdf	44988	0	0			1	Pattern:DeviceRGB=1	Pattern:DeviceRGB=1		0	0
+odl-bench	01030000000198.pdf	277248	0	0			1			DeviceGray=4;DeviceRGB=4	0	0
+odl-bench	01030000000199.pdf	329568	0	0			1			DeviceGray=10;DeviceRGB=10	0	0
+odl-bench	01030000000200.pdf	251476	0	0			1			DeviceGray=4;DeviceRGB=4	0	0
