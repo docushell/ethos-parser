@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 9] = [
+const PDF_COUNTERS: [&str; 10] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -95,6 +95,10 @@ const PDF_COUNTERS: [&str; 9] = [
     // `the_counter_list_is_complete` derived it and this list did not have it — which is the
     // whole reason that derivation exists, and the first time it has caught a real addition.
     "undescended_xobjects",
+    // Auto-tagging S1 (`e9acf75`). The runs bound to this engine's own written tree, the count
+    // `structure-tree-engine-written` names. Caught the same way, by the first full gate after it
+    // landed.
+    "computed_bound",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.
