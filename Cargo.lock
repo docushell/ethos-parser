@@ -340,6 +340,7 @@ dependencies = [
  "ethos-parser-grounding",
  "ethos-parser-office",
  "ethos-parser-pdf",
+ "lopdf",
  "serde_json",
  "sha2",
 ]
