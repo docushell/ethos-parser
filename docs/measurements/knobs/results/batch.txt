@@ -1,0 +1,30 @@
+binary: /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser (ethos-parser 0.58.0)
+load before: 20:19  up 1 day, 10:16, 1 user, load averages: 2.00 2.77 3.12
+odl-bench: 200 PDFs, 3 repetitions, /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser
+  rep 1 sequential         3.85 s  exits {0: 200}
+  rep 1 xargs -P 4         1.85 s  exits {0: 200}
+  rep 1 xargs -P 8         1.75 s  exits {0: 200}
+  rep 2 sequential         3.50 s  exits {0: 200}
+  rep 2 xargs -P 4         1.78 s  exits {0: 200}
+  rep 2 xargs -P 8         1.69 s  exits {0: 200}
+  rep 3 sequential         3.67 s  exits {0: 200}
+  rep 3 xargs -P 4         1.77 s  exits {0: 200}
+  rep 3 xargs -P 8         1.80 s  exits {0: 200}
+
+method	min_s	median_s	speedup_vs_sequential_min
+sequential	3.50	3.67	1.00x
+xargs -P 4	1.77	1.78	1.98x
+xargs -P 8	1.69	1.75	2.07x
+
+gate-seven: 7 PDFs, 3 repetitions, /Users/saumildiwaker/Desktop/Stuff/project/repo/ethos-parser/target/aarch64-apple-darwin/release/ethos-parser
+  rep 1 sequential         8.48 s  exits {0: 7}
+  rep 1 xargs -P 4         3.72 s  exits {0: 7}
+  rep 2 sequential         8.49 s  exits {0: 7}
+  rep 2 xargs -P 4         3.79 s  exits {0: 7}
+  rep 3 sequential         8.56 s  exits {0: 7}
+  rep 3 xargs -P 4         3.75 s  exits {0: 7}
+
+method	min_s	median_s	speedup_vs_sequential_min
+sequential	8.48	8.49	1.00x
+xargs -P 4	3.72	3.75	2.28x
+load after: 20:20  up 1 day, 10:17, 1 user, load averages: 2.90 2.90 3.14

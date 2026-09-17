@@ -1,0 +1,226 @@
+name: Release artifacts
+
+# Builds the binaries a GitHub Release ships, on the machines they are for, and EXECUTES every one
+# of them before it is packaged. `ci/release-artifacts.sh` is the whole of the logic: each runner
+# calls it with `--native`, so it builds, runs, fingerprints and packages only the target the
+# runner itself is, and the `verify` job calls it with `--assemble` over what the runners uploaded,
+# which writes a SHA256SUMS.txt only if every fingerprint is byte-identical. The YAML here is
+# plumbing, and the owner runs the same script locally (docs/RELEASING.md §8 step 1).
+#
+# # It publishes nothing, and cannot
+#
+# docs/RELEASING.md §6 says there is no publish automation, deliberately, and this workflow keeps
+# that true: its output is a workflow artifact, `release-bundle`, that the owner downloads and
+# attaches to a GitHub Release by hand with the `gh release create` command in §8 — exactly as §8
+# does with locally built files. `permissions: contents: read` below is what makes that a fact
+# rather than an intention: creating or editing a release needs `contents: write`, and no job
+# here holds it.
+#
+# # What `verified` means here
+#
+# The script's rule is that a packaged binary must have been executed and its artifacts compared.
+# On one host the comparison is against the native build. Here every runner is a host of its own,
+# so the comparison is across all of them: a target is `verified` when it was executed on the
+# runner that built it AND its fingerprint — every artifact digest over the gate corpus — equals
+# every other runner's. That is plan item 6.1's operating-system axis, measured on the release
+# binaries themselves. Fingerprints that differ fail `verify`, and nothing is labelled anything.
+#
+# # It has never run
+#
+# **No run of this workflow exists as of the commit that added it.** Everything above is what the
+# YAML and the script say, not what a run has shown; the first run is the test. Each runner fact
+# this depends on is named at the step that depends on it.
+#
+# A separate workflow file, deliberately. `v0_exit_criteria.rs::the_local_gate_runs_what_ci_runs`
+# compares ci.yml's `check` job against ci/gate.sh command by command; a release build is not a
+# gate check and must not appear in either.
+
+on:
+  # docs/RELEASING.md §8 step 2 pushes the tag; that push starts this. The tag must name
+  # Cargo.toml's version, and the script refuses otherwise (`--tag`).
+  push:
+    tags: ["v*"]
+  # For a trial build of any ref, or a re-run of a subset of targets — see `targets`.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build: a tag, branch or SHA. Empty builds the ref this workflow was dispatched from."
+        required: false
+        default: ""
+      targets:
+        description: "Targets to build, space-separated. Leave one out to skip its runner; the rest still ship, and SHA256SUMS.txt says which were compared."
+        required: false
+        default: "x86_64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin"
+
+# Least privilege, and the proof of the no-publish claim above.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    # A target left out of `targets` on a dispatch is skipped, not failed, so the others still
+    # reach `verify`. On a tag push there is no input and every leg runs.
+    if: github.event_name != 'workflow_dispatch' || contains(inputs.targets, matrix.target)
+    runs-on: ${{ matrix.os }}
+    # Not a measurement: no runner has built this yet. Locally the release build takes 1m08s on
+    # 14 cores and the fingerprint over all eight gate documents a few minutes more; the smallest
+    # runner here has 3 cores.
+    timeout-minutes: 60
+    strategy:
+      # One leg failing still leaves the others' output uploaded to read.
+      fail-fast: false
+      matrix:
+        # One entry per target, and each runner is that target's own machine: the script's
+        # `--native` builds nothing else, so nothing here is cross-compiled and every packaged
+        # binary was executed by the kind of machine it is for.
+        include:
+          # gnu rather than musl. The runner's own triple is x86_64-unknown-linux-gnu, so this is
+          # the one Linux binary that is `verified` in the script's sense with no second libc, no
+          # `apt-get install musl-tools`, no `rustup target add` and no cross-link step to be
+          # wrong about. The cost is a glibc floor: the binary links the runner image's glibc and
+          # runs on distributions at least that new. A static musl build lifts that and is one
+          # more leg — musl-tools plus `--target x86_64-unknown-linux-musl` — when somebody asks
+          # for it; pinning `runs-on` to an older Ubuntu lowers the floor too.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          # A `.tar.gz` here too, not a `.zip`: one packaging path, GNU tar in Git Bash, and no
+          # dependency on `zip` or 7-Zip being on the image. Windows 10 and later ship `tar`, and
+          # Windows 11's Explorer opens the archive.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # macos-latest is arm64: 3 vCPU and 7 GB, the least memory of the four (GitHub's runner
+          # reference). The 733-page gate document's extract peaks at 4.7 GB
+          # (docs/measurements/memory-ceiling), so this is the leg most likely to die for want of
+          # memory. If it does, leave it out of `targets` and build it locally with
+          # docs/RELEASING.md §8 step 1, as every release so far has.
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # Native on an Intel runner, not under Rosetta on the arm64 one. GitHub's runner
+          # reference lists `macos-15-intel` (4 vCPU, 14 GB); native execution is what `verified`
+          # means on every other leg; and whether Rosetta is installed on the hosted arm64 image
+          # is not a fact this repository has established — the script's `pgrep oahd` check is a
+          # fact about the owner's Mac. When GitHub retires the Intel label this leg fails to
+          # schedule: leave it out of `targets`, and §8 step 1 covers it locally under Rosetta.
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    # Git Bash on Windows, so every step is one script on all four systems.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # As ci.yml's `check` job does, and for the reasons given there: rust-toolchain.toml is what
+      # selects 1.88.0; the action only preinstalls it, and naming the version keeps the two in
+      # agreement. No rust-cache: a release is built cold from the pinned lockfile, and this
+      # workflow runs rarely.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      # Assert the pin rather than trusting it. If rust-toolchain.toml is ever moved or renamed,
+      # cargo silently falls back to the rustup default and the "same compiler everywhere"
+      # contract fails open. This is the tripwire.
+      - name: Assert the toolchain pin is in force
+        run: |
+          set -euo pipefail
+          want="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' rust-toolchain.toml | head -1)"
+          got="$(cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "rust-toolchain.toml wants $want; cargo reports $got"
+          [ "$want" = "$got" ] || { echo "::error::toolchain pin not in force"; exit 1; }
+
+      # `--native` builds whatever `rustc -vV` calls the host. Hold that to the matrix entry, so a
+      # runner label that quietly changed architecture fails here by name rather than uploading a
+      # binary for a target nobody asked for.
+      - name: Assert this runner is the target it builds
+        run: |
+          set -euo pipefail
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          echo "rustc host: $host; matrix target: ${{ matrix.target }}"
+          [ "$host" = "${{ matrix.target }}" ] || { echo "::error::this runner is $host, not ${{ matrix.target }}"; exit 1; }
+
+      # The tag this build must agree with. A tag push names it directly. A dispatch names a ref:
+      # if HEAD is a `v*` tag the build is held to it, and otherwise this is a trial build of a
+      # commit no tag names, which the assembled SHA256SUMS.txt records by commit. The fetch is
+      # for a dispatch on a SHA or branch, where checkout brings no tags along.
+      - name: Name the tag this build must match
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            git fetch --quiet --depth=1 origin '+refs/tags/*:refs/tags/*' || true
+            tag="$(git tag --points-at HEAD 'v*' | head -n 1)"
+          fi
+          echo "tag: ${tag:-(none — a trial build)}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # Build, execute over the gate corpus, fingerprint, package — the script the owner runs
+      # locally, restricted to this runner's own target. A refusal anywhere in the corpus fails
+      # here (`require_produced`), so a checkout that mangled the fixtures cannot yield a
+      # fingerprint of refusals that happens to match every other runner's. `bash` rather than
+      # the file directly: NTFS has no execute bit for Git Bash to honour.
+      - name: Build, execute, fingerprint and package ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          args=(--native)
+          if [ -n "${{ steps.tag.outputs.tag }}" ]; then args+=(--tag "${{ steps.tag.outputs.tag }}"); fi
+          bash ci/release-artifacts.sh "${args[@]}"
+
+      # Everything the script wrote: the tarball, the fingerprint of the binary inside it, this
+      # runner's own SHA256SUMS.txt and the build log. `verify` consumes the first three.
+      # `overwrite`, so re-running a leg does not fail on the name the first attempt uploaded.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: built-${{ matrix.target }}
+          path: target/release-artifacts/
+          if-no-files-found: error
+          overwrite: true
+
+  verify:
+    # Runs only when every leg that ran succeeded: an `if:` with no status function implies
+    # success(), and a leg skipped by `targets` is not a failed one.
+    needs: build
+    name: one set of bytes on every runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The script and the corpus at the same ref: `--assemble` re-derives the produced-row floor
+      # from fixtures/gate and the version from Cargo.toml, so an upload built from a different
+      # tree fails by name rather than assembling. No tag step here — every leg already refused
+      # a tag that does not name this version, before it uploaded anything.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # One directory per runner under dist/, which is the shape `--assemble` reads. The pattern
+      # must not match `release-bundle`, or a re-run of this job would read its own last output
+      # as a fifth runner.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: built-*
+          path: dist
+
+      - name: Require one fingerprint from every runner, then write SHA256SUMS.txt
+        run: bash ci/release-artifacts.sh --assemble dist
+
+      # What the owner downloads and attaches: `gh run download <run> -n release-bundle -D dist`,
+      # then the `gh release create` line in docs/RELEASING.md §8 over dist/*.tar.gz and
+      # dist/SHA256SUMS.txt. The fingerprints ride along so a locally built binary can be held to
+      # the runners' bytes with `ci/release-artifacts.sh --fingerprint-only` and `diff`.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: |
+            dist/*.tar.gz
+            dist/*.fingerprint
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          overwrite: true

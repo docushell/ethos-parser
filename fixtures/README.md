@@ -12,7 +12,7 @@ skips and never quietly uses a different file.
 | --- | --- | --- | --- |
 | `conformance` | `../ethos/fixtures` | `ETHOS_FIXTURES` | The 15 Ethos-owned fixtures. The oracle criterion counts exactly these |
 | `benchmark` | `../ethos/benchmarks/gate-zero/corpus` | `ETHOS_BENCH_CORPUS` | 4 large real-world PDFs. Not part of the oracle count |
-| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 37 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
+| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 58 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
 | `gate` | `fixtures/gate` | `ETHOS_GATE_CORPUS` | 8 tagged public documents for the table gate — **committed here**, because a corpus you publish numbers about has to be one anyone can re-measure |
 
 `fixtures/office/` holds 16 small office packages for the v2 readers and the mutation harness, and
@@ -63,6 +63,9 @@ not obvious from the name:
 | `invisible-render-mode` | Text under render mode 3: present, flagged, never filtered out |
 | `off-page-and-offset-box` | A media box whose origin is not `(0,0)`, plus a smaller crop box — the coordinate repair and the off-page finding in one page |
 | `composite-font-cid-widths`, `composite-font-non-identity-cmap` | A `/Type0` font whose widths live on its descendant CIDFont as `/W` and `/DW`, and the same descendant under a CMap this profile cannot read — see below |
+| `leading-gap-two-blocks` | Six lines in one column, three at a 14 pt leading, a 28 pt gap, three more: the leading-gap half of the block cut opens exactly two blocks, and the fixture states the numbers it is cut against — see below |
+| `engine-tagged-blocks`, `engine-tagged-classmap`, `engine-tagged-mixed`, `engine-tagged-nested-frames` | The leading-gap page carrying the structure tree the auto-tagging writer emits, written by hand before the writer exists — the attribute under `/A`, through `/ClassMap`, beside a foreign owner, and inside existing marked-content frames — see below |
+| `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered`, `leading-gap-nested-frames` | The shapes the auto-tagging writer must refuse or place around: an id in the content stream and no tree, inline and through a named property list; a named list that is a layer, not an id; furniture marked `/Artifact`; one stream shared by two pages; a filtered inline image; and the untagged twin of `engine-tagged-nested-frames` — see below |
 
 Why the upstream corpus cannot cover the table cases: **no fixture in it contains a single path
 operator**, so nothing there exercises ruled detection at all.
@@ -99,6 +102,86 @@ this engine writes, including ones for documents containing no XObject at all: i
 policy, not the cost. `form-xobjects-not-descended` is document-scoped and carries a count, and the
 fixture asserts both halves — present here, absent on the two above.
 
+### The leading-gap fixture is the first one authored for the block cut
+
+`leading-gap-two-blocks` is six single-run lines in one column, in a font declaring real ink
+metrics so every run reaches the grounding artifact: three lines at a 14 pt leading, a 28 pt gap,
+three more at 14 pt. In the rule's own units (`blocks.rs`: centipoints, top-left origin) the
+baselines are 2000, 3400, 4800, 7600, 9000 and 10400, so:
+
+| | |
+| --- | --- |
+| gaps | 1400, 1400, 2800, 1400, 1400 |
+| modal leading | 1400 — four of five gaps, so the share is 4/5 against a floor of 1/4, and 1400 clears the 600 floor |
+| threshold | 8/5 × 1400 = 2240 |
+| cuts | one, at the 2800 gap |
+| blocks | runs 1–3 are block 1, runs 4–6 are block 2, `region` absent on all six |
+
+**It is not the first fixture whose page the cut divides, and the census that found that is the
+reason it states its numbers.** Measured with the 0.58.0 binary over the 44 engine fixtures and the
+14 conformance fixtures that open: three engine fixtures already come out in two blocks by the
+leading-gap half — `both-table-rules` (the gap between its two tables), `rotated-and-mirrored-text`
+(seven turned runs scattered down a page) and `stroke-ruled-worksheet` (a worksheet's row pitch) —
+each by accident of a layout authored for something else, and four more only by the vertical cut,
+one block per column band: the two-column pair, `unruled-near-miss` and the oracle's
+`synthetic/two-columns`. None of the seven states its leading or its gap, so none can say which gap
+opened a block or that the threshold was cleared on purpose, and a change to `CUT_NUM`/`CUT_DEN` or
+to the modal-leading guard would move them without any fixture saying why. The two-run fixtures
+(`markdown-two-blocks`, `markdown-hyphen-break`) cannot cut at all: one gap is its own modal leading,
+and a gap never clears 1.6 times itself. That pair is the negative half of the wire tests in
+`crates/ethos-parser-pdf/tests/extraction.rs`, and this fixture is the positive half.
+
+### The engine-tagged family is the writer's tree shape, written by hand first
+
+`engine-tagged-blocks` is `leading-gap-two-blocks` — the same six lines, baselines and metrics
+font — carrying the structure tree the auto-tagging writer emits (`docs/23-AUTO-TAGGING-SCOPE.md`
+§3.3–§3.4): `/Document` over one `/Div` per block, every element carrying
+`/A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>`, each block's three `Tj`s
+in one `/Div << /MCID n >> BDC … EMC` opened and closed inside the page's single text object (§3.4:
+a text object shared between two blocks is split at the operators, inside it), a `/ParentTree`,
+`/StructParents` on the page, and no `/MarkInfo`. The content stream is the untagged page's with
+the `BDC`/`EMC` tokens inserted and nothing else changed — §3.5's rule for the writer, which the
+generator asserts. The catalog stamp of §3.3 (`/EthosParserTags`) is deliberately absent: the
+reader never consults it, and its `SourceSha256` and `ParserVersion` are the writer's to fill; S2
+checks the stamp on the writer's own output. It was written by hand **before the writer exists**,
+on purpose: a reader tested against a file the writer produced could pass on a mistake the two
+share, and this file cannot have one. The reader must bind all six runs `pdf_tagged` under
+`Document/Div` with `derivation: computed`, runs 1–3 to mcid 0 and 4–6 to mcid 1, and declare
+`structure-tree-engine-written` rather than `untagged-structure-tree-absent`.
+
+The three siblings hold the same page under the same tree and move only where the attribute sits,
+which is what the reader has to be indifferent to:
+
+| Fixture | Where the attribute is |
+| --- | --- |
+| `engine-tagged-classmap` | on the root's `/ClassMap` as `/EthosBlock`, reached through `/C` on every element; no `/A` anywhere |
+| `engine-tagged-mixed` | a foreign owner inline (`/A << /O /Layout /Placement /Block >>`) and the engine's class through `/C` — `/A` decides only when it carries the engine's owner |
+| `engine-tagged-nested-frames` | under `/A` as in `-blocks`, but block 1's first line sits inside `/Span BMC … EMC` and its second inside `/OC /oc1 BDC … EMC` given by name, the written `/Div` sequence opened inside each frame; block 1 is ids 0, 1, 2 and block 2 is id 3 |
+
+The first two must read identically to `-blocks`, bindings and declarations alike. The third
+binds all six runs `computed` and declares the named `/OC` list as `mcid-property-list-by-name`,
+exactly as any named list is declared today. The failure modes — the owner without its
+`/Derivation`, the owner renamed, the attribute behind a reference, a `/MarkInfo` added — are
+made in the tests by editing `-blocks` through `lopdf`, so each is one edit away from the file
+that reads correctly (`crates/ethos-parser-pdf/tests/tagging_read.rs`).
+
+The pair `tagged-widget-objr` / `engine-tagged-widget-objr` holds the one binding the family above
+cannot: a locator minted for an **object** the tree cites by `/OBJR` rather than for a
+marked-content id. Both are the `form-field-value` page — one label, one widget, nothing marked —
+under `/Document` → `/Form` whose `/K` is `<< /Type /OBJR /Obj 10 0 R /Pg 3 0 R >>`, with
+`/StructParent 0` on the widget, `/ParentTree << /Nums [0 8 0 R] >>` on the root, and no
+`/MarkInfo`. The first carries no attribute and is an author's tree; the second carries the
+engine's attribute on both elements, a shape the writer never produces (it tags blocks, not
+widgets) and nothing forbids. The form-field node's locator must read `derivation: extracted` on
+the first and `computed` on the second: only the `computed` case proves the `/OBJR` arm carries
+the citing element's class rather than a constant.
+
+**Object 6 is the tree, so the descriptor cannot take its usual number.** `build_pdf` refuses a
+fixture that wants both, and the list fixture went without metrics for that reason; this family
+carries the same Helvetica descriptor as its tree's last extra object (10, or 11 where the `/OCG`
+takes 10) and names it through `FONT_EXTRA`, so all six runs keep the measured ink boxes the
+untagged page has.
+
 ### The composite-font pair is about a shape neither corpus had
 
 Before v2.2-S3, `grep -rl CIDFontType fixtures/` matched **nothing** — in either owned corpus. So
@@ -125,6 +208,26 @@ different code paths: `/W`'s array form twice, then `/DW`, then `/W`'s range for
 and not 1000 on purpose** — 1000 is also §9.7.4.3's value for an omitted `/DW`, so at 1000 a
 mutant that ignored the key survived the fixture. The omitted case is covered by a unit test in
 `fonts.rs`, where a dictionary can be built without one.
+
+### The writer's fixtures are the shapes it refuses or places around
+
+Seven pages for auto-tagging S2 (`docs/23-AUTO-TAGGING-SCOPE.md` §3.4–§3.6), each the
+leading-gap page with one thing changed, so the block cut is the known one — lines 1–3, lines
+4–6 — and only the changed thing is being tested:
+
+| Fixture | What is changed | What the writer does |
+| --- | --- | --- |
+| `untagged-mcid-no-tree` | line 2 inside `/P << /MCID 0 >> BDC … EMC`, no `/StructTreeRoot` | refuses: an id whose meaning the document lost (§3.6, second row) |
+| `untagged-mcid-by-name` | line 2 inside `/P /MC0 BDC … EMC`, `/Properties << /MC0 << /MCID 0 >> >>` | resolves the name the reader does not, finds the id, refuses (third row) |
+| `untagged-oc-by-name` | line 2 inside `/OC /oc1 BDC … EMC`, `/oc1` an `/OCG` | tags: a named list without an id is a frame, and line 2's sequence opens inside it |
+| `untagged-artifact-furniture` | a running head inside `/Artifact BMC … EMC` 70 pt above line 1 | tags the two body blocks, cites no element for the head, encloses the frame in nothing |
+| `shared-content-stream` | two pages, one `/Contents` reference, a seventh run page B's font drops | one new stream per page, never the shared object edited; the plans differ (two sequences, three) |
+| `inline-image-filtered` | a 2×2 `/AHx` inline image between lines 1 and 2 | the image is one token ending at the first `EI` window and a painting operator; block 1 is two sequences |
+| `leading-gap-nested-frames` | `engine-tagged-nested-frames` without the tree and the written sequences | its output walks to that fixture's tree; the generator asserts the two streams differ by the sequences alone |
+
+`shared-content-stream` is written out by hand in the generator, because `build_pdf` writes one
+page; the two untagged pages that name a layer carry the `/OCG` at 6 and the descriptor at 7, as
+the engine-tagged family carries its descriptor after its tree.
 
 ## Regenerating
 

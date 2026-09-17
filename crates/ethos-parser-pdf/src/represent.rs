@@ -126,11 +126,14 @@ pub fn to_representation(
         }
 
         // v2-S24. The tagged tables become `TableRecord`s in the SAME list, distinguished by
-        // `derivation`: `Extracted`, where the geometric tables above are `Computed`. That is the
-        // whole point of the field — a consumer reads one `tables` array and tells "the document
-        // declared this grid" from "a detector inferred it" off the derivation, not off two lists.
-        // The ids the extractor allocated are carried forward verbatim so a cell's `table_id`
-        // matches its table's `id`, exactly as for the geometric tables.
+        // `detection_rule` — `tagged-tables-v1`, where the geometric tables above carry one of the
+        // three geometric ids — and carrying as `derivation` the class the extractor read off the
+        // `/Table` element: `Extracted` for an author's tags, `Computed` where the element carries
+        // this engine's owner attribute (auto-tagging S1). A consumer reads one `tables` array and
+        // tells "the document declared this grid" from "a detector inferred it" off the rule, and
+        // whose statement the grid is off the derivation, not off two lists. The ids the extractor
+        // allocated are carried forward verbatim so a cell's `table_id` matches its table's `id`,
+        // exactly as for the geometric tables.
         for t in &page.tagged_tables {
             let cells = t
                 .cells
@@ -171,9 +174,13 @@ pub fn to_representation(
                 rows: t.rows,
                 columns: t.columns,
                 cells,
-                // **Extracted, not Computed** — the grid is the document's own statement, read off
-                // its tags, not an inference over ink. The stronger class is the honest one.
-                derivation: ethos_parser_core::DerivationClass::Extracted,
+                // The class the extractor read off the `/Table` element itself: **Extracted**
+                // for an author's tags — the grid is the document's own statement, read off its
+                // tags and not inferred over ink, and the stronger class is the honest one — and
+                // `Computed` only where the element carries this engine's own owner attribute
+                // (auto-tagging S1). Copied rather than written as a constant here, so a tagged
+                // table can never launder an engine-written element into the author's.
+                derivation: t.derivation,
                 detection_rule: t.rule.to_string(),
                 // NotApplicable: no geometry to compare against the structural derivation.
                 locator_check: t.check.clone(),
@@ -905,14 +912,17 @@ mod tests {
         to_representation(&extract, &profile).expect("represents")
     }
 
-    /// **A tagged table reaches the representation as `Extracted`, in the same `tables` list, with
-    /// absent geometry** (v2-S24).
+    /// **An author's tagged table reaches the representation as `Extracted`, in the same `tables`
+    /// list, with absent geometry** (v2-S24).
     ///
     /// This is the slice's central claim about the wire: the geometric tables and the tagged ones
-    /// live in one `tables` array, and `derivation` — not two lists — is what tells a consumer
-    /// which is which. `irs-f1040sd-2025` draws no readable grid, so every table it contributes is
-    /// tagged and `Extracted`; the assertion is that they are present, carry `tagged-tables-v1`,
-    /// report geometry absent rather than a fabricated box, and their cross-check is not-applicable.
+    /// live in one `tables` array, and `detection_rule` — not two lists — is what tells a consumer
+    /// which is which, with `derivation` saying whose statement the grid is: `Extracted` for an
+    /// author's `/Table`, `Computed` where the element carries this engine's owner attribute
+    /// (auto-tagging S1; `tests/tagging_read.rs` holds that shape). `irs-f1040sd-2025` draws no
+    /// readable grid and its author tagged it, so every table it contributes is tagged and
+    /// `Extracted`; the assertion is that they are present, carry `tagged-tables-v1`, report
+    /// geometry absent rather than a fabricated box, and their cross-check is not-applicable.
     #[test]
     fn a_tagged_table_reaches_the_representation_as_extracted_with_absent_geometry() {
         let repr = represent(&gate_fixture("irs-f1040sd-2025.pdf"));
@@ -929,8 +939,9 @@ mod tests {
             assert_eq!(
                 t.derivation,
                 ethos_parser_core::DerivationClass::Extracted,
-                "a tagged table is the document's own statement, so it is Extracted — the field \
-                 that distinguishes it from a Computed geometric table in the same list"
+                "an author's tagged table is the document's own statement, so it is Extracted; \
+                 the rule, not this field, is what distinguishes it from a geometric table in \
+                 the same list"
             );
             assert!(
                 matches!(

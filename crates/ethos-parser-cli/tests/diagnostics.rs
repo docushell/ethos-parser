@@ -129,9 +129,9 @@ const DIAGNOSTICS_CLASS_KEYS: [&str; 16] = [
 
 /// One covered `Stage`, with an input that reaches it and the stage name the envelope must report.
 ///
-/// **A stage is not a subcommand**, and `Stage`'s own doc comment says so: nine subcommands map
-/// onto five stages, because `markdown`, `html` and `overlay` report under the phase whose work
-/// they project from, and `mcp` has no stage at all. Counting subcommands here was wrong twice
+/// **A stage is not a subcommand**, and `Stage`'s own doc comment says so: ten subcommands map
+/// onto five stages, because `markdown`, `html`, `overlay` and `tag` report under the phase
+/// whose work they project from or write into a file, and `mcp` has no stage at all. Counting subcommands here was wrong twice
 /// over — wrong population, wrong number — and v2-S17 replaced the count with a derivation.
 struct Case {
     stage: &'static str,

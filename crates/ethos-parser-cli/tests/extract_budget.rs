@@ -36,8 +36,11 @@
 //! Re-measured at 97fa562, the same document reads 563.5 MiB unbounded, 307.4 at 64, 188.1 at 32
 //! and 73.2 at 8 — so the ladder reproduces, and the per-page figure is a corpus median whose
 //! real range was 3.20 to 9.07 MiB/page. The flag's floor is what the v2-S15 table could not show:
-//! `--max-pages 0` costs 45.3 MiB here and 224.2 MiB on a 733-page document, because the
-//! structure tree is read before the budget is consulted.
+//! `--max-pages 0` costs 45.3 MiB here and 224.2 MiB on a 733-page document, because the whole
+//! document is opened before the budget is consulted. This header first blamed the structure tree
+//! for that floor; `docs/measurements/memory-ceiling/` §15 separated it at 0.58.0, and the tree is
+//! 28 MiB of the 733-page document's 221 MiB — the rest is the source bytes and the parsed object
+//! graph, which no page budget reaches.
 //!
 //! Every figure above is PRE-Arc. Role-path sharing (58a1342) then took the same 120-page document
 //! to 488.0 MiB unbounded and the 733-page one to 4665.6, byte-identically, without moving the

@@ -65,11 +65,12 @@ pub const DIAGNOSTICS_VERSION: &str = "0";
 /// from a pipeline can tell them apart without parsing a command line. Four are v0's subcommands;
 /// `Verify` arrived with the shell-out at v0.1 and the sentence was not moved with it.
 ///
-/// **A stage is not a subcommand and the counts differ on purpose.** Nine subcommands map onto
-/// these five: `markdown`, `html` and `overlay` report under the stage whose work they project
-/// from — `Ground`, `Ground` and `Extract` — because a caller reading `stage` wants to know which
-/// phase produced the observation, not which flag was typed. `mcp` is the one subcommand with no
-/// stage at all: it is a server loop rather than a document pass.
+/// **A stage is not a subcommand and the counts differ on purpose.** Ten subcommands map onto
+/// these five: `markdown`, `html`, `overlay` and `tag` report under the stage whose work they
+/// project from or write into a file — `Ground`, `Ground`, `Extract` and `Extract` — because a
+/// caller reading `stage` wants to know which phase produced the observation, not which flag was
+/// typed. `mcp` is the one subcommand with no stage at all: it is a server loop rather than a
+/// document pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {

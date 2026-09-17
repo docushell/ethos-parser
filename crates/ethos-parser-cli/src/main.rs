@@ -14,11 +14,13 @@
 
 //! `ethos-parser` — the ethos-parser command line.
 //!
-//! **Four subcommands at v0. Nine now**, and this paragraph said four until v2-S13.5. The v0 four
-//! are `classify`, `extract`, `ground` and `grounding-check`; `verify` arrived at v0.1, `markdown`
-//! at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1 and `overlay` with the image work. The `Command`
-//! enum below is the list that cannot go stale, and `crates/ethos-parser-core/src/verifier.rs` has said
-//! *"the other eight subcommands"* since v0.1 — two files in one workspace disagreeing about a
+//! **Four subcommands at v0. Ten now**, and this paragraph said four until v2-S13.5 and nine until
+//! auto-tagging S2. The v0 four are `classify`, `extract`, `ground` and `grounding-check`;
+//! `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `overlay`
+//! with the image work, and `tag` — the writer of `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging
+//! S2. The `Command` enum below is the list that cannot go stale, and
+//! `crates/ethos-parser-core/src/verifier.rs` said *"the other eight subcommands"* from v0.1 until
+//! auto-tagging S2 moved it with this paragraph — two files in one workspace disagreeing about a
 //! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
 //! this one was missed by.
 //!
@@ -166,6 +168,30 @@ enum Command {
     /// Exit codes: **0** the overlay was written · **2** the document could not be read.
     Overlay(OverlayArgs),
 
+    /// Write this engine's own structure tree into a copy of an untagged PDF (auto-tagging S2).
+    ///
+    /// Emits a PDF — the second subcommand, after `overlay`, whose stdout is not canonical JSON,
+    /// and the only one whose output is a document rather than an artifact — carrying one
+    /// `/Document` element over one `/Div` per block of the reading-order cut, every element
+    /// marked `/A << /O /EthosParser /Derivation /Computed /Rule (…) >>`, each block's text
+    /// wrapped in marked-content sequences inserted into the page's content at token boundaries,
+    /// a `/ParentTree`, and the `/EthosParserTags` provenance stamp. `extract` on the result binds
+    /// every run to a computed `Document/Div` address and declares
+    /// `structure-tree-engine-written`; the text record is unchanged, and the writer proves that
+    /// on its own output before a byte is printed (`docs/23-AUTO-TAGGING-SCOPE.md` §3.7).
+    ///
+    /// **It fills absence only.** A document that already carries `/StructTreeRoot` — an
+    /// author's tree, or this subcommand's own output — is refused, as are marked-content ids
+    /// without a tree, a `/StructParents` or `/StructParent` key without one, a `TJ` whose strings
+    /// the cut placed in two blocks, a page the tokeniser cannot account for, and a filter the
+    /// strict decoder does not cover (§3.6 and the amendments under the scope's header). No
+    /// `/MarkInfo` is written: the result is not a Tagged PDF, and a reader that does not read the
+    /// owner attribute sees author structure (§9). Not exposed over MCP or the SDKs (§5).
+    ///
+    /// Exit codes: **0** the tagged PDF was written · **2** the document could not be read, or
+    /// was refused.
+    Tag(TagArgs),
+
     /// Validate a grounding artifact: structure, and optionally its binding to source bytes.
     ///
     /// **Structure and binding only** — no claims, no verdict, no `grounded`, no evidence tier.
@@ -219,18 +245,22 @@ struct ExtractArgs {
     ///
     /// **This is the only bound a caller has on how much memory one extract costs**, and until
     /// v2-S15 there was none. Peak resident memory tracks PAGE COUNT rather than file size —
-    /// 3.0 to 6.6 MiB per page across the gate corpus. `nist-sp-800-171r3` is 120 pages and
-    /// 1.5 MB and peaks at 404 MiB; `nist-sp-800-37r2` is 1.4x the file at 2.2 MB but 1.5x the
-    /// pages, and peaks at 915 MiB — 2.3x. Every page's extract is retained because it IS the
+    /// 3.0 to 6.8 MiB per page across the gate corpus at 0.58.0. `nist-sp-800-171r3` is 120 pages
+    /// and 1.5 MB and peaks at 411 MiB; `nist-sp-800-37r2` is 1.4x the file at 2.2 MB but 1.5x
+    /// the pages, and peaks at 915 MiB — 2.2x. Every page's extract is retained because it IS the
     /// artifact, so the only thing that bounds the cost is admitting fewer pages. A host handing
     /// this untrusted input could not previously do that: `page_budget` defaults to `Unlimited`
     /// and nothing on this command could lower it.
     ///
     /// **It does not bound everything.** `--max-pages 0` on a 733-page document still costs
-    /// 222 MiB, because the structure tree is read over the whole document before the budget is
-    /// consulted. For sizing, budget ~7 MiB per admitted page plus ~0.35 MiB per page in the
-    /// document; on the corpus's worst case that over-predicts by 44%, which is the safe
-    /// direction. Readings and instruments: `docs/measurements/memory-ceiling/`.
+    /// 221 MiB. Measured at 0.58.0, 193 MiB of that is the source bytes and the parsed object
+    /// graph, which `classify` pays too and which no budget on this command reaches; the
+    /// structure tree, read over the whole document before the budget is consulted, is 28 MiB of
+    /// it. For sizing, budget 7 MiB, plus 5.4 MiB per admitted page, plus 0.33 MiB per page in
+    /// the document — each the worst coefficient measured on the gate corpus. That over-predicts
+    /// every point measured: by 3.6% at the tightest, the 733-page document at `--max-pages 128`;
+    /// by 12.9% on its full extract; and by 15% to 129% on every other document's. Readings and
+    /// instruments: `docs/measurements/memory-ceiling/` §15.
     ///
     /// The pages left out are not silently dropped. Each is quarantined with
     /// `resource_limit_pages` and the artifact declares the limitation, which is the same
@@ -318,6 +348,12 @@ struct OverlayArgs {
     path: PathBuf,
 }
 
+#[derive(clap::Args)]
+struct TagArgs {
+    /// The untagged PDF to write a structure tree into.
+    path: PathBuf,
+}
+
 /// A ceiling on the bytes one invocation will read off disk.
 ///
 /// **There was none** until v2-S15: every entry point called `std::fs::read` on a caller-supplied
@@ -331,13 +367,13 @@ struct OverlayArgs {
 /// source with no size is refused by the bounded read, having held up to the ceiling.
 ///
 /// This bounds the SOURCE. The dominant cost of an extract is not the file — peak memory tracks
-/// page count at 3.0 to 6.6 MiB per page, which is what `extract --max-pages` exists to bound.
+/// page count at 3.0 to 6.8 MiB per page, which is what `extract --max-pages` exists to bound.
 /// The two ceilings are complementary and neither subsumes the other.
 ///
 /// They also do not COMPOSE into a memory bound, which is worth stating plainly: nothing maps a
 /// permitted 2 GiB input onto a peak-memory figure, and the page budget leaves a floor that grows
 /// with the document's page count. A caller who needs a hard memory ceiling does not have one
-/// today. See `docs/measurements/memory-ceiling/` §5.
+/// today. See `docs/measurements/memory-ceiling/` §5 and §15.
 pub(crate) const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Read a caller-supplied file, refusing one that is over [`MAX_SOURCE_BYTES`].
@@ -391,6 +427,12 @@ fn main() -> ExitCode {
         Command::Overlay(args) => {
             let path = args.path.clone();
             timed(Stage::Extract, diag, &path, || run_overlay(args))
+        }
+        // Under `Extract`, as `overlay` is: the writer runs extraction itself and reports under
+        // the stage whose work it wrote into the file.
+        Command::Tag(args) => {
+            let path = args.path.clone();
+            timed(Stage::Extract, diag, &path, || run_tag(args))
         }
         Command::Classify(args) => {
             let path = args.path.clone();
@@ -502,6 +544,30 @@ fn run_overlay(args: OverlayArgs) -> ExitCode {
             let extract = ethos_parser_pdf::extract(&doc, &profile)?;
             ethos_parser_pdf::build_overlay(&doc, &extract, &profile)
         });
+
+    match result {
+        Ok(bytes) => {
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(&bytes);
+            let _ = out.flush();
+            ExitCode::from(EXTRACTED as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+/// `ethos-parser tag` — the tagged PDF (auto-tagging S2).
+///
+/// The document is opened once through the bounded read and handed to `write_tags`, which runs
+/// extraction itself: the placement rule needs to know which operator showed each run, and that
+/// mapping lives beside the artifact and never on it (`docs/23-AUTO-TAGGING-SCOPE.md` §6), so no
+/// artifact parsed from JSON can reach it. Nothing is printed on a refusal: a partial PDF on
+/// stdout would be a document nobody wrote.
+fn run_tag(args: TagArgs) -> ExitCode {
+    let profile = Profile::default();
+    let result = read_source(&args.path)
+        .and_then(|bytes| Document::open_bytes(&bytes, &profile))
+        .and_then(|doc| ethos_parser_pdf::write_tags(&doc, &profile));
 
     match result {
         Ok(bytes) => {

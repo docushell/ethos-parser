@@ -16,7 +16,7 @@ ethos-parser/
 │   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, encoding tables
 │   ├── ethos-parser-office/      # eight office formats
 │   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
-│   └── ethos-parser-cli/         # nine subcommands; tests/oracle.rs lives here
+│   └── ethos-parser-cli/         # ten subcommands; tests/oracle.rs lives here
 ├── vendor/README.md        # what is carried, and what deliberately is not
 ├── fixtures/               # a manifest referencing four corpus roots
 └── docs/
@@ -69,13 +69,14 @@ both SDKs were untouched. What did move was a `ethos-parser-core` invariant — 
 ## 2. CLI surface
 
 **This section is v0's record, not today's surface.** v0 froze four subcommands and they are left at
-four deliberately; rewriting them would erase what v0 committed to. The five that came later were
+four deliberately; rewriting them would erase what v0 committed to. The six that came later were
 each argued in the scope document of the version that added them: `verify` at v0.1, `overlay` at
-v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1. `enum Command` in
-`crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
+v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `tag` at auto-tagging S2
+(`23-AUTO-TAGGING-SCOPE.md` §6). `enum Command` in `crates/ethos-parser-cli/src/main.rs` is the
+list that cannot go stale.
 
 **The CLI is a thin shell over the library**, so the two cannot diverge. Every subcommand is a
-library call plus argument parsing plus an exit-code mapping — and that rule binds all nine, not just
+library call plus argument parsing plus an exit-code mapping — and that rule binds all ten, not just
 the four below.
 
 | Command | Input | Output | Exit codes |
@@ -87,6 +88,14 @@ the four below.
 
 `--source-artifact` mirrors the Ethos CLI deliberately: the oracle runs both with the same flag, which
 keeps the comparison obvious.
+
+One later row belongs here rather than in its scope document alone, because it is the exception
+to the output rule two paragraphs down: `tag` is the one subcommand whose stdout is a document
+rather than an artifact, and the second, after `overlay`, whose stdout is not canonical JSON.
+
+| Command | Input | Output | Exit codes |
+| --- | --- | --- | --- |
+| `tag <pdf>` | an untagged PDF | the same PDF carrying this engine's own `/Document`/`/Div` structure tree, every element marked computed, read back by the writer before it is printed (`23-AUTO-TAGGING-SCOPE.md` §3) | 0 written · 2 could not read, or refused — a tagged document among the refusals, because a written tag fills absence only |
 
 **Default output is byte-identical across runs.** Volatile diagnostics are opt-in behind
 `--diagnostics` and excluded from the fingerprint, so a default invocation produces identical
@@ -164,7 +173,7 @@ test-time dependency, and its absence fails the test loudly — it never degrade
 | **Object and xref layer** | Depend on `lopdf` | The commodity part |
 | **Encoding tables** | Vendor as data, with attribution | They do not churn, and regenerating them is pure cost |
 | **Content-stream interpreter, classification, layout** | **Clean-room** | See below |
-| **Font metrics** | `ttf-parser` over the embedded font program | For measured ink boxes, with a descriptor fallback and typed absence beyond that |
+| **Font metrics** | `skrifa` over the embedded font program — not `ttf-parser`, which the v0 scope named: RUSTSEC-2026-0192 records it unmaintained, and `skrifa` is its maintained successor, pinned to 0.39 because 0.44 needs Rust 1.89 and this workspace pins 1.88 | For measured ink boxes, with a descriptor fallback and typed absence beyond that |
 | **PDFium** | Not present. If ever, caller-provided and hash-pinned under an explicit ADR | Never a build-time download |
 | **AGPL, anywhere** | **Forbidden**, enforced by `cargo deny` | Decision #14 |
 | **Network crates** | **Forbidden** | Nothing in the happy path reaches the network |

@@ -16,11 +16,12 @@
 //!
 //! # Consume, never synthesise
 //!
-//! A `/StructTreeRoot` is **evidence the author left**. Everything in this module reads it and
-//! nothing infers it: no heading is deduced from a font size, no table from a `"Table 3:"`
-//! prefix. That inference is the parity checklist's P14, and a role path invented from typography
-//! is indistinguishable on the wire from one the author wrote — which makes it worse than no role
-//! path at all.
+//! A `/StructTreeRoot` is **evidence somebody left** — the author's, or since auto-tagging S1 this
+//! engine's own writer's, which is why the walk now also reads *whose* it is. Everything in this
+//! module reads the tree and nothing infers it: no heading is deduced from a font size, no table
+//! from a `"Table 3:"` prefix. That inference is the parity checklist's P14, and a role path
+//! invented from typography is indistinguishable on the wire from one the author wrote — which
+//! makes it worse than no role path at all.
 //!
 //! So a document with no tree gets **no** role paths, and says so
 //! (`untagged-structure-tree-absent`). Two absences are named rather than conflated:
@@ -31,6 +32,35 @@
 //! | The tree cites an mcid no run carried | evidence the page has no text there |
 //!
 //! Both are counted. Neither is filled in.
+//!
+//! # Whose tree it is: the owner attribute, read wherever the specification lets it sit
+//!
+//! This engine's writer marks every element it creates with one attribute object,
+//! `/A << /O /EthosParser /Derivation /Computed /Rule (…) >>` (`docs/23-AUTO-TAGGING-SCOPE.md`
+//! §3.3). The walk reads, on every element, the attribute objects under `/A` — a dictionary, an
+//! array, an array interleaved with revision numbers, any of them behind an indirect reference —
+//! and the ones reached through `/C` and the root's `/ClassMap`, and asks one question of the
+//! union: is one of them owned by [`STRUCT_ATTRIBUTE_OWNER`]? Every owned object in the union is
+//! checked; `/A` decides the answer, and `/C` decides only when `/A` carries no owned object; a
+//! class name absent from `/ClassMap` contributes nothing.
+//! An element that carries the owner is engine-written: every content item its own `/K` cites
+//! binds as [`DerivationClass::Computed`], and `extract` declares
+//! `structure-tree-engine-written`. Every other binding is `Extracted`, as every binding has been
+//! since v1-S3. **The innermost element decides** — the one whose `/K` cites the content — so an
+//! author's `/P` under an engine `/Div` would read as the author's and the reverse as this
+//! engine's; neither shape is written today, and both are reported rather than smoothed.
+//!
+//! An object under the owner in a shape the writer does not emit — no `/Derivation`, or any value
+//! but `/Computed` — is refused as malformed, on the same fail-closed grounds a cycling `/K` is:
+//! a tag this engine owns and cannot vouch for is read neither as the author's nor as its own.
+//!
+//! This is still consuming and not synthesising. The reader infers nothing; it reads an attribute
+//! that was written into the file and reports the class the attribute states.
+//!
+//! **`/MarkInfo` is never read.** `/Marked true` is the Tagged PDF conformance claim (§14.8.1),
+//! and neither an author's tree nor this engine's depends on it: the walk looks for
+//! `/StructTreeRoot` and nothing else, and a test holds that adding or flipping `/MarkInfo`
+//! changes no binding and no declaration.
 //!
 //! # `mcid` is the join key, not the address
 //!
@@ -50,12 +80,33 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use ethos_parser_core::{EngineError, PdfTaggedLocator};
+use ethos_parser_core::{DerivationClass, EngineError, PdfTaggedLocator};
 use lopdf::{Dictionary, Object, ObjectId};
 
-// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V1` and is NOT restated here, for the same
+// The rule id lives in `ethos_parser_core::STRUCT_TREE_RULE_V2` and is NOT restated here, for the same
 // reason the table rule ids are not: two spellings of one rule id is exactly the drift a versioned
 // id exists to prevent.
+
+/// The owner this engine writes into an attribute object's `/O`, and the only owner it reads back
+/// as its own (`docs/23-AUTO-TAGGING-SCOPE.md` §3.3).
+///
+/// A private name. PDF 32000-1 Annex E asks such names to carry a registered prefix and this
+/// engine registers none, so the name is a convention only this engine reads — which is what
+/// decision #23 means by *engine-local*, said in the file. The four `engine-tagged-*` fixtures
+/// hand-write it as `/EthosParser`, so this spelling and theirs have to agree, and a test pins it.
+///
+/// Crate-private through S1: the reader needs the string and nothing outside this crate does.
+/// `docs/24-AUTO-TAGGING-MILESTONES.md` S2 records that the writer decides whether it is
+/// re-exported from `lib.rs`.
+pub(crate) const STRUCT_ATTRIBUTE_OWNER: &str = "EthosParser";
+
+/// The `/Derivation` value this engine writes under its owner, and the only one it accepts there.
+///
+/// `DerivationClass::Computed` as a PDF name. Spelled out rather than derived from the enum's
+/// serde form so the wire spelling and the file spelling cannot drift apart silently; the
+/// `engine-tagged-*` fixtures carry it as bytes a human typed. Crate-visible since auto-tagging
+/// S2, so the writer emits the one spelling the reader requires rather than a second copy of it.
+pub(crate) const OWNER_DERIVATION_COMPUTED: &str = "Computed";
 
 /// How deep `/K` nesting may go before this is refused as malformed.
 ///
@@ -102,6 +153,26 @@ pub struct StructureTree {
     pub items_without_page: usize,
     /// How many structure elements were reached.
     pub elements: usize,
+    /// What the tree said about elements carrying this engine's own attribute (auto-tagging S1).
+    ///
+    /// `None` when no element carries `/O /EthosParser` under `/A` or through `/C` — every
+    /// document an author tagged, and every document this engine's writer has not touched. `Some`
+    /// is what `structure-tree-engine-written` is declared from.
+    pub engine_written: Option<EngineWritten>,
+}
+
+/// The elements this engine's own writer created, as the reader found them (auto-tagging S1).
+///
+/// Counted per element, not per binding: an element is engine-written when one of its attribute
+/// objects is owned by [`STRUCT_ATTRIBUTE_OWNER`], and that is a fact about the element whatever
+/// its `/K` cites. The bound-run count the declaration also carries is `extract`'s to make, because
+/// only the join against the page's runs knows how many bound.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct EngineWritten {
+    /// How many structure elements carry an attribute object owned by this engine.
+    pub elements: u32,
+    /// The `/Rule` names those objects carry, deduplicated: which cut each element is.
+    pub rules: BTreeSet<String>,
 }
 
 /// A table as the **structure tree** describes it, derived from tags alone.
@@ -119,6 +190,14 @@ pub struct TaggedTable {
     pub columns: u32,
     /// One entry per `/TD` or `/TH`, in tree order.
     pub cells: Vec<TaggedCell>,
+    /// Whose element the `/Table` is: the author's (`Extracted`) or this engine's own (`Computed`).
+    ///
+    /// Read off the `/Table` element's own attribute objects, exactly as a run's binding reads its
+    /// innermost element's. The writer never emits a `/Table` (`docs/23-AUTO-TAGGING-SCOPE.md`
+    /// §3.2), so on every document it produces this is `Extracted`; it is read rather than assumed
+    /// so that a `/Table` carrying the owner attribute — which nothing forbids a later writer or a
+    /// hand from producing — is never reported as the document's own statement.
+    pub derivation: DerivationClass,
 }
 
 /// One `/TD` or `/TH`, as the tree describes it.
@@ -193,11 +272,13 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
     let root = resolve_dict(doc, root_ref).map_err(|e| malformed("/StructTreeRoot", &e))?;
 
     let role_map = read_role_map(doc, root);
+    let class_map = read_class_map(doc, root);
 
     let mut tree = StructureTree::default();
     let mut walker = Walker {
         doc,
         role_map: &role_map,
+        class_map: &class_map,
         tree: &mut tree,
         on_path: BTreeSet::new(),
         tables: Vec::new(),
@@ -206,7 +287,9 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
 
     let kids = root.get(b"K").ok();
     if let Some(k) = kids {
-        walker.walk(k, &mut Vec::new(), None, 0)?;
+        // The root is nobody's element, so content cited directly by it — which binds nothing
+        // anyway, having no role path — starts from the author's class.
+        walker.walk(k, &mut Vec::new(), None, 0, DerivationClass::Extracted)?;
     }
 
     Ok(Some(tree))
@@ -233,9 +316,57 @@ fn read_role_map(doc: &lopdf::Document, root: &Dictionary) -> BTreeMap<String, S
     out
 }
 
+/// `/ClassMap`: the root's named attribute classes, each one attribute object or an array of them.
+///
+/// Read once, with the lookup shape [`read_role_map`] uses, because a tool that factors a repeated
+/// attribute dictionary into a class is the *ignored* case decision #23 names — and this engine
+/// reads its own attribute wherever PDF 32000-1 §14.7.5.3 lets it be placed. A class value of any
+/// other shape contributes nothing, and so does a class name absent from the map.
+fn read_class_map<'a>(
+    doc: &'a lopdf::Document,
+    root: &'a Dictionary,
+) -> BTreeMap<String, Vec<&'a Dictionary>> {
+    let mut out = BTreeMap::new();
+    let Ok(obj) = root.get(b"ClassMap") else {
+        return out;
+    };
+    let Ok(dict) = resolve_dict(doc, obj) else {
+        return out;
+    };
+    for (k, v) in dict.iter() {
+        out.insert(name_to_string(k), attribute_objects(doc, v));
+    }
+    out
+}
+
+/// The attribute objects one `/A` or `/ClassMap` value holds (PDF 32000-1 §14.7.5.2).
+///
+/// A dictionary, an array of dictionaries, or an array interleaved with revision integers — the
+/// value itself or any array item behind an indirect reference, which is followed. Anything else
+/// contributes nothing.
+///
+/// [`attribute_dicts`] reads the inline shapes only and is left as it is: it feeds the cell spans
+/// `tagged-tables-v1` reads, and following a reference there would change which spans that rule
+/// finds on a real document without its id moving.
+fn attribute_objects<'a>(doc: &'a lopdf::Document, a: &'a Object) -> Vec<&'a Dictionary> {
+    let Ok((_, a)) = doc.dereference(a) else {
+        return Vec::new();
+    };
+    match a {
+        Object::Dictionary(d) => vec![d],
+        Object::Array(items) => items
+            .iter()
+            .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_dict().ok()))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 struct Walker<'a> {
     doc: &'a lopdf::Document,
     role_map: &'a BTreeMap<String, String>,
+    /// The root's `/ClassMap`, resolved once: class name to the attribute objects it names.
+    class_map: &'a BTreeMap<String, Vec<&'a Dictionary>>,
     tree: &'a mut StructureTree,
     /// Object ids on the current path. A child that points back at one of them is a cycle.
     on_path: BTreeSet<ObjectId>,
@@ -263,12 +394,17 @@ struct TableCtx {
 
 impl Walker<'_> {
     /// Walk one `/K` value: an array, a reference, an element, an `/MCR`, or a bare mcid integer.
+    ///
+    /// `derivation` is the class of the innermost element entered so far — the one whose `/K`
+    /// this value sits under — and is what a content item found here binds with. An element
+    /// reached here replaces it with its own.
     fn walk(
         &mut self,
         k: &Object,
         role_path: &mut Vec<String>,
         page: Option<ObjectId>,
         depth: usize,
+        derivation: DerivationClass,
     ) -> Result<(), EngineError> {
         if depth > MAX_DEPTH {
             return Err(EngineError::Malformed {
@@ -283,12 +419,12 @@ impl Walker<'_> {
         match k {
             // A bare integer is a marked-content id on the current `/Pg`.
             Object::Integer(mcid) => {
-                self.bind(*mcid, page, role_path, None);
+                self.bind(*mcid, page, role_path, None, derivation);
                 Ok(())
             }
             Object::Array(items) => {
                 for item in items {
-                    self.walk(item, role_path, page, depth + 1)?;
+                    self.walk(item, role_path, page, depth + 1, derivation)?;
                 }
                 Ok(())
             }
@@ -310,11 +446,19 @@ impl Walker<'_> {
                         &format!("object {} {} R does not resolve: {e}", id.0, id.1),
                     )
                 })?;
-                let r = self.walk(obj, role_path, page, depth + 1);
+                // A resolved dictionary is dispatched with the id it was reached through, so a
+                // refusal about the element can name the object; anything else takes the
+                // general arm.
+                let r = match obj {
+                    Object::Dictionary(d) => {
+                        self.walk_dict(d, role_path, page, depth + 1, derivation, Some(*id))
+                    }
+                    other => self.walk(other, role_path, page, depth + 1, derivation),
+                };
                 self.on_path.remove(id);
                 r
             }
-            Object::Dictionary(d) => self.walk_dict(d, role_path, page, depth),
+            Object::Dictionary(d) => self.walk_dict(d, role_path, page, depth, derivation, None),
             // A `/K` of any other shape says nothing this reader can act on. Skipped rather than
             // refused: it is not a content item, so nothing binds and nothing is lost.
             _ => Ok(()),
@@ -322,19 +466,26 @@ impl Walker<'_> {
     }
 
     /// A dictionary under `/K`: a marked-content reference, an object reference, or an element.
+    ///
+    /// `derivation` is the enclosing element's class, which an `/MCR` or `/OBJR` found here binds
+    /// with; an element reads its own from its attributes before walking its kids. `origin` is
+    /// the object id the dictionary was reached through, when it was one, so a refusal about an
+    /// element can name the object rather than only its role.
     fn walk_dict(
         &mut self,
         d: &Dictionary,
         role_path: &mut Vec<String>,
         page: Option<ObjectId>,
         depth: usize,
+        derivation: DerivationClass,
+        origin: Option<ObjectId>,
     ) -> Result<(), EngineError> {
         match d.get(b"Type").ok().and_then(as_name) {
             // `/MCR` — a marked-content reference. Its own `/Pg` wins over the inherited one.
             Some(t) if t == "MCR" => {
                 let pg = page_of(d).or(page);
                 if let Some(mcid) = d.get(b"MCID").ok().and_then(|o| o.as_i64().ok()) {
-                    self.bind(mcid, pg, role_path, None);
+                    self.bind(mcid, pg, role_path, None, derivation);
                 }
                 return Ok(());
             }
@@ -361,6 +512,9 @@ impl Walker<'_> {
                                 role_path: role_path.to_vec(),
                                 standard_role_path: mapped.then_some(standard),
                                 element_id: None,
+                                // The enclosing element's class: an `/OBJR` is cited by the
+                                // element it sits under, exactly as a marked-content id is.
+                                derivation,
                             }),
                         );
                     }
@@ -376,15 +530,38 @@ impl Walker<'_> {
         };
         self.tree.elements += 1;
 
-        // `/Pg` is inheritable: an element's page applies to its descendants until one of them
-        // names its own. Implemented as inheritance rather than as "the page we happen to be on",
-        // because guessing would bind text to a page the document never named.
-        let pg = page_of(d).or(page);
         let element_id = d
             .get(b"ID")
             .ok()
             .and_then(as_text)
             .filter(|s| !s.is_empty());
+
+        // Auto-tagging S1. Whose element this is, read before its kids so every content item its
+        // own `/K` cites binds with the class of the innermost element that cites it — this one —
+        // and never with an ancestor's. Refuses the document on an owned object in a shape the
+        // writer does not emit, which is why it can fail, and the refusal names this element.
+        let label = ElementLabel {
+            origin,
+            id: element_id.as_deref(),
+            role: &raw_role,
+        };
+        let derivation = match self.attribution(d, label)? {
+            Some(rules) => {
+                let written = self
+                    .tree
+                    .engine_written
+                    .get_or_insert_with(EngineWritten::default);
+                written.elements = written.elements.saturating_add(1);
+                written.rules.extend(rules);
+                DerivationClass::Computed
+            }
+            None => DerivationClass::Extracted,
+        };
+
+        // `/Pg` is inheritable: an element's page applies to its descendants until one of them
+        // names its own. Implemented as inheritance rather than as "the page we happen to be on",
+        // because guessing would bind text to a page the document never named.
+        let pg = page_of(d).or(page);
 
         let standard = self.standard_role(&raw_role);
         role_path.push(raw_role);
@@ -399,6 +576,7 @@ impl Walker<'_> {
                 rows: 0,
                 columns: 0,
                 cells: Vec::new(),
+                derivation,
             });
             self.tables.push(TableCtx {
                 index: self.tree.tables.len() - 1,
@@ -424,7 +602,7 @@ impl Walker<'_> {
 
         let result = (|| {
             if let Ok(k) = d.get(b"K") {
-                self.walk_element_kids(k, role_path, pg, depth, element_id.as_deref())?;
+                self.walk_element_kids(k, role_path, pg, depth, element_id.as_deref(), derivation)?;
             }
             Ok(())
         })();
@@ -439,6 +617,62 @@ impl Walker<'_> {
         }
         role_path.pop();
         result
+    }
+
+    /// Whose element this is, from its attribute objects (`docs/23-AUTO-TAGGING-SCOPE.md` §4.1).
+    ///
+    /// `Ok(None)` is the author's: no object under `/A`, and none reached through `/C` and the
+    /// root's `/ClassMap`, is owned by [`STRUCT_ATTRIBUTE_OWNER`]. `Ok(Some(rules))` is this
+    /// engine's, with the `/Rule` names the owned objects carry. Every owned object in the union
+    /// is checked; `/A` decides the answer and the `/Rule` set, `/C` decides only when `/A`
+    /// carries no owned object, and a class name absent from `/ClassMap` contributes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::Malformed`] when an owned object anywhere in the union is in a shape the
+    /// writer does not emit: `/Derivation /Computed` is required under the owner, and an object
+    /// with no `/Derivation` or any other value there is refused rather than read as the author's
+    /// or skipped — a malformed class reached through `/ClassMap` refuses even beside a
+    /// well-formed `/A`. `/Rule` is read as text when it is a string or a name and otherwise
+    /// contributes no name; it is a label for the declaration, not the shape the refusal guards.
+    fn attribution(
+        &self,
+        d: &Dictionary,
+        label: ElementLabel<'_>,
+    ) -> Result<Option<BTreeSet<String>>, EngineError> {
+        let under_a: Vec<&Dictionary> = d
+            .get(b"A")
+            .ok()
+            .map(|a| attribute_objects(self.doc, a))
+            .unwrap_or_default();
+
+        let mut through_c: Vec<&Dictionary> = Vec::new();
+        let mut add_class = |name: &[u8]| {
+            if let Some(objects) = self.class_map.get(&name_to_string(name)) {
+                through_c.extend(objects.iter().copied());
+            }
+        };
+        if let Ok(c) = d.get(b"C") {
+            match self.doc.dereference(c).map(|(_, c)| c) {
+                Ok(Object::Name(n)) => add_class(n),
+                Ok(Object::Array(items)) => {
+                    for item in items {
+                        if let Object::Name(n) = item {
+                            add_class(n);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Both lists are checked before either decides: §4.1's one predicate applies over the
+        // union, so a malformed owned object reached only through `/ClassMap` refuses the
+        // document beside a well-formed `/A`. Then `/A` decides the answer and the `/Rule` set,
+        // and `/C` decides only when `/A` carries no owned object.
+        let a = owned_rules(&under_a, label)?;
+        let c = owned_rules(&through_c, label)?;
+        Ok(a.or(c))
     }
 
     /// Record a `/TD` or `/TH` against the innermost open table.
@@ -483,6 +717,9 @@ impl Walker<'_> {
     }
 
     /// An element's kids, with the element's `/ID` available to whatever binds directly under it.
+    ///
+    /// `derivation` is this element's own class, and it travels with the `/ID` for the same
+    /// reason: both are facts about the innermost element that cites the content.
     fn walk_element_kids(
         &mut self,
         k: &Object,
@@ -490,18 +727,26 @@ impl Walker<'_> {
         page: Option<ObjectId>,
         depth: usize,
         element_id: Option<&str>,
+        derivation: DerivationClass,
     ) -> Result<(), EngineError> {
         // A bare mcid directly under this element is the common case, and it is the only place
         // the element's own `/ID` addresses the content — so it is threaded here rather than
         // carried down the whole recursion, where it would attach to a grandchild's content.
         match k {
             Object::Integer(mcid) => {
-                self.bind(*mcid, page, role_path, element_id);
+                self.bind(*mcid, page, role_path, element_id, derivation);
                 Ok(())
             }
             Object::Array(items) => {
                 for item in items {
-                    self.walk_element_kids(item, role_path, page, depth + 1, element_id)?;
+                    self.walk_element_kids(
+                        item,
+                        role_path,
+                        page,
+                        depth + 1,
+                        element_id,
+                        derivation,
+                    )?;
                 }
                 Ok(())
             }
@@ -510,21 +755,25 @@ impl Walker<'_> {
             {
                 let pg = page_of(d).or(page);
                 if let Some(mcid) = d.get(b"MCID").ok().and_then(|o| o.as_i64().ok()) {
-                    self.bind(mcid, pg, role_path, element_id);
+                    self.bind(mcid, pg, role_path, element_id, derivation);
                 }
                 Ok(())
             }
-            other => self.walk(other, role_path, page, depth + 1),
+            other => self.walk(other, role_path, page, depth + 1, derivation),
         }
     }
 
     /// Record a binding, or count the item if its page is unknown.
+    ///
+    /// `derivation` is the class of the element whose `/K` cites this content: `Computed` when it
+    /// carries this engine's owner attribute, `Extracted` otherwise.
     fn bind(
         &mut self,
         mcid: i64,
         page: Option<ObjectId>,
         role_path: &[String],
         element_id: Option<&str>,
+        derivation: DerivationClass,
     ) {
         let Some(page) = page else {
             // No `/Pg` anywhere up the chain. The mcid addresses an unknown page, and a guess
@@ -578,6 +827,7 @@ impl Walker<'_> {
                 role_path: role_path.to_vec(),
                 standard_role_path: mapped.then_some(standard),
                 element_id: element_id.map(str::to_owned),
+                derivation,
             }),
         );
     }
@@ -607,6 +857,81 @@ impl Walker<'_> {
             .max()
             .unwrap_or(0);
     }
+}
+
+/// Which element a refusal is about, for its message.
+///
+/// The object id when the element was reached by reference — as every element the writer emits
+/// is — spelled `N M R` as the cycle and unresolved-reference refusals in [`Walker::walk`] spell
+/// theirs; else the element's `/ID`; else its role alone. The role rides along in every case as
+/// a label, because in the writer's shape every element below the root is a `/Div` and the role
+/// on its own names nothing.
+#[derive(Clone, Copy)]
+struct ElementLabel<'a> {
+    origin: Option<ObjectId>,
+    id: Option<&'a str>,
+    role: &'a str,
+}
+
+impl std::fmt::Display for ElementLabel<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let role = self.role;
+        match (self.origin, self.id) {
+            (Some((number, generation)), _) => {
+                write!(f, "structure element {number} {generation} R (`/{role}`)")
+            }
+            (None, Some(id)) => write!(f, "structure element with /ID ({id}) (`/{role}`)"),
+            (None, None) => write!(f, "structure element `/{role}`"),
+        }
+    }
+}
+
+/// The `/Rule` names of the objects in `objects` that this engine owns, or `None` when it owns none.
+///
+/// The one predicate of `docs/23-AUTO-TAGGING-SCOPE.md` §4.1, applied to one attribute list. Every
+/// owned object is checked, not just the first: two owned objects on one element are two claims,
+/// and a malformed second one is as refused as a malformed first.
+///
+/// # Errors
+///
+/// [`EngineError::Malformed`] naming the element — its object id when it was reached by
+/// reference, else its `/ID`, else its role — when an owned object's `/Derivation` is absent, is
+/// not a name, or names anything but `/Computed`.
+fn owned_rules(
+    objects: &[&Dictionary],
+    label: ElementLabel<'_>,
+) -> Result<Option<BTreeSet<String>>, EngineError> {
+    let mut found: Option<BTreeSet<String>> = None;
+    for object in objects {
+        if object.get(b"O").ok().and_then(as_name).as_deref() != Some(STRUCT_ATTRIBUTE_OWNER) {
+            continue;
+        }
+        let derivation = object.get(b"Derivation").ok();
+        if derivation.and_then(as_name).as_deref() != Some(OWNER_DERIVATION_COMPUTED) {
+            let found_instead = match derivation {
+                None => "absent".to_string(),
+                Some(Object::Name(n)) => format!("`/{}`", name_to_string(n)),
+                Some(_) => "not a name".to_string(),
+            };
+            return Err(EngineError::Malformed {
+                what: "structure element".into(),
+                detail: format!(
+                    "{label} carries an attribute object owned by \
+                     `/{STRUCT_ATTRIBUTE_OWNER}` whose `/Derivation` is {found_instead}, and the \
+                     only shape this engine writes under its own owner is `/Derivation \
+                     /{OWNER_DERIVATION_COMPUTED}`. Refused rather than read as the author's or \
+                     skipped: an object this engine owns in a shape it would not have written is a \
+                     tag it cannot vouch for, and reading it either way would report a structure \
+                     nobody declared"
+                ),
+            });
+        }
+        let rules = found.get_or_insert_with(BTreeSet::new);
+        if let Some(rule) = object.get(b"Rule").ok().and_then(as_text) {
+            rules.insert(rule);
+        }
+    }
+    Ok(found)
 }
 
 /// `/RowSpan` and `/ColSpan`, defaulting to 1.
@@ -866,6 +1191,26 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **The owner is spelled the way the scope fixes it, and the way the fixtures write it.**
+    ///
+    /// `docs/23-AUTO-TAGGING-SCOPE.md` §3.3 fixes `/O /EthosParser`, and the `engine-tagged-*`
+    /// fixtures carry that name as bytes a human typed. A reader spelling it any other way would
+    /// read its own tag as an author's — the launder decision #21 refused — so the constant is
+    /// pinned against the scope rather than left to agree with the fixtures by luck. Also a
+    /// legal PDF name as written: no delimiter and no white space, so it never needs a `#xx`
+    /// escape that a hand-written fixture and the writer could spell differently.
+    #[test]
+    fn the_owner_is_the_name_the_scope_fixes() {
+        assert_eq!(super::STRUCT_ATTRIBUTE_OWNER, "EthosParser");
+        assert!(
+            super::STRUCT_ATTRIBUTE_OWNER
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric()),
+            "the owner must be a regular name: a delimiter or white space in it would need an \
+             escape, and two spellings of one owner is a tag this engine cannot read back"
+        );
     }
 
     #[test]

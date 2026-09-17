@@ -50,20 +50,39 @@ def main() -> None:
                 v = fn(truth, pred)
                 v = v[0] if isinstance(v, tuple) else v
                 if v is not None:
-                    acc.append(v)
+                    acc.append((gt.stem, v))
             except Exception:
                 pass
 
-    mean = lambda xs: statistics.fmean(xs) if xs else 0.0  # noqa: E731
+    mean = lambda xs: statistics.fmean([v for _, v in xs]) if xs else 0.0  # noqa: E731
     print(f"\n  documents      {len(docs)}  ({empty} empty predictions)")
     print(f"  NID            {mean(nid):.4f}   n={len(nid)}   reading order")
     print(f"  TEDS           {mean(teds):.4f}   n={len(teds)}   table structure")
     print(f"  MHS            {mean(mhs):.4f}   n={len(mhs)}   heading hierarchy")
     print(f"  speed          {elapsed / len(docs) * 1000:.0f} ms/document")
-    nonzero = sorted((v for v in teds if v > 0), reverse=True)
-    print(f"\n  TEDS is bimodal by construction: {len(nonzero)} of {len(teds)} non-zero"
-          f"{' — ' + ', '.join(f'{v:.3f}' for v in nonzero[:6]) if nonzero else ''}")
+    band(nid, "NID")
+    band(teds, "TEDS")
+    zeros = [d for d, v in teds if v == 0]
+    print(f"\n  TEDS is bimodal by construction: {len(teds) - len(zeros)} of {len(teds)} non-zero, "
+          f"{len(zeros)} at zero. Every document whose ground truth holds a table:")
+    for d, v in sorted(teds, key=lambda dv: (-dv[1], dv[0])):
+        print(f"    {v:.4f}  {d}")
     print("  MHS is 0 by construction: headings come from a tag tree, and 0 of 200 documents have one.")
+
+
+def band(scored: list[tuple[str, float]], label: str) -> None:
+    """Decision #18: a result ships as a band with its worst document named, never as a macro alone.
+
+    Ties at the minimum are broken by name, so the document named is the first of them; the
+    per-document list printed after it is what makes a tie readable.
+    """
+    if not scored:
+        return
+    values = sorted(v for _, v in scored)
+    worst = min(scored, key=lambda dv: (dv[1], dv[0]))
+    best = max(scored, key=lambda dv: (dv[1], dv[0]))
+    print(f"  {label:6s} band    {values[0]:.4f}..{values[-1]:.4f}   median {statistics.median(values):.4f}"
+          f"   worst {worst[0]} ({worst[1]:.4f})   best {best[0]} ({best[1]:.4f})")
 
 
 if __name__ == "__main__":

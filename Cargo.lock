@@ -340,6 +340,7 @@ dependencies = [
  "ethos-parser-grounding",
  "ethos-parser-office",
  "ethos-parser-pdf",
+ "lopdf",
  "serde_json",
  "sha2",
 ]
@@ -379,6 +380,7 @@ name = "ethos-parser-pdf"
 version = "0.58.0"
 dependencies = [
  "ethos-parser-core",
+ "flate2",
  "lopdf",
  "rayon",
  "serde",

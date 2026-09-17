@@ -45,7 +45,7 @@ the items re-exported at the crate root.
 | `identity` | `ArtifactIdentity`, `ArtifactBinding`, `Sha256Hex`, `CoordinateSystem`, `CoordinateOrigin`, `CoordinateUnit` |
 | `html` | `to_html`, `HtmlArtifact`, `HTML_ARTIFACT_TYPE`, `HTML_SCHEMA_VERSION`, `HTML_RULE_BLOCKS_V7` |
 | `markdown` | `to_markdown`, `AnchorMap`, `Segment`, `SegmentKind`, `Coverage`, `DroppedBucket`, `StructuralErasure`, `MarkdownArtifact`, `MARKDOWN_ARTIFACT_TYPE`, `MARKDOWN_SCHEMA_VERSION`, `MARKDOWN_RULE_BLOCKS_V7`, `GFM_SPAN_SLOTS_UNREPRESENTABLE`, `GFM_ROW_ZERO_SEPARATOR`, `GFM_CELL_RUN_CLAIMED_TWICE`, `GFM_CELL_NOT_PLACED`, `GFM_TABLE_NOT_PROJECTED`, `GFM_LIST_ITEM_RUN_JOINS`, `MCID_RUN_JOINS`, `BASELINE_RUN_JOINS_ABUTTED`, `BASELINE_RUN_JOINS_SPACED` |
-| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `READING_ORDER_RULE_V2`, `READING_ORDER_RULE_V3`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V2`, `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V2`, `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V2`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V2`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V2`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V2`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`, `EPUB_READING_ORDER_RULE_V1`, `EPUB_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_V3`, `TABLE_DETECTION_V4`, `TABLE_DETECTION_V5`, `TABLE_DETECTION_V6`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `TABLE_DETECTION_TAGGED_V1`, `STRUCT_TREE_RULE_V1`, `FORM_ANNOTATION_RULE_V1` |
+| `profile` | `Profile`, `profile_sha256`, `BackendIdentity`, `Capabilities`, `PageBudget`, `XrefRepair`, `VerifierPin`, `TableDetection`, `CMAP_DATA_VERSION`, `READING_ORDER_RULE_V0`, `READING_ORDER_RULE_V1`, `READING_ORDER_RULE_V2`, `READING_ORDER_RULE_V3`, `OBSERVATION_RULE_V1`, `TEXT_CODE_RULE_V1`, `RasterDpi`, `NOT_RUN`, `DOCX_READING_ORDER_RULE_V1`, `DOCX_TEXT_CODE_RULE_V2`, `XLSX_READING_ORDER_RULE_V1`, `XLSX_TEXT_CODE_RULE_V2`, `PPTX_READING_ORDER_RULE_V1`, `PPTX_TEXT_CODE_RULE_V2`, `ODT_READING_ORDER_RULE_V1`, `ODT_TEXT_CODE_RULE_V2`, `ODS_READING_ORDER_RULE_V1`, `ODS_TEXT_CODE_RULE_V2`, `ODP_READING_ORDER_RULE_V1`, `ODP_TEXT_CODE_RULE_V2`, `RTF_READING_ORDER_RULE_V1`, `RTF_TEXT_CODE_RULE_V1`, `EPUB_READING_ORDER_RULE_V1`, `EPUB_TEXT_CODE_RULE_V1`, `TABLE_DETECTION_V1`, `TABLE_DETECTION_V2`, `TABLE_DETECTION_V3`, `TABLE_DETECTION_V4`, `TABLE_DETECTION_V5`, `TABLE_DETECTION_V6`, `TABLE_DETECTION_UNRULED_V1`, `TABLE_DETECTION_STROKE_V1`, `TABLE_DETECTION_TAGGED_V1`, `STRUCT_TREE_RULE_V1`, `STRUCT_TREE_RULE_V2`, `FORM_ANNOTATION_RULE_V1` |
 | `derivation` | `DerivationClass`, `GeometryPresence`, `GeometryAbsence` |
 | `assurance` | `Assurance`, `Limitation`, `LimitationScope`, `PageState`, `PageStateEntry`, `CoverageSummary`, `ProcessingGaps`, `ProcessingTerminalState`, `RefusalCode`, `PageBindingResult`, `page_binding_status`, `codes` |
 | `representation` | `DocumentRepresentation`, `RepresentationPayload`, `Node`, `NodeKind`, `NodeGeometry`, `PageRecord`, `NativeLocator`, `PdfLocator`, `DocxLocator`, `XlsxLocator`, `PptxLocator`, `OdtLocator`, `OdsLocator`, `OdpLocator`, `RtfLocator`, `EpubLocator`, `PdfObjectLocator`, `StructuralLocator`, `PdfTaggedLocator`, `PdfArtifactLocator`, `AnnotationRect`, `NodeAttributes`, `OfficeRunAttributes`, `OfficeCellAttributes`, `OfficeSlideRunAttributes`, `OfficeParagraphAttributes`, `OdfBlockKind`, `OfficeOdfCellAttributes`, `OfficeOdfShapeAttributes`, `RtfParagraphAttributes`, `RtfParagraphBreak`, `EpubBlockAttributes`, `OdfValueType`, `OdfCellTextSource`, `CellValueType`, `CellTextSource`, `FormFieldAttributes`, `AnnotationAttributes`, `FieldValue`, `SourceIdentity`, `ProcessingRun`, `ProcessorIdentity`, `SynthesizedAt`, `TextRunAttributes`, `TextFinding`, `PdfImageLocator`, `PaintedRect`, `ImageAttributes`, `ImageMediaType`, `REPRESENTATION_ARTIFACT_TYPE`, `REPRESENTATION_SCHEMA_VERSION` |
@@ -102,6 +102,13 @@ are **kept in `nodes`** — a reader that deletes running heads has silently edi
 (parity checklist O21/O22). The pre-existing `PdfMcid` now means something narrower and more
 useful: an id the content stream supplied that **no structure element claims**.
 
+`PdfTaggedLocator` gained `derivation` at auto-tagging S1, written on every tagged locator with
+no default (decision #20): `extracted` where the innermost citing element is the author's,
+`computed` where it carries this engine's own owner attribute (`/O /EthosParser`, read under
+`/A` and through `/ClassMap`), so a tag this engine wrote and read back is never reported as the
+author's. `STRUCT_TREE_RULE_V2` names the reading; a representation from either side of the
+change is refused by the other (`docs/23-AUTO-TAGGING-SCOPE.md` §8).
+
 **The `verifier` module is v0.1, and what it does *not* export is the point.** There is no report
 type, no claim, no check, no result — the engine spawns a verifier and forwards its bytes without
 reading them, so there is nothing to model. `VerifierBinary::resolve` locates and pins one,
@@ -132,16 +139,16 @@ Do not persist it as a record or feed it to a fingerprint — `docs/01-CONTRACT.
 | Kind | Supported items |
 | --- | --- |
 | Handle | `Document` — `open`, `open_bytes`, `source_sha256`, `byte_len`, `page_count` |
-| Stages | `classify`, `extract`, `to_representation`, `build_overlay` |
+| Stages | `classify`, `extract`, `to_representation`, `build_overlay`, `write_tags` — the last writes a copy of an untagged PDF carrying this engine's own `/Document`/`/Div` structure tree, marked computed on every element, fills absence only, and reads its output back before returning it (auto-tagging S2, `docs/23-AUTO-TAGGING-SCOPE.md` §3) |
 | Stage artifacts | `Classification`, `PageClassification`, `SourceRef`, `ExtractArtifact`, `PageExtract`, `TextRun`, `SynthesizedChar`, `SynthesisReason`, `PdfLocator`, `ImageRecord` |
 | Reason vocabulary | `OcrNeedReason`, `LayoutComplexityReason` |
 | Format detection | `check_pdf_magic` · `aims_at_the_pdf_reader` |
 | Modules | `exit` (`SIMPLE`, `NEEDS_ATTENTION`, `COULD_NOT_READ`, `exit_code`) · `limitations` (limitation-code constants and builders) |
-| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `PROCESSOR_NAME`, `CRATE_NAME` |
+| Constants | `CLASSIFICATION_ARTIFACT_TYPE`, `CLASSIFICATION_SCHEMA_VERSION`, `EXTRACT_ARTIFACT_TYPE`, `EXTRACT_SCHEMA_VERSION`, `OVERLAY_ARTIFACT_TYPE`, `TAGS_ARTIFACT_TYPE` (`ethos.parser.tags.v0`, stamped on the tagged document's catalog; it moves when the written shape moves), `PROCESSOR_NAME`, `CRATE_NAME` |
 
 **Internal, do not use:** `ops`, `content`, `cmap`, `encoding`, `fonts`, `metrics`, `text_state`,
 `thresholds`, `nodes`, `magic`, `classify`, `document`, `extract`, `represent`, `reasons`,
-`images`, `overlay`, `reading_order` as
+`images`, `overlay`, `reading_order`, `tagging` as
 *modules*. The items named above are re-exported at the crate root and that is the address to use;
 the module paths are not.
 
@@ -223,10 +230,11 @@ contract before anyone decided it should be one.
 ## `ethos-parser-cli` — the binary
 
 **Exports nothing.** `ethos-parser` is a `[[bin]]`; there is no library target and no supported
-`ethos_parser_cli::` path. The CLI's **nine** subcommands, their flags and their exit codes are a
+`ethos_parser_cli::` path. The CLI's **ten** subcommands, their flags and their exit codes are a
 *product* contract, not a Rust one: `classify`, `extract`, `ground` and `grounding-check` from v0,
-then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4) and `mcp` (v1.2-S1).
-`docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so; `enum Command` in
+then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4), `mcp` (v1.2-S1)
+and `tag` (auto-tagging S2). `docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so, and
+carries `tag`'s row as the exception to its output rule; `enum Command` in
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
 This said *"four subcommands"* and pointed at §2, which also said four — two documents agreeing
@@ -240,14 +248,14 @@ with each other and neither agreeing with the binary. Repaired at v2-S13.3.
 thin shell — that **every subcommand behaviour be reachable through the library**. This table is
 that mapping, and the right-hand column is what a caller writes instead of spawning a process.
 
-**It maps four of the nine, and that gap is the finding rather than the table's shape.** The rule
-binds every subcommand; the rows here cover only v0's four, so `verify`, `overlay`, `markdown`,
+**It maps five of the ten, and that gap is the finding rather than the table's shape.** The rule
+binds every subcommand; the rows here cover v0's four and `tag`, so `verify`, `overlay`, `markdown`,
 `html` and `mcp` have their thin-shell mapping stated nowhere. Each *is* thin — `ethos-parser verify`
 relays through `ethos_parser_core::verifier`, `markdown` and `html` through `ethos_parser_core`'s projections,
 `overlay` through `ethos_parser_pdf`, and `mcp` is the shell around all of them — but "is" and "is
 written down where a caller can check it" are different claims, and this document exists to make
 the second one. Filling in the five rows needs the library-only and CLI-equals-library proofs named
-per row, the way the four below name theirs, and that is a slice rather than a sentence.
+per row, the way the five below name theirs, and that is a slice rather than a sentence.
 
 | Subcommand | Library call | Library-only proof | CLI-equals-library proof |
 | --- | --- | --- | --- |
@@ -255,6 +263,7 @@ per row, the way the four below name theirs, and that is a slice rather than a s
 | `ethos-parser extract <pdf>` | `Document::open` → `ethos_parser_pdf::extract` → `ethos_parser_pdf::to_representation` → `DocumentRepresentation::to_canonical_bytes` | `library_surface.rs::extract_and_represent_are_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser ground <repr>` | `serde_json::from_slice::<DocumentRepresentation>` → `verify_fingerprint` → `ethos_parser_grounding::project` → `ethos_parser_grounding::to_canonical_bytes` | `library_surface.rs::project_is_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser grounding-check <json> [--source-artifact <pdf>]` | `ethos_parser_grounding::grounding_check`, or `grounding_check_reading_source` with a source → `ValidationReport::to_canonical_bytes` / `exit_code` | `library_surface.rs::grounding_check_is_reachable_and_canonical_from_the_library` | `oracle.rs::oracle_agrees_on_all_ethos_owned_fixtures` |
+| `ethos-parser tag <pdf>` | `Document::open_bytes` on the bounded read → `ethos_parser_pdf::write_tags`, whose bytes are the output; exit 0, or 2 on any error | `tagging_write.rs::the_writer_emits_the_readers_fixture_shape` (in `crates/ethos-parser-pdf/tests`) | `tag_cli.rs::the_cli_bytes_equal_the_librarys` |
 
 `--diagnostics` is the one flag with no library equivalent to call, because it *is* the shell's
 job: `ethos_parser_core::diagnostics::DiagnosticsRun` assembles the observation and the CLI chooses the

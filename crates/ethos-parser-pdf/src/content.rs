@@ -134,6 +134,16 @@ pub struct ShownText {
     /// never dropped, which is the half that mattered; what was missing is that anyone could
     /// tell. This carries the mode out of the interpreter so extraction can flag it.
     pub render_mode: i64,
+    /// The index, in the slice [`Interpreter::run`] received, of the operation that showed this
+    /// text (auto-tagging S2).
+    ///
+    /// The writer's join key back into the page's content stream: a `Tj` is one operation and
+    /// one run, a `TJ` is one operation and as many runs as it holds strings, so several runs
+    /// may share one index and no index is ever skipped by a run that was shown. Crate-private
+    /// and never on the wire — `TextRun` does not carry it and `ExtractArtifact` does not change
+    /// (docs/23-AUTO-TAGGING-SCOPE.md §6); it leaves this crate only through
+    /// `extract::extract_with_positions`.
+    pub(crate) op_index: usize,
 }
 
 /// One image XObject a page painted with `Do`, in **user space** (v1-S6).
@@ -322,6 +332,13 @@ pub struct Interpreter<'a> {
     /// stream to digest, because its samples live in the content stream itself. Counted so the
     /// absence of a node for it is visible on the artifact.
     pub inline_images: u32,
+    /// The index of the operation [`Self::run_inner`] is dispatching, recorded before every
+    /// dispatch and read by [`Self::show`] (auto-tagging S2).
+    ///
+    /// On the interpreter rather than threaded through `dispatch` as an argument, because the
+    /// four text-showing arms reach `show` through two helpers and the index is a fact about the
+    /// loop, not about any operand.
+    op_index: usize,
 }
 
 impl<'a> Interpreter<'a> {
@@ -347,6 +364,7 @@ impl<'a> Interpreter<'a> {
             unresolved_xobjects: 0,
             inline_images: 0,
             xobjects: None,
+            op_index: 0,
         }
     }
 
@@ -415,7 +433,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_inner(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
-        for op in ops {
+        for (index, op) in ops.iter().enumerate() {
+            self.op_index = index;
             let token = op.operator.as_str();
             let Some(operator) = Operator::from_token(token) else {
                 return Err(EngineError::Unsupported {
@@ -826,6 +845,7 @@ impl<'a> Interpreter<'a> {
             // v1-S6. Carried out of the text state so extraction can flag it. The run is pushed
             // either way — this is an observation about the run, never a reason to withhold it.
             render_mode: self.ts.render_mode,
+            op_index: self.op_index,
         });
 
         Ok(())

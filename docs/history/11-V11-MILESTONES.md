@@ -6,6 +6,12 @@ v1.1 PR belongs to exactly one slice.
 **v1 is not done.** Its gate is measured and missed, and the chase is parked, which is not a pass.
 v1.1 began because the owner asked for the next roadmap row, and nothing in it closes v1.
 
+**Superseded by decision #18 (2026-08-30):** v1 closed on four capability clauses and a published
+band — the engine reads the tables a document declares, detects ruled tables where the producer
+drew the rules, emits nothing where neither holds, and fabricates nothing — not on the macro. The
+paragraph above was true when written and did not survive the decision; it is kept as written. See
+[`00-NORTH-STAR.md`](../00-NORTH-STAR.md) row 18, which is where v1's status is stated.
+
 Numbers quoted per slice below were measured on the **four-document** gate corpus current at the
 time. The corpus later grew to twelve and the macro reads 70‰;
 [`table-gate-v1.md`](../table-gate-v1.md) has the current number. The per-slice figures are left as

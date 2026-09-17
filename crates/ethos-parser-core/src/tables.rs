@@ -334,16 +334,22 @@ pub struct TableRecord {
     pub columns: u32,
     /// Cells, row-major.
     pub cells: Vec<TableCellRecord>,
-    /// The derivation class of the table structure.
+    /// The derivation class of the table structure: whose statement the grid is.
     ///
     /// `Computed` for a geometric table: the ruling lines and the text are Extracted, and the grid,
     /// the indices, the spans and the concatenation are an inference over them
-    /// (`docs/01-CONTRACT.md` §6). **`Extracted` for a tagged table** (v2-S24): its grid is not an
-    /// inference at all but the document's own `/Table`/`/TR`/`/TD` structure read off the tree, so
-    /// the stronger class is the honest one — and it is exactly this field, paired with
-    /// [`Self::detection_rule`], that lets a consumer tell "the engine inferred this grid from ink"
-    /// from "the document declared this grid and the engine read it". `Extracted` rides with
-    /// `tagged-tables-v1`; `Computed` with the three geometric ids.
+    /// (`docs/01-CONTRACT.md` §6). **`Extracted` for an author's tagged table** (v2-S24): its grid
+    /// is not an inference at all but the document's own `/Table`/`/TR`/`/TD` structure read off
+    /// the tree, so the stronger class is the honest one. **`Computed` for a tagged table whose
+    /// `/Table` element carries this engine's owner attribute** `/O /EthosParser` (auto-tagging
+    /// S1, `docs/23-AUTO-TAGGING-SCOPE.md` §4.1): the class is read off the element and never
+    /// restored as a constant, so an element this engine wrote is not reported as the document's
+    /// own statement. The writer never puts the attribute on a table (§3.2), but nothing forbids a
+    /// hand or a later writer from doing so, and a test holds the shape.
+    ///
+    /// So `derivation` alone does not separate a tagged table from a geometric one:
+    /// [`Self::detection_rule`] does — `tagged-tables-v1` against the three geometric ids — and
+    /// `derivation` says whose statement the grid is under that rule.
     pub derivation: crate::derivation::DerivationClass,
     /// **Which rule found this table** — `ruled-rects-v3`, `unruled-align-v1`, `stroke-ruled-v1`
     /// or `tagged-tables-v1` (v1-S2, S7b, S8, v2-S24).
@@ -361,13 +367,16 @@ pub struct TableRecord {
     /// | `ruled-rects-v3` | painted the grid | read it | `Computed` |
     /// | `unruled-align-v1` | placed text in columns | inferred it | `Computed` |
     /// | `stroke-ruled-v1` | stroked the ruling lines | read the lines and bounded the cells | `Computed` |
-    /// | `tagged-tables-v1` | tagged the grid in its structure tree | read the tags | `Extracted` |
+    /// | `tagged-tables-v1` | tagged the grid in its tree | read the tags | the element's own |
     ///
     /// `derivation` is `Computed` for the first three — all inferences over Extracted ink — and
-    /// `Extracted` for the fourth, which is the document's own statement rather than an inference.
-    /// The profile cannot carry this distinction: it says which rules *ran*, not which one produced
-    /// any given table. Only a per-table field can answer "did the author draw this grid, tag it,
-    /// or did we decide it was one".
+    /// for the fourth it is the class the `/Table` element states: `Extracted` for an author's
+    /// tags, the document's own statement rather than an inference, and `Computed` where the
+    /// element carries this engine's owner attribute (auto-tagging S1). This field, not
+    /// `derivation`, is what separates a tagged table from a geometric one. The profile cannot
+    /// carry this distinction: it says which rules *ran*, not which one produced any given table.
+    /// Only a per-table field can answer "did the author draw this grid, tag it, or did we decide
+    /// it was one".
     ///
     /// A plain string, matching the rule-id-as-data convention `Profile::table_detection` uses,
     /// and matching the ids pinned there.

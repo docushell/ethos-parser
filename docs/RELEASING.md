@@ -1,12 +1,13 @@
 # Releasing
 
 **The first release is v0.55.0, and it is binaries only**: a GitHub Release carrying macOS builds —
-`aarch64` and `x86_64`, each executed and byte-compared by `ci/release-artifacts.sh` — on a private
-repository, following §8. **Nothing is on crates.io, npm or PyPI**, the `publish = false` tripwire in
-§6 is still in place, and there is no publish automation. A local `v0.54.0` tag predates this
-procedure being followed; it was never pushed and nothing was released from it. `CHANGELOG.md` has said so from its
-third line: *"Version numbers are in-tree; creating a tag or a release is a separate, deliberate
-act."*
+`aarch64` and `x86_64`, each executed and byte-compared by `ci/release-artifacts.sh` — following
+§8. This sentence said *"on a private repository"*; the repository has been public since
+2026-09-13, and `gh repo view docushell/ethos-parser --json visibility` answers `PUBLIC`.
+**Nothing is on crates.io, npm or PyPI**, the `publish = false` tripwire in §6 is still in place,
+and there is no publish automation. A local `v0.54.0` tag predates this procedure being followed;
+it was never pushed and nothing was released from it. `CHANGELOG.md` has said so from its third
+line: *"Version numbers are in-tree; creating a tag or a release is a separate, deliberate act."*
 
 This document is that act, written down before it is performed rather than after — which is the
 only useful time to write it, because **publishing is the one thing this repository does that
@@ -20,7 +21,7 @@ cannot be undone.**
 | --- | --- |
 | A version bump in the tree | yes — it is a commit |
 | A git tag | yes — `git tag -d` and a force-push, while nobody has fetched it |
-| A GitHub Release with binaries | yes — `gh release delete` and delete the tag, while nobody depends on it; on a private repository only collaborators ever saw it |
+| A GitHub Release with binaries | **no**, since 2026-09-13. Release immutability is on for this repository (`gh api repos/docushell/ethos-parser/immutable-releases` answers `enabled: true`) and every published release reports `immutable: true`. The assets and the tag are locked at publication; the release can still be deleted, but its tag name can never be reused, so the version number is spent exactly as on crates.io. Title and notes stay editable |
 | **A crates.io publish** | **no.** `cargo yank` stops *new* dependents resolving it; the version number is spent forever and the files stay downloadable |
 | **An npm publish** | **no**, in practice. Unpublish is allowed for 72 hours and only if nothing depends on it; after that, `deprecate` |
 | **A PyPI publish** | **no.** A deleted file's version can never be reused |
@@ -162,8 +163,10 @@ enforces. The friction is the point.
 ## 8. A binaries-only GitHub Release
 
 The registries in §5.3–5.5 claim names permanently and stay blocked until the owner decides they
-should not. A GitHub Release of prebuilt binaries claims nothing and can be deleted, so it can ship
-first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
+should not. A GitHub Release of prebuilt binaries claims no registry name — `ethos-parser` on
+crates.io, npm and PyPI stays unclaimed — so it can ship first, and 0.55.0 did. It is not
+reversible either (§1); what it does not do is take the package name. It uses §5.1 and §5.2
+unchanged, then:
 
 1. **Build and verify the artifacts** on a clean tree at the tagged commit:
 
@@ -175,7 +178,7 @@ first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
    the gate corpus equal to the native build's — or `compiled`, built and never run.
    `target/release-artifacts/SHA256SUMS.txt` records which. **Ship only `verified` targets.** A
    compiled-only binary is an untested claim for an engine whose product is byte-identical reruns;
-   Linux and Windows wait for a runner that can execute them (plan item 6.1).
+   Linux and Windows come from the workflow below, which executes them on their own machines.
 
 2. **Push the tag**, then create the release from those files and nothing else:
 
@@ -186,8 +189,66 @@ first — and 0.55.0 did. It uses §5.1 and §5.2 unchanged, then:
    ```
 
    The notes say which platforms were verified and which were not built, so no reader infers a
-   platform from its absence.
+   platform from its absence. Pushing the tag also starts the workflow below; a release that is to
+   carry its binaries waits for its `verify` job.
 
-**Undoing it**, if something is wrong: `gh release delete v0.55.0`, then `git push --delete origin
-v0.55.0` and `git tag -d v0.55.0`. Fix, and release again under the same number only if nobody
-outside the repository could have fetched it; otherwise the number is spent, as in §7.
+### Linux and Windows binaries come from the workflow
+
+`.github/workflows/release-artifacts.yml` is the machinery for the two platforms this host cannot
+execute. It builds the macOS pair as well, so one run can supply the whole release, and **it
+publishes nothing** — §6 stays true. Its token is `contents: read`, which cannot create or edit a
+release, so that is a fact about the workflow rather than a promise in it.
+
+- **Trigger.** Step 2's `git push origin v0.58.0` starts it: it runs on a `push` of any `v*` tag.
+  It also runs by hand — Actions → *Release artifacts* → *Run workflow* — with `ref` (the tag,
+  branch or SHA to build; empty means the ref it was dispatched from) and `targets`
+  (space-separated; leave one out to skip its runner).
+- **What each runner does.** Checks out the ref, installs the pinned 1.88.0 and asserts the pin,
+  asserts it is the machine its matrix entry names, then runs
+  `ci/release-artifacts.sh --native --tag v0.58.0` — the script from step 1, restricted to the
+  runner's own target. That builds the binary, EXECUTES it over all eight gate documents, writes
+  its `.fingerprint`, refuses if any document was refused, packages the tarball with `LICENSE` and
+  `README.md`, and uploads it as `built-<target>`. `--tag` refuses a tag that does not name
+  Cargo.toml's version. Four runners, each native: `ubuntu-latest` → `x86_64-unknown-linux-gnu`,
+  `windows-latest` → `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`,
+  `macos-15-intel` → `x86_64-apple-darwin`. Nothing is cross-compiled.
+- **`verify`.** Downloads every `built-*` and runs `ci/release-artifacts.sh --assemble dist`. The
+  fingerprints must be whole and byte-identical, and each tarball must digest to what its runner
+  recorded; only then is `SHA256SUMS.txt` written, with every target `verified`. **`verified`
+  here means executed on the runner that built it and every artifact digest equal across every
+  runner** — plan item 6.1's operating-system axis, measured on the release binaries themselves.
+  One differing fingerprint fails the job, names the rows, and labels nothing: no
+  `SHA256SUMS.txt`, no bundle.
+- **Attaching.** The owner downloads `release-bundle` and attaches it with step 2's command:
+
+  ```bash
+  gh run download <run-id> -n release-bundle -D dist
+  gh release create v0.58.0 --title "ethos-parser 0.58.0" --notes-file <notes> \
+    dist/*.tar.gz dist/SHA256SUMS.txt
+  ```
+
+- **When a macOS leg cannot run.** The arm64 runner has 7 GB and the largest gate document's
+  extract peaks at 4.7 GB (`docs/measurements/memory-ceiling`); the Intel label is GitHub's to
+  retire. Leave the leg out of `targets`, build that target locally with step 1, and hold the
+  local binary to the runners' bytes before shipping it:
+
+  ```bash
+  diff target/release-artifacts/ethos-parser-0.58.0-<target>.fingerprint \
+       dist/ethos-parser-0.58.0-x86_64-unknown-linux-gnu.fingerprint
+  grep "<target>" target/release-artifacts/SHA256SUMS.txt >> dist/SHA256SUMS.txt
+  ```
+
+  The `grep` carries over both of the local manifest's lines for that target — its state row and
+  its digest — so the release's one `SHA256SUMS.txt` describes every file attached. The notes say
+  which files came from where.
+- **It has never run.** At the time of writing (0.58.0, 2026-09-16) no run of this workflow
+  exists. Everything above is what the YAML and the script say, not what a run has shown, and
+  none of it is evidence until the first run is read and what it finds is fixed.
+
+**Undoing it is not possible.** Release immutability is on for this repository, and every published
+release reports `immutable: true` (`gh release view v0.55.0 --json isImmutable`). The assets and
+the tag are locked the moment `gh release create` publishes; GitHub still allows the release itself
+to be deleted, but the tag name can never be reused, so `gh release delete`, `git push --delete
+origin v0.55.0` and `git tag -d v0.55.0` cannot give the number back. Fix, and release the next
+number; the number is spent, as in §7. Title and release notes remain editable, and that is the
+whole of what can be changed. Before step 2 nothing has left the machine, as in §7.

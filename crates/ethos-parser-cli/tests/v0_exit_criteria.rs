@@ -869,9 +869,11 @@ const GATE_SKIPS: [&str; 3] = [
 ///   script becomes a second source of truth, and a local green starts meaning something the
 ///   remote does not enforce.
 ///
-/// The two greps are `v0-exit-criteria` matrix entries rather than `check` steps, and they are
-/// the only entries in any matrix that are not subsets of `cargo test --workspace`. They are read
-/// out of the workflow rather than assumed, so deleting those jobs fails here too.
+/// The two greps are the only entries in any matrix that are not subsets of
+/// `cargo test --workspace`. They are `v0-exit-criteria` matrix entries and, since 2026-09-17, the
+/// `check` job's first two steps, because the matrix labels run on pull requests only. They are
+/// read out of the workflow rather than assumed, so deleting them from both places fails here
+/// too.
 ///
 /// This test runs inside `cargo test --workspace`, which is the script's own step 6. Running the
 /// gate therefore proves the gate still matches the workflow.
@@ -905,22 +907,23 @@ fn the_local_gate_runs_what_ci_runs() {
     }
 
     // What CI runs that the script is expected to run: every `check` step except the skips …
-    let mut want: BTreeSet<String> = steps
+    let want: BTreeSet<String> = steps
         .iter()
         .filter(|(n, _)| !GATE_SKIPS.contains(&n.as_str()))
         .map(|(_, c)| c.clone())
         .collect();
 
-    // … plus the two greps, taken from the workflow rather than written in here.
+    // … which includes the two greps: `check` runs them as its first steps, because their
+    // matrix entries run on pull requests only and a locally merged history opens none.
     for mode in ["confidence", "verification"] {
         let cmd = format!("ci/forbidden-tokens.sh {mode}");
         assert!(
-            workflow().contains(&cmd),
-            "no CI job runs `{cmd}` any more. The grep criteria are the only gates that are not \
-             subsets of `cargo test --workspace`; if one is genuinely gone, remove it from \
-             ci/gate.sh too."
+            want.contains(&cmd),
+            "the `check` job no longer runs `{cmd}`. Its `v0-exit-criteria` matrix entry runs on \
+             pull requests only, so without the step no push to main runs the grep. The grep \
+             criteria are the only gates that are not subsets of `cargo test --workspace`; if one \
+             is genuinely gone, remove it from ci/gate.sh too."
         );
-        want.insert(cmd);
     }
 
     // What the script runs. Its commands sit at column 0 — every other line is a comment, the

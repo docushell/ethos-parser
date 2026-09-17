@@ -284,6 +284,26 @@ pub mod codes {
     /// profile at v1-S5 — the same move `stroke-ruled-tables-not-detected` made when the
     /// alignment rule retired `unruled-tables-not-detected`.
     pub const READING_ORDER_GEOMETRIC_ONLY: &str = "reading-order-geometric-only";
+    /// The leading-gap block cut reads vertical whitespace against a band's modal leading and
+    /// nothing else (0.55.0's `TextRunAttributes::block`).
+    ///
+    /// The partner of [`READING_ORDER_GEOMETRIC_ONLY`] for the cut's horizontal half, and declared
+    /// for the same reason: the field says less than its name may suggest, and a consumer must
+    /// not read past it. Four things it states, none of which was on the wire before it existed —
+    /// they stood in `blocks.rs` comments, where no consumer reads. The index is computed from
+    /// vertical whitespace against the band's own modal leading only. There is **no indent
+    /// branch**, so a paragraph break marked by indentation with no extra leading opens no block.
+    /// Recall was measured on **one document**: 63.7% of real paragraph breaks at 100% precision
+    /// on `nist-sp-800-207`, the only gate document able to carry a real paragraph label. And a
+    /// block is **not a paragraph** — no role may be read from it (P14), the line
+    /// `docs/19-BLOCK-SUBDIVISION-SCOPE.md` §6 draws.
+    ///
+    /// Profile-scoped, because every one of those is true of every document this build reads.
+    /// Declared by the PDF crate beside its other extract-time profile limitations rather than
+    /// derived from a capability here: the capability turns the reading-order rule on, which rule
+    /// runs under it is the profile's `reading_order_rule`, and `ethos-parser-core` interprets
+    /// neither.
+    pub const BLOCK_SUBDIVISION_LEADING_GAP_ONLY: &str = "block-subdivision-leading-gap-only";
     /// [`crate::Capabilities::structural_locators`] is false: no structural address is claimed.
     pub const STRUCTURAL_LOCATORS_NOT_CLAIMED: &str = "structural-locators-not-claimed";
 
@@ -349,6 +369,20 @@ pub mod codes {
     /// for it**: cells placed from `/TD` elements alone would be cells this engine positioned,
     /// and a consumer could not tell them from cells reconstructed off the page.
     pub const TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE: &str = "tagged-table-without-geometric-table";
+
+    /// The structure tree this artifact's role paths come from is **this engine's own**, read
+    /// back out of the file (`docs/23-AUTO-TAGGING-SCOPE.md` §4.2).
+    ///
+    /// Document-scoped and conditional. Declared when the tree carries elements owned by
+    /// `/O /EthosParser`: the detail says how many, how many runs bound under them, which rule
+    /// names their attribute carries, and the fact it exists to state — the input carried no
+    /// author structure tree, so every role path here is this engine's block cut read back and
+    /// none is the author's. A disclosure in the limitation slot on the precedent of
+    /// [`TAGGED_TABLE_WITHOUT_GEOMETRIC_TABLE`] (v2-S24), and like that code it still names
+    /// something missing: an author's structure. [`UNTAGGED_STRUCTURE_TREE_ABSENT`] is **not**
+    /// declared beside it, because a tree was read and a role path does exist; its detail would
+    /// be false on both counts.
+    pub const STRUCTURE_TREE_ENGINE_WRITTEN: &str = "structure-tree-engine-written";
 
     /// A `BDC` supplied its property list **by name**, so any id in it went unread.
     ///

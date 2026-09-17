@@ -4164,3 +4164,137 @@ fn an_undivided_page_carries_no_region() {
         "an undivided page must carry no region at all, found {present:?}"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// The block cut: the two hops that carry `block` to the wire
+// -------------------------------------------------------------------------------------------
+
+/// Every run's `block` from the extract, in reading order, with the run's id and text.
+fn extract_blocks(fixture: &str) -> Vec<(ethos_parser_core::NodeId, String, Option<u32>)> {
+    let a = extract_ok(engine_fx(fixture));
+    runs(&a)
+        .iter()
+        .map(|r| (r.id.clone(), r.text.clone(), r.block))
+        .collect()
+}
+
+/// Every run's `block` from the emitted representation, with its node id, in node order.
+fn representation_blocks(fixture: &str) -> Vec<(ethos_parser_core::NodeId, Option<u32>)> {
+    let a = extract_ok(engine_fx(fixture));
+    let rep = ethos_parser_pdf::to_representation(&a, &Profile::default()).expect("projects");
+    rep.payload()
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.attributes {
+            ethos_parser_core::NodeAttributes::TextRun(t) => Some((n.id.clone(), t.block)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The partition `leading-gap-two-blocks` is authored to produce: three runs, then three.
+const LEADING_GAP_BLOCKS: [Option<u32>; 6] = [Some(1), Some(1), Some(1), Some(2), Some(2), Some(2)];
+
+/// **A wide gap opens a second block, and the extract says which runs are in it** — the first
+/// hop, `extract.rs`'s call to `crate::blocks::subdivide`.
+///
+/// `leading-gap-two-blocks` is authored against `blocks.rs`'s own constants: six single-run
+/// lines at baselines 2000, 3400, 4800, 7600, 9000 and 10400 centipoints, so the band's modal
+/// leading is 1400, the threshold is 8/5 × 1400 = 2240, and the one 2800 gap is the only cut. The
+/// expected partition is arithmetic the fixture states rather than a number this test hardcodes.
+///
+/// Both lists are asserted. Deleting the `subdivide` call, or zipping its result against the
+/// wrong list, leaves every `block` `None`; the texts pin that the reading order is the top-to-
+/// bottom order the partition is stated in, so a block numbered on the wrong axis cannot pass by
+/// coincidence.
+#[test]
+fn a_wide_gap_opens_a_second_block_and_the_extract_places_three_runs_in_each() {
+    let got = extract_blocks("leading-gap-two-blocks");
+    let texts: Vec<&str> = got.iter().map(|(_, t, _)| t.as_str()).collect();
+    assert_eq!(
+        texts,
+        vec![
+            "Water finds its level",
+            "and stone keeps its shape",
+            "through the long season",
+            "Wind moves the grass",
+            "and light moves the shade",
+            "across the open field",
+        ],
+        "six single-run lines, top to bottom"
+    );
+    let blocks: Vec<Option<u32>> = got.iter().map(|(_, _, b)| *b).collect();
+    assert_eq!(
+        blocks,
+        LEADING_GAP_BLOCKS.to_vec(),
+        "the 2800 gap between the third and fourth baselines is the one cut: {got:?}"
+    );
+}
+
+/// **The representation carries the block the extract set, on every run** — the second hop,
+/// `represent.rs`'s `block: run.block`.
+///
+/// One production line, and until this test nothing observed it. `region`'s hop was found the
+/// same way at D4-S2 (`a_divided_page_carries_the_regions_the_cut_made` above): replacing that
+/// expression with `None` compiled and passed the entire workspace suite. So both halves are
+/// asserted here — the value on the wire equals the extract's for the same node id, and those
+/// values are the fixture's own partition.
+///
+/// **Five mutants were run against the three block tests, and each is caught:**
+///
+/// | mutant | extract test | this test | declined test |
+/// | --- | --- | --- | --- |
+/// | `represent.rs` `block: None` | passes | **fails** | passes |
+/// | `represent.rs` `block: Some(1)` | passes | **fails** | **fails** |
+/// | `represent.rs` `block: run.region` — a copy of the line above it, `None` on a single-column page | passes | **fails** | passes |
+/// | `represent.rs` `block: run.block.or(Some(1))` | passes | passes | **fails** |
+/// | `extract.rs` `run.block` never assigned | **fails** | **fails** | passes |
+///
+/// The second half of this test is what catches the fifth row: with nothing assigned, the wire
+/// equals the extract at `None` on every run, and only the partition check says that is wrong.
+#[test]
+fn the_representation_carries_the_block_the_extract_set_on_every_run() {
+    let from_extract = extract_blocks("leading-gap-two-blocks");
+    let on_wire = representation_blocks("leading-gap-two-blocks");
+    assert_eq!(on_wire.len(), from_extract.len(), "one node per run");
+    for ((id, text, extracted), (node, wired)) in from_extract.iter().zip(&on_wire) {
+        assert_eq!(id, node, "the node list is the run list, in order");
+        assert_eq!(
+            wired, extracted,
+            "{id:?} ({text:?}) must reach the wire with the block the cut gave it"
+        );
+    }
+    let blocks: Vec<Option<u32>> = on_wire.iter().map(|(_, b)| *b).collect();
+    assert_eq!(
+        blocks,
+        LEADING_GAP_BLOCKS.to_vec(),
+        "and those are the fixture's own two blocks, not a constant"
+    );
+}
+
+/// **A page the rule declined carries no block on either hop, and that is the common case.**
+///
+/// `markdown-two-blocks` is two runs, 60 points apart, on a page the vertical cut does not divide.
+/// Two lines are one gap; that gap is its own modal leading, and a gap never clears 1.6 times
+/// itself, so `subdivide` returns the empty vector — the region contract — and `block` stays
+/// `None` on both runs, through `extract.rs`'s `zip`, which does no work on an empty list, and
+/// through `represent.rs`. This is the mutant the two positive tests cannot see — the fourth row
+/// of the table above: `block: run.block.or(Some(1))` is right wherever the rule cut and invented
+/// everywhere else, which is the shape a plausible bug takes, and measured, it fails only here.
+/// `TextRunAttributes::block`'s rustdoc says absence is the ordinary state, not a corner; this is
+/// the test that keeps it one.
+#[test]
+fn a_page_the_rule_declined_carries_no_block_on_either_hop() {
+    let from_extract = extract_blocks("markdown-two-blocks");
+    assert_eq!(from_extract.len(), 2, "the fixture is two runs");
+    assert!(
+        from_extract.iter().all(|(_, _, b)| b.is_none()),
+        "two lines are one gap, which cannot clear 1.6x itself: {from_extract:?}"
+    );
+    let on_wire = representation_blocks("markdown-two-blocks");
+    assert_eq!(on_wire.len(), 2, "one node per run");
+    assert!(
+        on_wire.iter().all(|(_, b)| b.is_none()),
+        "absent on the wire too — not `Some(1)` for a page with one block: {on_wire:?}"
+    );
+}

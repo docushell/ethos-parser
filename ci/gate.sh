@@ -68,14 +68,14 @@
 #     criterion's own name, so a reviewer can see *which line* is green rather than one
 #     undifferentiated tick (`docs/history/05-MILESTONES.md` M7). Step 6 runs the superset, so running
 #     them again buys a label and not a check. **Two are not subsets and are therefore steps 1 and
-#     2**: `v0-no-confidence` and `v0-no-verify` are greps over source text that no test executes.
+#     2**: `v0-no-confidence` and `v0-no-verify` are greps over source text that no test executes,
+#     and since 2026-09-17 they are the `check` job's first two steps as well.
 #
 # # Order
 #
-# Steps 3 to 7 are the `check` job's five, in the order that job runs them. The two greps have no
-# position in that sequence — CI runs them as separate parallel jobs — so they go first, because
-# they finish in seconds and a forbidden token should fail the gate before a six-minute compile
-# rather than after one.
+# Every step here is one of the `check` job's. The two greps come first there and here for the same
+# reason: they finish in seconds, and a forbidden token should fail the gate before a six-minute
+# compile rather than after one.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

@@ -30,7 +30,7 @@
 //! of all of them, which was already false of `ethos-parser` and is false of `gate`, so it now says
 //! which kind of root it is talking about.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is <repo>/crates/ethos-parser-pdf
@@ -93,6 +93,42 @@ pub fn bench_fixture(rel: &str) -> Vec<u8> {
 /// Read a fixture from the engine-owned CC0 set (`fixtures/engine`).
 pub fn engine_fixture(rel: &str) -> Vec<u8> {
     read("engine", rel)
+}
+
+/// The directory a declared corpus root resolves to, for a test that walks a whole corpus.
+///
+/// The same resolution `read` uses — the manifest's default under the repository root, or the
+/// root's environment override — so a walk and a named read see one tree. A root that resolves
+/// to nothing is a walk over nothing, which the caller must treat as a failure, never a skip.
+pub fn corpus_root(name: &str) -> PathBuf {
+    root(name)
+}
+
+/// Every `.pdf` under `dir`, recursively, in path order.
+///
+/// Sorted so that a census printed from it reads the same on every machine, and so that the
+/// first failure a walk reports is the same one each run.
+pub fn pdfs_under(dir: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+            {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, &mut out);
+    out.sort();
+    out
 }
 
 /// Read a document from the **table-gate corpus this repository owns** (`fixtures/gate`).

@@ -149,11 +149,51 @@
 
     "structural_locator": {
       "title": "StructuralLocator — where the node kind defines one",
-      "$comment": "v0 emits marked-content ids only, and only where the page's own content stream supplies one via BDC. The tagged-structure tree is NOT read, so an absent id is not evidence the document is untagged — which is exactly why capabilities.structural_locators is false. Omitted entirely when the document supplied none; never invented.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["pdf_mcid"],
-      "properties": { "pdf_mcid": { "type": "integer" } }
+      "$comment": "Externally tagged, one of three variants, matching StructuralLocator in crates/ethos-parser-core/src/representation.rs. The tagged-structure tree has been READ since v1-S3 (struct-tree-v1): pdf_tagged is the address the document's own /StructTreeRoot gives the content, pdf_mcid an id the content stream supplied that no structure element claims, pdf_artifact content the page marked as furniture outside the tree. pdf_tagged.derivation is read since auto-tagging S1 (struct-tree-v2): `extracted` when the innermost citing element is the author's, `computed` when it carries this engine's own owner attribute (/O /EthosParser under /A, or through /C and the root's /ClassMap; docs/23-AUTO-TAGGING-SCOPE.md §4.2), written on every tagged locator with no default (decision #20). Omitted entirely when the page marked nothing; never invented.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pdf_mcid"],
+          "properties": {
+            "pdf_mcid": { "type": "integer", "$comment": "Captured verbatim from BDC, and NO structure element claims it: either the document has no tree, or it has one and this id is not in it. The assurance block's limitations say which." }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pdf_tagged"],
+          "properties": {
+            "pdf_tagged": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mcid", "role_path", "derivation"],
+              "properties": {
+                "mcid": { "type": "integer", "$comment": "The marked-content id the tree cited to reach this content. -1 on a node the tree cites by /OBJR rather than by marked content (an annotation or a widget): no id is involved, and a non-negative value here would be one this engine minted." },
+                "role_path": { "type": "array", "minItems": 1, "items": { "type": "string" }, "$comment": "Structure types from the root down, exactly as the document wrote them in /S. Never laundered." },
+                "standard_role_path": { "type": "array", "minItems": 1, "items": { "type": "string" }, "$comment": "The same path after the document's own /RoleMap. Present only when the map changed something." },
+                "element_id": { "type": "string", "$comment": "The innermost element's /ID, when it declares one. Never minted." },
+                "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`extracted` or `computed` — see the $comment on this def. Required and never defaulted." }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pdf_artifact"],
+          "properties": {
+            "pdf_artifact": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mcid": { "type": "integer", "$comment": "Present only when the artifact sequence carried an id, which it usually does not." }
+              },
+              "$comment": "Content the page marked /Artifact (PDF 32000-1 §14.8.2.2): running heads, folios, rules. Flagged, never dropped."
+            }
+          }
+        }
+      ]
     },
 
     "text_run_attributes": {

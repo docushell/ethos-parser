@@ -160,9 +160,9 @@
     "struct_tree_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the structure-tree rule in force (v1-S3). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser.",
+      "description": "Version id of the structure-tree rule in force (v1-S3; struct-tree-v2 since auto-tagging S1). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser. Since -v2 it also decides what class the path carries: an element whose attribute objects (under /A, or through /C and the root's /ClassMap) are owned by /O /EthosParser binds as `computed`, every other as `extracted`.",
       "examples": [
-        "struct-tree-v1"
+        "struct-tree-v2"
       ]
     },
     "table_detection": {
@@ -396,7 +396,7 @@
         "mode": "not_emitted"
       },
       "reading_order_rule": "gutter-columns-v3",
-      "struct_tree_rule": "struct-tree-v1",
+      "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
         "ruled": "ruled-rects-v6",
         "unruled": "unruled-align-v1",
