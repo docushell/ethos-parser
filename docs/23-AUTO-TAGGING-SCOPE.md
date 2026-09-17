@@ -12,6 +12,146 @@ rule, `/MarkInfo`, the decoder, the projections, the refusals and the measuremen
 Every number in it is measured on that build unless it names another. The milestones are
 [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md).
 
+**Since this was written.** The body stands as written and revised on 2026-09-16. Below, dated,
+are what building the writer changed, what its two reviews found, and each number §7 asked for.
+The body is not rewritten; read it with these.
+
+- **§3.4, the placement rule as built (S2, 2026-09-16; recorded on review 2026-09-17).** The code
+  is the rule, and it differs from this document's wording in two places. First, a sequence opens
+  before the text-positioning operators (`Td`, `TD`, `Tm`, `T*`) that immediately precede its
+  first text-showing operator, not immediately before that operator, so the first line's position
+  sits inside the sequence (`engine-tagged-blocks` was written that way). Second, the `q … Q` step
+  widens over any operators between the pair and the text object that draw nothing, not only over
+  a pair that encloses the text object exactly: `q 0 g BT … ET Q` widens. Neither change encloses
+  anything that draws. `plan_page`'s rustdoc states the rule as built.
+- **§3.4, what is left outside: one exception, as built.** *A text-showing operator whose run the
+  reader dropped stays outside* holds when every run the operator showed was dropped. A `TJ` that
+  showed one kept string and one dropped string is enclosed with the kept run's block, for three
+  reasons: an operator is the smallest thing a sequence can hold, the splice inserts only at token
+  boundaries, and leaving the operator outside would leave its kept run unbound, which §3.7
+  refuses. The dropped string's glyphs therefore sit inside the sequence. The dropped run itself is
+  still not claimed: it is in no artifact, and `broken-font-encoding` still counts it.
+- **§3.5 and §3.6, the filters (narrowed while building S2, 2026-09-16).** `LZWDecode` and
+  `ASCII85Decode` are refused by name, like every filter other than none and `FlateDecode`. They
+  are not decoded through `lopdf` with its error surfaced, because in `lopdf` 0.44.0 there is no
+  error to surface: it returns the partial output of an LZW stream it could not decode as a
+  success, and it decodes an ASCII85 stream missing its `~>` end marker anyway. A `/DecodeParms`
+  carrying a predictor is refused on the same ground. Row 5 of §3.6 and §9 item 4 therefore read
+  *a filter other than none or `FlateDecode`*. Over the 293 documents of §7.1, no document was
+  refused for a filter or a stream that does not decode to its end.
+- **§3.5, removal and numbering (tightened 2026-09-17, `8500ab3`).** A superseded stream is
+  removed only when *no object* references it, not merely no page: a stream something else names
+  is kept. And no object the writer adds takes a number that any reference in the source names,
+  dangling or not. §7.1's first run found why. `form-orphan-widget`'s widget names `/Parent 9 0 R`
+  in a file holding objects 1 to 7, the writer's second new object took number 9, and the widget's
+  parent became the tree's root. The self-check refused that output because a limitation moved.
+  New objects are now numbered above the highest number any reference names, and the fixture tags.
+- **§3.6, two refusals the table did not have.** Both are named in their messages and counted in
+  §7.1 below; read §9 item 4's list with both added.
+  1. *A text-showing operator whose runs the cut placed in two blocks*, added while building S2. A
+     `TJ` is one operation holding as many runs as it has strings. When its strings straddle a
+     gutter it is an operator for two elements, and a sequence holds operators for one. The
+     refusal names the operation and both blocks.
+  2. *An object carrying `/StructParents` or `/StructParent` with no tree*, added on review
+     2026-09-17 (`8500ab3`). Either key indexes a `/ParentTree` (§14.7.4.4), and the tree the
+     writer adds would answer it with elements that do not hold that object's content: a page
+     left unrewritten with `/StructParents 0` would name the first rewritten page's ids. The
+     document is refused before anything is read, naming the object and the key. It was measured
+     before it landed, over the 293 documents: 54 carry either key; the 48 with no tree were all
+     refused already by row 2, and the other 6 carry a tree.
+- **§3.7, the self-check as built (widened on review 2026-09-17, `5c26a72`).** Until then the
+  per-page counters of the third bullet reached the check only as document totals inside five
+  limitations. They are now compared page by page, together with each page's box, rotation, and
+  image, table, tagged-table and object records. The run comparison also cannot see an id filed
+  under the wrong `/Div`: every written element reads back as `Document/Div`, computed, with no
+  identity of its own. So the check now also walks the written tree against the plan: one
+  `/Document`; one `/Div` per planned block, on its page, citing exactly its ids; and a parent tree
+  that maps every id, under the page's `/StructParents` key, to the `/Div` citing it.
+- **§4.2, the wire cost (measured 2026-09-17).** On the eight gate documents, branch against the
+  0.58.0 release build, same version string, `derivation` costs 3.2% (`irs-fw9`) to 4.7%
+  (`nist-sp-800-218`) of the artifact, median 4.3%: 25 bytes per `pdf_tagged` locator, and 41.2 MB
+  of `nist-sp-800-53Ar5`'s 1.04 GB. The rest of each difference is the constant 1,425 bytes of the
+  `block-subdivision-leading-gap-only` declaration. Table in
+  [`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md) §2.
+- **§7.1, the round trip (measured 2026-09-17)**, with the writer at `2e70eba` over 293 documents:
+  the 58 engine fixtures, the 35 oracle fixtures and the 200 `opendataloader-bench` documents.
+  Instrument [`measurements/auto-tagging/roundtrip.py`](measurements/auto-tagging/roundtrip.py);
+  method, tables and per-document results in its README §2.
+  - **Outcomes.** 129 tagged: bench 54, engine 44, oracle 31. 164 refused:
+    - row 2: 99;
+    - the stale-key refusal above: 48, all bench, all also carrying row 2's inline ids;
+    - row 1: 12;
+    - row 3: 1;
+    - row 4: 1;
+    - no text to tag: 1;
+    - not a PDF `extract` opens: 2.
+
+    No document was refused under row 5, row 6, the two-block operator or the self-check (row 7).
+    All 146 refused bench documents are PyPDF2 page splits that kept their marked-content ids and
+    lost the tree. That is §3.6 row 2's reopening count, and it is the owner's to weigh.
+  - **The tree.** 582 elements (129 `/Document`, 453 `/Div`) and 776 sequences. 74 of 453 blocks
+    (16.3%) are more than one sequence; the most in one block is 60, on `bench/01030000000199`.
+    §7.1 asked for these bucketed by cause. The writer holds the cause in its plan and prints it
+    nowhere, so only the distribution is counted, and §12's open question is answered with that
+    distribution rather than with causes.
+  - **Property lists and inline images.** 15 originals declare `mcid-property-list-by-name`: 9
+    were tagged, and 6 refused (4 under row 2, 1 under row 1, 1 under row 3). 5 declare
+    `inline-images-not-emitted`, and all 5 were tagged.
+  - **Reads back.** On the outputs, `extract` binds 41,208 of 41,209 runs `pdf_tagged`, computed,
+    `Document/Div`; the remaining run is page furniture, still `pdf_artifact`.
+    `structure-tree-engine-written` is declared on 129 documents, `untagged-structure-tree-absent`
+    on none.
+  - **Projects (§4.3).** `ground`, `markdown` and `html` each equal the original's on 129 of 129.
+    The instrument's first run, at `5b4b7bb` without S3's `group_key` change, found 102, 97 and 97
+    of 128 different, which is §4.3's prediction measured.
+  - **Grounds.** `grounding-check` finds all 129 valid and matched. `ethos verify` agrees on 122 of
+    122, all grounded; on the other 7, no element contains the chosen run on either side.
+  - **Bytes.** A second `tag` is byte-identical on 129 of 129. Bytes added: median 716 (44.3%),
+    from -125,323 to 3,821; 15 documents shrank.
+  - **Reals, §3.5's reopening condition.** 6 of 4,116 reals outside content streams do not survive
+    `f32`, in 2 documents, both PyPDF2: `/FontMatrix` `0.00100000005` → `0.001` and `/Matrix`
+    `-1.60399354` → `-1.6039935`. That is non-zero on one producer, below the ninth significant
+    digit, and invisible to the text record. Whether PyPDF2 is *a producer that matters* is the
+    owner's to say, and nothing here decides it.
+- **§7.2, the consumer (measured 2026-09-17).** `ethos-parser` 0.58.0 as released, run as
+  `extract` on the 129 outputs, binds all 41,208 written runs `pdf_tagged` under `Document/Div`,
+  and not one of those locators carries `derivation`. Every engine-written `/Div` reads as author
+  structure: the launder #21 refused, produced by a shipped reader with no test-only flag.
+- **§7.2, the misread rate (measured 2026-09-17)** with `ethos-parser` 0.58.0 as released (the
+  `aarch64-apple-darwin` build) and qpdf 12.3.2, over the eight gate documents as shipped, by
+  [`measurements/auto-tagging/paragraphs.py`](measurements/auto-tagging/paragraphs.py). The method,
+  the exclusions and every table are in [`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md)
+  §1.
+  - **The labelled document.** `nist-sp-800-207` is the one document whose `/P` labels are
+    paragraphs. There the join binds 63,306 of 90,817 runs to a `/P`, and it agrees with the
+    engine's `role_path` on all 81,558 tagged runs.
+  - **(i) Blocks holding more than one author `/P`.** 23 of the 259 blocks holding a `/P`-bound run
+    hold two or more author `/P`: 8.9%. Outside any `/Table` it is 11 of 219 (5.0%). Among blocks
+    holding only table-cell paragraphs it is 12 of 40 (30.0%): those rows share baselines, so they
+    are one block by construction. The 23 blocks carry 96 author boundaries, 69 of them in table
+    blocks. Per page the share runs 0.0% .. 100.0%, median 0.0%. The worst page by count is 51,
+    with 4 of 12 blocks (region 2 block 3 is a table holding 6 `/P`). The two pages at 100% are 36,
+    the one band the rule declined, with 3 `/P` in it, and 54, a table whose 44 cell paragraphs
+    are one block.
+  - **(ii) Author `/P` split across blocks.** 12 of 343 `/P` elements fall in two or more blocks:
+    3.5%, and all 12 cross a page break. Within a page the cut splits no paragraph (0 of 343). Per
+    page it runs 0.0% .. 50.0%, median 0.0%; the worst page is 34.
+  - **The other seven gate documents.** Across all eight, (i) runs from 8.9%
+    (`nist-sp-800-207`) to 81.8% (`nist-sp-800-53Ar5`), median 58.7% (`nist-sp-800-171r3`), and
+    (ii) from 0.0% (`irs-f1040sd-2025`, `irs-fw9`) to 3.5% (`nist-sp-800-207`), median 0.3%
+    (`nist-sp-800-218`). That is producer behaviour, not recall: their `/P` is a line or a page
+    wrap.
+  - **The quoted recall.** The 63.7% recall at 100% precision this document quotes from
+    `blocks.rs` (§3.2, §7.2, §9) reproduces exactly on `probe3b.py` at 0.58.0, and it is bounded
+    from both sides. On the same 135 boundaries the shipped cut finds 79 (58.5%). Of the seven
+    boundaries the simulation finds and the shipped cut misses, five are whitespace-only runs,
+    empty paragraphs Word writes that each halve a gap, and two are on page 36's declined band.
+    Over every raw `/P` it finds 129 of 189 (68.3%) and still cuts 0 of 1,022 mid-paragraph
+    pairs.
+
+With §7's numbers published, clause two meets the condition §12's proposed row #27 names. The rows
+themselves remain the owner's to record.
+
 ---
 
 ## 1. The one sentence

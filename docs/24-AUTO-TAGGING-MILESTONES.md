@@ -11,14 +11,44 @@ as D4 S0–S4 at 0.42.0 and the block cut at 0.55.0; nothing here reopens either
 | Slice | Theme | State |
 | --- | --- | --- |
 | **S0** | The scope document and this one | done |
-| **S1** | The reader: `/O` under `/A` and through `/ClassMap`, `derivation` on every `pdf_tagged` locator, `struct-tree-v2`, the hand-written fixtures | — |
-| **S2** | The writer: strict decode, the tokeniser with positions, the placement rule, the tree, the self-check, `tag` | — |
-| **S3** | The round trip: write, read back, project, ground, verify; the mutations that must fail | — |
-| **S4** | The measurements of scope §7, and the documents that move with them | — |
+| **S1** | The reader: `/O` under `/A` and through `/ClassMap`, `derivation` on every `pdf_tagged` locator, `struct-tree-v2`, the hand-written fixtures | done |
+| **S2** | The writer: strict decode, the tokeniser with positions, the placement rule, the tree, the self-check, `tag` | done |
+| **S3** | The round trip: write, read back, project, ground, verify; the mutations that must fail | done |
+| **S4** | The measurements of scope §7, and the documents that move with them | done |
 
 S1 lands before S2 on purpose: a reader tested against a PDF a human wrote in the writer's exact
 shape is a reader whose test cannot pass because the writer and the reader share a mistake. S2 is
 then tested against S1's reader, and S3 tests the pair.
+
+**Since this was written.** The slices stand as cut on 2026-09-16, and all four are done on the
+branch for the version after 0.58.0 as of 2026-09-17. Where an acceptance landed other than as
+written, it is recorded below with its date. The scope's own amendments sit under
+[`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)'s header.
+
+- **S2 item 2 and item 6 (2026-09-16/17).** `LZWDecode` and `ASCII85Decode` are refused rather than
+  decoded. The refusals gained two items: an operator whose runs the cut placed in two blocks, and,
+  on review, `/StructParents` or `/StructParent` without a tree. The scope's amendments give each
+  reason.
+- **S2, `a_tagged_document_is_byte_identical_across_runs` (2026-09-16).** It holds on the
+  two-column fixture and on the oracle corpus's `foreign/opendataloader/real/source.pdf`,
+  OpenDataLoader's own untagged sample, rather than on a bench document. `cargo test` resolves
+  fixtures only through `fixtures/manifest.json`'s roots and treats a missing fixture as a failure,
+  and the bench corpus sits under no root. S4 covers the bench half: a second `tag` is
+  byte-identical on all 129 documents it tagged, 54 of them bench documents.
+- **S2, repaired on review (2026-09-17).**
+  - `5c26a72`: the self-check compares the per-page counters and walks the tree as written.
+  - `8500ab3`: new objects are numbered above every number a reference names; superseded streams
+    are removed only when nothing names them; stale parent-tree keys are refused.
+  - `5e649dc`: the `/Properties` resolver has its own test.
+
+  Each commit names the tests that hold it.
+- **S3 (2026-09-17).** `a_second_write_is_refused` has lived in
+  `crates/ethos-parser-pdf/tests/tagging_write.rs`, beside the writer, since S2.
+  `crates/ethos-parser-cli/tests/tag_roundtrip.rs` holds the other four acceptances. The CLI crate
+  gained `lopdf` as a dev-dependency, for the strip, and nothing else.
+- **S4 item 2 (2026-09-17).** The consumer demonstration ran in `roundtrip.py` on all 129 tagged
+  documents, not in `paragraphs.py` on one fixture; `paragraphs.py` holds the misread rate. Both
+  are in [`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md), §1 and §2.
 
 ---
 

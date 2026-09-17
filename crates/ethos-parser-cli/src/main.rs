@@ -182,10 +182,11 @@ enum Command {
     ///
     /// **It fills absence only.** A document that already carries `/StructTreeRoot` — an
     /// author's tree, or this subcommand's own output — is refused, as are marked-content ids
-    /// without a tree, a page the tokeniser cannot account for, and a filter the strict decoder
-    /// does not cover (§3.6). No `/MarkInfo` is written: the result is not a Tagged PDF, and a
-    /// reader that does not read the owner attribute sees author structure (§9). Not exposed
-    /// over MCP or the SDKs (§5).
+    /// without a tree, a `/StructParents` or `/StructParent` key without one, a `TJ` whose strings
+    /// the cut placed in two blocks, a page the tokeniser cannot account for, and a filter the
+    /// strict decoder does not cover (§3.6 and the amendments under the scope's header). No
+    /// `/MarkInfo` is written: the result is not a Tagged PDF, and a reader that does not read the
+    /// owner attribute sees author structure (§9). Not exposed over MCP or the SDKs (§5).
     ///
     /// Exit codes: **0** the tagged PDF was written · **2** the document could not be read, or
     /// was refused.
