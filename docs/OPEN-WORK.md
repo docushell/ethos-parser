@@ -109,7 +109,7 @@ boxes, which doc 22 refused.
 | 6.4 PyPI wheel | owner | Publishing is the owner's. D8, whether the package ships a platform binary, is deferred by the owner (2026-09-17). **Irreversible** |
 | 6.5 npm platform binaries | owner | As 6.4: the owner's, with D8 deferred. **Irreversible** |
 | 6.6 Word-level boxes | refused | `22-WORD-BOXES-SCOPE.md` §7 names what reopens it |
-| 6.7 `locate(representation, quote)` in CLI, MCP and SDK | **ready** | Decision #30 (2026-09-17) bounds it: a representation and a string in, locations out; no verdict, boolean or claim; a match rule of the engine's own. A scope first, then the CLI subcommand, MCP tool and SDK functions in one slice |
+| 6.7 `locate(representation, quote)` in CLI, MCP and SDK | **scoped 2026-09-18, ready to build** | Decision #30 bounds it: a representation and a string in, locations out; no verdict, boolean or claim; a match rule of the engine's own. [`26-LOCATE-SCOPE.md`](26-LOCATE-SCOPE.md) settles the shape — `ethos.parser.locations.v0`, the rule `locate-scalar-exact-v1` (code-point-exact on scalars, joining runs inside one block of the cut and never across two), occurrences as node ids, offsets and the record's own geometry, and every verdict-shaped convenience refused by name — and [`27-LOCATE-MILESTONES.md`](27-LOCATE-MILESTONES.md) cuts it into S0 (the documents, done), S1 (the core query, the profile field, the cap measured), S2 (CLI, MCP and both SDKs in one slice) and S3 (the measurements) |
 | 6.8 crates.io, five crates in order | owner | Publishing is the owner's. Last in the ordering. **Irreversible** |
 | 6.9a Declare the empty-user-password open | **done 2026-09-17** | Decision #31 (proposal 1 of [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md)): `encrypted-empty-user-password`, document-scoped, on every artifact from such an open, from `extract` and `classify` alike; contract §8 carries the amendment. Of the 311 PDFs in every corpus here, 1 is encrypted and needs a secret, and 0 open on the empty password |
 | 6.9b Password knob | deferred (#31) | Reopens on a corpus this repository can pin whose documents need a user password the caller holds; then never on argv or over MCP (docs/25 §3.3) |
@@ -152,6 +152,12 @@ boxes, which doc 22 refused.
 - **A committed fixture for the `<mc:AlternateContent>` path.** Neither `docx.rs` nor `pptx.rs`
   has one: both readers' branch rule is held by unit tests on inline XML, and no document in any
   corpus here carries the element, so the mutation suite and the digest lists never reach it.
+- **A committed fixture carrying a non-BMP scalar or a combining mark.** No engine fixture holds
+  either, checked across `make_fixtures.py` on 2026-09-18, so `locate`'s scalar-unit and
+  no-normalisation rules are held by hand-built representation tests
+  ([`26-LOCATE-SCOPE.md`](26-LOCATE-SCOPE.md) §9, T10 and T11) and the mutation suite and the digest
+  lists never reach them. Authoring one is a font and a `/ToUnicode` map, which
+  `simple-font-two-byte-tounicode` and `rtl-hebrew-visual-order` both already demonstrate.
 - **The doc fixes in §7.**
 
 ## 6. Known defects — recorded, not fixed
