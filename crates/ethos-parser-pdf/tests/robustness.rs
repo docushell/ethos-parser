@@ -427,10 +427,12 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// fixtures of auto-tagging S1 — the same page under a hand-written structure tree — join the
 /// same way and make it **72**: a structure tree changes nothing about how a damaged xref, a
 /// truncated stream or an injected operator is refused, and each survives `junk-after-eof` alone.
-/// The seven fixtures of auto-tagging S2 — the shapes the writer must refuse or place around,
-/// each the leading-gap page with one thing changed — join the same way and make it **79**:
-/// a marked-content frame, a shared stream or an inline image in the content changes nothing
-/// about how the damage is refused either (83 fixtures, 475 mutants).
+/// The `/OBJR` pair S1's review added — `tagged-widget-objr` and `engine-tagged-widget-objr`, the
+/// form-field-value page under a tree that cites its widget by object — join the same way and
+/// make it **74**. The seven fixtures of auto-tagging S2 — the shapes the writer must refuse or
+/// place around, each the leading-gap page with one thing changed — join the same way and make
+/// it **81**: a marked-content frame, a shared stream or an inline image in the content changes
+/// nothing about how the damage is refused either (85 fixtures, 487 mutants).
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -469,7 +471,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 79] = [
+const EXPECTED_SURVIVORS: [&str; 81] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -484,6 +486,7 @@ const EXPECTED_SURVIVORS: [&str; 79] = [
     "engine-tagged-classmap/junk-after-eof",
     "engine-tagged-mixed/junk-after-eof",
     "engine-tagged-nested-frames/junk-after-eof",
+    "engine-tagged-widget-objr/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/junk-after-eof",
@@ -540,6 +543,7 @@ const EXPECTED_SURVIVORS: [&str; 79] = [
     "tagged-structure-roles/junk-after-eof",
     "tagged-table-agrees/junk-after-eof",
     "tagged-table-disagrees/junk-after-eof",
+    "tagged-widget-objr/junk-after-eof",
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
@@ -885,16 +889,19 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        83,
-        "the manifest should declare 83 fixtures across FOUR roots. Auto-tagging S2 moved this \
-         from 76 by adding the seven shapes the writer must refuse or place around — \
+        85,
+        "the manifest should declare 85 fixtures across FOUR roots. Auto-tagging S2 moved this \
+         from 78 by adding the seven shapes the writer must refuse or place around — \
          `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, \
          `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered` and \
          `leading-gap-nested-frames` — each the leading-gap page with one thing changed, so only \
          that thing is tested: an id in the content stream and no tree, inline and by name; a \
          named list that is a layer; furniture marked /Artifact; one stream two pages share; a \
-         filtered inline image; and the untagged twin of `engine-tagged-nested-frames`. \
-         Auto-tagging S1 moved this \
+         filtered inline image; and the untagged twin of `engine-tagged-nested-frames`. S1's \
+         review moved it from 76 by adding the `/OBJR` pair — `tagged-widget-objr` and \
+         `engine-tagged-widget-objr` — the form-field-value page under a structure tree whose one \
+         content item cites the widget by object, so the locator the `/OBJR` arm mints is read \
+         by a test in both classes. Auto-tagging S1 moved this \
          from 72 by adding the four `engine-tagged-*` fixtures — `engine-tagged-blocks`, \
          `engine-tagged-classmap`, `engine-tagged-mixed` and `engine-tagged-nested-frames` — the \
          leading-gap page under the structure tree the writer will emit, written by hand BEFORE \

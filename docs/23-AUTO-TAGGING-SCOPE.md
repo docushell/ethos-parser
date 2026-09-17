@@ -392,7 +392,7 @@ nothing, on purpose.
 | Library | `ethos_parser_pdf::write_tags(&Document, &Profile) -> Result<Vec<u8>, EngineError>` and `TAGS_ARTIFACT_TYPE`, frozen in [`PUBLIC-API.md`](PUBLIC-API.md) with a thin-shell row. The writer runs extraction itself, as `overlay` does in-process, because the artifact does not say which operator showed a run: that mapping — `(page, operator index in the joined buffer)` per run, surviving `reorder_page` — lives in a crate-private side table from a crate-private extraction entry point, never on `TextRun`, so `ExtractArtifact` does not change and no artifact parsed from JSON can reach the placement rule |
 | Reader | `structure.rs` and the wire field of §4.2; `ethos_parser_pdf::limitations::structure_tree_engine_written`; `codes::STRUCTURE_TREE_ENGINE_WRITTEN` |
 | Profile | `struct_tree_rule: struct-tree-v2` |
-| Fixtures | Hand-written PDFs in the exact shape the writer emits, so the reader is tested independently of the writer and a writer regression cannot hide a reader one: `engine-tagged-blocks` (the attribute under `/A`), a `/ClassMap`-only twin (`/C` on every element, the class on the root), a mixed twin (`/A` holding a foreign owner such as `/O /Layout`, `/C` carrying the engine class), and a page whose block has one line inside `/Span BMC … EMC` and one inside an optional-content sequence given by name. For the writer's refusals: an untagged page with `/P /MC0 BDC` whose `/MC0` carries `/MCID`; two pages sharing one content stream through a single reference |
+| Fixtures | Hand-written PDFs in the exact tree shape the writer emits (no catalog stamp: the reader never reads it, and its `SourceSha256` and `ParserVersion` are the writer's to fill, so S2 checks the stamp on the writer's own output), so the reader is tested independently of the writer and a writer regression cannot hide a reader one: `engine-tagged-blocks` (the attribute under `/A`), a `/ClassMap`-only twin (`/C` on every element, the class on the root), a mixed twin (`/A` holding a foreign owner such as `/O /Layout`, `/C` carrying the engine class), and a page whose block has one line inside `/Span BMC … EMC` and one inside an optional-content sequence given by name; and a widget cited by `/OBJR` under an author's tree and under the engine's, so the locator an `/OBJR` mints is read in both classes. For the writer's refusals: an untagged page with `/P /MC0 BDC` whose `/MC0` carries `/MCID`; two pages sharing one content stream through a single reference |
 
 ## 7. What is measured before the row closes
 
@@ -475,6 +475,14 @@ A consumer that reads `/A` is this engine, and §3.7 proves that path on every w
   0.55.0 and 0.58.0 — a MINOR whose wire change is named in the release note and refused by the
   parser, not a shape bump — and the release note says this as 0.58.0's said it for
   `not_axis_aligned`.
+- **The extract artifact follows the same rule.** `TaggedTableRecord.derivation` — the class of
+  §4.1 on the tagged-table record of `ethos.parser.extract.v0`, which `represent.rs` reads to fill
+  the representation's `TableRecord` — is required with no default, and `EXTRACT_SCHEMA_VERSION`
+  stays at 0.4.0 on the precedent of 0.55.0's `TextRun.block`, the release note naming it. The
+  record denies unknown fields from this slice on, so this build refuses a 0.58.0 extract that
+  carries a tagged table (`missing field derivation`) and later shapes refuse each other
+  symmetrically; a 0.58.0 build, whose record did not deny unknown fields, ignores the key. The
+  artifact is a draft library surface with no stored fixtures.
 - **MINOR**, by [`RELEASING.md`](RELEASING.md) §4: a reader changes, a wire field is added, every
   tagged artifact's bytes move. It lands in the version after 0.58.0.
 

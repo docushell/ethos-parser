@@ -131,17 +131,22 @@ to the modal-leading guard would move them without any fixture saying why. The t
 and a gap never clears 1.6 times itself. That pair is the negative half of the wire tests in
 `crates/ethos-parser-pdf/tests/extraction.rs`, and this fixture is the positive half.
 
-### The engine-tagged family is the writer's shape, written by hand first
+### The engine-tagged family is the writer's tree shape, written by hand first
 
 `engine-tagged-blocks` is `leading-gap-two-blocks` — the same six lines, baselines and metrics
 font — carrying the structure tree the auto-tagging writer emits (`docs/23-AUTO-TAGGING-SCOPE.md`
 §3.3–§3.4): `/Document` over one `/Div` per block, every element carrying
-`/A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>`, each block's text object
-in one `/Div << /MCID n >> BDC … EMC`, a `/ParentTree`, `/StructParents` on the page, and no
-`/MarkInfo`. It was written by hand **before the writer exists**, on purpose: a reader tested
-against a file the writer produced could pass on a mistake the two share, and this file cannot
-have one. The reader must bind all six runs `pdf_tagged` under `Document/Div` with
-`derivation: computed`, runs 1–3 to mcid 0 and 4–6 to mcid 1, and declare
+`/A << /O /EthosParser /Derivation /Computed /Rule (gutter-columns-v3) >>`, each block's three `Tj`s
+in one `/Div << /MCID n >> BDC … EMC` opened and closed inside the page's single text object (§3.4:
+a text object shared between two blocks is split at the operators, inside it), a `/ParentTree`,
+`/StructParents` on the page, and no `/MarkInfo`. The content stream is the untagged page's with
+the `BDC`/`EMC` tokens inserted and nothing else changed — §3.5's rule for the writer, which the
+generator asserts. The catalog stamp of §3.3 (`/EthosParserTags`) is deliberately absent: the
+reader never consults it, and its `SourceSha256` and `ParserVersion` are the writer's to fill; S2
+checks the stamp on the writer's own output. It was written by hand **before the writer exists**,
+on purpose: a reader tested against a file the writer produced could pass on a mistake the two
+share, and this file cannot have one. The reader must bind all six runs `pdf_tagged` under
+`Document/Div` with `derivation: computed`, runs 1–3 to mcid 0 and 4–6 to mcid 1, and declare
 `structure-tree-engine-written` rather than `untagged-structure-tree-absent`.
 
 The three siblings hold the same page under the same tree and move only where the attribute sits,
@@ -159,6 +164,17 @@ exactly as any named list is declared today. The failure modes — the owner wit
 `/Derivation`, the owner renamed, the attribute behind a reference, a `/MarkInfo` added — are
 made in the tests by editing `-blocks` through `lopdf`, so each is one edit away from the file
 that reads correctly (`crates/ethos-parser-pdf/tests/tagging_read.rs`).
+
+The pair `tagged-widget-objr` / `engine-tagged-widget-objr` holds the one binding the family above
+cannot: a locator minted for an **object** the tree cites by `/OBJR` rather than for a
+marked-content id. Both are the `form-field-value` page — one label, one widget, nothing marked —
+under `/Document` → `/Form` whose `/K` is `<< /Type /OBJR /Obj 10 0 R /Pg 3 0 R >>`, with
+`/StructParent 0` on the widget, `/ParentTree << /Nums [0 8 0 R] >>` on the root, and no
+`/MarkInfo`. The first carries no attribute and is an author's tree; the second carries the
+engine's attribute on both elements, a shape the writer never produces (it tags blocks, not
+widgets) and nothing forbids. The form-field node's locator must read `derivation: extracted` on
+the first and `computed` on the second: only the `computed` case proves the `/OBJR` arm carries
+the citing element's class rather than a constant.
 
 **Object 6 is the tree, so the descriptor cannot take its usual number.** `build_pdf` refuses a
 fixture that wants both, and the list fixture went without metrics for that reason; this family

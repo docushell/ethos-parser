@@ -40,8 +40,9 @@
 //! §3.3). The walk reads, on every element, the attribute objects under `/A` — a dictionary, an
 //! array, an array interleaved with revision numbers, any of them behind an indirect reference —
 //! and the ones reached through `/C` and the root's `/ClassMap`, and asks one question of the
-//! union: is one of them owned by [`STRUCT_ATTRIBUTE_OWNER`]? `/A` decides; `/C` decides only
-//! when `/A` carries no such object; a class name absent from `/ClassMap` contributes nothing.
+//! union: is one of them owned by [`STRUCT_ATTRIBUTE_OWNER`]? Every owned object in the union is
+//! checked; `/A` decides the answer, and `/C` decides only when `/A` carries no owned object; a
+//! class name absent from `/ClassMap` contributes nothing.
 //! An element that carries the owner is engine-written: every content item its own `/K` cites
 //! binds as [`DerivationClass::Computed`], and `extract` declares
 //! `structure-tree-engine-written`. Every other binding is `Extracted`, as every binding has been
@@ -94,8 +95,9 @@ use lopdf::{Dictionary, Object, ObjectId};
 /// decision #23 means by *engine-local*, said in the file. The four `engine-tagged-*` fixtures
 /// hand-write it as `/EthosParser`, so this spelling and theirs have to agree, and a test pins it.
 ///
-/// Crate-public for now: S1 reads it and nothing outside this crate needs the string. S2, the
-/// writer, decides the public surface.
+/// Crate-private through S1: the reader needs the string and nothing outside this crate does.
+/// `docs/24-AUTO-TAGGING-MILESTONES.md` S2 records that the writer decides whether it is
+/// re-exported from `lib.rs`.
 pub(crate) const STRUCT_ATTRIBUTE_OWNER: &str = "EthosParser";
 
 /// The `/Derivation` value this engine writes under its owner, and the only one it accepts there.
@@ -444,11 +446,19 @@ impl Walker<'_> {
                         &format!("object {} {} R does not resolve: {e}", id.0, id.1),
                     )
                 })?;
-                let r = self.walk(obj, role_path, page, depth + 1, derivation);
+                // A resolved dictionary is dispatched with the id it was reached through, so a
+                // refusal about the element can name the object; anything else takes the
+                // general arm.
+                let r = match obj {
+                    Object::Dictionary(d) => {
+                        self.walk_dict(d, role_path, page, depth + 1, derivation, Some(*id))
+                    }
+                    other => self.walk(other, role_path, page, depth + 1, derivation),
+                };
                 self.on_path.remove(id);
                 r
             }
-            Object::Dictionary(d) => self.walk_dict(d, role_path, page, depth, derivation),
+            Object::Dictionary(d) => self.walk_dict(d, role_path, page, depth, derivation, None),
             // A `/K` of any other shape says nothing this reader can act on. Skipped rather than
             // refused: it is not a content item, so nothing binds and nothing is lost.
             _ => Ok(()),
@@ -458,7 +468,9 @@ impl Walker<'_> {
     /// A dictionary under `/K`: a marked-content reference, an object reference, or an element.
     ///
     /// `derivation` is the enclosing element's class, which an `/MCR` or `/OBJR` found here binds
-    /// with; an element reads its own from its attributes before walking its kids.
+    /// with; an element reads its own from its attributes before walking its kids. `origin` is
+    /// the object id the dictionary was reached through, when it was one, so a refusal about an
+    /// element can name the object rather than only its role.
     fn walk_dict(
         &mut self,
         d: &Dictionary,
@@ -466,6 +478,7 @@ impl Walker<'_> {
         page: Option<ObjectId>,
         depth: usize,
         derivation: DerivationClass,
+        origin: Option<ObjectId>,
     ) -> Result<(), EngineError> {
         match d.get(b"Type").ok().and_then(as_name) {
             // `/MCR` — a marked-content reference. Its own `/Pg` wins over the inherited one.
@@ -517,11 +530,22 @@ impl Walker<'_> {
         };
         self.tree.elements += 1;
 
+        let element_id = d
+            .get(b"ID")
+            .ok()
+            .and_then(as_text)
+            .filter(|s| !s.is_empty());
+
         // Auto-tagging S1. Whose element this is, read before its kids so every content item its
         // own `/K` cites binds with the class of the innermost element that cites it — this one —
         // and never with an ancestor's. Refuses the document on an owned object in a shape the
-        // writer does not emit, which is why it can fail.
-        let derivation = match self.attribution(d, &raw_role)? {
+        // writer does not emit, which is why it can fail, and the refusal names this element.
+        let label = ElementLabel {
+            origin,
+            id: element_id.as_deref(),
+            role: &raw_role,
+        };
+        let derivation = match self.attribution(d, label)? {
             Some(rules) => {
                 let written = self
                     .tree
@@ -538,11 +562,6 @@ impl Walker<'_> {
         // names its own. Implemented as inheritance rather than as "the page we happen to be on",
         // because guessing would bind text to a page the document never named.
         let pg = page_of(d).or(page);
-        let element_id = d
-            .get(b"ID")
-            .ok()
-            .and_then(as_text)
-            .filter(|s| !s.is_empty());
 
         let standard = self.standard_role(&raw_role);
         role_path.push(raw_role);
@@ -604,29 +623,28 @@ impl Walker<'_> {
     ///
     /// `Ok(None)` is the author's: no object under `/A`, and none reached through `/C` and the
     /// root's `/ClassMap`, is owned by [`STRUCT_ATTRIBUTE_OWNER`]. `Ok(Some(rules))` is this
-    /// engine's, with the `/Rule` names the owned objects carry. `/A` decides; `/C` decides only
-    /// when `/A` carries no owned object; a class name absent from `/ClassMap` contributes nothing.
+    /// engine's, with the `/Rule` names the owned objects carry. Every owned object in the union
+    /// is checked; `/A` decides the answer and the `/Rule` set, `/C` decides only when `/A`
+    /// carries no owned object, and a class name absent from `/ClassMap` contributes nothing.
     ///
     /// # Errors
     ///
-    /// [`EngineError::Malformed`] when an owned object is in a shape the writer does not emit:
-    /// `/Derivation /Computed` is required under the owner, and an object with no `/Derivation`
-    /// or any other value there is refused rather than read as the author's or skipped. `/Rule` is
-    /// read as text when it is a string or a name and otherwise contributes no name; it is a label
-    /// for the declaration, not the shape the refusal guards.
+    /// [`EngineError::Malformed`] when an owned object anywhere in the union is in a shape the
+    /// writer does not emit: `/Derivation /Computed` is required under the owner, and an object
+    /// with no `/Derivation` or any other value there is refused rather than read as the author's
+    /// or skipped — a malformed class reached through `/ClassMap` refuses even beside a
+    /// well-formed `/A`. `/Rule` is read as text when it is a string or a name and otherwise
+    /// contributes no name; it is a label for the declaration, not the shape the refusal guards.
     fn attribution(
         &self,
         d: &Dictionary,
-        role: &str,
+        label: ElementLabel<'_>,
     ) -> Result<Option<BTreeSet<String>>, EngineError> {
         let under_a: Vec<&Dictionary> = d
             .get(b"A")
             .ok()
             .map(|a| attribute_objects(self.doc, a))
             .unwrap_or_default();
-        if let Some(rules) = owned_rules(&under_a, role)? {
-            return Ok(Some(rules));
-        }
 
         let mut through_c: Vec<&Dictionary> = Vec::new();
         let mut add_class = |name: &[u8]| {
@@ -647,7 +665,14 @@ impl Walker<'_> {
                 _ => {}
             }
         }
-        owned_rules(&through_c, role)
+
+        // Both lists are checked before either decides: §4.1's one predicate applies over the
+        // union, so a malformed owned object reached only through `/ClassMap` refuses the
+        // document beside a well-formed `/A`. Then `/A` decides the answer and the `/Rule` set,
+        // and `/C` decides only when `/A` carries no owned object.
+        let a = owned_rules(&under_a, label)?;
+        let c = owned_rules(&through_c, label)?;
+        Ok(a.or(c))
     }
 
     /// Record a `/TD` or `/TH` against the innermost open table.
@@ -834,6 +859,33 @@ impl Walker<'_> {
     }
 }
 
+/// Which element a refusal is about, for its message.
+///
+/// The object id when the element was reached by reference — as every element the writer emits
+/// is — spelled `N M R` as the cycle and unresolved-reference refusals in [`Walker::walk`] spell
+/// theirs; else the element's `/ID`; else its role alone. The role rides along in every case as
+/// a label, because in the writer's shape every element below the root is a `/Div` and the role
+/// on its own names nothing.
+#[derive(Clone, Copy)]
+struct ElementLabel<'a> {
+    origin: Option<ObjectId>,
+    id: Option<&'a str>,
+    role: &'a str,
+}
+
+impl std::fmt::Display for ElementLabel<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let role = self.role;
+        match (self.origin, self.id) {
+            (Some((number, generation)), _) => {
+                write!(f, "structure element {number} {generation} R (`/{role}`)")
+            }
+            (None, Some(id)) => write!(f, "structure element with /ID ({id}) (`/{role}`)"),
+            (None, None) => write!(f, "structure element `/{role}`"),
+        }
+    }
+}
+
 /// The `/Rule` names of the objects in `objects` that this engine owns, or `None` when it owns none.
 ///
 /// The one predicate of `docs/23-AUTO-TAGGING-SCOPE.md` §4.1, applied to one attribute list. Every
@@ -842,11 +894,12 @@ impl Walker<'_> {
 ///
 /// # Errors
 ///
-/// [`EngineError::Malformed`] naming the element's role when an owned object's `/Derivation` is
-/// absent, is not a name, or names anything but `/Computed`.
+/// [`EngineError::Malformed`] naming the element — its object id when it was reached by
+/// reference, else its `/ID`, else its role — when an owned object's `/Derivation` is absent, is
+/// not a name, or names anything but `/Computed`.
 fn owned_rules(
     objects: &[&Dictionary],
-    role: &str,
+    label: ElementLabel<'_>,
 ) -> Result<Option<BTreeSet<String>>, EngineError> {
     let mut found: Option<BTreeSet<String>> = None;
     for object in objects {
@@ -863,7 +916,7 @@ fn owned_rules(
             return Err(EngineError::Malformed {
                 what: "structure element".into(),
                 detail: format!(
-                    "a `/{role}` element carries an attribute object owned by \
+                    "{label} carries an attribute object owned by \
                      `/{STRUCT_ATTRIBUTE_OWNER}` whose `/Derivation` is {found_instead}, and the \
                      only shape this engine writes under its own owner is `/Derivation \
                      /{OWNER_DERIVATION_COMPUTED}`. Refused rather than read as the author's or \
