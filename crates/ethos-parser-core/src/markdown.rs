@@ -873,11 +873,33 @@ pub(crate) struct GroupKey {
     mcid: i64,
 }
 
+/// The [`GroupKey`] of a run, or `None` where no producer declared one.
+///
+/// **A sequence this engine wrote is no declaration** (auto-tagging S3,
+/// `docs/23-AUTO-TAGGING-SCOPE.md` §4.3). The declared join's licence is the producer's own
+/// statement that these runs are one thing; on an engine-tagged document the producer of the
+/// sequence is this engine, and the licence does not transfer. A `PdfTagged` locator whose
+/// `derivation` is `Computed` — the writer's `/Div` read back — therefore returns `None`, and
+/// the undeclared path applies exactly as it does on the untagged original. Reading the written
+/// sequence as a declaration would reach, through the file, the weld across a baseline that
+/// v2.2-S5 refused to make on geometry alone, and the anchor map — node ids and no derivation —
+/// could not say so. Author structure is untouched: an `Extracted` locator keys exactly as it
+/// has since v2.2-S1.
 pub(crate) fn group_key(node: &crate::Node) -> Option<GroupKey> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
     };
     let (kind, mcid) = match node.structural_locator.as_ref()? {
+        // No projection rule id moves for this arm: no input that existed before it projects
+        // differently — every locator a reader minted before auto-tagging is `Extracted` — and
+        // the new input class projects as its untagged twin, block for block and byte for byte
+        // apart from the assurance block (scope §4.3, pinned by
+        // `crates/ethos-parser-cli/tests/tag_roundtrip.rs`).
+        crate::StructuralLocator::PdfTagged(t)
+            if t.derivation == crate::DerivationClass::Computed =>
+        {
+            return None;
+        }
         crate::StructuralLocator::PdfTagged(t) => (0u8, t.mcid),
         crate::StructuralLocator::PdfMcid(m) => (1u8, *m),
         crate::StructuralLocator::PdfArtifact(a) => (2u8, a.mcid?),
@@ -3736,14 +3758,26 @@ pub(crate) mod tests {
         }
     }
 
+    /// An author's declaration: a `/P` element citing `mcid`, bound `Extracted`.
     pub(crate) fn tagged_at(mcid: i64) -> Option<StructuralLocator> {
+        tagged_as(mcid, DerivationClass::Extracted)
+    }
+
+    /// A tagged locator of either class (auto-tagging S3). `Computed` is the writer's `/Div`
+    /// read back; the role path is the one the writer emits, so the builder is the shape the
+    /// projections meet rather than an author's path with a class swapped in.
+    pub(crate) fn tagged_as(mcid: i64, derivation: DerivationClass) -> Option<StructuralLocator> {
+        let role = match derivation {
+            DerivationClass::Computed => "Div",
+            _ => "P",
+        };
         Some(StructuralLocator::PdfTagged(
             PdfTaggedLocator {
                 mcid,
-                role_path: vec!["Document".into(), "P".into()],
+                role_path: vec!["Document".into(), role.into()],
                 standard_role_path: None,
                 element_id: None,
-                derivation: DerivationClass::Extracted,
+                derivation,
             }
             .into(),
         ))
@@ -4210,6 +4244,118 @@ pub(crate) mod tests {
                 a.anchor_map.segments
             );
         }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Auto-tagging S3 — a sequence this engine wrote is no declaration
+    // -----------------------------------------------------------------------------------
+
+    /// **Two runs of one computed sequence on different baselines do NOT join; the same runs
+    /// under an author's declaration do** (scope §4.3).
+    ///
+    /// Under `Extracted` the arm is v2.2-S1's: the producer said the two runs were one thing,
+    /// and a line break inside one sequence renders as a space. Under `Computed` the producer is
+    /// this engine, `group_key` answers `None`, and the undeclared path refuses to cross a
+    /// baseline exactly as it does on the untagged original — the pair is the one
+    /// `runs_with_no_declaration_join_only_along_one_baseline` keeps apart. Both projections and
+    /// the grounding's grouping go through the one function, so the block rule is asserted on
+    /// the Markdown and on `geometric_blocks` here.
+    #[test]
+    fn a_computed_sequence_never_joins_across_a_baseline() {
+        let apart = |derivation: DerivationClass| -> Vec<LineSpec<'static>> {
+            vec![
+                (
+                    "first",
+                    tagged_as(4, derivation),
+                    7200,
+                    7200,
+                    Some(1000),
+                    None,
+                ),
+                (
+                    "second",
+                    tagged_as(4, derivation),
+                    8200,
+                    9600,
+                    Some(1000),
+                    None,
+                ),
+            ]
+        };
+        assert_eq!(
+            blocks_of(&project_lines(&apart(DerivationClass::Extracted))),
+            vec!["first second"],
+            "an author's sequence joins across its own line break"
+        );
+        assert_eq!(
+            blocks_of(&project_lines(&apart(DerivationClass::Computed))),
+            vec!["first", "second"],
+            "this engine's sequence is no licence to weld across a baseline"
+        );
+        assert_eq!(
+            blocks_of_nodes(&apart(DerivationClass::Extracted)),
+            vec!["firstsecond"]
+        );
+        assert_eq!(
+            blocks_of_nodes(&apart(DerivationClass::Computed)),
+            vec!["first", "second"]
+        );
+    }
+
+    /// **A computed sequence takes the undeclared path, not a third one.** Ink-contiguous along
+    /// one baseline the two runs still join; the join is declared under the geometric code and
+    /// never `MCID_RUN_JOINS`; the seam stays addressable — two `source` segments, never one —
+    /// because the contiguity is this engine's and not the document's; and the artifact is the
+    /// untagged pair's, field for field. That equality is what lets an engine-tagged document
+    /// project as its untagged twin.
+    #[test]
+    fn a_computed_sequence_joins_only_as_an_undeclared_run_would() {
+        let count = |a: &MarkdownArtifact, code: &str| {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map(|e| e.count)
+                .unwrap_or(0)
+        };
+        let computed = project_lines(&[
+            (
+                "Yarr",
+                tagged_as(3, DerivationClass::Computed),
+                7200,
+                7200,
+                Some(1000),
+                None,
+            ),
+            (
+                "ow",
+                tagged_as(3, DerivationClass::Computed),
+                8200,
+                7200,
+                Some(400),
+                None,
+            ),
+        ]);
+        let untagged = project_lines(&[
+            ("Yarr", None, 7200, 7200, Some(1000), None),
+            ("ow", None, 8200, 7200, Some(400), None),
+        ]);
+        assert_eq!(blocks_of(&computed), vec!["Yarrow"]);
+        assert_eq!(computed.markdown, untagged.markdown);
+        assert_eq!(computed.anchor_map, untagged.anchor_map);
+        assert_eq!(computed.coverage, untagged.coverage);
+        assert_eq!(count(&computed, BASELINE_RUN_JOINS_ABUTTED), 1);
+        assert_eq!(count(&computed, MCID_RUN_JOINS), 0);
+        assert!(
+            computed
+                .anchor_map
+                .segments
+                .iter()
+                .filter(|s| s.kind == SegmentKind::Source)
+                .all(|s| s.node_ids.len() == 1),
+            "the seam between two runs this engine joined stays addressable: {:?}",
+            computed.anchor_map.segments
+        );
     }
 
     // -----------------------------------------------------------------------------------
