@@ -73,6 +73,13 @@ a 7-byte text layer — `classify` reports `sparse-text` and `embedded-images`, 
 two text runs, `and` and `.org` — so the 2 374 characters of its ground truth are in the picture
 and not in the file's text. Best `01030000000024`, a page of body text with no image and no table.
 
+**Corrected 2026-09-18, on a closer look at that document** ([`reading-order-causes.md`](reading-order-causes.md)):
+its text is **vector paths**, not a picture over a text layer. The page carries 130 657 path
+operators against 7 bytes of text, and its one image covers 0.6% of the page rather than the whole
+of it. The consequence for the number is the same — the characters are not in the file's text layer
+— but the cause is drawn outlines, which no OCR lane would reach either, and the sentence above
+named the wrong mechanism.
+
 **TEDS 0.0000..0.9802, median 0.0000, 28 of 42 at exactly zero.** Best `01030000000053`. The worst
 is a tie of 28, all named. Every document whose ground truth holds a table:
 
@@ -110,6 +117,23 @@ each of those differs from its ground truth was not examined here.
 | TEDS non-zero / at zero | 5 / 37 | **14 / 28** | the same. The 0.46.0 record has no per-document list, so which of its five near-perfect documents are among today's four above 0.9 cannot be said from the record |
 | MHS | 0.0000 | 0.0000 | L29 stood at 0.58.0, and 0 of 200 carry a structure tree; North Star decision #29 reversed L29 on 2026-09-17 |
 | speed | ~26 ms, quiet | 36 ms, loaded | not compared — the 0.46.0 note on timing applies |
+
+### Where the two big gaps actually are, measured 2026-09-18
+
+Two documents beside this one, both re-derived from this corpus rather than reasoned from the
+tables above:
+
+- [`tables-why-zero.md`](tables-why-zero.md) — why 28 of the 42 table documents score TEDS 0, one
+  cause per document: 12 a drawn grid built and refused (eleven of them one untraced *column*
+  boundary), 11 an inferred grid past the 4 096-cell ceiling because the rule projects the whole
+  page, 3 an inferred grid under the 1 200-centipoint gutter floor, and 2 whose table is a picture.
+  **On 25 of the 28, ≥90% of the truth's cell text is in the prediction**: a grid was lost, not
+  text. **Fabrication is 0** on two independent tests, including that none of the 400 emitted cells
+  carries text its own `node_ids` do not account for.
+- [`reading-order-causes.md`](reading-order-causes.md) — NID's 0.1303 shortfall split into
+  population 0.0626, ordering 0.0465 and whitespace 0.0212, with the ordering cost traced to one
+  cause: where the first vertical cut finds no gutter the page keeps content-stream order, and the
+  **178 documents carrying no `region` hold 90.1% of it**.
 
 ### The limitation census at 0.58.0
 
