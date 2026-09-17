@@ -125,7 +125,7 @@ the 0.46.0 table above:
 | --- | ---: | ---: | --- |
 | `untagged-structure-tree-absent` | 200 | 200 | why MHS is 0 |
 | `unruled-table-candidate-refused` | 199 | 199 | |
-| `geometry-absent-not-groundable` | 183 | 183 | **157** documents carry a text node with no ink box; on the other 26 the detail reads `0 of N text node(s)`, and the absent geometry is an image's or an annotation's (`not_applicable_to_kind`), which `non-text-nodes-not-projected` already declares |
+| `geometry-absent-not-groundable` | 183 | 183 | **157** documents carry a text node with no ink box; on the other 26 the detail read `0 of N text node(s)` at 0.58.0, and the absent geometry is an image's or an annotation's (`not_applicable_to_kind`), which `non-text-nodes-not-projected` already declares. **Repaired 2026-09-18:** those 26 now carry a detail about the population they have, and only those 26 changed |
 | `non-text-nodes-not-projected` | 125 | 125 | |
 | `composite-font-codes-from-tounicode` | 50 | 50 | |
 | `form-xobjects-not-descended` | 46 | 46 | |
@@ -159,6 +159,12 @@ every text node has a box. The trigger is any absent geometry entry, an image's 
 included, while the detail counts text nodes and reads `0 of N` — a limitation declaring an
 omission of zero nodes. Not fixed here. The census's 183 is the code's count; 157 is the count of
 documents the limitation is about.
+
+**Fixed 2026-09-18**, after this run: where no text node is missing a box, the declaration states
+the by-kind population instead — "N node(s) … carry no ink box because their KIND has none" — and
+the text sentence with its three zero reasons is gone. Measured over 311 documents: 34 extract
+artifacts moved, the 26 here and 8 engine fixtures carrying an annotation, a form field or an
+image, each about 1 064 bytes shorter, and nothing else moved.
 
 ## What it measured at 0.46.0
 

@@ -160,7 +160,6 @@ boxes, which doc 22 refused.
 | DOCX text inside `mc:AlternateContent` may be emitted twice, once from `mc:Choice` and once from `mc:Fallback` | A review lead only — confirm with a fixture |
 | Bidi / right-to-left text is untested | Add a fixture before deciding anything |
 | A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
-| `geometry-absent-not-groundable` fires with a `0 of N text node(s)` detail on 26 of the 200 bench documents, where the absent geometry is an image's or an annotation's, which `non-text-nodes-not-projected` already declares | `measurements/opendataloader-bench/README.md` (0.58.0 census) |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |
 | `docs/measurements/block-subdivision/structelem.py` drops every `/P` whose `/K` holds more than a bare integer (a paragraph with a link), so `probe3b.py`'s population is 314 of 407 paragraphs | `measurements/auto-tagging/README.md` §1 |
 

@@ -590,6 +590,21 @@ fn geometry_absent_limitation(
     // docs/22 §9 items 1 and 2 add a fifth, and the same rule holds: each reason joins the count
     // and the slice list only on a document that has it. The slice label is the release that
     // ships it.
+    // **A document whose only non-groundable nodes are the wrong kind gets the sentence about
+    // them, and not one about text nodes** (`docs/OPEN-WORK.md` §6, 2026-09-18). The opening
+    // sentence below counts text runs, and where none of them is missing a box it read "0 of N
+    // text node(s) ... carry no ink box" above three reasons every one of which was zero — a
+    // declaration counting a population it did not have, on 26 of the 200 opendataloader-bench
+    // documents, where the absence belongs to an image or an annotation. The declaration is still
+    // required, because `check_structure` demands one whenever any node is non-groundable; what
+    // changes is what it says. Every other document keeps its sentence byte for byte.
+    if unmeasurable + no_advance + no_ink + off_page + not_axis_aligned == 0 {
+        return Limitation::document(
+            codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+            kind_only_detail(kind_absent),
+        );
+    }
+
     let reasons = 3 + usize::from(off_page > 0) + usize::from(not_axis_aligned > 0);
     let split_count = ["Three", "Four", "Five"][reasons - 3];
     let split_slices = format!(
@@ -684,6 +699,26 @@ fn not_axis_aligned_clause(not_axis_aligned: u32) -> String {
     )
 }
 
+/// The whole detail for a document whose only non-groundable nodes are the wrong kind.
+///
+/// Its own text rather than the text-node sentence plus [`kind_absent_clause`], because that
+/// sentence and its three reasons are about text runs and there are none missing a box here: the
+/// gap is an image's or an annotation's, and saying "0 of N text node(s)" over three zeros is a
+/// limitation claiming a population it does not have.
+fn kind_only_detail(kind_absent: u32) -> String {
+    format!(
+        "{kind_absent} node(s) in this representation carry no ink box because their KIND has \
+         none — an annotation, a form field or an image, whose rectangle is a number the author \
+         wrote into a dictionary rather than ink this engine measured — so they are OMITTED from \
+         any `ethos.grounding.v1` projection of it, which requires a bbox meaning MEASURED INK on \
+         every element and span. **Every text run here carries one**, so nothing was read and \
+         left unmeasurable: their absence is correct rather than a gap, and they are declared \
+         because `check_structure` requires this declaration whenever any node is non-groundable. \
+         The nodes are still here, with their text, their object ids and their rectangles; \
+         `non-text-nodes-not-projected` is the count of what the target schema cannot express."
+    )
+}
+
 /// The sentence for nodes whose kind has no ink box at all.
 ///
 /// Kept as its own clause rather than folded into the counts above, because it is a
@@ -755,8 +790,26 @@ mod tests {
         let limitation = geometry_absent_limitation(0, 0, 0, 0, 0, 0, 1, kind_absent);
         assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
         assert!(
-            limitation.detail.contains("their KIND has none"),
-            "the detail must say why these nodes have no box: {}",
+            limitation.detail.starts_with(
+                "1 node(s) in this representation carry no ink box \
+                                           because their KIND has none"
+            ),
+            "the detail must open on the population it has: {}",
+            limitation.detail
+        );
+        // **And it must not claim a population it does not have** (`docs/OPEN-WORK.md` §6,
+        // 2026-09-18). It read "0 of 1 text node(s) ... carry no ink box" above three reasons
+        // every one of which was zero, on 26 of the 200 opendataloader-bench documents.
+        assert!(
+            !limitation.detail.contains("text node(s)") && !limitation.detail.contains("reasons"),
+            "no sentence about text nodes belongs here: {}",
+            limitation.detail
+        );
+        assert!(
+            limitation
+                .detail
+                .contains("Every text run here carries one"),
+            "and it says so positively: {}",
             limitation.detail
         );
     }
