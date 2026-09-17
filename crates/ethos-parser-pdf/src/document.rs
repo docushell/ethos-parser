@@ -47,6 +47,15 @@ pub struct Document {
     /// declare it; a repaired open that produced an artifact indistinguishable from an
     /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
     xref_entries_padded: Option<u32>,
+    /// Whether the backend decrypted this document with the empty user password at load.
+    ///
+    /// `lopdf` authenticates the empty password itself, decrypts every object and removes
+    /// `/Encrypt` from the trailer before `open_bytes`'s encryption check runs, so a document
+    /// whose user password is empty — one carrying an owner password alone, say — reads exactly
+    /// as an unencrypted one would and the check has nothing left to refuse. Every artifact from
+    /// such an open declares it (`limitations::ENCRYPTED_EMPTY_USER_PASSWORD`), because a
+    /// consumer cannot otherwise tell that the bytes it binds to are ciphertext.
+    opened_encrypted: bool,
     /// Parsed fonts, keyed by `(font dictionary object id, resource name)`.
     ///
     /// Fonts are shared document-wide through inherited `/Resources`, and parsing one means
@@ -68,6 +77,7 @@ impl core::fmt::Debug for Document {
             .field("byte_len", &self.byte_len)
             .field("page_count", &self.pages.len())
             .field("xref_entries_padded", &self.xref_entries_padded)
+            .field("opened_encrypted", &self.opened_encrypted)
             .finish()
     }
 }
@@ -143,6 +153,7 @@ impl Document {
                 .expect("sha256 hex is always well formed"),
             byte_len: bytes.len(),
             pages,
+            opened_encrypted: inner.was_encrypted(),
             inner,
             xref_entries_padded,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
@@ -219,6 +230,11 @@ impl Document {
     /// How many cross-reference entries the bounded repair padded, or `None` if it did not run.
     pub fn xref_entries_padded(&self) -> Option<u32> {
         self.xref_entries_padded
+    }
+
+    /// Whether the backend decrypted this document with the empty user password at load.
+    pub fn opened_encrypted(&self) -> bool {
+        self.opened_encrypted
     }
 
     /// Digest of the exact source bytes this handle was built from.

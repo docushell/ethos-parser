@@ -57,6 +57,15 @@ pub const FONT_WIDTHS_ABSENT: &str = "font-widths-absent";
 /// `crate::xref` for the repair and `docs/01-CONTRACT.md` §12 for the decision.
 pub const XREF_ENTRY_PADDED: &str = "xref-entry-padded";
 
+/// This document's bytes are encrypted, and the empty user password opened them.
+///
+/// Declared on every artifact from such a document. Nothing is withheld and nothing is guessed —
+/// the backend authenticated with the empty password, decrypted every object and removed
+/// `/Encrypt` before this engine looked — but without this code a consumer cannot tell from the
+/// artifact that the bytes `source.sha256` names are ciphertext, where `docs/01-CONTRACT.md` §8
+/// gives an encrypted source its own signal. Decision #31, `docs/25-KNOBS-SCOPE.md` proposal 1.
+pub const ENCRYPTED_EMPTY_USER_PASSWORD: &str = "encrypted-empty-user-password";
+
 /// A font's encoding could not map every code, so the affected runs were dropped, not guessed.
 ///
 /// New at v0.1. The alternative every other reader takes is a substitution character, which puts
@@ -228,6 +237,22 @@ pub fn font_widths_absent(detail: &str) -> Limitation {
              for them, since a box with no width would have to be invented. The origin is \
              unaffected: it comes from the content stream. Detail: {detail}"
         ),
+    )
+}
+
+/// The document-scoped declaration for a document the empty user password opened.
+pub fn encrypted_empty_user_password() -> Limitation {
+    Limitation::document(
+        ENCRYPTED_EMPTY_USER_PASSWORD,
+        "This document's bytes are encrypted and its user password is empty, so the backend \
+         authenticated with that password, decrypted every object and removed `/Encrypt` before \
+         this engine read anything: no secret was needed and none was supplied. Nothing was \
+         withheld — the runs, boxes and locators are the decrypted document's own, and \
+         `source.sha256` binds to the ciphertext on disk, which is the file a reader holds. What \
+         this declares is that those bytes ARE ciphertext, which nothing else on the artifact \
+         says. An owner password, where the document carries one, states what a conforming reader \
+         may let a user do with the document; it is not a reading key, and this engine enforces \
+         no such permission.",
     )
 }
 
@@ -712,7 +737,7 @@ mod tests {
     use ethos_parser_core::LimitationScope;
 
     /// Every code this module emits, in one place, so a rename is a visible event.
-    const PDF_CODES: [&str; 10] = [
+    const PDF_CODES: [&str; 11] = [
         CLASSIFY_SAMPLE_BOUND,
         BACKEND_XREF_STRICT_20_BYTE,
         PREDEFINED_CMAPS_NOT_VENDORED,
@@ -724,6 +749,7 @@ mod tests {
         // two it omitted are wire spellings a caller matches on exactly like the other five.
         XREF_ENTRY_PADDED,
         BROKEN_FONT_ENCODING,
+        ENCRYPTED_EMPTY_USER_PASSWORD,
         // Derived rather than declared: `undetected_reason_code` builds these from a reason name,
         // and `the_undetected_reason_codes_are_pinned` below pins both spellings.
         "garbled-reason-not-detected",
@@ -747,9 +773,9 @@ mod tests {
             .collect();
         assert_eq!(
             declared.len(),
-            8,
-            "this module declares {} `pub const` code(s): {declared:?}. Eight is the number at \
-             v2.2-S6, which added `symbolic-font-builtin-encoding-assumed`; a new one belongs in \
+            9,
+            "this module declares {} `pub const` code(s): {declared:?}. Nine is the number at \
+             decision #31, which added `encrypted-empty-user-password`; a new one belongs in \
              `PDF_CODES` too.",
             declared.len()
         );

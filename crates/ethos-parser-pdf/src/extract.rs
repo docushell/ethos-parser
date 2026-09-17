@@ -1088,6 +1088,10 @@ pub(crate) fn extract_with_positions(
     if let Some(padded) = doc.xref_entries_padded() {
         limitations.push(lim::xref_entry_padded(padded));
     }
+    // Neither is an open the empty user password made possible (decision #31).
+    if doc.opened_encrypted() {
+        limitations.push(lim::encrypted_empty_user_password());
+    }
     let mut page_states: Vec<PageStateEntry> = Vec::with_capacity(doc.pages().len());
     // Accumulated across pages: how much text is missing from this artifact because a font's
     // encoding could not map it, and the first failure's reason for the declaration's detail.

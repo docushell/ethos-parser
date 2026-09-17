@@ -111,7 +111,7 @@ boxes, which doc 22 refused.
 | 6.6 Word-level boxes | refused | `22-WORD-BOXES-SCOPE.md` §7 names what reopens it |
 | 6.7 `locate(representation, quote)` in CLI, MCP and SDK | **ready** | Decision #30 (2026-09-17) bounds it: a representation and a string in, locations out; no verdict, boolean or claim; a match rule of the engine's own. A scope first, then the CLI subcommand, MCP tool and SDK functions in one slice |
 | 6.8 crates.io, five crates in order | owner | Publishing is the owner's. Last in the ordering. **Irreversible** |
-| 6.9a Declare the empty-user-password open | **ready** | Decision #31 (proposal 1 of [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md)): a document `lopdf` opens with the empty user password says so on its artifact. The defect it closes is in §6 |
+| 6.9a Declare the empty-user-password open | **done 2026-09-17** | Decision #31 (proposal 1 of [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md)): `encrypted-empty-user-password`, document-scoped, on every artifact from such an open, from `extract` and `classify` alike; contract §8 carries the amendment. Of the 311 PDFs in every corpus here, 1 is encrypted and needs a secret, and 0 open on the empty password |
 | 6.9b Password knob | deferred (#31) | Reopens on a corpus this repository can pin whose documents need a user password the caller holds; then never on argv or over MCP (docs/25 §3.3) |
 | 6.9c Page sets | deferred (#31) | Reopens on a named caller, as a third `PageBudget` variant with no adapter line (docs/25 §4.3) |
 
@@ -162,7 +162,6 @@ boxes, which doc 22 refused.
 | A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
 | `geometry-absent-not-groundable` fires with a `0 of N text node(s)` detail on 26 of the 200 bench documents, where the absent geometry is an image's or an annotation's, which `non-text-nodes-not-projected` already declares | `measurements/opendataloader-bench/README.md` (0.58.0 census) |
 | `classify` exits 0 on `tagged-cycle` and on a page-error document that `extract` refuses: it reads neither the structure tree nor the content streams | `25-KNOBS-SCOPE.md` proposal 5 |
-| An owner-password-only encrypted PDF is read today with no limitation mentioning encryption: `lopdf` opens it with the empty user password and removes `/Encrypt` before the engine looks | `25-KNOBS-SCOPE.md` §3 |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |
 | `docs/measurements/block-subdivision/structelem.py` drops every `/P` whose `/K` holds more than a bare integer (a paragraph with a link), so `probe3b.py`'s population is 314 of 407 paragraphs | `measurements/auto-tagging/README.md` §1 |
 

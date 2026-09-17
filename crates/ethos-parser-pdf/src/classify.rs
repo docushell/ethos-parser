@@ -259,6 +259,10 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
     if let Some(padded) = doc.xref_entries_padded() {
         limitations.push(lim::xref_entry_padded(padded));
     }
+    // Neither is an open the empty user password made possible (decision #31).
+    if doc.opened_encrypted() {
+        limitations.push(lim::encrypted_empty_user_password());
+    }
     if budget_binds {
         // Declared exactly when the page states point at it, so the cross-check that every gap
         // names a declared limitation cannot pass for the wrong reason.

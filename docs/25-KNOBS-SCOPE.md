@@ -12,6 +12,13 @@ one. Every recommendation holds whichever way D4 goes.
 **Recorded 2026-09-17.** The owner took D4, so v2.3 is a roadmap version (North Star row #28), and
 accepted §8's proposals as recommended (row #31). The body stands as written.
 
+**Built the same day: proposal 1.** A document the empty user password opens now declares
+`encrypted-empty-user-password` on every artifact, document-scoped
+([`limitations.rs`](../crates/ethos-parser-pdf/src/limitations.rs), and contract §8 carries the
+amendment). §3.2's row saying *no limitation mentions encryption* is superseded for that case; the
+knob itself stays deferred. Over the 311 PDFs of every corpus on the measuring machine, 1 is
+encrypted and needs a secret, and **0** open on the empty password, so no artifact here changes.
+
 **Measured 2026-09-16 against `main` at `b4b4aa9` (0.58.0, unreleased)** with the verified 0.58.0
 `aarch64-apple-darwin` binary and qpdf 12.3.2, over 297 PDFs in five corpora, 2,370 pages. The
 instruments, the corpus list, the binary's digest and what was not measured are in

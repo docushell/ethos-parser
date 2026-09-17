@@ -4446,3 +4446,95 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
         ["Measured"]
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// A document the empty user password opened says so (decision #31)
+// -------------------------------------------------------------------------------------------
+
+/// `measured-ink-box` encrypted RC4-40 (`/V 1 /R 2`) with an owner password and the given user
+/// password. With an empty user password `lopdf` authenticates, decrypts and strips `/Encrypt`
+/// at load, which is the shape the declaration is for; with a secret it stays locked.
+fn encrypted_fixture(user_password: &str) -> Vec<u8> {
+    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    // The security handler's key derivation reads the first `/ID` string (PDF 32000-1 §7.6.3.3,
+    // Algorithm 2), and this fixture's trailer carries none. A fixed one keeps these bytes the
+    // same on every run.
+    let id = lopdf::Object::String(
+        b"0123456789abcdef".to_vec(),
+        lopdf::StringFormat::Hexadecimal,
+    );
+    doc.trailer.set("ID", vec![id.clone(), id]);
+    let state = lopdf::EncryptionState::try_from(lopdf::EncryptionVersion::V1 {
+        document: &doc,
+        owner_password: "owner",
+        user_password,
+        permissions: lopdf::Permissions::default(),
+    })
+    .expect("an RC4-40 encryption state");
+    doc.encrypt(&state)
+        .expect("encrypts every string and stream");
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+fn codes(a: &ExtractArtifact) -> Vec<String> {
+    a.assurance
+        .limitations
+        .iter()
+        .map(|l| l.code.clone())
+        .collect()
+}
+
+/// **An artifact from a document the empty user password opened declares it.** `lopdf`
+/// authenticates the empty password, decrypts every object and removes `/Encrypt` before the
+/// engine's encryption check runs, so such a document read exactly as a plaintext one and nothing
+/// on the artifact said its bytes were ciphertext (`docs/25-KNOBS-SCOPE.md` §3.2, proposal 1).
+/// Nothing is withheld, so it is a statement about the source rather than a gap.
+#[test]
+fn a_document_the_empty_user_password_opened_declares_it() {
+    let bytes = encrypted_fixture("");
+    let loaded = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+    assert!(
+        loaded.was_encrypted() && !loaded.is_encrypted(),
+        "the control: these bytes are ciphertext, and lopdf has already decrypted them"
+    );
+
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("the empty password opened it");
+    let a = ethos_parser_pdf::extract(&doc, &profile).expect("and it reads");
+    assert!(
+        codes(&a)
+            .contains(&ethos_parser_pdf::limitations::ENCRYPTED_EMPTY_USER_PASSWORD.to_string()),
+        "{:?}",
+        codes(&a)
+    );
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Measured"],
+        "and it reads what the plaintext fixture reads — nothing was withheld"
+    );
+
+    let c = ethos_parser_pdf::classify(&doc, &profile).expect("classify answers");
+    assert!(
+        c.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_pdf::limitations::ENCRYPTED_EMPTY_USER_PASSWORD),
+        "classify declares it too, as it declares a repaired open"
+    );
+
+    // The two controls: a document with a user password is still refused, and a plaintext
+    // document declares nothing.
+    let locked = Document::open_bytes(&encrypted_fixture("secret"), &profile)
+        .expect_err("a user password is still a refusal");
+    assert_eq!(locked.code(), "encrypted", "{locked}");
+    let plain = extract_ok(engine_fx("measured-ink-box"));
+    assert!(
+        !codes(&plain)
+            .contains(&ethos_parser_pdf::limitations::ENCRYPTED_EMPTY_USER_PASSWORD.to_string()),
+        "{:?}",
+        codes(&plain)
+    );
+}

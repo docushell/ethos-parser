@@ -310,7 +310,7 @@ The engine fails closed and says why. It never fails open, and it never fails si
 | **Missing capability for a requested operation** | An explicit capability-limited result. Never a stub, never a default, never a skip |
 | **A number that will not quantize** | Error. Never saturate, never clamp |
 | **Malformed cross-reference table or trailer** | Refuse, except the one bounded class in §8.1 |
-| **Encrypted or password-protected source** | A distinct exit code. Never the same signal as "this document is complex" |
+| **Encrypted or password-protected source** | A distinct exit code. Never the same signal as "this document is complex". **Amended 2026-09-17 (decision #31):** a document whose *user* password is empty — one carrying an owner password alone, say — is authenticated and decrypted by the backend before the engine's check runs, so there is nothing left to refuse and it reads as plaintext does. Every artifact from such an open carries `encrypted-empty-user-password`, document-scoped, because nothing else on the artifact says the bytes it binds to are ciphertext |
 
 The measured case for the operator rule: a surveyed parser omits the `"` show-text operator from its
 match. The text vanishes, surrounding runs merge with corrupt geometry, and the output is still
