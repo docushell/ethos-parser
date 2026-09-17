@@ -1,0 +1,855 @@
+{
+ "branch_readback": {
+  "absent_declared": 0,
+  "computed": 41208,
+  "document_div": 41208,
+  "documents": 129,
+  "engine_written_declared": 129,
+  "pdf_tagged": 41208,
+  "runs": 41209
+ },
+ "bytes_added": {
+  "abs_max": [
+   3821,
+   "bench/01030000000193"
+  ],
+  "abs_median": 716,
+  "abs_min": [
+   -125323,
+   "bench/01030000000141"
+  ],
+  "differing_across_runs": [],
+  "documents": 129,
+  "identical_across_runs": 129,
+  "rel_max": [
+   1.252991452991453,
+   "oracle/synthetic/simple-text"
+  ],
+  "rel_median": [
+   0.4429920116194626,
+   "engine/two-column-14-lines"
+  ],
+  "rel_min": [
+   -0.07826582765442955,
+   "bench/01030000000141"
+  ],
+  "shrank": 15,
+  "total_in": 9108805,
+  "total_out": 9076431
+ },
+ "corpora": [
+  "bench",
+  "engine",
+  "oracle"
+ ],
+ "documents": 293,
+ "documents_by_corpus": {
+  "bench": 200,
+  "engine": 58,
+  "oracle": 35
+ },
+ "gate": [
+  {
+   "artifact_bytes": 699411,
+   "derivation_bytes": 27450,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/irs-f1040sd-2025",
+   "pages": 2,
+   "pdf": "fixtures/gate/irs-f1040sd-2025.pdf",
+   "pdf_tagged_locators": 1098,
+   "release_artifact_bytes": 670536,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 1098,
+   "seconds": 0.0,
+   "share": 0.03924730952186912,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 865109,
+   "derivation_bytes": 27425,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/irs-fw9",
+   "pages": 6,
+   "pdf": "fixtures/gate/irs-fw9.pdf",
+   "pdf_tagged_locators": 1097,
+   "release_artifact_bytes": 836259,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 1097,
+   "seconds": 0.0,
+   "share": 0.031701207593494,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 298089238,
+   "derivation_bytes": 13246475,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-161r1",
+   "pages": 327,
+   "pdf": "fixtures/gate/nist-sp-800-161r1.pdf",
+   "pdf_tagged_locators": 529859,
+   "release_artifact_bytes": 284841338,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 529859,
+   "seconds": 3.9,
+   "share": 0.044437951161457226,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 90076670,
+   "derivation_bytes": 4134525,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-171r3",
+   "pages": 120,
+   "pdf": "fixtures/gate/nist-sp-800-171r3.pdf",
+   "pdf_tagged_locators": 165381,
+   "release_artifact_bytes": 85940720,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 165381,
+   "seconds": 1.2,
+   "share": 0.045900064911369394,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 46897683,
+   "derivation_bytes": 2152450,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-207",
+   "pages": 59,
+   "pdf": "fixtures/gate/nist-sp-800-207.pdf",
+   "pdf_tagged_locators": 86098,
+   "release_artifact_bytes": 44743808,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 86098,
+   "seconds": 0.6,
+   "share": 0.04589672372513585,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 31613728,
+   "derivation_bytes": 1492050,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-218",
+   "pages": 36,
+   "pdf": "fixtures/gate/nist-sp-800-218.pdf",
+   "pdf_tagged_locators": 59682,
+   "release_artifact_bytes": 30120253,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 59682,
+   "seconds": 0.4,
+   "share": 0.047196268658982576,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 227440212,
+   "derivation_bytes": 9620875,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-37r2",
+   "pages": 183,
+   "pdf": "fixtures/gate/nist-sp-800-37r2.pdf",
+   "pdf_tagged_locators": 384835,
+   "release_artifact_bytes": 217817912,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 384835,
+   "seconds": 2.9,
+   "share": 0.04230067724347707,
+   "timeout": 300
+  },
+  {
+   "artifact_bytes": 1037913352,
+   "derivation_bytes": 41236325,
+   "derivation_bytes_each": 25,
+   "extract_exit": 0,
+   "name": "gate/nist-sp-800-53Ar5",
+   "pages": 733,
+   "pdf": "fixtures/gate/nist-sp-800-53Ar5.pdf",
+   "pdf_tagged_locators": 1649453,
+   "release_artifact_bytes": 996675602,
+   "release_extract_exit": 0,
+   "release_pdf_tagged_locators": 1649453,
+   "seconds": 13.4,
+   "share": 0.03973002651959332,
+   "timeout": 300
+  }
+ ],
+ "grounding_check": {
+  "exit_codes": {
+   "0": 129
+  },
+  "not_run": [],
+  "run": 129,
+  "source_binding": {
+   "matched": 129
+  },
+  "structure": {
+   "valid": 129
+  }
+ },
+ "original_limitations": {
+  "inline-images-not-emitted": {
+   "documents": 5,
+   "names": [
+    "bench/01030000000142",
+    "bench/01030000000143",
+    "bench/01030000000144",
+    "bench/01030000000145",
+    "engine/inline-image-filtered"
+   ],
+   "refused": {},
+   "tagged": 5
+  },
+  "mcid-property-list-by-name": {
+   "documents": 15,
+   "names": [
+    "bench/01030000000027",
+    "bench/01030000000028",
+    "bench/01030000000029",
+    "bench/01030000000030",
+    "bench/01030000000031",
+    "bench/01030000000036",
+    "bench/01030000000037",
+    "bench/01030000000038",
+    "bench/01030000000039",
+    "bench/01030000000075",
+    "bench/01030000000078",
+    "engine/engine-tagged-nested-frames"
+   ],
+   "refused": {
+    "mcid-by-name": 1,
+    "mcid-inline-no-tree": 4,
+    "tree-present": 1
+   },
+   "tagged": 9
+  }
+ },
+ "projections": {
+  "ground": {
+   "compared": 129,
+   "different": 0,
+   "elements_total": [
+    0,
+    0
+   ],
+   "equal": 129,
+   "first_differences": {},
+   "not_compared": 0,
+   "text_differs": 0,
+   "worst": null
+  },
+  "html": {
+   "compared": 129,
+   "different": 0,
+   "equal": 129,
+   "first_differences": {},
+   "not_compared": 0,
+   "text_differs": 0,
+   "worst": null
+  },
+  "markdown": {
+   "compared": 129,
+   "different": 0,
+   "equal": 129,
+   "first_differences": {},
+   "not_compared": 0,
+   "text_differs": 0,
+   "worst": null
+  }
+ },
+ "reals": {
+  "documents": 293,
+  "documents_with_loss": 2,
+  "examples": {
+   "FontMatrix": [
+    "bench/01030000000163",
+    "0.00100000005 -> 0.001"
+   ],
+   "Matrix": [
+    "bench/01030000000103",
+    "-1.60399354 -> -1.6039935"
+   ]
+  },
+  "lost": {
+   "FontMatrix": 4,
+   "Matrix": 2
+  },
+  "lost_total": 6,
+  "objstm_documents": [
+   "oracle/foreign/opendataloader/real"
+  ],
+  "producers_lost": [
+   [
+    "PyPDF2",
+    6
+   ],
+   [
+    "Adobe PDF library 15.00",
+    0
+   ],
+   [
+    "iLovePDF",
+    0
+   ],
+   [
+    "(no /Info)",
+    0
+   ],
+   [
+    "(unknown)",
+    0
+   ]
+  ],
+  "producers_seen": {
+   "(no /Info)": 2,
+   "(unknown)": 0,
+   "Adobe PDF library 15.00": 8,
+   "Hancom PDF 1.3.0.550": 0,
+   "PyPDF2": 3226,
+   "iLovePDF": 880
+  },
+  "seen": {
+   "BBox": 129,
+   "CropBox": 140,
+   "FontMatrix": 6,
+   "Matrix": 12,
+   "MediaBox": 300,
+   "Rect": 3529
+  },
+  "seen_total": 4116,
+  "widths_indirect": 134,
+  "worst_document": [
+   4,
+   "bench/01030000000163"
+  ]
+ },
+ "refusals": {
+  "encrypted": {
+   "by_corpus": {
+    "oracle": 1
+   },
+   "row": "row 4",
+   "total": 1
+  },
+  "mcid-by-name": {
+   "by_corpus": {
+    "engine": 1
+   },
+   "row": "row 3",
+   "total": 1
+  },
+  "mcid-inline-no-tree": {
+   "by_corpus": {
+    "bench": 98,
+    "engine": 1
+   },
+   "row": "row 2",
+   "total": 99
+  },
+  "no-block-to-tag": {
+   "by_corpus": {
+    "oracle": 1
+   },
+   "row": "§3.4",
+   "total": 1
+  },
+  "other": {
+   "by_corpus": {
+    "oracle": 2
+   },
+   "row": "-",
+   "total": 2
+  },
+  "struct-parent-key": {
+   "by_corpus": {
+    "bench": 48
+   },
+   "row": "§3.6, amended",
+   "total": 48
+  },
+  "tree-present": {
+   "by_corpus": {
+    "engine": 12
+   },
+   "row": "row 1",
+   "total": 12
+  }
+ },
+ "refusals_other": {
+  "engine: malformed pdf structure: failed parsing cross reference table: invalid start value [malformed]": 1,
+  "engine: unsupported media type: expected a PDF header (%PDF-) at byte N, found \"not a\" [unsupported]": 1
+ },
+ "refused": 164,
+ "release": {
+  "all_bound": 129,
+  "document_div": 41208,
+  "failed": [],
+  "limitation_codes": {
+   "(10 codes declared)": 41,
+   "(11 codes declared)": 11,
+   "(12 codes declared)": 33,
+   "(13 codes declared)": 10,
+   "(14 codes declared)": 10,
+   "(15 codes declared)": 1,
+   "(9 codes declared)": 23,
+   "inline-images-not-emitted": 5,
+   "mcid-property-list-by-name": 9
+  },
+  "named": [
+   {
+    "branch": {
+     "artifact": 0,
+     "derivations": {
+      "computed": 6
+     },
+     "document_div": 6,
+     "limitations": [
+      "structure-tree-engine-written",
+      "(11 codes declared)"
+     ],
+     "mcid": 0,
+     "pdf_tagged": 6,
+     "runs": 6,
+     "with_derivation": 6
+    },
+    "name": "engine/leading-gap-two-blocks",
+    "release": {
+     "artifact": 0,
+     "derivations": {
+      "(absent)": 6
+     },
+     "document_div": 6,
+     "exit": 0,
+     "limitations": [
+      "(9 codes declared)"
+     ],
+     "mcid": 0,
+     "pdf_tagged": 6,
+     "runs": 6,
+     "with_derivation": 0
+    }
+   },
+   {
+    "branch": {
+     "artifact": 0,
+     "derivations": {
+      "computed": 1310
+     },
+     "document_div": 1310,
+     "limitations": [
+      "structure-tree-engine-written",
+      "(14 codes declared)"
+     ],
+     "mcid": 0,
+     "pdf_tagged": 1310,
+     "runs": 1310,
+     "with_derivation": 1310
+    },
+    "name": "bench/01030000000007",
+    "release": {
+     "artifact": 0,
+     "derivations": {
+      "(absent)": 1310
+     },
+     "document_div": 1310,
+     "exit": 0,
+     "limitations": [
+      "(12 codes declared)"
+     ],
+     "mcid": 0,
+     "pdf_tagged": 1310,
+     "runs": 1310,
+     "with_derivation": 0
+    }
+   }
+  ],
+  "pdf_tagged": 41208,
+  "run": 129,
+  "runs": 41209,
+  "with_derivation": 0
+ },
+ "run": {
+  "branch_binary": "target/release/ethos-parser",
+  "branch_version": "ethos-parser 0.58.0",
+  "commit": "2e70eba",
+  "corpora": {
+   "bench": {
+    "documents": 200,
+    "root": "<opendataloader-bench>/pdfs"
+   },
+   "engine": {
+    "documents": 58,
+    "root": "fixtures/engine"
+   },
+   "oracle": {
+    "documents": 35,
+    "root": "../ethos-oracle/fixtures"
+   }
+  },
+  "date": "2026-09-17",
+  "ethos_binary": "../ethos-oracle/target/release/ethos",
+  "ethos_version": "ethos 0.6.0",
+  "jobs": 4,
+  "python_version": "3.9.6",
+  "qpdf_version": "qpdf version 12.3.2",
+  "release_binary": "target/aarch64-apple-darwin/release/ethos-parser",
+  "release_version": "ethos-parser 0.58.0"
+ },
+ "seconds": 60.6,
+ "tagged": 129,
+ "tagged_by_corpus": {
+  "bench": 54,
+  "engine": 44,
+  "oracle": 31
+ },
+ "tree": {
+  "blocks": 453,
+  "blocks_multi": 74,
+  "blocks_multi_share": 0.16335540838852097,
+  "documents": 129,
+  "elements": 582,
+  "k_not_ints": 0,
+  "max_multi_share": [
+   1.0,
+   "bench/01030000000070"
+  ],
+  "max_seq_per_block": [
+   60,
+   "bench/01030000000199"
+  ],
+  "per_doc_median_max": [
+   60,
+   "bench/01030000000199"
+  ],
+  "roles": {
+   "/Div": 453,
+   "/Document": 129
+  },
+  "sequences": 776,
+  "stamp_missing": []
+ },
+ "verify": {
+  "agree": 122,
+  "disagree": [],
+  "grounded_both": 122,
+  "named_subset": {
+   "bench": [
+    [
+     "bench/01030000000007",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000016",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000017",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000027",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000028",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000029",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000031",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000032",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000033",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "bench/01030000000034",
+     "grounded",
+     "grounded",
+     true
+    ]
+   ],
+   "engine": [
+    [
+     "engine/annotation-contents",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/background-panel-not-a-grid",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/both-table-rules",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/broken-font-encoding",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/composite-font-cid-widths",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/crop-box-smaller-than-media",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/form-field-value",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/form-orphan-widget",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/form-xfa-stub",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/form-xobject-text-drawn",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/horizontal-scaling-tz",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/image-declared-not-drawn",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/image-xobject-drawn",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/inline-image-filtered",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/invisible-render-mode",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/leading-gap-nested-frames",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/leading-gap-two-blocks",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/markdown-hyphen-break",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/markdown-table-cells",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/markdown-two-blocks",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/measured-ink-box",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/off-page-and-offset-box",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/rotated-and-mirrored-text",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/ruled-table-grid",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/ruled-table-overlap",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/ruled-wins-shared-region",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/shared-content-stream",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/show-text-quote-operators",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/simple-font-two-byte-tounicode",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/stroke-ruled-columns-not-drawn",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/stroke-ruled-field-boxes",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/stroke-ruled-worksheet",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/synthesized-space-tj",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/two-column-14-lines",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/two-column-15-lines",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/unruled-near-miss",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/untagged-artifact-furniture",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/untagged-oc-by-name",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/untagged-shredded-line",
+     "grounded",
+     "grounded",
+     true
+    ],
+    [
+     "engine/whitespace-past-the-page-edge",
+     "grounded",
+     "grounded",
+     true
+    ]
+   ]
+  },
+  "no_element_either_side": 7,
+  "not_run": [],
+  "outcomes_original": {
+   "grounded": 122
+  },
+  "outcomes_tagged": {
+   "grounded": 122
+  },
+  "run": 122
+ }
+}

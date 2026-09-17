@@ -2,8 +2,7 @@
 
 The instruments behind [`../../23-AUTO-TAGGING-SCOPE.md`](../../23-AUTO-TAGGING-SCOPE.md) §7,
 committed so the numbers in that document can be re-derived rather than believed. One section per
-instrument, each dated when it was run; the round-trip instrument of §7.1 gets its section when
-the writer exists.
+instrument, each dated when it was run.
 
 **These are measurement scripts, not product code.** Nothing imports them and they are not on the
 gate. They read artifacts the engine emits and `qpdf --json` of the source, and never reach into
@@ -236,7 +235,7 @@ quoted as recall or precision.
 
 - **The consumer demonstration.** §7.2's first half — `ethos-parser 0.58.0 extract` on the
   writer's output binding every engine-written `/Div` as author structure — needs the writer, and
-  is the round-trip instrument's to run.
+  is the round-trip instrument's to run (§2).
 - **Paragraph recall on any document but `nist-sp-800-207`.** The seven other rows are producer
   behaviour, stated above.
 - **Indent-marked paragraphs.** `blocks.rs` declares the rule blind to them; `nist-sp-800-207` is
@@ -260,3 +259,187 @@ quoted as recall or precision.
    band the vertical cut did not separate.
 
 Each is recorded here as a measurement; none is a decision.
+
+## 2. The round trip: does a written tag read back, project and ground as its original does? (2026-09-17)
+
+**Run 2026-09-17**: the writer at `2e70eba` (the `feat/auto-tagging` branch: S1, S2 with both
+reviews' fixes, and S3), release build, version string `0.58.0`; the consumer is `ethos-parser`
+0.58.0 as released (the `aarch64-apple-darwin` release build); Ethos 0.6.0, the oracle pin;
+qpdf 12.3.2; Python 3.9.6; four jobs. Over 293 documents — the 58 engine fixtures, the 35 oracle
+fixtures and the 200 `opendataloader-bench` documents — and the eight gate documents for the wire
+cost. Instrument: [`roundtrip.py`](roundtrip.py); every document's record is in
+[`results/roundtrip.jsonl`](results/roundtrip.jsonl) and the aggregates in
+[`results/roundtrip-summary.json`](results/roundtrip-summary.json).
+
+### What it measures, and why
+
+Scope §7.1 lists what the round trip counts, and §7.2's first half is the consumer demonstration.
+Per document, with the writer's build: `tag`, a refusal bucketed onto the row of scope §3.6 its
+message names; the written tree through `qpdf --json` (elements, sequences, sequences per block,
+the stamp); a second `tag`, compared byte for byte with the first; `extract` of the tagged bytes
+and of the original, then `ground`, `markdown` and `html` of both, compared as canonical JSON once
+the members naming the input bytes are removed (`source_sha256`, `representation_sha256`,
+`source.sha256`, the assurance blocks); `grounding-check --source-artifact` on the tagged grounding
+artifact; `ethos verify` on one claim quoting the first bound run of the first block, against the
+tagged and the untagged grounding artifact, each claims file carrying its own artifact's digest;
+and the release binary's `extract` of the tagged bytes. Every original is also scanned for reals
+outside content streams that do not survive `f32`. The docstring states each rule and what it
+cannot see.
+
+### Running it
+
+```bash
+M=docs/measurements/auto-tagging
+cargo build --release --locked -p ethos-parser-cli
+python3 $M/roundtrip.py \
+  --branch target/release/ethos-parser \
+  --release <the 0.58.0 release binary> \
+  --ethos ../ethos-oracle/target/release/ethos \
+  --out /tmp/roundtrip --results $M/results --commit "$(git rev-parse --short HEAD)" \
+  engine=fixtures/engine oracle=../ethos-oracle/fixtures \
+  bench=<opendataloader-bench>/pdfs gate=fixtures/gate
+```
+
+The 293 documents took 60.6 s of document work at four jobs; the gate's sixteen extractions,
+branch and release, run one at a time after them. Artifacts stay under `--out` and are never
+committed; the committed results name binaries and corpora relative to this repository, the
+oracle checkout and the bench clone rather than by this machine's paths.
+
+### What it found
+
+**129 of 293 documents are tagged, and every one reads back as written.** The self-check refused
+none. The writer's `extract` of the 129 outputs binds 41,208 of their 41,209 runs `pdf_tagged`,
+`derivation: computed`, `Document/Div`; the other run is `untagged-artifact-furniture`'s page
+furniture, still `pdf_artifact`. `structure-tree-engine-written` is declared on all 129 and
+`untagged-structure-tree-absent` on none.
+
+| outcome | §3.6 row | bench | engine | oracle | all |
+| --- | --- | ---: | ---: | ---: | ---: |
+| tagged | - | 54 | 44 | 31 | 129 |
+| refused: marked-content ids inline, no tree | row 2 | 98 | 1 | 0 | 99 |
+| refused: `/StructParents` or `/StructParent`, no tree | §3.6, amended | 48 | 0 | 0 | 48 |
+| refused: a tree is present | row 1 | 0 | 12 | 0 | 12 |
+| refused: not a PDF this engine opens | - | 0 | 0 | 2 | 2 |
+| refused: an id by name through `/Properties` | row 3 | 0 | 1 | 0 | 1 |
+| refused: no text run to tag | §3.4 | 0 | 0 | 1 | 1 |
+| refused: encrypted | row 4 | 0 | 0 | 1 | 1 |
+| documents | - | 200 | 58 | 35 | 293 |
+
+**The refusals are one producer's shape.** All 146 refused bench documents are PyPDF2 output:
+pages split out of tagged documents, each keeping its marked-content ids and losing the tree. The
+48 counted under the stale-key refusal carry inline ids too; that check runs before extraction and
+row 2's after it, so they land in the earlier row, and before the check existed all 147 of that
+shape (the 146 and the engine fixture `untagged-mcid-no-tree`) were row 2. The 54 bench documents
+tagged are 41 PyPDF2, 12 iLovePDF and 1 Adobe PDF Library. No document anywhere was refused for a
+filter or a stream that does not decode to its end (row 5), a tokeniser disagreement (row 6), an
+operator whose runs the cut placed in two blocks, or the self-check (row 7). The two unopenable
+oracle fixtures are refused by `extract` too: one has no `%PDF-` header, one a broken
+cross-reference table.
+
+| the tree, over 129 tagged documents | value |
+| --- | ---: |
+| elements written | 582: 129 `/Document`, 453 `/Div` |
+| sequences written | 776, 1.71 per block |
+| blocks written as more than one sequence | 74 of 453 (16.3%) |
+| most sequences in one block | 60 (`bench/01030000000199`, one page, one block) |
+| highest per-document share of multi-sequence blocks | 100.0% (`bench/01030000000070`) |
+| `/K` entries that are not bare ids | 0 |
+| catalog stamp missing | none |
+
+§7.1 asked for the multi-sequence blocks bucketed by cause. The writer holds each sequence's
+placement and cause in its plan and prints neither, so from outside only the distribution can be
+counted; the causes need a line of output the writer does not have.
+
+**The projections of every tagged document are its original's.** `ground`, `markdown` and `html`
+compare equal on 129 of 129. This instrument's first run, on 2026-09-17 at `5b4b7bb` — the writer
+without S3's `group_key` change — found 102, 97 and 97 of 128 different, which is §4.3's
+prediction measured: read as a declaration, a written sequence joins runs the original never
+joins. `engine/ink-past-the-media-box`'s grounding element read `Off the left edgeOn the page`
+tagged against `On the page` untagged, and the verifier grounded a claim on the tagged side that
+found no element on the original. With S3's change the two sides are one.
+
+**Grounded and verified.** `grounding-check` on the 129 tagged grounding artifacts: exit 0,
+`structure` valid and `source_binding` matched on every one. `ethos verify` ran on 122 and returned
+the same report on both sides on 122, all grounded. On the other 7 no element contains the chosen
+run on either side (`absent-font-metrics`, `absent-font-widths`,
+`composite-font-non-identity-cmap`, `ink-past-the-media-box`, `ligature-fi-embedded-font`,
+`rotation-90`, `bench/01030000000030`), which is the same answer twice. The named subset, the
+engine fixtures and the first ten bench documents, is in `results/roundtrip-summary.json`.
+
+**A second `tag` is byte-identical to the first on 129 of 129**, bench documents included.
+
+| bytes added, over 129 tagged documents | min | median | max |
+| --- | ---: | ---: | ---: |
+| absolute | -125,323 (`bench/01030000000141`) | 716 | 3,821 (`bench/01030000000193`) |
+| relative to the input | -7.8% (`bench/01030000000141`) | 44.3% | 125.3% (`oracle/synthetic/simple-text`) |
+| total | 9,108,805 in, 9,076,431 out; 15 documents shrank | | |
+
+The output is a full re-serialisation (§3.5), so a document can shrink. The largest shrink is an
+Adobe PDF Library file.
+
+| reals outside content streams, 293 originals | seen | not surviving `f32` | example |
+| --- | ---: | ---: | --- |
+| `/MediaBox` | 300 | 0 | |
+| `/CropBox` | 140 | 0 | |
+| `/Rect` | 3,529 | 0 | |
+| `/BBox` | 129 | 0 | |
+| `/Matrix` | 12 | 2 | `-1.60399354` → `-1.6039935` (`bench/01030000000103`) |
+| `/FontMatrix` | 6 | 4 | `0.00100000005` → `0.001` (`bench/01030000000163`) |
+| `/Widths` | 0 | 0 | |
+| all | 4,116 | 6, in 2 documents, both PyPDF2 | |
+
+§3.5 measured none on the repository's own 54 PDFs, and gave a non-zero count *on a producer that
+matters* as one of the two conditions that reopen the incremental update. It is non-zero here on
+one producer, below the ninth significant digit, and the text record does not see it (`extract`
+reads both sides through `f32`). Whether PyPDF2 matters is the owner's to say, and nothing here
+decides it. The scan is partial where stated: 134 `/Widths` arrays reached through a reference and
+the one document with object streams (`oracle/foreign/opendataloader/real`) are not read.
+
+### The consumer that ignores `/A`: 0.58.0 (scope §7.2, first half)
+
+The release build's `extract` of the 129 tagged documents binds 41,208 runs `pdf_tagged` under
+`Document/Div`, on 129 of 129 documents every run that is not page furniture, and not one of those
+locators carries `derivation`: 0.58.0 reads `/A` only on cell spans and has no field to say
+*computed*. So a shipped reader with no test-only flag takes every engine-written `/Div` as the
+author's structure, the launder decision #21 refused. On `leading-gap-two-blocks`: 6 runs,
+`(absent)` against the writer's build's `computed`; on `bench/01030000000007`: 1,310 runs, the
+same. The engine that wrote the tree reads the same bytes as computed (above). §7.2's second half,
+the misread rate, is §1.
+
+### The wire cost of `derivation` (scope §4.2)
+
+Every gate document is author-tagged, so every `pdf_tagged` locator gains
+`"derivation":"extracted",`, 25 bytes. Branch against release, same document, same version string:
+
+| gate document | pages | artifact bytes | `pdf_tagged` locators | `derivation` bytes | share | release artifact bytes | branch minus release |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `irs-f1040sd-2025` | 2 | 699,411 | 1,098 | 27,450 | 3.9% | 670,536 | 28,875 |
+| `irs-fw9` | 6 | 865,109 | 1,097 | 27,425 | 3.2% | 836,259 | 28,850 |
+| `nist-sp-800-161r1` | 327 | 298,089,238 | 529,859 | 13,246,475 | 4.4% | 284,841,338 | 13,247,900 |
+| `nist-sp-800-171r3` | 120 | 90,076,670 | 165,381 | 4,134,525 | 4.6% | 85,940,720 | 4,135,950 |
+| `nist-sp-800-207` | 59 | 46,897,683 | 86,098 | 2,152,450 | 4.6% | 44,743,808 | 2,153,875 |
+| `nist-sp-800-218` | 36 | 31,613,728 | 59,682 | 1,492,050 | 4.7% | 30,120,253 | 1,493,475 |
+| `nist-sp-800-37r2` | 183 | 227,440,212 | 384,835 | 9,620,875 | 4.2% | 217,817,912 | 9,622,300 |
+| `nist-sp-800-53Ar5` | 733 | 1,037,913,352 | 1,649,453 | 41,236,325 | 4.0% | 996,675,602 | 41,237,750 |
+
+The field costs 3.2% (`irs-fw9`) to 4.7% (`nist-sp-800-218`) of the artifact, median 4.3%. The
+remainder of every difference is the same 1,425 bytes: the profile-scoped
+`block-subdivision-leading-gap-only` declaration this branch also adds, with its separating comma.
+
+### What it does not measure
+
+- **Why a block needed more than one sequence.** Stated above.
+- **A tagged document through any reader but these two.** The engine-local guarantee (§9 item 1)
+  is shown on the one consumer the scope names; other readers are not run.
+- **The `f32` narrowing beyond seven keys.** Reals inside other dictionaries, and in `/Widths`
+  arrays given by reference, are not scanned.
+
+### Found on the way
+
+1. **The writer let a dangling reference resolve to one of its own objects.** The first run
+   refused `engine/form-orphan-widget` in the self-check: its widget names `/Parent 9 0 R` in a
+   file holding objects 1 to 7, and the writer's second new object took number 9. Fixed in
+   `8500ab3` (new objects are numbered above the highest number any reference names), and the
+   fixture tags in the run above.
+2. **The first run's projections differed on 97 to 102 of 128 documents**, on a build without S3.
+   That is recorded above as §4.3's prediction measured, not as a defect of the shipped writer.
