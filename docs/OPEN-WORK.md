@@ -96,12 +96,11 @@ because they are real work whatever version they end up in.
    the Ethos v0.6.0 pin without a verifier change outside this repository. **Owner:** reword or
    drop the condition.
 3. Byte-identical on all three: the instruction-set axis is measured (aarch64 against x86_64 under
-   Rosetta, both on macOS); the operating-system jobs exist on an unmerged branch and have never run
-   (6.1).
+   Rosetta, both on macOS); the operating-system jobs are in `ci.yml` and have never run (6.1).
 
 | Plan item | Status | What remains, and what it waits on |
 | --- | --- | --- |
-| 6.1 Cross-OS byte identity | **evidence, owner** | Branch `ci/cross-os-digests` (`53f8622`, unmerged) adds `cross-os-digests` (ubuntu, macOS, Windows) and `cross-os-identity`; they run only on GitHub and have never run. Merging it onto the integration branch conflicts in two files, both trivially: `.gitattributes` (its `fixtures/** -text` line beside the release workflow's `*.sh text eol=lf`) and this page. **Waits on:** the owner pushing the branch or a PR, then reading the first run |
+| 6.1 Cross-OS byte identity | **evidence, owner** | The jobs exist and have never run, so nothing is proven yet. `ci.yml`'s `cross-os-digests` builds the release engine on `ubuntu-latest`, `macos-latest` and `windows-latest` and runs `ci/artifact-bytes.py` on each; `cross-os-identity` fails if the three digest lists differ by a byte, if any row records a crash, or if any list carries fewer than 257 non-empty, exit-0 artifacts (260 of 264 today), so a run of refusals cannot pass. Inputs: 66 documents — every engine and office fixture, and six of the eight gate PDFs. **Not covered:** `nist-sp-800-53Ar5` and `nist-sp-800-161r1` (runner time and memory) and the Ethos conformance corpus. Windows fixes made for it: `fixtures/** -text` in `.gitattributes`, because a CRLF checkout made the engine refuse all 42 hand-built ASCII PDFs; and `.exe`, `os.devnull` and LF output in `ci/artifact-bytes.py`. The gate harness on Windows: all workspace targets, tests included, type-check for `x86_64-pc-windows-gnu`, but nothing has been linked or run there, `ci/gate.sh` and the test suite included. **Waits on:** the owner's first push to `main`, then reading that run |
 | 6.2 Memory ceiling | mostly done | Whether a caller-settable byte ceiling or a PDF decompression ceiling is wanted (owner). Verify-path wall time: option B (hash the input span) or C (lossless parse, then B) (owner; option A shipped in 0.55.0). Closed 2026-09-16 at 0.58.0 (memory-ceiling §15): the sizing rule is restated as 7 MiB + 5.4 MiB per admitted page + 0.33 MiB per document page, every coefficient the worst measured, over by 3.6% at its tightest point where the old rule was over by 44% on the worst case; and the `--max-pages` floor is separated — the structure tree is 28 MiB of the 733-page document's 221 MiB, the other 193 MiB the source bytes and parsed object graph, which a page budget cannot reach |
 | 6.3 GitHub Releases, three platforms | **evidence** | The machinery exists and has never run. `.github/workflows/release-artifacts.yml` — on a `v*` tag push or by hand with `ref` and `targets` — builds `ethos-parser-cli` natively on `ubuntu-latest` (x86_64 gnu), `windows-latest` (x86_64 msvc), `macos-latest` (aarch64) and `macos-15-intel` (x86_64), each leg running `ci/release-artifacts.sh --native --tag <tag>`: build, execute over all eight gate PDFs, fingerprint, package. `verify` runs `--assemble` and writes `SHA256SUMS.txt` labelling every target `verified` only if every fingerprint is whole and byte-identical — 6.1's OS axis measured on the release binaries themselves. It publishes nothing (`contents: read`); the owner attaches `release-bundle` by hand (RELEASING.md §8). Known risk: the arm64 macOS runner has 7 GB against a 4.7 GB extract peak; `targets` drops a leg and §8 covers it locally. **Waits on:** the first tag push or dispatch, and reading what it finds |
 | 6.4 PyPI wheel | owner | D4 and D8. **Irreversible** |
@@ -169,13 +168,13 @@ Repaired 2026-09-16/17: row 23's CLI count (dated correction), `16-D4-SCOPE.md` 
 releases), `derivation-class.draft.json`, `04-ARCHITECTURE.md`'s font crate, the history documents'
 "v1 is not done", the fixture counts, the block-subdivision rows of `02-ROADMAP.md` and doc 19;
 and later on 2026-09-17 the roadmap's `/P` quotation, `extract_budget.rs`'s floor, CAPABILITY's
-paragraph row, `make_fixtures.py`'s typed-absence comment, and the 70‰ in `06-STEAL-REFUSE.md` and
-the opendataloader-bench README.
+paragraph row, `make_fixtures.py`'s typed-absence comment, the 70‰ in `06-STEAL-REFUSE.md` and
+the opendataloader-bench README, and, with the cross-OS jobs merged, the cross-architecture
+README's runner sentence.
 
 | Where | What is wrong |
 | --- | --- |
 | `00-NORTH-STAR.md` row 23, `16-D4-SCOPE.md` §7 (its earlier text), `19-BLOCK-SUBDIVISION-SCOPE.md` | Say `structure.rs` "already parses this exact shape". It read `/A` only for cell spans until S1 (docs/23 §4.1); the rows are dated records and stand, corrected by that section |
 | `00-NORTH-STAR.md` §5, the v2.2 row's Intent cell | Says "auto-tagging reopened and unstarted"; the Done-when cell beside it carries the dated correction |
-| `measurements/cross-architecture/README.md` | Says CI cannot allocate a runner. Corrected on the unmerged branch `ci/cross-os-digests` |
 | `17-D1-SCOPE.md:86` | Quotes 70‰ as the macro; the band is re-stated at 69‰. A dated scope record, so it stands |
 | `docs/history/03-V0-SCOPE.md:137` | "37 engine-authored CC0 fixtures" — a dated record, left as written |

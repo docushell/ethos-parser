@@ -886,3 +886,156 @@ jobs:
           else
             python3 .github/scripts/check_dco.py "${{ github.event.before }}" "${{ github.sha }}"
           fi
+
+  # -----------------------------------------------------------------------------------------
+  # Plan item 6.1, the operating-system axis: one set of inputs, three systems, one set of bytes
+  # -----------------------------------------------------------------------------------------
+  #
+  # `docs/measurements/cross-architecture/` settled the instruction-set axis on one Mac — aarch64
+  # against x86_64, 412 comparisons, 0 mismatches — and says in its own §4 that it licenses nothing
+  # about Linux or Windows. A filesystem, a path separator, a line ending and a core count all
+  # belong to the machine, and none of them varied there. These two jobs are the other half.
+  #
+  # `cross-os-digests` builds the release engine on each system and runs `ci/artifact-bytes.py`
+  # there. `cross-os-identity` then requires the three digest lists to be byte-identical, and
+  # `diff` names the document and the artifact of any row that moved.
+  #
+  # **The inputs: 66 documents, 264 digests.** Every engine and office fixture, plus six of the
+  # eight gate PDFs. The gate PDFs are the only real-world documents in the tree — compressed
+  # streams, embedded fonts, structure trees, up to 183 pages, so the page-parallel extract runs at
+  # each runner's own core count. `nist-sp-800-53Ar5` and `nist-sp-800-161r1` are left out by
+  # name: measured locally they take three times as long as the other 64 documents together, and
+  # 53Ar5's extract peaks at 3.6 GiB against a macOS runner's 7 GB. `ci/release-artifacts.sh`
+  # leaves the same two out of its projections. The Ethos conformance corpus is not read, because
+  # it would bring a second repository's checkout, and its line endings, into a comparison of this
+  # one's bytes.
+  #
+  # **Not in `ci/gate.sh`, and it cannot be:** one host runs one leg, and one leg compares nothing.
+  # `the_local_gate_runs_what_ci_runs` compares that script with the `check` job's steps and the two
+  # `ci/forbidden-tokens.sh` greps, and with no other job.
+  #
+  # **Unverified until it runs.** Written without a runner to try it on. Windows is the leg most
+  # likely to fail for a reason other than the engine; `.gitattributes` and `ci/artifact-bytes.py`
+  # each say what they already changed for it.
+  cross-os-digests:
+    # The weekly `schedule` trigger exists for `v0-fuzz-smoke` alone; nothing else runs on it.
+    if: github.event_name != 'schedule'
+    name: cross-os-digests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Not a measurement: a guess, since no runner has built this yet. Locally the release build
+    # (LTO, one codegen unit) takes 1m08s on 14 cores and the digest run 25s.
+    timeout-minutes: 60
+    strategy:
+      # One system failing still leaves the other lists uploaded to read.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # Git Bash on Windows, so each step is one script on all three systems.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installed and asserted as `check` does, for the reasons given there.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: deps-opt3
+
+      - name: Assert the toolchain pin is in force
+        run: |
+          set -euo pipefail
+          want="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' rust-toolchain.toml | head -1)"
+          got="$(cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "rust-toolchain.toml wants $want; cargo reports $got"
+          [ "$want" = "$got" ] || { echo "::error::toolchain pin not in force"; exit 1; }
+
+      # One interpreter version on all three, and `python` rather than `python3`, which a Windows
+      # runner does not reliably provide.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the engine
+        run: cargo build --release --locked
+
+      - name: Digest every artifact
+        run: python ci/artifact-bytes.py --without nist-sp-800-53Ar5 --without nist-sp-800-161r1 > "digests-${{ matrix.os }}.sha256"
+
+      # `overwrite`, so re-running every job does not fail on the name the first attempt uploaded.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.os }}
+          path: digests-${{ matrix.os }}.sha256
+          if-no-files-found: error
+          overwrite: true
+
+  cross-os-identity:
+    # Runs only when all three legs succeeded: an `if:` with no status function implies success().
+    if: github.event_name != 'schedule'
+    needs: cross-os-digests
+    name: cross-os byte identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+
+      # **Identical is not enough.** Three builds that refuse every input agree perfectly, and so do
+      # three that print nothing, so each list must also carry a floor of real artifacts: a row
+      # that exited 0 with non-empty output. 260 of the 264 rows are that at 5bb78db; the other four
+      # are `tagged-cycle`, whose extract is refused by design, and its three projections. The
+      # floor is one document short of 260 — losing any document's four artifacts reads 256 and
+      # fails. Adding a fixture never trips it; removing one, or another extract being refused,
+      # does, and moving the number is then a decision rather than a drift.
+      - name: Three systems, one set of bytes
+        working-directory: digests
+        env:
+          # sha256 of zero bytes.
+          EMPTY: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+          MIN_PRODUCED: "257"
+        run: |
+          set -euo pipefail
+          lists=(digests-*.sha256)
+          if [ "${#lists[@]}" -ne 3 ]; then
+            echo "::error::expected three digest lists, found ${#lists[@]}: ${lists[*]}"
+            exit 1
+          fi
+
+          fail=0
+          for list in "${lists[@]}"; do
+            rows="$(wc -l < "$list")"
+            produced="$(awk -v empty="$EMPTY" '$NF == "exit=0" && $1 != empty { n++ } END { print n + 0 }' "$list")"
+            echo "$list: $rows rows, $produced non-empty artifacts"
+            if [ "$produced" -lt "$MIN_PRODUCED" ]; then
+              echo "::error::$list carries $produced non-empty artifacts; the floor is $MIN_PRODUCED"
+              fail=1
+            fi
+            # A crash, not a refusal. The engine's own exit codes are 0-255; a killed process is a
+            # negative signal number on Linux and macOS and an NTSTATUS above 255 on Windows, so the
+            # same crash on all three systems would otherwise surface only as a diff between them.
+            crashed="$(awk '$NF != "exit=-" && !($NF ~ /^exit=[0-9]+$/ && substr($NF, 6) + 0 <= 255)' "$list")"
+            if [ -n "$crashed" ]; then
+              echo "::error::$list: the engine crashed rather than exiting on the rows below"
+              echo "$crashed"
+              fail=1
+            fi
+          done
+
+          for list in "${lists[@]:1}"; do
+            if ! diff "${lists[0]}" "$list"; then
+              echo "::error::${lists[0]} and $list differ"
+              fail=1
+            fi
+          done
+
+          [ "$fail" -eq 0 ] && echo "byte-identical across ${lists[*]}"
+          exit "$fail"

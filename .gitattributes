@@ -12,3 +12,19 @@ vendor/afm/** -text
 # so `ci/*.sh` arrives runnable on every clone. `fixtures/gate` needs no line here: git classifies
 # all eight PDFs as binary (`git ls-files --eol`), and autocrlf converts only what it takes for text.
 *.sh text eol=lf
+
+# Fixtures are engine input, and the engine reads input byte-exact. 42 of the hand-built PDFs under
+# fixtures/engine and both RTF files under fixtures/office are plain ASCII with LF endings, so git
+# classifies them as text, and a checkout with core.autocrlf=true rewrites them to CRLF. Measured
+# on 5bb78db with such a clone: all 42 PDFs are then refused as malformed, because their
+# cross-reference offsets count bytes; both RTFs produce a different artifact; and the PDFs' sha256
+# pins in fixtures/manifest.json break.
+#
+# core.autocrlf=true is Git for Windows' installer default, and GitHub's Windows runners are widely
+# reported to check out with it. Neither is verified here, and this entry does not depend on either:
+# `-text` holds whatever a client sets.
+#
+# By directory rather than by extension, as above: what matters is that the bytes are input, not
+# which format a later fixture takes. And here rather than as a `core.autocrlf false` step in CI,
+# because that would give the runner bytes no Windows clone of this repository gets.
+fixtures/** -text

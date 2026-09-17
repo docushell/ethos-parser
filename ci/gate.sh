@@ -71,6 +71,9 @@
 #     2**: `v0-no-confidence` and `v0-no-verify` are greps over source text that no test executes,
 #     and since 2026-09-17 they are the `check` job's first two steps as well.
 #
+#   * **`cross-os-digests` and `cross-os-identity`.** They compare the engine's artifact digests
+#     across Linux, macOS and Windows. One host runs one leg, and one leg compares nothing.
+#
 # # Order
 #
 # Every step here is one of the `check` job's. The two greps come first there and here for the same
