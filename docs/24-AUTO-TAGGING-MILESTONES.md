@@ -37,8 +37,12 @@ written, it is recorded below with its date. The scope's own amendments sit unde
   byte-identical on all 129 documents it tagged, 54 of them bench documents.
 - **S2, repaired on review (2026-09-17).**
   - `5c26a72`: the self-check compares the per-page counters and walks the tree as written.
-  - `8500ab3`: new objects are numbered above every number a reference names; superseded streams
+  - `8500ab3`: new objects never take a number a dangling reference names; superseded streams
     are removed only when nothing names them; stale parent-tree keys are refused.
+  - The review of those two, the same day: the number floor starts at the highest held object and
+    clears only the dangling numbers the allocation reaches; the first rule's ten-million-entry
+    table is recorded in the scope's amendments. A `/Contents` array given by reference is removed
+    with its streams, a null key is no key, and the tree walk checks `/Type` and `/P`.
   - `5e649dc`: the `/Properties` resolver has its own test.
 
   Each commit names the tests that hold it.

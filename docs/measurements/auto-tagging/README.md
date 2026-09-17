@@ -269,7 +269,10 @@ qpdf 12.3.2; Python 3.9.6; four jobs. Over 293 documents — the 58 engine fixtu
 fixtures and the 200 `opendataloader-bench` documents — and the eight gate documents for the wire
 cost. Instrument: [`roundtrip.py`](roundtrip.py); every document's record is in
 [`results/roundtrip.jsonl`](results/roundtrip.jsonl) and the aggregates in
-[`results/roundtrip-summary.json`](results/roundtrip-summary.json).
+[`results/roundtrip-summary.json`](results/roundtrip-summary.json). **Re-run the same day at
+`0c7a3c9`**, after the review of the writer's numbering and removal fixes: every per-document
+record is identical to the committed ones apart from wall-clock seconds, so the results stand for
+the writer as merged.
 
 ### What it measures, and why
 
