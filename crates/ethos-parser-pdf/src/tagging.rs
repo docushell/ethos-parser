@@ -4646,6 +4646,76 @@ mod tests {
         refuse_ids(&ops, 3, &|_: &[u8]| PropertyList::WithoutId).expect("frames only");
     }
 
+    /// **The `/Properties` resolver itself**, which every `refuse_ids` test above replaces with a
+    /// stub and no fixture reaches past a page's own `/Resources`. A page with no `/Resources`
+    /// reads its nearest ancestor's, one hop or two; a page with its own reads that one and never
+    /// an ancestor's, because `/Resources` is inherited whole (PDF 32000-1 §7.7.3.4); a name the
+    /// dictionary does not hold and an entry naming an object the file does not hold are
+    /// unresolved; an entry that is not a dictionary is named by its variant; and a dictionary
+    /// says whether it carries `/MCID`, referenced or inline.
+    #[test]
+    fn property_lists_resolve_through_the_page_or_its_nearest_ancestor() {
+        use lopdf::dictionary;
+        let mut doc = lopdf::Document::with_version("1.7");
+        let with_id = doc.add_object(dictionary! { "MCID" => Object::Integer(0) });
+        let layer = doc.add_object(dictionary! {
+            "Type" => "OCG",
+            "Name" => Object::string_literal("Layer"),
+        });
+        let number = doc.add_object(Object::Integer(7));
+        let pages = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Resources" => dictionary! {
+                "Properties" => dictionary! {
+                    "Id" => Object::Reference(with_id),
+                    "Oc" => Object::Reference(layer),
+                    "Inline" => dictionary! { "MCID" => Object::Integer(3) },
+                    "Number" => Object::Reference(number),
+                    "Gone" => Object::Reference((9_999, 0)),
+                },
+            },
+        });
+        let middle = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Parent" => Object::Reference(pages),
+        });
+
+        let one_hop = dictionary! { "Type" => "Page", "Parent" => Object::Reference(pages) };
+        let resolve = page_property_lists(&doc, &one_hop);
+        assert_eq!(resolve(b"Id"), PropertyList::WithId);
+        assert_eq!(resolve(b"Oc"), PropertyList::WithoutId);
+        assert_eq!(resolve(b"Inline"), PropertyList::WithId);
+        assert_eq!(
+            resolve(b"Number"),
+            PropertyList::NotADictionary("Integer".into())
+        );
+        assert_eq!(resolve(b"Gone"), PropertyList::Unresolved);
+        assert_eq!(resolve(b"Absent"), PropertyList::Unresolved);
+
+        let two_hops = dictionary! { "Type" => "Page", "Parent" => Object::Reference(middle) };
+        assert_eq!(
+            page_property_lists(&doc, &two_hops)(b"Oc"),
+            PropertyList::WithoutId
+        );
+
+        let own = dictionary! {
+            "Type" => "Page",
+            "Parent" => Object::Reference(pages),
+            "Resources" => dictionary! { "Font" => dictionary! {} },
+        };
+        assert_eq!(
+            page_property_lists(&doc, &own)(b"Id"),
+            PropertyList::Unresolved,
+            "the page's own /Resources is read, and it holds no /Properties"
+        );
+
+        let nowhere = dictionary! { "Type" => "Page" };
+        assert_eq!(
+            page_property_lists(&doc, &nowhere)(b"Id"),
+            PropertyList::Unresolved
+        );
+    }
+
     fn a_run(text: &str, region: Option<u32>, block: Option<u32>, artifact: bool) -> TextRun {
         use ethos_parser_core::{GeometryAbsence, GeometryPresence, PdfArtifactLocator};
         let mut alloc = ethos_parser_core::IdAllocator::new(
