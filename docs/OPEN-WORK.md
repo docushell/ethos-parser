@@ -6,7 +6,8 @@ the decisions; this page only tracks what is not done yet, so that nothing measu
 lost between sessions. When an item moves, move it here in the same commit.
 
 **Written 2026-09-16 against `main` at `fae4c90`; revised 2026-09-17 against the integration
-branch for the version after 0.58.0.** v0.57.0 is the latest published release. Local `main` at
+branch for the version after 0.58.0, and again the same day when auto-tagging's round trip and its
+measurements (S3, S4) and the writer review's fixes merged into it.** v0.57.0 is the latest published release. Local `main` at
 `b4b4aa9` carries the unpublished 0.58.0 release commit (preflight green, macOS artifacts built and
 verified); the integration branch carries everything this page marks *done 2026-09-16/17*.
 
@@ -26,19 +27,21 @@ by effort would be invented.
 | Item | Status | Detail |
 | --- | --- | --- |
 | **Publish 0.58.0** | **owner** | The release commit `04bd9f2` and its merge `b4b4aa9` sit on local `main`, unpushed. `ci/release-preflight.sh` passed there (gate 9/9); `target/release-artifacts/` holds the `aarch64` and `x86_64` macOS tarballs, both `verified`; the notes are drafted. Remaining, all the owner's: push `main`, tag `v0.58.0` at `b4b4aa9`, create the release. **Until the tag exists, `parser_version` 0.58.0 names a build no release carries.** Every byte-changing commit since `b4b4aa9` belongs to the next version, so 0.58.0 stays as prepared |
-| **Cut the version after 0.58.0** | **in progress** | This session's work — auto-tagging (§2.1), the block cut's leftovers (§2.2), the memory rule, the release workflow, the knobs scope, the two benchmark re-measures and the documentation repairs — lands on one integration branch, gated once at the end. It is a MINOR: readers and emitters change, and a `pdf_tagged` locator from either side of it does not parse on the other (`23-AUTO-TAGGING-SCOPE.md` §8) |
+| **Cut the version after 0.58.0** | **in progress** | This session's work — auto-tagging S1 to S4 with both reviews' fixes (§2.1), the block cut's leftovers (§2.2), the memory rule, the release workflow, the knobs scope, the two benchmark re-measures and the documentation repairs — lands on one integration branch, gated once at the end. It is a MINOR: readers and emitters change, and a `pdf_tagged` locator from either side of it does not parse on the other (`23-AUTO-TAGGING-SCOPE.md` §8) |
 
 ## 2. v2.2 — layout and accessibility (a roadmap version)
 
-**Gate: 1 of 2 clauses met, the second built and awaiting its owner rows.**
+**Gate: 2 of 2 clauses met on the fixtures; the second's owner rows are pending.**
 - **Clause one, met at 0.42.0:** a region is emitted wherever the cut divided a page and nowhere
   else.
-- **Clause two, built 2026-09-16/17:** a tag this engine writes is one it can read back and ground
-  against. Scoped in [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md), cut into slices in
-  [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md); the reader (S1) and the writer
-  (S2) are on the integration branch, the round trip (S3) and the measurements (S4) follow in the
-  same version. The clause counts as met when S3's tests pass on the fixtures and S4's numbers are
-  published; the owner's rows #25–#27 (docs/23 §12) record the shape.
+- **Clause two, met on the fixtures 2026-09-17:** a tag this engine writes is one it can read back
+  and ground against. Scoped in [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md), cut into
+  slices in [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md); S1 to S4 are all on
+  the integration branch. S3's round-trip tests pass, and S4 published the round trip over 293
+  documents: 129 tagged, every one read back as computed, projected and grounded as its untagged
+  original ([`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md) §2; the
+  numbers sit in docs/23's amendments block). The owner's rows #25–#27 (docs/23 §12) record the
+  shape.
 
 Everything else filed under v2.2 has shipped: D4-S0 to S4, the `v2.2-S0` to `S8` labels (0.43.0 to
 0.50.0) and the block cut (0.55.0).
@@ -52,9 +55,10 @@ Everything else filed under v2.2 has shipped: D4-S0 to S4, the `v2.2-S0` to `S8`
 | Which wire object says a tag over `Extracted` text was `Computed` | **done (S1)** | `pdf_tagged.derivation` on every tagged locator, always stated (decision #20), and the document-scoped `structure-tree-engine-written`; `struct-tree-v1` → `struct-tree-v2` (docs/23 §4.2) |
 | Read-back of the attribute | **done (S1)** | `structure.rs` reads `/A` in every shape and `/C` through `/ClassMap`, binds `Computed` under an engine-written element, refuses a malformed owned object naming the element; four hand-written fixtures in the writer's tree shape plus the `/OBJR` pair hold it |
 | Milestones document | **done 2026-09-16** | [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) |
-| Writer subcommand: `tag`, the tree, one sequence per block where the stream allows, `/ParentTree`, filling absence only, the self-check | **S2 — on the integration branch** | The strict decoder and the tokeniser with positions are measured over every corpus (1 567 pages, 6 697 547 operations, 0 refusals); the placement rule, the tree, `write_tags` and `tag` follow in the same slice |
-| Read-back test: write a tag, re-extract, confirm it reads as `Computed` and grounds; the projections equal the untagged original's | **S3 — pending** | S2 |
-| #23's re-refusal measurement | **half measured** | The misread rate needs no twin and is published: on `nist-sp-800-207`, 8.9% of blocks hold two or more author `/P` (5.0% outside tables), 3.5% of `/P` are split, all at page breaks ([`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md) §1). The consumer demonstration — 0.58.0's reader binding an engine-written `/Div` as author structure — waits on the writer (S4) |
+| Writer subcommand: `tag`, the tree, one sequence per block where the stream allows, `/ParentTree`, filling absence only, the self-check | **done (S2)** | The writer review's 14 confirmed findings are fixed or recorded: the self-check compares every page's counters and walks the tree as written (`5c26a72`); new objects never take a number a dangling reference names, stale `/StructParents` keys are refused, and streams are removed only when nothing names them (`8500ab3`); the `/Properties` resolver has its own test (`5e649dc`); the rest are docs/23's amendments. Over 293 documents: 0 self-check, filter, decode or tokeniser refusals |
+| Read-back test: write a tag, re-extract, confirm it reads as `Computed` and grounds; the projections equal the untagged original's | **done (S3)** | `group_key` reads a computed sequence as no declaration; `tag_roundtrip.rs` holds four acceptances on four fixtures, and S4 measured the projections equal on 129 of 129 tagged documents |
+| #23's re-refusal measurement | **measured** | The misread rate needs no twin: on `nist-sp-800-207`, 8.9% of blocks hold two or more author `/P` (5.0% outside tables), 3.5% of `/P` are split, all at page breaks (README §1). The consumer: 0.58.0 binds all 41,208 runs of the 129 written trees as author structure, no `derivation` on any (README §2) |
+| §7.1's multi-sequence blocks by cause | evidence | 74 of 453 blocks are more than one sequence, but the writer holds each sequence's cause in its plan and prints it nowhere, so the buckets §7.1 asked for are uncounted (docs/23 amendments) |
 
 ### 2.2 The block cut (shipped 0.55.0)
 
@@ -112,6 +116,8 @@ because they are real work whatever version they end up in.
 | Decision | Blocks |
 | --- | --- |
 | **Rows #25–#27** as proposed in [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md) §12: the auto-tagging scope, no MCP/SDK exposure of the writer, and the reconciliation of the plan's v2.2 definition | Clause two's status on the North Star; §2.3 |
+| **docs/23 §3.6 row 2's reopening count:** 146 of the 200 opendataloader-bench documents (all PyPDF2 page splits) are refused for marked-content ids without a tree, the shape the row says reopens with a corpus count showing it is common | Whether `tag` ever writes around a document's orphaned ids |
+| **docs/23 §3.5's reopening condition for an incremental update:** 6 of 4,116 reals outside content streams do not survive `f32`, in 2 PyPDF2 documents, below the ninth significant digit — non-zero on one producer; whether it is *a producer that matters* | The full re-serialisation |
 | **0.58.0's shape:** tag `b4b4aa9` as v0.58.0 as prepared, with this session's work as the next version (recommended); or re-cut 0.58.0 over everything, rewriting the release commit, rebuilding the artifacts and re-running preflight | §1 |
 | The proposals of [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md) §8, one per knob | 6.9 |
 | **D4:** create a v2.3 roadmap row (amends `02-ROADMAP.md`'s "no new version numbers" and #15's order) | 6.4, 6.5, 6.8 |

@@ -172,6 +172,31 @@ pub fn extract_limitations() -> Vec<Limitation> {
          declared gap rather than as a sparse page.",
     ));
 
+    // The block cut's limits (0.55.0's `TextRunAttributes::block`). The wording is taken from
+    // `blocks.rs`'s header and from the field's rustdoc, so the three places cannot drift apart:
+    // whitespace only, no indent branch, recall measured on one document, never a paragraph.
+    // Profile-scoped because every one of those holds on every document this build reads,
+    // including a page the rule declined — which is the common page.
+    out.push(Limitation::profile(
+        ethos_parser_core::codes::BLOCK_SUBDIVISION_LEADING_GAP_ONLY,
+        "Every text run's `block` is computed from VERTICAL WHITESPACE against its band's own \
+         modal leading and from nothing else: a gap of at least 1.6 x that leading (5*gap >= \
+         8*leading, in integer centipoints) opens a block, and a band whose modal gap is under \
+         six points, or is held by fewer than a quarter of its gaps, is declined rather than cut. \
+         There is NO INDENT BRANCH, so a paragraph break marked by indentation with no extra \
+         leading opens no block: the affected band simply gets no cut, which is the same absence \
+         a page of uniform body text carries, and never a guessed one. Measured on the one gate \
+         document able to carry a real paragraph label (`nist-sp-800-207`: 135 \
+         paragraph-to-paragraph boundaries and 719 mid-paragraph pairs), the rule finds 63.7% OF \
+         REAL PARAGRAPH BREAKS AT 100% PRECISION — it never fires mid-paragraph, and it misses \
+         better than a third of the breaks, because 35.1% of them carry no extra leading for any \
+         gap rule to see. That recall is a property of one document as much as of the rule; under \
+         proxy labels its per-document range is 32.3% to 97.1%. A block is NOT a paragraph, a \
+         heading, a list item or a section, and no role may be read from it: roles come from the \
+         document's own structure tree or from nowhere. Where `block` is absent the rule \
+         declined, which is the common case and not a failure to look.",
+    ));
+
     out
 }
 
@@ -456,6 +481,60 @@ pub fn tagged_table_without_geometric_table(pages: &[u32]) -> Limitation {
              what this disclosure exists to make visible; the text is present and complete, so the \
              table's content is addressable even though its grid is not.",
             list.join(", ")
+        ),
+    )
+}
+
+/// The document-scoped disclosure for a structure tree this engine's own writer created
+/// (auto-tagging S1, `docs/23-AUTO-TAGGING-SCOPE.md` §4.2).
+///
+/// A disclosure in the limitation slot on the precedent of
+/// [`tagged_table_without_geometric_table`] (v2-S24), and like that code it still names something
+/// missing: an author's structure. Declared beside — never instead of — the `derivation` every
+/// `pdf_tagged` locator carries, so a consumer reading only the assurance block learns whose tree
+/// the role paths came from. `untagged_structure_tree_absent` is not declared with it: a tree was
+/// read and a role path exists, so that code's detail would be false on both counts.
+///
+/// `elements` is how many elements carry the owner attribute and `tree_elements` how many the
+/// tree holds in all. The writer tags only a document with no tree, so on its output the two are
+/// equal and the detail says every role path is this engine's; a tree that mixes an author's
+/// elements with this engine's — a shape nothing produces, and nothing forbids a hand from
+/// producing — is said to be mixed rather than described by a sentence that would be false of it.
+pub fn structure_tree_engine_written(
+    elements: u32,
+    tree_elements: u32,
+    runs: u32,
+    rules: &std::collections::BTreeSet<String>,
+) -> Limitation {
+    let rules = if rules.is_empty() {
+        "no `/Rule` name".to_string()
+    } else {
+        let list: Vec<&str> = rules.iter().map(String::as_str).collect();
+        format!("`/Rule` {}", list.join(", "))
+    };
+    let whose = if elements >= tree_elements {
+        "The input carried no author structure tree — the writer tags only such a document — so \
+         EVERY role path in this artifact is this engine's own block cut read back and NONE is \
+         the author's: a `/Div` here says where a stretch of text lies, never what it is."
+            .to_string()
+    } else {
+        format!(
+            "The other {} element(s) of the tree carry no such attribute, so this tree MIXES an \
+             author's elements with this engine's — a shape the writer never produces, because \
+             it tags only a document with no tree — and each locator's `derivation` says which \
+             element cited it.",
+            tree_elements.saturating_sub(elements)
+        )
+    };
+    Limitation::document(
+        ethos_parser_core::codes::STRUCTURE_TREE_ENGINE_WRITTEN,
+        format!(
+            "This document's structure tree is THIS ENGINE'S OWN, read back out of the file: \
+             {elements} of its {tree_elements} structure element(s) carry an attribute object \
+             owned by `/EthosParser` with `/Derivation /Computed` ({rules}), and {runs} text \
+             run(s) bind under them with `derivation: computed` on their `pdf_tagged` locator. \
+             {whose} A reader that does not read the owner attribute sees author structure; this \
+             declaration and the class on every tagged locator are what say otherwise."
         ),
     )
 }

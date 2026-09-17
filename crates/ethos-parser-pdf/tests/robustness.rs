@@ -414,7 +414,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **67**, and not one of the seven additions since v2-S21 is a
+/// The pinned set is **81**, and not one of the twenty-one additions since v2-S21 is a
 /// mutation-behaviour change. It was **64** at v2.2-S3: `ink-past-the-media-box` (D4-S5),
 /// `form-xobject-text-drawn` (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
 /// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
@@ -422,7 +422,17 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// leave the cross-reference table resolving. The v2-S21 measurement above stands as recorded;
 /// only the population moved. `rotated-and-mirrored-text` (0.58.0) joins them the same way, and
 /// with it and the two fixtures decision #22 and v2.2-S5 added — `absent-font-widths` and
-/// `untagged-shredded-line` — the set is **67**.
+/// `untagged-shredded-line` — the set is **67**. `leading-gap-two-blocks`, the block cut's own
+/// fixture (OPEN-WORK §2.2), joins the same way and makes it **68**. The four `engine-tagged-*`
+/// fixtures of auto-tagging S1 — the same page under a hand-written structure tree — join the
+/// same way and make it **72**: a structure tree changes nothing about how a damaged xref, a
+/// truncated stream or an injected operator is refused, and each survives `junk-after-eof` alone.
+/// The `/OBJR` pair S1's review added — `tagged-widget-objr` and `engine-tagged-widget-objr`, the
+/// form-field-value page under a tree that cites its widget by object — join the same way and
+/// make it **74**. The seven fixtures of auto-tagging S2 — the shapes the writer must refuse or
+/// place around, each the leading-gap page with one thing changed — join the same way and make
+/// it **81**: a marked-content frame, a shared stream or an inline image in the content changes
+/// nothing about how the damage is refused either (85 fixtures, 487 mutants).
 ///
 /// Both old headings dissolve rather than shrink, and neither was quite right:
 ///
@@ -461,7 +471,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 67] = [
+const EXPECTED_SURVIVORS: [&str; 81] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -472,6 +482,11 @@ const EXPECTED_SURVIVORS: [&str; 67] = [
     "composite-font-cid-widths/junk-after-eof",
     "composite-font-non-identity-cmap/junk-after-eof",
     "crop-box-smaller-than-media/junk-after-eof",
+    "engine-tagged-blocks/junk-after-eof",
+    "engine-tagged-classmap/junk-after-eof",
+    "engine-tagged-mixed/junk-after-eof",
+    "engine-tagged-nested-frames/junk-after-eof",
+    "engine-tagged-widget-objr/junk-after-eof",
     "failure/image-only-or-blank-page/junk-after-eof",
     "failure/memory-limit-simulated/junk-after-eof",
     "foreign/opendataloader/real/junk-after-eof",
@@ -483,10 +498,13 @@ const EXPECTED_SURVIVORS: [&str; 67] = [
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
     "ink-past-the-media-box/junk-after-eof",
+    "inline-image-filtered/junk-after-eof",
     "invisible-render-mode/junk-after-eof",
     "irs-f1040sd-2025/junk-after-eof",
     "irs-form-1040-2025/junk-after-eof",
     "irs-fw9/junk-after-eof",
+    "leading-gap-nested-frames/junk-after-eof",
+    "leading-gap-two-blocks/junk-after-eof",
     "markdown-hyphen-break/junk-after-eof",
     "markdown-table-cells/junk-after-eof",
     "markdown-two-blocks/junk-after-eof",
@@ -504,6 +522,7 @@ const EXPECTED_SURVIVORS: [&str; 67] = [
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
+    "shared-content-stream/junk-after-eof",
     "show-text-quote-operators/junk-after-eof",
     "simple-font-two-byte-tounicode/junk-after-eof",
     "stroke-ruled-columns-not-drawn/junk-after-eof",
@@ -524,9 +543,14 @@ const EXPECTED_SURVIVORS: [&str; 67] = [
     "tagged-structure-roles/junk-after-eof",
     "tagged-table-agrees/junk-after-eof",
     "tagged-table-disagrees/junk-after-eof",
+    "tagged-widget-objr/junk-after-eof",
     "two-column-14-lines/junk-after-eof",
     "two-column-15-lines/junk-after-eof",
     "unruled-near-miss/junk-after-eof",
+    "untagged-artifact-furniture/junk-after-eof",
+    "untagged-mcid-by-name/junk-after-eof",
+    "untagged-mcid-no-tree/junk-after-eof",
+    "untagged-oc-by-name/junk-after-eof",
     "untagged-shredded-line/junk-after-eof",
     "whitespace-past-the-page-edge/junk-after-eof",
 ];
@@ -865,8 +889,30 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        71,
-        "the manifest should declare 71 fixtures across FOUR roots. 0.58.0 moved this from 70 by \
+        85,
+        "the manifest should declare 85 fixtures across FOUR roots. Auto-tagging S2 moved this \
+         from 78 by adding the seven shapes the writer must refuse or place around — \
+         `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, \
+         `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered` and \
+         `leading-gap-nested-frames` — each the leading-gap page with one thing changed, so only \
+         that thing is tested: an id in the content stream and no tree, inline and by name; a \
+         named list that is a layer; furniture marked /Artifact; one stream two pages share; a \
+         filtered inline image; and the untagged twin of `engine-tagged-nested-frames`. S1's \
+         review moved it from 76 by adding the `/OBJR` pair — `tagged-widget-objr` and \
+         `engine-tagged-widget-objr` — the form-field-value page under a structure tree whose one \
+         content item cites the widget by object, so the locator the `/OBJR` arm mints is read \
+         by a test in both classes. Auto-tagging S1 moved this \
+         from 72 by adding the four `engine-tagged-*` fixtures — `engine-tagged-blocks`, \
+         `engine-tagged-classmap`, `engine-tagged-mixed` and `engine-tagged-nested-frames` — the \
+         leading-gap page under the structure tree the writer will emit, written by hand BEFORE \
+         the writer exists so the reader is tested against a file no mistake the two might share \
+         could have produced: the owner attribute under `/A`, through `/ClassMap`, beside a \
+         foreign owner, and inside existing marked-content frames. OPEN-WORK §2.2 moved this from \
+         71 by adding `leading-gap-two-blocks`, the first fixture authored for the leading-gap \
+         half of the block cut: six lines at a stated leading with one stated gap, so the two \
+         blocks it comes out in are checkable against `blocks.rs` by hand, where the three engine \
+         fixtures that already came out in two blocks did so by accident of a layout built for \
+         something else. 0.58.0 moved this from 70 by \
          adding `rotated-and-mirrored-text`, the only engine fixture whose text does not run along \
          +x: the box was built from the advance's x alone, so text turned by its text matrix was \
          typed as drawing nothing and text turned by its CTM got a box along x, and no engine \

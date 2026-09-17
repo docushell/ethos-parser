@@ -24,6 +24,7 @@
 //! | [`classify`] | Per-page counts and named reason codes on two orthogonal axes, plus a derived boolean |
 //! | [`extract`] | Position-aware text runs with native locators, measured ink boxes or typed absence, and synthesized-character flags |
 //! | [`to_representation`] | `DocumentRepresentation v0` — the canonical record, sealed with its fingerprint |
+//! | [`write_tags`] | A copy of an untagged PDF carrying this engine's own `/Document`/`/Div` structure tree, marked computed, read back before it is returned (auto-tagging S2) |
 //!
 //! Nothing here renders a verdict, scores quality, or decides where a document should be routed.
 //! The classifier emits counts and reasons; the caller owns the policy.
@@ -77,6 +78,9 @@ pub(crate) mod represent;
 pub(crate) mod stroke_ruled;
 pub(crate) mod structure;
 pub(crate) mod tables;
+// Auto-tagging S2. The writer: the strict decoder, the tokeniser with positions, the placement
+// rule, the tree, and `write_tags` with its self-check.
+pub(crate) mod tagging;
 pub(crate) mod text_state;
 pub(crate) mod thresholds;
 pub(crate) mod unruled;
@@ -97,6 +101,7 @@ pub use nodes::{ImageRecord, PageExtract, PdfLocator, SynthesisReason, Synthesiz
 pub use overlay::{build_overlay, OVERLAY_ARTIFACT_TYPE};
 pub use reasons::{LayoutComplexityReason, OcrNeedReason};
 pub use represent::{to_representation, PROCESSOR_NAME};
+pub use tagging::{write_tags, TAGS_ARTIFACT_TYPE};
 
 /// The crate name, asserted by the M0 harness to prove the workspace links.
 pub const CRATE_NAME: &str = "ethos-parser-pdf";

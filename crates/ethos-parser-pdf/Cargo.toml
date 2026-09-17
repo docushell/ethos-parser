@@ -12,6 +12,12 @@ description = "ethos-parser PDF reader: classification and position-aware extrac
 [dependencies]
 rayon = { workspace = true }
 ethos-parser-core.workspace = true
+# Auto-tagging S2. The writer inflates a page's `FlateDecode` streams itself (`tagging.rs`),
+# because `lopdf`'s inflate returns the partial output of a truncated or corrupt stream as a
+# success and the writer must refuse exactly that. `flate2` is already in this workspace's graph
+# twice over — via `lopdf`'s stream decompression and `ethos-parser-office`'s ZIP reader — so the
+# primitive that actually matters (a strict inflate with its stream-end status) costs nothing new.
+flate2 = "1"
 lopdf = { version = "0.44.0", default-features = false }
 serde.workspace = true
 serde_json.workspace = true

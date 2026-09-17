@@ -48,6 +48,18 @@ pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.parser.extract.v0";
 /// a document with no tagged tables serializes byte-identically to a `0.3.0` extract — but the
 /// shape is `deny_unknown_fields`, so a `0.3.0` reader rejects an extract that carries the key, and
 /// the version says the two are genuinely non-comparable rather than letting a reader guess.
+///
+/// The rule this constant follows: it moves when a reader could otherwise be misled about what it
+/// is reading. A key added under a MINOR release that this parser refuses on read is named in the
+/// release note instead and the version stays — the rule `docs/23-AUTO-TAGGING-SCOPE.md` §8 holds
+/// the representation's `schema_version` to, applied to this wire as well. Two additions since
+/// `0.4.0` follow it: `TextRun.block` at 0.55.0 (an `Option`, so a 0.54.0 extract still parses
+/// here), and `TaggedTableRecord.derivation` at auto-tagging S1 (required, no default: a 0.58.0
+/// extract that carries a tagged table is refused here with `missing field derivation`, while a
+/// 0.58.0 build, whose record did not deny unknown fields, ignores the key; the record denies
+/// unknown fields from this slice on, so later shapes refuse each other symmetrically). Both are
+/// named in their release notes. The artifact is a draft library surface with no stored fixtures:
+/// only this build's own bytes are ever parsed back, in two round-trip tests.
 pub const EXTRACT_SCHEMA_VERSION: &str = "0.4.0";
 
 /// The extract artifact.
@@ -210,6 +222,12 @@ struct PageYield {
     encoding_detail: String,
     mcids_unbound: u32,
     unclaimed_tree_items: u32,
+    /// Runs bound under an element this engine's own writer created (auto-tagging S1).
+    computed_bound: u32,
+    /// For every run in `page.runs`, in the same order, the index of the operation that showed
+    /// it in the page's decoded content (auto-tagging S2). Permuted by `reorder_page` with the
+    /// runs, so `op_indices[i]` describes `page.runs[i]` in the final order.
+    op_indices: Vec<usize>,
     props_by_name: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
@@ -252,6 +270,7 @@ fn extract_page(
     let mut stroke_refusals: Vec<(u32, crate::stroke_ruled::Refusal)> = Vec::new();
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
+    let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
@@ -262,6 +281,10 @@ fn extract_page(
         std::collections::BTreeMap::new();
     let mut composite_fonts: u32 = 0;
     let mut font_limitations: Vec<ethos_parser_core::Limitation> = Vec::new();
+    // Auto-tagging S2. One entry per run pushed in the loop below, skipping exactly what the
+    // loop skips, so the two vectors are aligned by construction and stay so through
+    // `reorder_page`.
+    let mut op_indices: Vec<usize> = Vec::new();
     let page_extract;
     {
         let page_dict =
@@ -336,10 +359,12 @@ fn extract_page(
         // interpreter fields (rects, segments, counters) are read below and stay put.
         let shown_runs = std::mem::take(&mut interp.shown);
         let mut runs = Vec::with_capacity(shown_runs.len());
+        op_indices.reserve(shown_runs.len());
         for shown in shown_runs {
             if shown.text.is_empty() {
                 continue;
             }
+            op_indices.push(shown.op_index);
             let font = fonts.get(&shown.font_id);
 
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
@@ -514,6 +539,23 @@ fn extract_page(
                         matches!(
                             r.structural,
                             Some(ethos_parser_core::StructuralLocator::PdfMcid(_))
+                        )
+                    })
+                    .count(),
+            ),
+        );
+        // Auto-tagging S1. Runs whose binding is this engine's own tag read back — the count
+        // `structure-tree-engine-written` names. Counted off the locators the join produced,
+        // never off the tree alone, because only the join knows which citations a run answered.
+        computed_bound = declare(
+            computed_bound,
+            declared_len(
+                runs.iter()
+                    .filter(|r| {
+                        matches!(
+                            &r.structural,
+                            Some(ethos_parser_core::StructuralLocator::PdfTagged(t))
+                                if t.derivation == DerivationClass::Computed
                         )
                     })
                     .count(),
@@ -697,8 +739,13 @@ fn extract_page(
                 run.block = *block;
             }
 
-            reorder_page(&mut runs, &mut tables, &arranged.order);
+            reorder_page(&mut runs, &mut tables, &mut op_indices, &arranged.order);
         }
+        debug_assert_eq!(
+            op_indices.len(),
+            runs.len(),
+            "one operator index per run, or the side table lies about every run after the gap"
+        );
 
         // v2-S24. Emit the tagged tables collected above, now that `runs` is in its final order.
         // A cell's `run_indices` address that final list, and its text is the runs the tree bound
@@ -779,6 +826,10 @@ fn extract_page(
                 rule: ethos_parser_core::TABLE_DETECTION_TAGGED_V1.to_string(),
                 check: crate::tables::tagged_not_applicable_check(),
                 geometry: crate::tables::TAGGED_TABLE_GEOMETRY,
+                // Whose element the `/Table` is, as the walk read it off the element's own
+                // attributes (auto-tagging S1). `Extracted` on every document the writer
+                // produces, because it never emits a `/Table`; read rather than assumed.
+                derivation: tagged.derivation,
             });
         }
         // v2-S24. The repurposed disclosure: a page that emitted a tagged table carries a table
@@ -925,6 +976,8 @@ fn extract_page(
         encoding_detail,
         mcids_unbound,
         unclaimed_tree_items,
+        computed_bound,
+        op_indices,
         props_by_name,
         tagged_without_geometric,
         unresolved_field_parents,
@@ -938,6 +991,67 @@ fn extract_page(
     })
 }
 
+/// For every processed page, keyed by its 1-based number ([`PageExtract::index`]), its
+/// [`PageTrace`]: the index of the operation that showed each of its runs, aligned with
+/// `page.runs`, and the page's counters before the fold summed them (auto-tagging S2).
+///
+/// The index counts operations in `lopdf::content::Content::decode` of the page's joined content
+/// — the buffer `get_page_content` builds, one `\n` after every stream — which is what the
+/// interpreter ran. A page the budget quarantined has no entry, because it has no runs. Several
+/// runs may share one index: a `TJ` holding three strings shows three runs from one operation.
+///
+/// Crate-private on purpose. The writer needs to know which operator showed a run and nothing
+/// parsed from JSON may reach that rule, so the mapping lives beside the artifact and never on
+/// `TextRun` (docs/23-AUTO-TAGGING-SCOPE.md §6).
+pub(crate) type RunPositions = std::collections::BTreeMap<u32, PageTrace>;
+
+/// One page's side of the extraction, beside its [`PageExtract`] (auto-tagging S2).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct PageTrace {
+    /// For every run of the page, in the artifact's order, the index of the operation that
+    /// showed it — [`RunPositions`] says what the index counts.
+    pub(crate) op_indices: Vec<usize>,
+    /// The page's counters as `extract_page` returned them.
+    pub(crate) counters: PageCounters,
+}
+
+/// The per-page counters docs/23-AUTO-TAGGING-SCOPE.md §3.7 names, taken from `PageYield` before
+/// the fold sums them.
+///
+/// Each reaches the artifact only as a document total inside one limitation —
+/// `inline-images-not-emitted(n)`, `xobject-name-unresolved(n)`,
+/// `form-xobject-text-not-descended(n)`, `mcid-property-list-by-name(n)`,
+/// `broken-font-encoding(n)` — so two pages that drift in opposite directions read back with
+/// every total unchanged. Kept per page here so the writer's self-check can compare them page by
+/// page, which is the comparison the scope asks for; the fold, the limitations and the artifact
+/// are unchanged by this record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct PageCounters {
+    /// `BI … EI` images drawn on the page.
+    pub(crate) inline_images: u32,
+    /// `Do` operands that named no XObject this profile could resolve.
+    pub(crate) unresolved_xobjects: u32,
+    /// Form XObjects painted and not descended.
+    pub(crate) undescended_xobjects: u32,
+    /// `BDC` property lists given by name.
+    pub(crate) props_by_name: u32,
+    /// Runs dropped because their font could not map their codes.
+    pub(crate) encoding_dropped_runs: u32,
+}
+
+impl PageCounters {
+    /// Every counter beside its name, in one fixed order, so a comparison can say which differed.
+    pub(crate) fn named(self) -> [(&'static str, u32); 5] {
+        [
+            ("inline_images", self.inline_images),
+            ("unresolved_xobjects", self.unresolved_xobjects),
+            ("undescended_xobjects", self.undescended_xobjects),
+            ("props_by_name", self.props_by_name),
+            ("encoding_dropped_runs", self.encoding_dropped_runs),
+        ]
+    }
+}
+
 /// Extract text runs from an already-open document.
 ///
 /// # Errors
@@ -948,6 +1062,22 @@ fn extract_page(
 /// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure.
 /// - [`EngineError::MissingPart`] — a font resource a `Tf` refers to is absent.
 pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, EngineError> {
+    extract_with_positions(doc, profile).map(|(artifact, _)| artifact)
+}
+
+/// [`extract`], returning beside the artifact where each run came from in its page's content
+/// stream (auto-tagging S2).
+///
+/// The artifact is byte-for-byte the one [`extract`] returns — that function is this one with the
+/// side table dropped — so nothing about the record changes when a caller asks for positions.
+///
+/// # Errors
+///
+/// Exactly [`extract`]'s.
+pub(crate) fn extract_with_positions(
+    doc: &Document,
+    profile: &Profile,
+) -> Result<(ExtractArtifact, RunPositions), EngineError> {
     let profile_sha256 = profile
         .profile_sha256()
         .map_err(|e| EngineError::Malformed {
@@ -957,6 +1087,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());
+    let mut positions = RunPositions::new();
     let mut limitations = lim::extract_limitations();
     // A repaired open is never silent: every artifact derived from one says so.
     if let Some(padded) = doc.xref_entries_padded() {
@@ -1002,6 +1133,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // Counted while binding, declared afterwards, and only when non-zero.
     let mut mcids_unbound: u32 = 0;
     let mut unclaimed_tree_items: u32 = 0;
+    // Auto-tagging S1. Runs bound under this engine's own elements, summed like `mcids_unbound`.
+    let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
@@ -1250,6 +1383,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         }
         mcids_unbound = declare(mcids_unbound, y.mcids_unbound);
         unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
+        computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
@@ -1266,6 +1400,21 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             }
         }
 
+        // The page's counters, kept beside its operator indices before the sums above lose the
+        // page (auto-tagging S2, scope §3.7's per-page comparison).
+        positions.insert(
+            page_number,
+            PageTrace {
+                op_indices: y.op_indices,
+                counters: PageCounters {
+                    inline_images: y.inline_images,
+                    unresolved_xobjects: y.unresolved_xobjects,
+                    undescended_xobjects: y.undescended_xobjects,
+                    props_by_name: y.props_by_name,
+                    encoding_dropped_runs: y.encoding_dropped_runs,
+                },
+            },
+        );
         pages.push(y.page);
         page_states.push(PageStateEntry {
             index: page_number,
@@ -1295,6 +1444,10 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
     // v1-S3. Four facts about the structure tree, each declared only where it is true. A
     // capability that says "this profile looks" is worth having only if the artifact also says
     // what the looking found, and "found nothing" has more than one cause.
+    //
+    // Auto-tagging S1 adds a fifth, on the `Some` arm only: a tree this engine's own writer
+    // created is declared as such, and `untagged-structure-tree-absent` stays on the `None` arm
+    // alone — a tree was read, so its detail would be false (scope §4.2).
     match structure.as_ref() {
         None => limitations.push(lim::untagged_structure_tree_absent()),
         Some(tree) => {
@@ -1304,7 +1457,14 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
             if unclaimed_tree_items > 0 {
                 limitations.push(lim::structure_item_without_content(unclaimed_tree_items));
             }
-            let _ = tree;
+            if let Some(written) = &tree.engine_written {
+                limitations.push(lim::structure_tree_engine_written(
+                    written.elements,
+                    declared_len(tree.elements),
+                    computed_bound,
+                    &written.rules,
+                ));
+            }
         }
     }
     if props_by_name > 0 {
@@ -1374,7 +1534,7 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         ));
     }
 
-    Ok(ExtractArtifact {
+    let artifact = ExtractArtifact {
         identity: ArtifactIdentity {
             artifact_type: EXTRACT_ARTIFACT_TYPE.to_string(),
             schema_version: EXTRACT_SCHEMA_VERSION.to_string(),
@@ -1389,7 +1549,8 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
         page_count,
         pages,
         assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
-    })
+    };
+    Ok((artifact, positions))
 }
 
 /// One page's table-detection evidence, exposed for the v2-S22 diagnostic (`cfg(test)`).
@@ -1568,6 +1729,13 @@ pub(crate) fn per_page_table_diagnostics(
 ///    occupies the old slot — a cell claiming text it does not contain, which is the one failure
 ///    here that no artifact would show.
 ///
+/// 4. **The operator indices** (auto-tagging S2). `op_indices[i]` says which operation showed
+///    `runs[i]`, and it is permuted by the same `order` in the same call, so the alignment
+///    survives the move without an index of its own — the discipline `region` and `block` follow
+///    by travelling inside the run. Left in stream order it would name, for every moved run, the
+///    operator of whichever run used to sit at its slot, and the writer would tag the wrong
+///    operators while every run's text stayed right.
+///
 /// A table's runs are contiguous in the new order and keep their relative sequence (they are one
 /// atom), so a cell's remapped indices stay ascending and still concatenate to the `text` the
 /// detector built.
@@ -1586,6 +1754,7 @@ pub(crate) fn per_page_table_diagnostics(
 fn reorder_page(
     runs: &mut Vec<TextRun>,
     tables: &mut [crate::tables::DetectedTable],
+    op_indices: &mut Vec<usize>,
     order: &[usize],
 ) {
     // The single-column case, which is most pages: the rule found no gutter and returned the
@@ -1607,6 +1776,10 @@ fn reorder_page(
         run.id = ids[new].clone();
         runs.push(run);
     }
+
+    // The same permutation, applied to the side table in the same breath (item 4 above).
+    let stream_ordered = std::mem::take(op_indices);
+    op_indices.extend(order.iter().map(|&old| stream_ordered[old]));
 
     for table in tables {
         for cell in &mut table.cells {
@@ -1941,7 +2114,7 @@ impl PageGeometry {
 /// Same reasoning and the same shape as the structure walk's depth bound: a chain the document
 /// controls must not decide how long this process runs, and a cycle must be survived rather than
 /// spun on.
-const INHERITANCE_MAX_DEPTH: usize = 32;
+pub(crate) const INHERITANCE_MAX_DEPTH: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -2252,7 +2425,8 @@ mod tests {
             "a table whose cells hold no runs would assert nothing about text"
         );
 
-        reorder_page(&mut runs, &mut tables, &order);
+        let mut op_indices: Vec<usize> = (0..runs.len()).collect();
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
 
         for (cell, (was, text)) in tables[0].cells.iter().zip(&before) {
             assert_eq!(&cell.text, text, "the reorder must not rewrite cell text");
@@ -2324,7 +2498,8 @@ mod tests {
         for (run, region) in runs.iter_mut().zip(&arranged.regions) {
             run.region = *region;
         }
-        reorder_page(&mut runs, &mut tables, &arranged.order);
+        let mut op_indices: Vec<usize> = (0..runs.len()).collect();
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &arranged.order);
 
         for run in &runs {
             let (_, want) = expected
@@ -2370,7 +2545,8 @@ mod tests {
         };
         assert!(claimed.len() >= 2, "the premise needs more than one run");
 
-        reorder_page(&mut runs, &mut tables, &order);
+        let mut op_indices: Vec<usize> = (0..runs.len()).collect();
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
 
         let mut after: Vec<usize> = tables[0]
             .cells
@@ -2392,6 +2568,139 @@ mod tests {
         assert!(
             after.windows(2).all(|w| w[0] < w[1]),
             "and each exactly once: {after:?}"
+        );
+    }
+
+    /// **Auto-tagging S2: the operator index follows its own run through the reordering.**
+    ///
+    /// The same shape as `the_region_follows_its_own_run_through_the_reordering`, for the same
+    /// reason: an index left in stream order would still be a plausible vector of the right
+    /// length, and the writer would tag the operator of whichever run used to occupy the slot.
+    /// Text is the handle that survives the permutation, so the expectation is recorded by text.
+    #[test]
+    fn the_operator_index_follows_its_own_run_through_the_reordering() {
+        let (mut runs, mut tables, order) = a_table_beside_a_column();
+        assert_ne!(
+            order,
+            (0..runs.len()).collect::<Vec<_>>(),
+            "the fixture must actually reorder, or a stale side table is indistinguishable from \
+             a permuted one"
+        );
+
+        // Distinct, non-identity indices, so a vector left untouched or permuted the wrong way
+        // round cannot coincide with the right answer.
+        let mut op_indices: Vec<usize> = (0..runs.len()).map(|i| i * 7 + 3).collect();
+        let expected: Vec<(String, usize)> = runs
+            .iter()
+            .zip(&op_indices)
+            .map(|(r, &op)| (r.text.clone(), op))
+            .collect();
+
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
+
+        assert_eq!(
+            op_indices.len(),
+            runs.len(),
+            "one index per run, after as before"
+        );
+        for (run, &op) in runs.iter().zip(&op_indices) {
+            let (_, want) = expected
+                .iter()
+                .find(|(text, _)| *text == run.text)
+                .expect("reordering is a permutation, so every text survives it");
+            assert_eq!(
+                op, *want,
+                "`{}` came out of the reordering paired with operator {op}, but it was shown by \
+                 operator {want}",
+                run.text
+            );
+        }
+    }
+
+    /// **The public run carries no operator index** (docs/23-AUTO-TAGGING-SCOPE.md §6).
+    ///
+    /// `TextRun` is `deny_unknown_fields` and on the wire; the operator index is a join key into
+    /// bytes a JSON consumer never sees, and a `TextRun` that carried it would let an artifact
+    /// parsed from JSON reach the writer's placement rule. A source scan, because the absence of
+    /// a field is not something a type can assert about itself.
+    #[test]
+    fn the_public_run_carries_no_operator_index() {
+        let nodes = include_str!("nodes.rs");
+        assert!(
+            !nodes.contains("op_index"),
+            "`op_index` reached nodes.rs: the operator index must stay in the crate-private side \
+             table `extract_with_positions` returns, never on `TextRun`"
+        );
+        // And the side table really is where it lives, or the assertion above guards nothing.
+        let here = include_str!("extract.rs");
+        assert!(here.contains("pub(crate) type RunPositions"));
+    }
+
+    /// **Every position names a text-showing operation of its page, one per run.**
+    ///
+    /// On `leading-gap-two-blocks`, whose runs the block cut reorders into two blocks, the side
+    /// table has exactly one entry per run and every entry indexes a `Tj`, `TJ`, `'` or `"` in
+    /// lopdf's decode of the page — the same decode the interpreter ran. An index that pointed
+    /// at a `Td` would be a run claiming to have been shown by an operator that shows nothing.
+    #[test]
+    fn every_run_position_indexes_a_text_showing_operation() {
+        let bytes = crate::test_support::engine_fixture("leading-gap-two-blocks/document.pdf");
+        let profile = Profile::default();
+        let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+        let (artifact, positions) = extract_with_positions(&doc, &profile).expect("extracts");
+
+        assert_eq!(
+            artifact,
+            extract(&doc, &profile).expect("extracts"),
+            "asking for positions must not change the artifact"
+        );
+        assert_eq!(
+            positions.len(),
+            artifact.pages.len(),
+            "one entry per processed page"
+        );
+
+        let mut checked = 0usize;
+        for page in &artifact.pages {
+            let ops = &positions
+                .get(&page.index)
+                .unwrap_or_else(|| panic!("page {} has no positions", page.index))
+                .op_indices;
+            assert_eq!(
+                ops.len(),
+                page.runs.len(),
+                "page {}: one index per run",
+                page.index
+            );
+            assert!(!page.runs.is_empty(), "the fixture page shows text");
+
+            let page_id = doc
+                .pages()
+                .iter()
+                .find(|(n, _)| *n == page.index)
+                .map(|(_, id)| *id)
+                .expect("the page exists");
+            let decoded = lopdf::content::Content::decode(&doc.inner().get_page_content(page_id))
+                .expect("the fixture's content decodes");
+            for (run, &op) in page.runs.iter().zip(ops) {
+                let operator = decoded
+                    .operations
+                    .get(op)
+                    .map(|o| o.operator.as_str())
+                    .unwrap_or_else(|| {
+                        panic!("run `{}` indexes operation {op} past the end", run.text)
+                    });
+                assert!(
+                    matches!(operator, "Tj" | "TJ" | "'" | "\""),
+                    "run `{}` says operation {op} showed it, and that operation is `{operator}`",
+                    run.text
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked >= 6,
+            "the fixture holds at least six runs, checked {checked}"
         );
     }
 

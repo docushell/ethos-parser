@@ -209,7 +209,13 @@ pub struct DetectedTable {
 ///
 /// The geometry is **typed-absent**: [`ethos_parser_core::GeometryPresence::Absent`] with
 /// [`ethos_parser_core::GeometryAbsence::NotReportedByStructureTree`]. No rectangle is invented.
+///
+/// Unknown fields are denied, as [`crate::nodes::TextRun`] and [`crate::nodes::PageExtract`] deny
+/// them: decision #20's "written with no default" is then enforced on read as well as on write,
+/// and a key a later shape adds is refused by this build rather than silently dropped
+/// (auto-tagging S1 review; [`crate::extract::EXTRACT_SCHEMA_VERSION`] states the rule).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TaggedTableRecord {
     /// Stable id.
     pub id: NodeId,
@@ -234,10 +240,21 @@ pub struct TaggedTableRecord {
     /// is not invented, and the reason it is missing is a property of the source rather than a gap
     /// in this reader.
     pub geometry: ethos_parser_core::GeometryPresence,
+    /// Whose statement the grid is, read off the `/Table` element itself (auto-tagging S1).
+    ///
+    /// `Extracted` for an author's tags — the document's own statement, a stronger class than any
+    /// grid inferred over ink — and `Computed` only where the element carries this engine's owner
+    /// attribute, which the writer never puts on a table (`docs/23-AUTO-TAGGING-SCOPE.md` §3.2).
+    /// Carried on the record rather than restored as a constant downstream so a tagged table can
+    /// never launder an engine-written element into the author's; written on every record with no
+    /// default, by decision #20.
+    pub derivation: ethos_parser_core::DerivationClass,
 }
 
-/// One `/TD` or `/TH` of a tagged table (v2-S24).
+/// One `/TD` or `/TH` of a tagged table (v2-S24). Denies unknown fields for the reason its table
+/// does.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TaggedCellRecord {
     /// Where it sits and how far it reaches, from the tree's position and `/RowSpan`/`/ColSpan`.
     pub position: TableCellPosition,

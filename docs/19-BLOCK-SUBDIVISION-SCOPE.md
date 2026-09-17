@@ -8,6 +8,49 @@ question adjacent to the one that matters.
 
 **It is deliberately not called a paragraph cut.** See §6.
 
+**Since this was written.** The body stands as last amended on 2026-09-10 (§11.2b); the title's
+"not yet scoped" is still true, and the cut shipped anyway. What followed is recorded here, dated
+2026-09-16, with the version each item shipped in, and the body is not rewritten.
+
+- **Shipped at 0.55.0, without a scope document.**
+  [`crates/ethos-parser-pdf/src/blocks.rs`](../crates/ethos-parser-pdf/src/blocks.rs), commit
+  `e077a7f`, puts `TextRunAttributes.block` on every PDF text run under `gutter-columns-v3`: the
+  unnamed `Computed` index §6 permits and nothing more, 1-based in reading order, absent wherever the
+  rule declined. The rule is §11's fixed threshold — a gap of at least 1.6 × the band's own modal
+  leading, `5·gap ≥ 8·leading` in centipoints — under §5's guard (a modal bin under 600 centipoints,
+  or holding under a quarter of the band's gaps, declines the band), with a block bounded by the
+  vertical cut as well, and with no indent branch (§4.3). [`02-ROADMAP.md`](02-ROADMAP.md) requires
+  a scope document before code and this cut did not get one; the roadmap now says so in as many
+  words rather than backdating one. Decision #21 (2026-09-05) removed the consumer the cut was for
+  and #23 (2026-09-07) gave it back.
+- **The measurement was re-derived at 0.54.0**, by
+  [`measurements/block-subdivision/probe3b.py`](measurements/block-subdivision/probe3b.py) — §11.2b:
+  135 real P→P boundaries and 719 mid-paragraph pairs on `nist-sp-800-207`, fixed 1.60× at **63.7%
+  recall and 100% precision**, where §11.4 had 63.0% over 715. That is the figure the shipped rule,
+  the field's rustdoc and the limitation below all quote. The question §11.2b left live — 1.15×
+  dominates on the one labellable document — is still live: no second labellable document has
+  arrived.
+- **Its limits are declared on the artifact**, after 0.58.0 on branch `feat/block-cut-leftovers`.
+  Every PDF extract artifact carries the profile-scoped limitation
+  `block-subdivision-leading-gap-only` (the constant in `ethos_parser_core::codes`, built in
+  [`crates/ethos-parser-pdf/src/limitations.rs`](../crates/ethos-parser-pdf/src/limitations.rs)),
+  which states that the index is computed from vertical whitespace against the band's modal leading
+  and nothing else; that there is no indent branch, so a paragraph break marked by indentation with
+  no extra leading opens no block; that recall was measured on one document, at 63.7% and 100%
+  precision; and that a block is not a paragraph and no role may be read from it. Until then those
+  four facts stood only in `blocks.rs` comments ([`OPEN-WORK.md`](OPEN-WORK.md) §2.2).
+- **The two hops that carry `block` are pinned by tests**, on the same branch, against
+  `leading-gap-two-blocks` — the first fixture authored for the cut, six lines at a stated leading
+  with one stated gap ([`fixtures/README.md`](../fixtures/README.md)). `extract.rs` sets three runs
+  in block 1 and three in block 2, `represent.rs` carries exactly those onto the wire, and
+  `markdown-two-blocks` carries none on either hop. Three earlier engine fixtures already came out in
+  two blocks by the gap half, each by accident of a layout authored for something else; none stated
+  a leading or a gap.
+- **The consumer is auto-tagging, and only auto-tagging.** `23-AUTO-TAGGING-SCOPE.md`, being written
+  on another branch, is the scope document for it. Nothing reads `block` outside tests today
+  (OPEN-WORK §2.2). §6's line — a block is never named a paragraph, and a tag written from one says it
+  was computed — is where that document starts.
+
 ---
 
 ## 1. The question, and why it is on the critical path

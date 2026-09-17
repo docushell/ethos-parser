@@ -311,6 +311,7 @@ const CORE: &[&str] = &[
     "SlotCover",
     "SlotFault",
     "STRUCT_TREE_RULE_V1",
+    "STRUCT_TREE_RULE_V2",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",
@@ -410,6 +411,11 @@ const PDF: &[&str] = &[
     "OVERLAY_ARTIFACT_TYPE",
     "PROCESSOR_NAME",
     "build_overlay",
+    // Auto-tagging S2. The writer and the artifact type it stamps on the catalog: the one stage
+    // whose output is a document rather than an artifact, and the one that runs extraction
+    // itself, because the artifact does not say which operator showed a run.
+    "TAGS_ARTIFACT_TYPE",
+    "write_tags",
     "PageClassification",
     "ImageRecord",
     "PageExtract",

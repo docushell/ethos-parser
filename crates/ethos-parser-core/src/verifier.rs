@@ -38,7 +38,7 @@
 //! # Why it lives in `ethos-parser-core`
 //!
 //! Because it must be reachable as a **library** call — `docs/history/05-MILESTONES.md`'s thin-shell rule
-//! applies to `ethos-parser verify` exactly as it applies to the other eight subcommands, and
+//! applies to `ethos-parser verify` exactly as it applies to the other nine subcommands, and
 //! `ethos-parser-cli` exports nothing. `ethos-parser-core` is the only crate every other one depends on, and
 //! this module keeps the crate's rules: it holds no PDF concept and no verification concept. It
 //! knows how to run a program and how to pin what it ran.
