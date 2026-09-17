@@ -4538,3 +4538,100 @@ fn a_document_the_empty_user_password_opened_declares_it() {
         codes(&plain)
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// A dropped run still advances the pen (doc 22 amendments, OPEN-WORK §6)
+// -------------------------------------------------------------------------------------------
+
+/// `broken-font-encoding` with one text object showing `first` then `Kept`, and its
+/// `/Differences` remapping code 65 — `A`, inside `/Widths`, so its width is declared while its
+/// glyph name resolves to no character. The fixture's own codes 200 to 202 are outside
+/// `/FirstChar`..`/LastChar`, so no width is declared for them and the pen could not travel over
+/// them even in principle; this is the case where it can.
+fn undecodable_then_kept(first: &[u8]) -> Vec<u8> {
+    let original = std::fs::read(engine_fx("broken-font-encoding")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let font = doc
+        .objects
+        .iter()
+        .find(|(_, o)| matches!(o, lopdf::Object::Dictionary(d) if d.has(b"BaseFont")))
+        .map(|(id, _)| *id)
+        .expect("the fixture has a font");
+    let encoding = lopdf::Dictionary::from_iter([
+        ("Type", lopdf::Object::Name(b"Encoding".to_vec())),
+        (
+            "BaseEncoding",
+            lopdf::Object::Name(b"WinAnsiEncoding".to_vec()),
+        ),
+        (
+            "Differences",
+            lopdf::Object::Array(vec![
+                lopdf::Object::Integer(65),
+                lopdf::Object::Name(b"nonexistentglyphone".to_vec()),
+            ]),
+        ),
+    ]);
+    doc.get_dictionary_mut(font)
+        .expect("the font dictionary")
+        .set("Encoding", encoding);
+
+    let mut content = b"BT /F1 24 Tf 72 100 Td (".to_vec();
+    content.extend_from_slice(first);
+    content.extend_from_slice(b") Tj (Kept) Tj ET\n");
+    let page = doc.get_pages()[&1];
+    let stream = doc.add_object(lopdf::Stream::new(lopdf::Dictionary::new(), content));
+    doc.get_dictionary_mut(page)
+        .expect("the page")
+        .set("Contents", lopdf::Object::Reference(stream));
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+/// **A run dropped at an undecodable code still advances the pen**, so a later run in the same
+/// text object sits where the document draws it.
+///
+/// The pen used to stop at the refused code, and every run after it in that text object was
+/// reported its width to the left. Measured against an independent reader: Ghostscript 10.06
+/// renders `Kept` in the two documents below at exactly the same place — ink from 85.92pt in
+/// both, at 300 dpi — because a glyph name that resolves to no character is still a glyph whose
+/// width the font declares. The engine put it at 72pt, left of any ink on the page.
+#[test]
+fn a_dropped_run_still_advances_the_pen() {
+    let kept_box = |bytes: &[u8]| -> (String, Vec<i64>) {
+        let a = extracted(bytes).expect("reads");
+        let run = runs(&a)
+            .into_iter()
+            .find(|r| r.text == "Kept")
+            .expect("the second string is kept");
+        let box_of = match &run.geometry {
+            GeometryPresence::Measured(r) => vec![r.x0(), r.y0(), r.x1(), r.y1()],
+            GeometryPresence::Absent(reason) => panic!("`Kept` must be measured: {reason:?}"),
+        };
+        (
+            a.assurance
+                .limitations
+                .iter()
+                .filter(|l| l.code == ethos_parser_pdf::limitations::BROKEN_FONT_ENCODING)
+                .count()
+                .to_string(),
+            box_of,
+        )
+    };
+
+    // `B` decodes through WinAnsi; `A` is the remapped code and is dropped.
+    let (declared_control, control) = kept_box(&undecodable_then_kept(b"B"));
+    let (declared_dropped, dropped) = kept_box(&undecodable_then_kept(b"A"));
+
+    assert_eq!(declared_control, "0", "the control drops nothing");
+    assert_eq!(
+        declared_dropped, "1",
+        "and the other declares its dropped run"
+    );
+    assert_eq!(
+        dropped, control,
+        "`Kept` must sit where the document draws it, dropped run or not"
+    );
+    // The pen travelled one 24pt glyph at 500/1000 em: 12 points, 1 200 centipoints.
+    assert_eq!(dropped[0], 8400, "72pt + 12pt, in centipoints: {dropped:?}");
+}

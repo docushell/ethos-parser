@@ -52,6 +52,18 @@ to is recorded below with the version it ships in.
   pen at its refused code — `content.rs` returns before advancing that code and the codes after it —
   so later runs on the line sit left of where the page draws them (a `Tw` probe's next run at 55 pt,
   drawn at 65 pt).
+- **The dropped run's pen, item 3's newly-found defect — fixed 2026-09-18.** A run dropped for an
+  undecodable code now advances the pen over every one of its codes, so a later run in the same
+  text object sits where the document draws it. Verified against an independent reader on a probe
+  built from `broken-font-encoding`: Ghostscript 10.06 renders the text after a 12-point
+  undecodable glyph in exactly the same columns whether that glyph decodes or not (ink from
+  85.92 pt at 300 dpi), where this engine reported the run's origin at 72 pt — left of any ink on
+  the page. Over 311 documents, 19 move: 11 opendataloader-bench, 6 gate and 2 gate-zero. Across
+  those 19, of 4 381 031 runs, **66 280 move (1.5%)**, every one horizontally, and no text, run
+  count or advance changes anywhere. Rightward by up to 274.86 pt (`nist-sp-800-53Ar5`); 7
+  documents also hold leftward moves, worst 1.21 pt on `nist-sp-800-63b` page 11, which is three
+  dropped runs' own negative advances summed — a zero-width code under `Tc -0.024`, the document's
+  operand, through a text matrix scaled 10.08. No classify artifact moves.
 - **§9 item 4, a `TJ`-gap space on the wrong run — fixed for 0.58.0.** A `TJ` number writes its
   flagged space onto the last run only if a string with codes was drawn since the pen was last
   placed (`BT`, `Td`, `TD`, `T*`, `Tm`, the line move of `'` and `"`, or a `cm` or `Q` that changes

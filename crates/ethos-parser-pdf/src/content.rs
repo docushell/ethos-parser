@@ -283,9 +283,10 @@ pub struct Interpreter<'a> {
     /// `'` and `"`, and a `cm` or `Q` that changes the CTM place the pen and clear this. Every
     /// string with codes sets it, including a run later dropped for an undecodable code.
     ///
-    /// A dropped run is not in [`Self::shown`], and its pen is short: the refused code and every
-    /// code after it do not advance. The gap after it is then written onto the last run kept, as
-    /// before, because suppressing it would fuse two words across text the reader lost.
+    /// A dropped run is not in [`Self::shown`], and since 2026-09-18 its pen travels over every
+    /// one of its codes anyway, so a later run in the same text object sits where the document
+    /// draws it. The gap after it is written onto the last run kept, as before, because
+    /// suppressing it would fuse two words across text the reader lost.
     text_drawn_since_placement: bool,
     /// Codes the decoder could not map, as a typed diagnostic rather than a silent drop.
     pub undecodable: Vec<String>,
@@ -782,31 +783,46 @@ impl<'a> Interpreter<'a> {
         let mut per_code = Vec::with_capacity(codes.len());
         let mut advance_known = true;
 
+        // Set at the first code this font cannot decode. The run is then dropped, and the pen
+        // still travels over every one of its codes: an undecodable code is a character this
+        // reader could not name, not a glyph the document did not draw, and the codes after it
+        // are drawn too. Until 2026-09-18 the loop returned here, leaving the text matrix where
+        // the refused code stood, so every later run in the same text object was reported a
+        // dropped run's width to the left of where the document places it (`docs/OPEN-WORK.md`
+        // §6; doc 22's amendments). Ghostscript 10.06 renders the run after a 12-point
+        // undecodable glyph 12 points right of where this engine used to put it.
+        let mut dropped = false;
+
         for code in codes {
-            match font.decode_code(code) {
-                Ok(s) => {
-                    text.push_str(s);
-                    kept_codes.push(code);
-                }
-                Err(e) => {
-                    // **v0.1: drop this run, keep the page.** Through v0 this returned `Err` and
-                    // failed the whole document — one unmappable glyph anywhere and a caller got
-                    // nothing, which is fail-closed but far more than the evidence requires.
-                    // (The comment here claimed the run continued. It did not; the code was the
-                    // truth and the comment was aspiration.)
-                    //
-                    // The run is dropped **whole**, not patched. Two alternatives were rejected:
-                    // emitting `U+FFFD` for the hole would put a character in the evidence that
-                    // the document does not contain, and silently omitting just the bad code
-                    // would splice the surrounding glyphs into a word the document never wrote —
-                    // undetectable downstream, and worse than losing the run.
-                    //
-                    // Losing a run is itself a real loss, so it is counted and declared:
-                    // `extract` turns a non-zero count into `broken-font-encoding`, and a
-                    // document that decodes *nothing* is still refused outright.
-                    self.undecodable.push(e.to_string());
-                    self.dropped_runs = self.dropped_runs.saturating_add(1);
-                    return Ok(());
+            if !dropped {
+                match font.decode_code(code) {
+                    Ok(s) => {
+                        text.push_str(s);
+                        kept_codes.push(code);
+                    }
+                    Err(e) => {
+                        // **v0.1: drop this run, keep the page.** Through v0 this returned `Err`
+                        // and failed the whole document — one unmappable glyph anywhere and a
+                        // caller got nothing, which is fail-closed but far more than the evidence
+                        // requires. (The comment here claimed the run continued. It did not; the
+                        // code was the truth and the comment was aspiration.)
+                        //
+                        // The run is dropped **whole**, not patched. Two alternatives were
+                        // rejected: emitting `U+FFFD` for the hole would put a character in the
+                        // evidence that the document does not contain, and silently omitting just
+                        // the bad code would splice the surrounding glyphs into a word the
+                        // document never wrote — undetectable downstream, and worse than losing
+                        // the run.
+                        //
+                        // Losing a run is itself a real loss, so it is counted and declared:
+                        // `extract` turns a non-zero count into `broken-font-encoding`, and a
+                        // document that decodes *nothing* is still refused outright. Decoding
+                        // stops at the first failure, so one string is one dropped run however
+                        // many of its codes this font cannot name.
+                        self.undecodable.push(e.to_string());
+                        self.dropped_runs = self.dropped_runs.saturating_add(1);
+                        dropped = true;
+                    }
                 }
             }
 
@@ -823,6 +839,11 @@ impl<'a> Interpreter<'a> {
                 }
                 None => advance_known = false,
             }
+        }
+
+        // The pen has travelled; the run itself is not evidence and is not pushed.
+        if dropped {
+            return Ok(());
         }
 
         let scale = self.gs.ctm.x_scale();
