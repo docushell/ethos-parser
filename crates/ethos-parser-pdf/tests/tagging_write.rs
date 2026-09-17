@@ -1079,6 +1079,44 @@ fn a_dangling_reference_is_not_captured_by_a_written_object() {
     );
 }
 
+/// **A dangling reference past the allocation moves no number** (review of `8500ab3`). Numbering
+/// every added object above the highest number any reference names wrote a cross-reference table
+/// as long as that number: with `/EthosDangling 10000000 0 R` on the catalog, qpdf 12.3.2 read the
+/// output's page as blank and Ghostscript 10.06 could not open it, while this engine's reader —
+/// and so the self-check — read it correctly. The writer numbers from the highest object the file
+/// holds, and raises that floor only past a dangling number its own allocation would reach.
+#[test]
+fn a_dangling_reference_past_the_allocation_moves_no_number() {
+    let source = edited("leading-gap-two-blocks", |doc| {
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        doc.get_dictionary_mut(root)
+            .unwrap()
+            .set("EthosDangling", Object::Reference((10_000_000, 0)));
+    });
+    let before = lopdf::Document::load_mem(&source).unwrap();
+    let written = tag(&source).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    assert_eq!(
+        catalog(&after).get(b"EthosDangling").unwrap(),
+        &Object::Reference((10_000_000, 0)),
+        "the reference is kept as the source wrote it"
+    );
+    assert!(
+        after.get_object((10_000_000, 0)).is_err(),
+        "and names nothing"
+    );
+    let (highest, _) = *after.objects.keys().next_back().unwrap();
+    assert!(
+        highest <= before.max_id + 8,
+        "numbered from the objects the file holds: {highest}, the source's highest {}",
+        before.max_id
+    );
+    assert!(
+        after.trailer.get(b"Size").unwrap().as_i64().unwrap() < 100,
+        "the cross-reference table stays the document's size"
+    );
+}
+
 /// **A `/StructParents` or `/StructParent` key without a tree is refused by name**, before
 /// anything is read: the key indexes a parent tree the document no longer has, and the tree this
 /// writer adds would answer it with elements that do not hold that object's content. Of the 293
@@ -1128,6 +1166,15 @@ fn a_struct_parent_key_without_a_tree_is_refused_by_name() {
 
     tag(&edited("leading-gap-two-blocks", |_| {}))
         .expect("the same fixture, saved again without either key, tags");
+
+    // A null value is an absent entry (PDF 32000-1 §7.3.7), so it is no key.
+    tag(&edited("leading-gap-two-blocks", |doc| {
+        let page = first_page(doc);
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("StructParents", Object::Null);
+    }))
+    .expect("a null key is no key, and the page tags");
 }
 
 /// **A superseded stream is removed only when nothing names it.** Page 1 lists a drawing-only
@@ -1212,9 +1259,17 @@ fn a_superseded_stream_is_removed_only_when_nothing_names_it() {
 /// `leading-gap-two-blocks` cut in two streams before its fourth line's positioning, `[T1 T2]`.
 /// The writer decodes both, splices the joined buffer and emits one stream, which holds the
 /// newline that separated them; both originals are removed; and every run reads back bound as on
-/// the uncut fixture.
+/// the uncut fixture. The same with the array given by reference, which the review of `8500ab3`
+/// found kept, and its streams with it: the array is removed too.
 #[test]
 fn a_page_whose_contents_is_an_array_becomes_one_stream() {
+    for indirect in [false, true] {
+        array_contents_become_one_stream(indirect);
+    }
+}
+
+fn array_contents_become_one_stream(indirect: bool) {
+    let mut array_id = None;
     let source = edited("leading-gap-two-blocks", |doc| {
         let page = first_page(doc);
         let whole = doc
@@ -1237,23 +1292,40 @@ fn a_page_whose_contents_is_an_array_becomes_one_stream() {
             .expect("the fourth line's positioning");
         let first = doc.add_object(Stream::new(Dictionary::new(), bytes[..cut].to_vec()));
         let second = doc.add_object(Stream::new(Dictionary::new(), bytes[cut..].to_vec()));
-        doc.get_dictionary_mut(page).unwrap().set(
-            "Contents",
-            vec![Object::Reference(first), Object::Reference(second)],
-        );
+        let array = Object::Array(vec![Object::Reference(first), Object::Reference(second)]);
+        let contents = if indirect {
+            let id = doc.add_object(array);
+            array_id = Some(id);
+            Object::Reference(id)
+        } else {
+            array
+        };
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("Contents", contents);
         doc.objects.remove(&whole);
     });
     let before = lopdf::Document::load_mem(&source).unwrap();
     let listed = before.get_page_contents(first_page(&before));
-    assert_eq!(listed.len(), 2, "the page lists two streams");
+    assert_eq!(
+        listed.len(),
+        2,
+        "the page lists two streams (indirect: {indirect})"
+    );
 
     let written = tag(&source).expect("tags cleanly through the self-check");
     let after = lopdf::Document::load_mem(&written).unwrap();
     assert_eq!(after.get_page_contents(first_page(&after)).len(), 1);
     assert!(
         listed.iter().all(|&id| after.get_object(id).is_err()),
-        "both originals are removed"
+        "both originals are removed (indirect: {indirect})"
     );
+    if let Some(id) = array_id {
+        assert!(
+            after.get_object(id).is_err(),
+            "the array that listed them is removed"
+        );
+    }
     assert_eq!(
         read(&written).bindings,
         read(&tagged("leading-gap-two-blocks")).bindings,

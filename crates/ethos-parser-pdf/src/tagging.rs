@@ -2505,10 +2505,12 @@ fn struct_parent_key(doc: &lopdf::Document) -> Option<(ObjectId, &'static str)> 
                 }
                 _ => continue,
             };
-            if dict.has(b"StructParents") {
+            // A null value is an absent entry (PDF 32000-1 §7.3.7), so it is no key.
+            let holds = |key: &[u8]| dict.get(key).is_ok_and(|v| !matches!(v, Object::Null));
+            if holds(b"StructParents") {
                 return Some((id, "StructParents"));
             }
-            if dict.has(b"StructParent") {
+            if holds(b"StructParent") {
                 return Some((id, "StructParent"));
             }
             stack.extend(dict.iter().map(|(_, v)| v));
@@ -2529,6 +2531,29 @@ fn each_reference(doc: &lopdf::Document, mut f: impl FnMut(ObjectId)) {
             Object::Dictionary(d) => stack.extend(d.iter().map(|(_, v)| v)),
             Object::Stream(s) => stack.extend(s.dict.iter().map(|(_, v)| v)),
             _ => {}
+        }
+    }
+}
+
+/// The number the writer's first added object follows: `held`, the highest object number the
+/// file holds, raised past a number a reference names and the file does not hold only when the
+/// `added` numbers after the floor would reach it. `None` when the numbers run out.
+///
+/// PDF 32000-1 §7.3.10 reads a reference to an undefined object as null, and it must go on
+/// reading as null: an added object that took its number would answer it. A dangling number
+/// beyond the allocation is never reached, so it moves nothing — raising the floor to it would
+/// write a cross-reference table as long as the number, which some readers refuse.
+fn numbering_floor(
+    held: u32,
+    dangling: &std::collections::BTreeSet<u32>,
+    added: u32,
+) -> Option<u32> {
+    let mut floor = held;
+    loop {
+        let top = floor.checked_add(added)?;
+        match dangling.range(floor.checked_add(1)?..=top).next_back() {
+            Some(&taken) => floor = taken,
+            None => return Some(floor),
         }
     }
 }
@@ -2556,21 +2581,57 @@ fn emit(
 ) -> Result<(Vec<u8>, u32), EngineError> {
     // A fresh copy per call, as the overlay takes one: lopdf's writer mutates the document it
     // saves, so byte identity holds per fresh clone and every build takes one.
-    let mut out = doc.inner().clone();
+    let source = doc.inner();
+    let mut out = source.clone();
 
-    // No object added here takes a number a reference in the source already names. A dangling
-    // `/Parent 9 0 R` in a file holding objects 1..7 would otherwise resolve, in the output, to
-    // whatever this writer allocated ninth, and a source object would change what it says with no
-    // byte of it rewritten.
-    let mut highest = 0;
-    each_reference(&out, |(number, _)| highest = highest.max(number));
-    out.max_id = out.max_id.max(highest);
+    // No object added here takes a number a reference in the source names and the source does not
+    // hold. A dangling `/Parent 9 0 R` in a file holding objects 1..7 would otherwise resolve, in
+    // the output, to whatever this writer allocated ninth, and a source object would change what
+    // it says with no byte of it rewritten. The held numbers include an object-stream member the
+    // cross-reference table never lists, which `max_id` does not count.
+    let held = source
+        .objects
+        .keys()
+        .next_back()
+        .map_or(0, |&(number, _)| number)
+        .max(source.max_id);
+    let mut dangling: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    each_reference(source, |(number, _)| {
+        if number > held {
+            dangling.insert(number);
+        }
+    });
+    // One stream per rewritten page, the root, the `/Document`, and one `/Div` per block.
+    let added = plan
+        .rewritten()
+        .map(|p| 1 + p.plan.blocks.len())
+        .sum::<usize>()
+        .checked_add(2)
+        .and_then(|n| u32::try_from(n).ok());
+    let floor =
+        added.and_then(|added| numbering_floor(held, &dangling, added).map(|floor| (floor, added)));
+    let Some((floor, added)) = floor else {
+        return Err(unsupported(format!(
+            "the document's object numbers run to {held}, and the objects this writer adds do not \
+             fit below the largest number a PDF object can carry"
+        )));
+    };
+    out.max_id = floor;
 
     // One new stream per rewritten page, and the page's /Contents pointed at it. Never
     // `change_page_content`, which mutates a stream two pages may share in place.
     let mut superseded: std::collections::BTreeSet<ObjectId> = std::collections::BTreeSet::new();
     for page in plan.rewritten() {
         superseded.extend(out.get_page_contents(page.page_id));
+        // A `/Contents` given as a reference to an array: the array is superseded with its
+        // streams, and naming them would otherwise keep them.
+        let indirect = out
+            .get_dictionary(page.page_id)
+            .ok()
+            .and_then(|d| d.get(b"Contents").ok())
+            .and_then(|c| c.as_reference().ok())
+            .filter(|&id| matches!(out.objects.get(&id), Some(Object::Array(_))));
+        superseded.extend(indirect);
         let spliced = splice(&page.buffer, &page.tokenised, &page.plan.sequences);
         let mut dict = lopdf::Dictionary::new();
         dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
@@ -2579,22 +2640,29 @@ fn emit(
             .map_err(|e| malformed(format!("page {}: {e}", page.number)))?
             .set("Contents", Object::Reference(stream_id));
     }
-    // The superseded streams nothing names any more, removed from the object map directly: not
+    // The superseded objects nothing names any more, removed from the object map directly: not
     // `delete_object`, which walks every object per call, and not `prune_objects`, which would
     // also drop the document's pre-existing orphans. A stream a page that was not rewritten still
     // lists, or any other object names, is kept, since removing it would leave that reference
-    // dangling.
-    let superseded_numbers: std::collections::BTreeSet<u32> =
-        superseded.iter().map(|&(number, _)| number).collect();
-    let mut still_named: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-    each_reference(&out, |(number, _)| {
-        if superseded_numbers.contains(&number) {
-            still_named.insert(number);
-        }
-    });
-    for id in &superseded {
-        if !still_named.contains(&id.0) {
-            out.objects.remove(id);
+    // dangling. Arrays go first, because an array still in the map names its streams.
+    for arrays in [true, false] {
+        let candidates: Vec<ObjectId> = superseded
+            .iter()
+            .copied()
+            .filter(|id| matches!(out.objects.get(id), Some(Object::Array(_))) == arrays)
+            .collect();
+        let numbers: std::collections::BTreeSet<u32> =
+            candidates.iter().map(|&(number, _)| number).collect();
+        let mut still_named: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+        each_reference(&out, |(number, _)| {
+            if numbers.contains(&number) {
+                still_named.insert(number);
+            }
+        });
+        for id in candidates {
+            if !still_named.contains(&id.0) {
+                out.objects.remove(&id);
+            }
         }
     }
 
@@ -2607,6 +2675,14 @@ fn emit(
         plan.artifact.identity.profile_sha256.as_str(),
         &profile.parser_version,
     )?;
+    // The floor was chosen for exactly this many objects; a count that moved would put an added
+    // object on a number the floor did not clear.
+    if Some(out.max_id) != floor.checked_add(added) {
+        return Err(malformed(format!(
+            "the writer added objects up to number {} where it numbered {added} from {floor}",
+            out.max_id
+        )));
+    }
 
     let mut bytes = Vec::new();
     out.save_to(&mut bytes)
@@ -2743,6 +2819,18 @@ fn tree_as_written(
             role_of(&document)
         ));
     }
+    // An element names its type and its parent: a consumer that walks up from the parent tree
+    // reads `/P`, where this engine's reader walks `/K` down and would never see it wrong.
+    let struct_elem = Object::Name(b"StructElem".to_vec());
+    if document.get(b"Type").ok() != Some(&struct_elem) || document.get(b"P").ok() != Some(root_ref)
+    {
+        return Err(format!(
+            "the /Document names type {:?} and parent {:?}, where it is a /StructElem under the \
+             root {root_ref:?}",
+            document.get(b"Type").ok(),
+            document.get(b"P").ok()
+        ));
+    }
 
     // One /Div per planned block, page by page in reading order, each citing its block's ids.
     let divs = kids_of(&document, "the /Document")?;
@@ -2770,6 +2858,14 @@ fn tree_as_written(
         let div = dict_at(div_ref, "/Div")?;
         if role_of(&div) != "Div" {
             return Err(format!("/Div {i} is /{} rather than /Div", role_of(&div)));
+        }
+        if div.get(b"Type").ok() != Some(&struct_elem) || div.get(b"P").ok() != Some(document_ref) {
+            return Err(format!(
+                "/Div {i} for page {page} block {block:?} names type {:?} and parent {:?}, where \
+                 it is a /StructElem under the /Document {document_ref:?}",
+                div.get(b"Type").ok(),
+                div.get(b"P").ok()
+            ));
         }
         let page_id = out_pages
             .get(&page)
@@ -5490,6 +5586,121 @@ mod tests {
                 "malformed tagging self-check: page 1: the parent tree maps id 0 to {b} {b_gen} R, \
                  and the /Div citing it is {a} {a_gen} R"
             )
+        );
+    }
+
+    #[test]
+    fn the_numbering_floor_clears_only_the_numbers_the_allocation_reaches() {
+        let set = |ns: &[u32]| {
+            ns.iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<u32>>()
+        };
+        // `form-orphan-widget`: objects 1 to 7, `/Parent 9 0 R`, four objects added.
+        assert_eq!(numbering_floor(7, &set(&[9]), 4), Some(9));
+        // A dangling number past the allocation moves nothing, however large.
+        assert_eq!(numbering_floor(7, &set(&[12]), 4), Some(7));
+        assert_eq!(numbering_floor(7, &set(&[10_000_000]), 4), Some(7));
+        assert_eq!(numbering_floor(7, &set(&[11]), 4), Some(11));
+        // A run of them is cleared one reach at a time.
+        assert_eq!(numbering_floor(7, &set(&[9, 12, 16, 30]), 4), Some(16));
+        // Numbers that run out.
+        assert_eq!(
+            numbering_floor(u32::MAX - 4, &set(&[]), 4),
+            Some(u32::MAX - 4)
+        );
+        assert_eq!(numbering_floor(u32::MAX - 3, &set(&[]), 4), None);
+        assert_eq!(numbering_floor(7, &set(&[u32::MAX]), u32::MAX - 7), None);
+    }
+
+    /// **Every page record is compared, not the runs alone** (review of `5c26a72`): the box, the
+    /// rotation and a record list, each moved in the plan's artifact on a page that draws an
+    /// image, is refused by name. No integration fixture could reach these comparisons, because
+    /// every page they tag holds text runs only.
+    #[test]
+    fn the_self_check_compares_each_page_record() {
+        let (doc, profile) = opened("image-xobject-drawn");
+        let mut plan = plan_document(&doc, &profile).expect("plans");
+        let (bytes, elements) = emit(&doc, &profile, &plan).expect("emits");
+        self_check(&bytes, &profile, &plan, elements).expect("the writer's own output passes");
+        let page = plan.artifact.pages[0].index;
+        assert!(
+            !plan.artifact.pages[0].images.is_empty(),
+            "the fixture draws an image"
+        );
+
+        let width = plan.artifact.pages[0].width;
+        plan.artifact.pages[0].width = width + 1;
+        let e = self_check(&bytes, &profile, &plan, elements).expect_err("width moved");
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "malformed tagging self-check: page {page}: width was {} and reads back as {width}",
+                width + 1
+            )
+        );
+        plan.artifact.pages[0].width = width;
+
+        plan.artifact.pages[0].rotation += 90;
+        let e = self_check(&bytes, &profile, &plan, elements).expect_err("rotation moved");
+        assert!(
+            e.to_string().starts_with(&format!(
+                "malformed tagging self-check: page {page}: rotation was "
+            )),
+            "{e}"
+        );
+        plan.artifact.pages[0].rotation -= 90;
+
+        let images = std::mem::take(&mut plan.artifact.pages[0].images);
+        let e = self_check(&bytes, &profile, &plan, elements).expect_err("images dropped");
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "malformed tagging self-check: page {page}: the image records differ (0 became {})",
+                images.len()
+            )
+        );
+        plan.artifact.pages[0].images = images;
+        self_check(&bytes, &profile, &plan, elements).expect("restored");
+    }
+
+    /// **Each element's type and parent are checked** (review of `5c26a72`). A `/Div` whose `/P`
+    /// names the root rather than the `/Document`, or which names no `/Type`, reads back bound
+    /// exactly as planned, because the reader walks `/K` down; a consumer walking up from the
+    /// parent tree would not read it so.
+    #[test]
+    fn the_self_check_refuses_a_wrong_parent_or_type() {
+        let (doc, profile) = opened("leading-gap-two-blocks");
+        let plan = plan_document(&doc, &profile).expect("plans");
+        let (bytes, elements) = emit(&doc, &profile, &plan).expect("emits");
+
+        let mut root_id = (0, 0);
+        let reparented = with_tree_edited(&bytes, |doc, divs, root| {
+            root_id = root;
+            doc.get_dictionary_mut(divs[0])
+                .unwrap()
+                .set("P", Object::Reference(root));
+        });
+        let e = self_check(&reparented, &profile, &plan, elements).expect_err("wrong parent");
+        let msg = e.to_string();
+        assert!(
+            msg.starts_with("malformed tagging self-check: /Div 0 for page 1 block "),
+            "{msg}"
+        );
+        assert!(
+            msg.contains(&format!("and parent Some({} {} R)", root_id.0, root_id.1)),
+            "{msg}"
+        );
+
+        let untyped = with_tree_edited(&bytes, |doc, divs, _| {
+            doc.get_dictionary_mut(divs[1]).unwrap().remove(b"Type");
+        });
+        let e = self_check(&untyped, &profile, &plan, elements).expect_err("no type");
+        let msg = e.to_string();
+        assert!(
+            msg.starts_with("malformed tagging self-check: /Div 1 for page 1 block ")
+                && msg.contains("names type None"),
+            "{msg}"
         );
     }
 

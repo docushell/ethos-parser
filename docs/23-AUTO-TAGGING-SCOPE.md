@@ -39,13 +39,22 @@ The body is not rewritten; read it with these.
   carrying a predictor is refused on the same ground. Row 5 of §3.6 and §9 item 4 therefore read
   *a filter other than none or `FlateDecode`*. Over the 293 documents of §7.1, no document was
   refused for a filter or a stream that does not decode to its end.
-- **§3.5, removal and numbering (tightened 2026-09-17, `8500ab3`).** A superseded stream is
-  removed only when *no object* references it, not merely no page: a stream something else names
-  is kept. And no object the writer adds takes a number that any reference in the source names,
-  dangling or not. §7.1's first run found why. `form-orphan-widget`'s widget names `/Parent 9 0 R`
-  in a file holding objects 1 to 7, the writer's second new object took number 9, and the widget's
-  parent became the tree's root. The self-check refused that output because a limitation moved.
-  New objects are now numbered above the highest number any reference names, and the fixture tags.
+- **§3.5, removal and numbering (tightened 2026-09-17, `8500ab3`, and on its review the same
+  day).** A superseded stream is removed only when *no object* references it, not merely no page:
+  a stream something else names is kept, and a `/Contents` array given by reference goes with its
+  streams. And no object the writer adds takes a number that a reference in the source names and
+  the file does not hold. §7.1's first run found why. `form-orphan-widget`'s widget names
+  `/Parent 9 0 R` in a file holding objects 1 to 7, the writer's second new object took number 9,
+  and the widget's parent became the tree's root. The self-check refused that output because a
+  limitation moved.
+  - **The first fix numbered every new object above the highest number any reference names.** Its
+    review showed that one dangling `/X 10000000 0 R` then produced a cross-reference table ten
+    million entries long. qpdf 12.3.2 read that output's page as blank, Ghostscript 10.06 could not
+    open it, and this engine's own reader, and so the self-check, read it correctly.
+  - **As built,** the writer numbers from the highest object the file holds, counting object-stream
+    members the cross-reference table never lists. It raises that floor only past a dangling
+    number its own allocation would reach; a dangling reference still reads as null (§7.3.10), and
+    the fixture tags.
 - **§3.6, two refusals the table did not have.** Both are named in their messages and counted in
   §7.1 below; read §9 item 4's list with both added.
   1. *A text-showing operator whose runs the cut placed in two blocks*, added while building S2. A
@@ -53,7 +62,7 @@ The body is not rewritten; read it with these.
      gutter it is an operator for two elements, and a sequence holds operators for one. The
      refusal names the operation and both blocks.
   2. *An object carrying `/StructParents` or `/StructParent` with no tree*, added on review
-     2026-09-17 (`8500ab3`). Either key indexes a `/ParentTree` (§14.7.4.4), and the tree the
+     2026-09-17 (`8500ab3`); a null value counts as no key. Either key indexes a `/ParentTree` (§14.7.4.4), and the tree the
      writer adds would answer it with elements that do not hold that object's content: a page
      left unrewritten with `/StructParents 0` would name the first rewritten page's ids. The
      document is refused before anything is read, naming the object and the key. It was measured
@@ -66,7 +75,8 @@ The body is not rewritten; read it with these.
   under the wrong `/Div`: every written element reads back as `Document/Div`, computed, with no
   identity of its own. So the check now also walks the written tree against the plan: one
   `/Document`; one `/Div` per planned block, on its page, citing exactly its ids; and a parent tree
-  that maps every id, under the page's `/StructParents` key, to the `/Div` citing it.
+  that maps every id, under the page's `/StructParents` key, to the `/Div` citing it. Since that
+  commit's own review, it also checks each element's `/Type` and its `/P`.
 - **§4.2, the wire cost (measured 2026-09-17).** On the eight gate documents, branch against the
   0.58.0 release build, same version string, `derivation` costs 3.2% (`irs-fw9`) to 4.7%
   (`nist-sp-800-218`) of the artifact, median 4.3%: 25 bytes per `pdf_tagged` locator, and 41.2 MB
