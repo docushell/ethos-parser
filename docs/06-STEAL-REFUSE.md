@@ -227,8 +227,8 @@ content-stream interpreter, the classification and the layout.
 report bit-identically on the same corpus. The 0.907 one project leads with is its hybrid AI-backed
 mode — a different, non-deterministic product.
 
-**The chase is parked.** 70‰ is this engine on twelve tagged PDFs this repository owns, and the band
-belongs with it: 0‰..590‰, median 0‰, ten of twelve at zero. 0.489 is their score on their corpus, in a
+**The chase is parked.** 69‰ is this engine on twelve tagged PDFs this repository owns, re-stated at
+0.58.0 where it was 70‰, and the band belongs with it: 0‰..590‰, median 0‰, ten of twelve at zero. 0.489 is their score on their corpus, in a
 different unit — TEDS ([`table-gate-v1.md`](table-gate-v1.md) §2). It is no longer the floor the next slice must beat, and it resumes only if
 this repository has a labelled set it owns **and** the owner chooses to resume. v2-S19 built the set,
 so only the owner's half is outstanding. **Fabrication 0 still binds.** v1 itself is closed — decision

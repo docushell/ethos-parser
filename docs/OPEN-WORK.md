@@ -174,16 +174,15 @@ because they are real work whatever version they end up in.
 Repaired 2026-09-16/17: row 23's CLI count (dated correction), `16-D4-SCOPE.md` §9, the
 `table-gate-v1.md` header (dated amendment), `RELEASING.md` (public repository, immutable
 releases), `derivation-class.draft.json`, `04-ARCHITECTURE.md`'s font crate, the history documents'
-"v1 is not done", the fixture counts, and the block-subdivision rows of `02-ROADMAP.md` and doc 19.
+"v1 is not done", the fixture counts, the block-subdivision rows of `02-ROADMAP.md` and doc 19;
+and later on 2026-09-17 the roadmap's `/P` quotation, `extract_budget.rs`'s floor, CAPABILITY's
+paragraph row, `make_fixtures.py`'s typed-absence comment, and the 70‰ in `06-STEAL-REFUSE.md` and
+the opendataloader-bench README.
 
 | Where | What is wrong |
 | --- | --- |
 | `00-NORTH-STAR.md` row 23, `16-D4-SCOPE.md` §7 (its earlier text), `19-BLOCK-SUBDIVISION-SCOPE.md` | Say `structure.rs` "already parses this exact shape". It read `/A` only for cell spans until S1 (docs/23 §4.1); the rows are dated records and stand, corrected by that section |
 | `00-NORTH-STAR.md` §5, the v2.2 row's Intent cell | Says "auto-tagging reopened and unstarted"; the Done-when cell beside it carries the dated correction |
-| `02-ROADMAP.md`, the not-scheduled auto-tagging row | Quotes #23's "another reader still sees a plain `/P`"; the writer emits `/Div` (docs/23 §3.2) |
 | `measurements/cross-architecture/README.md` | Says CI cannot allocate a runner. Corrected on the unmerged branch `ci/cross-os-digests` |
-| `crates/ethos-parser-cli/tests/extract_budget.rs` doc header | Attributes the `--max-pages` floor to the structure tree; memory-ceiling §15 measured it at 28 of 221 MiB |
-| `docs/CAPABILITY.md`, the Cannot row "a paragraph boundary on an untagged page" | Worded as if no block cut existed; the Can table's "Layout blocks" row and the limitation code say what does |
-| `fixtures/engine/make_fixtures.py` lines ~349–351 | The generator's own "every other one exercises typed absence" comment, stale as the manifest note was |
-| `06-STEAL-REFUSE.md:230`, `17-D1-SCOPE.md:86`, `measurements/opendataloader-bench/README.md:20` | Quote 70‰ as current; the band is re-stated at 69‰ |
+| `17-D1-SCOPE.md:86` | Quotes 70‰ as the macro; the band is re-stated at 69‰. A dated scope record, so it stands |
 | `docs/history/03-V0-SCOPE.md:137` | "37 engine-authored CC0 fixtures" — a dated record, left as written |

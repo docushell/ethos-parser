@@ -17,7 +17,7 @@ evaluator**, neither of them yours. That is a measurement. Turning it into an or
 separate act that stays refused.
 
 **The units do not travel.** TEDS is a tree edit distance over an HTML DOM; `table-gate-v1.md`
-reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 70‰ — the same
+reports macro cell-slot F1. A TEDS number from here **cannot** be placed beside 69‰ — the same
 mistake six documents made about 0.489 until it was measured.
 
 ## Running it

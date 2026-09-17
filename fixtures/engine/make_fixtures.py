@@ -440,8 +440,10 @@ def build_pdf(
     ]
     if descriptor == "metrics":
         # Real Helvetica ascent/descent, declared BY THE DOCUMENT so the extractor reads them
-        # rather than assuming them. This is the fixture that exercises the measured-ink path;
-        # every other one exercises typed absence.
+        # rather than assuming them. When `measured-ink-box` was added (M3) it was the only
+        # fixture on the measured-ink path and every other one took typed absence; since v1.1-S1
+        # other fixtures declare this descriptor too, and since decision #22 a standard-14 face
+        # is measured from the vendored AFM whatever its descriptor says (manifest.json's note).
         objects.append(HELVETICA_DESCRIPTOR)
     elif descriptor == "no-metrics":
         # A descriptor that is present and structurally valid and says NOTHING about ink extent:
