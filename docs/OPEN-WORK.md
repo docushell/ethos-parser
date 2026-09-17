@@ -141,11 +141,6 @@ because they are real work whatever version they end up in.
 - **Re-run OmniDocBench** as an instrument after 0.58.0; opendataloader-bench was re-run on
   2026-09-16 (NID 0.8697, TEDS 0.1704 as the band above, MHS 0.0000). The OmniDocBench PDFs were not
   on this machine on 2026-09-16 (9 GiB free), so the run needs the corpus fetched again.
-- **Attribute cfpb's 259‰ → 244‰.** The table band was re-stated at 0.58.0 (macro 69‰, combined
-  micro recall 503‰, 162 of 172 gold tables emitted from their tags; `table-gate-v1.md` "The band
-  re-stated at 0.58.0"), and cfpb's move (17 → 12 geometric detections) lies between the v2-S24 run
-  and v0.57.0 with no commit attributed; the harness run at `4da0674`, `2a53416`, `7bd1a79` and
-  `b742566` would settle it.
 - **The doc fixes in §7.**
 
 ## 6. Known defects — recorded, not fixed

@@ -692,6 +692,53 @@ about this corpus, for the reason the header gives. The reader-facing quotes —
 `README.md` and `docs/README.md` — now carry 69‰, 503‰ and 162 of 172 with the same band. Decision
 #18's clauses stand as written, and its numbers are the 2026-08-30 record, not rewritten here.
 
+### The cfpb move, attributed — 2026-09-17
+
+**The harness at each commit.** The run the section above says it does not do:
+`cargo test -p ethos-parser-pdf --lib --locked -- --nocapture accuracy::` (`-p engine-pdf` at
+`d806f83`, before the 0.41.0 rename) in a scratch worktree at each commit below. Every run exited 0
+with 14 tests passed and 2 ignored. `d806f83` reproduces the record exactly: cfpb 259‰, macro 70‰,
+combined 7,924.
+
+| Commit | What it is | cfpb TP / FP / FN | cfpb cell-F1 | cfpb detected / matched | macro |
+| --- | --- | --- | --- | --- | --- |
+| `d806f83` | v2-S24, 0.37.0 | 44 / 136 / 115 | 259‰ | 14 / 13 | 70‰ |
+| `f6274fc` | the parent of `737d55b` | 44 / 136 / 115 | 259‰ | 14 / 13 | 70‰ |
+| `737d55b` | a composite font's widths read from `/W` and `/DW`, 2026-09-06 | 45 / 135 / 114 | **265‰** | 14 / 13 | **71‰** |
+| `0517a5e` | the parent of `4da0674` | 45 / 135 / 114 | 265‰ | 14 / 13 | 71‰ |
+| `6c3319e` | the parent of `7bd1a79`, after `4da0674` and `2a53416` | 45 / 135 / 114 | 265‰ | 14 / 13 | 71‰ |
+| `7bd1a79` | `ruled-rects-v5`, 2026-09-10 | 41 / 135 / 118 | **244‰** | **9 / 8** | **69‰** |
+
+**Two steps, and only one of them among the four candidates named above.**
+
+- **`737d55b` added one true positive.** Before it, text in a composite font had no widths, and
+  worksheet cells on pages 6, 7 and 13 came out with letters missing. After it, page 7's
+  stroke-ruled 7x2 cell (0,0) reads `Total monthly income after taxes` where it read
+  `Thy income after taxes`, and matches its gold. That commit's "no text is gained or lost" holds
+  for the extracted runs, not for what lands in a table cell.
+- **`7bd1a79` removed four.** `-v5`'s floor in `Lattice::build`, that a grid needs two bands on
+  both axes, drops six single-row or single-column ruled tables on cfpb:
+  - Four 2x1 boxes, on pages 5, 13, 15 and 20, which each matched one gold slot and missed one:
+    1 TP / 1 FP each.
+  - The 1x2 on page 17: 2 FP.
+  - The 1x2 on page 16: 2 FP. It had also claimed its region ahead of the stroke rule, which now
+    emits a 4x2 there with 8 FP.
+  - So false positives net to zero at 135; four true positives become false negatives; detections
+    go 14 → 9 and cells 208 → 204.
+  - The five gold tables no detection pairs with any more (pages 5, 13, 15, 17 and 20) are emitted
+    from their tags instead, 5 → 10 on cfpb.
+
+The per-table account comes from `extract` on cfpb at `f6274fc`, `737d55b`, `6c3319e` and `7bd1a79`,
+scored by a re-implementation of the harness's matching. It reproduces the four harness rows
+exactly, and it is a scratch instrument, not committed.
+
+**What this corrects above.** The loss is `-v5`'s floor, as the records pointed, but the net "three
+true positives" is `737d55b`'s +1 and `7bd1a79`'s −4. The macro was not a steady 70‰: it was 71‰
+from `737d55b` to `7bd1a79`. `4da0674` and `2a53416` do not move cfpb's row. `b742566` was not
+run, and `b4b4aa9`'s recorded row equals `7bd1a79`'s. At `7bd1a79` the NIST documents also
+carry seven more detections, 19 against 11 matched corpus-wide, each disagreeing with its document's
+tagged table, and `b742566` (`-v6`) removed them. Tests exited 0 through all of it.
+
 ## Why the number is what it is
 
 1. **The column-gutter floor is not the cliff.** With it disabled entirely the corpus scores
