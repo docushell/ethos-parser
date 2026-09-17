@@ -164,6 +164,9 @@ The body is not rewritten; read it with these.
 With §7's numbers published, clause two meets the condition §12's proposed row #27 names. The rows
 themselves remain the owner's to record.
 
+**Recorded 2026-09-17.** The owner accepted §12's three rows as proposed. They are North Star rows
+#25–#27, and v2.2's gate is met on #27.
+
 ---
 
 ## 1. The one sentence

@@ -9,6 +9,9 @@ creating one is decision D4 in [`OPEN-WORK.md`](OPEN-WORK.md) §4, and it has no
 [`02-ROADMAP.md`](02-ROADMAP.md) says no new version numbers get invented, and nothing below needs
 one. Every recommendation holds whichever way D4 goes.
 
+**Recorded 2026-09-17.** The owner took D4, so v2.3 is a roadmap version (North Star row #28), and
+accepted §8's proposals as recommended (row #31). The body stands as written.
+
 **Measured 2026-09-16 against `main` at `b4b4aa9` (0.58.0, unreleased)** with the verified 0.58.0
 `aarch64-apple-darwin` binary and qpdf 12.3.2, over 297 PDFs in five corpora, 2,370 pages. The
 instruments, the corpus list, the binary's digest and what was not measured are in

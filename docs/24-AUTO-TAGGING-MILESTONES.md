@@ -21,7 +21,8 @@ shape is a reader whose test cannot pass because the writer and the reader share
 then tested against S1's reader, and S3 tests the pair.
 
 **Since this was written.** The slices stand as cut on 2026-09-16, and all four are done on the
-branch for the version after 0.58.0 as of 2026-09-17. Where an acceptance landed other than as
+branch for the version after 0.58.0 as of 2026-09-17. The same day the owner took scope §12's rows
+as written (North Star #25–#27), so no slice is re-cut, and the branch merged into `main`. Where an acceptance landed other than as
 written, it is recorded below with its date. The scope's own amendments sit under
 [`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)'s header.
 

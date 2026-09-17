@@ -204,6 +204,10 @@ because the structure tree said so"*), and no document in this corpus has one. S
 inferring headings from font size — checklist **L29**, refused permanently. The number is the price
 of that refusal, stated.
 
+**Reversed 2026-09-17** by North Star decision #29: a heading may be inferred from font size or
+font name where a document declares no structure, as `Computed`. The 0.0000 above stands as
+measured at 0.58.0 until the rule ships and MHS is re-measured.
+
 **TEDS is the honest band, on somebody else's corpus.** 5 of 42 near-perfect, 37 at zero: where the
 producer draws rules the detector is essentially exact, where they do not it emits nothing. That is
 [`table-gate-v1.md`](../../table-gate-v1.md)'s bimodality reproduced on documents this repository
