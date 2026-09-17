@@ -2301,7 +2301,9 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 /// `/Div` grouping and parent tree against the plan (§3.7).
 ///
 /// Every content stream's bytes survive unchanged apart from the inserted tokens; every other
-/// object is re-encoded by `lopdf` (§9). Two calls on one input return the same bytes.
+/// object is re-encoded by `lopdf` (§9). A superseded content stream is removed only when nothing
+/// names it any more, and no object added here takes a number any reference in the source names,
+/// dangling or not. Two calls on one input return the same bytes.
 ///
 /// # Errors
 ///
@@ -2309,7 +2311,9 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 /// is written:
 ///
 /// 1. [`EngineError::Unsupported`] with `what` = `tagging`: the catalog already declares
-///    `/StructTreeRoot` — a written tag fills absence only.
+///    `/StructTreeRoot` — a written tag fills absence only; or an object carries `/StructParents`
+///    or `/StructParent`, a key into a parent tree the document no longer has, which the tree
+///    written here would answer with elements that do not hold that object's content.
 /// 2. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
 ///    checks read its artifact.
 /// 3. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
@@ -2353,6 +2357,14 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
              author's elements the new ones go (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
                 .into(),
         ));
+    }
+    if let Some(((number, generation), key)) = struct_parent_key(doc.inner()) {
+        return Err(unsupported(format!(
+            "object {number} {generation} R carries /{key} and the catalog declares no \
+             /StructTreeRoot: the key indexes a parent tree the document no longer has, and the \
+             tree this writer adds would answer it with elements that do not hold that object's \
+             content (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
+        )));
     }
 
     let (artifact, traces) = crate::extract::extract_with_positions(doc, profile)?;
@@ -2475,6 +2487,52 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
     })
 }
 
+/// The first object, in object-number order, holding `/StructParents` or `/StructParent` in any
+/// dictionary it contains, and which of the two keys it holds.
+///
+/// Either key is an integer into a structure tree's `/ParentTree` (PDF 32000-1 §14.7.4.4). With
+/// no tree it indexes nothing, and once this writer adds one it would index that.
+fn struct_parent_key(doc: &lopdf::Document) -> Option<(ObjectId, &'static str)> {
+    for (&id, object) in &doc.objects {
+        let mut stack = vec![object];
+        while let Some(o) = stack.pop() {
+            let dict = match o {
+                Object::Dictionary(d) => d,
+                Object::Stream(s) => &s.dict,
+                Object::Array(items) => {
+                    stack.extend(items);
+                    continue;
+                }
+                _ => continue,
+            };
+            if dict.has(b"StructParents") {
+                return Some((id, "StructParents"));
+            }
+            if dict.has(b"StructParent") {
+                return Some((id, "StructParent"));
+            }
+            stack.extend(dict.iter().map(|(_, v)| v));
+        }
+    }
+    None
+}
+
+/// Every reference in the document — inside any object, a stream's dictionary, or the trailer —
+/// handed to `f`, whether or not the document holds the object it names.
+fn each_reference(doc: &lopdf::Document, mut f: impl FnMut(ObjectId)) {
+    let mut stack: Vec<&Object> = doc.objects.values().collect();
+    stack.extend(doc.trailer.iter().map(|(_, v)| v));
+    while let Some(o) = stack.pop() {
+        match o {
+            Object::Reference(id) => f(*id),
+            Object::Array(items) => stack.extend(items),
+            Object::Dictionary(d) => stack.extend(d.iter().map(|(_, v)| v)),
+            Object::Stream(s) => stack.extend(s.dict.iter().map(|(_, v)| v)),
+            _ => {}
+        }
+    }
+}
+
 /// A page's spliced bytes deflated at the one fixed level the writer uses.
 fn deflate(bytes: &[u8], number: u32) -> Result<Vec<u8>, EngineError> {
     use std::io::Write;
@@ -2500,6 +2558,14 @@ fn emit(
     // saves, so byte identity holds per fresh clone and every build takes one.
     let mut out = doc.inner().clone();
 
+    // No object added here takes a number a reference in the source already names. A dangling
+    // `/Parent 9 0 R` in a file holding objects 1..7 would otherwise resolve, in the output, to
+    // whatever this writer allocated ninth, and a source object would change what it says with no
+    // byte of it rewritten.
+    let mut highest = 0;
+    each_reference(&out, |(number, _)| highest = highest.max(number));
+    out.max_id = out.max_id.max(highest);
+
     // One new stream per rewritten page, and the page's /Contents pointed at it. Never
     // `change_page_content`, which mutates a stream two pages may share in place.
     let mut superseded: std::collections::BTreeSet<ObjectId> = std::collections::BTreeSet::new();
@@ -2513,16 +2579,23 @@ fn emit(
             .map_err(|e| malformed(format!("page {}: {e}", page.number)))?
             .set("Contents", Object::Reference(stream_id));
     }
-    // The superseded streams no page lists any more, removed from the object map directly:
-    // not `delete_object`, which walks every object per call, and not `prune_objects`, which
-    // would also drop the document's pre-existing orphans.
-    let still_listed: std::collections::BTreeSet<ObjectId> = out
-        .get_pages()
-        .values()
-        .flat_map(|&page_id| out.get_page_contents(page_id))
-        .collect();
-    for id in superseded.difference(&still_listed) {
-        out.objects.remove(id);
+    // The superseded streams nothing names any more, removed from the object map directly: not
+    // `delete_object`, which walks every object per call, and not `prune_objects`, which would
+    // also drop the document's pre-existing orphans. A stream a page that was not rewritten still
+    // lists, or any other object names, is kept, since removing it would leave that reference
+    // dangling.
+    let superseded_numbers: std::collections::BTreeSet<u32> =
+        superseded.iter().map(|&(number, _)| number).collect();
+    let mut still_named: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    each_reference(&out, |(number, _)| {
+        if superseded_numbers.contains(&number) {
+            still_named.insert(number);
+        }
+    });
+    for id in &superseded {
+        if !still_named.contains(&id.0) {
+            out.objects.remove(id);
+        }
     }
 
     let rewritten: Vec<(ObjectId, &PagePlan)> =

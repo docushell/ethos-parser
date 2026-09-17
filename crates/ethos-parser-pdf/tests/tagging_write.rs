@@ -30,7 +30,7 @@ use std::path::PathBuf;
 use ethos_parser_core::{codes, DerivationClass, EngineError, Profile, StructuralLocator};
 use ethos_parser_pdf::{write_tags, Document, ExtractArtifact, TAGS_ARTIFACT_TYPE};
 use lopdf::content::Operation;
-use lopdf::{Dictionary, Object, ObjectId};
+use lopdf::{dictionary, Dictionary, Object, ObjectId, Stream};
 
 // -------------------------------------------------------------------------------------------
 // Fixture resolution
@@ -989,6 +989,275 @@ fn a_shared_content_stream_is_not_edited_in_place() {
     assert!(
         codes_of(&artifact).contains(&ethos_parser_pdf::limitations::BROKEN_FONT_ENCODING),
         "the dropped run is still declared"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// Object numbers, parent-tree keys, and what a rewrite removes
+// -------------------------------------------------------------------------------------------
+
+/// An engine fixture loaded with `lopdf`, edited, and saved again.
+fn edited(name: &str, edit: impl FnOnce(&mut lopdf::Document)) -> Vec<u8> {
+    let mut doc = lopdf::Document::load_mem(&engine_fixture(name)).expect("lopdf loads");
+    edit(&mut doc);
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+fn first_page(doc: &lopdf::Document) -> ObjectId {
+    doc.get_pages()[&1]
+}
+
+fn widget(doc: &lopdf::Document) -> Dictionary {
+    doc.objects
+        .values()
+        .find_map(|o| match o {
+            Object::Dictionary(d)
+                if d.get(b"Subtype").ok() == Some(&Object::Name(b"Widget".to_vec())) =>
+            {
+                Some(d.clone())
+            }
+            _ => None,
+        })
+        .expect("a widget annotation")
+}
+
+/// **No object the writer adds takes a number the source already names.**
+/// `form-orphan-widget`'s widget names `/Parent 9 0 R` in a file holding objects 1 to 7, so the
+/// numbers `lopdf` allocates next reach 9: the widget's parent became the tree's root, a source
+/// object changing what it says with no byte of it rewritten. The self-check refused that
+/// output, because a limitation moved; the S4 round trip found it. The writer now numbers every
+/// new object above the highest number any reference names, and the reference stays dangling.
+#[test]
+fn a_dangling_reference_is_not_captured_by_a_written_object() {
+    let source = engine_fixture("form-orphan-widget");
+    let before = lopdf::Document::load_mem(&source).unwrap();
+    let dangling = widget(&before)
+        .get(b"Parent")
+        .unwrap()
+        .as_reference()
+        .unwrap();
+    assert!(
+        before.get_object(dangling).is_err(),
+        "the fixture's /Parent names no object"
+    );
+    assert!(
+        dangling.0 > before.max_id,
+        "{dangling:?} lies past the highest object, {}",
+        before.max_id
+    );
+
+    let written = tag(&source).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    assert_eq!(
+        widget(&after)
+            .get(b"Parent")
+            .unwrap()
+            .as_reference()
+            .unwrap(),
+        dangling
+    );
+    assert!(
+        after.get_object(dangling).is_err(),
+        "nothing the writer added answers the widget's /Parent"
+    );
+    let added: Vec<ObjectId> = after
+        .objects
+        .keys()
+        .filter(|id| !before.objects.contains_key(id))
+        .copied()
+        .collect();
+    assert!(
+        added.len() >= 3,
+        "a stream, the root and a /Document at least: {added:?}"
+    );
+    assert!(added.iter().all(|&(n, _)| n > dangling.0), "{added:?}");
+    assert!(
+        codes_of(&extract(&written)).contains(&codes::FORM_FIELD_PARENT_UNRESOLVED),
+        "the reader still finds the parent unresolved"
+    );
+}
+
+/// **A `/StructParents` or `/StructParent` key without a tree is refused by name**, before
+/// anything is read: the key indexes a parent tree the document no longer has, and the tree this
+/// writer adds would answer it with elements that do not hold that object's content. Of the 293
+/// documents the S4 round trip reaches, no document it tagged carries either key; the 48 that
+/// carry one with no tree are all refused already, for the marked-content ids their pages hold.
+#[test]
+fn a_struct_parent_key_without_a_tree_is_refused_by_name() {
+    let refused = |bytes: &[u8]| match tag(bytes) {
+        Err(EngineError::Unsupported { what, detail }) if what == "tagging" => detail,
+        Ok(written) => panic!("expected a tagging refusal, got {} bytes", written.len()),
+        Err(other) => panic!("expected a tagging refusal, got {other}"),
+    };
+
+    let on_the_page = edited("leading-gap-two-blocks", |doc| {
+        let page = first_page(doc);
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("StructParents", Object::Integer(0));
+    });
+    let page = first_page(&lopdf::Document::load_mem(&on_the_page).unwrap());
+    let detail = refused(&on_the_page);
+    assert!(
+        detail.starts_with(&format!(
+            "object {} {} R carries /StructParents and the catalog declares no /StructTreeRoot",
+            page.0, page.1
+        )),
+        "{detail}"
+    );
+
+    let on_an_annotation = edited("leading-gap-two-blocks", |doc| {
+        let link = doc.add_object(dictionary! {
+            "Type" => "Annot",
+            "Subtype" => "Link",
+            "Rect" => vec![Object::Integer(0), Object::Integer(0), Object::Integer(10), Object::Integer(10)],
+            "StructParent" => Object::Integer(0),
+        });
+        let page = first_page(doc);
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("Annots", vec![Object::Reference(link)]);
+    });
+    let detail = refused(&on_an_annotation);
+    assert!(
+        detail.contains("carries /StructParent and the catalog declares no /StructTreeRoot"),
+        "{detail}"
+    );
+
+    tag(&edited("leading-gap-two-blocks", |_| {}))
+        .expect("the same fixture, saved again without either key, tags");
+}
+
+/// **A superseded stream is removed only when nothing names it.** Page 1 lists a drawing-only
+/// stream before its text, `[G T]`; a second page lists `G` alone and shows no text, so it is not
+/// rewritten. Page 1 becomes one new stream; `T` is removed, and `G`, which page 2 still lists,
+/// is kept. With `T` also named from the catalog, `T` is kept too: removing a stream some other
+/// object names would leave that reference dangling.
+#[test]
+fn a_superseded_stream_is_removed_only_when_nothing_names_it() {
+    let two_pages = |hold_the_text: bool| {
+        edited("leading-gap-two-blocks", |doc| {
+            let page1 = first_page(doc);
+            let dict = doc.get_dictionary(page1).unwrap();
+            let text = dict.get(b"Contents").unwrap().as_reference().unwrap();
+            let pages = dict.get(b"Parent").unwrap().as_reference().unwrap();
+            let drawing =
+                doc.add_object(Stream::new(Dictionary::new(), b"0 0 m 10 10 l S".to_vec()));
+            doc.get_dictionary_mut(page1).unwrap().set(
+                "Contents",
+                vec![Object::Reference(drawing), Object::Reference(text)],
+            );
+            let page2 = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => Object::Reference(pages),
+                "MediaBox" => vec![Object::Integer(0), Object::Integer(0), Object::Integer(300), Object::Integer(720)],
+                "Contents" => Object::Reference(drawing),
+            });
+            let kids = doc.get_dictionary_mut(pages).unwrap();
+            kids.get_mut(b"Kids")
+                .unwrap()
+                .as_array_mut()
+                .unwrap()
+                .push(Object::Reference(page2));
+            kids.set("Count", Object::Integer(2));
+            if hold_the_text {
+                let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+                doc.get_dictionary_mut(root)
+                    .unwrap()
+                    .set("EthosTestHold", Object::Reference(text));
+            }
+        })
+    };
+
+    let source = two_pages(false);
+    let before = lopdf::Document::load_mem(&source).unwrap();
+    let listed = before.get_page_contents(first_page(&before));
+    let [drawing, text] = listed[..] else {
+        panic!("page 1 lists two streams: {listed:?}");
+    };
+    assert_eq!(before.get_page_contents(before.get_pages()[&2]), [drawing]);
+
+    let written = tag(&source).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    let rewritten = after.get_page_contents(first_page(&after));
+    assert_eq!(rewritten.len(), 1, "page 1 is one stream");
+    assert!(!listed.contains(&rewritten[0]), "a new one");
+    assert_eq!(
+        after.get_page_contents(after.get_pages()[&2]),
+        [drawing],
+        "page 2 is not rewritten"
+    );
+    assert!(
+        after.get_object(drawing).is_ok(),
+        "the stream page 2 still lists is kept"
+    );
+    assert!(
+        after.get_object(text).is_err(),
+        "the stream nothing names is removed"
+    );
+
+    let written = tag(&two_pages(true)).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    assert_eq!(after.get_page_contents(first_page(&after)).len(), 1);
+    assert!(
+        after.get_object(text).is_ok(),
+        "the catalog still names the text stream, so it is kept"
+    );
+    assert!(after.get_object(drawing).is_ok());
+}
+
+/// **A page whose `/Contents` is an array becomes one stream** (scope §3.5): the text object of
+/// `leading-gap-two-blocks` cut in two streams before its fourth line's positioning, `[T1 T2]`.
+/// The writer decodes both, splices the joined buffer and emits one stream, which holds the
+/// newline that separated them; both originals are removed; and every run reads back bound as on
+/// the uncut fixture.
+#[test]
+fn a_page_whose_contents_is_an_array_becomes_one_stream() {
+    let source = edited("leading-gap-two-blocks", |doc| {
+        let page = first_page(doc);
+        let whole = doc
+            .get_dictionary(page)
+            .unwrap()
+            .get(b"Contents")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        let bytes = doc
+            .get_object(whole)
+            .unwrap()
+            .as_stream()
+            .unwrap()
+            .content
+            .clone();
+        let cut = bytes
+            .windows(17)
+            .position(|w| w == b"1 0 0 1 72 644 Tm")
+            .expect("the fourth line's positioning");
+        let first = doc.add_object(Stream::new(Dictionary::new(), bytes[..cut].to_vec()));
+        let second = doc.add_object(Stream::new(Dictionary::new(), bytes[cut..].to_vec()));
+        doc.get_dictionary_mut(page).unwrap().set(
+            "Contents",
+            vec![Object::Reference(first), Object::Reference(second)],
+        );
+        doc.objects.remove(&whole);
+    });
+    let before = lopdf::Document::load_mem(&source).unwrap();
+    let listed = before.get_page_contents(first_page(&before));
+    assert_eq!(listed.len(), 2, "the page lists two streams");
+
+    let written = tag(&source).expect("tags cleanly through the self-check");
+    let after = lopdf::Document::load_mem(&written).unwrap();
+    assert_eq!(after.get_page_contents(first_page(&after)).len(), 1);
+    assert!(
+        listed.iter().all(|&id| after.get_object(id).is_err()),
+        "both originals are removed"
+    );
+    assert_eq!(
+        read(&written).bindings,
+        read(&tagged("leading-gap-two-blocks")).bindings,
+        "every run reads back bound as on the uncut fixture"
     );
 }
 
