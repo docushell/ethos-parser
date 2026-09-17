@@ -118,7 +118,8 @@ The body is not rewritten; read it with these.
   - **Grounds.** `grounding-check` finds all 129 valid and matched. `ethos verify` agrees on 122 of
     122, all grounded; on the other 7, no element contains the chosen run on either side.
   - **Bytes.** A second `tag` is byte-identical on 129 of 129. Bytes added: median 716 (44.3%),
-    from -125,323 to 3,821; 15 documents shrank.
+    from -125,323 to 3,821; 15 documents shrank. `qpdf --check` exits 0 on all 129 outputs at
+    `0c7a3c9` (and on 128 originals; the other exits 3 with warnings, its output 0).
   - **Reals, §3.5's reopening condition.** 6 of 4,116 reals outside content streams do not survive
     `f32`, in 2 documents, both PyPDF2: `/FontMatrix` `0.00100000005` → `0.001` and `/Matrix`
     `-1.60399354` → `-1.6039935`. That is non-zero on one producer, below the ninth significant
