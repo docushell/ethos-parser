@@ -140,8 +140,6 @@ because they are real work whatever version they end up in.
 
 - **A geometry digest check in the gate.** No committed golden covers geometry, so a box change is
   caught only by tests that read boxes.
-- **CI coverage of the two forbidden-token greps.** They are PR-only jobs, and no PR has run since
-  2026-09-05 under the local-merge flow. Move them into `check`, or open PRs.
 - **Re-run OmniDocBench** as an instrument after 0.58.0; opendataloader-bench was re-run on
   2026-09-16 (NID 0.8697, TEDS 0.1704 as the band above, MHS 0.0000). The OmniDocBench PDFs were not
   on this machine on 2026-09-16 (9 GiB free), so the run needs the corpus fetched again.

@@ -60,6 +60,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The two grep criteria, first: they scan source text, need no compiler and finish in
+      # seconds, so a forbidden token fails this job before the oracle build rather than after it.
+      # They are also `v0-exit-criteria` matrix entries below, but those labels run on pull requests
+      # only, and a history merged locally opens none: from 2026-09-05 to 2026-09-17 no CI run
+      # executed either grep. As steps here they run on every push to main. `ci/gate.sh` runs the
+      # same two commands first, and `the_local_gate_runs_what_ci_runs` holds the two in step.
+      - name: v0-no-confidence
+        run: ci/forbidden-tokens.sh confidence
+
+      - name: v0-no-verify
+        run: ci/forbidden-tokens.sh verification
+
       # The oracle is a test-time dependency. Its absence is a FAILURE, never a skip
       # (docs/04-ARCHITECTURE.md §4), so the corpus and the verifier must both be present.
       #
