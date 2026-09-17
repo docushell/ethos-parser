@@ -1833,6 +1833,13 @@ fn run_findings(
 /// A stream whose filter chain does not start with `FlateDecode` is decoded as before; a
 /// `LZWDecode` or `ASCII85Decode` stream that is corrupt part way is not caught here.
 ///
+/// **Measured on a corpus, 2026-09-18.** Over OmniDocBench's 981 born-digital `v1_0` pages this
+/// refuses one document, `jiaocaineedrop_chap10.pdf_8.pdf`, whose page content `lopdf` stops
+/// reading at byte 4 of 125 718: the build before this check exits 0 on it and writes an artifact
+/// whose two nodes carry no text, a complete-looking read of a page nobody read
+/// (`docs/measurements/omnidocbench/README.md`). It is the first corpus example of the defect;
+/// the other corpora this repository can reach hold none.
+///
 /// # Errors
 ///
 /// - [`EngineError::Malformed`] with `what` = `content stream`, naming the page and the stream:

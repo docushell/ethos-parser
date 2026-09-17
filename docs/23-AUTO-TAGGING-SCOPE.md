@@ -170,7 +170,10 @@ The body is not rewritten; read it with these.
   drop the same tail" — is superseded: the re-extraction refuses it. The writer's own conditions
   are unchanged and it stays the stricter of the two: it also refuses a failed Adler-32 check,
   bytes after the deflate data, and every filter other than none and `FlateDecode`, each of which
-  the reader still takes from `lopdf`.
+  the reader still takes from `lopdf`. **A corpus example arrived the next day**: of OmniDocBench's
+  981 born-digital `v1_0` pages, one is refused by the tokeniser on the read path, where the build
+  before the check wrote an artifact of a page whose 125 718 content bytes were dropped after the
+  fourth ([`measurements/omnidocbench/README.md`](measurements/omnidocbench/README.md)).
 
 With §7's numbers published, clause two meets the condition §12's proposed row #27 names. The rows
 themselves remain the owner's to record.

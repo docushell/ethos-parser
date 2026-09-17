@@ -62,6 +62,97 @@ It scores **their** metrics against **their** ground truth, so unlike the census
 comparable to what other projects publish — which is exactly why decision **O26** refuses to
 publish a row from it. §"Their metrics, across three releases" below is the record.
 
+## What it measured after 0.58.0 — 2026-09-18
+
+**Re-run on the build at `a18b2b0`** (`--version` 0.58.0; the work that ships as 0.59.0), 981
+documents in **13 s wall**. The corpus was re-fetched because it is not kept on this machine: no
+`hf` CLI here, so the dataset's own tree API was read and each file pulled from `resolve/v1_0`,
+giving **981 files, 538 521 457 bytes** — the size this page already records for that commit, byte
+for byte. Nothing is mirrored into the tree.
+
+| | 0.52.0 | this build |
+| --- | ---: | ---: |
+| single page | 981 / 981 | **981 / 981** |
+| text layer present | 756 (77.1%) | **756 (77.1%)** |
+| artifact produced | 963 (98.2%) | **962 (98.1%)** |
+| non-empty Markdown | 735 (74.9%) | **735 (74.9%)** |
+
+**One document fewer produces an artifact, and that is this session's fail-closed guard firing on
+its first corpus example.** `jiaocaineedrop_chap10.pdf_8.pdf` is refused: *unsupported content
+stream tokeniser: page 1: byte 3 of 125718: the operation starting there cannot be parsed past byte
+4, and lopdf's decoder stops at the same place and drops the remaining 125715 byte(s) without a
+word.* Measured with both binaries on this file: 0.58.0 as released exits **0** and writes a
+14 961-byte artifact whose two nodes carry **no text at all** — a complete-looking read of a page
+whose 125 718-byte content stream was dropped after its fourth byte — and this build exits **2**
+with no artifact. Until now that defect had unit tests and no corpus example; this is the example,
+and it is a document whose artifact used to read as an empty page.
+
+### Block assembly, four releases on
+
+| | 0.46.1 | 0.47.0 | 0.52.0 | this build |
+| --- | ---: | ---: | ---: | ---: |
+| median characters per block | 2.0 | 3.0 | — | **4.0** |
+| median share of blocks ≤2 chars | 60% | 41% | — | **31%** |
+| documents ≥95% such blocks | 163 of 733 | 41 | — | **38**, holding 7% of all text |
+| documents ≥50% such blocks | — | — | — | **256**, holding 55% of all text |
+
+The 0.52.0 record printed its own block table for 0.46.1 and 0.47.0 only; the two columns it left
+empty are left empty rather than back-filled from a run it did not make.
+
+### The limitation census on this build
+
+Document-varying codes over the 962 documents that produced an artifact:
+
+| code | docs | share | 0.52.0 |
+| --- | ---: | ---: | ---: |
+| `geometry-absent-not-groundable` | 855 | 89% | 884 (92%) |
+| `non-text-nodes-not-projected` | 744 | 77% | 745 (77%) |
+| `unruled-table-candidate-refused` | 719 | 75% | 719 (75%) |
+| `composite-font-codes-from-tounicode` | 412 | 43% | 412 (43%) |
+| `ruled-table-candidate-refused` | 292 | 30% | 399 (41%) |
+| `form-xobjects-not-descended` | 256 | 27% | 256 (27%) |
+| `broken-font-encoding` | 149 | 15% | 149 (15%) |
+| `mcid-property-list-by-name` | 70 | 7% | 70 (7%) |
+| `invisible-render-mode-text` | 66 | 7% | 66 (7%) |
+| `off-page-text` | 44 | 5% | 44 (5%) |
+| `symbolic-font-builtin-encoding-assumed` | 36 | 4% | 36 (4%) |
+| `font-widths-absent` | 7 | 1% | 7 (1%) |
+| `stroke-ruled-table-candidate-refused` | 6 | 1% | 6 (1%) |
+| `inline-images-not-emitted` | 3 | 0% | 3 (0.3%) |
+
+**Two codes moved and the rest did not.** `ruled-table-candidate-refused` falls 399 → 292: 0.55.0's
+`ruled-rects-v5` made a single-row or single-column grid no candidate at all, so those pages are
+neither emitted nor refused — the same cause `../opendataloader-bench/` records for its own 57 → 31.
+`geometry-absent-not-groundable` falls 884 → 855, and **this session's work accounts for exactly
+one of those**: run over this corpus with both binaries, the build before B1–B9 carries the code on
+856 of its 963 artifacts and this build on 855 of 962 — the difference is the document it now
+refuses, which produces no artifact to carry anything. The other 28 fell between 0.52.0 and 0.58.0,
+where the releases that made 10 698 more nodes citable are the candidate; this page does not
+attribute it further, because doing so needs those builds re-run. This session did change what that
+declaration *says* where no text node lacks a box — it states the by-kind population instead of
+*0 of N text node(s)* — but not when it fires, which is why the count barely moves.
+
+Groundability on this build: **794 890 of 824 218 nodes (96.4%)** carry a measured ink box, and
+**29 328 (3.6%)** carry none. Against 0.52.0's 784 192 / 40 028 of 824 220: **10 698 more nodes are
+citable**, and the total is two nodes lower, which is consistent with the refused document's old
+artifact having carried exactly two.
+
+### Hard failures — 19 documents produce no artifact
+
+| cause | docs |
+| --- | ---: |
+| unreadable `/Encoding /Identity-H` | 8 |
+| unreadable `/Encoding /GBK-EUC-H` (a predefined CJK CMap, not vendored) | 4 |
+| unsupported text encoding: the text layer is unreadable | 3 |
+| malformed `ToUnicode` CMap: `bfrange` destination runs past the Unicode range | 2 |
+| malformed `ToUnicode` CMap: destination is not valid UTF-16 | 1 |
+| **unsupported content stream tokeniser** (new on this build, above) | 1 |
+
+The first five causes are the 18 the 0.52.0 record names, unchanged in kind and in count. Decision
+#22's reading still holds for the first: `/Identity-H` is the identity per §9.7.4.2, so what is
+missing is CID-to-Unicode and vendoring the Adobe CJK set fixes the four `GBK-EUC-H` documents, not
+the eight.
+
 ## What it measured at 0.52.0
 
 | | documents |

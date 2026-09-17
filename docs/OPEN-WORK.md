@@ -144,9 +144,11 @@ boxes, which doc 22 refused.
   band with the worst document named and a false-positive check. Which roadmap version carries it
   is pending (§4).
 
-- **Re-run OmniDocBench** as an instrument after 0.58.0; opendataloader-bench was re-run on
-  2026-09-16 (NID 0.8697, TEDS 0.1704 as the band above, MHS 0.0000). The OmniDocBench PDFs were not
-  on this machine on 2026-09-16 (9 GiB free), so the run needs the corpus fetched again.
+- ~~**Re-run OmniDocBench** as an instrument after 0.58.0~~ — **done 2026-09-18**: the corpus was
+  re-fetched (981 files, 538 521 457 bytes, `v1_0`) and the census re-run in 13 s on the build at
+  `a18b2b0`; figures, the two codes that moved and the one new hard failure are in
+  [`measurements/omnidocbench/README.md`](measurements/omnidocbench/README.md). opendataloader-bench
+  was re-run on 2026-09-16 (NID 0.8697, TEDS 0.1704, MHS 0.0000).
 - **A committed fixture for the `<mc:AlternateContent>` path.** Neither `docx.rs` nor `pptx.rs`
   has one: both readers' branch rule is held by unit tests on inline XML, and no document in any
   corpus here carries the element, so the mutation suite and the digest lists never reach it.
