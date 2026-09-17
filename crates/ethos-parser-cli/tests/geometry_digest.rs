@@ -305,6 +305,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:1e35803a16bd36592fda0833641fffa7dc931818dafd3de4bdbe4391292dfd8e",
     ),
     (
+        "engine/rtl-hebrew-visual-order/document.pdf",
+        "sha256:94f59fbd97f77c415381118a6750c6fa9df0bd487452a1c2dbd8558c2b5774d5",
+    ),
+    (
         "engine/ruled-table-grid/document.pdf",
         "sha256:91bed705f32c27b750cfb5285b1eb1dd4cd6998d0b555f1c00884ee8ef58b7ec",
     ),

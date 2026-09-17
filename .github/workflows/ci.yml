@@ -900,7 +900,7 @@ jobs:
   # there. `cross-os-identity` then requires the three digest lists to be byte-identical, and
   # `diff` names the document and the artifact of any row that moved.
   #
-  # **The inputs: 80 documents, 320 digests** (66 and 264 when the job was written, at 5bb78db).
+  # **The inputs: 81 documents, 324 digests** (66 and 264 when the job was written, at 5bb78db).
   # Every engine and office fixture, plus six of the eight gate PDFs. The gate PDFs are the only
   # real-world documents in the tree — compressed streams, embedded fonts, structure trees, up to
   # 183 pages, so the page-parallel extract runs at each runner's own core count.
@@ -991,17 +991,17 @@ jobs:
 
       # **Identical is not enough.** Three builds that refuse every input agree perfectly, and so do
       # three that print nothing, so each list must also carry a floor of real artifacts: a row
-      # that exited 0 with non-empty output. 316 of the 320 rows are that at 0edbaad; the other four
-      # are `tagged-cycle`, whose extract is refused by design, and its three projections. The
-      # floor is one document short of 316 — losing any document's four artifacts reads 312 and
-      # fails. Adding a fixture never trips it; removing one, or another extract being refused,
+      # that exited 0 with non-empty output. 320 of the 324 rows are that at 7a0b8c0's successor;
+      # the other four are `tagged-cycle`, whose extract is refused by design, and its three
+      # projections. The floor is one document short of 320 — losing any document's four artifacts
+      # reads 316 and fails. Adding a fixture never trips it; removing one, or another extract being refused,
       # does, and moving the number is then a decision rather than a drift.
       - name: Three systems, one set of bytes
         working-directory: digests
         env:
           # sha256 of zero bytes.
           EMPTY: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-          MIN_PRODUCED: "313"
+          MIN_PRODUCED: "317"
         run: |
           set -euo pipefail
           lists=(digests-*.sha256)

@@ -4713,3 +4713,55 @@ fn the_empty_destination_offsets_a_ligature() {
         "two codes, two characters: the counts agree and the flag cannot see the offset"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// Right-to-left text: what this engine does with it, measured (B9)
+// -------------------------------------------------------------------------------------------
+
+/// **Right-to-left text is reported in the order the page draws it, and nothing is reordered.**
+///
+/// `rtl-hebrew-visual-order` draws the four letters of `שלום` — ש ל ו ם in logical order, read
+/// right to left — as `<0004000300020001>`, which is the order their glyphs sit on the page for a
+/// producer whose layout engine has already resolved bidi. Every such producer writes it this way,
+/// and this is what the engine says about it: one run, the codes in the page's order, and the text
+/// the logical word reversed.
+///
+/// **This is a statement, not a defect.** The engine reports what the document draws; applying the
+/// Unicode bidi algorithm would reorder characters the document did not, and a reordered string is
+/// not what any byte of the page says. The consequence is real and belongs to the consumer: a
+/// quote copied out of a viewer matches this run, and a quote typed in logical order does not.
+/// Whether an artifact should declare that is an owner decision (`docs/OPEN-WORK.md` §4).
+#[test]
+fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
+    let a = extract_ok(engine_fx("rtl-hebrew-visual-order"));
+    let run = runs(&a);
+    assert_eq!(run.len(), 1, "one string, one run");
+
+    let logical = "\u{5E9}\u{5DC}\u{5D5}\u{5DD}";
+    assert_eq!(
+        run[0].text,
+        logical.chars().rev().collect::<String>(),
+        "the text is the logical word reversed, because that is the order the page draws it"
+    );
+    assert_eq!(
+        run[0].char_codes,
+        vec![4, 3, 2, 1],
+        "and the codes say which glyphs those were, in the same order"
+    );
+    assert!(
+        !run[0].scalar_code_mismatch,
+        "four codes, four scalars: nothing about right-to-left text sets this flag"
+    );
+
+    // The four glyphs are 500 glyph units each at 12 pt: 6 pt, 2 400 centipoints in total, and
+    // the box grows to the RIGHT from the origin, as it does for left-to-right text — the page's
+    // own geometry, not a reading direction this engine inferred.
+    assert_eq!(run[0].locator.advance, Some(2400));
+    match &run[0].geometry {
+        GeometryPresence::Measured(r) => {
+            assert_eq!(r.x0(), run[0].locator.origin_x);
+            assert_eq!(r.x1() - r.x0(), 2400);
+        }
+        GeometryPresence::Absent(reason) => panic!("the fixture has metrics: {reason:?}"),
+    }
+}

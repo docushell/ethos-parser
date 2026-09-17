@@ -103,6 +103,11 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                              keyed by CID; without the CMap the code is not the CID, so the width
                              must be ABSENT — and absent for that reason, not the standard-14 one
                                                                                         [v2.2-S3]
+  rtl-hebrew-visual-order    four Hebrew glyphs under Identity-H, drawn in VISUAL order the way a
+                             producer that has already resolved bidi writes them, so the code
+                             sequence is the logical string reversed. Right-to-left text was in
+                             neither owned corpus, so nothing said what this engine does with it
+                                                                                   [2026-09-18]
   form-xobject-text-drawn    the THIRD member of that pair: a /Subtype /Form XObject drawing text,
                              painted with the same `Do`. It is neither an image node nor a text
                              node — this profile does not descend — so the only thing that can say
@@ -1109,6 +1114,16 @@ FIXTURES = {
     "composite-font-non-identity-cmap": (
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm <0001000200030005> Tj ET"
     ),
+    # Right-to-left text, and the shape a real producer writes (2026-09-18). The word is
+    # "שלום" — ש ל ו ם in LOGICAL order, U+05E9 U+05DC U+05D5 U+05DD, read right to left. A
+    # producer whose layout engine has already resolved bidi emits the glyphs in the order they
+    # sit on the page, left to right, which is the logical string reversed: ם ו ל ש, CIDs
+    # 4 3 2 1. That is what this fixture draws, and what this engine therefore reports. No
+    # reordering happens anywhere in the reader: the codes travel in the order the page shows
+    # them, and `char_codes` says which they were.
+    "rtl-hebrew-visual-order": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm <0004000300020001> Tj ET"
+    ),
     # The SAME image, declared and never drawn. `Do` is what makes a node; a resource nobody
     # painted is a resource, and zero image nodes is the correct answer.
     "image-declared-not-drawn": "BT /F1 12 Tf 1 0 0 1 40 60 Tm (No Do here) Tj ET",
@@ -1639,6 +1654,44 @@ _CID_TOUNICODE = (
 )
 
 
+# The four CIDs of `rtl-hebrew-visual-order`, mapped to the letters of "שלום" in LOGICAL order:
+# CID 1 is ש, the letter a Hebrew reader reads FIRST and the page draws LAST (rightmost).
+_RTL_TOUNICODE = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\nbegincmap\n"
+    b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+    b"4 beginbfchar\n"
+    b"<0001> <05E9>\n"  # shin
+    b"<0002> <05DC>\n"  # lamed
+    b"<0003> <05D5>\n"  # vav
+    b"<0004> <05DD>\n"  # final mem
+    b"endbfchar\n"
+    b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend"
+)
+
+
+def _rtl_tounicode() -> bytes:
+    return b"<< /Length %d >>\nstream\n%s\nendstream" % (
+        len(_RTL_TOUNICODE),
+        _RTL_TOUNICODE,
+    )
+
+
+def _rtl_cid_font() -> bytes:
+    """The descendant CIDFont for the right-to-left fixture: one width for all four glyphs.
+
+    `/W [ 1 4 500 ]` in the range form, so every glyph advances 6 pt at 12 pt and the four
+    origins are 6 pt apart. The widths are not what this fixture is about — the order the codes
+    travel in is — so they are uniform on purpose, and a reader that mis-sourced one would still
+    show the order defect this fixture exists to pin.
+    """
+    return (
+        b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Helvetica "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        b"/DW 500 /W [ 1 4 500 ] /FontDescriptor 8 0 R >>"
+    )
+
+
 def _type0_font(encoding: str) -> bytes:
     """Object 5: a /Type0 font. Note what it does NOT carry: /FirstChar, /LastChar, /Widths."""
     return (
@@ -1714,6 +1767,7 @@ RAW_FONTS = {
 
 COMPOSITE_FONTS = {
     "composite-font-cid-widths": _type0_font("Identity-H"),
+    "rtl-hebrew-visual-order": _type0_font("Identity-H"),
     # The SAME descendant, the same /W, the same /DW — and a predefined CMap this profile does not
     # parse. `/W` is keyed by CID and the code -> CID map is that CMap, so the CID is unknown and
     # a width read here would be a plausible number for the wrong glyph. Must refuse, and must
@@ -1723,7 +1777,12 @@ COMPOSITE_FONTS = {
 }
 
 COMPOSITE_OBJECTS = {
-    name: [_cid_font(), _cid_tounicode(), _cid_descriptor()] for name in COMPOSITE_FONTS
+    name: (
+        [_rtl_cid_font(), _rtl_tounicode(), _cid_descriptor()]
+        if name == "rtl-hebrew-visual-order"
+        else [_cid_font(), _cid_tounicode(), _cid_descriptor()]
+    )
+    for name in COMPOSITE_FONTS
 }
 
 

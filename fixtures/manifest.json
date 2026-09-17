@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 58,
+    "engine_owned": 59,
     "gate": 8
   },
   "fixtures": [
@@ -253,6 +253,15 @@
       "sha256": "sha256:25d30af7a36bd1b1b9209cbdbb650cf8c3fbdad628356b9abfa664342e9512e2",
       "owner": "engine",
       "notes": "Carries an /Encoding whose /Differences remap codes 200-202 to glyph names no vendored table resolves, so those codes cannot be decoded at all. In WinAnsiEncoding the same three codes are E-grave/E-acute/E-circumflex, so a reader that ignored /Differences \u2014 or fell back to the base encoding on a glyph-name miss \u2014 would emit mojibake the document does not contain, inside a perfectly well-formed artifact. A reader substituting U+FFFD would be no better. v0.1 drops the affected run whole, keeps the decodable run, and declares broken-font-encoding with the count (parity checklist P10)."
+    },
+    {
+      "id": "rtl-hebrew-visual-order",
+      "root": "engine",
+      "group": "engine",
+      "path": "rtl-hebrew-visual-order/document.pdf",
+      "sha256": "sha256:ac62ea0b6c5a08087486ffa8e8cd25631c2e6adfc4c335b6f125003e1a0d9458",
+      "owner": "engine",
+      "notes": "Right-to-left text, the shape nothing in either owned corpus carried (2026-09-18). Four Hebrew glyphs under /Identity-H whose /ToUnicode maps CID 1 to \u05e9, 2 to \u05dc, 3 to \u05d5 and 4 to \u05dd \u2014 the letters of \u05e9\u05dc\u05d5\u05dd in LOGICAL order \u2014 drawn as <0004000300020001>, which is the order the glyphs sit on the page for a producer whose layout engine has already resolved bidi. Expect ONE run, text \u05dd\u05d5\u05dc\u05e9, the logical string REVERSED, with char_codes [4, 3, 2, 1] and a measured box 2400 centipoints wide (four glyphs at /W 500, 6 pt each at 12 pt). That is the measured statement: this engine reports the codes in the order the page shows them and applies no bidi algorithm anywhere, so a quote in logical order does not match this run's text while a quote copied out of a viewer does. Whether an artifact should declare that is an owner decision, recorded in docs/OPEN-WORK.md \u00a74."
     },
     {
       "id": "ruled-table-grid",

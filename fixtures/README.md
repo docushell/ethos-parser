@@ -12,7 +12,7 @@ skips and never quietly uses a different file.
 | --- | --- | --- | --- |
 | `conformance` | `../ethos/fixtures` | `ETHOS_FIXTURES` | The 15 Ethos-owned fixtures. The oracle criterion counts exactly these |
 | `benchmark` | `../ethos/benchmarks/gate-zero/corpus` | `ETHOS_BENCH_CORPUS` | 4 large real-world PDFs. Not part of the oracle count |
-| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 58 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
+| `engine` | `fixtures/engine` | `ETHOS_PARSER_FIXTURES` | 59 CC0 PDFs authored here, for behaviours the Ethos corpus does not cover |
 | `gate` | `fixtures/gate` | `ETHOS_GATE_CORPUS` | 8 tagged public documents for the table gate — **committed here**, because a corpus you publish numbers about has to be one anyone can re-measure |
 
 `fixtures/office/` holds 16 small office packages for the v2 readers and the mutation harness, and

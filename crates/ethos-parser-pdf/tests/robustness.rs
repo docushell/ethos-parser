@@ -414,7 +414,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// the same reason: *"failed parsing cross reference table: invalid start value"*. Survivors go
 /// **78 → 60** and not one mutant newly survives.
 ///
-/// The pinned set is **81**, and not one of the twenty-one additions since v2-S21 is a
+/// The pinned set is **82**, and not one of the twenty-two additions since v2-S21 is a
 /// mutation-behaviour change. It was **64** at v2.2-S3: `ink-past-the-media-box` (D4-S5),
 /// `form-xobject-text-drawn` (v2.2-S2) and the composite-font pair `composite-font-cid-widths` /
 /// `composite-font-non-identity-cmap` (v2.2-S3) were each added to the corpus and each survives
@@ -471,7 +471,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 81] = [
+const EXPECTED_SURVIVORS: [&str; 82] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -519,6 +519,7 @@ const EXPECTED_SURVIVORS: [&str; 81] = [
     "nist-sp-800-63b/junk-after-eof",
     "off-page-and-offset-box/junk-after-eof",
     "rotated-and-mirrored-text/junk-after-eof",
+    "rtl-hebrew-visual-order/junk-after-eof",
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
@@ -889,8 +890,12 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        85,
-        "the manifest should declare 85 fixtures across FOUR roots. Auto-tagging S2 moved this \
+        86,
+        "the manifest should declare 86 fixtures across FOUR roots. B9 moved this from 85 by \
+         adding `rtl-hebrew-visual-order`: right-to-left text was in neither owned corpus, so \
+         nothing said what this engine does with a producer's visual-order Hebrew, and the \
+         answer — the codes in the page's order, the text the logical word reversed — is a \
+         statement a fixture has to hold. Auto-tagging S2 moved this \
          from 78 by adding the seven shapes the writer must refuse or place around — \
          `untagged-mcid-no-tree`, `untagged-mcid-by-name`, `untagged-oc-by-name`, \
          `untagged-artifact-furniture`, `shared-content-stream`, `inline-image-filtered` and \
