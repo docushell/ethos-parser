@@ -161,6 +161,17 @@ The body is not rewritten; read it with these.
     Over every raw `/P` it finds 129 of 189 (68.3%) and still cuts 0 of 1,022 mid-paragraph
     pairs.
 
+- **§3.5, the read path (2026-09-17, after the merge).** The leniencies this section gives as the
+  writer's reason for decoding strictly are refused on the read path too: `extract` and the table
+  diagnostics run this section's tokeniser, require its operators to be `lopdf`'s, and check that a
+  `FlateDecode` stream's deflate data reaches its end, all before a page is interpreted;
+  `classify` counts nothing for a page either check refuses (`extract.rs::page_operations`). So the
+  sentence above — that §3.7 cannot catch a dropped tail later, because the re-extraction "would
+  drop the same tail" — is superseded: the re-extraction refuses it. The writer's own conditions
+  are unchanged and it stays the stricter of the two: it also refuses a failed Adler-32 check,
+  bytes after the deflate data, and every filter other than none and `FlateDecode`, each of which
+  the reader still takes from `lopdf`.
+
 With §7's numbers published, clause two meets the condition §12's proposed row #27 names. The rows
 themselves remain the owner's to record.
 

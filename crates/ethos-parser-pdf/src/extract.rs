@@ -327,19 +327,14 @@ fn extract_page(
             }
         }
 
-        let content = doc.inner().get_page_content(page_id);
-        let decoded =
-            lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
-                what: "content stream".into(),
-                detail: format!("page {page_number}: {e}"),
-            })?;
+        let operations = page_operations(doc.inner(), page_number, page_id)?;
 
         // v1-S6. The page's `/XObject` names, so `Do` can be resolved to an object number. The
         // interpreter still never holds a `Document` — it gets names and ids, and extraction
         // sorts `/Image` from `/Form` where the document is already in scope.
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
         let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
-        interp.run(&decoded.operations)?;
+        interp.run(&operations)?;
         inline_images = inline_images.saturating_add(interp.inline_images);
         unresolved_xobjects = unresolved_xobjects.saturating_add(interp.unresolved_xobjects);
 
@@ -1612,15 +1607,10 @@ pub(crate) fn per_page_table_diagnostics(
                 })?;
         let geom = PageGeometry::resolve(doc, page_dict)?;
         let fonts = load_page_fonts(doc, page_dict)?;
-        let content = doc.inner().get_page_content(page_id);
-        let decoded =
-            lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
-                what: "content stream".into(),
-                detail: format!("page {page_number}: {e}"),
-            })?;
+        let operations = page_operations(doc.inner(), page_number, page_id)?;
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
         let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
-        interp.run(&decoded.operations)?;
+        interp.run(&operations)?;
 
         // Origins, exactly as `extract` builds them: every non-empty shown run at its top-left
         // origin, quantized. Owned first so the borrowed `RunOrigin` view stays valid for `detect`.
@@ -1821,6 +1811,68 @@ fn run_findings(
     out.sort_unstable();
     out.dedup();
     out
+}
+
+/// A page's operations as `lopdf` decodes them — the buffer `get_page_content` joins, through
+/// `Content::decode` — refused by name wherever `lopdf` would lose part of the page without a
+/// word, or panic on it.
+///
+/// Three leniencies the reader must not inherit silently (`docs/OPEN-WORK.md` §6, 2026-09-17): a
+/// `FlateDecode` stream truncated or corrupt part way decodes to what came before the damage, as
+/// a success; the decoder stops at the first operation its grammar cannot parse and drops the
+/// rest of the page; and an inline image with neither a colour space nor `/IM true` makes its
+/// parser panic, which the release profile turns into an abort. The tag writer's tokeniser
+/// mirrors that grammar rule for rule, places every byte or refuses, and must agree with the
+/// decode operator for operator, which together prove the page was read to its end. The operations
+/// returned are `lopdf`'s own, so an operation index means what it meant before these checks.
+///
+/// A stream whose filter chain does not start with `FlateDecode` is decoded as before; a
+/// `LZWDecode` or `ASCII85Decode` stream that is corrupt part way is not caught here.
+///
+/// # Errors
+///
+/// - [`EngineError::Malformed`] with `what` = `content stream`, naming the page and the stream:
+///   a `FlateDecode` stream whose deflate data does not reach its end.
+/// - [`EngineError::Unsupported`] with `what` = `content stream tokeniser`, naming the page and
+///   the byte: an operation `lopdf`'s grammar cannot parse with bytes after it, a shape its
+///   decoder fails the whole page on, or one it panics on.
+pub(crate) fn page_operations(
+    doc: &lopdf::Document,
+    page_number: u32,
+    page_id: lopdf::ObjectId,
+) -> Result<Vec<lopdf::content::Operation>, EngineError> {
+    for id in doc.get_page_contents(page_id) {
+        let Ok(stream) = doc.get_object(id).and_then(lopdf::Object::as_stream) else {
+            continue;
+        };
+        let flate_first = stream
+            .filters()
+            .is_ok_and(|filters| filters.first().is_some_and(|f| f == b"FlateDecode"));
+        if flate_first {
+            crate::tagging::deflate_reaches_its_end(&stream.content).map_err(|detail| {
+                EngineError::Malformed {
+                    what: "content stream".into(),
+                    detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
+                }
+            })?;
+        }
+    }
+    let content = doc.get_page_content(page_id);
+    let on_page = |e: EngineError| match e {
+        EngineError::Unsupported { what, detail } => EngineError::Unsupported {
+            what,
+            detail: format!("page {page_number}: {detail}"),
+        },
+        other => other,
+    };
+    let tokens = crate::tagging::tokenise(&content).map_err(on_page)?;
+    let decoded =
+        lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
+            what: "content stream".into(),
+            detail: format!("page {page_number}: {e}"),
+        })?;
+    crate::tagging::agrees_with_lopdf(&tokens, &decoded.operations).map_err(on_page)?;
+    Ok(decoded.operations)
 }
 
 fn quantize_err(_: ethos_parser_core::QuantizeError) -> EngineError {

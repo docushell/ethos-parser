@@ -4298,3 +4298,151 @@ fn a_page_the_rule_declined_carries_no_block_on_either_hop() {
         "absent on the wire too — not `Some(1)` for a page with one block: {on_wire:?}"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// A page lopdf would read in part, or panic on, is refused by name
+// -------------------------------------------------------------------------------------------
+
+/// How the replacement content stream is written: as it stands, or through a deflater that
+/// returns the stream bytes — whole, cut, or with a wrong check.
+type Deflater = fn(&[u8]) -> Vec<u8>;
+
+/// `measured-ink-box`'s one page with its content replaced: `content` as one stream, deflated
+/// when `deflate` returns the stream bytes to write.
+fn with_content(content: &[u8], deflate: Option<Deflater>) -> Vec<u8> {
+    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let page = doc.get_pages()[&1];
+    let mut dict = lopdf::Dictionary::new();
+    let bytes = match deflate {
+        Some(deflate) => {
+            dict.set("Filter", "FlateDecode");
+            deflate(content)
+        }
+        None => content.to_vec(),
+    };
+    let stream = doc.add_object(lopdf::Stream::new(dict, bytes));
+    doc.get_dictionary_mut(page)
+        .expect("the page")
+        .set("Contents", lopdf::Object::Reference(stream));
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+const MEASURED: &[u8] = b"BT /F1 24 Tf 72 72 Td (Measured) Tj ET\n";
+
+fn zlib(bytes: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    z.write_all(bytes).expect("in memory");
+    z.finish().expect("in memory")
+}
+
+fn extracted(bytes: &[u8]) -> Result<ExtractArtifact, ethos_parser_core::EngineError> {
+    let profile = Profile::default();
+    let doc = Document::open_bytes(bytes, &profile).expect("the document opens");
+    ethos_parser_pdf::extract(&doc, &profile)
+}
+
+/// **An inline image `lopdf` panics on is refused by name, and `classify` survives it.**
+/// `lopdf` 0.44.0's inline-image parser unwraps a colour-space lookup, so an image that names
+/// neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
+/// `panic = "abort"` would end the process — an MCP server with it. The tokeniser refuses the
+/// shape before `lopdf` sees it.
+#[test]
+fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
+    let mut content = MEASURED.to_vec();
+    content.extend_from_slice(b"q BI /W 8 /H 1 /BPC 1 ID \xaa EI Q\n");
+    let bytes = with_content(&content, None);
+
+    let e = extracted(&bytes).expect_err("refused, not read and not a panic");
+    assert_eq!(e.code(), "unsupported", "{e}");
+    let message = e.to_string();
+    assert!(
+        message.starts_with("unsupported content stream tokeniser: page 1: byte "),
+        "{message}"
+    );
+    assert!(
+        message.contains("neither a colour space nor /IM true"),
+        "{message}"
+    );
+
+    let profile = Profile::default();
+    let doc = Document::open_bytes(&bytes, &profile).expect("opens");
+    let c = ethos_parser_pdf::classify(&doc, &profile).expect("classify answers");
+    assert_eq!(
+        c.pages[0].text_operators, 0,
+        "an unreadable content stream yields zero tallies, as a decode failure always has"
+    );
+}
+
+/// **A tail `lopdf` would drop is refused by name.** Its decoder stops at the first operation it
+/// cannot parse and returns what came before as the whole page: here the extract would carry
+/// `Measured` and never `lost`, and nothing on the artifact would say a word was missing.
+#[test]
+fn a_tail_lopdf_would_drop_is_refused_by_name() {
+    let mut content = MEASURED.to_vec();
+    content.extend_from_slice(b") BT /F1 24 Tf 72 144 Td (lost) Tj ET\n");
+    let lenient = lopdf::content::Content::decode(&content).expect("lopdf decodes leniently");
+    assert_eq!(
+        lenient.operations.len(),
+        5,
+        "lopdf keeps the first line's five operations and drops the second line without a word"
+    );
+
+    let e = extracted(&with_content(&content, None)).expect_err("refused, not read in part");
+    assert_eq!(e.code(), "unsupported", "{e}");
+    let message = e.to_string();
+    assert!(
+        message.starts_with("unsupported content stream tokeniser: page 1: byte "),
+        "{message}"
+    );
+    assert!(message.contains("drops the remaining"), "{message}");
+}
+
+/// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
+/// what came before the damage and returns it as a success.
+#[test]
+fn a_flate_stream_that_does_not_reach_its_end_is_refused_by_name() {
+    let whole = zlib(MEASURED);
+    let cut: Deflater = |bytes| {
+        let z = zlib(bytes);
+        z[..z.len() / 2].to_vec()
+    };
+    assert!(whole.len() > 10, "the stream is long enough to cut");
+
+    let e = extracted(&with_content(MEASURED, Some(cut))).expect_err("refused, not read in part");
+    assert_eq!(e.code(), "malformed", "{e}");
+    let message = e.to_string();
+    assert!(
+        message.starts_with("malformed content stream: page 1, stream "),
+        "{message}"
+    );
+    assert!(message.contains("without reaching its end"), "{message}");
+
+    // The control: the same page deflated whole reads exactly as the uncompressed page does.
+    let texts = |a: &ExtractArtifact| runs(a).iter().map(|r| r.text.clone()).collect::<Vec<_>>();
+    let plain = extracted(&with_content(MEASURED, None)).expect("plain reads");
+    let deflated = extracted(&with_content(MEASURED, Some(zlib))).expect("deflated reads");
+    assert_eq!(texts(&deflated), texts(&plain));
+    assert_eq!(texts(&plain), ["Measured"]);
+}
+
+/// **A wrong check over whole deflate data still reads.** `lopdf` returns the whole page for it,
+/// which is why its inflater tolerates it, so refusing it would refuse a page nothing was lost
+/// from. The writer, which re-serialises the stream, is the stricter of the two.
+#[test]
+fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
+    let wrong_check: Deflater = |bytes| {
+        let mut z = zlib(bytes);
+        let last = z.len() - 1;
+        z[last] ^= 0xff;
+        z
+    };
+    let a = extracted(&with_content(MEASURED, Some(wrong_check))).expect("reads");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Measured"]
+    );
+}

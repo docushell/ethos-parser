@@ -322,9 +322,10 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
 fn tally_page(doc: &Document, page_id: lopdf::ObjectId) -> PageTally {
     let mut t = PageTally::default();
 
-    let content = doc.inner().get_page_content(page_id);
-    if let Ok(decoded) = lopdf::content::Content::decode(&content) {
-        for op in &decoded.operations {
+    // `page_operations` refuses a page `lopdf` would read in part or panic on; a refusal is an
+    // unreadable content stream like any other here, and yields zero tallies.
+    if let Ok(operations) = crate::extract::page_operations(doc.inner(), 0, page_id) {
+        for op in &operations {
             let name = op.operator.as_str();
             if th::TEXT_SHOWING_OPERATORS.contains(&name) {
                 t.text_operators += 1;

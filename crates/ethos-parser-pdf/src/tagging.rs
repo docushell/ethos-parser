@@ -52,6 +52,13 @@
 //! resynchronise at the same byte by construction and no inserted operator can land inside image
 //! data.
 //!
+//! **The reader's share of both, 2026-09-17.** [`deflate_reaches_its_end`] is the check `extract`
+//! runs over every `FlateDecode` content stream before it interprets a page — looser than the
+//! strict decoder by exactly what `lopdf` reads whole — and `extract` runs [`tokenise`] and
+//! [`agrees_with_lopdf`] over the buffer it is about to interpret. A page `lopdf` would read in
+//! part, or panic on, is therefore refused by name on the read path as well; the call site is
+//! `extract.rs::page_operations`.
+//!
 //! # Measured, 2026-09-17
 //!
 //! Over every PDF in `fixtures/engine` (56, the seven writer fixtures of S2 included: one of them
@@ -350,6 +357,54 @@ fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(out)
+}
+
+/// Whether a `FlateDecode` stream's deflate data reaches its end: the reader's check, looser
+/// than [`inflate_strict`] by exactly what `lopdf` reads correctly anyway.
+///
+/// `lopdf` inflates with a zlib reader and, when that yields nothing, retries raw deflate past
+/// the two header bytes. Either way a truncated stream, or one corrupt part way, decodes to what
+/// came before the damage and is returned as a success; raw deflate from the same offset reaches
+/// its end exactly when no such loss happened. A failed Adler-32 check or bytes after the deflate
+/// data lose nothing — `lopdf` returns the whole content — so neither is refused here, where the
+/// writer, which re-serialises the stream, refuses both. The output is discarded, not collected:
+/// the bytes the reader interprets stay `lopdf`'s.
+pub(crate) fn deflate_reaches_its_end(input: &[u8]) -> Result<(), String> {
+    use flate2::{Decompress, FlushDecompress, Status};
+
+    // `lopdf` does not run the inflater on zero bytes, and neither does this.
+    if input.is_empty() {
+        return Ok(());
+    }
+    let body = input.get(2..).unwrap_or(&[]);
+    let mut inflater = Decompress::new(false);
+    let mut scratch = vec![0u8; 1 << 16];
+    loop {
+        let consumed = usize::try_from(inflater.total_in())
+            .map_err(|_| "the inflater consumed more than the address space holds".to_string())?;
+        let remaining = body.get(consumed..).unwrap_or(&[]);
+        let (before_in, before_out) = (inflater.total_in(), inflater.total_out());
+        let flush = if remaining.is_empty() {
+            FlushDecompress::Finish
+        } else {
+            FlushDecompress::None
+        };
+        let status = inflater
+            .decompress(remaining, &mut scratch, flush)
+            .map_err(|e| format!("the deflate data is corrupt: {e}"))?;
+        match status {
+            Status::StreamEnd => return Ok(()),
+            Status::Ok | Status::BufError => {
+                if inflater.total_in() == before_in && inflater.total_out() == before_out {
+                    return Err(format!(
+                        "the deflate data stops after {} of {} byte(s) without reaching its end",
+                        inflater.total_in(),
+                        body.len()
+                    ));
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3840,6 +3895,55 @@ mod tests {
             matches!(&e, StreamRefusal::Malformed(d) if d.contains("2 byte(s) follow the end")),
             "{e:?}"
         );
+    }
+
+    /// **The reader's check refuses a loss, and nothing `lopdf` reads whole** (`OPEN-WORK.md` §6).
+    /// A cut or a corrupt block is refused while `lopdf` returns what came before it as a success;
+    /// a failed check and bytes after the deflate data pass, because `lopdf` returns the whole page
+    /// for both — the two shapes where the writer, which re-serialises the stream, is stricter.
+    #[test]
+    fn the_readers_flate_check_refuses_a_loss_and_nothing_lopdf_reads_whole() {
+        let whole = deflated(PAGE);
+        deflate_reaches_its_end(&whole).expect("a whole stream reaches its end");
+        deflate_reaches_its_end(&[]).expect("zero bytes are no stream to inflate");
+
+        // Four bytes of Adler-32 end the stream, so a cut of five or more reaches the data.
+        for keep in [whole.len() - 5, whole.len() / 2, 3, 1] {
+            let cut = &whole[..keep];
+            let e = deflate_reaches_its_end(cut).unwrap_err();
+            assert!(e.contains("without reaching its end"), "{keep}: {e}");
+            let lenient = flate_stream(cut.to_vec()).decompressed_content();
+            assert!(
+                lenient.as_deref().is_ok_and(|read| read.len() < PAGE.len()),
+                "lopdf reads the cut at {keep} bytes as a shorter page and says nothing: \
+                 {lenient:?}"
+            );
+        }
+
+        // BTYPE 11 is reserved (RFC 1951 §3.2.3): the first block is corrupt.
+        let mut corrupt = whole.clone();
+        corrupt[2] |= 0b110;
+        let e = deflate_reaches_its_end(&corrupt).unwrap_err();
+        assert!(e.contains("corrupt"), "{e}");
+        assert_eq!(
+            flate_stream(corrupt).decompressed_content().unwrap(),
+            b"",
+            "lopdf reads a corrupt stream as an empty page and says nothing"
+        );
+
+        let mut wrong_check = whole.clone();
+        let last = wrong_check.len() - 1;
+        wrong_check[last] ^= 0xff;
+        deflate_reaches_its_end(&wrong_check).expect("a failed check loses no content");
+        assert_eq!(
+            flate_stream(wrong_check).decompressed_content().unwrap(),
+            PAGE
+        );
+
+        let mut trailing = whole;
+        trailing.extend_from_slice(b"\r\n");
+        deflate_reaches_its_end(&trailing).expect("bytes after the data lose no content");
+        assert_eq!(flate_stream(trailing).decompressed_content().unwrap(), PAGE);
     }
 
     #[test]
