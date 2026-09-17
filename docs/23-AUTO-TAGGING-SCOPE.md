@@ -83,7 +83,8 @@ The body is not rewritten; read it with these.
   of `nist-sp-800-53Ar5`'s 1.04 GB. The rest of each difference is the constant 1,425 bytes of the
   `block-subdivision-leading-gap-only` declaration. Table in
   [`measurements/auto-tagging/README.md`](measurements/auto-tagging/README.md) §2.
-- **§7.1, the round trip (measured 2026-09-17)**, with the writer at `2e70eba` over 293 documents:
+- **§7.1, the round trip (measured 2026-09-17)**, with the writer at `2e70eba` and re-run identical
+  apart from timings at `0c7a3c9`, over 293 documents:
   the 58 engine fixtures, the 35 oracle fixtures and the 200 `opendataloader-bench` documents.
   Instrument [`measurements/auto-tagging/roundtrip.py`](measurements/auto-tagging/roundtrip.py);
   method, tables and per-document results in its README §2.
