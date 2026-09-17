@@ -371,6 +371,12 @@ engine fixtures and the first ten bench documents, is in `results/roundtrip-summ
 
 **A second `tag` is byte-identical to the first on 129 of 129**, bench documents included.
 
+**Another reader opens every output.** `qpdf --check` (12.3.2) exits 0 on all 129 tagged documents
+of the run at `0c7a3c9`, as it does on 128 of their originals; the other original,
+`bench/01030000000141`, exits 3 with warnings, and its tagged output exits 0. This engine's own
+reader re-reading its output is the self-check, and it cannot see a file only other readers reject:
+the numbering rule the review replaced passed it while qpdf read its output's page as blank.
+
 | bytes added, over 129 tagged documents | min | median | max |
 | --- | ---: | ---: | ---: |
 | absolute | -125,323 (`bench/01030000000141`) | 716 | 3,821 (`bench/01030000000193`) |
