@@ -139,11 +139,16 @@ boxes, which doc 22 refused.
 
 ## 5. Ready now — no decision needed
 
-- **Headings inferred from font size or font name** (decision #29): `Computed`, only where a
-  document declares no structure, P14 standing for every other role. A scope first — rule id,
-  where the inference is declared, how Markdown and HTML emit it — then the rule, measured as an MHS
-  band with the worst document named and a false-positive check. Which roadmap version carries it
-  is pending (§4).
+- **Headings inferred from font size or font name** (decision #29) — **scoped 2026-09-18**,
+  [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md), and ready to build. What the scope settles, each on
+  a measurement: the signal is the **rendered em**, not the field spelled `font_size`, which carries
+  one distinct value on 87 of the 200 bench documents and on all four gate documents measured; the
+  unit is the line; one level, because the harness flattens them and all 193 ground-truth headings
+  are level 1; the verdict goes on the wire as an attribute absent where false, with
+  `heading_inference_rule` on the profile and a document-scoped declaration; and the size clause
+  ships alone at a **5% per-document false-positive bound**, with the font clause held as a
+  conditional slice because it measures 91.7% recall at up to 15.76%. Which roadmap version carries
+  it is pending (§4).
 
 - ~~**Re-run OmniDocBench** as an instrument after 0.58.0~~ — **done 2026-09-18**: the corpus was
   re-fetched (981 files, 538 521 457 bytes, `v1_0`) and the census re-run in 13 s on the build at
@@ -167,6 +172,7 @@ boxes, which doc 22 refused.
 | --- | --- |
 | `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" | `PdfLocator::advance` rustdoc; doc 22 amendments |
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
+| An ODT or ODP heading is on the wire as a heading and projects as a **paragraph**: `<text:h>` sets `OdfBlockKind::Heading`, and `text:outline-level` is unread, so no level exists to emit. Found while scoping inferred headings, where decision #29's rider that a declared heading always wins stands beside a declared heading that wins nothing | [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) §6.2 |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |
 | A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |
