@@ -108,7 +108,7 @@ each of those differs from its ground truth was not examined here.
 | NID | 0.8490 | **0.8697** | block assembly on untagged input changed four times: 0.47.0 joins runs along one baseline, 0.53.0 widens the reach cap by one glyph, 0.54.0 stops a cursor-moved word gap breaking a block, 0.55.0 adds the leading-gap block cut. Every document here is untagged, so all four apply; which of them moved NID was not measured per release on this corpus |
 | TEDS | 0.1038 | **0.1704** | 0.55.0's `ruled-rects-v3` → `-v6`, measured there on this corpus with `rule_ab.py`: documents emitting a table 5 → 14, every one holding a table in ground truth |
 | TEDS non-zero / at zero | 5 / 37 | **14 / 28** | the same. The 0.46.0 record has no per-document list, so which of its five near-perfect documents are among today's four above 0.9 cannot be said from the record |
-| MHS | 0.0000 | 0.0000 | L29 stands; 0 of 200 carry a structure tree |
+| MHS | 0.0000 | 0.0000 | L29 stood at 0.58.0, and 0 of 200 carry a structure tree; North Star decision #29 reversed L29 on 2026-09-17 |
 | speed | ~26 ms, quiet | 36 ms, loaded | not compared — the 0.46.0 note on timing applies |
 
 ### The limitation census at 0.58.0

@@ -52,7 +52,7 @@ years of PDF handling.
 | O21 / O22 / L27 / L28 | Hidden text, headers, footers or small text dropped by default | One project's README says *filters* while the code **deletes**. Take the threat model, invert the mechanism: **report, never delete** |
 | O23 | A mode that rewrites the evidence | The artifact is the record |
 | L13 | Undeclared form "repair" and always-on widget flattening | A repair that is not recorded is a fabrication |
-| P14 | Style and role inferred from font names or text prefixes | Presentation is not structure |
+| P14 | Style and role inferred from font names or text prefixes | Presentation is not structure. **Narrowed 2026-09-17** by [North Star decision #29](00-NORTH-STAR.md), for headings alone: a heading may be inferred from font size or font name where a document declares no structure, as `Computed`. Every other role stays refused |
 | O26 | "#1", "fastest", or any bake-off claim | Every headline in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags |
 | O28 | A JVM runtime dependency | One project's cost of entry, and why its capabilities cannot be borrowed wholesale |
 | L31 | An unpinned build-time renderer download | Vendor fork, by tag, no checksum, so the build is network-dependent by default |

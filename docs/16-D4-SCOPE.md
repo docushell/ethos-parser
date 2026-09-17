@@ -271,7 +271,9 @@ same clause.
 ## 11. Standing rules, carried forward
 
 1. **No role, no heading and no box derived from a font size** — and none derived from a region
-   either. A region is where, never what.
+   either. A region is where, never what. *Narrowed 2026-09-17 by North Star decision #29, for
+   headings alone: a heading may be inferred from font size or font name where a document declares
+   no structure, as `Computed`, and never from a region.*
 2. **No invented coordinate, identifier or boundary.** Every region boundary is a gap the rule
    measured in page space.
 3. **A gap is never presented as a success** — a page the cut did not divide says so by absence,

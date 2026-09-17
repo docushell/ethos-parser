@@ -89,9 +89,8 @@ are the gate.
 ## 3. v2.3 — distribution (decision #28)
 
 v2.3 is a roadmap version since 2026-09-17, by North Star decision #28, which amends
-`02-ROADMAP.md`'s *no new version numbers* and row 15's order. Its items are independent: there is
-no scope or milestones document for the version as a whole, and each item that changes the engine
-gets its own scope before its code.
+`02-ROADMAP.md`'s *no new version numbers* and row 15's order. It has no scope or milestones
+document yet (§4).
 
 **The gate: 0 of 2 met, and the machinery for both exists unrun.**
 1. Prebuilt binaries on three platforms: macOS only; the workflow that builds and executes the
@@ -112,8 +111,9 @@ boxes, which doc 22 refused.
 | 6.6 Word-level boxes | refused | `22-WORD-BOXES-SCOPE.md` §7 names what reopens it |
 | 6.7 `locate(representation, quote)` in CLI, MCP and SDK | **ready** | Decision #30 (2026-09-17) bounds it: a representation and a string in, locations out; no verdict, boolean or claim; a match rule of the engine's own. A scope first, then the CLI subcommand, MCP tool and SDK functions in one slice |
 | 6.8 crates.io, five crates in order | owner | Publishing is the owner's. Last in the ordering. **Irreversible** |
-| 6.9 Password, page sets, `continue_on_page_error`, batch, colour | **settled 2026-09-17** (decision #31) | [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md) measured each over 297 PDFs, and its §8 was accepted as proposed. **Deferred**, each with its reopening condition there: the password knob (§3.3) and page sets (§4.3). **Refused**: `continue_on_page_error`, on measurement (0 of 293 artifacts need it); a batch mode; colour as an emitted field. **Still to build:** declaring the empty-user-password open on the artifact, and the `classify`/`extract` disagreement, both in §6 |
-| Headings inferred from font size or font name | **ready** | Decision #29 (2026-09-17): `Computed`, only where a document declares no structure, P14 standing for every other role. A scope first — rule id, where the inference is declared, how Markdown and HTML emit it — then the rule, measured as an MHS band with the worst document named and a false-positive check |
+| 6.9a Declare the empty-user-password open | **ready** | Decision #31 (proposal 1 of [`25-KNOBS-SCOPE.md`](25-KNOBS-SCOPE.md)): a document `lopdf` opens with the empty user password says so on its artifact. The defect it closes is in §6 |
+| 6.9b Password knob | deferred (#31) | Reopens on a corpus this repository can pin whose documents need a user password the caller holds; then never on argv or over MCP (docs/25 §3.3) |
+| 6.9c Page sets | deferred (#31) | Reopens on a named caller, as a third `PageBudget` variant with no adapter line (docs/25 §4.3) |
 
 ## 4. Owner decisions pending
 
@@ -127,6 +127,8 @@ boxes, which doc 22 refused.
 | How a text-run box declares its kind. `docs/01-CONTRACT.md` §5.3 records it as open, and §6's versioned rule for the box is not in the profile. With it, whether the liteparse refusal's Wall 2 (`liteparse_refusal.rs`) and §5.3's "wrong for a citation highlight" should be re-taken, now that both apply to this engine's own box (`d544418` commit message) | Contract §5.3 and §6 |
 | Retire the unruled table rule, and whether `table_detection.unruled` moves off `unruled-align-v1` after the precondition reorder | Table track |
 | The geometric table rework (ruled-rects-v4 to v6) was the owner's choice in the plan only. `table-gate-v1.md`'s header carries a dated amendment recording the gap; recording it under #18 is the owner's | Governance |
+| **v2.3's documents.** `02-ROADMAP.md` gives every version a scope and a milestones document before code; v2.3's items are independent and some already have code (the release and cross-OS workflows). One document pair for the version, or a scope per item that changes the engine | `locate` and headings, before their code |
+| **The roadmap home of inferred headings (#29).** The local plan filed D2 under v2.2's steps, whose gate #27 closed; decision #28 did not list it under v2.3 | The roadmap row only |
 | The rest of the plan's D1 to D8. D2, D4 and D7 are recorded as North Star #29, #28 and #30, and D5, keeping auto-tagging, as #25. D1 and D3 are above, and D8 is deferred. D6, landing wire changes before a first registry publication, waits with the packages | Governance |
 | Semver for byte-identical but source-breaking type changes: the `Arc` in `StructuralLocator::PdfTagged`, and `GeometryAbsence` growing without `#[non_exhaustive]` | Release policy |
 | `font_size` stays the raw `Tf` operand, and `advance` stays in its pre-rotation frame: keep, document, or change | Wire meaning |
@@ -134,6 +136,12 @@ boxes, which doc 22 refused.
 | Repository security settings: secret scanning, push protection and dependabot are off, and org-wide 2FA is not required | Settings |
 
 ## 5. Ready now — no decision needed
+
+- **Headings inferred from font size or font name** (decision #29): `Computed`, only where a
+  document declares no structure, P14 standing for every other role. A scope first — rule id,
+  where the inference is declared, how Markdown and HTML emit it — then the rule, measured as an MHS
+  band with the worst document named and a false-positive check. Which roadmap version carries it
+  is pending (§4).
 
 - **Re-run OmniDocBench** as an instrument after 0.58.0; opendataloader-bench was re-run on
   2026-09-16 (NID 0.8697, TEDS 0.1704 as the band above, MHS 0.0000). The OmniDocBench PDFs were not
