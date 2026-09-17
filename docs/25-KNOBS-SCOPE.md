@@ -19,6 +19,13 @@ amendment). §3.2's row saying *no limitation mentions encryption* is superseded
 knob itself stays deferred. Over the 311 PDFs of every corpus on the measuring machine, 1 is
 encrypted and needs a secret, and **0** open on the empty password, so no artifact here changes.
 
+**And proposal 5.** Every classification now declares `classify-reads-no-structure-tree`,
+profile-scoped: classification reads no structure tree and interprets no text, so **exit 0 is not
+a prediction that `extract` will succeed**, and `classify --help` says so too. The difference
+itself stays — reading the tree is `extract`'s work, and classification must not scale with it —
+so §5.2's row is declared rather than closed. Every classify artifact's bytes move with the new
+declaration and no extract artifact's do.
+
 **Measured 2026-09-16 against `main` at `b4b4aa9` (0.58.0, unreleased)** with the verified 0.58.0
 `aarch64-apple-darwin` binary and qpdf 12.3.2, over 297 PDFs in five corpora, 2,370 pages. The
 instruments, the corpus list, the binary's digest and what was not measured are in

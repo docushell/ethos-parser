@@ -76,6 +76,12 @@ enum Command {
     /// Report what a document contains: counts and named reason codes, never a verdict.
     ///
     /// Exit codes: 0 simple, 1 needs attention, 2 could not read.
+    ///
+    /// **Exit 0 is not a prediction that `extract` will succeed.** Classification counts
+    /// operators, images, paths and annotations over the sampled pages; it reads no structure
+    /// tree and interprets no text, and a malformed tree is what `extract` refuses a document
+    /// for. Every classification declares this as `classify-reads-no-structure-tree`, and 1 of
+    /// 297 PDFs measured classifies cleanly and is refused by `extract`.
     Classify(ClassifyArgs),
 
     /// Extract position-aware text runs with native locators.

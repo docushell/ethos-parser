@@ -675,3 +675,51 @@ fn the_artifact_contains_no_host_varying_data() {
         );
     }
 }
+
+// -------------------------------------------------------------------------------------------
+// Classification is not an extract preflight, and says so (decision #31, proposal 5)
+// -------------------------------------------------------------------------------------------
+
+/// **`classify` exits 0 on a document `extract` refuses, and every classification declares why.**
+///
+/// `tagged-cycle`'s structure tree cites its elements in a cycle. `extract` reads that tree and
+/// refuses the document; `classify` reads no tree at all, so it answers from the page content and
+/// exits 0. The difference is real and stays — reading the tree is extract's work and
+/// classification must not scale with it — so it is declared on every classification rather than
+/// left for a caller to discover, which is what `docs/25-KNOBS-SCOPE.md` proposal 5 asked for.
+#[test]
+fn classification_declares_that_its_exit_0_is_not_an_extract_preflight() {
+    let profile = Profile::default();
+    let cycle = path_in("engine", "tagged-cycle/document.pdf");
+
+    let answer = run(cycle.clone(), &profile);
+    assert_eq!(
+        exit_code(&answer),
+        SIMPLE,
+        "the page content is simple, and it is"
+    );
+    answer.expect("classification answers");
+
+    let doc = Document::open(&cycle, &profile).expect("the document opens");
+    let e = ethos_parser_pdf::extract(&doc, &profile)
+        .expect_err("extract reads the tree and refuses it");
+    assert_eq!(e.code(), "malformed", "{e}");
+
+    // Declared on this document and on every other, because it is a property of the profile.
+    for path in [cycle, conformance("synthetic/simple-text/document.pdf")] {
+        let c = run(path.clone(), &profile).expect("classification answers");
+        let declared: Vec<&str> = c
+            .assurance
+            .limitations
+            .iter()
+            .filter(|l| l.code == ethos_parser_pdf::limitations::CLASSIFY_READS_NO_STRUCTURE_TREE)
+            .map(|l| l.detail.as_str())
+            .collect();
+        assert_eq!(declared.len(), 1, "{}: {:?}", path.display(), declared);
+        assert!(
+            declared[0].contains("not a prediction that `extract` will succeed"),
+            "the declaration must say what it is for: {}",
+            declared[0]
+        );
+    }
+}

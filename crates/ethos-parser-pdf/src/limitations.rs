@@ -57,6 +57,14 @@ pub const FONT_WIDTHS_ABSENT: &str = "font-widths-absent";
 /// `crate::xref` for the repair and `docs/01-CONTRACT.md` §12 for the decision.
 pub const XREF_ENTRY_PADDED: &str = "xref-entry-padded";
 
+/// `classify` reads no structure tree, so its exit 0 does not predict `extract`'s.
+///
+/// Declared on every classification. `classify` counts operators and resources over the sampled
+/// pages; the structure tree is read only by `extract`, which refuses a malformed one. A document
+/// can therefore classify cleanly and be refused by `extract` — measured on 1 of 297 PDFs
+/// (`docs/25-KNOBS-SCOPE.md` §5.2, proposal 5, accepted as decision #31).
+pub const CLASSIFY_READS_NO_STRUCTURE_TREE: &str = "classify-reads-no-structure-tree";
+
 /// This document's bytes are encrypted, and the empty user password opened them.
 ///
 /// Declared on every artifact from such a document. Nothing is withheld and nothing is guessed —
@@ -141,6 +149,16 @@ pub fn backend_limitations() -> Vec<Limitation> {
 /// garbled — absence of a reason mistaken for evidence of its absence.
 pub fn classify_limitations(sample_pages: u32) -> Vec<Limitation> {
     let mut out = backend_limitations();
+
+    out.push(Limitation::profile(
+        CLASSIFY_READS_NO_STRUCTURE_TREE,
+        "Classification reads no structure tree and interprets no text: it counts operators, \
+         images, paths and annotations over the sampled pages. A malformed structure tree — one \
+         whose elements cite each other in a cycle, say — is found by `extract`, which refuses \
+         the document for it. **So exit 0 here is not a prediction that `extract` will succeed**, \
+         and a caller that needs one must run `extract`. Measured over 297 PDFs: 1 classifies \
+         cleanly and is refused by `extract`.",
+    ));
 
     out.push(Limitation::profile(
         CLASSIFY_SAMPLE_BOUND,
@@ -737,7 +755,7 @@ mod tests {
     use ethos_parser_core::LimitationScope;
 
     /// Every code this module emits, in one place, so a rename is a visible event.
-    const PDF_CODES: [&str; 11] = [
+    const PDF_CODES: [&str; 12] = [
         CLASSIFY_SAMPLE_BOUND,
         BACKEND_XREF_STRICT_20_BYTE,
         PREDEFINED_CMAPS_NOT_VENDORED,
@@ -750,6 +768,7 @@ mod tests {
         XREF_ENTRY_PADDED,
         BROKEN_FONT_ENCODING,
         ENCRYPTED_EMPTY_USER_PASSWORD,
+        CLASSIFY_READS_NO_STRUCTURE_TREE,
         // Derived rather than declared: `undetected_reason_code` builds these from a reason name,
         // and `the_undetected_reason_codes_are_pinned` below pins both spellings.
         "garbled-reason-not-detected",
@@ -773,10 +792,10 @@ mod tests {
             .collect();
         assert_eq!(
             declared.len(),
-            9,
-            "this module declares {} `pub const` code(s): {declared:?}. Nine is the number at \
-             decision #31, which added `encrypted-empty-user-password`; a new one belongs in \
-             `PDF_CODES` too.",
+            10,
+            "this module declares {} `pub const` code(s): {declared:?}. Ten is the number at \
+             decision #31, which added `encrypted-empty-user-password` and \
+             `classify-reads-no-structure-tree`; a new one belongs in `PDF_CODES` too.",
             declared.len()
         );
         for code in &declared {
