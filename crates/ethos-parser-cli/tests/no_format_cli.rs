@@ -334,10 +334,14 @@ fn classify_still_answers_as_the_pdf_classifier_and_the_divergence_is_named() {
 // Guard the guard
 // -------------------------------------------------------------------------------------------
 
-/// The one place a file name is legitimately read, **named rather than skipped**.
+/// The places a file name is legitimately read, **named rather than skipped**.
 ///
 /// `thresholds.rs` ends in its own `#[cfg(test)]` guard that walks this same tree and filters
 /// `.rs` files by extension. That is test code *about source files*, not a detection path.
+/// `ethos-parser-pdf`'s `test_support.rs` is compiled under `#[cfg(test)]` only, and its
+/// `pdfs_under` filters `.pdf` files by extension so the tagging writer's strict decoder and
+/// tokeniser can be run over every corpus document (auto-tagging S2, `89e5e0e`). It walks fixture
+/// directories for a test; nothing the engine reads is routed by it.
 ///
 /// It is an exemption by (file, token) rather than a region skip, and the difference matters. The
 /// first version of this test skipped everything after each file's first `#[cfg(test)]`, which
@@ -345,9 +349,10 @@ fn classify_still_answers_as_the_pdf_classifier_and_the_divergence_is_named() {
 /// the skip hid that crate's **entire public re-export block** from the scan — including the very
 /// export this slice added. A guard that passes because it read nothing is the vacuous shape this
 /// repository has been caught by before.
-const NAME_READING_EXEMPTIONS: [(&str, &str); 2] = [
+const NAME_READING_EXEMPTIONS: [(&str, &str); 3] = [
     ("thresholds.rs", ".file_name()"),
     ("thresholds.rs", ".extension()"),
+    ("test_support.rs", ".extension()"),
 ];
 
 /// **No detection path in this engine reads a file name, and no signature is scanned for.**
