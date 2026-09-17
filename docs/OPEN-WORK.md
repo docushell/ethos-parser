@@ -153,7 +153,6 @@ boxes, which doc 22 refused.
 | Defect | Where it is recorded |
 | --- | --- |
 | `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" | `PdfLocator::advance` rustdoc; doc 22 amendments |
-| A code whose `/ToUnicode` destination is empty decodes to no character and can hide a ligature from `scalar_code_mismatch` | `ShownText::code_advances` comment |
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |
 | DOCX text inside `mc:AlternateContent` may be emitted twice, once from `mc:Choice` and once from `mc:Fallback` | A review lead only — confirm with a fixture |

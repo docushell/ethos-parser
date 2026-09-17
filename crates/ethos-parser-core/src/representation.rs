@@ -1489,7 +1489,11 @@ pub struct TextRunAttributes {
     pub char_codes: Vec<u32>,
     /// True when `text.chars().count() != char_codes.len()`, counting Unicode scalar values.
     /// Declared, not reconciled. A comparison of two counts, not a mapping: a character in
-    /// `synthesized` has no code and sets it too.
+    /// `synthesized` has no code and sets it too, and a code whose `/ToUnicode` destination is
+    /// empty decodes to no character and offsets one that decodes to several — so **false does
+    /// not mean the codes and the characters align one to one**. Measured 2026-09-18 over 311
+    /// PDFs: no destination in any of them is empty, and 698 in 95 documents carry several
+    /// scalars.
     pub scalar_code_mismatch: bool,
     /// Characters this reader inserted, by index into `text`. Empty for verbatim text.
     pub synthesized: Vec<SynthesizedAt>,

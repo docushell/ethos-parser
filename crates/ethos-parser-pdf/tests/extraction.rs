@@ -4635,3 +4635,81 @@ fn a_dropped_run_still_advances_the_pen() {
     // The pen travelled one 24pt glyph at 500/1000 em: 12 points, 1 200 centipoints.
     assert_eq!(dropped[0], 8400, "72pt + 12pt, in centipoints: {dropped:?}");
 }
+
+// -------------------------------------------------------------------------------------------
+// An empty `/ToUnicode` destination, and what `scalar_code_mismatch` can and cannot say
+// -------------------------------------------------------------------------------------------
+
+/// `measured-ink-box` with a `/ToUnicode` mapping code 65 to nothing and code 66 to `fi`, and
+/// one text object showing both.
+fn empty_destination_and_ligature() -> Vec<u8> {
+    let cmap = b"/CIDInit /ProcSet findresource begin\n\
+        12 dict begin\n\
+        begincmap\n\
+        /CMapName /EthosEmptyDestination def\n\
+        /CMapType 2 def\n\
+        1 begincodespacerange\n\
+        <41> <42>\n\
+        endcodespacerange\n\
+        2 beginbfchar\n\
+        <41> <>\n\
+        <42> <00660069>\n\
+        endbfchar\n\
+        endcmap\n\
+        CMapName currentdict /CMap defineresource pop\n\
+        end\n\
+        end";
+    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let font = doc
+        .objects
+        .iter()
+        .find(|(_, o)| matches!(o, lopdf::Object::Dictionary(d) if d.has(b"BaseFont")))
+        .map(|(id, _)| *id)
+        .expect("the fixture has a font");
+    let stream = doc.add_object(lopdf::Stream::new(lopdf::Dictionary::new(), cmap.to_vec()));
+    doc.get_dictionary_mut(font)
+        .expect("the font dictionary")
+        .set("ToUnicode", lopdf::Object::Reference(stream));
+
+    let page = doc.get_pages()[&1];
+    let content = doc.add_object(lopdf::Stream::new(
+        lopdf::Dictionary::new(),
+        b"BT /F1 24 Tf 72 100 Td (AB) Tj ET\n".to_vec(),
+    ));
+    doc.get_dictionary_mut(page)
+        .expect("the page")
+        .set("Contents", lopdf::Object::Reference(content));
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+/// **An empty destination offsets a ligature, and `scalar_code_mismatch` reads false.**
+///
+/// The flag is a comparison of two counts, by its own definition in the contract, not a mapping
+/// from codes to characters: here two codes produce two characters — one of them none, the other
+/// two — and the counts agree while the run is not 1:1. Decided by measurement on 2026-09-18
+/// rather than refused or re-defined: across 311 PDFs, 40,339 `bfchar` entries and 2,806
+/// `bfrange` rows, **no destination is empty**, while 698 destinations in 95 documents carry
+/// several scalars. Refusing an empty destination would drop a whole run for a code the document
+/// chose to give no text. This test exists so the case is visible rather than discovered.
+#[test]
+fn the_empty_destination_offsets_a_ligature() {
+    let a = extracted(&empty_destination_and_ligature()).expect("reads");
+    let run = runs(&a);
+    assert_eq!(run.len(), 1, "one string, one run");
+    assert_eq!(
+        run[0].text, "fi",
+        "code 65 gives nothing, code 66 gives `fi`"
+    );
+    assert_eq!(
+        run[0].char_codes,
+        vec![65, 66],
+        "and both codes are on the artifact, so a reader can see the run is not 1:1"
+    );
+    assert!(
+        !run[0].scalar_code_mismatch,
+        "two codes, two characters: the counts agree and the flag cannot see the offset"
+    );
+}

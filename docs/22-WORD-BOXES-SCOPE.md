@@ -79,6 +79,15 @@ to is recorded below with the version it ships in.
   same-line `Tm` placing the pen again before a large negative number (p25's shape occurs in no
   measured document). 47 of the seven's 189 synthesized spaces were that shape, every one inside a
   word or beside a drawn space, so 47 of item 5's 189 runs no longer carry one.
+- **§9 item 5's other half, an empty `/ToUnicode` destination — accepted on measurement,
+  2026-09-18.** A code whose destination is empty decodes to no character, which offsets a code
+  that decodes to several, and `scalar_code_mismatch` — a comparison of two counts by its own
+  definition — then reads false on a run that is not 1:1. Censused over the 311 PDFs of every
+  corpus this repository can reach (40 339 `bfchar` entries, 2 806 `bfrange` rows): **no
+  destination is empty**, while 698 destinations in 95 documents carry several scalars. Accepted
+  rather than refused, because refusing drops a whole run for a code the document chose to give no
+  text; the contract field, `cmap.rs` and two tests now say what false does not mean. No artifact
+  byte moves.
 - **§9 item 6, a Type 3 font's height — refused, not mapped, for 0.58.0.** A Type 3 font keeps its
   ascent/descent envelope only where its `/FontMatrix` leaves the vertical at the 1000-unit default
   (b = 0, d = 0.001 at single precision, f = 0; an absent or non-array matrix keeps it), whichever

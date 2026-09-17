@@ -253,6 +253,19 @@ fn hex_to_u32(hex: &str) -> Result<u32, EngineError> {
 /// Decode a big-endian UTF-16 hex string into a Rust string.
 ///
 /// This is where one code becomes several scalars: `00660069` is `f` then `i`.
+///
+/// **An empty destination is accepted and decodes to no character**, which is the document
+/// saying this code carries no text. Decided by measurement on 2026-09-18 rather than refused:
+/// over the 311 PDFs of every corpus this repository can reach — 40 339 `bfchar` entries and
+/// 2 806 `bfrange` rows — **not one destination is empty**, while 698 destinations in 95
+/// documents carry several scalars. Refusing would drop a whole run for a code the document
+/// chose to give no text, and dropping text that decodes is the larger loss.
+///
+/// What it costs, stated because nothing else would say it: `TextRunAttributes`'s
+/// `scalar_code_mismatch` compares two counts, so an empty destination offsets a code that
+/// decodes to two scalars and the flag reads false on a run whose codes are not 1:1 with its
+/// characters. That field's own documentation says it is a comparison of counts and not a
+/// mapping; `the_empty_destination_offsets_a_ligature` in `extraction.rs` pins the case.
 fn utf16be_hex_to_string(hex: &str) -> Result<String, EngineError> {
     if hex.len() % 4 != 0 {
         return Err(malformed(
@@ -321,6 +334,19 @@ end";
         assert_eq!(m.get(0x05), Some("e"));
         assert_eq!(m.get(0x06), Some(" "));
         assert_eq!(m.get(0x07), Some("l"));
+    }
+
+    /// **An empty destination decodes to no character, and is not an error.** The parser's
+    /// own end of the case `extraction.rs` pins end to end: the code is in the map, and it
+    /// answers with the empty string rather than being absent, so the run keeps the code in
+    /// `char_codes` and gains no character for it.
+    #[test]
+    fn an_empty_destination_decodes_to_no_character() {
+        let src = b"begincmap\nbeginbfchar\n<41><>\n<42><00660069>\nendbfchar\nendcmap";
+        let m = ToUnicode::parse(src).expect("an empty destination is legal here");
+        assert_eq!(m.get(0x41), Some(""), "in the map, and empty");
+        assert_eq!(m.get(0x42), Some("fi"), "beside a code that decodes to two");
+        assert_eq!(m.len(), 2);
     }
 
     /// **White space inside a hex string is ignored, because §7.3.4.3 says it shall be.**
