@@ -900,15 +900,15 @@ jobs:
   # there. `cross-os-identity` then requires the three digest lists to be byte-identical, and
   # `diff` names the document and the artifact of any row that moved.
   #
-  # **The inputs: 66 documents, 264 digests.** Every engine and office fixture, plus six of the
-  # eight gate PDFs. The gate PDFs are the only real-world documents in the tree — compressed
-  # streams, embedded fonts, structure trees, up to 183 pages, so the page-parallel extract runs at
-  # each runner's own core count. `nist-sp-800-53Ar5` and `nist-sp-800-161r1` are left out by
-  # name: measured locally they take three times as long as the other 64 documents together, and
-  # 53Ar5's extract peaks at 3.6 GiB against a macOS runner's 7 GB. `ci/release-artifacts.sh`
-  # leaves the same two out of its projections. The Ethos conformance corpus is not read, because
-  # it would bring a second repository's checkout, and its line endings, into a comparison of this
-  # one's bytes.
+  # **The inputs: 80 documents, 320 digests** (66 and 264 when the job was written, at 5bb78db).
+  # Every engine and office fixture, plus six of the eight gate PDFs. The gate PDFs are the only
+  # real-world documents in the tree — compressed streams, embedded fonts, structure trees, up to
+  # 183 pages, so the page-parallel extract runs at each runner's own core count.
+  # `nist-sp-800-53Ar5` and `nist-sp-800-161r1` are left out by name: measured locally at 5bb78db
+  # they take three times as long as the other 64 documents together, and 53Ar5's extract peaks at
+  # 3.6 GiB against a macOS runner's 7 GB. `ci/release-artifacts.sh` leaves the same two out of its
+  # projections. The Ethos conformance corpus is not read, because it would bring a second
+  # repository's checkout, and its line endings, into a comparison of this one's bytes.
   #
   # **Not in `ci/gate.sh`, and it cannot be:** one host runs one leg, and one leg compares nothing.
   # `the_local_gate_runs_what_ci_runs` compares that script with the `check` job's steps and the two
@@ -991,9 +991,9 @@ jobs:
 
       # **Identical is not enough.** Three builds that refuse every input agree perfectly, and so do
       # three that print nothing, so each list must also carry a floor of real artifacts: a row
-      # that exited 0 with non-empty output. 260 of the 264 rows are that at 5bb78db; the other four
+      # that exited 0 with non-empty output. 316 of the 320 rows are that at 0edbaad; the other four
       # are `tagged-cycle`, whose extract is refused by design, and its three projections. The
-      # floor is one document short of 260 — losing any document's four artifacts reads 256 and
+      # floor is one document short of 316 — losing any document's four artifacts reads 312 and
       # fails. Adding a fixture never trips it; removing one, or another extract being refused,
       # does, and moving the number is then a decision rather than a drift.
       - name: Three systems, one set of bytes
@@ -1001,7 +1001,7 @@ jobs:
         env:
           # sha256 of zero bytes.
           EMPTY: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-          MIN_PRODUCED: "257"
+          MIN_PRODUCED: "313"
         run: |
           set -euo pipefail
           lists=(digests-*.sha256)
