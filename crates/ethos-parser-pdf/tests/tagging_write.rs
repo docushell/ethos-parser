@@ -639,6 +639,16 @@ fn the_round_trip_keeps_the_text_record_and_binds_every_run_computed() {
             text_record(&before),
             "{name}: the text record is unchanged"
         );
+        // And every other field of every page record — box, rotation, images, tables, tagged
+        // tables, objects — so the round trip is checked on the whole page, not the runs alone.
+        assert_eq!(after.pages.len(), before.pages.len(), "{name}");
+        for (was, now) in before.pages.iter().zip(&after.pages) {
+            let mut was = was.clone();
+            let mut now = now.clone();
+            was.runs.clear();
+            now.runs.clear();
+            assert_eq!(now, was, "{name} page {}: every field but runs", was.index);
+        }
         assert!(after.runs().count() > 0, "{name}: the fixture shows text");
         let mut ids: BTreeMap<u32, Vec<i64>> = BTreeMap::new();
         for page in &after.pages {

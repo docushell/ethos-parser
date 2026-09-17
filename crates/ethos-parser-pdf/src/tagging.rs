@@ -71,12 +71,15 @@
 //! The strict decoder, the tokeniser, [`OpKind`] — the per-operator classification the placement
 //! rule reads — the placement rule itself ([`plan_page`]), the splice that inserts its sequences
 //! at token boundaries ([`splice`]), the tree and the stamp ([`write_tree`], [`stamp_tags`]), and
-//! [`write_tags`], the one public entry: scope §3.6's refusals in order, one new `FlateDecode`
-//! stream per rewritten page on a fresh clone, one serialisation, and the self-check of §3.7 that
-//! opens the bytes, extracts them again and compares run for run before anything is returned.
+//! [`write_tags`], the one public entry: scope §3.6's refusals, each by name, one new
+//! `FlateDecode` stream per rewritten page on a fresh clone, one serialisation, and the
+//! self-check of §3.7 that opens the bytes, extracts them again and compares run for run, page
+//! counter for page counter, and the written tree against the plan before anything is returned.
 //! [`sequences_are_well_formed`] is the one statement of what a sequence may hold, shared by the
 //! planner's tests and by that self-check, which runs it on the output's own tokens and runs —
 //! so §3.4 is proved on every document rather than on the fixtures alone.
+
+use std::collections::BTreeMap;
 
 use ethos_parser_core::{EngineError, Profile};
 use lopdf::{Object, ObjectId, Stream};
@@ -1396,7 +1399,7 @@ pub(crate) fn refuse_ids(
 }
 
 /// Whose text each operation showed, from the page's runs and the side table that names each
-/// run's operator (`extract::RunPositions`).
+/// run's operator (`extract::PageTrace::op_indices`).
 ///
 /// `None` for an operation that is not text-showing. A text-showing operation none of the page's
 /// runs name showed nothing the reader kept. An operation whose runs the cut placed in two blocks
@@ -1460,7 +1463,7 @@ pub(crate) fn shows_from_runs(
                     detail: format!(
                         "page {page}, operation {at} shows runs the cut placed in two blocks \
                          ({} for `{}` and {} for `{}`), and a marked-content sequence holds an \
-                         operator for one element",
+                         operator for one element (docs/23-AUTO-TAGGING-SCOPE.md §3.6)",
                         describe(already),
                         runs[earlier].text,
                         describe(this),
@@ -2077,7 +2080,11 @@ fn attribute(rule: &str) -> lopdf::Dictionary {
 ///
 /// # Errors
 ///
-/// [`EngineError::Malformed`] if the catalog or a page dictionary does not resolve.
+/// [`EngineError::Malformed`] if the catalog or a page dictionary does not resolve; if a block
+/// cites an id its page's sequences do not include, one whose sequence the plan gave another
+/// block, or one already cited; or if an id belongs to no block. A plan the placement rule
+/// built cannot do any of these — `blocks` is derived from `sequences` — so each is a check on
+/// this function's caller, not on a document.
 pub(crate) fn write_tree(
     out: &mut lopdf::Document,
     pages: &[(ObjectId, &PagePlan)],
@@ -2108,9 +2115,9 @@ pub(crate) fn write_tree(
             let div_id = out.add_object(Object::Dictionary(element));
             divs.push(Object::Reference(div_id));
             for &id in ids {
-                let slot = usize::try_from(id)
+                let i = usize::try_from(id)
                     .ok()
-                    .and_then(|i| by_mcid.get_mut(i))
+                    .filter(|&i| i < plan.sequences.len())
                     .ok_or_else(|| {
                         malformed(format!(
                             "block {block:?} cites id {id}, which its page's {} sequence(s) do \
@@ -2118,7 +2125,20 @@ pub(crate) fn write_tree(
                             plan.sequences.len()
                         ))
                     })?;
-                *slot = Some(div_id);
+                let owner = plan.sequences[i].block;
+                if owner != *block {
+                    return Err(malformed(format!(
+                        "block {block:?} cites id {id}, whose sequence the plan gave to block \
+                         {owner:?}"
+                    )));
+                }
+                if by_mcid[i].is_some() {
+                    return Err(malformed(format!(
+                        "id {id} on page object {page_id:?} is cited twice, the second time by \
+                         block {block:?}"
+                    )));
+                }
+                by_mcid[i] = Some(div_id);
             }
         }
         let mut refs = Vec::with_capacity(by_mcid.len());
@@ -2210,9 +2230,13 @@ struct PlannedPage {
     run_mcids: Vec<Option<i64>>,
 }
 
-/// The whole document planned: the extract the tags are computed from, and every page.
+/// The whole document planned: the extract the tags are computed from, its per-page trace, and
+/// every page.
 struct DocumentPlan {
     artifact: crate::extract::ExtractArtifact,
+    /// The source's operator indices and per-page counters, kept so the self-check can compare
+    /// the output's page by page (scope §3.7): the artifact holds only the counters' totals.
+    traces: crate::extract::RunPositions,
     pages: Vec<PlannedPage>,
 }
 
@@ -2272,30 +2296,40 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 /// into the page's content, which becomes one `FlateDecode` stream; a `/ParentTree`,
 /// `/StructParents` on each rewritten page, and the `/EthosParserTags` provenance stamp on the
 /// catalog. No `/MarkInfo` is written and one already present is left as found. Before the
-/// bytes are returned they are opened and extracted again, and every run, binding, counter and
-/// limitation is compared against the extract the tags were computed from (§3.7).
+/// bytes are returned they are opened and extracted again: every run, binding, per-page counter
+/// and limitation is compared against the extract the tags were computed from, and the tree's
+/// `/Div` grouping and parent tree against the plan (§3.7).
 ///
 /// Every content stream's bytes survive unchanged apart from the inserted tokens; every other
 /// object is re-encoded by `lopdf` (§9). Two calls on one input return the same bytes.
 ///
 /// # Errors
 ///
-/// In this order, before any byte is written:
+/// In the order the writer checks them, the first found, and every one of them before any byte
+/// is written:
 ///
-/// - [`EngineError::Unsupported`] with `what` = `tagging`: the catalog already declares
-///   `/StructTreeRoot` — a written tag fills absence only; a run binds a bare marked-content id
-///   (an inline `/MCID` and no tree); a page's `BDC` names a property list carrying `/MCID`, or
-///   one the page's `/Properties` does not hold; an operation shows runs of two blocks; the
-///   profile's page budget leaves a page unprocessed; the document shows no text this engine
-///   reads.
-/// - Whatever [`crate::extract`] refuses, unchanged.
-/// - [`EngineError::Malformed`] or [`EngineError::Unsupported`] from the strict decoder and the
-///   tokeniser, naming the page, the stream and the cause: a `/Contents` entry that is not a
-///   stream, a filter other than none or `FlateDecode`, a stream that does not decode to its end,
-///   a page the tokeniser cannot place to the last byte or reads differently from `lopdf`.
-/// - [`EngineError::Malformed`] with `what` = `tagging self-check`: the output, read back,
-///   differs from the extract it was written from, naming the first differing run or the failing
-///   condition. Nothing is returned in that case.
+/// 1. [`EngineError::Unsupported`] with `what` = `tagging`: the catalog already declares
+///    `/StructTreeRoot` — a written tag fills absence only.
+/// 2. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
+///    checks read its artifact.
+/// 3. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
+///    page unprocessed; a run binds a bare marked-content id (an inline `/MCID` and no tree).
+/// 4. Per page, in page order, the first of: [`EngineError::Malformed`] or
+///    [`EngineError::Unsupported`] from the strict decoder and the tokeniser, naming the page,
+///    the stream and the cause — a `/Contents` entry that is not a stream, a filter other than
+///    none or `FlateDecode`, a `/DecodeParms` with a predictor, a stream that does not decode to
+///    its end, strict bytes that are not the bytes extraction interpreted, a page the tokeniser
+///    cannot place to the last byte or reads differently from `lopdf` — then
+///    [`EngineError::Unsupported`] with `what` = `tagging`: a `BDC` names a property list
+///    carrying `/MCID`, or one the page's `/Properties` does not hold; an operation shows runs
+///    the cut placed in two blocks. A later page's decoder error therefore comes after an
+///    earlier page's tagging refusal.
+/// 5. [`EngineError::Unsupported`] with `what` = `tagging`: no text run outside an `/Artifact`
+///    frame, so there is nothing to tag.
+/// 6. After emission, [`EngineError::Malformed`] with `what` = `tagging self-check`: the output,
+///    read back, differs from the extract it was written from — a run, a binding, a per-page
+///    counter or record, a limitation, the tree's grouping or a written sequence — naming the
+///    first difference. Nothing is returned in that case.
 pub fn write_tags(doc: &Document, profile: &Profile) -> Result<Vec<u8>, EngineError> {
     let plan = plan_document(doc, profile)?;
     let (bytes, elements) = emit(doc, profile, &plan)?;
@@ -2303,7 +2337,8 @@ pub fn write_tags(doc: &Document, profile: &Profile) -> Result<Vec<u8>, EngineEr
     Ok(bytes)
 }
 
-/// Scope §3.6's refusals in order, then every page decoded, tokenised and planned.
+/// Scope §3.6's refusals, each by name and in the order [`write_tags`]'s `# Errors` list gives,
+/// then every page decoded, tokenised and planned.
 fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, EngineError> {
     use ethos_parser_core::StructuralLocator;
 
@@ -2320,7 +2355,7 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
         ));
     }
 
-    let (artifact, positions) = crate::extract::extract_with_positions(doc, profile)?;
+    let (artifact, traces) = crate::extract::extract_with_positions(doc, profile)?;
 
     if let Some(state) = artifact
         .assurance
@@ -2362,8 +2397,7 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
                     "page {number} is processed and absent from the artifact"
                 ))
             })?;
-        let empty = Vec::new();
-        let positions = positions.get(&number).unwrap_or(&empty);
+        let positions: &[usize] = traces.get(&number).map_or(&[], |t| t.op_indices.as_slice());
         if positions.len() != page.runs.len() {
             return Err(malformed(format!(
                 "page {number}: {} run(s) and {} operator position(s)",
@@ -2434,7 +2468,11 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
                 .into(),
         ));
     }
-    Ok(DocumentPlan { artifact, pages })
+    Ok(DocumentPlan {
+        artifact,
+        traces,
+        pages,
+    })
 }
 
 /// A page's spliced bytes deflated at the one fixed level the writer uses.
@@ -2567,8 +2605,218 @@ fn written_sequences(
     Ok(found)
 }
 
+/// Scope §3.7 on the tree: the output's `/StructTreeRoot`, walked with `lopdf`, holds one
+/// `/Document` over the planned `/Div`s in order — each on its page, citing exactly its block's
+/// ids in order — and its `/ParentTree` maps every id of every rewritten page, under the key
+/// that page's `/StructParents` carries, to the `/Div` that cites it.
+///
+/// The run comparison cannot see an id filed under the wrong element: every written element
+/// reads back as `Document/Div`, computed, with no identity of its own, so a run the wrong `/Div`
+/// cites binds exactly as a correct one does. The grouping is therefore checked on the tree
+/// itself, against the plan, id for id.
+///
+/// # Errors
+///
+/// The first difference, naming the `/Div` by position, its page and block and both id lists,
+/// or the parent-tree entry.
+fn tree_as_written(
+    out: &lopdf::Document,
+    plan: &DocumentPlan,
+    out_pages: &BTreeMap<u32, ObjectId>,
+) -> Result<(), String> {
+    let dict_at = |o: &Object, what: &str| -> Result<lopdf::Dictionary, String> {
+        match out.dereference(o) {
+            Ok((_, Object::Dictionary(d))) => Ok(d.clone()),
+            Ok((_, other)) => Err(format!(
+                "{what} is {} rather than a dictionary",
+                other.enum_variant()
+            )),
+            Err(e) => Err(format!("{what} does not resolve: {e}")),
+        }
+    };
+    let kids_of = |d: &lopdf::Dictionary, what: &str| -> Result<Vec<Object>, String> {
+        match d.get(b"K") {
+            Ok(Object::Array(items)) => Ok(items.clone()),
+            Ok(single) => Ok(vec![single.clone()]),
+            Err(_) => Err(format!("{what} has no /K")),
+        }
+    };
+    let role_of = |d: &lopdf::Dictionary| -> String {
+        d.get(b"S")
+            .ok()
+            .and_then(|s| s.as_name().ok())
+            .map(|n| String::from_utf8_lossy(n).into_owned())
+            .unwrap_or_default()
+    };
+
+    let catalog = out
+        .catalog()
+        .map_err(|e| format!("the catalog does not resolve: {e}"))?;
+    let root_ref = catalog
+        .get(b"StructTreeRoot")
+        .map_err(|_| "the catalog declares no /StructTreeRoot".to_string())?;
+    let root = dict_at(root_ref, "/StructTreeRoot")?;
+    let root_kids = kids_of(&root, "the root")?;
+    let [document_ref] = root_kids.as_slice() else {
+        return Err(format!(
+            "the root has {} kid(s) where the writer puts one /Document",
+            root_kids.len()
+        ));
+    };
+    let document = dict_at(document_ref, "the root's kid")?;
+    if role_of(&document) != "Document" {
+        return Err(format!(
+            "the root's kid is /{} rather than /Document",
+            role_of(&document)
+        ));
+    }
+
+    // One /Div per planned block, page by page in reading order, each citing its block's ids.
+    let divs = kids_of(&document, "the /Document")?;
+    let expected: Vec<(u32, BlockKey, &[i64])> = plan
+        .rewritten()
+        .flat_map(|p| {
+            p.plan
+                .blocks
+                .iter()
+                .map(move |(block, ids)| (p.number, *block, ids.as_slice()))
+        })
+        .collect();
+    if divs.len() != expected.len() {
+        return Err(format!(
+            "{} /Div element(s) under /Document, {} block(s) planned",
+            divs.len(),
+            expected.len()
+        ));
+    }
+    let mut cited_by: BTreeMap<(u32, i64), ObjectId> = BTreeMap::new();
+    for (i, (div_ref, &(page, block, ids))) in divs.iter().zip(&expected).enumerate() {
+        let div_id = div_ref
+            .as_reference()
+            .map_err(|_| format!("/Div {i} is not an indirect object"))?;
+        let div = dict_at(div_ref, "/Div")?;
+        if role_of(&div) != "Div" {
+            return Err(format!("/Div {i} is /{} rather than /Div", role_of(&div)));
+        }
+        let page_id = out_pages
+            .get(&page)
+            .copied()
+            .ok_or_else(|| format!("page {page} is not in the output"))?;
+        if div.get(b"Pg").ok() != Some(&Object::Reference(page_id)) {
+            return Err(format!(
+                "/Div {i} for page {page} block {block:?} names {:?} as its page, and the page \
+                 is object {page_id:?}",
+                div.get(b"Pg").ok()
+            ));
+        }
+        let mut cites: Vec<i64> = Vec::with_capacity(ids.len());
+        for item in kids_of(&div, "/Div")? {
+            cites.push(item.as_i64().map_err(|_| {
+                format!(
+                    "/Div {i} for page {page} block {block:?} cites {item:?}, which is not an id"
+                )
+            })?);
+        }
+        if cites != ids {
+            return Err(format!(
+                "/Div {i} for page {page} block {block:?} cites ids {cites:?}, and the plan gives \
+                 it {ids:?}"
+            ));
+        }
+        for &id in ids {
+            cited_by.insert((page, id), div_id);
+        }
+    }
+
+    // The parent tree: one key per rewritten page, mapping each id to the /Div that cites it.
+    let parent_tree = dict_at(
+        root.get(b"ParentTree")
+            .map_err(|_| "the root has no /ParentTree".to_string())?,
+        "/ParentTree",
+    )?;
+    let nums = match parent_tree.get(b"Nums") {
+        Ok(Object::Array(items)) => items.clone(),
+        _ => return Err("the parent tree has no /Nums array".into()),
+    };
+    let rewritten: Vec<&PlannedPage> = plan.rewritten().collect();
+    if nums.len() != 2 * rewritten.len() {
+        return Err(format!(
+            "/Nums holds {} entr(y/ies) and {} page(s) were rewritten",
+            nums.len() / 2,
+            rewritten.len()
+        ));
+    }
+    for (key, page) in rewritten.iter().enumerate() {
+        let k = i64::try_from(key).unwrap_or(i64::MAX);
+        if nums[2 * key] != Object::Integer(k) {
+            return Err(format!(
+                "/Nums entry {key} is keyed {:?} rather than {k}",
+                nums[2 * key]
+            ));
+        }
+        let refs = match &nums[2 * key + 1] {
+            Object::Array(items) => items,
+            other => {
+                return Err(format!(
+                    "page {}: the parent tree holds {} rather than an array",
+                    page.number,
+                    other.enum_variant()
+                ))
+            }
+        };
+        if refs.len() != page.plan.sequences.len() {
+            return Err(format!(
+                "page {}: the parent tree holds {} id(s) and the page has {} sequence(s)",
+                page.number,
+                refs.len(),
+                page.plan.sequences.len()
+            ));
+        }
+        for (id, r) in refs.iter().enumerate() {
+            let id = i64::try_from(id).unwrap_or(i64::MAX);
+            let citing = cited_by.get(&(page.number, id)).copied();
+            if r.as_reference().ok() != citing {
+                let citing =
+                    citing.map_or_else(|| "no /Div".to_string(), |(n, g)| format!("{n} {g} R"));
+                return Err(format!(
+                    "page {}: the parent tree maps id {id} to {r:?}, and the /Div citing it is \
+                     {citing}",
+                    page.number
+                ));
+            }
+        }
+        let page_id = out_pages
+            .get(&page.number)
+            .copied()
+            .ok_or_else(|| format!("page {} is not in the output", page.number))?;
+        let struct_parents = out
+            .get_dictionary(page_id)
+            .ok()
+            .and_then(|d| d.get(b"StructParents").ok())
+            .cloned();
+        if struct_parents != Some(Object::Integer(k)) {
+            return Err(format!(
+                "page {}: /StructParents is {struct_parents:?} and its parent-tree key is {k}",
+                page.number
+            ));
+        }
+    }
+    let next_key = root
+        .get(b"ParentTreeNextKey")
+        .ok()
+        .and_then(|o| o.as_i64().ok());
+    if next_key != Some(i64::try_from(rewritten.len()).unwrap_or(i64::MAX)) {
+        return Err(format!(
+            "/ParentTreeNextKey is {next_key:?} and {} page(s) were keyed",
+            rewritten.len()
+        ));
+    }
+    Ok(())
+}
+
 /// Scope §3.7: open the bytes, extract, and compare against the extract the tags were computed
-/// from — every run, every binding, the limitations, and the sequences as written.
+/// from — every run, every binding, every page's counters and records, the limitations, the
+/// tree as written, and the sequences as written.
 fn self_check(
     bytes: &[u8],
     profile: &Profile,
@@ -2583,7 +2831,7 @@ fn self_check(
     };
     let out_doc = Document::open_bytes(bytes, profile)
         .map_err(|e| refuse(format!("the output does not open: {e}")))?;
-    let (output, out_positions) = crate::extract::extract_with_positions(&out_doc, profile)
+    let (output, out_traces) = crate::extract::extract_with_positions(&out_doc, profile)
         .map_err(|e| refuse(format!("the output does not extract: {e}")))?;
     let source = &plan.artifact;
 
@@ -2601,6 +2849,76 @@ fn self_check(
                 "page {} of the source is page {} of the output",
                 was.index, now.index
             )));
+        }
+        // The per-page counters (scope §3.7's third bullet). Each reaches the artifact only as
+        // a document total, so a drift on one page that another page cancels is visible here
+        // and nowhere else.
+        let planned_trace = plan
+            .traces
+            .get(&was.index)
+            .ok_or_else(|| refuse(format!("page {} has no trace in the plan", was.index)))?;
+        let output_trace = out_traces
+            .get(&now.index)
+            .ok_or_else(|| refuse(format!("page {} has no trace in the output", now.index)))?;
+        for ((counter, x), (_, y)) in planned_trace
+            .counters
+            .named()
+            .into_iter()
+            .zip(output_trace.counters.named())
+        {
+            if x != y {
+                return Err(refuse(format!(
+                    "page {}: {counter} was {x} and reads back as {y}",
+                    was.index
+                )));
+            }
+        }
+        // The page's other records, which a drift in where the two tokenisations resynchronised
+        // would move where no run text did.
+        for (field, x, y) in [
+            ("width", was.width, now.width),
+            ("height", was.height, now.height),
+            ("rotation", was.rotation, now.rotation),
+        ] {
+            if x != y {
+                return Err(refuse(format!(
+                    "page {}: {field} was {x} and reads back as {y}",
+                    was.index
+                )));
+            }
+        }
+        for (records, same, before, after) in [
+            (
+                "image",
+                was.images == now.images,
+                was.images.len(),
+                now.images.len(),
+            ),
+            (
+                "table",
+                was.tables == now.tables,
+                was.tables.len(),
+                now.tables.len(),
+            ),
+            (
+                "tagged table",
+                was.tagged_tables == now.tagged_tables,
+                was.tagged_tables.len(),
+                now.tagged_tables.len(),
+            ),
+            (
+                "object",
+                was.objects == now.objects,
+                was.objects.len(),
+                now.objects.len(),
+            ),
+        ] {
+            if !same {
+                return Err(refuse(format!(
+                    "page {}: the {records} records differ ({before} became {after})",
+                    was.index
+                )));
+            }
         }
         if was.runs.len() != now.runs.len() {
             return Err(refuse(format!(
@@ -2784,9 +3102,12 @@ fn self_check(
         return Err(refuse(format!("the limitations differ: {first}")));
     }
 
+    // The tree as written: the grouping the run comparison cannot see, because every written
+    // element reads back as `Document/Div`, computed, with no identity of its own.
+    let out_pages: BTreeMap<u32, ObjectId> = out_doc.pages().iter().copied().collect();
+    tree_as_written(out_doc.inner(), plan, &out_pages).map_err(refuse)?;
+
     // The sequences as written, on the output's own tokens and runs.
-    let out_pages: std::collections::BTreeMap<u32, ObjectId> =
-        out_doc.pages().iter().copied().collect();
     for page in plan.rewritten() {
         let page_id = out_pages
             .get(&page.number)
@@ -2806,8 +3127,9 @@ fn self_check(
             .iter()
             .find(|p| p.index == page.number)
             .ok_or_else(|| refuse(format!("page {} is not in the output", page.number)))?;
-        let empty = Vec::new();
-        let positions = out_positions.get(&page.number).unwrap_or(&empty);
+        let positions: &[usize] = out_traces
+            .get(&page.number)
+            .map_or(&[], |t| t.op_indices.as_slice());
         let shows = shows_from_runs(&ops, page.number, &now.runs, positions)
             .map_err(|e| refuse(format!("page {}: {e}", page.number)))?;
         let nest = nesting(&ops);
@@ -4411,8 +4733,13 @@ mod tests {
         let ops = Content::decode(&buffer).unwrap().operations;
         agrees_with_lopdf(&t, &ops).expect("agrees");
         let nest = nesting(&ops);
-        let shows = shows_from_runs(&ops, page_number, &page.runs, &positions[&page_number])
-            .expect("consistent");
+        let shows = shows_from_runs(
+            &ops,
+            page_number,
+            &page.runs,
+            &positions[&page_number].op_indices,
+        )
+        .expect("consistent");
         let order = blocks_in_reading_order(&page.runs);
         let plan = plan_page(&ops, &nest, &shows, &order);
         sequences_are_well_formed(&ops, &nest, &shows, &plan.sequences).expect("well formed");
@@ -4712,6 +5039,32 @@ mod tests {
         };
         let e = write_tree(&mut doc, &[(pages[0], &beyond)], "r").expect_err("id 5 does not exist");
         assert!(e.to_string().contains("cites id 5"), "{e}");
+        // An id whose sequence the plan gave another block, and an id cited twice: neither can
+        // come from the placement rule, and neither reaches the tree.
+        let misfiled = PagePlan {
+            sequences: vec![seq(0)],
+            blocks: vec![(BLOCK_B, vec![0])],
+        };
+        let e = write_tree(&mut doc, &[(pages[0], &misfiled)], "r").expect_err("block B's id");
+        assert!(
+            e.to_string().contains(
+                "block (None, Some(2)) cites id 0, whose sequence the plan gave to block (None, \
+                 Some(1))"
+            ),
+            "{e}"
+        );
+        let twice = PagePlan {
+            sequences: vec![seq(0)],
+            blocks: vec![(BLOCK_A, vec![0, 0])],
+        };
+        let e = write_tree(&mut doc, &[(pages[0], &twice)], "r").expect_err("cited twice");
+        assert!(
+            e.to_string().contains(&format!(
+                "id 0 on page object {:?} is cited twice, the second time by block {BLOCK_A:?}",
+                pages[0]
+            )),
+            "{e}"
+        );
     }
 
     // ---------------------------------------------------------------------------------------
@@ -4806,6 +5159,194 @@ mod tests {
             e.to_string()
                 .contains("run 0 `Water finds its level`: binding was planned as id 0"),
             "{e}"
+        );
+    }
+
+    /// **The counters are compared page by page, never as totals** (scope §3.7's third bullet).
+    /// `shared-content-stream` drops one run on page 2 and none on page 1. A plan whose trace
+    /// says the reverse has the same document total — `broken-font-encoding` names 1 run on both
+    /// sides, so the limitation list agrees — and is refused naming the page and the counter.
+    /// Each of the other four counters, moved on one page, is refused by its name.
+    #[test]
+    fn the_self_check_compares_the_counters_page_by_page() {
+        let (doc, profile) = opened("shared-content-stream");
+        let mut plan = plan_document(&doc, &profile).expect("plans");
+        let (bytes, elements) = emit(&doc, &profile, &plan).expect("emits");
+        self_check(&bytes, &profile, &plan, elements).expect("the writer's own output passes");
+        assert_eq!(plan.traces[&1].counters.encoding_dropped_runs, 0);
+        assert_eq!(plan.traces[&2].counters.encoding_dropped_runs, 1);
+
+        let set_dropped = |plan: &mut DocumentPlan, page: u32, n: u32| {
+            plan.traces
+                .get_mut(&page)
+                .expect("the page is traced")
+                .counters
+                .encoding_dropped_runs = n;
+        };
+        set_dropped(&mut plan, 1, 1);
+        set_dropped(&mut plan, 2, 0);
+        let e = self_check(&bytes, &profile, &plan, elements).expect_err("the pages swapped");
+        assert_eq!(e.code(), "malformed");
+        assert_eq!(
+            e.to_string(),
+            "malformed tagging self-check: page 1: encoding_dropped_runs was 1 and reads back as 0"
+        );
+        set_dropped(&mut plan, 1, 0);
+        set_dropped(&mut plan, 2, 1);
+        self_check(&bytes, &profile, &plan, elements).expect("restored");
+
+        fn field<'a>(plan: &'a mut DocumentPlan, name: &str) -> &'a mut u32 {
+            let c = &mut plan.traces.get_mut(&2).expect("page 2 is traced").counters;
+            match name {
+                "inline_images" => &mut c.inline_images,
+                "unresolved_xobjects" => &mut c.unresolved_xobjects,
+                "undescended_xobjects" => &mut c.undescended_xobjects,
+                "props_by_name" => &mut c.props_by_name,
+                other => panic!("no counter `{other}`"),
+            }
+        }
+        for name in [
+            "inline_images",
+            "unresolved_xobjects",
+            "undescended_xobjects",
+            "props_by_name",
+        ] {
+            assert_eq!(
+                *field(&mut plan, name),
+                0,
+                "{name} on page 2 of the fixture"
+            );
+            *field(&mut plan, name) = 1;
+            let e = self_check(&bytes, &profile, &plan, elements).expect_err(name);
+            assert_eq!(
+                e.to_string(),
+                format!("malformed tagging self-check: page 2: {name} was 1 and reads back as 0")
+            );
+            *field(&mut plan, name) = 0;
+        }
+        self_check(&bytes, &profile, &plan, elements).expect("restored again");
+    }
+
+    /// The output with its structure tree edited: `edit` gets the loaded document, the `/Div`
+    /// object ids under `/Document` in order, and the root's id.
+    fn with_tree_edited(
+        bytes: &[u8],
+        edit: impl FnOnce(&mut lopdf::Document, &[ObjectId], ObjectId),
+    ) -> Vec<u8> {
+        let mut doc = lopdf::Document::load_mem(bytes).expect("the output loads");
+        let root_id = doc
+            .catalog()
+            .unwrap()
+            .get(b"StructTreeRoot")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        let document_id = doc
+            .get_dictionary(root_id)
+            .unwrap()
+            .get(b"K")
+            .unwrap()
+            .as_array()
+            .unwrap()[0]
+            .as_reference()
+            .unwrap();
+        let divs: Vec<ObjectId> = doc
+            .get_dictionary(document_id)
+            .unwrap()
+            .get(b"K")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o.as_reference().unwrap())
+            .collect();
+        edit(&mut doc, &divs, root_id);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    }
+
+    /// **An id filed under the wrong `/Div` is refused by the tree walk**, the one corruption the
+    /// run comparison cannot see: every written element reads back as `Document/Div`, computed,
+    /// with no identity, so a run the wrong element cites binds exactly as a correct one does.
+    /// The two `/Div`s' ids swapped, one id cited by both, and the parent tree's two references
+    /// swapped — each refused naming the element or the entry, on bytes whose every run still
+    /// reads back bound as planned.
+    #[test]
+    fn the_self_check_refuses_an_id_under_the_wrong_div() {
+        let (doc, profile) = opened("leading-gap-two-blocks");
+        let plan = plan_document(&doc, &profile).expect("plans");
+        let (bytes, elements) = emit(&doc, &profile, &plan).expect("emits");
+        let set_k = |doc: &mut lopdf::Document, div: ObjectId, ids: &[i64]| {
+            doc.get_dictionary_mut(div).unwrap().set(
+                "K",
+                Object::Array(ids.iter().map(|&i| Object::Integer(i)).collect()),
+            );
+        };
+
+        let swapped = with_tree_edited(&bytes, |doc, divs, _| {
+            set_k(doc, divs[0], &[1]);
+            set_k(doc, divs[1], &[0]);
+        });
+        // The reader binds every run of the swapped tree as planned: same role path, same
+        // derivation, same id. Only the tree says which element cites which.
+        let out_doc = crate::document::Document::open_bytes(&swapped, &profile).expect("opens");
+        let read = crate::extract::extract(&out_doc, &profile).expect("extracts");
+        for (run, mcid) in read.pages[0].runs.iter().zip(&plan.pages[0].run_mcids) {
+            assert_eq!(run.mcid, *mcid, "`{}`", run.text);
+            assert!(
+                matches!(&run.structural, Some(ethos_parser_core::StructuralLocator::PdfTagged(t))
+                    if t.role_path == ["Document", "Div"]
+                        && t.derivation == ethos_parser_core::DerivationClass::Computed),
+                "`{}`: {:?}",
+                run.text,
+                run.structural
+            );
+        }
+        let e = self_check(&swapped, &profile, &plan, elements).expect_err("ids swapped");
+        assert_eq!(e.code(), "malformed");
+        assert_eq!(
+            e.to_string(),
+            "malformed tagging self-check: /Div 0 for page 1 block (None, Some(1)) cites ids \
+             [1], and the plan gives it [0]"
+        );
+
+        let shared = with_tree_edited(&bytes, |doc, divs, _| set_k(doc, divs[1], &[0, 1]));
+        let e = self_check(&shared, &profile, &plan, elements).expect_err("id 0 cited twice");
+        assert_eq!(
+            e.to_string(),
+            "malformed tagging self-check: /Div 1 for page 1 block (None, Some(2)) cites ids \
+             [0, 1], and the plan gives it [1]"
+        );
+
+        let mut divs = Vec::new();
+        let crossed = with_tree_edited(&bytes, |doc, ids, root| {
+            divs = ids.to_vec();
+            let refs = doc
+                .get_dictionary_mut(root)
+                .unwrap()
+                .get_mut(b"ParentTree")
+                .unwrap()
+                .as_dict_mut()
+                .unwrap()
+                .get_mut(b"Nums")
+                .unwrap()
+                .as_array_mut()
+                .unwrap()[1]
+                .as_array_mut()
+                .unwrap();
+            refs.swap(0, 1);
+        });
+        let e = self_check(&crossed, &profile, &plan, elements).expect_err("parent tree crossed");
+        let [(a, a_gen), (b, b_gen)] = divs[..] else {
+            panic!("two /Div elements: {divs:?}");
+        };
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "malformed tagging self-check: page 1: the parent tree maps id 0 to {b} {b_gen} R, \
+                 and the /Div citing it is {a} {a_gen} R"
+            )
         );
     }
 

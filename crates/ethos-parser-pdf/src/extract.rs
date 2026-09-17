@@ -991,8 +991,9 @@ fn extract_page(
     })
 }
 
-/// For every processed page, keyed by its 1-based number ([`PageExtract::index`]), the index of
-/// the operation that showed each of its runs, aligned with `page.runs` (auto-tagging S2).
+/// For every processed page, keyed by its 1-based number ([`PageExtract::index`]), its
+/// [`PageTrace`]: the index of the operation that showed each of its runs, aligned with
+/// `page.runs`, and the page's counters before the fold summed them (auto-tagging S2).
 ///
 /// The index counts operations in `lopdf::content::Content::decode` of the page's joined content
 /// — the buffer `get_page_content` builds, one `\n` after every stream — which is what the
@@ -1002,7 +1003,54 @@ fn extract_page(
 /// Crate-private on purpose. The writer needs to know which operator showed a run and nothing
 /// parsed from JSON may reach that rule, so the mapping lives beside the artifact and never on
 /// `TextRun` (docs/23-AUTO-TAGGING-SCOPE.md §6).
-pub(crate) type RunPositions = std::collections::BTreeMap<u32, Vec<usize>>;
+pub(crate) type RunPositions = std::collections::BTreeMap<u32, PageTrace>;
+
+/// One page's side of the extraction, beside its [`PageExtract`] (auto-tagging S2).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct PageTrace {
+    /// For every run of the page, in the artifact's order, the index of the operation that
+    /// showed it — [`RunPositions`] says what the index counts.
+    pub(crate) op_indices: Vec<usize>,
+    /// The page's counters as `extract_page` returned them.
+    pub(crate) counters: PageCounters,
+}
+
+/// The per-page counters docs/23-AUTO-TAGGING-SCOPE.md §3.7 names, taken from `PageYield` before
+/// the fold sums them.
+///
+/// Each reaches the artifact only as a document total inside one limitation —
+/// `inline-images-not-emitted(n)`, `xobject-name-unresolved(n)`,
+/// `form-xobject-text-not-descended(n)`, `mcid-property-list-by-name(n)`,
+/// `broken-font-encoding(n)` — so two pages that drift in opposite directions read back with
+/// every total unchanged. Kept per page here so the writer's self-check can compare them page by
+/// page, which is the comparison the scope asks for; the fold, the limitations and the artifact
+/// are unchanged by this record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct PageCounters {
+    /// `BI … EI` images drawn on the page.
+    pub(crate) inline_images: u32,
+    /// `Do` operands that named no XObject this profile could resolve.
+    pub(crate) unresolved_xobjects: u32,
+    /// Form XObjects painted and not descended.
+    pub(crate) undescended_xobjects: u32,
+    /// `BDC` property lists given by name.
+    pub(crate) props_by_name: u32,
+    /// Runs dropped because their font could not map their codes.
+    pub(crate) encoding_dropped_runs: u32,
+}
+
+impl PageCounters {
+    /// Every counter beside its name, in one fixed order, so a comparison can say which differed.
+    pub(crate) fn named(self) -> [(&'static str, u32); 5] {
+        [
+            ("inline_images", self.inline_images),
+            ("unresolved_xobjects", self.unresolved_xobjects),
+            ("undescended_xobjects", self.undescended_xobjects),
+            ("props_by_name", self.props_by_name),
+            ("encoding_dropped_runs", self.encoding_dropped_runs),
+        ]
+    }
+}
 
 /// Extract text runs from an already-open document.
 ///
@@ -1347,7 +1395,21 @@ pub(crate) fn extract_with_positions(
             }
         }
 
-        positions.insert(page_number, y.op_indices);
+        // The page's counters, kept beside its operator indices before the sums above lose the
+        // page (auto-tagging S2, scope §3.7's per-page comparison).
+        positions.insert(
+            page_number,
+            PageTrace {
+                op_indices: y.op_indices,
+                counters: PageCounters {
+                    inline_images: y.inline_images,
+                    unresolved_xobjects: y.unresolved_xobjects,
+                    undescended_xobjects: y.undescended_xobjects,
+                    props_by_name: y.props_by_name,
+                    encoding_dropped_runs: y.encoding_dropped_runs,
+                },
+            },
+        );
         pages.push(y.page);
         page_states.push(PageStateEntry {
             index: page_number,
@@ -2595,9 +2657,10 @@ mod tests {
 
         let mut checked = 0usize;
         for page in &artifact.pages {
-            let ops = positions
+            let ops = &positions
                 .get(&page.index)
-                .unwrap_or_else(|| panic!("page {} has no positions", page.index));
+                .unwrap_or_else(|| panic!("page {} has no positions", page.index))
+                .op_indices;
             assert_eq!(
                 ops.len(),
                 page.runs.len(),
