@@ -146,6 +146,9 @@ boxes, which doc 22 refused.
 - **Re-run OmniDocBench** as an instrument after 0.58.0; opendataloader-bench was re-run on
   2026-09-16 (NID 0.8697, TEDS 0.1704 as the band above, MHS 0.0000). The OmniDocBench PDFs were not
   on this machine on 2026-09-16 (9 GiB free), so the run needs the corpus fetched again.
+- **A committed fixture for the `<mc:AlternateContent>` path.** Neither `docx.rs` nor `pptx.rs`
+  has one: both readers' branch rule is held by unit tests on inline XML, and no document in any
+  corpus here carries the element, so the mutation suite and the digest lists never reach it.
 - **The doc fixes in §7.**
 
 ## 6. Known defects — recorded, not fixed
@@ -155,7 +158,6 @@ boxes, which doc 22 refused.
 | `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" | `PdfLocator::advance` rustdoc; doc 22 amendments |
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |
-| DOCX text inside `mc:AlternateContent` may be emitted twice, once from `mc:Choice` and once from `mc:Fallback` | A review lead only — confirm with a fixture |
 | Bidi / right-to-left text is untested | Add a fixture before deciding anything |
 | A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |

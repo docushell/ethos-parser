@@ -111,14 +111,42 @@ pub fn unread_text_parts(entry_names: &[String]) -> u32 {
     crate::declared_len(matched)
 }
 
+/// What one `word/document.xml` holds: its runs, and what was passed over.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MainPart {
+    /// The runs, in the part's own document order.
+    pub runs: Vec<Run>,
+    /// `<mc:AlternateContent>` branches that held text and were passed over — a second or later
+    /// `<mc:Choice>`, or an `<mc:Fallback>`.
+    ///
+    /// Counted **only when the branch actually held a `<w:t>`**, as in `pptx.rs`: a branch
+    /// wrapping only a drawing's geometry is not an erasure and must not inflate the count.
+    pub alternatives_not_read: u32,
+}
+
 /// Read the runs of a `word/document.xml`.
+///
+/// **One branch of an `<mc:AlternateContent>`, deterministically the first `<mc:Choice>`.** That
+/// element holds one or more `<mc:Choice Requires="…">` and an optional `<mc:Fallback>`, all
+/// expressing *the same content* for consumers of different capability — a text box, typically,
+/// written once as a `<w:drawing>` and again as VML. Every `<w:t>` in the part was collected
+/// until 2026-09-18, whatever its ancestry, so one phrase reached the artifact at two citable
+/// addresses: duplicated evidence, the mirror of a silent drop, and the same defect `pptx.rs`
+/// was written to avoid. The branches passed over are counted in
+/// [`MainPart::alternatives_not_read`] and declared.
+///
+/// **The address counters advance through a skipped branch**, for the reason they do in
+/// `pptx.rs`: a `DocxLocator`'s `paragraph` and `run` are positions in the part's own document
+/// order, and a consumer checking one counts elements in the file, not the elements this reader
+/// kept. Counting only what is read would make every address after an `<mc:AlternateContent>`
+/// one short — a locator that is confidently wrong.
 ///
 /// # Errors
 ///
 /// [`EngineError::Malformed`] if the XML will not parse. Malformed XML is refused rather than
 /// read as far as it goes: a truncated body would be a shorter document that still looked whole,
 /// which is the failure `docs/01-CONTRACT.md` §8 refuses for an unknown content-stream operator.
-pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
+pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     let text = std::str::from_utf8(part).map_err(|e| EngineError::Malformed {
         what: MAIN_PART.into(),
         detail: format!("the part is not UTF-8: {e}"),
@@ -139,6 +167,12 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
     // stopped halfway is a shorter document that still looks whole, which is exactly what
     // `01-CONTRACT.md` §8 refuses.
     let mut depth: i32 = 0;
+    // One flag per open `<mc:AlternateContent>`, the depth of the subtree being passed over, and
+    // whether that subtree held any `<w:t>`.
+    let mut alt_taken: Vec<bool> = Vec::new();
+    let mut skip_from: Option<i32> = None;
+    let mut skipped_text = false;
+    let mut alternatives_not_read: u32 = 0;
 
     loop {
         match reader.read_event() {
@@ -155,25 +189,51 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
 
             Ok(Event::Start(start)) => {
                 depth += 1;
-                match local_name(start.name().as_ref()) {
+                let qualified = start.name();
+                let name = local_name(qualified.as_ref());
+
+                match name {
+                    b"AlternateContent" => alt_taken.push(false),
+                    b"Choice" if skip_from.is_none() => match alt_taken.last_mut() {
+                        Some(taken) if !*taken => *taken = true,
+                        _ => {
+                            skip_from = Some(depth);
+                            skipped_text = false;
+                        }
+                    },
+                    b"Fallback" if skip_from.is_none() => {
+                        skip_from = Some(depth);
+                        skipped_text = false;
+                    }
+                    _ => {}
+                }
+
+                let skipping = skip_from.is_some();
+                match name {
                     b"p" => {
                         paragraph += 1;
                         run_in_paragraph = 0;
                     }
                     b"r" => {
                         run_in_paragraph += 1;
-                        open_run = Some(Run {
-                            paragraph,
-                            run: run_in_paragraph,
-                            text: String::new(),
-                            space_preserved: false,
-                        });
+                        if !skipping {
+                            open_run = Some(Run {
+                                paragraph,
+                                run: run_in_paragraph,
+                                text: String::new(),
+                                space_preserved: false,
+                            });
+                        }
                     }
                     b"t" => {
-                        in_text = true;
-                        if let Some(run) = open_run.as_mut() {
-                            if has_preserve(&start)? {
-                                run.space_preserved = true;
+                        if skipping {
+                            skipped_text = true;
+                        } else {
+                            in_text = true;
+                            if let Some(run) = open_run.as_mut() {
+                                if has_preserve(&start)? {
+                                    run.space_preserved = true;
+                                }
                             }
                         }
                     }
@@ -182,8 +242,21 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
             }
 
             Ok(Event::End(end)) => {
+                let closing = depth;
                 depth -= 1;
-                match local_name(end.name().as_ref()) {
+                let qualified = end.name();
+                let name = local_name(qualified.as_ref());
+                if skip_from == Some(closing) {
+                    skip_from = None;
+                    if skipped_text {
+                        alternatives_not_read = crate::declare(alternatives_not_read, 1);
+                    }
+                    skipped_text = false;
+                }
+                if name == b"AlternateContent" {
+                    alt_taken.pop();
+                }
+                match name {
                     b"t" => in_text = false,
                     b"r" => {
                         if let Some(run) = open_run.take() {
@@ -236,7 +309,10 @@ pub fn read_runs(part: &[u8]) -> Result<Vec<Run>, EngineError> {
             ),
         });
     }
-    Ok(runs)
+    Ok(MainPart {
+        runs,
+        alternatives_not_read,
+    })
 }
 
 use crate::xml::local_name;
@@ -266,7 +342,7 @@ mod tests {
               <w:p><w:r><w:t>First</w:t></w:r><w:r><w:t xml:space="preserve"> second</w:t></w:r></w:p>
               <w:p><w:r><w:t>Third</w:t></w:r></w:p>
             </w:body></w:document>"#;
-        let runs = read_runs(xml.as_bytes()).expect("well-formed");
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
         assert_eq!(runs.len(), 3);
         assert_eq!(
             (runs[0].paragraph, runs[0].run, runs[0].text.as_str()),
@@ -292,7 +368,7 @@ mod tests {
         let xml = r#"<w:document xmlns:w="x"><w:body>
             <w:p><w:r><w:br/></w:r><w:r><w:t>only this</w:t></w:r></w:p>
         </w:body></w:document>"#;
-        let runs = read_runs(xml.as_bytes()).expect("well-formed");
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "only this");
         assert_eq!(
@@ -301,11 +377,77 @@ mod tests {
         );
     }
 
+    /// **One `<mc:AlternateContent>` is one phrase, read once** (`docs/OPEN-WORK.md` §6,
+    /// confirmed and fixed 2026-09-18). A text box is written twice — a `<w:drawing>` under
+    /// `<mc:Choice>` and VML under `<mc:Fallback>` — and every `<w:t>` in the part used to be
+    /// collected whatever its ancestry, so the phrase reached the artifact at two citable
+    /// addresses. The first `<mc:Choice>` is read and the rest are counted.
+    #[test]
+    fn an_alternate_content_is_read_once_and_the_rest_counted() {
+        let xml = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body>
+            <w:p><w:r><w:t>before</w:t></w:r></w:p>
+            <mc:AlternateContent>
+              <mc:Choice Requires="wps"><w:p><w:r><w:t>in a text box</w:t></w:r></w:p></mc:Choice>
+              <mc:Fallback><w:p><w:r><w:t>in a text box</w:t></w:r></w:p></mc:Fallback>
+            </mc:AlternateContent>
+            <w:p><w:r><w:t>after</w:t></w:r></w:p>
+        </w:body></w:document>"#;
+        let out = read_runs(xml.as_bytes()).expect("well-formed");
+        let seen: Vec<_> = out
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.paragraph, r.run))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![("before", 1, 1), ("in a text box", 2, 1), ("after", 4, 1)],
+            "the phrase once, and `after` numbered as the file numbers it — the fourth `<w:p>`"
+        );
+        assert_eq!(
+            out.alternatives_not_read, 1,
+            "the fallback held text and was passed over"
+        );
+    }
+
+    /// **A branch that holds no text is not an erasure.** Most of them wrap a drawing's geometry,
+    /// and declaring those would bury a real one under noise (`pptx.rs` makes the same point).
+    #[test]
+    fn an_alternate_branch_without_text_is_not_counted() {
+        let xml = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body>
+            <mc:AlternateContent>
+              <mc:Choice Requires="wps"><w:p><w:r><w:t>kept</w:t></w:r></w:p></mc:Choice>
+              <mc:Fallback><w:p><w:r><w:drawing/></w:r></w:p></mc:Fallback>
+            </mc:AlternateContent>
+        </w:body></w:document>"#;
+        let out = read_runs(xml.as_bytes()).expect("well-formed");
+        assert_eq!(out.runs.len(), 1);
+        assert_eq!(out.runs[0].text, "kept");
+        assert_eq!(out.alternatives_not_read, 0);
+    }
+
+    /// **A second `<mc:Choice>` is passed over too**, and two skipped branches count two.
+    #[test]
+    fn only_the_first_choice_is_read() {
+        let xml = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body>
+            <mc:AlternateContent>
+              <mc:Choice Requires="a"><w:p><w:r><w:t>first</w:t></w:r></w:p></mc:Choice>
+              <mc:Choice Requires="b"><w:p><w:r><w:t>second</w:t></w:r></w:p></mc:Choice>
+              <mc:Fallback><w:p><w:r><w:t>third</w:t></w:r></w:p></mc:Fallback>
+            </mc:AlternateContent>
+        </w:body></w:document>"#;
+        let out = read_runs(xml.as_bytes()).expect("well-formed");
+        assert_eq!(
+            out.runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["first"]
+        );
+        assert_eq!(out.alternatives_not_read, 2);
+    }
+
     #[test]
     fn entities_are_decoded_rather_than_carried_as_source() {
         let xml = r#"<w:document xmlns:w="x"><w:body><w:p><w:r>
             <w:t>a &amp; b &lt; c</w:t></w:r></w:p></w:body></w:document>"#;
-        let runs = read_runs(xml.as_bytes()).expect("well-formed");
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
         assert_eq!(
             runs[0].text, "a & b < c",
             "this is why XML is not hand-rolled"

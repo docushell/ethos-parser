@@ -492,7 +492,10 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
 
 fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
     let part = zip::read_entry(bytes, docx::MAIN_PART)?;
-    let runs = docx::read_runs(&part)?;
+    let docx::MainPart {
+        runs,
+        alternatives_not_read,
+    } = docx::read_runs(&part)?;
 
     let profile = Profile::docx_v0();
     let profile_sha256 = profile
@@ -556,15 +559,32 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         ));
     }
     let unread = docx::unread_text_parts(names);
-    if unread > 0 {
+    if unread > 0 || alternatives_not_read > 0 {
+        let mut detail = String::new();
+        if unread > 0 {
+            detail.push_str(&format!(
+                "{unread} part(s) of this package carry text and were not read — headers, \
+                 footers, footnotes, endnotes or comments. "
+            ));
+        }
+        // The same claim `pptx.rs` makes, for the same reason: one phrase written twice for
+        // consumers of different capability is read once, so it is not cited at two addresses.
+        if alternatives_not_read > 0 {
+            detail.push_str(&format!(
+                "{alternatives_not_read} `<mc:AlternateContent>` branch(es) holding text were \
+                 passed over — a document states the same content more than once for consumers \
+                 of different capability, and this reader takes the first `<mc:Choice>` rather \
+                 than emitting one phrase at two addresses. "
+            ));
+        }
+        detail.push_str(&format!(
+            "v2-S2 reads `{}` only, and a phrase absent from this artifact may still be present \
+             in the document",
+            docx::MAIN_PART
+        ));
         limitations.push(Limitation::document(
             ethos_parser_core::assurance::codes::OFFICE_PARTS_NOT_READ,
-            format!(
-                "{unread} part(s) of this package carry text and were not read — headers, \
-                 footers, footnotes, endnotes or comments. v2-S2 reads `{}` only, and a phrase \
-                 absent from this artifact may still be present in the document",
-                docx::MAIN_PART
-            ),
+            detail,
         ));
     }
 
