@@ -13,7 +13,7 @@ reopens v2.2, and nothing here changes what any reader reads out of any document
 | **S0** | This document and the scope beside it | done |
 | **S1** | The core query, the profile field, and the cap measured | **done 2026-09-18** |
 | **S2** | The three surfaces in one slice: CLI, MCP, both SDKs | **done 2026-09-18** |
-| **S3** | The measurements that are not the cap's | not started |
+| **S3** | The measurements that are not the cap's | **done 2026-09-18** |
 
 **S1 lands before S2 on purpose**, for the reason
 [`24-AUTO-TAGGING-MILESTONES.md`](24-AUTO-TAGGING-MILESTONES.md) gives for its own order: the
@@ -158,6 +158,25 @@ named, and the wall time of a `locate` call on the largest of them. Recorded in
 `docs/measurements/locate/` with the commands, as every measurement here is.
 
 **Acceptance.** The figures in the tree, each re-derivable from the committed instrument.
+
+**Amended 2026-09-18, on landing.** Done, in
+[`measurements/locate/README.md`](measurements/locate/README.md) §7 to §9. The three figures asked
+for, and one the slice did not ask for:
+
+- **A citation-length quote occurs exactly once on all eight documents**, and the band for a short
+  quote is 37 to 8 924 occurrences with `nist-sp-800-53Ar5` named at the top — four orders of
+  magnitude under the cap, which is the honest scale of that ceiling.
+- **One occurrence is 53 node parts** on that document, because its producer shreds a line into
+  per-glyph runs (1.07 scalars a run). That is the measurement behind the parts design: an
+  occurrence naming one node could not describe these documents at all.
+- **A call costs 20 ms plus the record at 78–82 MB/s**, flat across three orders of magnitude, and
+  **the search is a rounding error beside loading the record** — the same cost for 1 occurrence and
+  for 8 924. The consequence is that a caller with many quotes wants the library call and not the
+  subcommand, which §8 says and `PUBLIC-API.md`'s thin-shell row already named.
+- **Unasked for, and the finding to carry:** a quote a caller can locate is a quote that lies
+  inside one drawn line. The instrument learned it by measuring — forty candidates spread blindly
+  across the runs found nothing on `nist-sp-800-218` — and §9 records that with the other thing it
+  got wrong first.
 
 ---
 

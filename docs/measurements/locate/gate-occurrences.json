@@ -1,0 +1,250 @@
+[
+ {
+  "document": "irs-f1040sd-2025",
+  "quote": "Use Form 8949 to list your transactions for lines 1b, 2, 3, ",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 1,
+   "synthesized": 0,
+   "bytes": 638,
+   "searched": {
+    "blocks": 423,
+    "nodes": 1098,
+    "scalars": 5969
+   },
+   "wall_ms": 20.0,
+   "engine_ms": 9.5
+  },
+  "short": {
+   "occurrences": 37,
+   "parts": 37,
+   "synthesized": 0,
+   "bytes": 5608,
+   "searched": {
+    "blocks": 423,
+    "nodes": 1098,
+    "scalars": 5969
+   },
+   "wall_ms": 20.3,
+   "engine_ms": 9.4
+  }
+ },
+ {
+  "document": "irs-fw9",
+  "quote": "Go to www.irs.gov/FormW9 for instructions and the latest inf",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 3,
+   "synthesized": 0,
+   "bytes": 853,
+   "searched": {
+    "blocks": 358,
+    "nodes": 1097,
+    "scalars": 37476
+   },
+   "wall_ms": 23.6,
+   "engine_ms": 12.7
+  },
+  "short": {
+   "occurrences": 340,
+   "parts": 340,
+   "synthesized": 0,
+   "bytes": 47815,
+   "searched": {
+    "blocks": 358,
+    "nodes": 1097,
+    "scalars": 37476
+   },
+   "wall_ms": 24.3,
+   "engine_ms": 13.1
+  }
+ },
+ {
+  "document": "nist-sp-800-218",
+  "quote": "* Former NIST employee; all work for this publication was do",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 32,
+   "synthesized": 0,
+   "bytes": 4047,
+   "searched": {
+    "blocks": 8662,
+    "nodes": 61739,
+    "scalars": 105393
+   },
+   "wall_ms": 420.2,
+   "engine_ms": 401.3
+  },
+  "short": {
+   "occurrences": 650,
+   "parts": 1431,
+   "synthesized": 0,
+   "bytes": 178520,
+   "searched": {
+    "blocks": 8662,
+    "nodes": 61739,
+    "scalars": 105393
+   },
+   "wall_ms": 411.1,
+   "engine_ms": 392.4
+  }
+ },
+ {
+  "document": "nist-sp-800-207",
+  "quote": "Walter Copan, NIST Director and Under Secretary of Commerce ",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 49,
+   "synthesized": 0,
+   "bytes": 5861,
+   "searched": {
+    "blocks": 7292,
+    "nodes": 91004,
+    "scalars": 154404
+   },
+   "wall_ms": 601.7,
+   "engine_ms": 581.0
+  },
+  "short": {
+   "occurrences": 1117,
+   "parts": 2705,
+   "synthesized": 0,
+   "bytes": 334164,
+   "searched": {
+    "blocks": 7292,
+    "nodes": 91004,
+    "scalars": 154404
+   },
+   "wall_ms": 602.6,
+   "engine_ms": 581.8
+  }
+ },
+ {
+  "document": "nist-sp-800-171r3",
+  "quote": "Laurie E. Locascio, NIST Director and Under Secretary of Com",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 46,
+   "synthesized": 0,
+   "bytes": 5573,
+   "searched": {
+    "blocks": 16868,
+    "nodes": 173463,
+    "scalars": 254171
+   },
+   "wall_ms": 1120.0,
+   "engine_ms": 1098.1
+  },
+  "short": {
+   "occurrences": 1452,
+   "parts": 3133,
+   "synthesized": 0,
+   "bytes": 392614,
+   "searched": {
+    "blocks": 16868,
+    "nodes": 173463,
+    "scalars": 254171
+   },
+   "wall_ms": 1122.7,
+   "engine_ms": 1100.0
+  }
+ },
+ {
+  "document": "nist-sp-800-37r2",
+  "quote": "  Walter Copan, NIST Director and Under Secretary of Commerc",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 43,
+   "synthesized": 0,
+   "bytes": 5286,
+   "searched": {
+    "blocks": 43185,
+    "nodes": 436051,
+    "scalars": 646579
+   },
+   "wall_ms": 2845.9,
+   "engine_ms": 2821.6
+  },
+  "short": {
+   "occurrences": 4447,
+   "parts": 11668,
+   "synthesized": 0,
+   "bytes": 1438790,
+   "searched": {
+    "blocks": 43185,
+    "nodes": 436051,
+    "scalars": 646579
+   },
+   "wall_ms": 2865.6,
+   "engine_ms": 2838.6
+  }
+ },
+ {
+  "document": "nist-sp-800-161r1",
+  "quote": "r and Under Secretary of Commerce for Standards and Technolo",
+  "quote_attempts": 10,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 18,
+   "synthesized": 0,
+   "bytes": 2479,
+   "searched": {
+    "blocks": 54703,
+    "nodes": 569564,
+    "scalars": 859872
+   },
+   "wall_ms": 3715.7,
+   "engine_ms": 3685.8
+  },
+  "short": {
+   "occurrences": 5663,
+   "parts": 13220,
+   "synthesized": 0,
+   "bytes": 1648681,
+   "searched": {
+    "blocks": 54703,
+    "nodes": 569564,
+    "scalars": 859872
+   },
+   "wall_ms": 3745.3,
+   "engine_ms": 3715.8
+  }
+ },
+ {
+  "document": "nist-sp-800-53Ar5",
+  "quote": "James K. Olthoff, Performing the Non-Exclusive Functions and",
+  "quote_attempts": 1,
+  "realistic": {
+   "occurrences": 1,
+   "parts": 53,
+   "synthesized": 0,
+   "bytes": 6326,
+   "searched": {
+    "blocks": 57187,
+    "nodes": 1804101,
+    "scalars": 1928849
+   },
+   "wall_ms": 13513.3,
+   "engine_ms": 13384.3
+  },
+  "short": {
+   "occurrences": 8924,
+   "parts": 25693,
+   "synthesized": 0,
+   "bytes": 3159979,
+   "searched": {
+    "blocks": 57187,
+    "nodes": 1804101,
+    "scalars": 1928849
+   },
+   "wall_ms": 13395.1,
+   "engine_ms": 13301.6
+  }
+ }
+]
