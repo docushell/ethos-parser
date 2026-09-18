@@ -2517,6 +2517,7 @@ pub(crate) mod tests {
                 font_size: 2400,
                 region: None,
                 block: None,
+                inferred_heading: false,
             }),
         }
     }
@@ -3754,6 +3755,7 @@ pub(crate) mod tests {
                 font_size: 2400,
                 region,
                 block: None,
+                inferred_heading: false,
             }),
         }
     }

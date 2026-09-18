@@ -435,10 +435,34 @@ pub fn untagged_structure_tree_absent() -> Limitation {
         "This document's catalog declares no `/StructTreeRoot`, so it carries no tagged-structure \
          tree and NO ROLE PATH EXISTS to report. Marked-content ids are still captured verbatim \
          where the content stream supplies them, and they are still not structural addresses — an \
-         id with no tree to resolve it against names nothing. Nothing is inferred to fill the gap: \
-         a heading guessed from a type size, or a table from a caption's wording, would be \
-         indistinguishable on the wire from structure the author actually wrote, which is worse \
-         than reporting none.",
+         id with no tree to resolve it against names nothing. No role path is inferred to fill \
+         the gap, and no table is read from a caption's wording. Headings may be inferred from \
+         the type the page draws where the profile's `heading_inference_rule` runs, but never as \
+         a role path: such a run carries `inferred_heading` and the artifact then declares \
+         `headings-inferred-from-type`, so on the wire an inferred heading is distinguishable \
+         from structure the author wrote — the one condition that makes inferring one honest.",
+    )
+}
+
+/// The document-scoped disclosure that headings were inferred from type (decision #29).
+///
+/// Declared only when the rule fired on at least one line. It names the count, the rule and the
+/// body reference it measured on this document, so a reader can re-derive the cut — six fifths of
+/// that reference — without the engine. [`untagged_structure_tree_absent`] stays declared beside
+/// it as the precondition: the catalog still declares no `/StructTreeRoot`.
+pub fn headings_inferred_from_type(lines: u32, rule: &str, body_em: i64) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::HEADINGS_INFERRED_FROM_TYPE,
+        format!(
+            "{lines} line(s) of this document were read as headings from the TYPE THE PAGE DRAWS, \
+             under `{rule}`: every measurable run of each is set at least 6/5 of the body em \
+             measured here, {body_em} centipoints — the char-weighted mode of the rendered em over \
+             the document's non-blank, non-artifact runs — and their runs carry \
+             `inferred_heading`. The document declares no author structure — no \
+             `/StructTreeRoot`, or only one this engine wrote — so EVERY heading in this \
+             artifact is this engine's measurement of type and NONE is the author's. Each is one \
+             level, because nothing here can rank two type sizes against an author's intent."
+        ),
     )
 }
 

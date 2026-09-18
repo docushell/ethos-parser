@@ -800,6 +800,40 @@ both draft schemas, `docs/PUBLIC-API.md`.
 - Every tagged gate document's extract artifact is byte-identical to 0.58.0's apart from the profile
   hash and the new profile field — acceptance bar 3, at the representation.
 
+**Amended 2026-09-18, on landing: S1 is done.** The rule is `crates/ethos-parser-pdf/src/headings.rs`,
+wired into extraction; `inferred_heading` is on both the extract and the representation wire,
+absent where false; `heading_inference_rule: type-size-v1` is on the profile (re-pinned to
+`sha256:e62a6fad…`, with the move-log paragraph decision #30 had owed since `locate_rule`); and
+three fixtures hold it — `heading-display-line`, its twin under a `/StructTreeRoot` citing
+nothing, and the same page drawn under `/F1 1 Tf`. What was measured, and four places the
+implementation differs from or adds to the text above:
+
+- **Acceptance bar 3 is met.** All eight gate documents — 1.7 GB of representations — are
+  byte-identical to the previous build's except `profile_sha256` and the fingerprint covering it
+  (118 to 125 differing bytes each, every one inside those two digests). No existing geometry
+  digest moved, and the rule fires on **none** of the 58 pre-existing engine fixtures that
+  extract (the 59th, `tagged-cycle`, is refused by design) — the five engine-tagged ones the
+  gate's second arm opens included — and on exactly the two new fixtures built for it.
+- **The line is formed by the caller, not in `headings.rs`.** §3.3's line key includes the band,
+  and §9's guard bans that word from the rule's file — the two are reconciled by the caller
+  grouping runs into lines and the rule reading each line's runs by type alone. The guard holds
+  truthfully, and `EM_BIN` is re-declared rather than imported for the same reason. Each page
+  reduces its lines to three facts (the minimum measurable em, whether any run is text, whether
+  any is excluded), because the verdict waits for the fold: the body em is a mode over every page.
+- **The gate is the whole of §6.1, both arms.** No `/StructTreeRoot`, or a tree every element of
+  which this engine's writer created — tested by tagging the heading page with `write_tags` and
+  requiring the same inference as its original. One author element closes the gate, which is
+  stricter than §6.1's *no `Extracted` binding* only on a mixed tree, a shape the writer never
+  produces.
+- **§9's table of statements #29 falsifies missed one, and it rides on the wire.**
+  `untagged-structure-tree-absent`'s detail said *"Nothing is inferred to fill the gap: a heading
+  guessed from a type size … would be indistinguishable on the wire from structure the author
+  actually wrote"*. Both halves stopped being true, so the detail now says what is: no role path is
+  inferred and no table is read from a caption, and a heading inferred from type is marked
+  `inferred_heading` and declared — distinguishable on the wire, which was the objection. Every
+  untagged PDF's artifact carries that detail, so its bytes move on documents where the rule fires
+  nowhere too; a tagged document's do not.
+
 ### S2 — the projections
 
 **Files.** `crates/ethos-parser-core/src/markdown.rs` (`heading_level`, the rule id, the rewritten

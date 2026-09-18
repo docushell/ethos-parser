@@ -477,6 +477,21 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// produces no role path and says so.
 pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 
+/// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3).
+///
+/// **A line is an inferred heading when every run of it with a measurable rendered em is at
+/// least 1.20× the document's body em**, the body em being the char-weighted mode of the rendered
+/// em over every non-blank, non-artifact run, binned to a tenth of a point. The line must not be
+/// whitespace, an `/Artifact`, or a table's; and the rule runs **only on a document that declares
+/// no structure**, so a declared heading and an inferred one can never both exist in one artifact.
+///
+/// It reads **type, never position** — the rendered em, which is the vertical scale of the text
+/// rendering matrix and not the `Tf` operand, since a page may set `Tf /F 1` and draw its type in
+/// the matrix. One level only: every inferred heading is level 1, because nothing here can rank
+/// two sizes against an author's intent. The profile's rule id is the switch, as
+/// [`READING_ORDER_RULE_V0`] is the cut's: a profile naming [`NOT_RUN`] runs no inference.
+pub const HEADING_INFERENCE_RULE_V1: &str = "type-size-v1";
+
 /// The forms-and-annotations rule v1-S4 ships.
 ///
 /// On the profile because it decides which nodes exist. Which flag bits are named, how a
@@ -1256,6 +1271,17 @@ pub struct Profile {
     /// class that path carries: the owner attribute read under `/A` and through `/ClassMap` is
     /// what puts `computed` on a `pdf_tagged` locator.
     pub struct_tree_rule: String,
+    /// Version id of the heading-inference rule in force (decision #29).
+    ///
+    /// See [`HEADING_INFERENCE_RULE_V1`]. Its own field and not a fold into `struct_tree_rule`,
+    /// which names the reading of the document's own tree: this rule runs exactly where that one
+    /// found nothing, and one id covering both would make every *tagged* document's artifact
+    /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
+    /// against sharing `markdown_rule`'s id, applied once more.
+    ///
+    /// **A profile JSON with no `heading_inference_rule` is refused, not defaulted**, the same
+    /// posture every rule id here takes: a field defaulted in is a claim the run never made.
+    pub heading_inference_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
     /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V7`]. On the profile because it decides what
@@ -1332,6 +1358,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V3.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V1.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V7.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V7.to_string(),
@@ -1415,6 +1442,7 @@ impl Profile {
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1480,6 +1508,7 @@ impl Profile {
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1539,6 +1568,7 @@ impl Profile {
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1602,6 +1632,7 @@ impl Profile {
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1652,6 +1683,7 @@ impl Profile {
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1708,6 +1740,7 @@ impl Profile {
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1762,6 +1795,7 @@ impl Profile {
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1820,6 +1854,7 @@ impl Profile {
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
@@ -1917,9 +1952,9 @@ mod tests {
     /// # What this test adds over the pin
     ///
     /// Per field: that a *changed* value moves the digest, that the mutation is not a no-op, and
-    /// that no two mutations collide. The name is still narrower than it reads — thirty-two of
-    /// thirty-five leaves since v2-S24 added `table_detection.tagged` and its mutation together —
-    /// and saying so is the same repair v2-S12.1 made to
+    /// that no two mutations collide. The name is still narrower than it reads — thirty-five of
+    /// thirty-eight leaves since decision #29 added `heading_inference_rule` and its mutation
+    /// together, where it was thirty-two of thirty-five at v2-S24 — and saying so is the same repair v2-S12.1 made to
     /// `every_profile_is_distinct_from_every_other`, which checked four of nine while its name
     /// said every.
     #[test]
@@ -1970,6 +2005,7 @@ mod tests {
                     tagged: _,
                 },
             struct_tree_rule: _,
+            heading_inference_rule: _,
             markdown_rule: _,
             html_rule: _,
             locate_rule: _,
@@ -2035,6 +2071,11 @@ mod tests {
                 // can address text structurally at all.
                 "struct_tree_rule",
                 Box::new(|p: &mut Profile| p.struct_tree_rule = "other-tree-v9".into()),
+            ),
+            (
+                // Decision #29. Whether a line of an untagged document comes out a heading.
+                "heading_inference_rule",
+                Box::new(|p: &mut Profile| p.heading_inference_rule = "other-headings-v9".into()),
             ),
             (
                 // v0.1. The strongest output-affecting knob in the set: it changes which
@@ -2181,12 +2222,14 @@ mod tests {
         // one it grew by is `table_detection.tagged`, which arrived at v2-S24 with its mutation
         // in the same commit. Thirty-four since decision #22, which added
         // `font_metrics_data_version` with its mutation in the same commit for the same reason.
-        // Thirty-five since decision #30, which added `locate_rule` the same way.
+        // Thirty-five since decision #30, which added `locate_rule` the same way, and thirty-six
+        // since decision #29, which added `heading_inference_rule` the same way: thirty-six
+        // mutations now cover thirty-five of the pattern's thirty-eight leaves.
         assert_eq!(
             mutations.len(),
-            35,
-            "{} single-field mutation(s); thirty-five is the number at decision #30, which added \
-             `locate_rule` with its mutation in the same commit",
+            36,
+            "{} single-field mutation(s); thirty-six is the number at decision #29, which added \
+             `heading_inference_rule` with its mutation in the same commit",
             mutations.len()
         );
 
@@ -2241,7 +2284,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v1","html_rule":"html-blocks-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3062,11 +3105,24 @@ mod tests {
              exactly that key, and a 0.58.0 parser refuses the newer one (`unknown field \
              derivation`) as this build refuses the older (`missing field derivation`) — \
              `docs/23-AUTO-TAGGING-SCOPE.md` §8. `parser_version` does not move here; the \
-             release that carries this moves it."
+             release that carries this moves it.\n\n\
+             Moved again for decision #30: the new `locate_rule`, `locate-scalar-exact-v1`, and \
+             nothing else. It changes no byte of any existing artifact's content — `locate` adds \
+             a query and a new artifact type, and reads nothing new out of a document — and it \
+             is on the profile anyway, for `markdown_rule`'s reason: the locations artifact is \
+             output, and an artifact whose hash could not tell two match rules apart would \
+             claim a comparability it lacks (`docs/26-LOCATE-SCOPE.md` §8). This paragraph was \
+             owed by that commit and arrives with the next move.\n\n\
+             Moved again for decision #29: the new `heading_inference_rule`, `type-size-v1`, \
+             and nothing else. On a document that declares no structure it can set \
+             `inferred_heading` on a line's runs, so it changes what an untagged PDF's \
+             representation says; on a tagged document it never runs, and its artifacts differ \
+             from the previous hash's by this profile hash alone \
+             (`docs/28-HEADINGS-SCOPE.md` §4). `parser_version` does not move here either."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:1b94699ab86b3d86ccfbf3cba3865a087bb77331b23c6ab768fb0460d457193f"
+            "sha256:e62a6fadc726c2df2be1e3ae7bfd8e768a58217d3cd5482696e792e43a03efd7"
         );
     }
 

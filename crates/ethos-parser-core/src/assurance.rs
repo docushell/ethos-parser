@@ -384,6 +384,19 @@ pub mod codes {
     /// be false on both counts.
     pub const STRUCTURE_TREE_ENGINE_WRITTEN: &str = "structure-tree-engine-written";
 
+    /// Headings in this artifact were **inferred from the type the page draws**, because the
+    /// document declared no structure (decision #29, `docs/28-HEADINGS-SCOPE.md` §5.1).
+    ///
+    /// Document-scoped and conditional: declared when the profile's `heading_inference_rule` set
+    /// `TextRunAttributes::inferred_heading` on at least one run. The detail states how many
+    /// lines the rule fired on, the rule id, the body reference in centipoints it measured on
+    /// this document, and the fact it exists to state — every heading here is this engine's
+    /// measurement of type and none is the author's. A disclosure in the limitation slot on the
+    /// precedent of [`STRUCTURE_TREE_ENGINE_WRITTEN`], and like it, it still names something
+    /// missing: the author's structure. [`UNTAGGED_STRUCTURE_TREE_ABSENT`] stays declared beside
+    /// it as the precondition, because the catalog still declares no `/StructTreeRoot`.
+    pub const HEADINGS_INFERRED_FROM_TYPE: &str = "headings-inferred-from-type";
+
     /// A `BDC` supplied its property list **by name**, so any id in it went unread.
     ///
     /// Document-scoped and conditional. PDF 32000-1 §14.6.2 allows a property list to indirect

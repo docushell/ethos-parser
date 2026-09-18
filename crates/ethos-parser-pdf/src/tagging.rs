@@ -4940,6 +4940,7 @@ mod tests {
             geometry: GeometryPresence::Absent(GeometryAbsence::NotReportedByReader),
             region,
             block,
+            inferred_heading: false,
             mcid: None,
             structural: artifact.then_some(ethos_parser_core::StructuralLocator::PdfArtifact(
                 PdfArtifactLocator { mcid: None },

@@ -149,6 +149,93 @@ fn declared_len(count: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 
+/// Whether a document declares no **author** structure — decision #29's gate
+/// (`docs/28-HEADINGS-SCOPE.md` §6.1).
+///
+/// **No `/StructTreeRoot` at all**, which is the predicate that declares
+/// `untagged-structure-tree-absent`, so the gate and that declaration cannot disagree about one
+/// document. **Or a tree this engine's own writer created, every element of it**: a tree whose
+/// every binding reads back `Computed` is no declaration — `group_key`'s argument, *the licence
+/// does not transfer* — and without this arm an engine-tagged document would stop inferring what
+/// its untagged original infers, and its projections would stop equalling the original's
+/// (docs/23 §4.3).
+///
+/// One author element closes the gate. That is stricter than §6.1's words — *no `Extracted`
+/// binding* — only on a tree mixing an author's elements with this engine's, which is a shape the
+/// writer never produces (it tags only a document with no tree), and the conservative reading of
+/// a document someone else edited.
+fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
+    match tree {
+        None => true,
+        Some(tree) => tree
+            .engine_written
+            .as_ref()
+            .is_some_and(|written| written.elements >= declared_len(tree.elements)),
+    }
+}
+
+/// A page's candidate heading lines: each line's run indices in the final order, and the line
+/// reduced to what the verdict needs (decision #29).
+type HeadingLines = Vec<(Vec<usize>, crate::headings::Line)>;
+
+/// One page's candidate heading lines (decision #29), and its share of the body em.
+///
+/// **The line is formed here and never in `headings.rs`.** A line is the runs sharing one band,
+/// one `/Artifact` state and one baseline — `markdown.rs`'s `LineKey`, read for equality only —
+/// and the rule's own file may not name the band: that is its guard, because it reads type and
+/// never position. So this groups, and the rule sees each line's runs by their type alone.
+///
+/// Only lines that could be headings against *some* body em are kept, so the fold holds one
+/// entry per display line rather than one per line of the document.
+fn page_heading_lines(
+    runs: &[TextRun],
+    ems: &[Option<i64>],
+    tables: &[crate::tables::DetectedTable],
+) -> (HeadingLines, crate::headings::EmTally) {
+    use crate::headings::{EmTally, Line, Typed};
+
+    let owned: std::collections::BTreeSet<usize> = tables
+        .iter()
+        .flat_map(|t| t.cells.iter())
+        .flat_map(|c| c.run_indices.iter().copied())
+        .collect();
+    let typed: Vec<Typed> = runs
+        .iter()
+        .zip(ems)
+        .enumerate()
+        .map(|(i, (run, em))| Typed {
+            em: *em,
+            chars: run.text.chars().count() as u64,
+            blank: run.text.trim().is_empty(),
+            artifact: matches!(
+                run.structural,
+                Some(ethos_parser_core::StructuralLocator::PdfArtifact(_))
+            ),
+            table_owned: owned.contains(&i),
+        })
+        .collect();
+
+    let mut tally = EmTally::default();
+    let mut by_line: std::collections::BTreeMap<(Option<u32>, bool, i64), Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for (i, (run, t)) in runs.iter().zip(&typed).enumerate() {
+        tally.add(t);
+        by_line
+            .entry((run.region, t.artifact, run.locator.origin_y))
+            .or_default()
+            .push(i);
+    }
+    let lines = by_line
+        .into_values()
+        .filter_map(|indices| {
+            let members: Vec<Typed> = indices.iter().map(|&i| typed[i]).collect();
+            let line = Line::of(&members);
+            line.is_candidate().then_some((indices, line))
+        })
+        .collect();
+    (lines, tally)
+}
+
 /// Resolve one run's structural address (v1-S3).
 ///
 /// The precedence is the point, so it is stated rather than left to fall out of the `if`s:
@@ -228,6 +315,11 @@ struct PageYield {
     /// it in the page's decoded content (auto-tagging S2). Permuted by `reorder_page` with the
     /// runs, so `op_indices[i]` describes `page.runs[i]` in the final order.
     op_indices: Vec<usize>,
+    /// This page's candidate heading lines, each with its runs' indices in the final order
+    /// (decision #29). Empty unless the heading rule runs on this document.
+    heading_lines: HeadingLines,
+    /// This page's share of the document's body em. Empty unless the heading rule runs.
+    em_tally: crate::headings::EmTally,
     props_by_name: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
@@ -285,6 +377,18 @@ fn extract_page(
     // loop skips, so the two vectors are aligned by construction and stay so through
     // `reorder_page`.
     let mut op_indices: Vec<usize> = Vec::new();
+    // Decision #29. The rendered em of every run pushed below, aligned with `runs` exactly as
+    // `op_indices` is and permuted beside it by `reorder_page`. Held only to reduce this page's
+    // lines for the heading rule; like the operator indices, it lives beside the runs and never
+    // on a `TextRun`, so it never reaches the wire.
+    let mut ems: Vec<Option<i64>> = Vec::new();
+    // The gate: the document declares no author structure (see `no_author_structure`), and the
+    // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
+    let infer_headings = profile.heading_inference_rule
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V1
+        && no_author_structure(structure.as_ref());
+    let mut heading_lines: HeadingLines = Vec::new();
+    let mut em_tally = crate::headings::EmTally::default();
     let page_extract;
     {
         let page_dict =
@@ -355,11 +459,19 @@ fn extract_page(
         let shown_runs = std::mem::take(&mut interp.shown);
         let mut runs = Vec::with_capacity(shown_runs.len());
         op_indices.reserve(shown_runs.len());
+        ems.reserve(shown_runs.len());
         for shown in shown_runs {
             if shown.text.is_empty() {
                 continue;
             }
             op_indices.push(shown.op_index);
+            // A matrix with no vertical scale, or an em too large to quantize, is unmeasurable
+            // rather than an error: the heading rule reads it as absent, never as zero.
+            ems.push(
+                quantize(shown.em_scale_pt, QUANTUM_PER_POINT)
+                    .ok()
+                    .filter(|em| *em > 0),
+            );
             let font = fonts.get(&shown.font_id);
 
             let (ox_pt, oy_pt) = geom.to_top_left(shown.origin.0, shown.origin.1);
@@ -488,6 +600,7 @@ fn extract_page(
                 // Filled in below, where `arrange_page` is called.
                 region: None,
                 block: None,
+                inferred_heading: false,
                 locator: PdfLocator {
                     page: page_number,
                     origin_x,
@@ -734,13 +847,31 @@ fn extract_page(
                 run.block = *block;
             }
 
-            reorder_page(&mut runs, &mut tables, &mut op_indices, &arranged.order);
+            reorder_page(
+                &mut runs,
+                &mut tables,
+                &mut op_indices,
+                &mut ems,
+                &arranged.order,
+            );
         }
         debug_assert_eq!(
             op_indices.len(),
             runs.len(),
             "one operator index per run, or the side table lies about every run after the gap"
         );
+        debug_assert_eq!(
+            ems.len(),
+            runs.len(),
+            "one rendered em per run, for the same reason"
+        );
+
+        // Decision #29. This page's lines reduced for the heading rule, and its share of the
+        // document's body em. Here, after `reorder_page`, so the indices address the final list;
+        // the verdict waits for the fold, because the body em is a mode over every page.
+        if infer_headings {
+            (heading_lines, em_tally) = page_heading_lines(&runs, &ems, &tables);
+        }
 
         // v2-S24. Emit the tagged tables collected above, now that `runs` is in its final order.
         // A cell's `run_indices` address that final list, and its text is the runs the tree bound
@@ -973,6 +1104,8 @@ fn extract_page(
         unclaimed_tree_items,
         computed_bound,
         op_indices,
+        heading_lines,
+        em_tally,
         props_by_name,
         tagged_without_geometric,
         unresolved_field_parents,
@@ -1082,6 +1215,11 @@ pub(crate) fn extract_with_positions(
 
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());
+    // Decision #29. Every page's candidate heading lines, aligned with `pages`, and the
+    // document's rendered ems merged across pages — from which the body em is read once the
+    // whole document has been.
+    let mut heading_lines_by_page: Vec<HeadingLines> = Vec::new();
+    let mut doc_em_tally = crate::headings::EmTally::default();
     let mut positions = RunPositions::new();
     let mut limitations = lim::extract_limitations();
     // A repaired open is never silent: every artifact derived from one says so.
@@ -1415,6 +1553,8 @@ pub(crate) fn extract_with_positions(
             },
         );
         pages.push(y.page);
+        heading_lines_by_page.push(y.heading_lines);
+        doc_em_tally.merge(&y.em_tally);
         page_states.push(PageStateEntry {
             index: page_number,
             state: PageState::Processed,
@@ -1464,6 +1604,29 @@ pub(crate) fn extract_with_positions(
                     &written.rules,
                 ));
             }
+        }
+    }
+    // Decision #29. The body em exists only now — it is a mode over every page — so this is where
+    // each page's reduced lines are decided. Every page shares one gate, so a document the gate
+    // closed returned no tally from any page, has no body em, and nothing below runs.
+    if let Some(body_em) = doc_em_tally.body_em() {
+        let mut fired: u32 = 0;
+        for (page, lines) in pages.iter_mut().zip(&heading_lines_by_page) {
+            for (indices, line) in lines {
+                if line.is_heading(body_em) {
+                    fired = fired.saturating_add(1);
+                    for &i in indices {
+                        page.runs[i].inferred_heading = true;
+                    }
+                }
+            }
+        }
+        if fired > 0 {
+            limitations.push(lim::headings_inferred_from_type(
+                fired,
+                &profile.heading_inference_rule,
+                body_em,
+            ));
         }
     }
     if props_by_name > 0 {
@@ -1749,6 +1912,7 @@ fn reorder_page(
     runs: &mut Vec<TextRun>,
     tables: &mut [crate::tables::DetectedTable],
     op_indices: &mut Vec<usize>,
+    ems: &mut Vec<Option<i64>>,
     order: &[usize],
 ) {
     // The single-column case, which is most pages: the rule found no gutter and returned the
@@ -1774,6 +1938,9 @@ fn reorder_page(
     // The same permutation, applied to the side table in the same breath (item 4 above).
     let stream_ordered = std::mem::take(op_indices);
     op_indices.extend(order.iter().map(|&old| stream_ordered[old]));
+    // And the rendered ems (decision #29), the same way and for the same reason.
+    let stream_ordered = std::mem::take(ems);
+    ems.extend(order.iter().map(|&old| stream_ordered[old]));
 
     for table in tables {
         for cell in &mut table.cells {
@@ -2410,6 +2577,7 @@ mod tests {
                 id: alloc.next(IdKind::Span).expect("ids"),
                 region: None,
                 block: None,
+                inferred_heading: false,
                 text: text.to_string(),
                 char_codes: text.chars().map(|c| c as u32).collect(),
                 scalar_code_mismatch: false,
@@ -2489,7 +2657,8 @@ mod tests {
         );
 
         let mut op_indices: Vec<usize> = (0..runs.len()).collect();
-        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
+        let mut ems = vec![None; runs.len()];
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &mut ems, &order);
 
         for (cell, (was, text)) in tables[0].cells.iter().zip(&before) {
             assert_eq!(&cell.text, text, "the reorder must not rewrite cell text");
@@ -2562,7 +2731,14 @@ mod tests {
             run.region = *region;
         }
         let mut op_indices: Vec<usize> = (0..runs.len()).collect();
-        reorder_page(&mut runs, &mut tables, &mut op_indices, &arranged.order);
+        let mut ems = vec![None; runs.len()];
+        reorder_page(
+            &mut runs,
+            &mut tables,
+            &mut op_indices,
+            &mut ems,
+            &arranged.order,
+        );
 
         for run in &runs {
             let (_, want) = expected
@@ -2609,7 +2785,8 @@ mod tests {
         assert!(claimed.len() >= 2, "the premise needs more than one run");
 
         let mut op_indices: Vec<usize> = (0..runs.len()).collect();
-        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
+        let mut ems = vec![None; runs.len()];
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &mut ems, &order);
 
         let mut after: Vec<usize> = tables[0]
             .cells
@@ -2659,7 +2836,8 @@ mod tests {
             .map(|(r, &op)| (r.text.clone(), op))
             .collect();
 
-        reorder_page(&mut runs, &mut tables, &mut op_indices, &order);
+        let mut ems = vec![None; runs.len()];
+        reorder_page(&mut runs, &mut tables, &mut op_indices, &mut ems, &order);
 
         assert_eq!(
             op_indices.len(),

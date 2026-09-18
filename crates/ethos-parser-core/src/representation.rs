@@ -1556,6 +1556,21 @@ pub struct TextRunAttributes {
     /// of one artifact. A bare `Option` for the reason `region` is one: `docs/16-D4-SCOPE.md` §4.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block: Option<u32>,
+    /// Set where this profile's heading-inference rule read this run's type as a heading's, on a
+    /// document that declares no structure (decision #29, `docs/28-HEADINGS-SCOPE.md` §5.1).
+    ///
+    /// `Computed`, never the author's: the profile's `heading_inference_rule` names the rule, and
+    /// the artifact declares `headings-inferred-from-type` with the count and the body reference
+    /// it measured. **A verdict and not the measurement** — the rendered em it was read from
+    /// exists only inside the PDF reader, and carrying that on every run of every document would
+    /// cost bytes inside the fingerprint where this costs none. Absent where false, which is the
+    /// `region` and `block` idiom: the common case costs zero bytes.
+    ///
+    /// `default` is safe here where `PdfTaggedLocator.derivation`'s was not (decision #20). An
+    /// intermediary stripping this key turns an inferred heading into no heading, the conservative
+    /// direction; stripping `derivation` would have laundered `Computed` into `Extracted`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inferred_heading: bool,
     /// What was observed about this run that a reader would not see in its text (v1-S6).
     ///
     /// Empty for an ordinary run, and empty is the common case. **A run carrying a finding is
@@ -2861,6 +2876,7 @@ mod tests {
                 font_size: 2400,
                 region: None,
                 block: None,
+                inferred_heading: false,
             }),
         }
     }

@@ -312,6 +312,8 @@ const CORE: &[&str] = &[
     "SlotFault",
     "STRUCT_TREE_RULE_V1",
     "STRUCT_TREE_RULE_V2",
+    // Decision #29. The heading-inference rule id, beside the tree rule it runs in the absence of.
+    "HEADING_INFERENCE_RULE_V1",
     "SourceIdentity",
     "Stage",
     "StructuralLocator",

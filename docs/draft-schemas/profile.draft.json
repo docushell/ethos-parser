@@ -24,6 +24,7 @@
     "locate_rule",
     "table_detection",
     "struct_tree_rule",
+    "heading_inference_rule",
     "form_annotation_rule",
     "observation_rule",
     "raster_dpi",
@@ -164,6 +165,14 @@
       "description": "Version id of the structure-tree rule in force (v1-S3; struct-tree-v2 since auto-tagging S1). Decides which runs come out carrying a role path: the recognised structure types, the /RoleMap handling, the /K depth bound, and the fact that the (page, mcid) join is exact equality rather than anything looser. Since -v2 it also decides what class the path carries: an element whose attribute objects (under /A, or through /C and the root's /ClassMap) are owned by /O /EthosParser binds as `computed`, every other as `extracted`.",
       "examples": [
         "struct-tree-v2"
+      ]
+    },
+    "heading_inference_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the heading-inference rule in force (decision #29). `type-size-v1`: on a document that declares no structure, a line is an inferred heading when every run of it with a measurable rendered em is at least 6/5 of the document's body em, the body em being the char-weighted mode of the rendered em over every non-blank, non-artifact run, binned to a tenth of a point. It reads the rendered em — the text rendering matrix's vertical scale — and never the `Tf` operand, which a page may set to 1 while it draws its type in the matrix. It reads type and never position, and runs only where the catalog declares no /StructTreeRoot, so a declared heading and an inferred one never coexist. Its own field, not a fold into `struct_tree_rule`: this rule runs exactly where that one found nothing. The id is the switch: `not-run-for-this-format`, which every office profile carries, runs nothing. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
+      "examples": [
+        "type-size-v1"
       ]
     },
     "table_detection": {
@@ -393,6 +402,7 @@
         "unit": "centipoint"
       },
       "form_annotation_rule": "form-annotations-v1",
+      "heading_inference_rule": "type-size-v1",
       "html_rule": "html-blocks-v7",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v7",

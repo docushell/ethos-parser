@@ -471,7 +471,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 82] = [
+const EXPECTED_SURVIVORS: [&str; 85] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -494,6 +494,9 @@ const EXPECTED_SURVIVORS: [&str; 82] = [
     "form-orphan-widget/junk-after-eof",
     "form-xfa-stub/junk-after-eof",
     "form-xobject-text-drawn/junk-after-eof",
+    "heading-display-line-tagged/junk-after-eof",
+    "heading-display-line-tf-one/junk-after-eof",
+    "heading-display-line/junk-after-eof",
     "horizontal-scaling-tz/junk-after-eof",
     "image-declared-not-drawn/junk-after-eof",
     "image-xobject-drawn/junk-after-eof",
@@ -890,8 +893,15 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        86,
-        "the manifest should declare 86 fixtures across FOUR roots. B9 moved this from 85 by \
+        89,
+        "the manifest should declare 89 fixtures across FOUR roots. C1 S1 moved this from 86 by \
+         adding the three pages decision #29's heading rule is proved on — \
+         `heading-display-line`, one display line at twice the body type above five body lines \
+         and no tree; `heading-display-line-tagged`, the same stream under a /StructTreeRoot that \
+         cites nothing; and `heading-display-line-tf-one`, the same page with its type carried in \
+         the text matrix under `/F1 1 Tf` — so the gate and the rendered-em reading are each \
+         held by a file, and each survives only the mutant every engine fixture survives. B9 \
+         moved this from 85 by \
          adding `rtl-hebrew-visual-order`: right-to-left text was in neither owned corpus, so \
          nothing said what this engine does with a producer's visual-order Hebrew, and the \
          answer — the codes in the page's order, the text the logical word reversed — is a \

@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 59,
+    "engine_owned": 62,
     "gate": 8
   },
   "fixtures": [
@@ -802,6 +802,33 @@
       "sha256": "sha256:75665570048b969ad465a4f4f1db425ce505c374951c2c64e462949c6b21be47",
       "owner": "engine-gate",
       "notes": "NIST SP 800-53Ar5, Assessing Security and Privacy Controls. 733 pages. Public domain (US Government work). Source: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53Ar5.pdf"
+    },
+    {
+      "id": "heading-display-line",
+      "root": "engine",
+      "group": "engine",
+      "path": "heading-display-line/document.pdf",
+      "sha256": "sha256:63dacd4e68465fb9fa955a67357fff611c53127849acfc118a346f623edf27c1",
+      "owner": "engine",
+      "notes": "Decision #29, C1 S1: headings inferred from type (2026-09-18). One display line at 24pt above five body lines at 12pt, and NO /StructTreeRoot. Expect the one run `Display line` to carry inferred_heading and no other run to, and the artifact to declare headings-inferred-from-type naming 1 line, the rule type-size-v1 and a body reference of 1200 centipoints — the char-weighted modal rendered em — beside untagged-structure-tree-absent, which stays declared as the precondition."
+    },
+    {
+      "id": "heading-display-line-tagged",
+      "root": "engine",
+      "group": "engine",
+      "path": "heading-display-line-tagged/document.pdf",
+      "sha256": "sha256:b50fe193b4f2f6568656cf9ce11fe7a41d6511fe65927ba38ee574e57c2b80a7",
+      "owner": "engine",
+      "notes": "Decision #29, C1 S1. heading-display-line's content stream, byte for byte, plus a minimal /StructTreeRoot with /K []. The page cites no marked content and no run binds, and the heading rule still does not run: its gate is the catalog's declaration of structure, not what the tree reaches. Expect no inferred_heading anywhere, and neither headings-inferred-from-type nor untagged-structure-tree-absent declared."
+    },
+    {
+      "id": "heading-display-line-tf-one",
+      "root": "engine",
+      "group": "engine",
+      "path": "heading-display-line-tf-one/document.pdf",
+      "sha256": "sha256:9efd8a1a0ff92ec77d38616a8c4abef978130b67948abb998cfad8ccea8ac27f",
+      "owner": "engine",
+      "notes": "Decision #29, C1 S1. heading-display-line's page with its type carried in the text matrix under /F1 1 Tf, so every run's font_size is 100 — the idiom that carries one value on 87 of the 200 bench documents. The rule reads the rendered em, so expect this to read exactly as heading-display-line does: the same run inferred, the same 1200 centipoint body reference declared."
     }
   ]
 }

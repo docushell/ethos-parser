@@ -619,6 +619,20 @@ ENGINE_TAGGED_STREAM = (
 )
 
 # name -> (content, wants_font_descriptor)
+# Decision #29, C1 S1. One display line at twice the body type above five body lines. The rule's
+# reference is the char-weighted modal rendered em — 12pt here, carried by the five body lines'
+# characters — and the display line's 24pt clears six fifths of it where no body line does.
+# Shared by the untagged page and the tagged one, so the two differ in nothing but the tree.
+HEADING_PAGE = (
+    "BT /F1 24 Tf 1 0 0 1 40 170 Tm (Display line) Tj "
+    "/F1 12 Tf 1 0 0 1 40 140 Tm (The first line of body text) Tj "
+    "1 0 0 1 40 126 Tm (runs on to a second line) Tj "
+    "1 0 0 1 40 112 Tm (and a third and a fourth) Tj "
+    "1 0 0 1 40 98 Tm (before a fifth line) Tj "
+    "1 0 0 1 40 84 Tm (closes the paragraph) Tj "
+    "ET"
+)
+
 FIXTURES = {
     # ' moves to the next line and shows; " also sets word and char spacing first.
     # Both are omitted or mishandled by readers that only match Tj/TJ.
@@ -1345,6 +1359,27 @@ FIXTURES = {
     "tagged-cycle": (
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm (Text under a cyclic tree) Tj ET"
     ),
+    # Decision #29, C1 S1. No /StructTreeRoot, so the heading rule runs: the display line's runs
+    # carry `inferred_heading` and the artifact declares `headings-inferred-from-type` naming one
+    # line and a body reference of 1200 centipoints.
+    "heading-display-line": HEADING_PAGE,
+    # The same page, byte for byte, plus a minimal /StructTreeRoot citing nothing (see
+    # STRUCTURE). A document that declares structure gets no inferred heading whatever its type,
+    # and declares neither the new code nor `untagged-structure-tree-absent` (§6.1).
+    "heading-display-line-tagged": HEADING_PAGE,
+    # The same page with its type carried in the text matrix under `/F1 1 Tf`, so `font_size` is
+    # 100 on every run — the idiom 83 of the 200 bench documents use (§3.1). The rule reads the
+    # rendered em and not the operand, so this reads exactly as `heading-display-line` does; it is
+    # the one fixture that would catch a later edit reaching for the operand.
+    "heading-display-line-tf-one": (
+        "BT /F1 1 Tf 24 0 0 24 40 170 Tm (Display line) Tj "
+        "12 0 0 12 40 140 Tm (The first line of body text) Tj "
+        "12 0 0 12 40 126 Tm (runs on to a second line) Tj "
+        "12 0 0 12 40 112 Tm (and a third and a fourth) Tj "
+        "12 0 0 12 40 98 Tm (before a fifth line) Tj "
+        "12 0 0 12 40 84 Tm (closes the paragraph) Tj "
+        "ET"
+    ),
 }
 
 def _strip_written_sequences(stream: str) -> str:
@@ -1407,6 +1442,10 @@ ENGINE_PARENT_TREE = "/ParentTree << /Nums [0 [8 0 R 9 0 R]] >> /ParentTreeNextK
 # stream side by side and check the (page, mcid) join by eye — which is the whole property these
 # fixtures exist to pin.
 STRUCTURE = {
+    # Decision #29, C1 S1. The least a catalog can declare: a /StructTreeRoot with no kids. The
+    # page cites no marked content, so no run binds — and the heading rule still does not run,
+    # because the gate is the catalog's declaration, not what the tree reaches (§6.1).
+    "heading-display-line-tagged": ["<< /Type /StructTreeRoot /K [] >>"],
     # Auto-tagging S1. The tree the writer emits for the leading-gap page, in the exact shape
     # docs/23 §3.3-§3.4 fix: /Document over one /Div per block, every element carrying the
     # attribute under /A, /Pg on the elements that hold content, a /ParentTree, and no /MarkInfo.
@@ -1915,6 +1954,10 @@ PAGE_EXTRA = {
 
 # name -> MediaBox. The ruled fixtures need a wider page than the 300x144 default.
 MEDIA = {
+    # Decision #29, C1 S1. Six baselines from y=170 down to y=84, on a page tall enough for all.
+    "heading-display-line": (0, 0, 300, 200),
+    "heading-display-line-tagged": (0, 0, 300, 200),
+    "heading-display-line-tf-one": (0, 0, 300, 200),
     "ruled-table-grid": (0, 0, 400, 200),
     # v1.1-S2. Same lattice geometry as ruled-table-grid, and the same page to hold it.
     "markdown-table-cells": (0, 0, 400, 200),

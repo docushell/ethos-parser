@@ -116,6 +116,15 @@ pub struct TextRun {
     /// declined — which, unlike `region`, is common even on a single-column page, because a page
     /// of uniform body text has no gap wide enough to open a second block.
     pub block: Option<u32>,
+    /// This run's line was read as a heading from the type the page draws (decision #29).
+    ///
+    /// Set only on a document that declares no structure, by the rule the profile's
+    /// `heading_inference_rule` names — `Computed`, never the author's. Set after the whole
+    /// document is read, because the rule's reference is the document's body em. **Absent where
+    /// false**, so a run the rule did not touch serializes exactly as it did before the rule
+    /// existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inferred_heading: bool,
     /// Marked-content id, when the page declares one for this run.
     ///
     /// `None` means the document did not supply one. Never invented — Workbench rule 3.
@@ -252,6 +261,7 @@ mod tests {
             id: alloc.next(IdKind::Span).unwrap(),
             region: None,
             block: None,
+            inferred_heading: false,
             text: text.to_string(),
             char_codes: codes,
             scalar_code_mismatch: false,

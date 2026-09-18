@@ -66,6 +66,7 @@ pub(crate) mod encoding;
 pub(crate) mod extract;
 pub(crate) mod fonts;
 pub(crate) mod forms;
+pub(crate) mod headings;
 pub(crate) mod images;
 pub(crate) mod magic;
 pub(crate) mod metrics;

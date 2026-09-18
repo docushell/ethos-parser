@@ -1328,6 +1328,7 @@ mod schema_limit_tests {
                     font_size: 1000,
                     region: None,
                     block: None,
+                    inferred_heading: false,
                 }),
             };
             geometry.push(NodeGeometry {
@@ -1400,6 +1401,7 @@ mod schema_limit_tests {
                         font_size: 1000,
                         region: None,
                         block: None,
+                        inferred_heading: false,
                     }),
                 };
                 geometry.push(NodeGeometry {
