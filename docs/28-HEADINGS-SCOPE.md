@@ -921,6 +921,11 @@ which is the owner's to accept or refuse. The residual false positives are mostl
 producers tagged `/P`, plus decorative glyphs and one lead paragraph; refusing letterless lines is
 recorded there and not built.
 
+**Amended 2026-09-18, on the owner's decision: the breach is accepted.** `nist-sp-800-218`'s ten
+false headings are its own title in display type on the cover and the title page — lines a reader
+calls a heading and the producer tagged `/P` — and no clause removes them without removing real
+headings too. S3 stands, with that breach recorded against the count bound.
+
 ### S4 — MHS, and the documents
 
 **Files.** `docs/measurements/opendataloader-bench/score.py` (the MHS band, the deleted sentence) and
@@ -930,6 +935,20 @@ block, and every row of §9.
 **Acceptance.** MHS is published as a band with the worst document named; no document's MHS is below
 its 0.58.0 value; `OPEN-WORK.md` §5 moves the item from *ready* to *shipped* and §4 loses or keeps
 §11's settled calls.
+
+**Amended 2026-09-18, on landing: S4 is done.** MHS **0.0000 → 0.3321** over the bench's 107
+heading-bearing documents, band **0.0000..0.9986, median 0.1490, worst `01030000000001`** (first by
+name of the 50 still at 0.0000), 57 up — bar 2's first half met, its second vacuous here as §7.5
+says, since nothing could fall from 0.0000; the bench's evaluator scores no level at all, so §3.5's
+one level costs nothing on it and is not tested by it either. NID moved −0.0003 as a text effect of
+the `# ` markup alone: every changed Markdown file is its predecessor once the markers and
+whitespace are removed. `score.py` bands MHS and no longer prints the sentence #29 falsified. §9's
+remaining rows are applied: `markdown.rs`'s module header carries a dated correction naming row 29,
+`list_role`'s analogy now says why lists stay refused where headings no longer are, `structure.rs`'s
+header names where the inference lives and what gates it, and CAPABILITY's row carries the bound and
+the band. One statement §9 missed is corrected the same way: `html.rs`'s test
+`an_untagged_run_is_a_paragraph_however_it_was_drawn`, whose comment said L29 was REFUSE on both
+projections.
 
 ### S5 — the font-name clause, conditional
 

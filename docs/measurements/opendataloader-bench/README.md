@@ -284,3 +284,38 @@ Joining by baseline flattens a GFM table's rows into ordinary lines — 50–65 
 engine now assembles blocks from the document's own marked-content sequences, which the adapter
 could not see, and keeps the tables. **The joining variant is deleted rather than kept behind a
 flag**: an adapter that second-guesses the projection measures the adapter.
+
+---
+
+## Appendix, 2026-09-18 — MHS after decision #29's heading rule
+
+**The 0.0000 above stood "until the rule ships and MHS is re-measured", and this is the
+re-measurement**, with `type-size-v2` — the heading rule as repaired after its false-positive
+measurement (`docs/measurements/headings/README.md` §5) — built from the tree at C1 S4, not pushed.
+Same harness, same evaluators, same 200 documents; `score.py` now bands MHS as it bands NID and
+TEDS, and the sentence it printed about MHS being 0 by construction is deleted, because decision
+#29 falsified it. The "before" column is the build just before C1 (`fd845b0`), run through the same
+harness in the same session, and it reproduces 0.58.0's published NID (0.8697) and MHS (0.0000)
+exactly.
+
+| metric | before C1 (`fd845b0`) | `type-size-v2` | documents moved |
+| --- | ---: | ---: | --- |
+| **MHS** heading hierarchy | 0.0000 | **0.3321** (n = 107) | **57 up, 0 down** |
+| NID reading order | 0.8697 | 0.8694 (n = 200) | 40 up, 27 down |
+| TEDS table structure | 0.1704 | 0.1704 (n = 42) | none |
+
+**MHS, as a band:** **0.0000..0.9986, median 0.1490, worst `01030000000001` (0.0000, first by name
+of the 50 there), best `01030000000179` (0.9986)**, and non-zero on 57 of the 107 documents whose
+ground truth holds a heading. No document's MHS fell: every one scored 0.0000 before C1, and 57
+rose. **MHS scores no level**: `src/evaluator_heading_level.py` flattens every heading to one tag,
+and the ground truth's 193 headings are all level one — so the band measures which lines are
+headings and the text between them, and nothing about hierarchy, whatever the metric's name says.
+
+**NID moved, and not because reading order did.** 67 documents' Markdown changed, and every one of
+the 67 is identical to its pre-C1 Markdown once the `# ` markers and whitespace are removed — the
+runs, their order and their text are unchanged. NID compares text, and a heading's `# ` and the
+block break around it are text to it: 40 documents score higher and 27 lower, the largest drop
+`01030000000163` 0.7080 → 0.6880, where single large letters drawn as a display word each became a
+heading — the decorative-glyph error `docs/measurements/headings/README.md` §5 names. Net −0.0003.
+
+Per-document readings, both builds: [`../headings/bench-mhs-nid.json`](../headings/bench-mhs-nid.json).

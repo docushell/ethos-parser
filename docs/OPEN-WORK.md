@@ -119,7 +119,6 @@ boxes, which doc 22 refused.
 
 | Decision | Blocks |
 | --- | --- |
-| **Is `nist-sp-800-218`'s title an acceptable breach of the heading rule's count bound?** The owner chose "repair, then re-measure" (2026-09-18); the repair is `type-size-v2` — the body is the larger of the most common and the largest common size, so dense small type cannot be it — and a count bound beside the rate. Re-measured ([`measurements/headings/README.md`](measurements/headings/README.md) §5): false headings **3,097 → 147**, precision **5% → 42%**, the rate bound holds (0.00%..4.61%). The count bound holds on ten documents and fails on `nist-sp-800-218` by 10 against 7 — all ten the document's own title on its cover and title page, tagged `/P`. Accept it and ship, or refuse and add another clause first. S1–S3 and the repair are local and unpushed | Pushing C1; S4 |
 | **docs/23 §3.6 row 2's reopening count:** 146 of the 200 opendataloader-bench documents (all PyPDF2 page splits) are refused for marked-content ids without a tree, the shape the row says reopens with a corpus count showing it is common | Whether `tag` ever writes around a document's orphaned ids |
 | **docs/23 §3.5's reopening condition for an incremental update:** 6 of 4,116 reals outside content streams do not survive `f32`, in 2 PyPDF2 documents, below the ninth significant digit — non-zero on one producer; whether it is *a producer that matters* | The full re-serialisation |
 | **D8:** may the Python and Node packages ship a platform binary (reverses v1.2-S2)? **Deferred by the owner 2026-09-17** ("later") | 6.4, 6.5 |
@@ -140,19 +139,27 @@ boxes, which doc 22 refused.
 
 ## 5. Ready now — no decision needed
 
-- **Headings inferred from font size or font name** (decision #29) — **scoped 2026-09-18**,
-  [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md); **S1, the reader, done 2026-09-18**: the rule reads
-  the rendered em, sets `inferred_heading` on a line of a document with no author structure, and
-  declares `headings-inferred-from-type`; tagged documents are byte-identical but for the profile
-  hash, and it fires on none of the 58 pre-existing engine fixtures that extract. **S2, the projections, done the same day**: an inferred heading is `#` and `<h1>` under `-v8`, the gate documents' projections are unchanged but for the ids and digests, and an engine-tagged page keeps its heading. **S3 measured the same day**, and the owner chose to repair: `type-size-v2` cuts false headings 3,097 → 147 and meets the rate bound; the count bound's one breach is `nist-sp-800-218`'s own title (§4 above). S4 (MHS) next; S5 is conditional. What the scope settles, each on
-  a measurement: the signal is the **rendered em**, not the field spelled `font_size`, which carries
-  one distinct value on 87 of the 200 bench documents and on all four gate documents measured; the
-  unit is the line; one level, because the harness flattens them and all 193 ground-truth headings
-  are level 1; the verdict goes on the wire as an attribute absent where false, with
-  `heading_inference_rule` on the profile and a document-scoped declaration; and the size clause
-  ships alone at a **5% per-document false-positive bound**, with the font clause held as a
-  conditional slice because it measures 91.7% recall at up to 15.76%. Which roadmap version carries
-  it is pending (§4).
+- ~~**Headings inferred from font size or font name** (decision #29)~~ — **done 2026-09-18, S0 to
+  S4, for 0.59.0**; S5, the font clause, stays conditional on its own measurement. Scoped in
+  [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md). **S1, the reader**: the rule reads the rendered
+  em, sets `inferred_heading` on a line of a document with no author structure, and declares
+  `headings-inferred-from-type`; tagged documents are byte-identical but for the profile hash, and
+  it fires on none of the 58 pre-existing engine fixtures that extract. **S2, the projections**: an
+  inferred heading is `#` and `<h1>` under `-v8`, the gate documents' projections are unchanged but
+  for the ids and digests, and an engine-tagged page keeps its heading. **S3, the bound**: the owner
+  chose to repair, and `type-size-v2` cuts false headings 3,097 → 147 and meets the rate bound
+  (0.00%..4.61%); the count bound's one breach is `nist-sp-800-218`'s own title, ten lines in
+  display type tagged `/P`, **which the owner accepted on 2026-09-18**. **S4, MHS**: 0.0000 → 0.3321
+  on opendataloader-bench, non-zero on 57 of 107 documents
+  ([`measurements/headings/README.md`](measurements/headings/README.md) §6). What the scope settles,
+  each on a measurement: the signal is the **rendered em**, not the field spelled `font_size`, which
+  carries one distinct value on 87 of the 200 bench documents and on all four gate documents
+  measured; the unit is the line; one level, because the harness flattens them and all 193
+  ground-truth headings are level 1; the verdict goes on the wire as an attribute absent where
+  false, with `heading_inference_rule` on the profile and a document-scoped declaration; and the
+  size clause ships alone at a **5% per-document false-positive bound**, with the font clause held
+  as a conditional slice because it measures 91.7% recall at up to 15.76%. Which roadmap version
+  carries it is pending (§4).
 
 - ~~**Re-run OmniDocBench** as an instrument after 0.58.0~~ — **done 2026-09-18**: the corpus was
   re-fetched (981 files, 538 521 457 bytes, `v1_0`) and the census re-run in 13 s on the build at

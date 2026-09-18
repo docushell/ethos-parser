@@ -93,6 +93,10 @@
 //!   `source` segment names ids that already exist.
 //! - **Not a layout engine.** A heading is a heading because the structure tree said so. No font
 //!   size is consulted anywhere in this file — checklist L29 is REFUSE.
+//!   **Amended 2026-09-18 by decision #29, which reversed row 29 for headings:** a heading is also
+//!   one because the PDF reader measured the type an untagged page draws, and the artifact says
+//!   which (`inferred_heading`, `headings-inferred-from-type`). This file still consults no font
+//!   size — it reads the reader's flag, and the reader does the measuring.
 //! - **Not a verifier.** Nothing here produces a verdict (`docs/07-VERIFY-BOUNDARY.md`).
 
 use serde::{Deserialize, Serialize};
@@ -702,8 +706,11 @@ fn xhtml_heading_level(element: &str) -> Option<u8> {
 ///
 /// **An `L` ancestor is required, not just an `Lbl` leaf.** `/Lbl` is also the label of a table of
 /// contents item and of a note, and a projection that turned those into bullets would be
-/// inventing a list the document did not draw — the same mistake as reading a heading off a font
-/// size, one structure level up.
+/// inventing a list the document did not draw. **Still refused, where headings no longer are**:
+/// decision #29 lets the reader infer a heading from measured type, declared on the artifact,
+/// and nothing comparable measures a list — a bullet glyph is a character, not a type size, and
+/// reading structure off it would be the inference with neither the measurement nor the
+/// declaration.
 ///
 /// **No bullet glyph, no hanging indent, no font name.** An untagged document grows no list here;
 /// its bullet characters are runs like any other and project as the text they are.
@@ -3698,7 +3705,8 @@ pub(crate) mod tests {
         assert_eq!(a.markdown, "- Item\n\nParagraph\n\n- Item again\n");
     }
 
-    /// **No list without a tree.** The refusal L29 makes about font sizes, one structure level up.
+    /// **No list without a tree** — the refusal L29 made about font sizes, which survives here for
+    /// lists after decision #29 narrowed it for headings.
     #[test]
     fn an_untagged_bullet_is_not_a_list() {
         let a = artifact_of(repr_of(&[("\u{2022} Looks like a bullet", None)]));

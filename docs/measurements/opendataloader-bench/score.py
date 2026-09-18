@@ -62,12 +62,21 @@ def main() -> None:
     print(f"  speed          {elapsed / len(docs) * 1000:.0f} ms/document")
     band(nid, "NID")
     band(teds, "TEDS")
+    band(mhs, "MHS")
     zeros = [d for d, v in teds if v == 0]
     print(f"\n  TEDS is bimodal by construction: {len(teds) - len(zeros)} of {len(teds)} non-zero, "
           f"{len(zeros)} at zero. Every document whose ground truth holds a table:")
     for d, v in sorted(teds, key=lambda dv: (-dv[1], dv[0])):
         print(f"    {v:.4f}  {d}")
-    print("  MHS is 0 by construction: headings come from a tag tree, and 0 of 200 documents have one.")
+    # Decision #29 falsified the sentence that stood here — "MHS is 0 by construction: headings
+    # come from a tag tree, and 0 of 200 documents have one". Headings are also inferred from the
+    # type an untagged page draws now, so MHS is a band like the other two, and every scored
+    # document is listed: at 0.58.0 all of them scored 0.0000, which is the baseline no document
+    # may fall below (docs/28-HEADINGS-SCOPE.md §7.5, bar 2).
+    above = [d for d, v in mhs if v > 0]
+    print(f"\n  MHS is non-zero on {len(above)} of {len(mhs)} scored documents. Every scored document:")
+    for d, v in sorted(mhs, key=lambda dv: (-dv[1], dv[0])):
+        print(f"    {v:.4f}  {d}")
 
 
 def band(scored: list[tuple[str, float]], label: str) -> None:

@@ -23,6 +23,12 @@
 //! invented from typography is indistinguishable on the wire from one the author wrote — which
 //! makes it worse than no role path at all.
 //!
+//! **Since decision #29 that inference exists, outside this module and gated by it.**
+//! `crate::headings` reads a line's type where this module found no author structure, and says so
+//! on the wire with `inferred_heading` — never a role path — so it stays distinguishable from what
+//! an author wrote. This module's job, reading what the document declared, is what decides where
+//! it may run.
+//!
 //! So a document with no tree gets **no** role paths, and says so
 //! (`untagged-structure-tree-absent`). Two absences are named rather than conflated:
 //!

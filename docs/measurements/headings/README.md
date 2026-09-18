@@ -180,3 +180,34 @@ lines headings. `-v1`'s recall on those documents was a by-product of calling ev
 
 **What this leaves to the owner:** whether `nist-sp-800-218`'s breach — its title, on two pages —
 is accepted, since every other bound holds. S1, S2, S3 and this repair are local and unpushed.
+
+**Amended 2026-09-18: accepted by the owner.** The ten lines are the document's title in display
+type, which a reader calls a heading and the producer tagged `/P`; no clause removes them without
+also removing real headings.
+
+---
+
+## 6. C1 S4 — what the repaired rule scores on the bench
+
+`type-size-v2` over opendataloader-bench's 200 documents, through the bench's own evaluators —
+the appendix of [`../opendataloader-bench/README.md`](../opendataloader-bench/README.md) has the
+method and the NID side, and [`bench-mhs-nid.json`](bench-mhs-nid.json) the per-document readings
+of both builds.
+
+**MHS 0.0000 → 0.3321** over the 107 documents whose ground truth holds a heading; **band
+0.0000..0.9986, median 0.1490, worst `01030000000001` (first by name of the 50 still at 0.0000),
+best `01030000000179`**; 57 rose. None fell, but none could: every one stood at 0.0000, which is why
+`28-HEADINGS-SCOPE.md` §7.5 calls bar 2's second half vacuous at this first measurement and binding
+at every one after. NID moved −0.0003 because a `# ` is text to its evaluator, not because any run
+moved: all 67 changed Markdown files are identical to their predecessors once the markers and
+whitespace are removed.
+
+**What the bench does not measure**, stated so the band is not read as more than it is. **Level is
+invisible to it twice over**: the evaluator (`src/evaluator_heading_level.py`) flattens every
+heading to one tag — its docstring: a section tree that "treats all heading levels as equivalent" —
+and the ground truth's 193 headings, over the 107 documents that have any, are all level one
+(`28-HEADINGS-SCOPE.md` §3.5, which is why the rule has one level). So MHS scores *which* lines are
+headings and the text between them, and cannot tell this rule's one level from a right hierarchy or
+a wrong one. **And the bench carries no author tags**, so it scores what the rule finds and cannot
+see what it fabricates — which is why S3's false-positive measurement on the eleven tagged documents
+is the bound the rule ships on, and this is its recall side.

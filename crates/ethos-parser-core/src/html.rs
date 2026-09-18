@@ -819,7 +819,10 @@ mod tests {
         }
     }
 
-    /// **No font size is read here either.** L29 is REFUSE on both projections.
+    /// **No font size is read here either.** L29 is REFUSE on both projections — amended
+    /// 2026-09-18: decision #29 reversed it for headings, in the reader and not here. A run the
+    /// reader did not flag `inferred_heading` is a paragraph however it was drawn, which is what
+    /// this still holds.
     #[test]
     fn an_untagged_run_is_a_paragraph_however_it_was_drawn() {
         let a = artifact_of(repr_of(&[("Looks like a title", None)]));
