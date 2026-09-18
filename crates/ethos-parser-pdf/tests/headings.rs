@@ -238,3 +238,95 @@ fn an_engine_tagged_page_infers_what_its_untagged_original_does() {
         "the same line and the same body reference as the untagged original"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// S3: the tree-stripped twin
+// -------------------------------------------------------------------------------------------
+
+fn gate_fx(name: &str) -> PathBuf {
+    let root = std::env::var_os("ETHOS_GATE_CORPUS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo_root().join("fixtures/gate"));
+    let p = root.join(format!("{name}.pdf"));
+    assert!(
+        p.is_file(),
+        "gate document `{name}` missing at {}. A missing corpus is a failure, never a skip.",
+        p.display()
+    );
+    p
+}
+
+fn represent_bytes(bytes: &[u8], profile: &Profile) -> DocumentRepresentation {
+    let doc = Document::open_bytes(bytes, profile).expect("the document opens");
+    let extract = ethos_parser_pdf::extract(&doc, profile).expect("it extracts");
+    ethos_parser_pdf::to_representation(&extract, profile).expect("it represents")
+}
+
+/// Every text run's `(text, page, baseline, band)` — the facts the rule's line is built from.
+fn lines_of(repr: &DocumentRepresentation) -> Vec<(String, u32, i64, Option<u32>)> {
+    repr.payload()
+        .nodes
+        .iter()
+        .filter_map(|n| match (&n.attributes, &n.native_locator) {
+            (NodeAttributes::TextRun(a), ethos_parser_core::NativeLocator::Pdf(loc)) => {
+                Some((n.text.clone(), loc.page, loc.origin_y, a.region))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// **The tree-stripped twin** (`docs/28-HEADINGS-SCOPE.md` §7.3, S3): a gate document with its
+/// `/StructTreeRoot` removed inside the test, through `lopdf`.
+///
+/// `docs/measurements/headings/falsepos.py` measures the shipped rule's false-positive rate on the
+/// eleven documents whose authors declared headings, and it can only do that by stripping each
+/// document's tree — the gate keeps the verdict off a tagged document's wire. This test holds the
+/// two things that measurement stands on: **the shipped build fires on a gate document once its tree
+/// is gone**, so the instrument is measuring the rule and not an empty set; and **stripping the tree
+/// changes nothing the rule reads** — the same runs, in the same order, on the same baselines and in
+/// the same bands — so the instrument's node-by-node join of the original's labels to the stripped
+/// copy's verdicts is a join of one document to itself.
+#[test]
+fn a_gate_document_stripped_of_its_tree_is_where_the_rule_fires() {
+    let profile = Profile::default();
+    let bytes = std::fs::read(gate_fx("irs-fw9")).expect("reads");
+    let mut doc = lopdf::Document::load_mem(&bytes).expect("lopdf loads");
+    let root = doc
+        .trailer
+        .get(b"Root")
+        .and_then(lopdf::Object::as_reference)
+        .expect("a /Root");
+    let removed = doc
+        .get_object_mut(root)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("a catalog")
+        .remove(b"StructTreeRoot");
+    assert!(
+        removed.is_some(),
+        "the gate document declares a tree to strip"
+    );
+    let mut stripped = Vec::new();
+    doc.save_to(&mut stripped).expect("saves");
+
+    let original = represent_bytes(&bytes, &profile);
+    let twin = represent_bytes(&stripped, &profile);
+
+    assert_eq!(
+        lines_of(&original),
+        lines_of(&twin),
+        "stripping the tree changed a run the rule reads, so a join by position would compare two \
+         different documents"
+    );
+    assert!(
+        inferred(&original).is_empty(),
+        "the gate is closed on the author's tagged original"
+    );
+    assert!(
+        !inferred(&twin).is_empty(),
+        "and the shipped build fires once the tree is gone, so the instrument measures a rule and \
+         not an empty set"
+    );
+    assert!(declared(&twin, HEADINGS).is_some());
+    assert!(declared(&twin, UNTAGGED).is_some());
+}

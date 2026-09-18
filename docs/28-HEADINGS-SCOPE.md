@@ -893,6 +893,20 @@ named, and **every one of the nine with three or more heading items is at or bel
 the nine is not, the rule does not ship and §7.5's reopening sentence applies — the slice's honest
 outcome is a refusal with a number, as [`22-WORD-BOXES-SCOPE.md`](22-WORD-BOXES-SCOPE.md)'s was.
 
+**Amended 2026-09-18, on measuring: S3's bound is met by its letter and not by its purpose, and the
+decision is the owner's.** [`measurements/headings/README.md`](measurements/headings/README.md) has
+the eleven documents. The nine bounded ones sit at **0.00%..4.61%, worst `cfpb-home-loan-toolkit`**,
+so the acceptance above reads *met*. But the rule fires on 3,266 lines and is right on 165, and two
+documents carry **2,979 false headings against 68 declared**: `nist-sp-800-218` (533, at 28.84%) and
+`nist-sp-800-53Ar5` (2,446, at 3.05% of an 80,090-line denominator). The cause is measured and is
+the reference, not the cut — on both, the char-weighted modal em is dense small type (900 and 850
+centipoints), so ordinary prose clears six fifths of it. Three things in this scope did not survive
+the measurement: §7.3's proxy was per-font and so could not see it; §7.5's reason for making
+`-218` counts-only is true of precision and not of the FP rate §7.3 defines (one false positive moves
+that rate by 0.054 points); and a rate over every line lets a long document fabricate forty headings
+per declared one inside the bound. §7.5 reserves a breach on a counts-only document for the owner,
+the README names three unmeasured repairs, and **nothing has shipped**: S1 and S2 are local commits.
+
 ### S4 — MHS, and the documents
 
 **Files.** `docs/measurements/opendataloader-bench/score.py` (the MHS band, the deleted sentence) and
