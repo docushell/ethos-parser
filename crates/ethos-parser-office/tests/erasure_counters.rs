@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 10] = [
+const PDF_COUNTERS: [&str; 11] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -99,6 +99,10 @@ const PDF_COUNTERS: [&str; 10] = [
     // `structure-tree-engine-written` names. Caught the same way, by the first full gate after it
     // landed.
     "computed_bound",
+    // Decision #29, C1 S1 (`b06b2fc`). The lines read as headings from their type, the count
+    // `headings-inferred-from-type` names. Caught the same way again: C1's targeted runs did not
+    // include this file, and the first run that did found it.
+    "fired",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.
