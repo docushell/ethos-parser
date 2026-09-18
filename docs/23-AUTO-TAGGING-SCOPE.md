@@ -174,6 +174,16 @@ The body is not rewritten; read it with these.
   981 born-digital `v1_0` pages, one is refused by the tokeniser on the read path, where the build
   before the check wrote an artifact of a page whose 125 718 content bytes were dropped after the
   fourth ([`measurements/omnidocbench/README.md`](measurements/omnidocbench/README.md)).
+- **§8, the extract artifact (corrected 2026-09-18, found reviewing the 0.59.0 release note).**
+  Its last clause — *a 0.58.0 build, whose record did not deny unknown fields, ignores the key* —
+  is true of the tagged-table record and never of an extract artifact. A tagged table's cells are
+  tagged runs, every run's `pdf_tagged` locator carries `derivation` as well, and 0.58.0's
+  `TextRun` denies unknown fields, so each build refuses the other's extract artifact of any
+  tagged PDF, and 0.58.0 also refuses one whose runs carry decision #29's `inferred_heading`.
+  `EXTRACT_SCHEMA_VERSION`'s rustdoc said the same and is corrected with this. §8's statement
+  about the representation stands, and was run both ways against the 0.58.0 release binary on
+  `tagged-structure-roles`: `unknown field derivation` one way, `missing field derivation` the
+  other, each exit 2.
 
 With §7's numbers published, clause two meets the condition §12's proposed row #27 names. The rows
 themselves remain the owner's to record.

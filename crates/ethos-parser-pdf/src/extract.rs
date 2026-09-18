@@ -52,14 +52,17 @@ pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.parser.extract.v0";
 /// The rule this constant follows: it moves when a reader could otherwise be misled about what it
 /// is reading. A key added under a MINOR release that this parser refuses on read is named in the
 /// release note instead and the version stays — the rule `docs/23-AUTO-TAGGING-SCOPE.md` §8 holds
-/// the representation's `schema_version` to, applied to this wire as well. Two additions since
+/// the representation's `schema_version` to, applied to this wire as well. Three additions since
 /// `0.4.0` follow it: `TextRun.block` at 0.55.0 (an `Option`, so a 0.54.0 extract still parses
-/// here), and `TaggedTableRecord.derivation` at auto-tagging S1 (required, no default: a 0.58.0
-/// extract that carries a tagged table is refused here with `missing field derivation`, while a
-/// 0.58.0 build, whose record did not deny unknown fields, ignores the key; the record denies
-/// unknown fields from this slice on, so later shapes refuse each other symmetrically). Both are
-/// named in their release notes. The artifact is a draft library surface with no stored fixtures:
-/// only this build's own bytes are ever parsed back, in two round-trip tests.
+/// here); `derivation` at auto-tagging S1, required with no default, on every `pdf_tagged` locator
+/// a run carries and on `TaggedTableRecord`; and `TextRun.inferred_heading` at decision #29, absent
+/// where false. So a 0.58.0 extract of any tagged PDF is refused here (`missing field
+/// derivation`), and a 0.58.0 build, whose `TextRun` denies unknown fields, refuses this build's
+/// extract of any tagged PDF (`unknown field derivation`) and of any PDF where a heading was
+/// inferred (`unknown field inferred_heading`). That 0.58.0's `TaggedTableRecord` did not deny
+/// unknown fields never comes into play: a tagged table's cells are tagged runs, refused first.
+/// All three are named in their release notes. The artifact is a draft library surface with no
+/// stored fixtures: only this build's own bytes are ever parsed back, in two round-trip tests.
 pub const EXTRACT_SCHEMA_VERSION: &str = "0.4.0";
 
 /// The extract artifact.
