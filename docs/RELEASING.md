@@ -194,6 +194,26 @@ unchanged, then:
 
 ### Linux and Windows binaries come from the workflow
 
+**Amended 2026-09-18, the day `main` was first pushed with this workflow on it. Two corrections,
+both measured on GitHub rather than reasoned about:**
+
+1. **The file was invalid, and GitHub said so on the first push.** A job-level `if:` read
+   `matrix.target`, which a job's `if:` cannot see — it is evaluated before the matrix expands —
+   so GitHub rejected the whole file (*"Unrecognized named-value: 'matrix'"*, run 35318172170) and
+   showed it as a failed run on every push to `main`. A `plan` job now filters `targets` into the
+   matrix before any runner is asked for, which keeps the one property the `if:` existed for: a
+   target left out requests **no** runner, so a retired runner label can be left out without its
+   leg failing to schedule. A name in `targets` that is not a target here now fails the dispatch
+   by name instead of quietly dropping a platform.
+2. **This workflow cannot build 0.58.0, by any route.** GitHub runs a tag push's workflows from
+   the *tagged* commit, and the 0.58.0 release commit `b4b4aa9` predates this file — so
+   `git push origin v0.58.0` starts nothing. A manual dispatch from `main` with `ref: v0.58.0`
+   does start, but its legs run the tagged tree's `ci/release-artifacts.sh`, which predates
+   `--native` and `--assemble` and refuses both. **0.58.0 ships the macOS pair built locally with
+   step 1**, as `OPEN-WORK.md`'s release row already records, and says in its notes that Linux and
+   Windows were not built. **0.59.0 is the first release this workflow can build.** Every
+   `v0.58.0` in this section is the shape of the commands, not a promise about that tag.
+
 `.github/workflows/release-artifacts.yml` is the machinery for the two platforms this host cannot
 execute. It builds the macOS pair as well, so one run can supply the whole release, and **it
 publishes nothing** — §6 stays true. Its token is `contents: read`, which cannot create or edit a
@@ -202,7 +222,8 @@ release, so that is a fact about the workflow rather than a promise in it.
 - **Trigger.** Step 2's `git push origin v0.58.0` starts it: it runs on a `push` of any `v*` tag.
   It also runs by hand — Actions → *Release artifacts* → *Run workflow* — with `ref` (the tag,
   branch or SHA to build; empty means the ref it was dispatched from) and `targets`
-  (space-separated; leave one out to skip its runner).
+  (space-separated; leave one out and its runner is never requested; a name that is not one of
+  the four fails the run; cleared, it builds all four).
 - **What each runner does.** Checks out the ref, installs the pinned 1.88.0 and asserts the pin,
   asserts it is the machine its matrix entry names, then runs
   `ci/release-artifacts.sh --native --tag v0.58.0` — the script from step 1, restricted to the

@@ -60,11 +60,77 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # **Which legs run, decided before any runner is asked for.** This was a job-level `if:` on
+  # `build` that read `matrix.target`, and GitHub rejected the whole file for it on the first push
+  # that carried it (2026-09-18, `791f0fe`): *"Unrecognized named-value: 'matrix'"*. A job's `if:`
+  # is evaluated before its matrix expands, so it cannot see one — and an invalid file shows as a
+  # failed run on every push to `main` while a tag push builds nothing.
+  #
+  # Filtering here, rather than skipping a leg's steps one at a time, is the point and not a style:
+  # a target left out of `targets` requests NO runner. That is the only way a retired runner label
+  # can be left out without its leg failing to schedule, which is what the Intel entry below
+  # depends on. On a tag push there is no input and every target runs; a dispatch with `targets`
+  # cleared builds every target too, because a cleared field says nothing was chosen.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # One entry per target, and each runner is that target's own machine: the script's
+      # `--native` builds nothing else, so nothing here is cross-compiled and every packaged binary
+      # was executed by the kind of machine it is for. Why each runner:
+      #
+      # - `x86_64-unknown-linux-gnu` on `ubuntu-latest`: gnu rather than musl. The runner's own
+      #   triple is x86_64-unknown-linux-gnu, so this is the one Linux binary that is `verified` in
+      #   the script's sense with no second libc, no `apt-get install musl-tools`, no
+      #   `rustup target add` and no cross-link step to be wrong about. The cost is a glibc floor:
+      #   the binary links the runner image's glibc and runs on distributions at least that new. A
+      #   static musl build lifts that and is one more leg — musl-tools plus
+      #   `--target x86_64-unknown-linux-musl` — when somebody asks for it; pinning `runs-on` to an
+      #   older Ubuntu lowers the floor too.
+      # - `x86_64-pc-windows-msvc` on `windows-latest`: a `.tar.gz` here too, not a `.zip` — one
+      #   packaging path, GNU tar in Git Bash, and no dependency on `zip` or 7-Zip being on the
+      #   image. Windows 10 and later ship `tar`, and Windows 11's Explorer opens the archive.
+      # - `aarch64-apple-darwin` on `macos-latest`: arm64, 3 vCPU and 7 GB, the least memory of the
+      #   four (GitHub's runner reference). The 733-page gate document's extract peaks at 4.7 GB
+      #   (docs/measurements/memory-ceiling), so this is the leg most likely to die for want of
+      #   memory. If it does, leave it out of `targets` and build it locally with
+      #   docs/RELEASING.md §8 step 1, as every release so far has.
+      # - `x86_64-apple-darwin` on `macos-15-intel`: native on an Intel runner, not under Rosetta
+      #   on the arm64 one. GitHub's runner reference lists `macos-15-intel` (4 vCPU, 14 GB);
+      #   native execution is what `verified` means on every other leg; and whether Rosetta is
+      #   installed on the hosted arm64 image is not a fact this repository has established — the
+      #   script's `pgrep oahd` check is a fact about the owner's Mac. When GitHub retires the
+      #   Intel label this leg fails to schedule: leave it out of `targets`, and §8 step 1 covers
+      #   it locally under Rosetta.
+      - id: plan
+        env:
+          WANTED: ${{ github.event_name == 'workflow_dispatch' && inputs.targets || '' }}
+          TARGETS: >-
+            [{"target": "x86_64-unknown-linux-gnu", "os": "ubuntu-latest"},
+             {"target": "x86_64-pc-windows-msvc", "os": "windows-latest"},
+             {"target": "aarch64-apple-darwin", "os": "macos-latest"},
+             {"target": "x86_64-apple-darwin", "os": "macos-15-intel"}]
+        run: |
+          set -euo pipefail
+          if [ -z "${WANTED// /}" ]; then
+            include="$TARGETS"
+          else
+            # A name that is not a target here fails the dispatch by name. Ignoring it would drop
+            # a platform from a release because of a typo, with nothing saying so.
+            for name in $WANTED; do
+              jq -e --arg n "$name" 'any(.[]; .target == $n)' <<<"$TARGETS" >/dev/null \
+                || { echo "::error::\`$name\` in \`targets\` is not a target this workflow builds"; exit 1; }
+            done
+            include="$(jq -c --arg w " $WANTED " '[.[] | .target as $t | select($w | contains(" " + $t + " "))]' <<<"$TARGETS")"
+          fi
+          echo "legs: $(jq -r 'map(.target) | join(" ")' <<<"$include")"
+          echo "matrix=$(jq -c '{include: .}' <<<"$include")" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.target }}
-    # A target left out of `targets` on a dispatch is skipped, not failed, so the others still
-    # reach `verify`. On a tag push there is no input and every leg runs.
-    if: github.event_name != 'workflow_dispatch' || contains(inputs.targets, matrix.target)
+    needs: plan
     runs-on: ${{ matrix.os }}
     # Not a measurement: no runner has built this yet. Locally the release build takes 1m08s on
     # 14 cores and the fingerprint over all eight gate documents a few minutes more; the smallest
@@ -73,40 +139,7 @@ jobs:
     strategy:
       # One leg failing still leaves the others' output uploaded to read.
       fail-fast: false
-      matrix:
-        # One entry per target, and each runner is that target's own machine: the script's
-        # `--native` builds nothing else, so nothing here is cross-compiled and every packaged
-        # binary was executed by the kind of machine it is for.
-        include:
-          # gnu rather than musl. The runner's own triple is x86_64-unknown-linux-gnu, so this is
-          # the one Linux binary that is `verified` in the script's sense with no second libc, no
-          # `apt-get install musl-tools`, no `rustup target add` and no cross-link step to be
-          # wrong about. The cost is a glibc floor: the binary links the runner image's glibc and
-          # runs on distributions at least that new. A static musl build lifts that and is one
-          # more leg — musl-tools plus `--target x86_64-unknown-linux-musl` — when somebody asks
-          # for it; pinning `runs-on` to an older Ubuntu lowers the floor too.
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          # A `.tar.gz` here too, not a `.zip`: one packaging path, GNU tar in Git Bash, and no
-          # dependency on `zip` or 7-Zip being on the image. Windows 10 and later ship `tar`, and
-          # Windows 11's Explorer opens the archive.
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          # macos-latest is arm64: 3 vCPU and 7 GB, the least memory of the four (GitHub's runner
-          # reference). The 733-page gate document's extract peaks at 4.7 GB
-          # (docs/measurements/memory-ceiling), so this is the leg most likely to die for want of
-          # memory. If it does, leave it out of `targets` and build it locally with
-          # docs/RELEASING.md §8 step 1, as every release so far has.
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          # Native on an Intel runner, not under Rosetta on the arm64 one. GitHub's runner
-          # reference lists `macos-15-intel` (4 vCPU, 14 GB); native execution is what `verified`
-          # means on every other leg; and whether Rosetta is installed on the hosted arm64 image
-          # is not a fact this repository has established — the script's `pgrep oahd` check is a
-          # fact about the owner's Mac. When GitHub retires the Intel label this leg fails to
-          # schedule: leave it out of `targets`, and §8 step 1 covers it locally under Rosetta.
-          - target: x86_64-apple-darwin
-            os: macos-15-intel
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     # Git Bash on Windows, so every step is one script on all four systems.
     defaults:
       run:
@@ -185,8 +218,8 @@ jobs:
           overwrite: true
 
   verify:
-    # Runs only when every leg that ran succeeded: an `if:` with no status function implies
-    # success(), and a leg skipped by `targets` is not a failed one.
+    # Runs only when every leg succeeded: an `if:` with no status function implies success(). A
+    # target left out of `targets` has no leg at all, so it is neither a success nor a failure.
     needs: build
     name: one set of bytes on every runner
     runs-on: ubuntu-latest
