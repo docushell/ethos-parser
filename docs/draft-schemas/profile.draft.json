@@ -170,9 +170,9 @@
     "heading_inference_rule": {
       "type": "string",
       "minLength": 1,
-      "description": "Version id of the heading-inference rule in force (decision #29). `type-size-v1`: on a document that declares no structure, a line is an inferred heading when every run of it with a measurable rendered em is at least 6/5 of the document's body em, the body em being the char-weighted mode of the rendered em over every non-blank, non-artifact run, binned to a tenth of a point. It reads the rendered em — the text rendering matrix's vertical scale — and never the `Tf` operand, which a page may set to 1 while it draws its type in the matrix. It reads type and never position, and runs only where the catalog declares no /StructTreeRoot, so a declared heading and an inferred one never coexist. Its own field, not a fold into `struct_tree_rule`: this rule runs exactly where that one found nothing. The id is the switch: `not-run-for-this-format`, which every office profile carries, runs nothing. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
+      "description": "Version id of the heading-inference rule in force (decision #29). `type-size-v2`: on a document that declares no author structure, a line is an inferred heading when every run of it with a measurable rendered em is at least 6/5 of the document's body em, the body em being the document's largest common size — the largest rendered em holding at least a twentieth of the body characters and running on at least ten lines, or the most common size where none does. `-v1` took the most common size and fabricated headings where dense small type dominated a document's characters. It reads the rendered em — the text rendering matrix's vertical scale — and never the `Tf` operand, which a page may set to 1 while it draws its type in the matrix. It reads type and never position, and runs only where the catalog declares no /StructTreeRoot, so a declared heading and an inferred one never coexist. Its own field, not a fold into `struct_tree_rule`: this rule runs exactly where that one found nothing. The id is the switch: `not-run-for-this-format`, which every office profile carries, runs nothing. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "type-size-v1"
+        "type-size-v2"
       ]
     },
     "table_detection": {
@@ -402,7 +402,7 @@
         "unit": "centipoint"
       },
       "form_annotation_rule": "form-annotations-v1",
-      "heading_inference_rule": "type-size-v1",
+      "heading_inference_rule": "type-size-v2",
       "html_rule": "html-blocks-v8",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v8",

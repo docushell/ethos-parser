@@ -28,6 +28,14 @@ elements — `paragraphs.py`'s `block_role`, and its role set. A **false positiv
 fired on whose declared role is not `H` or `H1`..`H6`, over the labelled lines. Recall is reported
 beside it and is **not** what the bound is set against (§7.3: these producers write structure
 differently, and one sets 180 declared headings at body type).
+
+# Two bounds, since the first measurement
+
+**The rate** — at most 5% on each of the nine documents with three or more heading items (§7.5).
+**And the count** — on every one of the eleven, no more false headings than the author declared,
+which is §7.5's own reason for refusing 10% made checkable. The count was added by the owner on
+2026-09-18 after `type-size-v1` met the rate on its letter while fabricating 2,446 headings against
+61 declared on one document, because a rate over 80,090 lines cannot see that. Both must hold.
 """
 
 import json
@@ -220,6 +228,13 @@ def main():
                   f"labelled lines, {r['declared_heading_lines']} declared heading line(s)")
     met = all((r["fp_rate_bp"] or 0) <= BOUND_PERCENT * 100 for r in bounded)
     print(f"§7.5's bound, {BOUND_PERCENT}% on every bounded document: {'MET' if met else 'NOT MET'}")
+    over = [r for r in rows if r["false_positives"] > r["declared_heading_lines"]]
+    for r in over:
+        print(f"count bound breached: {r['document']}: {r['false_positives']} false headings against "
+              f"{r['declared_heading_lines']} declared")
+    print(f"the count bound, false headings <= declared headings on all {len(rows)}: "
+          f"{'MET' if not over else 'NOT MET'}")
+    print(f"ALL BOUNDS: {'MET' if met and not over else 'NOT MET'}")
 
 
 if __name__ == "__main__":

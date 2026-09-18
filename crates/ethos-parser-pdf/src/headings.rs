@@ -37,14 +37,25 @@
 //! forms the lines — the runs sharing one page, band, `/Artifact` state and baseline, which is
 //! `markdown.rs`'s `LineKey` — and hands this module each line's runs by their type alone.
 //!
-//! # The reference is the document's own
+//! # The reference is the document's own — its largest common size (`type-size-v2`)
 //!
 //! A 14pt heading is display type in a 10pt document and body type in a 17pt one, so the cut is a
-//! multiple of a number measured on the document under test: the **char-weighted mode** of the
-//! rendered em over every non-blank, non-artifact run, binned to a tenth of a point (§3.2). By
-//! characters and not lines, because a title page or a column of captions is many lines and few
-//! characters. Per document and not per page, because a page holding only a part title would take
-//! its own heading as its body and find none.
+//! multiple of a number measured on the document under test (§3.2), per document and not per page.
+//!
+//! **The body is the largest size the document sets a substantial share of its text in** — a size
+//! holding at least 1/[`BODY_SHARE_DEN`] of the body characters and running on at least
+//! [`BODY_MIN_LINES`] lines — and the most common size only where no size is that. `type-size-v1`
+//! took the most common size by characters, and the false-positive measurement showed what that
+//! costs (`docs/measurements/headings/README.md`): on `nist-sp-800-218` 63% of the characters are
+//! 9pt small type and the prose is 12pt, on `nist-sp-800-53Ar5` 75% are 8.5pt assessment text and
+//! the prose is 11pt, so the mode made ordinary prose clear the cut on every line — 2,979 false
+//! headings against 68 declared. **Dense small type is common; it is not the body.**
+//!
+//! **Both conditions, because each alone fails a different document.** A share of characters alone
+//! makes a short page's title the body — one 24pt line over five short ones is 9.5% of that page's
+//! characters. A share of lines alone does the same on a six-line page. A size running on ten or
+//! more lines is text a reader reads, and no title or heading block in the eleven measured
+//! documents does.
 
 use std::collections::BTreeMap;
 
@@ -59,6 +70,26 @@ use std::collections::BTreeMap;
 pub(crate) const HEADING_CUT_NUM: i64 = 6;
 /// Denominator of the heading cut. 6/5 is 1.20.
 pub(crate) const HEADING_CUT_DEN: i64 = 5;
+
+/// A size is **common** when it holds at least 1/`BODY_SHARE_DEN` of the body characters: 1/20.
+///
+/// **Inside the interval the evidence does not distinguish, and at its conservative end.** Over the
+/// eleven documents whose authors declare headings, every size above the body holds at most 4.2%
+/// of the characters, and the smallest prose size that must count as body holds 10.4%
+/// (`nist-sp-800-53Ar5`'s 11pt). Any share in (4.2%, 10.4%] picks the same reference on all eleven.
+/// A lower share lets more sizes qualify and raises the reference, so the rule finds fewer headings;
+/// a higher one falls back to the most common size more often, which is how `type-size-v1`
+/// fabricated them. Refusing is the direction to err in, so the share sits low.
+pub(crate) const BODY_SHARE_DEN: u64 = 20;
+
+/// …and runs on at least this many lines.
+///
+/// Ten. A title, a heading block or a single display line never does in the measured documents —
+/// the most lines any size above the body runs on there is eight — and the prose sizes that must
+/// qualify run on 491 lines (`nist-sp-800-218`) to 3,032 (`nist-sp-800-53r5`). A short page whose
+/// body runs on fewer lines than this has no common size, and its reference is the most common
+/// size, which on a short page is its body.
+pub(crate) const BODY_MIN_LINES: u64 = 10;
 
 /// Rendered ems are binned to this, in centipoints, before the mode is taken.
 ///
@@ -84,13 +115,18 @@ pub(crate) struct Typed {
     pub table_owned: bool,
 }
 
-/// The document's rendered ems, char-weighted and binned, from which the body em is read.
+/// The document's rendered ems, binned: the characters set at each size, and the lines whose
+/// dominant size each is — from which the body em is read.
 ///
 /// Built a page at a time and merged, because pages are extracted in parallel and folded in
-/// order; the mode of the merged tally is the mode of the document. Merging is addition, so the
-/// fold order cannot change the answer.
+/// order. Merging is addition, so the fold order cannot change the answer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct EmTally(BTreeMap<i64, u64>);
+pub(crate) struct EmTally {
+    /// Characters per size bin, over non-blank, non-artifact runs.
+    chars: BTreeMap<i64, u64>,
+    /// Lines per size bin, each line counted once at the size most of its characters are set in.
+    lines: BTreeMap<i64, u64>,
+}
 
 impl EmTally {
     /// Count one run toward the body em, **if it is body text at all**: a whitespace run carries
@@ -100,29 +136,69 @@ impl EmTally {
             return;
         }
         if let Some(em) = run.em {
-            *self.0.entry(bin(em)).or_insert(0) += run.chars;
+            *self.chars.entry(bin(em)).or_insert(0) += run.chars;
+        }
+    }
+
+    /// Count one line at the size most of its body characters are set in. A line with no
+    /// measurable body text counts nowhere, and ties go to the smaller size.
+    pub(crate) fn add_line(&mut self, runs: &[Typed]) {
+        let mut per: BTreeMap<i64, u64> = BTreeMap::new();
+        for run in runs.iter().filter(|run| !run.blank && !run.artifact) {
+            if let Some(em) = run.em {
+                *per.entry(bin(em)).or_insert(0) += run.chars;
+            }
+        }
+        if let Some(best) = per.values().copied().max() {
+            if let Some((em, _)) = per.iter().find(|(_, chars)| **chars == best) {
+                *self.lines.entry(*em).or_insert(0) += 1;
+            }
         }
     }
 
     /// Add another page's tally to this one.
     pub(crate) fn merge(&mut self, other: &EmTally) {
-        for (em, chars) in &other.0 {
-            *self.0.entry(*em).or_insert(0) += chars;
+        for (em, chars) in &other.chars {
+            *self.chars.entry(*em).or_insert(0) += chars;
+        }
+        for (em, lines) in &other.lines {
+            *self.lines.entry(*em).or_insert(0) += lines;
         }
     }
 
-    /// The body em: the modal bin, in centipoints, or `None` on a document with no measurable
-    /// body text — which is an answer, and the rule then fires nowhere.
+    /// The body em, in centipoints: **the larger of the most common size and the largest common
+    /// size** — common meaning at least 1/[`BODY_SHARE_DEN`] of the body characters on at least
+    /// [`BODY_MIN_LINES`] lines. `None` on a document with no measurable body text, which is an
+    /// answer: the rule then fires nowhere.
     ///
-    /// **Ties go to the smallest bin**, so the mode of a tie is stable and does not depend on
-    /// iteration order; and the smaller of two equally common sizes is the more conservative
-    /// reference for a rule that fires on type *larger* than it.
+    /// **Never below the most common size, so the repair can only remove headings.** The most
+    /// common size is what `type-size-v1` used; taking the larger of the two means `-v2`'s cut is
+    /// never lower than `-v1`'s on any document, so `-v2` fires on a subset of the lines `-v1` fired
+    /// on — a repair that cannot fabricate a heading `-v1` did not. Without the `max`, a document
+    /// whose most common size ran on fewer than ten long lines while a smaller size was common
+    /// would get a *lower* reference and more headings.
+    ///
+    /// **Ties for the most common size go to the smaller**, so the mode of a tie is stable and
+    /// does not depend on iteration order; and the smaller of two equally common sizes is the
+    /// more conservative reference for a rule that fires on type *larger* than it.
     pub(crate) fn body_em(&self) -> Option<i64> {
-        let best = self.0.values().copied().max()?;
-        self.0
+        let best = self.chars.values().copied().max()?;
+        let mode = self
+            .chars
             .iter()
             .find(|(_, chars)| **chars == best)
-            .map(|(em, _)| *em)
+            .map(|(em, _)| *em)?;
+        let total: u64 = self.chars.values().sum();
+        let largest_common = self
+            .chars
+            .iter()
+            .rev()
+            .find(|(em, chars)| {
+                **chars * BODY_SHARE_DEN >= total
+                    && self.lines.get(em).copied().unwrap_or(0) >= BODY_MIN_LINES
+            })
+            .map(|(em, _)| *em);
+        Some(largest_common.map_or(mode, |common| common.max(mode)))
     }
 }
 
@@ -214,8 +290,9 @@ mod tests {
     // The body em
     // ---------------------------------------------------------------------------------------
 
-    /// **By characters, not by lines.** Twelve short title lines at 24pt and one paragraph at
-    /// 10pt: counted by line the title would be the body; counted by character the prose is.
+    /// **Where no size is common, the fallback is the mode by characters, not by lines.** Twelve
+    /// short title runs at 24pt and one paragraph at 10pt, with no lines counted: counted by line
+    /// the title would be the body; counted by character the prose is.
     #[test]
     fn the_body_em_is_weighted_by_characters_not_by_lines() {
         let mut tally = EmTally::default();
@@ -283,6 +360,99 @@ mod tests {
         tally.add(&run(None, "unmeasured"));
         tally.add(&run(Some(1000), "   "));
         assert_eq!(tally.body_em(), None);
+    }
+
+    /// `n` lines, each one run of `chars` characters at `em`, counted as the reader counts them.
+    fn lines_of(tally: &mut EmTally, n: u64, em: i64, chars: usize) {
+        for _ in 0..n {
+            let line = [run(Some(em), &"x".repeat(chars))];
+            tally.add(&line[0]);
+            tally.add_line(&line);
+        }
+    }
+
+    /// **Dense small type is common; it is not the body** — `nist-sp-800-53Ar5`'s shape, which
+    /// `type-size-v1` read as the body and so called ordinary prose a heading on every line. 75% of
+    /// the characters at 8.5pt, the prose at 11pt on thousands of lines: the prose is the body.
+    #[test]
+    fn dense_small_type_is_common_but_the_prose_is_the_body() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 2000, 850, 70);
+        lines_of(&mut tally, 250, 1100, 75);
+        assert_eq!(tally.body_em(), Some(1100));
+    }
+
+    /// **The larger of two common sizes is the body** — `nist-sp-800-218`'s 9pt and 12pt.
+    #[test]
+    fn the_larger_of_two_common_sizes_is_the_body() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 1265, 900, 45);
+        lines_of(&mut tally, 491, 1200, 72);
+        assert_eq!(tally.body_em(), Some(1200));
+    }
+
+    /// **A short page's title never becomes the body.** One 24pt line over five short 12pt ones is
+    /// 9.5% of the page's characters — a share alone would make it the reference and the page
+    /// would have no heading. It runs on one line, so it is not common; neither is the body, on
+    /// five, so the reference falls back to the most common size, which on a short page is its body.
+    #[test]
+    fn a_short_pages_title_never_becomes_the_body() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 5, 1200, 22);
+        lines_of(&mut tally, 1, 2400, 12);
+        assert_eq!(tally.body_em(), Some(1200));
+    }
+
+    /// A size above the body on fewer than ten lines is headings, whatever its share.
+    #[test]
+    fn a_size_on_few_lines_is_never_the_body() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 100, 1000, 60);
+        lines_of(&mut tally, 9, 1400, 80);
+        assert!(
+            9 * 80 * BODY_SHARE_DEN as usize >= 100 * 60 + 9 * 80,
+            "the test's premise: the large size holds more than a twentieth of the characters"
+        );
+        assert_eq!(tally.body_em(), Some(1000));
+    }
+
+    /// A size on many lines that holds less than a twentieth of the characters is not common.
+    #[test]
+    fn a_size_under_a_twentieth_of_the_characters_is_not_common() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 400, 1000, 70);
+        lines_of(&mut tally, 40, 1300, 20);
+        assert_eq!(tally.body_em(), Some(1000));
+    }
+
+    /// **The reference is never below the most common size**, so `-v2` can only remove headings
+    /// `-v1` found. Here the most common size runs on four enormous lines and fails the line
+    /// floor, while a smaller size is common: without the `max` the reference would drop to it
+    /// and more lines would fire than under `-v1`.
+    #[test]
+    fn the_reference_never_falls_below_the_most_common_size() {
+        let mut tally = EmTally::default();
+        lines_of(&mut tally, 4, 1200, 2000);
+        lines_of(&mut tally, 100, 900, 40);
+        assert_eq!(tally.body_em(), Some(1200));
+    }
+
+    /// Merging keeps the lines as well as the characters, so a common size split across pages is
+    /// still common.
+    #[test]
+    fn line_counts_merge_across_pages() {
+        let mut a = EmTally::default();
+        lines_of(&mut a, 100, 900, 50);
+        lines_of(&mut a, 6, 1200, 100);
+        let mut b = EmTally::default();
+        lines_of(&mut b, 6, 1200, 100);
+        assert_eq!(
+            a.body_em(),
+            Some(900),
+            "six lines alone are not common, though they hold a tenth of the characters"
+        );
+        a.merge(&b);
+        assert_eq!(a.body_em(), Some(1200), "twelve lines across two pages are");
     }
 
     // ---------------------------------------------------------------------------------------

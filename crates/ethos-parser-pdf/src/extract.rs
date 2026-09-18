@@ -225,14 +225,17 @@ fn page_heading_lines(
             .or_default()
             .push(i);
     }
-    let lines = by_line
-        .into_values()
-        .filter_map(|indices| {
-            let members: Vec<Typed> = indices.iter().map(|&i| typed[i]).collect();
-            let line = Line::of(&members);
-            line.is_candidate().then_some((indices, line))
-        })
-        .collect();
+    // Every line counts toward the reference (`type-size-v2`'s body is the largest size that runs
+    // on many lines); only a line that could be a heading is kept for the verdict.
+    let mut lines = Vec::new();
+    for indices in by_line.into_values() {
+        let members: Vec<Typed> = indices.iter().map(|&i| typed[i]).collect();
+        tally.add_line(&members);
+        let line = Line::of(&members);
+        if line.is_candidate() {
+            lines.push((indices, line));
+        }
+    }
     (lines, tally)
 }
 
@@ -385,7 +388,7 @@ fn extract_page(
     // The gate: the document declares no author structure (see `no_author_structure`), and the
     // profile names the rule — any other id, `not-run-for-this-format` included, runs nothing.
     let infer_headings = profile.heading_inference_rule
-        == ethos_parser_core::HEADING_INFERENCE_RULE_V1
+        == ethos_parser_core::HEADING_INFERENCE_RULE_V2
         && no_author_structure(structure.as_ref());
     let mut heading_lines: HeadingLines = Vec::new();
     let mut em_tally = crate::headings::EmTally::default();

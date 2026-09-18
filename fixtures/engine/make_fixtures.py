@@ -620,8 +620,9 @@ ENGINE_TAGGED_STREAM = (
 
 # name -> (content, wants_font_descriptor)
 # Decision #29, C1 S1. One display line at twice the body type above five body lines. The rule's
-# reference is the char-weighted modal rendered em — 12pt here, carried by the five body lines'
-# characters — and the display line's 24pt clears six fifths of it where no body line does.
+# reference is the largest common size, and on a six-line page no size runs on the ten lines a
+# common size needs, so it is the most common one — 12pt, carried by the five body lines' characters
+# — and the display line's 24pt clears six fifths of it where no body line does.
 # Shared by the untagged page and the tagged one, so the two differ in nothing but the tree.
 HEADING_PAGE = (
     "BT /F1 24 Tf 1 0 0 1 40 170 Tm (Display line) Tj "

@@ -907,6 +907,20 @@ that rate by 0.054 points); and a rate over every line lets a long document fabr
 per declared one inside the bound. §7.5 reserves a breach on a counts-only document for the owner,
 the README names three unmeasured repairs, and **nothing has shipped**: S1 and S2 are local commits.
 
+**Amended 2026-09-18, after the owner chose "repair, then re-measure": the rule is `type-size-v2`,
+and the bound gained a count.** §3.2's reference changes: the body em is the larger of the most
+common size and the **largest common size** — at least a twentieth of the body characters, on at
+least ten lines — because the most common size by characters is dense small type on two of the
+eleven documents. The `max` makes `-v2` fire on a subset of the lines `-v1` fired on, on every
+document. §7.5 gains a second bound: on every one of the eleven, false headings may not exceed
+declared ones. Re-measured ([`measurements/headings/README.md`](measurements/headings/README.md)
+§5): false headings **3,097 → 147**, precision against the authors' tags **5% → 42%**; the rate bound
+holds (0.00%..4.61%, worst `cfpb-home-loan-toolkit`); the count bound holds on ten and is breached on
+`nist-sp-800-218` by its own title — five lines on the cover and five on the title page, tagged `/P` —
+which is the owner's to accept or refuse. The residual false positives are mostly real headings the
+producers tagged `/P`, plus decorative glyphs and one lead paragraph; refusing letterless lines is
+recorded there and not built.
+
 ### S4 — MHS, and the documents
 
 **Files.** `docs/measurements/opendataloader-bench/score.py` (the MHS band, the deleted sentence) and

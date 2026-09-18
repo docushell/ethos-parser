@@ -112,3 +112,71 @@ of them is an owner decision rather than an automatic refusal."* The rule is com
    which is what §7.5's "more headings than the document declares" means.
 
 The first two change the rule; the third changes the bound, and both kinds are the owner's to take.
+
+---
+
+## 5. `type-size-v2`, re-measured — the repair the owner chose
+
+**The owner chose "repair, then re-measure" on 2026-09-18.** Two changes, both measured here with the
+same instrument over the same eleven documents — 262 s, 10.9 GB peak RSS — with the raw readings in
+[`falsepos-v2.json`](falsepos-v2.json) (`falsepos.json` stays `-v1`'s, as measured):
+
+- **The rule's reference is the larger of the most common size and the largest *common* size** —
+  common meaning at least a twentieth of the body characters, on at least ten lines. Dense small type
+  is common; it is not the body. The line floor is what keeps a short page's title from becoming the
+  body (one 24pt line over five short ones is 9.5% of that page's characters). Taking the larger of
+  the two means `-v2`'s cut is never below `-v1`'s, so **`-v2` can only remove headings `-v1` found,
+  never add one**. Both constants sit inside the gaps the evidence leaves — every size above the body
+  holds at most 4.2% of the characters on at most eight lines, and the smallest prose size that must
+  count as body holds 10.4% on 2,418 — at the end that errs toward refusing.
+- **A count bound beside the rate**: on every one of the eleven, no more false headings than the author
+  declared — §7.5's own reason for refusing 10%, made checkable.
+
+| document | declared | fired v1 → **v2** | right v1 → **v2** | false v1 → **v2** | FP rate **v2** |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| irs-f1040sd-2025 *(counts only)* | 9 | 3 → **3** | 1 → **1** | 2 → **2** | 1.67% |
+| irs-fw9 | 28 | 26 → **26** | 26 → **26** | 0 → **0** | 0.00% |
+| nist-sp-800-218 *(counts only)* | 7 | 540 → **10** | 7 → **0** | 533 → **10** | 0.54% |
+| nist-sp-800-207 | 57 | 5 → **5** | 0 → **0** | 5 → **5** | 0.27% |
+| nist-sp-800-171r3 | 180 | 10 → **10** | 6 → **6** | 4 → **4** | 0.10% |
+| nist-sp-800-37r2 | 957 | 38 → **38** | 16 → **16** | 22 → **22** | 0.28% |
+| nist-sp-800-161r1 | 454 | 13 → **13** | 0 → **0** | 13 → **13** | 0.10% |
+| nist-sp-800-53Ar5 | 61 | 2,506 → **43** | 58 → **9** | 2,446 → **34** | 0.04% |
+| nist-sp-800-53r5 | 389 | 41 → **21** | 10 → **7** | 31 → **14** | 0.07% |
+| cfpb-home-loan-toolkit | 83 | 61 → **61** | 19 → **19** | 42 → **42** | **4.61%** |
+| irs-form-1040-2025 | 24 | 23 → **23** | 22 → **22** | 1 → **1** | 0.43% |
+| **all eleven** | | **3,266 → 253** | **165 → 106** | **3,097 → 147** | |
+
+**False headings fall 95%, and precision against the authors' tags rises from 5% to 42%.** The
+reference moved on exactly the three documents the tally said it would — `nist-sp-800-218` 9 → 12pt,
+`-53Ar5` 8.5 → 11pt, `-53r5` 10 → 11pt — and every other document reads exactly as it did.
+
+**The rate bound: met**, 0.00%..4.61% over the nine, worst `cfpb-home-loan-toolkit`.
+
+**The count bound: met on ten, breached on one — `nist-sp-800-218`, 10 false headings against 7
+declared — and all ten are the document's own title.** "NIST Special Publication 800-218 / Secure
+Software Development Framework (SSDF) Version 1.1: / Recommendations for Mitigating / the Risk of
+Software Vulnerabilities", five lines on the cover and the same five on the title page, each tagged
+`/P` by the producer. §7.5's "Why not 0%" paragraph anticipated exactly this: *"such a producer
+labels a real display line `/P`"*.
+
+**What `-v2` cost.** Recall on the three documents whose reference moved: `-218` 7 → 0, `-53Ar5`
+58 → 9, `-53r5` 10 → 7. `-218`'s headings are 14pt over 12pt prose — 1.17×, under the 1.20× cut —
+and `-v1` cleared them only because it measured the body at 9pt, which is also why it called 533 body
+lines headings. `-v1`'s recall on those documents was a by-product of calling every prose line one.
+
+**What the 147 are, read line by line on the four documents that carry most of them:**
+
+- **Real headings the producer did not tag as headings** — the bulk. Titles on cover and title pages,
+  "Executive Summary", "Acknowledgements", "Table of Contents", "Errata", "Patent Disclosure Notice",
+  "4.1 ACCESS CONTROL" (all `/P` or `/TOCI`), and `cfpb`'s numbered step titles ("1. Define what
+  affordable means to you", tagged as list items). The rule is right and the label is the producer's.
+- **Decorative large glyphs** — rule error. Private-use icon characters and a lone `$` on `cfpb`,
+  single letters on their own line on `nist-sp-800-37r2` (drop caps, figure letters). A line with no
+  letters is not a heading; refusing such lines is a further change, **not built**, and would need
+  its own measurement.
+- **One large-type lead paragraph** — rule error. Six lines of `cfpb`'s page 5 set as a lead-in in
+  display type and tagged `/P`.
+
+**What this leaves to the owner:** whether `nist-sp-800-218`'s breach — its title, on two pages —
+is accepted, since every other bound holds. S1, S2, S3 and this repair are local and unpushed.

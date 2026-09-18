@@ -456,8 +456,9 @@ pub fn headings_inferred_from_type(lines: u32, rule: &str, body_em: i64) -> Limi
         format!(
             "{lines} line(s) of this document were read as headings from the TYPE THE PAGE DRAWS, \
              under `{rule}`: every measurable run of each is set at least 6/5 of the body em \
-             measured here, {body_em} centipoints — the char-weighted mode of the rendered em over \
-             the document's non-blank, non-artifact runs — and their runs carry \
+             measured here, {body_em} centipoints — the document's largest common size, the largest \
+             rendered em holding a twentieth of its body characters on ten or more lines — and \
+             their runs carry \
              `inferred_heading`. The document declares no author structure — no \
              `/StructTreeRoot`, or only one this engine wrote — so EVERY heading in this \
              artifact is this engine's measurement of type and NONE is the author's. Each is one \

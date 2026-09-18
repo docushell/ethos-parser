@@ -477,20 +477,29 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// produces no role path and says so.
 pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 
-/// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3).
+/// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3), repaired on
+/// measurement.
 ///
-/// **A line is an inferred heading when every run of it with a measurable rendered em is at
-/// least 1.20× the document's body em**, the body em being the char-weighted mode of the rendered
-/// em over every non-blank, non-artifact run, binned to a tenth of a point. The line must not be
-/// whitespace, an `/Artifact`, or a table's; and the rule runs **only on a document that declares
-/// no structure**, so a declared heading and an inferred one can never both exist in one artifact.
+/// **A line is an inferred heading when every run of it with a measurable rendered em is at least
+/// 1.20× the document's body em**, the body em being the document's **largest common size**: the
+/// largest em holding at least a twentieth of the body characters and running on at least ten
+/// lines, or the most common size where none does. The line must not be whitespace, an
+/// `/Artifact`, or a table's; and the rule runs **only on a document that declares no author
+/// structure**, so a declared heading and an inferred one can never both exist in one artifact.
 ///
 /// It reads **type, never position** — the rendered em, which is the vertical scale of the text
 /// rendering matrix and not the `Tf` operand, since a page may set `Tf /F 1` and draw its type in
-/// the matrix. One level only: every inferred heading is level 1, because nothing here can rank
-/// two sizes against an author's intent. The profile's rule id is the switch, as
-/// [`READING_ORDER_RULE_V0`] is the cut's: a profile naming [`NOT_RUN`] runs no inference.
-pub const HEADING_INFERENCE_RULE_V1: &str = "type-size-v1";
+/// the matrix. One level only: every inferred heading is level 1. The profile's rule id is the
+/// switch, as [`READING_ORDER_RULE_V0`] is the cut's: a profile naming [`NOT_RUN`] runs no
+/// inference.
+///
+/// **`-v2` because `-v1` fabricated.** `type-size-v1` took the most common size by characters as
+/// the body, and on two of the eleven documents whose authors declare headings that is dense
+/// small type — 2,979 false headings against 68 declared (`docs/measurements/headings/README.md`).
+/// `-v1` was never pushed or released; the id moves anyway, because two builds in this
+/// repository's history producing different bytes under one id is the state a rule id exists to
+/// make impossible.
+pub const HEADING_INFERENCE_RULE_V2: &str = "type-size-v2";
 
 /// The forms-and-annotations rule v1-S4 ships.
 ///
@@ -1273,7 +1282,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
-    /// See [`HEADING_INFERENCE_RULE_V1`]. Its own field and not a fold into `struct_tree_rule`,
+    /// See [`HEADING_INFERENCE_RULE_V2`]. Its own field and not a fold into `struct_tree_rule`,
     /// which names the reading of the document's own tree: this rule runs exactly where that one
     /// found nothing, and one id covering both would make every *tagged* document's artifact
     /// non-comparable across a change to a rule that never ran on it — `html_rule`'s argument
@@ -1358,7 +1367,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V3.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
-            heading_inference_rule: HEADING_INFERENCE_RULE_V1.to_string(),
+            heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V8.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V8.to_string(),
@@ -2284,7 +2293,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v1","html_rule":"html-blocks-v8","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v8","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v8","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v8","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3125,11 +3134,17 @@ mod tests {
              `#` and `<h1>` where `-v7` projected a paragraph; both ids move because both \
              projections call that function, as they moved together for the EPUB source at \
              v2.2-S0. A document where the reader flagged nothing projects the same bytes under \
-             either id, apart from this hash and the two ids themselves."
+             either id, apart from this hash and the two ids themselves.\n\n\
+             Moved again when decision #29's rule was repaired on measurement: \
+             `heading_inference_rule` `type-size-v1` -> `type-size-v2`, and nothing else. `-v1` \
+             took the body as the most common size and fabricated 2,979 headings against 68 \
+             declared where dense small type dominated a document's characters; `-v2` takes the \
+             largest common size, one holding a twentieth of the body characters on ten or more \
+             lines. `-v1` was never pushed or released, and the id moves anyway."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:a72c7e63def2ee990d84d053608d628ad6a4b63570b109143705554850a9ff24"
+            "sha256:e9b6d3e6349ff226b580e9843d8814a983c4399d6622ad65bb1fb500522d8f33"
         );
     }
 

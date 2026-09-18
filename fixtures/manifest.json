@@ -810,7 +810,7 @@
       "path": "heading-display-line/document.pdf",
       "sha256": "sha256:63dacd4e68465fb9fa955a67357fff611c53127849acfc118a346f623edf27c1",
       "owner": "engine",
-      "notes": "Decision #29, C1 S1: headings inferred from type (2026-09-18). One display line at 24pt above five body lines at 12pt, and NO /StructTreeRoot. Expect the one run `Display line` to carry inferred_heading and no other run to, and the artifact to declare headings-inferred-from-type naming 1 line, the rule type-size-v1 and a body reference of 1200 centipoints — the char-weighted modal rendered em — beside untagged-structure-tree-absent, which stays declared as the precondition."
+      "notes": "Decision #29, C1 S1: headings inferred from type (2026-09-18). One display line at 24pt above five body lines at 12pt, and NO /StructTreeRoot. Expect the one run `Display line` to carry inferred_heading and no other run to, and the artifact to declare headings-inferred-from-type naming 1 line, the rule type-size-v2 and a body reference of 1200 centipoints — the most common size, because on a six-line page no size runs on the ten lines a common size needs — beside untagged-structure-tree-absent, which stays declared as the precondition."
     },
     {
       "id": "heading-display-line-tagged",
