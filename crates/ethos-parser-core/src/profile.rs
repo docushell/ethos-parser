@@ -1278,6 +1278,16 @@ pub struct Profile {
     /// defaulted**, the same posture `markdown_rule` and `table_detection.stroke_ruled` took: a
     /// field defaulted in is a claim the run never made.
     pub html_rule: String,
+    /// Version id of the `locate` match rule in force (decision #30).
+    ///
+    /// See [`crate::locate::LOCATE_RULE_V1`]. On the profile for `markdown_rule`'s own reason —
+    /// it decides what comes out, and an artifact whose hash could not tell two match rules apart
+    /// would claim a comparability it lacks — and `docs/26-LOCATE-SCOPE.md` §8 records the
+    /// argument in full, including the one against.
+    ///
+    /// **A profile JSON with no `locate_rule` is refused, not defaulted**, the same posture every
+    /// rule id here takes: a field defaulted in is a claim the run never made.
+    pub locate_rule: String,
     /// Version id of the forms-and-annotations rule in force. New at v1-S4.
     ///
     /// See [`FORM_ANNOTATION_RULE_V1`].
@@ -1323,6 +1333,7 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V7.to_string(),
+            locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
             html_rule: crate::html::HTML_RULE_BLOCKS_V7.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
@@ -1405,6 +1416,7 @@ impl Profile {
             reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1469,6 +1481,7 @@ impl Profile {
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1527,6 +1540,7 @@ impl Profile {
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1589,6 +1603,7 @@ impl Profile {
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1638,6 +1653,7 @@ impl Profile {
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1693,6 +1709,7 @@ impl Profile {
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1746,6 +1763,7 @@ impl Profile {
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1803,6 +1821,7 @@ impl Profile {
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
+            locate_rule: NOT_RUN.into(),
             html_rule: NOT_RUN.into(),
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
@@ -1953,6 +1972,7 @@ mod tests {
             struct_tree_rule: _,
             markdown_rule: _,
             html_rule: _,
+            locate_rule: _,
             form_annotation_rule: _,
             cmap_data_version: _,
             font_metrics_data_version: _,
@@ -2144,6 +2164,10 @@ mod tests {
                 Box::new(|p: &mut Profile| p.markdown_rule = "other-markdown-v9".into()),
             ),
             (
+                "locate_rule",
+                Box::new(|p: &mut Profile| p.locate_rule = "other-locate-v9".into()),
+            ),
+            (
                 "html_rule",
                 Box::new(|p: &mut Profile| p.html_rule = "other-html-v9".into()),
             ),
@@ -2157,10 +2181,12 @@ mod tests {
         // one it grew by is `table_detection.tagged`, which arrived at v2-S24 with its mutation
         // in the same commit. Thirty-four since decision #22, which added
         // `font_metrics_data_version` with its mutation in the same commit for the same reason.
+        // Thirty-five since decision #30, which added `locate_rule` the same way.
         assert_eq!(
             mutations.len(),
-            34,
-            "{} single-field mutation(s); thirty-four is the number at decision #22",
+            35,
+            "{} single-field mutation(s); thirty-five is the number at decision #30, which added \
+             `locate_rule` with its mutation in the same commit",
             mutations.len()
         );
 
@@ -2215,7 +2241,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","html_rule":"html-blocks-v7","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v7","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.58.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3040,7 +3066,7 @@ mod tests {
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:da38cc256452fe254d85c0730474a52d5eff9e9d80e017435e48793d2170b7d9"
+            "sha256:1b94699ab86b3d86ccfbf3cba3865a087bb77331b23c6ab768fb0460d457193f"
         );
     }
 

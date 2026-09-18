@@ -77,6 +77,7 @@ pub mod geom;
 pub mod html;
 pub mod identity;
 pub mod ids;
+pub mod locate;
 pub mod markdown;
 pub mod profile;
 pub mod representation;
@@ -101,6 +102,11 @@ pub use identity::{
     Sha256Hex,
 };
 pub use ids::{sort_ids, IdAllocator, IdKind, NodeId};
+pub use locate::{
+    locate, Locations, Occurrence, OccurrencePart, OccurrencesWithheld, Searched,
+    LOCATE_MAX_OCCURRENCES, LOCATE_MAX_QUOTE_BYTES, LOCATE_RULE_V1, LOCATIONS_ARTIFACT_TYPE,
+    LOCATIONS_SCHEMA_VERSION,
+};
 pub use markdown::{
     to_markdown, AnchorMap, Coverage, DroppedBucket, MarkdownArtifact, Segment, SegmentKind,
     StructuralErasure, BASELINE_RUN_JOINS_ABUTTED, BASELINE_RUN_JOINS_SPACED, GFM_CELL_NOT_PLACED,

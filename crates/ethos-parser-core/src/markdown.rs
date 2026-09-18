@@ -3814,6 +3814,16 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn project_lines(specs: &[LineSpec<'_>]) -> MarkdownArtifact {
+        artifact_of(repr_of_placed(specs))
+    }
+
+    /// The sealed representation [`project_lines`] projects — the runs, placed where the caller
+    /// put them.
+    ///
+    /// Split out of `project_lines` for [`crate::locate`]'s tests, which need the representation
+    /// and not the Markdown. A second builder beside this one would be a second answer to where
+    /// the runs are, and the block rule reads nothing else.
+    pub(crate) fn repr_of_placed(specs: &[LineSpec<'_>]) -> DocumentRepresentation {
         let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
         let page = PageRecord {
             id: alloc.next(IdKind::Page).unwrap(),
@@ -3846,7 +3856,7 @@ pub(crate) mod tests {
                 presence: GeometryPresence::Measured(QRect::new(0, 0, 100, 100).unwrap()),
             })
             .collect();
-        artifact_of(DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap())
+        DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap()
     }
 
     fn blocks_of(a: &MarkdownArtifact) -> Vec<String> {

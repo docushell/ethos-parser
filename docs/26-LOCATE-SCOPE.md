@@ -226,6 +226,14 @@ input ceiling is 256 MiB (`check.rs:56`), so the arithmetic is answerable; this 
 answer it. If the measured size at 1,000,000 exceeds what a caller can hold, S1 lowers the cap and
 records the number it lowered it to.
 
+**Amended 2026-09-18, after S1 measured it.** The cap stays at 1,000,000 and is no longer
+provisional. A locations artifact at the ceiling is **133,778,286 bytes (127.6 MiB)** for the
+cheapest occurrence there is, 133.77 bytes each; a three-part occurrence costs 326.93 bytes, so the
+crossing-runs shape would be about 312 MiB at the same count. Producing the first costs 503 MiB of
+peak RSS and 2.09 s. The figures, the reasons for confirming rather than lowering, and the
+quadratic cost defect the measurement found in the first implementation are in
+[`measurements/locate/README.md`](measurements/locate/README.md).
+
 ## 5. What an occurrence carries
 
 An occurrence is **`parts`** — one per node its scalars touch, in order — and a `synthesized` count.
@@ -609,7 +617,7 @@ rule the repository already has:
 | --- | --- | --- | --- |
 | `locate_rule` on `Profile` | yes | Contract §2's blanket rule and `markdown_rule`'s precedent (§8) | A contract change about what the profile covers |
 | A page on an occurrence | no | #30 names boxes and not pages; a node states its own (§8) | A named consumer holding occurrences without the record |
-| The cap | 1,000,000, provisional until S1 measures the artifact at it | `MAX_ELEMENTS`, re-declared in core (§4.3) | S1's own measurement, which may lower it |
+| The cap | 1,000,000, **measured and confirmed 2026-09-18**: 127.6 MiB at the ceiling, 503 MiB to produce ([`measurements/locate/README.md`](measurements/locate/README.md)) | `MAX_ELEMENTS`, re-declared in core (§4.3) | A caller who cannot hold 127.6 MiB, named; lowering it would convert documents that get every locator into documents that get none |
 | A non-BMP or combining-mark fixture | not authored; T10 and T11 are hand-built representation tests | The precedent at `history/11-V11-MILESTONES.md` lines 84–86 (§9) | Recorded as a standing item in `OPEN-WORK.md` §5, beside the `<mc:AlternateContent>` one, for the same reason: a unit test leaves the mutation suite and the digest lists unreached |
 | A table cell's concatenated text | not searched by `-v1` | `geometric_blocks` makes a table-owned run standalone, so a cell's runs are one-member blocks (§4.1) | A caller that cites a cell by its text; the verifier resolves a `table_cell` claim through its table, so the two sides are furthest apart here and it is the next `-v2` candidate |
 

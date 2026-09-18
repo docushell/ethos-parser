@@ -1107,6 +1107,34 @@ fn _span_type_is_used(_: &Span) {}
 mod tests {
     use super::*;
 
+    /// **`locate`'s two ceilings are these two ceilings** (D1 S1).
+    ///
+    /// `ethos_parser_core::locate` re-declares them rather than importing them, because this
+    /// crate depends on core and `docs/04-ARCHITECTURE.md` §1 forbids the reverse edge. A
+    /// re-declared constant can drift, so the equality is a test, and it is here because this is
+    /// the file both numbers are in scope in — `limits` is `pub(crate)`, and widening a module so
+    /// an integration test could read it would be a change to the crate for a test's
+    /// convenience.
+    ///
+    /// The reason they are the same numbers is `docs/26-LOCATE-SCOPE.md` §5: a quote longer than
+    /// the longest string `ethos.grounding.v1` admits is longer than any element text a citation
+    /// could carry, and a document with more occurrences than that artifact has elements is past
+    /// the point where a list of locators is the useful answer. Move either number here and this
+    /// fails.
+    #[test]
+    fn locates_ceilings_are_the_grounding_artifacts_own() {
+        assert_eq!(
+            ethos_parser_core::LOCATE_MAX_QUOTE_BYTES,
+            limits::MAX_STRING_BYTES,
+            "the longest quote `locate` accepts is the longest string a citation can carry"
+        );
+        assert_eq!(
+            ethos_parser_core::LOCATE_MAX_OCCURRENCES,
+            limits::MAX_ELEMENTS,
+            "the most occurrences `locate` returns locators for is that artifact's element ceiling"
+        );
+    }
+
     /// **The shape a document past the span cap is projected into is a valid artifact (G1).**
     ///
     /// `project` withholds the spans of a document with more than `limits::MAX_ELEMENTS` of them,

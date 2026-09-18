@@ -11,7 +11,7 @@ reopens v2.2, and nothing here changes what any reader reads out of any document
 | Slice | Theme | State |
 | --- | --- | --- |
 | **S0** | This document and the scope beside it | done |
-| **S1** | The core query, the profile field, and the cap measured | not started |
+| **S1** | The core query, the profile field, and the cap measured | **done 2026-09-18** |
 | **S2** | The three surfaces in one slice: CLI, MCP, both SDKs | not started |
 | **S3** | The measurements that are not the cap's | not started |
 
@@ -62,6 +62,29 @@ surface ships on an unmeasured cap, which is why the measurement is here and not
 **The invariant this slice exists to protect:** the parts' own slices, concatenated in order, equal
 the quote exactly (T12). It fails the moment offsets are written against a block's text instead of
 each node's.
+
+**Amended 2026-09-18, on landing.** Done, with three deviations from the plan above and one
+finding:
+
+- **The cap is confirmed at 1,000,000**, not lowered: 133,778,286 bytes (127.6 MiB) at the ceiling,
+  503 MiB of peak RSS and 2.09 s to produce, in
+  [`measurements/locate/README.md`](measurements/locate/README.md) with the reasons.
+- **The measurement's instrument is an `#[ignore]`d test**, not a script in
+  `docs/measurements/locate/`, because the artifact it measures has no subcommand until S2 and a
+  Python instrument would have had nothing to drive. `accuracy.rs`'s generator is the precedent.
+- **The equality test landed as a unit test in `ethos-parser-grounding/src/check.rs`**, not in that
+  crate's `tests/`, because `check::limits` is `pub(crate)`: widening a module so an integration
+  test could read it would be a change to the crate for a test's convenience.
+- **The measurement found a quadratic cost defect** in the first implementation — a block's member
+  scalar counts were re-counted per match, so the ceiling's own worst case (one block of a million
+  scalars holding a million matches) did not finish. The fix is a per-block prefix of member starts
+  with `partition_point`. This is the argument for the rule that produced it: a cap defended by
+  argument alone would have shipped on a code path that could not reach it.
+- **The tests split by what they can prove.** The units, the refusals and the folding cases are
+  unit tests over hand-built representations in `locate.rs` (T7, T10, T11 and the rule's own
+  negatives); T1 to T6, T8, T9, T12, T13 and T18 are in `crates/ethos-parser-cli/tests/locate.rs`,
+  which is where both readers are visible. T12 and T13 are asserted on **every** case rather than
+  once, because an invariant checked on one document is an invariant nobody checked on the others.
 
 ## S2 — the three surfaces, in one slice
 

@@ -21,6 +21,7 @@
     "verifier",
     "markdown_rule",
     "html_rule",
+    "locate_rule",
     "table_detection",
     "struct_tree_rule",
     "form_annotation_rule",
@@ -210,6 +211,14 @@
         "html-blocks-v7"
       ]
     },
+    "locate_rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version id of the `locate` match rule in force (v2.3, North Star decision #30). Decides what `ethos.parser.locations.v0` contains: `locate-scalar-exact-v1` is code-point-exact on Unicode scalars over the blocks of the reading-order cut — no normalization, no case folding, no whitespace folding — so a match may join runs inside one block and may not join across two. On the profile for `markdown_rule`'s reason: an artifact whose hash could not tell two match rules apart would claim a comparability it lacks. A normalised or folded rule is a `-v2` with its own id, never a flag on this one. A profile with no such key is REFUSED rather than defaulted — a field defaulted in is a claim the run never made. `not-run-for-this-format` on a profile for a format `locate` has not been measured over.",
+      "examples": [
+        "locate-scalar-exact-v1"
+      ]
+    },
     "observation_rule": {
       "type": "string",
       "minLength": 1,
@@ -385,6 +394,7 @@
       },
       "form_annotation_rule": "form-annotations-v1",
       "html_rule": "html-blocks-v7",
+      "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v7",
       "observation_rule": "page-observations-v1",
       "page_budget": {

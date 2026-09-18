@@ -384,6 +384,21 @@ const CORE: &[&str] = &[
     "to_markdown",
     "tables",
     "verifier",
+    // v2.3, D1 S1. `locate`'s query, its artifact, and the two ceilings it borrows from
+    // `ethos.grounding.v1`. The ceilings are on the surface because a caller sizing a request has
+    // to know them before it sends one, and the rule id because the answer depends on which rule
+    // produced it — a normalised or folded rule is a `-v2`, never a flag on this one.
+    "locate",
+    "Locations",
+    "Occurrence",
+    "OccurrencePart",
+    "OccurrencesWithheld",
+    "Searched",
+    "LOCATIONS_ARTIFACT_TYPE",
+    "LOCATIONS_SCHEMA_VERSION",
+    "LOCATE_RULE_V1",
+    "LOCATE_MAX_QUOTE_BYTES",
+    "LOCATE_MAX_OCCURRENCES",
 ];
 
 /// `ethos-parser-pdf` — narrowed at M7. The parsing machinery is `pub(crate)`; only `exit` and
