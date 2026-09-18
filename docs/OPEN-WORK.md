@@ -12,7 +12,8 @@ that branch and the cross-OS jobs merged into local `main` (`89f9390`, `0edbaad`
 decisions of the day were recorded as North Star rows #25–#31.** v0.57.0 is the latest published
 release. The unpublished 0.58.0 release commit is `b4b4aa9` (preflight green, macOS artifacts built
 and verified); local `main` carries it and, after it, everything this page marks *done
-2026-09-16/17*, for 0.59.0.
+2026-09-16/17*, for 0.59.0. **Revised again 2026-09-18, at the 0.59.0 release commit**, cut on local `main`
+after the full gate passed 9/9; unpushed and untagged.
 
 **How to read the status column.**
 - **ready** means nothing but effort stands in the way.
@@ -30,7 +31,7 @@ by effort would be invented.
 | Item | Status | Detail |
 | --- | --- | --- |
 | **Publish 0.58.0** | **owner** | **`main` pushed 2026-09-18** at `791f0fe`, carrying the release commit `04bd9f2` and its merge `b4b4aa9` and all the v2.2 and v2.3 work after them; no tag. The first push to carry `release-artifacts.yml` showed the file was invalid, fixed the same day (`docs/RELEASING.md` §8's amendment) — and that the workflow **cannot build 0.58.0 by any route**: `b4b4aa9` predates the file, and a dispatch at that ref runs a script that predates `--native`. So 0.58.0 ships the macOS pair below. Before the push: the release commit sat on local `main`, unpushed. `ci/release-preflight.sh` passed there (gate 9/9); `target/release-artifacts/` holds the `aarch64` and `x86_64` macOS tarballs, both `verified`; the notes are drafted. Remaining, all the owner's: ~~push `main`~~ (done 2026-09-18), tag `v0.58.0` at `b4b4aa9`, create the release. **Until the tag exists, `parser_version` 0.58.0 names a build no release carries.** Every byte-changing commit since `b4b4aa9` belongs to the next version. **The owner decided 2026-09-17:** tag `b4b4aa9` as 0.58.0 as prepared, and all later work is 0.59.0 |
-| **Cut 0.59.0** | **in progress** | The work after 0.58.0 — auto-tagging S1 to S4 with both reviews' fixes (§2.1), the block cut's leftovers (§2.2), the memory rule, the release workflow, the cross-OS jobs, the knobs scope, the reader's content-stream guards (§6), the two benchmark re-measures and the documentation repairs — merged into local `main` on 2026-09-17 and is gated once, when the rest of 0.59.0 has landed. It is a MINOR: readers and emitters change, and a `pdf_tagged` locator from either side of it does not parse on the other (`23-AUTO-TAGGING-SCOPE.md` §8) |
+| **Cut 0.59.0** | **release commit cut, 2026-09-18** | The work after 0.58.0 — auto-tagging S1 to S4 with both reviews' fixes (§2.1), the block cut's leftovers (§2.2), the memory rule, the release workflow, the cross-OS jobs, the knobs scope and its two declarations, the reader's content-stream guards and the other reader fixes (§6), `locate` (6.7), inferred headings (§5), the benchmark re-measures and the documentation repairs. The full gate passed on it once, 9/9 at `5bee482`. The release commit carries the CHANGELOG entry, the version bump, `profile_sha256` re-pinned at 0.59.0 (`sha256:91a42807…`) and the three worked examples regenerated. It is a MINOR: readers and emitters change, and a `pdf_tagged` locator from either side of it does not parse on the other (`23-AUTO-TAGGING-SCOPE.md` §8). Remaining (docs/RELEASING.md §5.2 and §8): preflight and the macOS artifacts at the release commit, then the tag and the GitHub Release, which are the owner's; the tag push is what runs `release-artifacts.yml` for Linux and Windows (6.3). **Until the tag exists, `parser_version` 0.59.0 names a build no release carries.** |
 
 ## 2. v2.2 — layout and accessibility (a roadmap version)
 
@@ -158,8 +159,8 @@ boxes, which doc 22 refused.
   ground-truth headings are level 1; the verdict goes on the wire as an attribute absent where
   false, with `heading_inference_rule` on the profile and a document-scoped declaration; and the
   size clause ships alone at a **5% per-document false-positive bound**, with the font clause held
-  as a conditional slice because it measures 91.7% recall at up to 15.76%. Which roadmap version
-  carries it is pending (§4).
+  as a conditional slice because adding it measures 91.7% recall at up to 15.76%, on a stand-in
+  signal. Which roadmap version carries it is pending (§4).
 
 - ~~**Re-run OmniDocBench** as an instrument after 0.58.0~~ — **done 2026-09-18**: the corpus was
   re-fetched (981 files, 538 521 457 bytes, `v1_0`) and the census re-run in 13 s on the build at

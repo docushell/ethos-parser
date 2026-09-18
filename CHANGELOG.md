@@ -3,7 +3,7 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third and 0.58.0 the fourth** — each tagged, with macOS binaries on
+**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third, 0.58.0 the fourth and 0.59.0 the fifth** — each tagged, with macOS binaries on
 the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
 in-tree only. Nothing is on crates.io, npm or PyPI.
 
@@ -16,6 +16,246 @@ the unit of work that had acceptance criteria. The per-slice reasoning behind ea
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.59.0] — a tag this engine writes reads back as its own, a quote is located in a representation, and an untagged page's headings are read from its type
+
+**A MINOR, because readers and emitters changed.** Three things are new. `tag` writes a structure
+tree into an untagged PDF, and the reader reads that tree back as this engine's — `computed`, not an
+author's, for as long as its `/EthosParser` attribute survives. `locate` answers where a string lies
+in a representation. And an untagged PDF's headings are read from the type its lines are drawn in,
+declared as such, and projected as `#` and `<h1>`. Beside them the reader refuses three ways a page
+was lost without a word, says when the empty user password opened an encrypted document, and moves
+the pen over a run it drops, and a DOCX reads one branch of an `<mc:AlternateContent>` instead of
+all of them. **The wire changes a 0.58.0 consumer sees** each rest on a North Star decision of
+2026-09-17 (#25–#31), except where a bullet says otherwise:
+
+- **A `pdf_tagged` locator carries `derivation`**, `extracted` or `computed`, required and with no
+  default. A 0.58.0 build refuses a representation that carries it (`unknown field derivation`), and
+  this build refuses a 0.58.0 representation carrying any `pdf_tagged` locator — a run's, or an
+  annotation's or widget's the tree cites by `/OBJR` — with `missing field derivation`. Both are
+  exit 2 from the CLI as `engine: malformed representation: … [malformed]`, measured both ways
+  against the 0.58.0 release binary, and a refusal from every MCP tool that takes a representation,
+  before its fingerprint is checked. Office and untagged-PDF representations carry no such locator.
+  The library's extract artifact moves the same way — its tagged runs' locators and its tagged-table
+  records carry the field — so each build refuses the other's extract artifact of any tagged PDF.
+- **A text run carries `inferred_heading` where the heading rule read its line as a heading**, and
+  nothing where it did not. A 0.58.0 build refuses a representation carrying it, because text-run
+  attributes deny unknown fields, and a library extract artifact carrying it too. A representation
+  in which no heading was inferred carries no new key from this rule, and 0.58.0 reads it, as it
+  read `leading-gap-two-blocks`'s.
+- **The profile moves:** `struct_tree_rule` to `struct-tree-v2`, `markdown_rule` and `html_rule` to
+  `markdown-blocks-v8` and `html-blocks-v8`, and two new fields, `locate_rule`
+  (`locate-scalar-exact-v1`) and `heading_inference_rule` (`type-size-v2`), each
+  `not-run-for-this-format` on the office profiles.
+- **Five new declarations:** `structure-tree-engine-written`, `encrypted-empty-user-password` and
+  `headings-inferred-from-type`, each on its decision; `block-subdivision-leading-gap-only` on every
+  PDF representation, the block cut's own limits put on the wire, which no decision records; and
+  `classify-reads-no-structure-tree` on every classification, this release's answer to the
+  `classify`/`extract` disagreement #31 filed as a defect to fix. **Two rewritten details:**
+  `untagged-structure-tree-absent`, on every representation of a PDF with no tree, because decision
+  #29 made its old wording false; and `geometry-absent-not-groundable` where the only nodes without
+  an ink box are of a kind that has none, a defect repair no decision records.
+- **Two new outputs:** the `ethos.parser.locations.v0` artifact, and a PDF `tag` writes, stamped
+  `ethos.parser.tags.v0`.
+
+`schema_version` stays at 0.6.0 and the extract artifact's at 0.4.0, on the precedent of 0.55.0 and
+0.58.0: a MINOR whose wire change is named here and refused by the parser, not a shape bump.
+`profile_sha256` is `sha256:91a42807…`.
+
+**How it was measured.** Every engine change but one was compared against the build before it at the
+same version string, so each count below is that change's own; the empty-password declaration's zero
+is a qpdf count of the corpus. The reader fixes were compared over up to 311 PDFs — the 58 engine
+fixtures, the 8 gate documents, the 35 oracle fixtures, the 10 gate-zero documents and 200
+opendataloader-bench documents — by exit code and artifact digest, and categorised where a byte
+moved. The writer's round trip ran over 293 documents; the heading rule's false-positive bound was
+measured on the 11 documents whose authors declare headings and its MHS band on the 107 of the 200
+bench documents whose ground truth holds a heading; `locate`'s ceiling was measured at the ceiling.
+The eight gate documents' representations, Markdown and HTML were compared byte for byte across the
+heading rule, 1.7 GB and 350 MB of them. Office output changes in the two projection rule ids its
+Markdown and HTML carry, which are stamped from the PDF profile (`OPEN-WORK.md` §6), and where a
+DOCX holds an `<mc:AlternateContent>` with text in a branch, which no document in any corpus here
+does — beside the digests and version strings every release moves.
+
+### Added
+
+- **`ethos-parser tag <pdf>`, the tenth subcommand: a structure tree this engine writes, and reads
+  back as its own** (v2.2's second clause; decisions #23 and #25–#27). It writes one `/Document` and
+  one `/Div` for each block of the reading-order cut, in reading order, each `/Div` carrying an
+  attribute object owned by `/EthosParser` with `/Derivation /Computed`; the page's text operators
+  are enclosed in marked-content sequences spliced into its content stream, with a parent tree and a
+  stamp naming the source, the profile and the version. No `/MarkInfo` is written. It fills absence
+  only: a document with a `/StructTreeRoot`, its own output included, is refused, and so is
+  everything it cannot place — marked-content ids with no tree, inline or behind a named property
+  list, a named property list that resolves to nothing, an encrypted document, a content stream
+  under a filter other than none or `FlateDecode` or one that does not decode to its end, bytes its
+  tokeniser cannot account for, an operator whose runs the cut put in two blocks, an object carrying
+  `/StructParents` with no tree, a page left unread, a document with no block — each by name and
+  before a byte is written. **Every output is extracted again before it is returned**, and a moved
+  run, binding, declaration, element or parent-tree entry is a refusal rather than an output. Over
+  293 documents — the 58 engine fixtures, the 35 oracle fixtures and 200 opendataloader-bench
+  documents — **129 tagged and 164 refused**, 146 of the refusals bench documents that are PyPDF2
+  page splits, which kept their marked-content ids and lost their tree. On the 129: `extract` binds
+  41,208 of 41,209 runs `computed` under `Document/Div` (the other is page furniture); `ground`,
+  `markdown` and `html` each equal the original's on 129 of 129; `grounding-check` finds all 129
+  valid; Ethos `verify` agrees on the 122 it can compare; a second `tag` is byte-identical on 129 of
+  129; and `qpdf --check` exits 0 on every output. `tag` is not offered over MCP or the SDKs (#26).
+  **The guarantee is this engine's alone:** 0.58.0, run as `extract` over the same 129 outputs,
+  reads every written `/Div` as an author's, and so will any reader that does not know the owner, or
+  this one if a tool strips the attribute object — read a tagged PDF with this version or later
+  where the difference matters.
+- **The reader reads a tag this engine wrote as its own.** Attribute objects under `/A` and through
+  `/ClassMap` are read; an element owned by `/EthosParser` must say `/Derivation /Computed` or the
+  document is refused as malformed; its runs bind `pdf_tagged` with `derivation: computed`; the
+  document declares `structure-tree-engine-written`, with the element count, the bound runs and the
+  rule; and the projections read an engine-written sequence as no declaration, so a tagged
+  document's Markdown, HTML and grounding are its untagged original's.
+- **`ethos-parser locate <representation> --quote-file <FILE>`, the eleventh subcommand** — an
+  `ethos.parser.locations.v0` artifact, an MCP `locate` tool and `locate()` in both SDKs (decision
+  #30). It answers where a string lies in a representation: every occurrence, as node ids, character
+  offsets in Unicode scalars and the representation's own geometry for the nodes touched. The match
+  rule is `locate-scalar-exact-v1`, code-point-exact, on the profile and named on every artifact; a
+  match may join runs inside one block of the reading-order cut and never across two. **Exit 0
+  whether the string occurs or not, 2 when an input cannot be read or is refused — an empty quote,
+  one over 16,384 bytes or not UTF-8, a representation that fails its fingerprint — and never 1**: a
+  string that occurs nowhere is an empty answer, because an exit code meaning *not found* is one
+  step from a verdict. The quote is read verbatim from a file, because argv cannot carry every
+  string a representation holds. The MCP tool's summary is counts only; the SDKs call the binary
+  rather than port the rule; the LangChain toolkits stay at three tools. **It emits no verdict, no
+  boolean and no score, and its match rule is not the verifier's** — `docs/26-LOCATE-SCOPE.md` §4.2
+  records the five places the verifier resolves a quote differently. **Measured:** past 1,000,000
+  occurrences every locator is withheld; at the ceiling the artifact is 133,778,286 bytes (127.6
+  MiB) and costs 503 MiB of peak memory and 2.09 s. On each of the eight gate documents, a 60-scalar
+  line lifted from its own text occurs exactly once, and a call costs about 20 ms plus the
+  representation read at 80 MB/s — the search is a rounding error beside it.
+- **Headings read from type, on a PDF that declares no structure** (decision #29). A line whose
+  every run with a measurable rendered em is at least six fifths of the document's body em is a
+  level-one heading: the run carries `inferred_heading`, the document declares
+  `headings-inferred-from-type` with the line count, the rule and the body reference measured, and
+  Markdown writes `# ` and HTML `<h1>`. The body em is the larger of the most common rendered size
+  and the largest size holding at least a twentieth of the body characters on at least ten lines, so
+  dense small type that outweighs a document's prose is not taken for the body. It reads the
+  rendered em and not `Tf`'s operand, which is one value on 87 of the 200 bench documents. It runs
+  only on a document with no structure tree or one this engine wrote; wherever an author declared
+  structure, nothing changes. **Measured** on the eleven documents whose authors declare headings,
+  with the tree stripped: a false-positive rate of **0.00%..4.61%**, worst `cfpb-home-loan-toolkit`,
+  and 147 false of the 253 lines it read as headings, most of them real headings the producer tagged
+  `/P`; no document carries more false headings than its author declared except `nist-sp-800-218`,
+  whose title — 10 lines on the cover and the title page, tagged `/P`, against 7 declared — the
+  owner accepted. On opendataloader-bench MHS rises **0.0000 → 0.3321** (band 0.0000..0.9986, median
+  0.1490, worst `01030000000001`, first by name of the 50 still at 0.0000); NID moves 0.8697 →
+  0.8694, a text effect of the `# ` alone, and TEDS does not move. The rule leaves the eight gate
+  documents, which all declare structure, byte-identical apart from their digests and rule ids.
+- **`encrypted-empty-user-password`**, document-scoped, from `extract` and `classify` (decision
+  #31): a document whose user password is empty was read exactly as a plaintext one, because `lopdf`
+  authenticates the empty password and removes `/Encrypt` before this engine looks. The declaration
+  says the bytes are ciphertext, that nothing was withheld, that `source.sha256` binds to the
+  ciphertext, and that no permission is enforced. Of 311 PDFs, qpdf finds 1 encrypted and it needs a
+  password, so no corpus artifact moves.
+- **`classify-reads-no-structure-tree`** on every classification, for the disagreement decision #31
+  filed as a defect to fix: classification reads no structure tree and interprets no text, so its
+  exit 0 does not predict that `extract` will succeed — measured on `tagged-cycle`, which classifies
+  cleanly and is refused by `extract`. `classify --help` says the same. 308 of 311 classify
+  artifacts grow by exactly 554 bytes; the other 3 are refusals, which write no artifact.
+- **`block-subdivision-leading-gap-only`** on every PDF representation: the block cut's four limits,
+  which stood only in `blocks.rs`, are on the wire — whitespace only, no indent branch, 63.7% of
+  real paragraph breaks found at 100% precision on the one gate document able to label them, and a
+  block is not a paragraph. It adds 1,425 bytes to each representation.
+- **A right-to-left fixture**, `rtl-hebrew-visual-order`, and a measured statement in
+  `CAPABILITY.md`: a producer that has resolved bidi draws Hebrew in visual order, so the run's text
+  is the logical word reversed, as the page draws it. No limitation fires. Whether an artifact
+  should declare that is the owner's question (`OPEN-WORK.md` §4).
+
+### Changed
+
+- **`derivation` costs 3.2% (`irs-fw9`) to 4.7% (`nist-sp-800-218`) of a gate document's
+  representation**, median 4.3%: 25 bytes per `pdf_tagged` locator, 41.2 MB of `nist-sp-800-53Ar5`'s
+  1.04 GB. Every existing tagged representation carries it as `extracted`.
+- **`untagged-structure-tree-absent`'s detail** said nothing is inferred and that a heading guessed
+  from type would be indistinguishable from an author's. Both stopped being true with decision #29,
+  and the detail now says what is, so every representation of a PDF with no tree, and everything
+  projected from one, moves, whether or not a heading is found in it.
+- **`geometry-absent-not-groundable` states the population it has.** Where every text run carried a
+  box, it still opened on *"0 of N text node(s) … carry no ink box"* over three zero reasons. Such a
+  document now gets a detail naming the kind — an annotation, a form field or an image — and no text
+  sentence. 34 extract artifacts move, each 1,063 to 1,066 bytes shorter: the 26 bench documents
+  0.58.0's census named and 8 engine fixtures.
+- **An empty `/ToUnicode` destination is accepted, on measurement**, and `scalar_code_mismatch`'s
+  documentation says that false does not mean codes and characters align one to one: an empty
+  destination can offset a ligature's two scalars. Over 311 PDFs — 40,339 `bfchar` entries and 2,806
+  `bfrange` rows — not one destination is empty, so no artifact moves.
+- **`markdown-blocks-v8` and `html-blocks-v8`**, for the inferred heading: the only input that
+  projects differently is a run carrying `inferred_heading`.
+- **The Rust library's surface changes in ways that break source.** `MARKDOWN_RULE_BLOCKS_V7` and
+  `HTML_RULE_BLOCKS_V7` are renamed `_V8`, and public structs gain fields — `derivation` on
+  `PdfTaggedLocator` and the tagged-table record, `inferred_heading` on the text-run attributes and
+  the extract's `TextRun`, and `Profile`'s two new rules — so a struct literal naming them stops
+  compiling. `write_tags`, `TAGS_ARTIFACT_TYPE`, `locate` with its types and limits,
+  `STRUCT_TREE_RULE_V2` and `HEADING_INFERENCE_RULE_V2` are new. Nothing is on crates.io, and
+  whether a change of this kind needs more than a MINOR is open (`OPEN-WORK.md` §4).
+- **`extract --max-pages`'s help** restates its sizing rule as `docs/measurements/memory-ceiling/`
+  §15 re-measured it at 0.58.0.
+
+### Fixed
+
+- **A document with a page `lopdf` would read in part, or panic on, is refused by `extract`, naming
+  the page** — exit 2 and no artifact, where the page was read as whatever came back — and
+  `classify` counts nothing on such a page, and no longer aborts on it. Three shapes: an inline
+  image with neither a colour space nor `/IM true` panicked inside `lopdf`'s decoder, and the
+  release build aborts on a panic — an MCP server with it; the decoder stopped at the first
+  operation it could not parse and returned what came before as the whole page; and a `FlateDecode`
+  stream cut or corrupt part way inflated to what came before the damage and was returned as a
+  success. Over 311 documents 0 of 622 `extract` and `classify` answers moved, and the cost on
+  `nist-sp-800-53Ar5` is 32.46 s → 32.57 s. **The first corpus example arrived the next day:** of
+  OmniDocBench's 981 born-digital pages, one is now refused where the build before wrote an artifact
+  of a page whose 125,718-byte content stream was dropped after its fourth byte.
+- **A run dropped at an undecodable code still moves the pen.** The loop returned at the code,
+  leaving the text matrix where it stood, so every later run of the text object was reported a
+  dropped run's width to the left of where the page draws it. Ghostscript 10.06 draws the later text
+  in the same place whether the dropped code decodes or not, and the engine now reports it there. Of
+  311 documents 19 move — 11 bench, 6 gate, 2 gate-zero — and of their 4,381,031 runs, 66,280 (1.5%)
+  move, all horizontally: rightward by up to 274.86 pt (`nist-sp-800-53Ar5`), and on 7 documents
+  also leftward, by at most 1.21 pt, where a dropped run's net advance is negative; no text, run
+  count or advance changes, and no classify artifact moves.
+- **A DOCX reads one branch of an `<mc:AlternateContent>`.** Every `<w:t>` was collected whatever
+  its ancestry, so a phrase written once as a drawing and again as VML reached the artifact at two
+  citable addresses. The first `<mc:Choice>` is read, the rest are counted in
+  `office-parts-not-read` when they held text, and paragraph and run addresses still count the
+  skipped branch, as a consumer counting the file's own elements would. No document in any corpus
+  here carries the element, and no in-tree artifact moves.
+
+### Build and release
+
+- **`release-artifacts.yml` builds the Linux and Windows binaries** — and macOS on both
+  architectures — on a `v*` tag or by hand, executes each over the eight gate documents where it was
+  built, and labels a target `verified` only when every fingerprint is byte-identical across the
+  runners. It publishes nothing. 0.59.0 is the first version it can build: 0.58.0's commit predates
+  it. As first pushed the file was invalid on GitHub, which reads no `matrix` in a job-level `if:`;
+  a `plan` job now filters the targets.
+- **`cross-os-digests` and `cross-os-identity`** build the release engine on Linux, macOS and
+  Windows and fail if the artifact digests differ by a byte. Their first run, at `791f0fe`, was
+  green: 81 documents, 320 of 324 digests produced. They now cover 84 documents.
+- **The two forbidden-token greps run in CI's `check` job**, so a push to `main` runs them.
+
+### Not done
+
+- **The heading rule's font-name clause** is not built: adding it to the size clause measured 91.7%
+  recall at up to 15.76% false positives on a stand-in signal, the ink-box height — three times the
+  bound — and it stays a conditional slice.
+- **Decorative large glyphs** — private-use icons, a lone `$`, a drop cap on its own line — can be
+  read as headings. Refusing a line with no letters is recorded and not built. **One level only**:
+  every heading the bench labels is level one, and its evaluator flattens levels, so a second level
+  could not be measured.
+- **`tag` refuses 146 of the 200 bench documents**, all PyPDF2 page splits carrying marked-content
+  ids without a tree — 98 refused on those ids, 48 first on a `/StructParents` key with no tree;
+  that count is the owner's to weigh against `docs/23` §3.6 row 2. And 6 of 4,116 reals outside
+  content streams, in 2 PyPDF2 documents, do not survive `f32` below the ninth significant digit
+  when a tagged file is written.
+- **`LZWDecode` and `ASCII85Decode` partial output** is still read on the extract path, as `lopdf`
+  returns it; no page of any corpus here carries either filter (`OPEN-WORK.md` §6).
+- **No committed fixture** carries an `<mc:AlternateContent>`, a scalar outside the Basic
+  Multilingual Plane or a combining mark; unit tests hold those paths.
 
 ---
 
