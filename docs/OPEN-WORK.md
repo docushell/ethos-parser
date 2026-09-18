@@ -143,7 +143,7 @@ boxes, which doc 22 refused.
   [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md); **S1, the reader, done 2026-09-18**: the rule reads
   the rendered em, sets `inferred_heading` on a line of a document with no author structure, and
   declares `headings-inferred-from-type`; tagged documents are byte-identical but for the profile
-  hash, and it fires on none of the 58 pre-existing engine fixtures that extract. S2 (the projections) next. What the scope settles, each on
+  hash, and it fires on none of the 58 pre-existing engine fixtures that extract. **S2, the projections, done the same day**: an inferred heading is `#` and `<h1>` under `-v8`, the gate documents' projections are unchanged but for the ids and digests, and an engine-tagged page keeps its heading. S3 (the false-positive instrument and bound) and S4 (MHS) next; S5 is conditional. What the scope settles, each on
   a measurement: the signal is the **rendered em**, not the field spelled `font_size`, which carries
   one distinct value on 87 of the 200 bench documents and on all four gate documents measured; the
   unit is the line; one level, because the harness flattens them and all 193 ground-truth headings

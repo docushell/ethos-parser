@@ -122,11 +122,14 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// `<h1>` now projects `<h1>` where `-v2` projected `<p>`. Both projection ids move together here
 /// and that is not a contradiction of them being separate — separate means they *can* move
 /// independently, and this change went through `heading_level`, which both of them call.
+/// `-v8` at C1 S2 (decision #29): a line the reader read as a heading from the type the page draws
+/// projects as `<h1>` where `-v7` projected `<p>`. Both ids move together a fourth time, for the
+/// reason `-v3` gives: the change went through `heading_level`, which both projections call.
 /// `-v5` at v2.2-S5: two runs the document declared nothing about, drawn as the next ink along
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-pub const HTML_RULE_BLOCKS_V7: &str = "html-blocks-v7";
+pub const HTML_RULE_BLOCKS_V8: &str = "html-blocks-v8";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -300,11 +303,13 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v7`
+/// # The rule, in full — `html-blocks-v8`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).
-/// 2. **`<h1>`–`<h6>` when the structure tree says so**, `<p>` otherwise. No font size is read.
+/// 2. **`<h1>`–`<h6>` when the structure tree says so**, or `<h1>` where the reader read a line as a
+///    heading from its type (decision #29, `TextRunAttributes::inferred_heading`); `<p>` otherwise.
+///    No font size is read here: the reader measured the type, and this reads its flag.
 /// 3. **`<table>`** at the position of the first run one of its cells claims, with the merge
 ///    carried as `rowspan`/`colspan` and covered slots emitting nothing. Every cell is a `<td>`.
 /// 4. **`<ul>`/`<li>`** for runs the tree places in an `/L`, nested from nested `/L`. The document
@@ -693,7 +698,7 @@ mod tests {
     use super::*;
     use crate::markdown::tests::{
         cell, epub_repr_of, repr_of, repr_of_lines, repr_of_paths, repr_with_table, simple_repr,
-        spanning,
+        spanning, with_inferred_headings,
     };
     use crate::{DocumentRepresentation, Profile, SegmentKind};
 
@@ -761,6 +766,18 @@ mod tests {
             a.html,
             "<h1>Chapter One</h1>\n<p>Body text</p>\n<h3>Sub</h3>\n"
         );
+        assert_tiles(&a);
+    }
+
+    /// **A line the reader read as a heading from its type is an `<h1>`** (decision #29) — the
+    /// HTML twin of `markdown.rs`'s `a_run_the_reader_read_as_a_heading_projects_as_one`.
+    #[test]
+    fn an_inferred_heading_projects_as_a_level_one_heading_element() {
+        let a = artifact_of(with_inferred_headings(
+            repr_of(&[("Chapter One", None), ("Body text", None)]),
+            &[0],
+        ));
+        assert_eq!(a.html, "<h1>Chapter One</h1>\n<p>Body text</p>\n");
         assert_tiles(&a);
     }
 

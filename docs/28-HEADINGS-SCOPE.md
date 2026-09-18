@@ -856,6 +856,28 @@ tests, `docs/CAPABILITY.md`.
   bar 4, and the test that §6.1's reading of the rider exists to keep passing.
 - Each gate document's Markdown and HTML are byte-identical to 0.58.0's apart from the profile hash.
 
+**Amended 2026-09-18, on landing: S2 is done.** `heading_level` gained its third source, read
+last, and both projection ids moved to `-v8` (the profile re-pinned to `sha256:a72c7e63…`). What
+was measured, and what the slice added:
+
+- **The gate documents' projections are unchanged**: all eight documents' Markdown and HTML —
+  about 350 MB — are identical to the previous build's except the two rule ids, the profile hash
+  and the representation digest that follows it.
+- **Every declared-heading test passed unchanged**, and `a_big_font_is_not_a_heading` was rewritten,
+  not deleted, as `a_big_font_is_not_a_heading_where_the_document_declares_structure`, with two
+  siblings: the flagged run is a heading, and a declared level wins over the flag.
+- **`heading_level` was restructured, not extended.** It returned `None` for any run without a
+  tagged locator before a third source could be read, and an engine-tagged run — role `Div` — fell
+  through the role match to `None`. The declared sources now return first and the flag is read
+  after both, which is what lets an engine-tagged page project its inferred heading.
+- **docs/23 §4.3's equality holds on the one page where the rule fires** —
+  `an_inferred_heading_survives_tagging_unchanged` — where the four `ROUND_TRIP` pages are
+  single-size and could not have said so.
+- **The worked examples of both projection draft schemas were regenerated.** They carried
+  `parser_version` `0.36.3` beside a `-v7` rule id that arrived long after it — the rule field had
+  been edited in place, the drift the draft-schemas README warns about. They are real artifacts
+  of `synthetic/simple-text` again, differing from the old ones in the four identity fields only.
+
 ### S3 — the false-positive instrument and the bound
 
 **Files.** `docs/measurements/headings/falsepos.py` and `README.md` (new),

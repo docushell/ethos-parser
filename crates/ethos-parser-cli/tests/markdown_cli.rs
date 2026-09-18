@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v7");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v8");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -828,7 +828,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v7");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v8");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1447,4 +1447,59 @@ fn adding_the_epub_source_leaves_tagged_pdf_headings_alone() {
         headings > 0,
         "a tagged PDF must still project its own headings: {headings}"
     );
+}
+
+// -------------------------------------------------------------------------------------------
+// Decision #29: a heading inferred from type
+// -------------------------------------------------------------------------------------------
+
+/// **An inferred heading projects as a level-one heading, in both syntaxes, and its marker is
+/// syntax** (`docs/28-HEADINGS-SCOPE.md` S2).
+///
+/// On S1's fixture — one display line at twice the body type, no `/StructTreeRoot` — the reader
+/// flagged the display line's run, and both projections render it: `# ` in Markdown, `<h1>` in
+/// HTML. The `# ` is one `syntax` segment naming no node, byte-identical in shape to a declared
+/// heading's marker, so a quote touching it does not invert: the rule a consumer already has
+/// covers an inferred heading unchanged. What says the `#` was inferred is the artifact's own
+/// `markdown_rule`, `-v8`, and the representation it names — the `.md` alone cannot say, and
+/// the scope's §5.3 is why nothing is invented to make it.
+#[test]
+fn an_inferred_heading_projects_as_a_level_one_heading() {
+    let dir = scratch("inferred-heading");
+    let repr = extract_to(&dir, &engine_fixture("heading-display-line"));
+
+    let md = markdown_of(&repr);
+    let text = md["markdown"].as_str().expect("a Markdown string");
+    assert!(
+        text.starts_with("# Display line\n\n"),
+        "the display line is a level-one heading and nothing precedes it: {text:?}"
+    );
+    assert_eq!(
+        text.matches('#').count(),
+        1,
+        "one heading, and no body line became one"
+    );
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v8");
+
+    let first = &md["anchor_map"]["segments"][0];
+    assert_eq!(
+        first["kind"], "syntax",
+        "the marker is the exporter's, not the page's"
+    );
+    assert_eq!(first["start"], 0);
+    assert_eq!(first["end"], 2, "`# ` and nothing more");
+    assert!(
+        first.get("node_ids").is_none(),
+        "a syntax segment names no node: {first}"
+    );
+
+    let out = engine(&["html", repr.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let html: Value = serde_json::from_slice(&out.stdout).expect("canonical JSON");
+    let text = html["html"].as_str().expect("an HTML string");
+    assert!(
+        text.starts_with("<h1>Display line</h1>\n"),
+        "the same line, the same level, in the other syntax: {text:?}"
+    );
+    assert_eq!(html["html_rule"], "html-blocks-v8");
 }

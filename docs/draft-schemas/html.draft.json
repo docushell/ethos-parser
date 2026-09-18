@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `html-blocks-v4` (v2.2-S0) emits `<p>`, `<h1>`-`<h6>` from a PDF structure tree or an EPUB's own XHTML element name and from nowhere else — never from a font size, `<ul>`/`<li>` from a tagged `/L`, and `<table>` with the document's merges carried as `rowspan`/`colspan`. Every cell is a `<td>`: no detector reads `/TH`, so a header row would be invented. SEPARATE from `markdown_rule` and it moves independently — a change to how a `<td>` is spelled is not a change to how a GFM row is. Source bytes are ENTITY-ENCODED: `&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`, the whole entity sits inside the `source` segment because `&lt;` contains no `<` to label, and inverting a source segment therefore means HTML-unescaping it — a total, lossless transform. The census counts the CHARACTERS the document drew, not the bytes the entity took.",
       "examples": [
-        "html-blocks-v7"
+        "html-blocks-v8"
       ]
     },
     "html": {
@@ -208,43 +208,43 @@
   },
   "examples": [
     {
-      "artifact_type": "ethos.html.v1",
-      "schema_version": "1.0.0",
-      "parser_version": "0.36.3",
-      "profile_sha256": "sha256:2e728a7e7b68841c2587a61a1cf17d291448bb1098f3a0f555f7b4fd8bd6feb0",
-      "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3",
-      "representation_sha256": "sha256:43003bcacba67974cb572a9e2c6cff20f748cdb4d8bedec1f8f66cb75752328c",
-      "html_rule": "html-blocks-v7",
-      "html": "<p>Hello Ethos</p>\n",
       "anchor_map": {
         "segments": [
           {
+            "end": 3,
             "kind": "syntax",
-            "start": 0,
-            "end": 3
+            "start": 0
           },
           {
-            "kind": "source",
-            "start": 3,
             "end": 14,
+            "kind": "source",
             "node_ids": [
               "s1"
-            ]
+            ],
+            "start": 3
           },
           {
+            "end": 19,
             "kind": "syntax",
-            "start": 14,
-            "end": 19
+            "start": 14
           }
         ]
       },
+      "artifact_type": "ethos.html.v1",
       "coverage": {
-        "source_chars_in_representation": 11,
-        "source_chars_emitted": 11,
-        "source_chars_dropped": 0,
         "dropped": [],
+        "source_chars_dropped": 0,
+        "source_chars_emitted": 11,
+        "source_chars_in_representation": 11,
         "structural_erasures": []
-      }
+      },
+      "html": "<p>Hello Ethos</p>\n",
+      "html_rule": "html-blocks-v8",
+      "parser_version": "0.58.0",
+      "profile_sha256": "sha256:a72c7e63def2ee990d84d053608d628ad6a4b63570b109143705554850a9ff24",
+      "representation_sha256": "sha256:f41c3e84672b4bca9774fe11d2ccc235d4a40eece218aca5d9cf63341704e1ae",
+      "schema_version": "1.0.0",
+      "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3"
     }
   ]
 }

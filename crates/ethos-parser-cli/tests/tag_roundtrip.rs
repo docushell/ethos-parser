@@ -709,3 +709,29 @@ fn stripping_the_attribute_launders_the_tag() {
         }
     }
 }
+
+/// **The one page where the heading rule fires keeps its projections through `tag`** — docs/23
+/// §4.3's equality, on the case decision #29's gate has a second arm for
+/// (`docs/28-HEADINGS-SCOPE.md` §6.1).
+///
+/// The four `ROUND_TRIP` pages are single-size, so the rule fires on none of them and their
+/// equality says nothing about it. Here the untagged original infers a heading; the tagged copy
+/// carries a tree only this engine wrote, which is no declaration, so the reader infers the same
+/// heading from the same type; and both project the same `#`. Were the gate closed on an
+/// engine-written tree, the tagged copy would project a paragraph and this would fail.
+#[test]
+fn an_inferred_heading_survives_tagging_unchanged() {
+    let t = twin("heading-display-line");
+    let (t_md, u_md) = (markdown(&t.tagged), markdown(&t.untagged));
+    assert!(
+        u_md.markdown.starts_with("# Display line\n"),
+        "the original infers the heading, so the equality below is not vacuous: {:?}",
+        u_md.markdown
+    );
+    assert_eq!(t_md.markdown, u_md.markdown, "the Markdown text");
+    assert_eq!(
+        html(&t.tagged).html,
+        html(&t.untagged).html,
+        "the HTML text"
+    );
+}

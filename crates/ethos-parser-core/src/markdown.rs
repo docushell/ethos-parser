@@ -112,13 +112,17 @@ pub const MARKDOWN_ARTIFACT_TYPE: &str = "ethos.markdown.v1";
 /// version exists.
 pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 
-/// The projection rule v1.1-S3 ships: block structure — GFM tables and tagged lists — with
-/// headings still only from the structure tree, and a word broken across a line closed up.
+/// The projection rule in force: block structure — GFM tables and tagged lists — with headings
+/// from what the document declares **or, since decision #29, from the type an untagged page
+/// draws**, and a word broken across a line closed up.
 ///
 /// A versioned id for the same reason every detector has one: it decides what comes out. A run
 /// that projected headings from font sizes and a run that refused to would disagree about the
 /// same document, and an artifact whose hash could not tell them apart would claim a
-/// comparability it lacks.
+/// comparability it lacks. **That sentence was written as the argument against inferring a
+/// heading; it is now the argument for moving this id when one is inferred** — `-v8` is the id
+/// under which a `#` may be the engine's reading of type rather than the author's word, and it is
+/// the whole of the disclosure a Markdown artifact can carry (`docs/28-HEADINGS-SCOPE.md` §5.3).
 ///
 /// **One value per slice that changed what comes out**, and this string is the only
 /// place the current one is spelled:
@@ -131,6 +135,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S0 | `markdown-blocks-v3` | an EPUB's own `<h1>`..`<h6>` projects as a heading |
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
+/// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -141,7 +146,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V7: &str = "markdown-blocks-v7";
+pub const MARKDOWN_RULE_BLOCKS_V8: &str = "markdown-blocks-v8";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -610,19 +615,27 @@ pub fn normalize(s: &str) -> String {
     out
 }
 
-/// Heading level from what the **document declared**, or `None` for anything that is not a heading.
+/// Heading level from what the **document declared**, or from what the reader **measured of its
+/// type** where the document declared nothing — or `None` for anything that is not a heading.
 ///
-/// Two sources, and the second was missing until v2.2-S0. A PDF's own `/S` types — `H`, `H1` … `H6`
-/// — after its `/RoleMap` has been applied, which `crate::representation::PdfTaggedLocator` already
-/// carries as `standard_role_path`; and an EPUB's own XHTML element name, which
-/// `crate::EpubBlockAttributes::element` carries verbatim.
+/// Three sources, in this order. A PDF's own `/S` types — `H`, `H1` … `H6` — after its `/RoleMap`
+/// has been applied, which `crate::representation::PdfTaggedLocator` already carries as
+/// `standard_role_path`; an EPUB's own XHTML element name, which `crate::EpubBlockAttributes::element`
+/// carries verbatim (missing until v2.2-S0); and, since decision #29, a run the PDF reader read as
+/// a heading from its type, `crate::TextRunAttributes::inferred_heading`, which is always level 1.
 ///
-/// **No font size is consulted.** Checklist L29 is REFUSE, and a heading inferred from 14pt bold
-/// is a claim about layout that no code in this repository makes. Neither source here is an
-/// inference: `<h1>` is the document saying *heading, level one* in as many words, exactly as `/H1`
-/// is, and both are `Extracted`. The rule this function keeps is not *"only PDFs have headings"* —
-/// it is *"a heading is a heading because the document said so"*, and the module header says
-/// precisely that.
+/// **No font size is consulted here.** The first two sources are the document saying *heading,
+/// level one* in as many words — `<h1>` exactly as `/H1` — and both are `Extracted`. The third is an
+/// inference, and it is made where the type is measurable: in the reader, from the rendered em,
+/// declared on the artifact as `headings-inferred-from-type`. This function reads the reader's
+/// flag and never a size. The sentence it kept until decision #29 — *"a heading is a heading
+/// because the document said so"* — narrows to **"or because this engine measured its type, and
+/// the artifact says which"**.
+///
+/// **The declared sources win, structurally rather than by convention.** They return first, and
+/// the reader never sets the flag on a document that declares author structure (its gate), so the
+/// two can never both be present; a later edit reordering this function would still find the flag
+/// absent wherever a declaration exists.
 ///
 /// # What this does NOT reach, and why each is a different job
 ///
@@ -640,21 +653,27 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     if let crate::NodeAttributes::EpubBlock(e) = &node.attributes {
         return xhtml_heading_level(&e.element);
     }
-    let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() else {
-        return None;
-    };
-    let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
-    let last = path.last()?;
-    match last.as_str() {
-        "H" => Some(1),
-        "H1" => Some(1),
-        "H2" => Some(2),
-        "H3" => Some(3),
-        "H4" => Some(4),
-        "H5" => Some(5),
-        "H6" => Some(6),
-        _ => None,
+    if let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() {
+        let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
+        let declared = match path.last().map(String::as_str) {
+            Some("H" | "H1") => Some(1),
+            Some("H2") => Some(2),
+            Some("H3") => Some(3),
+            Some("H4") => Some(4),
+            Some("H5") => Some(5),
+            Some("H6") => Some(6),
+            _ => None,
+        };
+        if declared.is_some() {
+            return declared;
+        }
     }
+    // Decision #29: the reader's measurement of type, last. A run under this engine's own `/Div`
+    // reaches here too — its role path names no heading — which is what keeps an engine-tagged
+    // document's projections equal to its untagged original's (docs/23 §4.3).
+    text_run_attributes(node)
+        .is_some_and(|a| a.inferred_heading)
+        .then_some(1)
 }
 
 /// `h1` … `h6` to a level, and `None` for every other XHTML element name.
@@ -1526,14 +1545,15 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v7`
+/// # The rule, in full — `markdown-blocks-v8`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
 ///    `structural_locator: pdf_artifact`, and checklist O21/O22 is explicit that a reader deleting
 ///    running heads has silently edited the document. The flag stays in the representation and a
 ///    consumer that wants them gone drops them itself, knowing it did.
-/// 2. **A heading when the tree says so**, `#` through `######`; a paragraph otherwise.
+/// 2. **A heading when the tree says so**, `#` through `######` — or `#` where the reader read a
+///    line as a heading from its type (decision #29); a paragraph otherwise.
 /// 3. **A GFM table** for every table on the representation, at the position of the first run one
 ///    of its cells claims. A run emitted inside a table is **not** also emitted as a paragraph —
 ///    the characters move from linear source to cell source, they are not duplicated and they are
@@ -2546,6 +2566,22 @@ pub(crate) mod tests {
         DocumentRepresentation::seal(payload(nodes, vec![page]), geometry).unwrap()
     }
 
+    /// `repr` with the reader's heading flag set on the runs at `indices` — what the reader
+    /// produces for a line it read as a heading from its type (decision #29) — resealed, since a
+    /// sealed record is not edited in place.
+    pub(crate) fn with_inferred_headings(
+        repr: DocumentRepresentation,
+        indices: &[usize],
+    ) -> DocumentRepresentation {
+        let mut payload = repr.payload().clone();
+        for &i in indices {
+            if let NodeAttributes::TextRun(a) = &mut payload.nodes[i].attributes {
+                a.inferred_heading = true;
+            }
+        }
+        DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap()
+    }
+
     pub(crate) fn simple_repr() -> DocumentRepresentation {
         repr_of(&[("Hello Ethos", None)])
     }
@@ -3165,13 +3201,48 @@ pub(crate) mod tests {
         }
     }
 
-    /// **No font size is consulted.** The same text with no role is a paragraph, and the node's
-    /// `font_size` is 2400 either way.
+    /// **A big font is not a heading where the document declares structure.** Rewritten from
+    /// `a_big_font_is_not_a_heading` rather than deleted, because a deleted refusal test is a
+    /// refusal nobody can see was reversed — and what decision #29 reversed is narrower than that
+    /// name said (`docs/28-HEADINGS-SCOPE.md` §9).
+    ///
+    /// This projection consults no font size, and where the document declares structure the reader
+    /// never sets its heading flag (decision #29's gate). So a 2400-centipoint run with no role and
+    /// no flag is exactly what a big font on a tagged document reaches this function as, and it is
+    /// a paragraph.
     #[test]
-    fn a_big_font_is_not_a_heading() {
+    fn a_big_font_is_not_a_heading_where_the_document_declares_structure() {
         let a = artifact_of(repr_of(&[("Chapter One", None)]));
         assert_eq!(a.markdown, "Chapter One\n");
         assert!(!a.markdown.contains('#'));
+    }
+
+    /// **...and it is one where the document declares none.** The same run, flagged by the reader,
+    /// is a level-one heading — the flag, never the size, is what this reads — and the `# ` is
+    /// syntax: the exporter's rendering of an inference, which no quote may include and invert.
+    #[test]
+    fn a_run_the_reader_read_as_a_heading_projects_as_one() {
+        let a = artifact_of(with_inferred_headings(
+            repr_of(&[("Chapter One", None), ("Body text", None)]),
+            &[0],
+        ));
+        assert_eq!(a.markdown, "# Chapter One\n\nBody text\n");
+        let hash = a.markdown.find("# Chapter").unwrap();
+        assert!(!a.anchor_map.is_invertible(hash, hash + 11));
+        let title = a.markdown.find("Chapter One").unwrap();
+        assert!(a.anchor_map.is_invertible(title, title + 11));
+        assert!(a.coverage.balances());
+    }
+
+    /// **A declared heading wins over the flag**, structurally: the reader never sets both, and
+    /// were a hand-edited record to carry both, the document's own `/H2` is what projects.
+    #[test]
+    fn a_declared_level_wins_over_an_inferred_one() {
+        let a = artifact_of(with_inferred_headings(
+            repr_of(&[("Section", Some("H2"))]),
+            &[0],
+        ));
+        assert_eq!(a.markdown, "## Section\n");
     }
 
     /// A role the document wrote that is not a heading stays a paragraph.
