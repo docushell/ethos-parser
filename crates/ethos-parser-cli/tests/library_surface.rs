@@ -171,6 +171,68 @@ fn project_is_reachable_and_canonical_from_the_library() {
     let _ = projection.omission.is_lossy();
 }
 
+/// `ethos-parser locate` — reachable as parse → `verify_fingerprint` → `locate` → canonical bytes.
+///
+/// The fingerprint check is part of the behaviour here for `ground`'s reason: the subcommand
+/// refuses a representation whose payload does not hash to its declared digest, and a library
+/// caller that skipped it would be answering about a record the engine will not speak for.
+///
+/// **No quote file appears in this test**, which is the point of it: the file is the CLI's way of
+/// carrying a string that argv cannot, and a library caller already holds a `&str`.
+#[test]
+fn locate_is_reachable_and_canonical_from_the_library() {
+    let profile = Profile::default();
+    let doc = Document::open(&engine_fx("untagged-shredded-line"), &profile).expect("opens");
+    let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+    let repr = ethos_parser_pdf::to_representation(&extract, &profile).expect("represents");
+    repr.verify_fingerprint().expect("its own bytes verify");
+
+    let found = ethos_parser_core::locate(
+        &repr,
+        &profile.parser_version,
+        &profile.profile_sha256().expect("hashes"),
+        &profile.locate_rule,
+        "arrow",
+    )
+    .expect("locates");
+
+    let v = parse_canonical(
+        &found
+            .to_canonical_bytes()
+            .expect("canonicalizes without the CLI"),
+    );
+    assert_eq!(v["artifact_type"], "ethos.parser.locations.v0");
+    assert_eq!(v["locate_rule"], "locate-scalar-exact-v1");
+    assert_eq!(
+        v["occurrences"].as_array().expect("occurrences").len(),
+        1,
+        "the fixture draws `Yar`, `ro` and `w` abutting, so `arrow` crosses three runs of one block"
+    );
+    assert_eq!(
+        v["occurrences"][0]["parts"]
+            .as_array()
+            .expect("parts")
+            .len(),
+        3,
+        "one part per run the quote touches"
+    );
+
+    // **And the not-found answer is an artifact, not an error** — the property a library caller
+    // needs in order to route outcomes the way the binary does, which is exit 0 either way.
+    let absent = ethos_parser_core::locate(
+        &repr,
+        &profile.parser_version,
+        &profile.profile_sha256().expect("hashes"),
+        &profile.locate_rule,
+        "YarrowSeparate",
+    )
+    .expect("a string that occurs nowhere still answers");
+    assert_eq!(
+        parse_canonical(&absent.to_canonical_bytes().expect("canonicalizes"))["occurrences"],
+        serde_json::json!([])
+    );
+}
+
 /// `ethos-parser grounding-check` — reachable, including the report's own exit-code mapping.
 #[test]
 fn grounding_check_is_reachable_and_canonical_from_the_library() {

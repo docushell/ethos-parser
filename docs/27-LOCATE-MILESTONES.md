@@ -12,7 +12,7 @@ reopens v2.2, and nothing here changes what any reader reads out of any document
 | --- | --- | --- |
 | **S0** | This document and the scope beside it | done |
 | **S1** | The core query, the profile field, and the cap measured | **done 2026-09-18** |
-| **S2** | The three surfaces in one slice: CLI, MCP, both SDKs | not started |
+| **S2** | The three surfaces in one slice: CLI, MCP, both SDKs | **done 2026-09-18** |
 | **S3** | The measurements that are not the cap's | not started |
 
 **S1 lands before S2 on purpose**, for the reason
@@ -114,6 +114,42 @@ schemas.
 `mcp_stdio.rs`'s `every_reply_in_a_session_is_the_reply_a_fresh_server_gives` covering a `locate`
 call. `ci/gate.sh` and `ci.yml` do not change: the gate stays at nine steps, so
 `the_local_gate_runs_what_ci_runs` needs nothing.
+
+**Amended 2026-09-18, on landing.** Done. Four things the plan above did not anticipate, each a
+decision rather than an accident:
+
+- **The quote file's read is bounded by the quote's own ceiling**, not by `read_source`'s 2 GiB.
+  Scope §6.1 said the source ceiling would apply first and the 16,384-byte limit would then refuse
+  by name; it reads one byte past the quote ceiling instead, so the by-name refusal still fires
+  with the number and a caller who points `--quote-file` at a document pays a refusal rather than a
+  two-gigabyte allocation. `read_source`'s ceiling is a ceiling on a *source*, and a quote is not a
+  source.
+- **Both SDK suites were falsely green, and the guard that was supposed to prevent it said it
+  could not be.** Each locator prefers `target/release/ethos-parser` and checked only
+  `--version`, which cannot tell two builds of one *unreleased* version apart: a release build
+  from 00:45 reported the same `0.58.0`, had no `locate` subcommand and advertised three MCP
+  tools, and the parity tests below passed against it. Both locators now probe the subcommands
+  the suites actually drive, reject a binary that cannot answer them, and name staleness apart
+  from a version mismatch — and both doc comments, which claimed the false green was impossible,
+  now say plainly that it was not and quote the measurement. **The gate is where this would have
+  mattered**: step 6 builds debug and step 9 runs the SDK suites, which preferred the stale
+  release build.
+- **Both SDK suites' tool-list parity tests had to be loosened, deliberately.** Each asserted set
+  equality between the tools `ethos-parser mcp` advertises and the LangChain adapters'
+  `TOOL_SCHEMAS`, so a fourth MCP tool failed them. A LangChain tool for `locate` is refused in
+  this slice (scope §6.3), so the assertion now requires every LangChain schema to equal the
+  server's **and** the set difference to be exactly `{locate}` — the exclusion is named, so a fifth
+  tool still fails. A bare subset check would have let the next tool arrive silently.
+- **`locations.draft.json` carries its own fixture**, `untagged-shredded-line` with the quote
+  `arrow`, rather than `simple-text` like the two projection schemas. `simple-text` cannot show the
+  one thing an occurrence is for: three parts from three runs of one block.
+- **Two corrections to the scope's own wire illustration**, found by printing the artifact: a
+  measured box is `[x0, y0, x1, y1]` and not an object of named edges, and `occurrences_withheld`
+  is omitted rather than null. Both are recorded at §3.2.
+
+**And `CHANGELOG.md` does not move here**, though scope §10 listed it. Feature commits in this
+repository do not touch the changelog; the release commit that cuts the version writes the entry,
+which is where the 0.59.0 draft belongs.
 
 ## S3 — the measurements that are not the cap's
 

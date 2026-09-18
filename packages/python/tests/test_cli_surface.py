@@ -103,6 +103,100 @@ def test_ground_refuses_an_object_that_will_not_canonicalize(fixture_pdf):
         ethos_parser.ground(representation)
 
 
+def _quote_file(directory, quote):
+    """A file whose bytes are the quote's UTF-8 encoding, and nothing appended.
+
+    What the SDK writes for itself, written here by hand, so the CLI reads exactly the bytes the
+    adapter sent rather than a file this test formatted differently.
+    """
+    path = directory / "quote.txt"
+    path.write_bytes(quote.encode("utf-8"))
+    return path
+
+
+def test_locate_is_byte_identical_to_the_cli(fixture_pdf, cli, tmp_path):
+    representation = ethos_parser.extract(fixture_pdf)
+
+    on_disk = tmp_path / "representation.json"
+    on_disk.write_bytes(c14n_bytes(representation))
+    from_cli = cli(
+        "locate", str(on_disk), "--quote-file", str(_quote_file(tmp_path, "block"))
+    )
+
+    # Re-canonicalizing what came back reproduces the CLI's stdout bytes, so the answer IS the
+    # engine's. That is the whole of why the match rule is not ported into this package
+    # (`docs/26-LOCATE-SCOPE.md` §6.3): a ported rule would be a second implementation of the
+    # answer, and two implementations of a text-matching rule can disagree.
+    assert c14n_bytes(ethos_parser.locate(representation, "block")) == from_cli
+    # And a path to bytes this engine wrote, which is the other half of what `ground` accepts.
+    assert c14n_bytes(ethos_parser.locate(on_disk, "block")) == from_cli
+    assert c14n_bytes(ethos_parser.locate(str(on_disk), "block")) == from_cli
+    # Two blocks carry the word, so byte identity is measured on a found answer and not only on
+    # the empty one below — an adapter that dropped `occurrences` would pass that and fail this.
+    assert len(ethos_parser.locate(representation, "block")["occurrences"]) == 2
+
+
+@pytest.mark.parametrize(
+    "quote",
+    ["a\nb", "a\x00b", "one\ntwo\x00three\n"],
+    ids=["newline", "nul", "both"],
+)
+def test_a_quote_carrying_a_newline_or_a_nul_survives_the_adapter(
+    quote, fixture_pdf, cli, tmp_path
+):
+    """**The test argv could not have passed**, which is why the quote travels in a file.
+
+    `docs/26-LOCATE-SCOPE.md` §6.1: a NUL cannot appear in an argument at all, a newline survives
+    only through correct quoting, and a quoting mistake changes the searched string *silently* —
+    which changes what was searched with nothing on the wire saying so. So this reads the number
+    of scalars the engine searched for back off the artifact and compares it with the string that
+    was handed in, and then compares the whole artifact against the CLI's own bytes for a file
+    holding that same string.
+    """
+    representation = ethos_parser.extract(fixture_pdf)
+    on_disk = tmp_path / "representation.json"
+    on_disk.write_bytes(c14n_bytes(representation))
+
+    artifact = ethos_parser.locate(representation, quote)
+    # `len` of a `str` is its scalar count, which is the unit `quote_scalars` counts in.
+    assert artifact["quote_scalars"] == len(quote), (
+        "the engine searched for a different number of scalars than the quote has, so the "
+        "adapter did not deliver the string it was given"
+    )
+    assert c14n_bytes(artifact) == cli(
+        "locate", str(on_disk), "--quote-file", str(_quote_file(tmp_path, quote))
+    ), "and it is the artifact the CLI prints for a quote file holding those same bytes"
+
+
+def test_a_quote_that_occurs_nowhere_is_an_answer_and_not_a_failure(fixture_pdf):
+    """Decision #30's own bound: exit 0 and an empty list, never a refusal and never an exit 1.
+
+    An empty ``occurrences`` list is the whole of the not-found answer, and it is the same
+    artifact a found one produces — so nothing raises, and there is no field a caller could read
+    as an opinion about whether anything holds.
+    """
+    quote = "zzz-nowhere-zzz"
+    artifact = ethos_parser.locate(ethos_parser.extract(fixture_pdf), quote)
+    assert artifact["artifact_type"] == "ethos.parser.locations.v0"
+    assert artifact["occurrences"] == []
+    assert artifact["quote_scalars"] == len(quote)
+    assert artifact["searched"]["blocks"] > 0, (
+        "a record nothing was searched in would report absence vacuously"
+    )
+
+
+def test_an_empty_quote_is_a_refusal_and_not_the_not_found_answer(fixture_pdf):
+    """§4.1: the empty string occurs at every offset of every block, so *where* has no answer.
+
+    The adapter keeps that apart from the empty answer above rather than collapsing the two —
+    collapsing them would tell a caller that a string occurring at every position occurs at none.
+    """
+    with pytest.raises(EngineFailed) as excinfo:
+        ethos_parser.locate(ethos_parser.extract(fixture_pdf), "")
+    assert excinfo.value.returncode == 2
+    assert "empty" in excinfo.value.stderr
+
+
 def test_a_document_the_engine_cannot_read_is_a_named_failure(tmp_path):
     not_a_pdf = tmp_path / "document.pdf"
     not_a_pdf.write_bytes(b"this is not a PDF")

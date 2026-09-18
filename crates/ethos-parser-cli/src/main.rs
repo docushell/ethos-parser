@@ -14,11 +14,12 @@
 
 //! `ethos-parser` — the ethos-parser command line.
 //!
-//! **Four subcommands at v0. Ten now**, and this paragraph said four until v2-S13.5 and nine until
-//! auto-tagging S2. The v0 four are `classify`, `extract`, `ground` and `grounding-check`;
-//! `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `overlay`
-//! with the image work, and `tag` — the writer of `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging
-//! S2. The `Command` enum below is the list that cannot go stale, and
+//! **Four subcommands at v0. Eleven now**, and this paragraph said four until v2-S13.5, nine until
+//! auto-tagging S2 and ten until `locate`. The v0 four are `classify`, `extract`, `ground` and
+//! `grounding-check`; `verify` arrived at v0.1, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at
+//! v1.2-S1, `overlay` with the image work, `tag` — the writer of
+//! `docs/23-AUTO-TAGGING-SCOPE.md` — at auto-tagging S2, and `locate` — the query of
+//! `docs/26-LOCATE-SCOPE.md` — at v2.3. The `Command` enum below is the list that cannot go stale, and
 //! `crates/ethos-parser-core/src/verifier.rs` said *"the other eight subcommands"* from v0.1 until
 //! auto-tagging S2 moved it with this paragraph — two files in one workspace disagreeing about a
 //! number a reader can count is exactly what `docs/04-ARCHITECTURE.md` §2 repaired at v2-S13.3 and
@@ -140,15 +141,38 @@ enum Command {
     /// its declared digest.
     Html(HtmlArgs),
 
+    /// Report where a string lies in a `DocumentRepresentation v0` (v2.3, decision #30).
+    ///
+    /// **It answers where, and nothing else.** No verdict, no boolean, no score and no evidence
+    /// tier: a string that occurs nowhere is exit 0 with an empty `occurrences` array, the same
+    /// artifact a found one produces. Whether a location supports a claim stays the verifier's to
+    /// say (`docs/07-VERIFY-BOUNDARY.md` §2), and this takes no claim — a representation and a
+    /// string, and a string is not a claim.
+    ///
+    /// The match rule is this engine's own, versioned as `locate_rule` on the profile:
+    /// code-point-exact on Unicode scalars, no normalization, no case folding, no whitespace
+    /// folding, searching each **block** of the reading-order cut. So a match may join runs
+    /// inside one block and may **not** join across two — a block boundary is a gap the page
+    /// drew, and joining it would assert an adjacency the document does not have. The artifact
+    /// declares what was searched (`searched.nodes`, `searched.blocks`, `searched.scalars`) for
+    /// exactly that reason.
+    ///
+    /// **Exit codes: 0 answered · 2 could not read or refused. There is no exit 1, ever.** An
+    /// exit 1 meaning *not found* is one composition away from a verdict, which is decision #30's
+    /// own re-refusal condition, and `extract`'s doc comment gives the other half of the reason:
+    /// overloading 1 would make a caller's `&&` chain mean two different things depending on
+    /// which subcommand ran.
+    Locate(LocateArgs),
+
     /// Serve the engine over MCP on stdin/stdout (v1.2-S1).
     ///
     /// **stdio, newline-delimited JSON-RPC** — MCP's own stdio transport, so it is a pipe rather
     /// than a socket: no HTTP, no SSE, no TLS, no async runtime, and `deny.toml`'s network bans
     /// stay in force.
     ///
-    /// Three tools — `extract`, `ground`, `node_get` — each calling the same library entry point
-    /// the matching subcommand calls, so an artifact returned here is the artifact this CLI
-    /// prints, byte for byte.
+    /// Four tools — `extract`, `ground`, `node_get` and `locate` — each calling the same library
+    /// entry point the matching subcommand calls, so an artifact returned here is the artifact
+    /// this CLI prints, byte for byte.
     ///
     /// **No tool accepts a locator.** The memo's §16.7 hazard is that MCP tools are
     /// model-controlled, so a tool taking a `page` or a `bbox` the engine then trusts makes the
@@ -277,6 +301,30 @@ struct ExtractArgs {
     /// different.
     #[arg(long, value_name = "N")]
     max_pages: Option<u32>,
+}
+
+#[derive(clap::Args)]
+struct LocateArgs {
+    /// The `DocumentRepresentation v0` to search, as `ethos-parser extract` emits it.
+    path: PathBuf,
+
+    /// A file holding the quote. **Its bytes are the quote, verbatim.**
+    ///
+    /// No trim, no trailing-newline strip, no BOM removal. Stripping one trailing LF would make
+    /// `printf %s` and `echo` agree and would make a quote that genuinely ends in a newline
+    /// unaskable — a silent edit of the caller's input. A shell caller holding the quote in a
+    /// variable writes `--quote-file <(printf %s "$q")`; the bounded read accepts a non-regular
+    /// file.
+    ///
+    /// **Not on argv**, and the decisive reason is not privacy: argv cannot carry every string a
+    /// representation can contain. A NUL cannot appear in an argument at all, a newline survives
+    /// only through correct quoting, and a quoting mistake changes the string *silently* — which
+    /// changes what was searched with nothing on the wire saying so.
+    ///
+    /// The read is bounded by the quote's own 16,384-byte ceiling, which is the longest string
+    /// `ethos.grounding.v1` admits. A larger file is refused by name.
+    #[arg(long, value_name = "FILE")]
+    quote_file: PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -455,6 +503,12 @@ fn main() -> ExitCode {
         Command::Html(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_html(args))
+        }
+        // `Stage::Ground`, as `markdown` and `html` are: it reads a representation. A stage is
+        // not a subcommand, and `diagnostics.rs`'s own test says so.
+        Command::Locate(args) => {
+            let path = args.path.clone();
+            timed(Stage::Ground, diag, &path, || run_locate(args))
         }
         // Not `timed`: a server has no one input path and no one stage, and inventing a
         // diagnostics row for the whole session would put a duration on a pipe.
@@ -749,6 +803,104 @@ fn emit_representation(
 /// outcome to an exit code. The projection lives in `ethos_parser_core::markdown` — it is a projection of
 /// the representation and has nothing to do with PDF, so `ethos-parser-pdf` never learns Markdown
 /// (`docs/04-ARCHITECTURE.md` §1).
+/// Report where a string lies in a representation.
+///
+/// Thin, like the rest: read the representation, re-validate it, read the quote's bytes, call the
+/// library, print canonical bytes. **The fingerprint is checked before the quote is even read**,
+/// so a record this engine will not speak for is refused before anything is searched in it.
+fn run_locate(args: LocateArgs) -> ExitCode {
+    let bytes = match read_source(&args.path) {
+        Ok(b) => b,
+        Err(e) => return fail(&e),
+    };
+
+    let repr: ethos_parser_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "representation".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+    if let Err(e) = repr.verify_fingerprint() {
+        return fail(&e);
+    }
+
+    // **The quote's own ceiling bounds the read**, one byte past it so an over-long quote is
+    // refused by name with the number rather than as a source-size limit. `read_source`'s 2 GiB
+    // is the ceiling on a *source*, and a quote is not a source: pointing this at a document
+    // should cost a refusal, not a two-gigabyte allocation on the caller's behalf.
+    let quote_bytes = match read_source_within(
+        &args.quote_file,
+        ethos_parser_core::LOCATE_MAX_QUOTE_BYTES as u64 + 1,
+    ) {
+        Ok(b) => b,
+        Err(EngineError::ResourceLimit { .. }) => {
+            return fail(&EngineError::Unsupported {
+                what: "locate".into(),
+                detail: format!(
+                    "the quote file is larger than the {}-byte limit, which is the longest string \
+                     `ethos.grounding.v1` admits — so it is longer than any element text a \
+                     citation could carry",
+                    ethos_parser_core::LOCATE_MAX_QUOTE_BYTES
+                ),
+            })
+        }
+        Err(e) => return fail(&e),
+    };
+
+    let quote = match String::from_utf8(quote_bytes) {
+        Ok(q) => q,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "locate quote".into(),
+                detail: format!(
+                    "the quote file is not UTF-8: the first invalid byte is at offset {}. A \
+                     representation's text is UTF-8, so a byte sequence that is not UTF-8 cannot \
+                     occur in one and there is nothing to search for",
+                    e.utf8_error().valid_up_to()
+                ),
+            })
+        }
+    };
+
+    let profile = Profile::default();
+    let profile_sha256 = match profile.profile_sha256() {
+        Ok(h) => h,
+        Err(e) => {
+            return fail(&EngineError::Malformed {
+                what: "profile".into(),
+                detail: e.to_string(),
+            })
+        }
+    };
+
+    let found = match ethos_parser_core::locate(
+        &repr,
+        &profile.parser_version,
+        &profile_sha256,
+        &profile.locate_rule,
+        &quote,
+    ) {
+        Ok(f) => f,
+        Err(e) => return fail(&e),
+    };
+
+    match found.to_canonical_bytes() {
+        Ok(out) => {
+            let mut stdout = std::io::stdout().lock();
+            let _ = stdout.write_all(&out);
+            let _ = stdout.write_all(b"\n");
+            let _ = stdout.flush();
+            // **Answered.** Not "found": an empty `occurrences` array is an answer, and there is
+            // no other code for it.
+            ExitCode::from(PROJECTED as u8)
+        }
+        Err(e) => fail(&e),
+    }
+}
+
 fn run_markdown(args: MarkdownArgs) -> ExitCode {
     let bytes = match read_source(&args.path) {
         Ok(b) => b,

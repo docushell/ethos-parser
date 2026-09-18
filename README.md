@@ -80,7 +80,8 @@ target/release/ethos-parser ground repr.json > grounding.json
 | `verify` | Hand a citation check to the pinned Ethos verifier and relay its answer | 0 / 1 / 2 |
 | `overlay` | An annotated copy of the PDF showing what was found — and what has no box | 0 / 2 |
 | `tag` | A copy of an untagged PDF with a structure tree written over it from the block cut — one `/Div` per block, marked as computed, so `extract` reads it back as this engine's own. Fills absence only: a PDF that already has a tree is refused ([`docs/23-AUTO-TAGGING-SCOPE.md`](docs/23-AUTO-TAGGING-SCOPE.md)) | 0 / 2 |
-| `mcp` | Serve `extract`, `ground` and `node_get` to an agent over stdio | 0 / 2 |
+| `locate` | Where a string lies in a representation — every occurrence, as node ids, character offsets and the record's own boxes. Never whether anything is true: a string that occurs nowhere is an empty answer, and there is no exit 1 ([`docs/26-LOCATE-SCOPE.md`](docs/26-LOCATE-SCOPE.md)) | 0 / 2 |
+| `mcp` | Serve `extract`, `ground`, `node_get` and `locate` to an agent over stdio | 0 / 2 |
 
 Exit codes always mean the same thing: **0** it worked, **1** it ran and the answer is no, **2** it
 could not run at all. Add `--diagnostics` to any command for timing and host details on stderr;
@@ -135,8 +136,8 @@ emit `<td colspan="2">` and keep the merge the document drew.
 
 ## Using it from code
 
-**MCP** (`ethos-parser mcp`) serves three tools over a plain pipe — `extract`, `ground` and
-`node_get`. No HTTP, no socket, no async runtime.
+**MCP** (`ethos-parser mcp`) serves four tools over a plain pipe — `extract`, `ground`,
+`node_get` and `locate`. No HTTP, no socket, no async runtime.
 
 The catch with MCP is that the model picks the arguments. A tool that accepted a page number or a
 bounding box would make the model the citation authority in one step, and the result would look
@@ -148,7 +149,7 @@ nodes parsed from *those* bytes. An
 id the engine did not mint is an error, never a nearest match.
 
 **Python and Node SDKs** ([`packages/python/`](packages/python/),
-[`packages/node/`](packages/node/)) are the same three functions. They spawn the CLI and parse its
+[`packages/node/`](packages/node/)) are the same four functions. They spawn the CLI and parse its
 stdout — no native bindings, no runtime dependencies, so they cannot disagree with the binary about
 what a document says. LangChain tools ship with both, behind an optional install. Neither package is
 published yet.

@@ -41,6 +41,7 @@ import {
   NotARepresentation,
   extract,
   ground,
+  locate,
   nodeGet,
 } from "../src/index.js";
 
@@ -185,7 +186,11 @@ test("no exported function signature names a coordinate", () => {
   // which is the hazard memo §16.7 says decides whether an adapter is worth having.
   const functions = Object.entries(sdk).filter(([, value]) => typeof value === "function");
   const plain = functions.filter(([name]) => !/^[A-Z]/.test(name));
-  assert.equal(plain.length, 3, `expected exactly extract/ground/nodeGet, saw ${plain.length}`);
+  assert.equal(
+    plain.length,
+    4,
+    `expected exactly extract/ground/locate/nodeGet, saw ${plain.length}`,
+  );
 
   for (const [name, fn] of plain) {
     const names = parameterNames(fn);
@@ -199,12 +204,20 @@ test("no exported function signature names a coordinate", () => {
   }
 });
 
-test("the public surface is the three functions and nothing else", () => {
+test("the public surface is the four functions and nothing else", () => {
   const plain = Object.entries(sdk)
     .filter(([name, value]) => typeof value === "function" && !/^[A-Z]/.test(name))
     .map(([name]) => name)
     .sort();
-  assert.deepEqual(plain, ["extract", "ground", "nodeGet"]);
+  assert.deepEqual(plain, ["extract", "ground", "locate", "nodeGet"]);
+});
+
+test("locate takes a representation and a string and nothing else", () => {
+  // `quote` is content, not a locator — the engine still mints every locator it returns, and
+  // `docs/26-LOCATE-SCOPE.md` §6.2 says so directly: `quote` is on neither ban list because it is
+  // content. The corollary above bounds the rest of the signature; this pins that nothing was
+  // added beside it.
+  assert.deepEqual(parameterNames(locate), ["representation", "quote"]);
 });
 
 test("the parameter reader recovers the real names, or it proves nothing", () => {

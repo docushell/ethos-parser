@@ -110,14 +110,22 @@ The wire shape, and the reasons are in §5:
     { "synthesized": 0,
       "parts": [
         { "node": "s1", "char_start": 1, "char_end": 3,
-          "geometry": { "state": "measured", "value": { "x0": 7200, "y0": 9200, "x1": 10800, "y1": 11000 } } },
+          "geometry": { "state": "measured", "value": [7200, 9200, 10800, 11000] } },
         { "node": "s2", "char_start": 0, "char_end": 2,
           "geometry": { "state": "absent", "value": "no_ink_to_measure" } }
       ] }
-  ],
-  "occurrences_withheld": null
+  ]
 }
 ```
+
+**Corrected 2026-09-18, against the artifact S2 now prints.** This block had the measured box as an
+object of four named edges and `occurrences_withheld` as an explicit `null`. Neither is the wire: a
+`QRect` serializes as `[x0, y0, x1, y1]` — edge-based, the shape `geometry.draft.json` pins and the
+grounding wire uses — and `occurrences_withheld` is **omitted** when nothing was withheld rather
+than carried as null, because a nullable field would put "nothing was withheld" and "this reader
+does not report withholding" in one value. The real artifact, from a real fixture, is
+[`draft-schemas/locations.draft.json`](draft-schemas/locations.draft.json)'s worked example; this
+block stays as the annotated sketch it was written to be.
 
 **What applies, stated rather than assumed:**
 
@@ -506,7 +514,7 @@ Named, each with the fixture it uses, preferring fixtures that exist. Every path
 | --- | --- | --- |
 | **T1** | found: one occurrence, one part | `measured-ink-box` — one run, text `Measured` (`make_fixtures.py:642`). Quote `Measured` → one occurrence, one part, `char_start` 0, `char_end` 8, geometry `state: measured` (the only fixture that takes the measured branch) |
 | **T2** | not found: exit 0, `occurrences: []`, and **no** `isError` over MCP | `measured-ink-box`, quote `Absent` |
-| **T3** | several occurrences, and the order is reading order | `untagged-shredded-line` — runs `Yar`, `ro`, `w`, `Separate`; the first three abut exactly and form one block whose text is `Yarrow` (`make_fixtures.py:665-670`). Quote `r` → **two** occurrences: block scalars 2..3, wholly in node `Yar` at its own 2..3; and 3..4, wholly in node `ro` at 0..1 |
+| **T3** | several occurrences, and the order is reading order | `untagged-shredded-line` — runs `Yar`, `ro`, `w`, `Separate`; the first three abut exactly and form one block whose text is `Yarrow` (`make_fixtures.py:665-670`). Quote `r` → **two** occurrences: block scalars 2..3, wholly in node `Yar` at its own 2..3; and 3..4, wholly in node `ro` at 0..1. **Corrected 2026-09-18:** three, not two — `Separate` is a second block and holds an `r` at its own 4..5, which this row overlooked. The test asserts all three, in reading order across both blocks, which is the stronger form of what the row was asking for |
 | **T4** | a quote crossing runs | Same fixture, quote `arrow` → one occurrence, **three** parts: `Yar` 1..3, `ro` 0..2, `w` 0..1; and their slices concatenated equal `arrow` |
 | **T5** | a quote crossing elements is **not** an occurrence | `markdown-two-blocks` — two runs, `First block` and `Second block`, 60 pt apart (`make_fixtures.py:671-674`). Quote `First blockSecond block` → `occurrences: []`, exit 0. Same fixture also covers T3's negative: `untagged-shredded-line`'s `YarrowSeparate` → `[]`, the string the fixture's own comment was written about |
 | **T6** | text that exists only after a projection | `markdown-hyphen-break` — `The rate may be recalcu-` and `lated at closing` (`make_fixtures.py:698-701`). Quote `recalculated` → `[]`. And `markdown-two-blocks` with the Markdown's own `block\n\nSecond` → `[]`. Both are the strings `history/11-V11-MILESTONES.md` lines 104–111 built those fixtures to mark unquotable |

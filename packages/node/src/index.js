@@ -17,26 +17,26 @@
  *
  * # This is not a second design
  *
- * `packages/python/` shipped the same three functions at v1.2-S2 and **it is the contract**. If
- * this file disagreed with it about a signature, an error type, or what `ground` accepts, this
- * file would be the one that is wrong. The differences below are the two the languages force —
- * `nodeGet` rather than `node_get`, and a class hierarchy that throws rather than raises — and
- * nothing else.
+ * `packages/python/` shipped these same functions — three at v1.2-S2, `locate` beside them — and
+ * **it is the contract**. If this file disagreed with it about a signature, an error type, or what
+ * `ground` accepts, this file would be the one that is wrong. The differences below are the two
+ * the languages force — `nodeGet` rather than `node_get`, and a class hierarchy that throws rather
+ * than raises — and nothing else.
  *
  * # What this is, and the one property it is arranged to have
  *
  * `docs/history/13-V12-MILESTONES.md` S3 asks for "the same surface for Node, on the same terms", and
  * S2's terms are that the surface **cannot diverge from what the CLI prints**. This package
- * spends one process spawn to make that a tautology rather than a promise: `extract` and
- * `ground` run the same subcommands a shell would run and hand back the bytes those subcommands
- * printed, parsed with `JSON.parse`. There is no second serialization anywhere in this package,
- * so there is nowhere for the artifact to change.
+ * spends one process spawn to make that a tautology rather than a promise: `extract`, `ground`
+ * and `locate` run the same subcommands a shell would run and hand back the bytes those
+ * subcommands printed, parsed with `JSON.parse`. There is no second serialization anywhere in
+ * this package, so there is nowhere for the artifact to change.
  *
  * That is also why there is no native addon. napi or neon would reach the library by a second
  * path, which is a second thing that can disagree with the first — plus a prebuild matrix across
  * platforms and ABI versions, for a saving nobody has measured a need for.
  *
- * # The handle law, which decides these three signatures
+ * # The handle law, which decides these four signatures
  *
  * `docs/history/12-V12-SCOPE.md` §3, carried here unchanged from MCP and Python: **the engine mints every
  * locator, returns it as an opaque handle, and re-validates it on the way back in.**
@@ -60,7 +60,7 @@
  * function named `verify` would look like this package had an opinion about whether a claim is
  * supported. It does not, and neither does the engine.
  *
- * The three functions here are not an MCP client. MCP is a process; this is a library. The `ground`
+ * The four functions here are not an MCP client. MCP is a process; this is a library. The `ground`
  * tool on this package's tools subpath is the one exception: it makes one `tools/call` to
  * `ethos-parser mcp`, because the words it returns are the server's.
  *
@@ -85,6 +85,7 @@ import {
   NodeNotFound,
   parse,
   run,
+  withQuotePath,
   withRepresentationPath,
 } from "./engine.js";
 
@@ -113,7 +114,7 @@ export const REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0";
 const REPRESENTATION_PREFIX = "ethos.parser.representation.";
 
 // -------------------------------------------------------------------------------------------
-// The public surface — three functions, and not one of them names a coordinate
+// The public surface — four functions, and not one of them names a coordinate
 // -------------------------------------------------------------------------------------------
 
 /**
@@ -159,6 +160,42 @@ export function extract(pdfPath) {
 export function ground(representation) {
   // `--` so a path beginning with `-` is a path, as it is to `ethos-parser mcp`, and never a flag.
   return withRepresentationPath(representation, (path) => parse(run(["ground", "--", path])));
+}
+
+/**
+ * Report where `quote` lies in a representation, as `ethos-parser locate` prints it.
+ *
+ * Takes the artifact {@link extract} returned — the object itself, or a path to bytes this engine
+ * wrote — on the same terms as {@link ground}, and a string. **It answers where, and nothing
+ * else**: no boolean, no score, no evidence tier. A string that occurs nowhere is an `occurrences`
+ * array of length zero and the same artifact a found one produces, which is decision #30's own
+ * bound — so this throws nothing for it, and a caller reading the array's length is reading the
+ * only answer there is.
+ *
+ * **The match rule is not ported here.** One process spawn, and the engine's own bytes back.
+ * `docs/26-LOCATE-SCOPE.md` §6.3 gives the reason and it is the asymmetry with {@link nodeGet},
+ * the right way round: a ported rule would be a second implementation of the *answer*, and two
+ * implementations of a text-matching rule that can disagree is the one thing `locate` must not be.
+ *
+ * **The quote travels in a file, never on argv** — see {@link withQuotePath} for why argv cannot
+ * carry every string a representation can contain. The file is removed whether or not the call
+ * succeeded.
+ *
+ * @param {object|string} representation The artifact object, or a path to it.
+ * @param {string} quote The string to look for, taken verbatim — untrimmed, unnormalized, unfolded.
+ * @returns {object} The parsed `ethos.parser.locations.v0` artifact.
+ * @throws {NotARepresentation} The object will not canonicalize.
+ * @throws {EngineFailed} The representation was refused, fingerprint included, or the quote was
+ *   refused — empty, or past the 16,384-byte ceiling. A refusal is not the not-found answer, and
+ *   §4.1 is explicit that the two must not be read as one.
+ */
+export function locate(representation, quote) {
+  return withRepresentationPath(representation, (path) =>
+    withQuotePath(quote, (quoteFile) =>
+      // `--` so a path beginning with `-` is a path, as it is to `ethos-parser mcp`, and never a flag.
+      parse(run(["locate", "--quote-file", quoteFile, "--", path])),
+    ),
+  );
 }
 
 /**

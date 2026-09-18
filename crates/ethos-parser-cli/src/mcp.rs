@@ -383,6 +383,37 @@ fn tools() -> Value {
                     }
                 }
             }
+        },
+        {
+            "name": "locate",
+            "description":
+                "Report WHERE a string lies in a representation, and nothing else. Returns \
+                 `ethos.parser.locations.v0`: occurrences as node ids, character offsets into \
+                 each node's own text, and that node's own geometry. It answers no question \
+                 about whether anything is true or supported, and a string that occurs nowhere \
+                 is an empty list of occurrences — the same answer shape, never an error. The \
+                 match is exact on Unicode scalars with no normalization or case folding, over \
+                 each block of the reading order, so a match may join runs inside one block and \
+                 never across two.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["representation", "quote"],
+                "properties": {
+                    "representation": {
+                        "description":
+                            "The artifact `extract` returned — the object itself, or a path to \
+                             bytes this engine wrote.",
+                        "type": ["object", "string"]
+                    },
+                    "quote": {
+                        "type": "string",
+                        "description":
+                            "The string to find, verbatim. It is matched exactly: no trimming, \
+                             no case folding, no Unicode normalization."
+                    }
+                }
+            }
         }
     ])
 }
@@ -401,6 +432,7 @@ fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, 
         "extract" => tool_extract(&args),
         "ground" => tool_ground(&mut args, ledger),
         "node_get" => tool_node_get(&mut args, ledger),
+        "locate" => tool_locate(&mut args, ledger),
         other => return Err(Failure::new(INVALID_PARAMS, format!("no tool `{other}`"))),
     };
 
@@ -544,6 +576,91 @@ fn tool_node_get(
         format!("1 node, kind `{:?}`.", node.kind),
         Artifact::Value(value),
     ))
+}
+
+/// A representation and a string → `ethos.parser.locations.v0`.
+///
+/// **No verdict reaches the model, and none can be composed from what does.** A string that occurs
+/// nowhere is `0 occurrence(s)` with `isError: false` — the same reply shape a found one gets — so
+/// the tool cannot be used as a truth oracle by reading its error channel. That is decision #30's
+/// own re-refusal condition, met here rather than described.
+fn tool_locate(
+    args: &mut Value,
+    ledger: &mut ledger::Ledger,
+) -> Result<(String, Artifact), Failure> {
+    let repr = representation_arg(args, ledger)?;
+    let quote = args
+        .get("quote")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Failure::new(INVALID_PARAMS, "`quote` is required and must be a string"))?;
+
+    let profile = ethos_parser_core::Profile::default();
+    let profile_sha256 = profile
+        .profile_sha256()
+        .map_err(|e| Failure::new(INVALID_PARAMS, format!("profile will not hash: {e}")))?;
+    let found = ethos_parser_core::locate(
+        &repr,
+        &profile.parser_version,
+        &profile_sha256,
+        &profile.locate_rule,
+        quote,
+    )
+    .map_err(|e| Failure::from(&e))?;
+
+    let summary = locate_summary(&found);
+    let bytes = found.to_canonical_bytes().map_err(|e| Failure::from(&e))?;
+    Ok((summary, Artifact::Bytes(bytes)))
+}
+
+/// The words `locate` reports: **counts, and nothing else.**
+///
+/// No node id, no offset, no box and neither digest — a summary carrying one would hand the model a
+/// locator through the one channel it can rewrite, which is `12-V12-SCOPE.md` §3's Opaque
+/// obligation. The phrase *not found* does not appear either, at any occurrence count: it is a
+/// verdict in one sentence, and the count says the same thing without one.
+///
+/// The destructure is exhaustive on the same footing as [`ground_summary`]'s: a field added to
+/// [`ethos_parser_core::Locations`] fails to compile here until this summary says whether it
+/// reports it.
+fn locate_summary(found: &ethos_parser_core::Locations) -> String {
+    let ethos_parser_core::Locations {
+        // The artifact's identity and both digests are the pipeline's, not the model's.
+        identity: _,
+        source_sha256: _,
+        representation_sha256: _,
+        // The rule id travels in the artifact. It is not a count, and a model that could read it
+        // here could report a rule that did not run.
+        locate_rule: _,
+        quote_scalars,
+        searched,
+        occurrences,
+        occurrences_withheld,
+    } = found;
+
+    if let Some(withheld) = occurrences_withheld {
+        return format!(
+            "{} occurrence(s) of {} scalar(s), more than the {} this artifact carries locators \
+             for: the count only.",
+            withheld.occurrences, quote_scalars, withheld.limit
+        );
+    }
+    let mut summary = format!(
+        "{} occurrence(s) of {quote_scalars} scalar(s), across {} block(s) of {} node(s) searched.",
+        occurrences.len(),
+        searched.blocks,
+        searched.nodes,
+    );
+    if !occurrences.is_empty() {
+        // Summed per occurrence, and said so: two overlapping occurrences that share a
+        // synthesized scalar count it twice, because each of them matched it.
+        let parts: usize = occurrences.iter().map(|o| o.parts.len()).sum();
+        let synthesized: u32 = occurrences.iter().map(|o| o.synthesized).sum();
+        summary.push_str(&format!(
+            " {parts} node part(s), and {synthesized} synthesized scalar(s) counted per \
+             occurrence. Locators are in the artifact."
+        ));
+    }
+    summary
 }
 
 /// Read the `representation` argument and **re-validate it before anything reads it**.
@@ -831,8 +948,8 @@ mod tests {
         // Same floor, same reason: the banned-name loop below never runs if the list is empty.
         assert_eq!(
             tools.len(),
-            3,
-            "{} tool(s) advertised, not three",
+            4,
+            "{} tool(s) advertised, not four",
             tools.len()
         );
         let mut properties_checked = 0usize;
@@ -870,12 +987,13 @@ mod tests {
         let tools = tools();
         let tools = tools.as_array().expect("tools");
         // A per-tool property asserted over an empty list is a test that passes having checked
-        // nothing — the shape v2-S13.1 went looking for. Three tools are advertised: `extract`,
-        // `ground` and `node_get`. A fourth is a decision, and it arrives through this line.
+        // nothing — the shape v2-S13.1 went looking for. Four tools are advertised: `extract`,
+        // `ground`, `node_get` and — since v2.3, decision #30 — `locate`. A fifth is a decision,
+        // and it arrives through this line.
         assert_eq!(
             tools.len(),
-            3,
-            "{} tool(s) advertised; three is the number this server has argued for, and the \
+            4,
+            "{} tool(s) advertised; four is the number this server has argued for, and the \
              per-tool assertions below check nothing at all if the list is short",
             tools.len()
         );

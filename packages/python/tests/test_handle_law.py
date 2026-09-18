@@ -207,18 +207,31 @@ def test_no_public_function_signature_names_a_coordinate():
                     name, banned
                 )
             )
-    assert checked == 3, "expected exactly extract/ground/node_get, saw {}".format(
+    assert checked == 4, "expected exactly extract/ground/locate/node_get, saw {}".format(
         checked
     )
 
 
-def test_the_public_surface_is_the_three_functions_and_nothing_else():
+def test_the_public_surface_is_the_four_functions_and_nothing_else():
     functions = sorted(
         name
         for name in ethos_parser.__all__
         if inspect.isfunction(getattr(ethos_parser, name))
     )
-    assert functions == ["extract", "ground", "node_get"]
+    assert functions == ["extract", "ground", "locate", "node_get"]
+
+
+def test_locate_takes_a_representation_and_a_string_and_nothing_else():
+    """`quote` is content, not a locator — the engine still mints every locator it returns.
+
+    `docs/26-LOCATE-SCOPE.md` §6.2 says it directly: `quote` is on neither ban list because it is
+    content. The corollary above is what bounds the rest of the signature, and this pins that
+    nothing was added beside it.
+    """
+    assert list(inspect.signature(ethos_parser.locate).parameters) == [
+        "representation",
+        "quote",
+    ]
 
 
 def test_node_get_takes_a_handle_and_an_artifact_and_nothing_else():

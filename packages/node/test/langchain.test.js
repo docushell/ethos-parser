@@ -63,6 +63,17 @@ const BANNED_ARGUMENT_NAMES = [
 ];
 
 /**
+ * Tools `ethos-parser mcp` advertises that this module deliberately does not wrap, each one a
+ * refusal some document made rather than a gap.
+ *
+ * `locate`: `docs/26-LOCATE-SCOPE.md` §6.3, "No LangChain tool in this slice" — the argument would
+ * be a free-text string the model composes, decision #30 did not ask for a tool, and *"a tool that
+ * exists because it was cheap is a surface to keep honest forever"*. It reopens on a named host,
+ * and reopening it means deleting an entry here.
+ */
+const LANGCHAIN_REFUSED_TOOLS = ["locate"];
+
+/**
  * No tool result, summary or annotation may say this engine believes anything.
  * `docs/07-VERIFY-BOUNDARY.md`: it validates structure and binding, and never verifies a claim.
  */
@@ -293,12 +304,31 @@ test("the argument schemas are the ones MCP advertises", options, () => {
   // One wire shape across the three adapters, checked against the server rather than remembered.
   // `node_id` keeps MCP's spelling here even though this package's parameter is `nodeId`: the tool
   // argument is the wire, and one wire has one name.
+  //
+  // **The set equality is now equality-minus-one, and the one is named.**
+  // `docs/26-LOCATE-SCOPE.md` §6.3 refuses a `locate` tool for this slice: its argument is a
+  // free-text string the model composes, decision #30 did not ask for one, and "a tool that
+  // exists because it was cheap is a surface to keep honest forever". It reopens on a named host.
+  // So the exclusion is asserted exactly rather than loosened to a subset check — a FIFTH
+  // advertised tool still fails here, which is the whole point of reading the server instead of a
+  // reviewer's memory.
   const advertised = mcp([["tools/list", {}]])[0].tools;
+  const names = advertised.map((t) => t.name);
   assert.deepEqual(
-    advertised.map((t) => t.name).sort(),
-    Object.keys(sdk.TOOL_SCHEMAS).sort(),
+    names.filter((name) => !(name in sdk.TOOL_SCHEMAS)).sort(),
+    [...LANGCHAIN_REFUSED_TOOLS].sort(),
+    "`ethos-parser mcp` advertises a tool this module neither wraps nor refuses by name. Wrap " +
+      "it, or add it to LANGCHAIN_REFUSED_TOOLS with the document that refused it.",
+  );
+  assert.deepEqual(
+    Object.keys(sdk.TOOL_SCHEMAS)
+      .filter((name) => !names.includes(name))
+      .sort(),
+    [],
+    "this module carries a schema for a tool the server does not advertise",
   );
   for (const tool of advertised) {
+    if (LANGCHAIN_REFUSED_TOOLS.includes(tool.name)) continue;
     assert.deepEqual(
       sdk.TOOL_SCHEMAS[tool.name],
       tool.inputSchema,

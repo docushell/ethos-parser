@@ -6,6 +6,9 @@ Everything the project has decided, and where it is written down. Start with the
 **Version 0.58.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
 `tag`, the tenth subcommand, writes a structure tree over an untagged PDF from the block cut, marked
 computed; it fills absence only ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)).
+`locate`, the eleventh, reports where a string lies in a representation — node ids, offsets and the
+record's own boxes — and never whether anything is true
+([`26-LOCATE-SCOPE.md`](26-LOCATE-SCOPE.md)).
 Tables are stated as a capability rather than as one average, re-measured at 0.58.0: the engine
 reads the tables a document declares (combined cell-slot recall 503‰), detects ruled tables where
 the producer drew them (geometric macro 69‰, band 0‰–590‰), emits nothing where neither holds, and

@@ -17,7 +17,7 @@
  *
  * Private to this package — not in `package.json`'s `exports`, so no caller imports it. It exists
  * so the tools subpath can run the same binary with the same bounds and the same failure classes as
- * the three public functions, rather than a second copy of any of it. The public module re-exports
+ * the four public functions, rather than a second copy of any of it. The public module re-exports
  * the failure classes; nothing else here is public.
  */
 
@@ -40,7 +40,7 @@ const BINARY_ENV = "ETHOS_PARSER";
 // refuses. A forged handle and a missing binary are not the same news.
 
 /**
- * Base class for every failure the three exported functions throw.
+ * Base class for every failure the four exported functions throw.
  *
  * Everything, deliberately: a serialization refusal from `./c14n.js` is re-thrown as
  * {@link NotARepresentation} rather than escaping as a bare `CanonicalizationError`, so
@@ -359,6 +359,30 @@ export function withRepresentationPath(representation, body) {
   try {
     const path = join(directory, "representation.json");
     writeFileSync(path, bytes);
+    return body(path);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Call `body` with a path to a file holding the quote's UTF-8 bytes, and remove it after.
+ *
+ * **`locate`'s quote travels in a file and never on argv** (`docs/26-LOCATE-SCOPE.md` §6.1): argv
+ * cannot carry every string a representation can contain — a NUL cannot appear in an argument at
+ * all, a newline survives only through correct quoting, and a quoting mistake changes the searched
+ * string *silently*, which changes what was searched with nothing on the wire saying so.
+ *
+ * The same `node:fs` facility {@link withRepresentationPath} uses, so there is one way this
+ * package hands the engine bytes it wrote, and the file goes whether or not `body` threw.
+ */
+export function withQuotePath(quote, body) {
+  const directory = mkdtempSync(join(tmpdir(), "ethos-parser-"));
+  try {
+    const path = join(directory, "quote.txt");
+    // The encoding and nothing else — no newline appended, no BOM. The CLI reads these bytes
+    // verbatim, so a byte added here would change the string that was searched.
+    writeFileSync(path, Buffer.from(quote, "utf8"));
     return body(path);
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -18,15 +18,16 @@
 
 `docs/history/13-V12-MILESTONES.md` S2 asks for "a thin Python surface over the same library or CLI, **so
 it cannot diverge from what the CLI prints**". This package spends one process spawn to make that
-a tautology rather than a promise: :func:`extract` and :func:`ground` run the same subcommands a
-shell would run and hand back the bytes those subcommands printed, parsed as JSON. There is no
-second serialization anywhere in this package, so there is nowhere for the artifact to change.
+a tautology rather than a promise: :func:`extract`, :func:`ground` and :func:`locate` run the same
+subcommands a shell would run and hand back the bytes those subcommands printed, parsed as JSON.
+There is no second serialization anywhere in this package, so there is nowhere for the artifact to
+change.
 
 That is also why there is no native extension. PyO3 would reach the library by a second path,
 which is a second thing that can disagree with the first — plus a wheel matrix and a fifth build
 surface, for a saving nobody has measured a need for.
 
-# The handle law, which decides these three signatures
+# The handle law, which decides these four signatures
 
 `docs/history/12-V12-SCOPE.md` §3, carried here unchanged from MCP: **the engine mints every locator,
 returns it as an opaque handle, and re-validates it on the way back in.** In Python that means:
@@ -49,7 +50,7 @@ forever. ``verify`` is not here for a stronger reason — it relays the pinned E
 function named ``verify`` would look like this package had an opinion about whether a claim is
 supported. It does not, and neither does the engine.
 
-The three functions here are not an MCP client. MCP is a process; this is a library, and they are
+The four functions here are not an MCP client. MCP is a process; this is a library, and they are
 two callers of the same binary. The ``ground`` tool in :mod:`ethos_parser.langchain` is the one
 exception: it makes one ``tools/call`` to ``ethos-parser mcp``, because the words it returns are the
 server's.
@@ -84,6 +85,7 @@ __all__ = [
     "NotARepresentation",
     "extract",
     "ground",
+    "locate",
     "node_get",
 ]
 
@@ -112,7 +114,7 @@ _BINARY_ENV = "ETHOS_PARSER"
 
 
 class EngineError(Exception):
-    """Base class for every failure the three public functions raise.
+    """Base class for every failure the four public functions raise.
 
     Everything, deliberately: a serialization refusal from :mod:`ethos_parser._c14n` is
     re-raised as :class:`NotARepresentation` rather than escaping as a bare
@@ -212,7 +214,7 @@ class NodeNotFound(EngineError):
 
 
 # -----------------------------------------------------------------------------------------
-# The public surface — three functions, and not one of them names a coordinate
+# The public surface — four functions, and not one of them names a coordinate
 # -----------------------------------------------------------------------------------------
 
 
@@ -255,6 +257,56 @@ def ground(representation):
     with _representation_path(representation) as path:
         # `--` so a path beginning with `-` is a path, as it is to `ethos-parser mcp`, and never a flag.
         return _parse(_run(["ground", "--", path]))
+
+
+def locate(representation, quote):
+    """Report where ``quote`` lies in a representation, as ``ethos-parser locate`` prints it.
+
+    Takes the artifact :func:`extract` returned — the object itself, or a path to bytes this
+    engine wrote — on the same terms as :func:`ground`, and a string. **It answers where, and
+    nothing else**: no boolean, no score, no evidence tier. A string that occurs nowhere is an
+    ``occurrences`` list of length zero and the same artifact a found one produces, which is
+    decision #30's own bound — so this raises nothing for it, and a caller reading the list
+    length is reading the only answer there is.
+
+    **The match rule is not ported here.** One process spawn, and the engine's own bytes back.
+    ``docs/26-LOCATE-SCOPE.md`` §6.3 gives the reason and it is the asymmetry with
+    :func:`node_get`, the right way round: a ported rule would be a second implementation of the
+    *answer*, and two implementations of a text-matching rule that can disagree is the one thing
+    ``locate`` must not be.
+
+    **The quote travels in a file, never on argv** (§6.1). argv cannot carry every string a
+    representation can contain: a NUL cannot appear in an argument at all, a newline survives only
+    through correct quoting, and a quoting mistake changes the searched string *silently* — which
+    changes what was searched with nothing on the wire saying so. So the quote's UTF-8 bytes are
+    written to a temporary file, verbatim and with nothing appended, and the file is removed
+    afterwards whether or not the call succeeded.
+
+    :param representation: the artifact object, or a path to it.
+    :param quote: the string to look for, taken verbatim — untrimmed, unnormalized, unfolded.
+    :returns: the parsed ``ethos.parser.locations.v0`` artifact.
+    :raises EngineFailed: the representation was refused, fingerprint included, or the quote was
+        refused — empty, past the 16,384-byte ceiling. A refusal is not the not-found answer, and
+        §4.1 is explicit that the two must not be read as one.
+    """
+    with _representation_path(representation) as path, _quote_path(quote) as quote_file:
+        # `--` so a path beginning with `-` is a path, as it is to `ethos-parser mcp`, and never a flag.
+        return _parse(_run(["locate", "--quote-file", quote_file, "--", path]))
+
+
+@contextlib.contextmanager
+def _quote_path(quote):
+    """A path to a file holding the quote's UTF-8 bytes, for as long as the ``with`` block runs.
+
+    The same :mod:`tempfile` facility :func:`_representation_path` uses, and the bytes are the
+    encoding and nothing else — no newline appended, no BOM. The CLI reads them verbatim, so a
+    byte added here would change the string that was searched.
+    """
+    with tempfile.TemporaryDirectory(prefix="ethos-parser-") as directory:
+        path = os.path.join(directory, "quote.txt")
+        with open(path, "wb") as handle:
+            handle.write(quote.encode("utf-8"))
+        yield path
 
 
 @contextlib.contextmanager

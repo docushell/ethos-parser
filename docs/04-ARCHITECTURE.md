@@ -16,7 +16,7 @@ ethos-parser/
 │   ├── ethos-parser-pdf/         # lopdf: classify, text runs, font metrics, encoding tables
 │   ├── ethos-parser-office/      # eight office formats
 │   ├── ethos-parser-grounding/   # representation → ethos.grounding.v1, plus the validator
-│   └── ethos-parser-cli/         # ten subcommands; tests/oracle.rs lives here
+│   └── ethos-parser-cli/         # eleven subcommands; tests/oracle.rs lives here
 ├── vendor/README.md        # what is carried, and what deliberately is not
 ├── fixtures/               # a manifest referencing four corpus roots
 └── docs/
@@ -72,12 +72,12 @@ both SDKs were untouched. What did move was a `ethos-parser-core` invariant — 
 four deliberately; rewriting them would erase what v0 committed to. The six that came later were
 each argued in the scope document of the version that added them: `verify` at v0.1, `overlay` at
 v1-S6, `markdown` at v1.1-S1, `html` at v1.1-S4, `mcp` at v1.2-S1, `tag` at auto-tagging S2
-(`23-AUTO-TAGGING-SCOPE.md` §6). `enum Command` in `crates/ethos-parser-cli/src/main.rs` is the
-list that cannot go stale.
+(`23-AUTO-TAGGING-SCOPE.md` §6), `locate` at v2.3 (`26-LOCATE-SCOPE.md` §6.1). `enum Command` in
+`crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
 **The CLI is a thin shell over the library**, so the two cannot diverge. Every subcommand is a
-library call plus argument parsing plus an exit-code mapping — and that rule binds all ten, not just
-the four below.
+library call plus argument parsing plus an exit-code mapping — and that rule binds all eleven, not
+just the four below.
 
 | Command | Input | Output | Exit codes |
 | --- | --- | --- | --- |

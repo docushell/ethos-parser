@@ -21,6 +21,7 @@ document a shape that already compiles, rather than specifying one to be built.
 | [`document-representation.draft.json`](document-representation.draft.json) | The canonical record: identity, source, processing run, pages, ordered nodes, fingerprint, geometry sidecar |
 | [`markdown.draft.json`](markdown.draft.json) | `ethos.markdown.v1` — the string, the anchor map, the census, and what GFM erases |
 | [`html.draft.json`](html.draft.json) | `ethos.html.v1` — the same, with merges kept as `rowspan`/`colspan` |
+| [`locations.draft.json`](locations.draft.json) | `ethos.parser.locations.v0` — where a string lies: occurrences as node ids, offsets into each node's own text, the record's own geometry, and what was searched |
 
 The grounding schema is **not** drafted here. `ethos.grounding.v1` is owned by Ethos, and writing a
 draft of someone else's shipped schema would create a second, drifting description of a contract we
@@ -39,6 +40,7 @@ the one or two fields a reader would actually branch on:
 | `the_representation_schema_pins_the_version_the_code_emits` | `schema_version`, `artifact_type` |
 | `the_markdown_schema_pins_the_version_and_rule_the_code_emits` | `schema_version`, `artifact_type`, `markdown_rule` |
 | `the_html_schema_pins_the_version_and_rule_the_code_emits` | The same, plus that the two projections do not share a rule id |
+| `the_locations_schema_pins_the_version_and_rule_the_code_emits` | The same for `locate_rule`, plus that the ceiling the schema states is the one the code enforces |
 
 The first three were added *after* the file they guard had already drifted. The fourth was added in
 the same slice as its schema, which is the lesson those three taught: **a schema without a guard
@@ -59,6 +61,19 @@ ethos-parser html     repr.json    # the whole examples[0] of html.draft.json
 
 The fixture is `synthetic/simple-text` — the smallest document that still exercises a `source`
 segment, a `syntax` segment, and a census that balances.
+
+`locations.draft.json`'s example is **a different fixture on the same rule**, because
+`simple-text` cannot show the one thing an occurrence is for:
+
+```bash
+ethos-parser extract fixtures/engine/untagged-shredded-line/document.pdf > repr.json
+printf %s 'arrow' > quote.txt
+ethos-parser locate  repr.json --quote-file quote.txt   # the whole examples[0]
+```
+
+`untagged-shredded-line` draws `Yar`, `ro` and `w` abutting on one baseline, so `arrow` is one
+occurrence of **three parts** — the shape a caller could not have assembled from the runs alone,
+and the one the concatenation invariant is about.
 
 This rule exists because half of it was already being followed and the other half went unnoticed for
 sixteen releases. The two files ended up publishing **different digests for the same representation

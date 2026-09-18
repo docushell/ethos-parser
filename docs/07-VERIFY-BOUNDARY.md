@@ -75,6 +75,16 @@ shipped:
 | --- | --- |
 | A spawn shim that runs a verifier and forwards its bytes | Any type for a report, a claim, a check, an evidence tier, or a result |
 | A `verify` subcommand and a verifier pin in the profile | Any code that reads, re-derives, summarizes or second-guesses what the verifier said |
+| A `locate` subcommand, MCP tool and SDK function that answer **where a string lies** in a representation (v2.3, decision #30) | Any field, summary phrase or exit code on them that answers *whether* — and a match rule copied from the verifier's or tuned to agree with it |
+
+**The third row is the closest this engine has come to the line, and it is worth saying why it does
+not cross it.** `locate` takes a representation and a string. A string is not a claim, and this
+document's own §2 is what the design is arranged around rather than what it argues past: there is no
+claim parameter, so there is nothing to decide. What makes it checkable rather than merely stated is
+that a string occurring nowhere is exit 0 with an empty list — the same artifact, the same code —
+so no caller can read an answer out of the failure channel. `docs/26-LOCATE-SCOPE.md` §4.2 tabulates
+the five places the verifier resolves a quote differently and §7 names every verdict-shaped
+convenience that is refused, each with the grep or test that holds it.
 
 The rule underneath has not changed: **the engine has no opinion about whether a document supports a
 claim, and it cannot acquire one by accident, because there is nothing in it that could hold such an

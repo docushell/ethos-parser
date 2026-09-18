@@ -1026,3 +1026,81 @@ fn the_html_schema_pins_the_version_and_rule_the_code_emits() {
         ethos_parser_core::MARKDOWN_RULE_BLOCKS_V7
     );
 }
+
+/// The locations draft schema pins the shape version and the match rule the code actually emits.
+///
+/// The fifth of these guards, added in the slice that adds the schema — `docs/draft-schemas/README.md`
+/// states the rule and three of the four before it were added only after their file had already
+/// drifted.
+///
+/// `locate_rule` is the field this artifact carries for the job `markdown_rule` does on its own:
+/// it says which rule produced the answer, and an answer whose rule a reader cannot recover is an
+/// answer they cannot compare with another.
+#[test]
+fn the_locations_schema_pins_the_version_and_rule_the_code_emits() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("docs/draft-schemas/locations.draft.json");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display())),
+    )
+    .expect("the draft schema is valid JSON");
+
+    assert_eq!(
+        schema["properties"]["schema_version"]["const"].as_str(),
+        Some(ethos_parser_core::LOCATIONS_SCHEMA_VERSION),
+        "locations.draft.json pins a schema_version the code no longer emits. Update the schema in \
+         the same commit that bumps the constant."
+    );
+    assert_eq!(
+        schema["properties"]["artifact_type"]["const"].as_str(),
+        Some(ethos_parser_core::LOCATIONS_ARTIFACT_TYPE),
+        "and the artifact type with it"
+    );
+
+    let examples: Vec<&str> = schema["properties"]["locate_rule"]["examples"]
+        .as_array()
+        .expect("locate_rule carries examples")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(
+        examples.contains(&ethos_parser_core::LOCATE_RULE_V1),
+        "locations.draft.json's `locate_rule` examples are {examples:?}, none of which is the rule \
+         this build emits ({}). A reader takes the example as the current answer.",
+        ethos_parser_core::LOCATE_RULE_V1
+    );
+
+    // The worked example is a real artifact, so its own fields have to agree with the properties
+    // beside them — an example that disagrees with its own schema is worse than no example.
+    let example = schema["examples"]
+        .as_array()
+        .and_then(|a| a.first())
+        .expect("the schema carries a worked example");
+    assert_eq!(
+        example["locate_rule"].as_str(),
+        Some(ethos_parser_core::LOCATE_RULE_V1),
+        "the worked example names a different rule than the schema's own property does"
+    );
+    assert_eq!(
+        example["artifact_type"].as_str(),
+        Some(ethos_parser_core::LOCATIONS_ARTIFACT_TYPE)
+    );
+    assert_eq!(
+        example["schema_version"].as_str(),
+        Some(ethos_parser_core::LOCATIONS_SCHEMA_VERSION)
+    );
+
+    // **And the ceiling the schema states is the ceiling the code enforces.** A reader sizing a
+    // request reads it here.
+    assert_eq!(
+        schema["properties"]["occurrences_withheld"]["properties"]["limit"]["description"]
+            .as_str()
+            .expect("the limit is described")
+            .contains("1,000,000"),
+        ethos_parser_core::LOCATE_MAX_OCCURRENCES == 1_000_000,
+        "the schema states a ceiling the code does not enforce, or the reverse"
+    );
+}

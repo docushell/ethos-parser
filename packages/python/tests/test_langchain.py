@@ -56,6 +56,15 @@ BANNED_ARGUMENT_NAMES = [
     "region",
 ]
 
+#: Tools `ethos-parser mcp` advertises that this module deliberately does not wrap, each one a
+#: refusal some document made rather than a gap.
+#:
+#: `locate`: `docs/26-LOCATE-SCOPE.md` §6.3, "No LangChain tool in this slice" — the argument
+#: would be a free-text string the model composes, decision #30 did not ask for a tool, and *"a
+#: tool that exists because it was cheap is a surface to keep honest forever"*. It reopens on a
+#: named host, and reopening it means deleting a line here.
+LANGCHAIN_REFUSED_TOOLS = {"locate"}
+
 #: No tool result, summary or annotation may say this engine believes anything.
 #: `docs/07-VERIFY-BOUNDARY.md`: it validates structure and binding, and never verifies a claim.
 TRUST_STATE_WORDS = [
@@ -264,10 +273,26 @@ def test_the_argument_schemas_are_the_ones_mcp_advertises(engine_binary):
 
     `node_id` keeps MCP's spelling here even though the Node SDK's parameter is `nodeId`: the tool
     argument is the wire, and one wire has one name.
+
+    **The set equality is now equality-minus-one, and the one is named.** `docs/26-LOCATE-SCOPE.md`
+    §6.3 refuses a `locate` tool for this slice: its argument is a free-text string the model
+    composes, decision #30 did not ask for one, and "a tool that exists because it was cheap is a
+    surface to keep honest forever". It reopens on a named host. So the exclusion is asserted
+    exactly rather than loosened to a subset check — a FIFTH advertised tool still fails here,
+    which is the whole point of reading the server instead of a reviewer's memory.
     """
     advertised = mcp(engine_binary, [("tools/list", {})])[0]["tools"]
-    assert {tool["name"] for tool in advertised} == set(TOOL_SCHEMAS)
+    names = {tool["name"] for tool in advertised}
+    assert names - set(TOOL_SCHEMAS) == LANGCHAIN_REFUSED_TOOLS, (
+        "`ethos-parser mcp` advertises a tool this module neither wraps nor refuses by name. "
+        "Wrap it, or add it to LANGCHAIN_REFUSED_TOOLS with the document that refused it."
+    )
+    assert set(TOOL_SCHEMAS) - names == set(), (
+        "this module carries a schema for a tool the server does not advertise"
+    )
     for tool in advertised:
+        if tool["name"] in LANGCHAIN_REFUSED_TOOLS:
+            continue
         assert TOOL_SCHEMAS[tool["name"]] == tool["inputSchema"], (
             "the LangChain schema for `{}` has drifted from what `ethos-parser mcp` advertises".format(
                 tool["name"]

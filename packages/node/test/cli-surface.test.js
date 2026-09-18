@@ -35,7 +35,14 @@ import { pathToFileURL } from "node:url";
 
 import { FIXTURE_PDF, PACKAGE_ROOT, REPO_ROOT, cli, clone, engineBinary } from "./helpers.js";
 import * as sdk from "../src/index.js";
-import { EngineFailed, EngineNotFound, NotARepresentation, extract, ground } from "../src/index.js";
+import {
+  EngineFailed,
+  EngineNotFound,
+  NotARepresentation,
+  extract,
+  ground,
+  locate,
+} from "../src/index.js";
 import { c14nBytes } from "../src/c14n.js";
 
 /** What `import "ethos-parser"` reaches. The langchain subpath is deliberately not here. */
@@ -105,6 +112,111 @@ test("ground refuses an object that will not canonicalize", () => {
   const representation = clone(extract(FIXTURE_PDF));
   representation.representation.nodes[0].probe = 1.5;
   assert.throws(() => ground(representation), NotARepresentation);
+});
+
+/**
+ * A file whose bytes are the quote's UTF-8 encoding, and nothing appended.
+ *
+ * What the SDK writes for itself, written here by hand, so the CLI reads exactly the bytes the
+ * adapter sent rather than a file this test formatted differently.
+ */
+function quoteFile(directory, quote) {
+  const path = join(directory, "quote.txt");
+  writeFileSync(path, Buffer.from(quote, "utf8"));
+  return path;
+}
+
+/**
+ * The quote's scalar count, which is the unit `quote_scalars` counts in.
+ *
+ * NOT `String.prototype.length`: that is UTF-16 code units, and an astral character would make it
+ * disagree with the engine by one. Decision #20 records the same defect on the other side of the
+ * wire.
+ */
+function scalarCount(quote) {
+  return [...quote].length;
+}
+
+test("locate is byte-identical to the CLI, from the object and from a path", async () => {
+  const representation = extract(FIXTURE_PDF);
+  await withTempDir((directory) => {
+    const onDisk = join(directory, "representation.json");
+    writeFileSync(onDisk, c14nBytes(representation));
+    const fromCli = cli("locate", onDisk, "--quote-file", quoteFile(directory, "block"));
+
+    // Re-canonicalizing what came back reproduces the CLI's stdout bytes, so the answer IS the
+    // engine's. That is the whole of why the match rule is not ported into this package
+    // (`docs/26-LOCATE-SCOPE.md` §6.3): a ported rule would be a second implementation of the
+    // answer, and two implementations of a text-matching rule can disagree.
+    assert.deepEqual(c14nBytes(locate(representation, "block")), fromCli);
+    // And a path to bytes this engine wrote, which is the other half of what `ground` accepts.
+    assert.deepEqual(c14nBytes(locate(onDisk, "block")), fromCli);
+    // Two blocks carry the word, so byte identity is measured on a found answer and not only on
+    // the empty one below — an adapter that dropped `occurrences` would pass that and fail this.
+    assert.equal(locate(representation, "block").occurrences.length, 2);
+  });
+});
+
+// **The test argv could not have passed**, which is why the quote travels in a file.
+//
+// `docs/26-LOCATE-SCOPE.md` §6.1: a NUL cannot appear in an argument at all, a newline survives
+// only through correct quoting, and a quoting mistake changes the searched string *silently* —
+// which changes what was searched with nothing on the wire saying so. So each case reads the
+// number of scalars the engine searched for back off the artifact and compares it with the string
+// that was handed in, and then compares the whole artifact against the CLI's own bytes for a file
+// holding that same string.
+for (const [label, quote] of [
+  ["newline", "a\nb"],
+  ["nul", "a\0b"],
+  ["both", "one\ntwo\0three\n"],
+]) {
+  test(`a quote carrying a newline or a NUL survives the adapter (${label})`, async () => {
+    const representation = extract(FIXTURE_PDF);
+    await withTempDir((directory) => {
+      const onDisk = join(directory, "representation.json");
+      writeFileSync(onDisk, c14nBytes(representation));
+
+      const artifact = locate(representation, quote);
+      assert.equal(
+        artifact.quote_scalars,
+        scalarCount(quote),
+        "the engine searched for a different number of scalars than the quote has, so the adapter did not deliver the string it was given",
+      );
+      assert.deepEqual(
+        c14nBytes(artifact),
+        cli("locate", onDisk, "--quote-file", quoteFile(directory, quote)),
+        "and it is the artifact the CLI prints for a quote file holding those same bytes",
+      );
+    });
+  });
+}
+
+test("a quote that occurs nowhere is an answer and not a failure", () => {
+  // Decision #30's own bound: exit 0 and an empty array, never a refusal and never an exit 1. An
+  // empty `occurrences` array is the whole of the not-found answer, and it is the same artifact a
+  // found one produces — so nothing throws, and there is no field a caller could read as an
+  // opinion about whether anything holds.
+  const quote = "zzz-nowhere-zzz";
+  const artifact = locate(extract(FIXTURE_PDF), quote);
+  assert.equal(artifact.artifact_type, "ethos.parser.locations.v0");
+  assert.deepEqual(artifact.occurrences, []);
+  assert.equal(artifact.quote_scalars, scalarCount(quote));
+  assert.ok(artifact.searched.blocks > 0, "a record nothing was searched in would report absence vacuously");
+});
+
+test("an empty quote is a refusal and not the not-found answer", () => {
+  // §4.1: the empty string occurs at every offset of every block, so *where* has no answer. The
+  // adapter keeps that apart from the empty answer above rather than collapsing the two —
+  // collapsing them would tell a caller that a string occurring at every position occurs at none.
+  assert.throws(
+    () => locate(extract(FIXTURE_PDF), ""),
+    (error) => {
+      assert.ok(error instanceof EngineFailed);
+      assert.equal(error.status, 2);
+      assert.match(error.stderr, /empty/);
+      return true;
+    },
+  );
 });
 
 test("a document the engine cannot read is a named failure", async () => {

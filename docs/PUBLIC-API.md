@@ -231,10 +231,10 @@ contract before anyone decided it should be one.
 ## `ethos-parser-cli` — the binary
 
 **Exports nothing.** `ethos-parser` is a `[[bin]]`; there is no library target and no supported
-`ethos_parser_cli::` path. The CLI's **ten** subcommands, their flags and their exit codes are a
-*product* contract, not a Rust one: `classify`, `extract`, `ground` and `grounding-check` from v0,
-then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4), `mcp` (v1.2-S1)
-and `tag` (auto-tagging S2). `docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so, and
+`ethos_parser_cli::` path. The CLI's **eleven** subcommands, their flags and their exit codes are
+a *product* contract, not a Rust one: `classify`, `extract`, `ground` and `grounding-check` from
+v0, then `verify` (v0.1), `overlay` (v1-S6), `markdown` (v1.1-S1), `html` (v1.1-S4), `mcp`
+(v1.2-S1), `tag` (auto-tagging S2) and `locate` (v2.3). `docs/04-ARCHITECTURE.md` §2 describes the v0 four and says so, and
 carries `tag`'s row as the exception to its output rule; `enum Command` in
 `crates/ethos-parser-cli/src/main.rs` is the list that cannot go stale.
 
@@ -249,9 +249,9 @@ with each other and neither agreeing with the binary. Repaired at v2-S13.3.
 thin shell — that **every subcommand behaviour be reachable through the library**. This table is
 that mapping, and the right-hand column is what a caller writes instead of spawning a process.
 
-**It maps five of the ten, and that gap is the finding rather than the table's shape.** The rule
-binds every subcommand; the rows here cover v0's four and `tag`, so `verify`, `overlay`, `markdown`,
-`html` and `mcp` have their thin-shell mapping stated nowhere. Each *is* thin — `ethos-parser verify`
+**It maps six of the eleven, and that gap is the finding rather than the table's shape.** The rule
+binds every subcommand; the rows here cover v0's four, `tag` and `locate`, so `verify`, `overlay`,
+`markdown`, `html` and `mcp` have their thin-shell mapping stated nowhere. Each *is* thin — `ethos-parser verify`
 relays through `ethos_parser_core::verifier`, `markdown` and `html` through `ethos_parser_core`'s projections,
 `overlay` through `ethos_parser_pdf`, and `mcp` is the shell around all of them — but "is" and "is
 written down where a caller can check it" are different claims, and this document exists to make
@@ -265,6 +265,7 @@ per row, the way the five below name theirs, and that is a slice rather than a s
 | `ethos-parser ground <repr>` | `serde_json::from_slice::<DocumentRepresentation>` → `verify_fingerprint` → `ethos_parser_grounding::project` → `ethos_parser_grounding::to_canonical_bytes` | `library_surface.rs::project_is_reachable_and_canonical_from_the_library` | `grounding.rs::the_cli_path_matches_the_library` |
 | `ethos-parser grounding-check <json> [--source-artifact <pdf>]` | `ethos_parser_grounding::grounding_check`, or `grounding_check_reading_source` with a source → `ValidationReport::to_canonical_bytes` / `exit_code` | `library_surface.rs::grounding_check_is_reachable_and_canonical_from_the_library` | `oracle.rs::oracle_agrees_on_all_ethos_owned_fixtures` |
 | `ethos-parser tag <pdf>` | `Document::open_bytes` on the bounded read → `ethos_parser_pdf::write_tags`, whose bytes are the output; exit 0, or 2 on any error | `tagging_write.rs::the_writer_emits_the_readers_fixture_shape` (in `crates/ethos-parser-pdf/tests`) | `tag_cli.rs::the_cli_bytes_equal_the_librarys` |
+| `ethos-parser locate <repr> --quote-file <file>` | `serde_json::from_slice::<DocumentRepresentation>` → `verify_fingerprint` → `ethos_parser_core::locate` → `Locations::to_canonical_bytes`; exit 0 answered, 2 refused, **never 1** | `library_surface.rs::locate_is_reachable_and_canonical_from_the_library` | `locate_cli.rs::the_cli_prints_the_bytes_the_library_produces` |
 
 `--diagnostics` is the one flag with no library equivalent to call, because it *is* the shell's
 job: `ethos_parser_core::diagnostics::DiagnosticsRun` assembles the observation and the CLI chooses the

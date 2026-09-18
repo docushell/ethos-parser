@@ -551,6 +551,11 @@ nothing, on purpose.
   model-controlled, and a tool that emits a mutated copy of a document on a model's say-so is a
   different hazard class from one that reads. Plan §8's rule that every knob needs an MCP and SDK
   line is met by this line: not exposed, on purpose, until an owner decision says otherwise.
+  **Amended 2026-09-18:** `locate` is an eleventh subcommand and a fourth MCP tool (decision #30),
+  so the population this counted has moved. The count is left as it stood when this was written
+  rather than restated, on `verify_relay.rs`'s rule about ordinals — a recount asserted in passing
+  is how a sentence acquires a second wrong number. Nothing in the reasoning changes: `tag` is
+  still not exposed, for the reason above.
 - **Not `--max-pages`.** §3.6.
 
 ## 6. Where it sits

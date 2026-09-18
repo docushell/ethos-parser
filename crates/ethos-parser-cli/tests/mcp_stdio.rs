@@ -159,7 +159,7 @@ fn the_server_completes_a_hosts_opening_handshake() {
         .iter()
         .map(|t| t["name"].as_str().expect("a name"))
         .collect();
-    assert_eq!(names, vec!["extract", "ground", "node_get"]);
+    assert_eq!(names, vec!["extract", "ground", "node_get", "locate"]);
 }
 
 /// **No tool argument names a coordinate**, read off the wire rather than off the source.
@@ -409,6 +409,152 @@ fn ground_accepts_the_minted_artifact_and_checks_it() {
     );
 }
 
+/// **T14 — `locate` over MCP is the artifact the CLI prints, and its summary carries no locator.**
+///
+/// The same pattern `the_artifact_through_mcp_is_the_artifact_the_cli_prints` uses, on the fourth
+/// tool: re-canonicalizing what came back must reproduce the CLI's stdout byte for byte, which is
+/// what would catch a field reordered or an integer widened on the way through.
+///
+/// **And the not-found reply is not an error reply.** A tool whose error channel answered
+/// *whether* a string is present would be a verdict in one composition, which is decision #30's
+/// own re-refusal condition. So the second call asserts `isError: false` on a quote the document
+/// does not contain, and that the phrase "not found" is nowhere in the summary.
+#[test]
+fn locate_through_mcp_is_the_artifact_the_cli_prints() {
+    let dir = stdio_scratch("locate");
+    let (p, _, repr) = extracted_to(&dir);
+    let quote = dir.join("q.txt");
+    std::fs::write(&quote, b"Measured").expect("write");
+
+    let cli = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args([
+            "locate",
+            p.to_str().expect("utf-8"),
+            "--quote-file",
+            quote.to_str().expect("utf-8"),
+        ])
+        .output()
+        .expect("the CLI runs");
+    assert_eq!(
+        cli.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let cli_value: Value = serde_json::from_slice(&cli.stdout).expect("canonical JSON");
+    let cli_bytes = cli
+        .stdout
+        .strip_suffix(b"\n")
+        .expect("one newline")
+        .to_vec();
+
+    let responses = session(&[
+        call(
+            "locate",
+            json!({ "representation": repr, "quote": "Measured" }),
+            1,
+        ),
+        call(
+            "locate",
+            json!({ "representation": repr, "quote": "Absent" }),
+            2,
+        ),
+    ]);
+
+    let found = &responses[0]["result"];
+    assert_eq!(found["isError"], json!(false), "{found:?}");
+    assert_eq!(
+        found["structuredContent"], cli_value,
+        "the adapter must return the artifact, not a re-serialization of it"
+    );
+    assert_eq!(
+        ethos_parser_core::c14n_bytes(&found["structuredContent"]).expect("canonicalizes"),
+        cli_bytes,
+        "byte identity across the adapter, not merely structural equality"
+    );
+
+    // **The summary is counts, and nothing a pipeline would bind to.**
+    let summary = found["content"][0]["text"].as_str().expect("a summary");
+    for locator in ["bbox", "[", "x0", "origin", "sha256:", "s1"] {
+        assert!(
+            !summary.contains(locator),
+            "`{locator}` reached the model-facing summary: {summary:?}"
+        );
+    }
+    assert!(
+        summary.contains("1 occurrence(s)"),
+        "the count is what the model is told: {summary:?}"
+    );
+
+    // The empty answer, which is an answer.
+    let absent = &responses[1]["result"];
+    assert_eq!(
+        absent["isError"],
+        json!(false),
+        "a string that occurs nowhere is not an error: {absent:?}"
+    );
+    assert_eq!(
+        absent["structuredContent"]["occurrences"],
+        json!([]),
+        "an empty list, and the same artifact shape"
+    );
+    let summary = absent["content"][0]["text"].as_str().expect("a summary");
+    assert!(
+        summary.contains("0 occurrence(s)"),
+        "the count says it: {summary:?}"
+    );
+    assert!(
+        !summary.to_lowercase().contains("not found"),
+        "`not found` is a verdict in two words: {summary:?}"
+    );
+
+    // **T7's MCP third** — and the contrast that makes the assertion above mean something. The
+    // empty quote *is* an error here, so `isError` distinguishes a refusal from an answer rather
+    // than distinguishing found from not found.
+    let refused = session(&[call(
+        "locate",
+        json!({ "representation": repr, "quote": "" }),
+        3,
+    )]);
+    let refused = &refused[0]["result"];
+    assert_eq!(refused["isError"], json!(true), "{refused:?}");
+    assert!(
+        refused["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("the quote is empty"),
+        "the refusal names the empty quote: {refused:?}"
+    );
+}
+
+/// **T16's MCP third** — an edited representation is refused by `locate` before a scalar is
+/// compared, and the refusal is a tool failure rather than a protocol failure.
+#[test]
+fn locate_refuses_a_representation_that_does_not_hash_to_its_digest() {
+    let dir = stdio_scratch("locate-tampered");
+    let (p, bytes, _) = extracted_to(&dir);
+    let edited = dir.join("edited.json");
+    std::fs::write(&edited, tampered_bytes(&bytes)).expect("write");
+    assert!(p.is_file(), "the good copy is beside it");
+
+    let responses = session(&[call(
+        "locate",
+        json!({ "representation": edited, "quote": "Measured" }),
+        1,
+    )]);
+    let result = &responses[0]["result"];
+    assert_eq!(result["isError"], json!(true), "{result:?}");
+    assert!(
+        result.get("structuredContent").is_none(),
+        "no artifact travels with a refusal: {result:?}"
+    );
+    let message = result["content"][0]["text"].as_str().expect("a message");
+    assert!(
+        message.contains("representation_c14n_sha256"),
+        "the refusal names the digest that disagreed: {message:?}"
+    );
+}
+
 /// The relay boundary holds: no tool here emits a verdict, and `verify` is not among them.
 ///
 /// `docs/07-VERIFY-BOUNDARY.md` — the engine invokes a verifier, it does not verify. Wrapping the
@@ -624,6 +770,18 @@ fn every_reply_in_a_session_is_the_reply_a_fresh_server_gives() {
             3,
         )),
         Step::Ask(call("extract", json!({ "path": pdf }), 4)),
+        // The fourth tool, in the same script: its answer must not depend on the calls before it
+        // either. `measured-ink-box`'s one run is the text `Measured`.
+        Step::Ask(call(
+            "locate",
+            json!({ "representation": p, "quote": "Measured" }),
+            6,
+        )),
+        Step::Ask(call(
+            "locate",
+            json!({ "representation": p, "quote": "Absent" }),
+            7,
+        )),
         Step::Ask(node(&with_newline, &minted)),
         Step::Ask(call("ground", json!({ "representation": p }), 5)),
     ];
