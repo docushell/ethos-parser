@@ -386,8 +386,28 @@ struct MarkdownArgs {
     ///
     /// **A representation, not a PDF.** The same input `ethos-parser ground` takes, deliberately: one
     /// subcommand that silently means two different things is how a caller ends up unsure which
-    /// profile produced the artifact it is holding.
-    path: PathBuf,
+    /// profile produced the artifact it is holding. `--source` is how a caller asks for the other
+    /// thing, and it says so in the command line rather than in the bytes.
+    #[arg(required_unless_present = "source", conflicts_with = "source")]
+    path: Option<PathBuf>,
+
+    /// A source document — PDF or office — to extract and project in one process.
+    ///
+    /// **The same two stages, without the record on disk between them.** The artifact is
+    /// byte-identical to `extract` piped into this subcommand (`the_source_path_equals_the_two_step_path`
+    /// asserts it), because it is the same two library calls under the same default profile; what
+    /// it skips is serialising the representation to JSON, writing it, reading it back, parsing it,
+    /// re-hashing it to verify a fingerprint this process computed moments ago, and a second
+    /// process start. Measured over the 200 opendataloader-bench documents, those cost 3.1 ms and
+    /// 7.6 ms per document against 5.4 ms of engine work
+    /// (`docs/measurements/liteparse-head-to-head/README.md` §3).
+    ///
+    /// **Nothing is inferred from the flag.** The format is still decided by the file's own bytes,
+    /// exactly as `extract` decides it, and a file that states no format this engine reads is
+    /// refused by the same message. The representation is not emitted: a caller who needs the
+    /// record — to ground a claim, to locate a quote, to keep — runs `extract` and keeps it.
+    #[arg(long, value_name = "FILE")]
+    source: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -497,7 +517,12 @@ fn main() -> ExitCode {
             timed(Stage::Extract, diag, &path, || run_extract(args))
         }
         Command::Markdown(args) => {
-            let path = args.path.clone();
+            // Whichever input the caller named is the one the diagnostics report read.
+            let path = args
+                .path
+                .clone()
+                .or_else(|| args.source.clone())
+                .unwrap_or_default();
             timed(Stage::Ground, diag, &path, || run_markdown(args))
         }
         Command::Html(args) => {
@@ -901,29 +926,41 @@ fn run_locate(args: LocateArgs) -> ExitCode {
     }
 }
 
+/// The record a projection will read, from whichever of the two inputs the caller named.
+///
+/// **The fingerprint is checked on one path and not the other, and the asymmetry is the point.** A
+/// representation read from a file is a record this process did not build: it may have been edited,
+/// truncated or produced by another build, and `01-CONTRACT.md` makes the digest the thing that
+/// says otherwise — so it is verified before a byte is projected, exactly as `ground` verifies it.
+/// A representation built from a source document two statements ago has nothing to disagree with;
+/// re-hashing 250 KB to compare it with a digest this process just computed would measure the
+/// hashing code, not the record. The projected bytes are identical either way, which is asserted
+/// rather than claimed (`markdown_cli.rs::the_source_path_equals_the_two_step_path`).
+fn representation_to_project(
+    path: Option<&std::path::Path>,
+    source: Option<&std::path::Path>,
+) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
+    if let Some(source) = source {
+        let bytes = read_source(source)?;
+        return representation_for_bytes(&bytes, &Profile::default());
+    }
+    // clap holds the other arm: exactly one of the two is present.
+    let path = path.expect("clap requires a representation path when --source is absent");
+    let bytes = read_source(path)?;
+    let repr: ethos_parser_core::DocumentRepresentation =
+        serde_json::from_slice(&bytes).map_err(|e| EngineError::Malformed {
+            what: "representation".into(),
+            detail: e.to_string(),
+        })?;
+    repr.verify_fingerprint()?;
+    Ok(repr)
+}
+
 fn run_markdown(args: MarkdownArgs) -> ExitCode {
-    let bytes = match read_source(&args.path) {
-        Ok(b) => b,
+    let repr = match representation_to_project(args.path.as_deref(), args.source.as_deref()) {
+        Ok(r) => r,
         Err(e) => return fail(&e),
     };
-
-    let repr: ethos_parser_core::DocumentRepresentation = match serde_json::from_slice(&bytes) {
-        Ok(r) => r,
-        Err(e) => {
-            return fail(&EngineError::Malformed {
-                what: "representation".into(),
-                detail: e.to_string(),
-            })
-        }
-    };
-
-    // Checked before anything is projected, exactly as `ground` does. A representation whose
-    // payload does not hash to its declared digest is not a record this engine will speak for, and
-    // projecting it anyway would launder the disagreement into a fresh-looking artifact whose
-    // anchor map named node ids nobody can now confirm.
-    if let Err(e) = repr.verify_fingerprint() {
-        return fail(&e);
-    }
 
     let profile = Profile::default();
     let profile_sha256 = match profile.profile_sha256() {

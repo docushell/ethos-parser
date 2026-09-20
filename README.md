@@ -74,7 +74,7 @@ target/release/ethos-parser ground repr.json > grounding.json
 | `classify` | Counts and reason codes for a PDF — is it scanned? is the layout hard? | 0 / 1 / 2 |
 | `extract` | The document as text runs with locators (`DocumentRepresentation v0`) | 0 / 2 |
 | `ground` | Turn a representation into `ethos.grounding.v1`, the citation format | 0 / 2 |
-| `markdown` | Markdown plus a map from every character back to a node | 0 / 2 |
+| `markdown` | Markdown plus a map from every character back to a node. Takes a representation, or `--source <FILE>` to read a document and project it in one process — the same bytes, without the record on disk between the two stages | 0 / 2 |
 | `html` | The same thing in HTML, projected from the document rather than from the Markdown | 0 / 2 |
 | `grounding-check` | Validate a grounding file's structure and its link to the source bytes | 0 / 1 / 2 |
 | `verify` | Hand a citation check to the pinned Ethos verifier and relay its answer | 0 / 1 / 2 |
