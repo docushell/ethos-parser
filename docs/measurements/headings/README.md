@@ -269,3 +269,44 @@ rule**, and §7.5's bound exists to say so before the code ships rather than aft
 document, the way `body_is_bold` withdraws it where the body is bold — a share rather than a
 majority. That is a new threshold, and it would need what `BODY_SHARE_DEN`'s 1/20 got: a measured
 gap in the evidence to sit in, plus a re-run of both instruments. Nothing here sets one.
+
+### 7.1 And the guard that would have saved it does not exist — measured 2026-09-20
+
+§7 named what would reopen the clause: a guard that withdraws it where weight is *common*, the way
+`body_is_bold` withdraws it where the body is bold. A share needs a gap in the evidence to sit in,
+the way `BODY_SHARE_DEN`'s 1/20 was set from one. **There is no such gap.** Measured on the same
+eleven documents, tree stripped, with the same build that produced §7's table — per-document
+readings in [`bold-share.json`](bold-share.json):
+
+| document | bold at body size | bold, all sizes | all-bold candidate lines | bounds |
+| --- | ---: | ---: | ---: | --- |
+| `irs-fw9` | 0.0% | 0.0% | 0.0% | ok |
+| `irs-form-1040-2025` | 0.0% | 0.0% | 0.0% | ok |
+| `irs-f1040sd-2025` | 0.0% | 0.0% | 0.0% | ok |
+| `nist-sp-800-37r2` | 3.3% | 4.2% | 6.9% | ok |
+| `nist-sp-800-207` | 3.6% | 5.7% | 6.3% | ok |
+| `nist-sp-800-53Ar5` | 4.8% | **26.2%** | 7.8% | ok |
+| `nist-sp-800-53r5` | **10.0%** | 14.8% | **17.5%** | ok |
+| `cfpb-home-loan-toolkit` | **1.3%** | 7.4% | 11.5% | **breach** |
+| `nist-sp-800-171r3` | 4.0% | 5.7% | 15.5% | **breach** |
+| `nist-sp-800-218` | 4.1% | 11.6% | 5.4% | **breach** |
+| `nist-sp-800-161r1` | 9.7% | 8.8% | 15.4% | **breach** |
+
+**The two sets interleave on every metric.** `nist-sp-800-53r5` stays inside both bounds with more
+bold than any breaching document — 10.0% at body size, 17.5% of its candidate lines — and
+`cfpb-home-loan-toolkit` breaches with the least, 1.3%. `nist-sp-800-53Ar5` carries 26.2% bold
+overall and is the second-best document in §7's table. No threshold on any of these three columns
+separates the documents where the clause is bounded from the documents where it is not, so a
+share-based guard is not a rule that could be set here; it would be a number chosen to fit four
+documents and refuted by the fifth.
+
+**Why the share cannot work, read off the same table.** How much bold a document contains is not
+what decides whether bold means *heading* in it. `53Ar5` bolds a quarter of its text and the clause
+stays bounded because those runs are not lines of their own; `cfpb` bolds almost nothing and
+breaches because it declares only 83 headings, so a handful of bold captions exceeds the count
+bound. The quantity is not the signal, and nothing measured here is.
+
+**So S5 stays unbuilt**, now on two measurements rather than one: the clause itself is outside the
+bound (§7), and the guard that would bound it has no gap to stand on (this section). Reopening it
+needs evidence this repository does not have — a signal that separates a bold heading from bold
+prose *within* a document, rather than a property of the document as a whole.
