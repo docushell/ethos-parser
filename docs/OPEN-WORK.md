@@ -93,11 +93,17 @@ v2.3 is a roadmap version since 2026-09-17, by North Star decision #28, which am
 `02-ROADMAP.md`'s *no new version numbers* and row 15's order. It has no scope or milestones
 document yet (§4).
 
-**The gate: 0 of 2 met, and the machinery for both exists unrun.**
-1. Prebuilt binaries on three platforms: macOS only; the workflow that builds and executes the
-   other two has never run (6.3).
+**The gate: 0 of 2 met, and half of condition 2 is measured** (amended 2026-09-20; it read *the
+machinery for both exists unrun*, which the cross-OS jobs' first run falsified on 2026-09-18).
+1. Prebuilt binaries on three platforms: macOS only — the pair built and verified locally for
+   0.58.0 and again for 0.59.0. The workflow that builds and executes the other two has never run
+   on a tag, and 0.59.0 is the first release it can build (6.3).
 2. Byte-identical on all three: the instruction-set axis is measured (aarch64 against x86_64 under
-   Rosetta, both on macOS); the operating-system jobs are in `ci.yml` and have never run (6.1).
+   Rosetta, both on macOS), and **the operating-system axis passed on its first run** — CI builds
+   on Linux, macOS and Windows, byte-identical over 81 documents at `791f0fe`, 84 since decision
+   #29's fixtures (6.1). What is still unmeasured is that identity on the *release* binaries,
+   which is what a user who installs one gets; it waits on the tag push and the workflow's
+   `verify` job (6.3).
 
 The plan's other condition, *a quote grounded to its own glyphs*, is dropped by #28: it needed word
 boxes, which doc 22 refused.
