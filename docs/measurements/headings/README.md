@@ -211,3 +211,102 @@ headings and the text between them, and cannot tell this rule's one level from a
 a wrong one. **And the bench carries no author tags**, so it scores what the rule finds and cannot
 see what it fabricates — which is why S3's false-positive measurement on the eleven tagged documents
 is the bound the rule ships on, and this is its recall side.
+
+---
+
+## 7. S5 — the font-weight clause, built and refused on its own measurement (2026-09-20)
+
+`28-HEADINGS-SCOPE.md`'s S5 held the font clause as conditional on "its own measurement on the
+shipped signal, with its own bound set before its code". This is that measurement. **It was built,
+measured on both sides, and is not shipped**: the numbers are here, the code is not in the tree.
+
+**The signal, narrower than §7.3's proxy.** §7.3 measured "a font the body text is not set in",
+which is why its band reached 15.76%. What was built instead reads the font's own declaration and
+nothing else: `/FontDescriptor /Flags` **ForceBold** (bit 19), or a `/BaseFont` name containing
+`Bold`. No `/StemV` and no `/FontWeight` — both are numbers that would need a threshold nobody
+measured. A line is bold when every run of it carrying text is, and the clause fires only where the
+document's body is **not** itself bold, measured at the body's own size by characters, so a deck or
+a form whose prose is bold withdraws the clause rather than reading every line as a heading.
+
+**What it bought**, over opendataloader-bench's 200 documents, the harness's own evaluator: MHS
+**0.3353 → 0.5198**, and the documents scoring zero **49 → 15**. NID did not move (0.8714 → 0.8711).
+It is a real signal: it is exactly the signal those documents use, and they set their headings at
+body size in bold.
+
+**What it cost**, over the eleven documents whose authors declare headings, tree stripped, by
+[`falsepos.py`](falsepos.py) unchanged — per-document readings in
+[`falsepos-weight-refused.json`](falsepos-weight-refused.json):
+
+| document | declared | fired | true | false | FP rate | recall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `irs-fw9` | 28 | 26 | 26 | 0 | 0.00% | 92.86% |
+| `irs-form-1040-2025` | 24 | 23 | 22 | 1 | 0.43% | 91.67% |
+| `nist-sp-800-53Ar5` | 61 | 78 | 26 | 52 | 0.06% | 42.62% |
+| `nist-sp-800-53r5` | 389 | 39 | 10 | 29 | 0.13% | 2.57% |
+| `nist-sp-800-207` | 57 | 27 | 9 | 18 | 0.96% | 15.79% |
+| `nist-sp-800-37r2` | 957 | 353 | 55 | 298 | 3.76% | 5.75% |
+| `nist-sp-800-171r3` | 180 | 372 | 169 | **203** | 4.98% | 93.89% |
+| `cfpb-home-loan-toolkit` | 83 | 75 | 23 | 52 | **5.71%** | 27.71% |
+| `nist-sp-800-161r1` | 454 | 1416 | 118 | **1297** | **10.15%** | 25.99% |
+| `irs-f1040sd-2025` (counts only) | 9 | 3 | 1 | 2 | — | 11.11% |
+| `nist-sp-800-218` (counts only) | 7 | 35 | 7 | **28** | — | 100.00% |
+
+**Both bounds fail, and not narrowly.** The rate band over the nine bounded documents is
+**0.00%..10.15%**, worst `nist-sp-800-161r1`, with `cfpb-home-loan-toolkit` also over at 5.71%
+against §7.5's 5%. The count bound — no more false headings than the author declared — is breached
+on three: `nist-sp-800-161r1` 1297 against 454, `nist-sp-800-171r3` 203 against 180, and
+`nist-sp-800-218` 28 against 7, which is the document whose earlier breach of 10 the owner accepted.
+The instrument's own verdict line reads `ALL BOUNDS: NOT MET`.
+
+**Why it fails, which is the part worth keeping.** The clause is not weak — where weight means
+*heading*, it is the best signal this rule has had: `irs-fw9` 92.86% recall at 0.00%,
+`nist-sp-800-171r3` 93.89% at 4.98%. It collapses where a document uses weight for something else,
+and the long NIST standards do exactly that: bold defined terms, bold table headers, bold inline
+emphasis. **A signal that is excellent on four documents and unbounded on two is not a bounded
+rule**, and §7.5's bound exists to say so before the code ships rather than after.
+
+**What would reopen it.** A guard that withdraws the clause where weight is *common* in the
+document, the way `body_is_bold` withdraws it where the body is bold — a share rather than a
+majority. That is a new threshold, and it would need what `BODY_SHARE_DEN`'s 1/20 got: a measured
+gap in the evidence to sit in, plus a re-run of both instruments. Nothing here sets one.
+
+### 7.1 And the guard that would have saved it does not exist — measured 2026-09-20
+
+§7 named what would reopen the clause: a guard that withdraws it where weight is *common*, the way
+`body_is_bold` withdraws it where the body is bold. A share needs a gap in the evidence to sit in,
+the way `BODY_SHARE_DEN`'s 1/20 was set from one. **There is no such gap.** Measured on the same
+eleven documents, tree stripped, with the same build that produced §7's table — per-document
+readings in [`bold-share.json`](bold-share.json):
+
+| document | bold at body size | bold, all sizes | all-bold candidate lines | bounds |
+| --- | ---: | ---: | ---: | --- |
+| `irs-fw9` | 0.0% | 0.0% | 0.0% | ok |
+| `irs-form-1040-2025` | 0.0% | 0.0% | 0.0% | ok |
+| `irs-f1040sd-2025` | 0.0% | 0.0% | 0.0% | ok |
+| `nist-sp-800-37r2` | 3.3% | 4.2% | 6.9% | ok |
+| `nist-sp-800-207` | 3.6% | 5.7% | 6.3% | ok |
+| `nist-sp-800-53Ar5` | 4.8% | **26.2%** | 7.8% | ok |
+| `nist-sp-800-53r5` | **10.0%** | 14.8% | **17.5%** | ok |
+| `cfpb-home-loan-toolkit` | **1.3%** | 7.4% | 11.5% | **breach** |
+| `nist-sp-800-171r3` | 4.0% | 5.7% | 15.5% | **breach** |
+| `nist-sp-800-218` | 4.1% | 11.6% | 5.4% | **breach** |
+| `nist-sp-800-161r1` | 9.7% | 8.8% | 15.4% | **breach** |
+
+**The two sets interleave on every metric.** `nist-sp-800-53r5` stays inside both bounds with more
+bold than any breaching document — 10.0% at body size, 17.5% of its candidate lines — and
+`cfpb-home-loan-toolkit` breaches with the least, 1.3%. `nist-sp-800-53Ar5` carries 26.2% bold
+overall and is the second-best document in §7's table. No threshold on any of these three columns
+separates the documents where the clause is bounded from the documents where it is not, so a
+share-based guard is not a rule that could be set here; it would be a number chosen to fit four
+documents and refuted by the fifth.
+
+**Why the share cannot work, read off the same table.** How much bold a document contains is not
+what decides whether bold means *heading* in it. `53Ar5` bolds a quarter of its text and the clause
+stays bounded because those runs are not lines of their own; `cfpb` bolds almost nothing and
+breaches because it declares only 83 headings, so a handful of bold captions exceeds the count
+bound. The quantity is not the signal, and nothing measured here is.
+
+**So S5 stays unbuilt**, now on two measurements rather than one: the clause itself is outside the
+bound (§7), and the guard that would bound it has no gap to stand on (this section). Reopening it
+needs evidence this repository does not have — a signal that separates a bold heading from bold
+prose *within* a document, rather than a property of the document as a whole.

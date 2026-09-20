@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v8");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v9");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -377,10 +377,26 @@ fn no_cli_path_emits_markdown_without_its_map() {
     assert!(
         flags
             .iter()
-            .all(|f| matches!(*f, "--help" | "--version" | "--diagnostics")),
+            .all(|f| matches!(*f, "--help" | "--version" | "--diagnostics" | "--source")),
         "`ethos-parser markdown` grew a flag: {flags:?}. Any option that could suppress the Anchor Map \
          is the one thing this version exists to prevent (docs/history/10-V11-SCOPE.md law 1), so a new \
          flag here is a deliberate decision that needs its own evidence."
+    );
+
+    // **`--source` is the one flag admitted here, and this is the evidence the sentence above
+    // asks for.** It does not touch what is emitted: it decides where the record comes from — a
+    // file, or this process — and [`the_source_path_equals_the_two_step_path`] asserts the two
+    // produce the same bytes, map included, on three fixtures and in both projections. Law 1 is
+    // about a projection leaving its map behind, and a flag that cannot change the artifact
+    // cannot do that. A flag that *suppressed* anything still fails this test, which is why the
+    // list is a list and not a wildcard.
+    let source_help = options
+        .split("--source")
+        .nth(1)
+        .expect("the flag is declared, so clap documents it");
+    assert!(
+        source_help.contains("byte-identical"),
+        "--source must document the equality that admits it, in the text a caller reads: {source_help:?}"
     );
 
     // And the artifact itself always carries both halves.
@@ -828,7 +844,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v8");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v9");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1479,7 +1495,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         1,
         "one heading, and no body line became one"
     );
-    assert_eq!(md["markdown_rule"], "markdown-blocks-v8");
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v9");
 
     let first = &md["anchor_map"]["segments"][0];
     assert_eq!(
@@ -1501,5 +1517,109 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         text.starts_with("<h1>Display line</h1>\n"),
         "the same line, the same level, in the other syntax: {text:?}"
     );
-    assert_eq!(html["html_rule"], "html-blocks-v8");
+    assert_eq!(html["html_rule"], "html-blocks-v9");
+}
+
+/// **`--source` is the same two stages in one process, and the bytes say so.**
+///
+/// The flag exists because the two-step path spends more on carrying the record between two
+/// processes than on reading the document: 7.6 ms of process start and 3.1 ms of serialising,
+/// writing, reading, parsing and re-hashing a 250 KB representation, against 5.4 ms of engine work
+/// per document (`docs/measurements/liteparse-head-to-head/README.md` §3). None of that is the
+/// projection, so none of it may change the projection — which is what this asserts, on a fixture
+/// carrying a table, an inferred heading and an artifact run, over both projections.
+#[test]
+fn the_source_path_equals_the_two_step_path() {
+    for fixture in [
+        "heading-display-line",
+        "leading-gap-two-blocks",
+        "two-column-15-lines",
+    ] {
+        let pdf = engine_fixture(fixture);
+        let pdf = pdf.to_str().unwrap();
+        let dir = scratch("source-equals");
+        let repr_path = dir.join(format!("{fixture}.json"));
+
+        let extracted = engine(&["extract", pdf]);
+        assert_eq!(extracted.status.code(), Some(0), "extract {fixture}");
+        std::fs::write(&repr_path, &extracted.stdout).expect("write the record");
+
+        for projection in ["markdown", "html"] {
+            if projection == "html" {
+                // `html` still takes a record only; the flag landed on `markdown` alone, where the
+                // cost was measured. This arm asserts that, so the asymmetry is deliberate rather
+                // than forgotten.
+                let refused = engine(&["html", "--source", pdf]);
+                assert_ne!(refused.status.code(), Some(0), "html has no --source yet");
+                continue;
+            }
+            let two_step = engine(&[projection, repr_path.to_str().unwrap()]);
+            let one_step = engine(&[projection, "--source", pdf]);
+            assert_eq!(
+                two_step.status.code(),
+                Some(0),
+                "{projection} from the record"
+            );
+            assert_eq!(one_step.status.code(), Some(0), "{projection} --source");
+            assert_eq!(
+                two_step.stdout, one_step.stdout,
+                "{projection} of {fixture} differs between the two paths"
+            );
+            assert!(
+                one_step.stderr.is_empty(),
+                "nothing on stderr: {:?}",
+                one_step.stderr
+            );
+        }
+    }
+}
+
+/// **Neither input, or both, is a usage error — and a source that states no format is the
+/// extractor's own refusal.**
+///
+/// The flag names which of the two things the caller means, so nothing is guessed from the bytes
+/// beyond the format question `extract` already asks. A `.csv` handed to `--source` gets the
+/// message v2-S10 wrote for bytes that state no format, not a message about JSON.
+#[test]
+fn the_two_inputs_are_named_never_guessed() {
+    let dir = scratch("source-refusals");
+    let formatless = dir.join("shopping.csv");
+    std::fs::write(&formatless, b"eggs,2\nmilk,1\n").expect("write the formatless file");
+
+    let neither = engine(&["markdown"]);
+    assert_eq!(
+        neither.status.code(),
+        Some(2),
+        "a subcommand with no input is a usage error"
+    );
+
+    let pdf = engine_fixture("leading-gap-two-blocks");
+    let both = engine(&[
+        "markdown",
+        pdf.to_str().unwrap(),
+        "--source",
+        pdf.to_str().unwrap(),
+    ]);
+    assert_eq!(both.status.code(), Some(2), "two inputs is a usage error");
+
+    let no_format = engine(&["markdown", "--source", formatless.to_str().unwrap()]);
+    assert_eq!(no_format.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&no_format.stderr);
+    assert!(
+        stderr.contains("these bytes state no format this engine reads"),
+        "the extractor's own refusal, not a JSON parse error: {stderr}"
+    );
+
+    // And the record path still refuses a representation whose payload does not hash to its digest.
+    let repr = dir.join("tampered.json");
+    let extracted = engine(&["extract", pdf.to_str().unwrap()]);
+    let mut json: Value = serde_json::from_slice(&extracted.stdout).expect("a record");
+    json["representation"]["nodes"][0]["text_run"]["text"] = Value::String("edited".into());
+    std::fs::write(&repr, serde_json::to_vec(&json).unwrap()).expect("write the tampered record");
+    let tampered = engine(&["markdown", repr.to_str().unwrap()]);
+    assert_eq!(
+        tampered.status.code(),
+        Some(2),
+        "a tampered record is still refused"
+    );
 }

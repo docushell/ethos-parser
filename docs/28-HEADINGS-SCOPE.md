@@ -959,6 +959,47 @@ three times outside the bound (0.00%..15.76% against 0.00%..4.84%). It needs a s
 which reaches the wire today (§3.1) — and its own bound, set before its own code. §11 records
 whether to scope it now or after S4's numbers.
 
+
+**Amended 2026-09-20: built, measured, and not shipped.** S5 asked for "its own measurement on the
+shipped signal, with its own bound set before its code", and this is that measurement — the code
+was written, both sides were measured, and it was reverted. The signal read is narrower than
+§7.3's proxy: the font's own `/FontDescriptor /Flags` ForceBold bit (position 19) or a `/BaseFont`
+name containing `Bold`, with no `/StemV` and no `/FontWeight`, because both are numbers that would
+need a threshold nobody has measured. A line counts as bold when every run of it carrying text is,
+and the clause withdraws on a document whose body is itself bold, measured at the body's own size
+by characters.
+
+**It bought** MHS 0.3353 → 0.5198 on opendataloader-bench, with the documents scoring zero falling
+49 → 15 — the signal those documents actually use, since they set headings at body size in bold.
+**It cost both bounds.** Over the eleven, the rate band is 0.00%..10.15% (worst
+`nist-sp-800-161r1`, with `cfpb-home-loan-toolkit` also over at 5.71%) against §7.5's 5%; and the
+count bound is breached on three — `nist-sp-800-161r1` 1297 false against 454 declared,
+`nist-sp-800-171r3` 203 against 180, and `nist-sp-800-218` 28 against the 7 whose earlier breach of
+10 the owner accepted. `falsepos.py` prints `ALL BOUNDS: NOT MET`.
+
+**The reading, which is what S5 was for.** The clause is excellent where weight means heading
+(`irs-fw9` 92.86% recall at 0.00%, `nist-sp-800-171r3` 93.89% at 4.98%) and unbounded where a
+document bolds defined terms, table headers and inline emphasis — which the long NIST standards
+do. A rule that is bounded on four documents and not on two is not a bounded rule. **What would
+reopen it:** a guard that withdraws where weight is *common* rather than only where the body is
+bold — a share, which needs a measured gap to sit in, as `BODY_SHARE_DEN`'s 1/20 had, and a re-run
+of both instruments. Tables and per-document numbers:
+[`measurements/headings/README.md`](measurements/headings/README.md) §7 and
+[`falsepos-weight-refused.json`](measurements/headings/falsepos-weight-refused.json).
+
+**Amended the same day: that guard has no gap to stand on.** The bold share was measured on the same
+eleven documents three ways — at the body size, over all sizes, and as the share of candidate lines
+wholly bold. The bounded and the breaching documents interleave on every one: `nist-sp-800-53r5`
+stays inside both bounds with more bold than any breaching document (10.0% at body size, 17.5% of
+its candidate lines), `nist-sp-800-53Ar5` carries 26.2% bold overall and is among the best of §7's
+table, and `cfpb-home-loan-toolkit` breaches with 1.3%. How much bold a document contains is not
+what decides whether bold means heading in it, so a threshold on that quantity would be a number
+fitted to four documents and refuted by the fifth. **S5 stays unbuilt on two measurements now**: the
+clause is outside the bound, and the guard that would bound it cannot be set. Reopening needs a
+signal separating a bold heading from bold prose *within* a document — nothing measured here is one.
+Readings: [`measurements/headings/README.md`](measurements/headings/README.md) §7.1 and
+[`bold-share.json`](measurements/headings/bold-share.json).
+
 ## 11. What this document settled, and the one question left
 
 **Settled here, each on a rule the repository already has or on a number measured above** — none is

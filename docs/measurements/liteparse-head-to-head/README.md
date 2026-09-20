@@ -120,3 +120,57 @@ Read as a gap list rather than a verdict, each item already has a record in this
 3. **Reading order is the closest** — 0.8694 against 0.9190. The identity fallback is the known
    cause, and `OPEN-WORK.md` §4's undecided row measures the repair at 0.9162 on this same corpus,
    which would close most of the remaining distance.
+
+---
+
+## 7. Amended 2026-09-20, after optimising against these numbers
+
+The owner asked for all four to beat `lit`, and chose the bound the work had to stay inside: only
+changes that cannot invent structure. **One of the four is now ahead; the other three are held by
+that bound, and this section says exactly what each would cost.** Re-measured by the same
+instrument, same corpus, same machine, with `ethos-parser` at `edcf85f`:
+
+| metric | ethos-parser before | ethos-parser now | liteparse 2.14.6 |
+| --- | --- | --- | --- |
+| seconds/document | 0.035 (two processes) | **0.020** · median 0.018 · band 0.013..0.136 | 0.024 |
+| peak RSS | 9.7 MB | **9.4 MB** mean · median 8.4 | 25.1 MB |
+| NID | 0.8694 | 0.8714 · median 0.9243 | 0.9190 |
+| TEDS | 0.1704 | 0.1704 | 0.8179 |
+| MHS | 0.3321 | 0.3353 · median 0.1565 | 0.8234 |
+
+**Speed: ahead, by changing the shape of the call rather than the engine.** `tests/pipeline_cost.rs`
+measured the 0.035 s and found 5.4 ms of engine work under ~15 ms of process starts and ~3 ms of
+carrying a 250 KB record between two processes. `markdown --source` runs both stages in one process
+and emits byte-identical bytes; the engine's own work was never the slow part, and `lit`'s is ~15 ms
+against this engine's 5.4.
+
+**Reading order: +0.0020, and the measured ceiling is out of reach inside the bound.** The gain is
+the block-join repair (`markdown-blocks-v9`): a page set with tracking drew each glyph as its own
+run, and every letter became its own block — `01030000000103` projected 944 blocks of 1.2 characters
+and scored 0.4456; it now projects 48 and scores 0.5708. 58 documents moved, none down. What remains
+is `reading-order-causes.md`'s ordering cost, worth +0.0465 if driven to zero, and it lives on
+single-column pages whose *content stream* is out of order. The fix prescribed there — peel a
+full-width band, then look for gutters in what remains — was built and measured: it reaches 4
+documents and is **net −0.1042**, because the 178 identity-arm documents are not hiding columns.
+Reordering them needs a rule that reorders on position alone, which `reading_order.rs` refuses in
+its header and the measurement refuses again. Reverted, and recorded here instead.
+
+**Headings: the zeros are not near the cut, they are at body size.** A diagnostic build printed the
+rule's own view on the documents scoring 0: `body_em=1100` with candidate line ems of exactly `{900,
+1100}` — the headings those documents draw are the *same size* as their body text, set bold. No size
+rule can reach them at any cut, which the sweep confirms: 1.20× → 1.15× moves MHS 0.3353 → 0.3455
+and the zeros 49 → 46, and 1.10× makes MHS worse. The only remaining signal is the font, and
+`28-HEADINGS-SCOPE.md` §7.3 measured the size-or-font disjunction at up to **15.76%** false
+positives against the **5%** bound the owner accepted — three times over. A narrower signal (the
+font's own `/FontDescriptor /Flags` ForceBold bit, or a `/BaseFont` name that says Bold) is the one
+untried path that could come in under the bound, and it is untried: it needs building and then
+measuring on the eleven tagged documents before anything ships.
+
+**Tables: the arithmetic says no, inside the bound.** The 28 zeros break down as 2 documents whose
+truth transcribes a picture (OCR, which the profile refuses), 12 where a drawn grid was built and
+refused, 11 past the 4,096-cell ceiling and 3 under the gutter floor
+(`../opendataloader-bench/tables-why-zero.md`). Fixing only the causes that cannot fabricate — the
+ceiling and the floor, 14 documents — and lifting today's 14 non-zero tables to 0.8 reaches about
+**0.60**. Passing 0.8179 needs the 12-document relaxation, and `table-gate-v1.md` records that
+relaxation (`-v5`) fabricating a table on **five of eight** gate documents. That is the trade the
+owner declined, so it was not built.

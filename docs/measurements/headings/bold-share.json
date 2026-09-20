@@ -1,0 +1,101 @@
+{
+ "irs-f1040sd-2025": {
+  "body_em": "900",
+  "bold_at_body": "0",
+  "chars_at_body": "4543",
+  "bold_all": "0",
+  "chars_all": "5781",
+  "candidate_lines": "120",
+  "all_bold_lines": "0"
+ },
+ "irs-fw9": {
+  "body_em": "800",
+  "bold_at_body": "0",
+  "chars_at_body": "33276",
+  "bold_all": "0",
+  "chars_all": "37352",
+  "candidate_lines": "635",
+  "all_bold_lines": "0"
+ },
+ "nist-sp-800-218": {
+  "body_em": "1200",
+  "bold_at_body": "1299",
+  "chars_at_body": "31902",
+  "bold_all": "11433",
+  "chars_all": "98931",
+  "candidate_lines": "1848",
+  "all_bold_lines": "100"
+ },
+ "nist-sp-800-207": {
+  "body_em": "1200",
+  "bold_at_body": "4782",
+  "chars_at_body": "132789",
+  "bold_all": "8180",
+  "chars_all": "142292",
+  "candidate_lines": "1884",
+  "all_bold_lines": "118"
+ },
+ "nist-sp-800-171r3": {
+  "body_em": "1200",
+  "bold_at_body": "6824",
+  "chars_at_body": "171833",
+  "bold_all": "13227",
+  "chars_all": "231472",
+  "candidate_lines": "4077",
+  "all_bold_lines": "633"
+ },
+ "nist-sp-800-37r2": {
+  "body_em": "1100",
+  "bold_at_body": "7254",
+  "chars_at_body": "218061",
+  "bold_all": "21217",
+  "chars_all": "507908",
+  "candidate_lines": "7930",
+  "all_bold_lines": "546"
+ },
+ "nist-sp-800-161r1": {
+  "body_em": "1200",
+  "bold_at_body": "48838",
+  "chars_at_body": "502345",
+  "bold_all": "65771",
+  "chars_all": "745048",
+  "candidate_lines": "12792",
+  "all_bold_lines": "1966"
+ },
+ "nist-sp-800-53Ar5": {
+  "body_em": "1100",
+  "bold_at_body": "7795",
+  "chars_at_body": "164030",
+  "bold_all": "414973",
+  "chars_all": "1582923",
+  "candidate_lines": "80093",
+  "all_bold_lines": "6264"
+ },
+ "nist-sp-800-53r5": {
+  "body_em": "1100",
+  "bold_at_body": "16987",
+  "chars_at_body": "169185",
+  "bold_all": "189493",
+  "chars_all": "1279187",
+  "candidate_lines": "21513",
+  "all_bold_lines": "3755"
+ },
+ "cfpb-home-loan-toolkit": {
+  "body_em": "1100",
+  "bold_at_body": "449",
+  "chars_at_body": "33367",
+  "bold_all": "3667",
+  "chars_all": "49596",
+  "candidate_lines": "1056",
+  "all_bold_lines": "121"
+ },
+ "irs-form-1040-2025": {
+  "body_em": "800",
+  "bold_at_body": "0",
+  "chars_at_body": "5779",
+  "bold_all": "0",
+  "chars_all": "9257",
+  "candidate_lines": "233",
+  "all_bold_lines": "0"
+ }
+}

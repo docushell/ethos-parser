@@ -150,7 +150,14 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// line break comes out differently under the last two — `hyphen-\n\nated` against `hyphenated`. A
 /// reader holding two artifacts must be able to see which rule produced each, and bumping the
 /// parser version alone would not have said it: the projection rule is what changed.
-pub const MARKDOWN_RULE_BLOCKS_V8: &str = "markdown-blocks-v8";
+/// `-v9` at the block-join repair: `ink_sequenced` gained a third way to accept a gap — narrower
+/// than the space the font itself draws on this page. A document set with tracking drew every
+/// glyph as its own run with a few centipoints between the boxes, and every letter became its own
+/// block: `01030000000103` projected 944 blocks of 1.2 characters. It now projects 48. Nothing
+/// else moved, and a document whose fonts draw no space at all projects byte for byte what `-v8`
+/// projected. Both projection ids move together, as they did at `-v8`, because the join lives in
+/// `markdown` and `html` calls it.
+pub const MARKDOWN_RULE_BLOCKS_V9: &str = "markdown-blocks-v9";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -988,10 +995,27 @@ pub(crate) fn line_key(node: &crate::Node) -> Option<LineKey> {
 /// so it is not a constant in this source at all. A key with fewer than two runs is **absent**:
 /// one observation cannot corroborate itself, and a run whose font appears nowhere else is
 /// refused rather than trusted.
-pub(crate) type PitchReference = std::collections::HashMap<(String, i64), i64>;
+pub(crate) type PitchReference = std::collections::HashMap<(String, i64), FontMeasure>;
+
+/// What one font at one size measures on this page, taken from the page's own drawing.
+///
+/// Two numbers, both medians over the document rather than constants: `pitch`, the width of one
+/// glyph, which bounds how far a run's ink can reach; and `space`, the width of the space this
+/// font actually draws, where it draws one at all. Neither is a threshold anybody chose.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct FontMeasure {
+    pub(crate) pitch: i64,
+    pub(crate) space: Option<i64>,
+}
 
 pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
     let mut per_font: std::collections::HashMap<(String, i64), Vec<i64>> =
+        std::collections::HashMap::new();
+    // **The space the page draws, kept apart from the glyphs it draws beside it.** A run whose
+    // text is nothing but whitespace and whose characters the reader did not insert is the
+    // document stating, in its own metrics, how wide a word gap is in this font at this size.
+    // Nothing here decides what that width should be.
+    let mut per_font_space: std::collections::HashMap<(String, i64), Vec<i64>> =
         std::collections::HashMap::new();
     for node in nodes {
         let (Some(a), crate::NativeLocator::Pdf(loc)) =
@@ -1006,17 +1030,27 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
         if advance <= 0 || glyphs == 0 {
             continue;
         }
-        per_font
-            .entry((a.font_id.clone(), a.font_size))
-            .or_default()
-            .push(advance / glyphs);
+        let key = (a.font_id.clone(), a.font_size);
+        if a.synthesized.is_empty() && !node.text.is_empty() && node.text.trim().is_empty() {
+            per_font_space
+                .entry(key.clone())
+                .or_default()
+                .push(advance / glyphs);
+            continue;
+        }
+        per_font.entry(key).or_default().push(advance / glyphs);
     }
+    let median = |v: &mut Vec<i64>| {
+        v.sort_unstable();
+        v[v.len() / 2]
+    };
     per_font
         .into_iter()
         .filter_map(|(k, mut v)| {
             (v.len() >= 2).then(|| {
-                v.sort_unstable();
-                (k, v[v.len() / 2])
+                let pitch = median(&mut v);
+                let space = per_font_space.get(&k).cloned().map(|mut s| median(&mut s));
+                (k, FontMeasure { pitch, space })
             })
         })
         .collect()
@@ -1052,7 +1086,7 @@ pub(crate) fn pitch_reference(nodes: &[crate::Node]) -> PitchReference {
 /// The multiplier is still 1 everywhere it appears — one glyph's width per glyph, one glyph of
 /// tolerance above, one glyph of permitted overlap below. The `AC` cell-pitch run above is
 /// refused by a factor of eighteen and is nowhere near the widened bound.
-pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, i64)> {
+pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i64, FontMeasure)> {
     let crate::NativeLocator::Pdf(loc) = &node.native_locator else {
         return None;
     };
@@ -1065,10 +1099,10 @@ pub(crate) fn ink_reach(node: &crate::Node, pitch: &PitchReference) -> Option<(i
     if glyphs == 0 {
         return None;
     }
-    let reference = *pitch.get(&(a.font_id.clone(), a.font_size))?;
+    let measure = *pitch.get(&(a.font_id.clone(), a.font_size))?;
     Some((
-        loc.origin_x + advance.min((glyphs + 1) * reference),
-        reference,
+        loc.origin_x + advance.min((glyphs + 1) * measure.pitch),
+        measure,
     ))
 }
 
@@ -1107,7 +1141,7 @@ fn reader_inserted_trailing_space(a: &crate::Node) -> bool {
 pub(crate) fn ink_sequenced(
     a: &crate::Node,
     a_end: i64,
-    a_reference: i64,
+    a_measure: FontMeasure,
     b: &crate::Node,
 ) -> bool {
     let (crate::NativeLocator::Pdf(x), crate::NativeLocator::Pdf(y)) =
@@ -1139,11 +1173,35 @@ pub(crate) fn ink_sequenced(
         //    no gap check at all — because an mcid group is the document's own statement that two
         //    runs belong together. This is the same clause reaching the undeclared path, where
         //    the reader's insertion is the only statement available.
-        && (y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS || reader_inserted_trailing_space(a))
+        //    **Third clause, `-v9`: a gap narrower than the space this font draws is not a word
+        //    gap, and the page is what says so.** A page that sets its type with tracking draws
+        //    each glyph as its own run and leaves a few centipoints between the boxes — 22 on
+        //    `01030000000103`, against a 12-centipoint quantization epsilon sized for rounding —
+        //    so every letter became its own block and the document projected one character per
+        //    paragraph. 54 of the 200 opendataloader-bench documents averaged under 20 characters
+        //    a block, and their mean NID was 0.81 against 0.90 for the rest
+        //    (`docs/measurements/liteparse-head-to-head/README.md` §6).
+        //
+        //    **It is not the gap epsilon 0.47.0 refused**, and the difference is where the number
+        //    comes from. That epsilon would have been a constant chosen to sit in a trough that
+        //    Latin has and CJK does not. This is the median advance of the runs *this document*
+        //    draws whose text is nothing but whitespace, in *this* font at *this* size: the page's
+        //    own statement of what a word gap measures. A font that draws no space at all supplies
+        //    no measure and joins nothing new — the clause simply does not apply, and every
+        //    document whose word gaps are cursor moves keeps the behaviour clause two gives it.
+        //
+        //    Strictly narrower, so a gap the width of the drawn space is still a word gap; and
+        //    the space glyph itself is a run on the same baseline, so it joins, and its character
+        //    reaches the text the way the page drew it.
+        && (y.origin_x - a_end <= INK_EPSILON_CENTIPOINTS
+            || reader_inserted_trailing_space(a)
+            || a_measure
+                .space
+                .is_some_and(|space| y.origin_x - a_end < space))
         // 3. Overlapping by at most one of `a`'s own glyphs. Negative tracking is ordinary — CJK
         //    medians sit near -42 centipoints — but an overlap deeper than a glyph means the two
         //    runs are stacked rather than sequenced.
-        && y.origin_x - a_end >= -a_reference
+        && y.origin_x - a_end >= -a_measure.pitch
 }
 
 /// The gap, in centipoints, at or below which the page drew no space between two runs.
@@ -1279,7 +1337,7 @@ pub fn geometric_blocks(
     let mut out: Vec<GeometricBlock> = Vec::new();
     let mut open_group: Option<GroupKey> = None;
     let mut open_line: Option<LineKey> = None;
-    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+    let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
     let mut open_prev: Option<&crate::Node> = None;
 
     for (i, node) in nodes.iter().enumerate() {
@@ -1643,7 +1701,7 @@ pub fn to_markdown(
     // `ink_reach`.
     let pitch = pitch_reference(&payload.nodes);
     let mut open_line: Option<LineKey> = None;
-    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+    let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
@@ -4596,6 +4654,48 @@ pub(crate) mod tests {
             .last()
             .unwrap(),
             "backup withholding"
+        );
+    }
+
+    /// **Tracking is not a word gap, and the page's own space is what says so** (`-v9`).
+    ///
+    /// A page set with letter-spacing draws each glyph as its own run and leaves a few centipoints
+    /// between the boxes — wider than the 12-centipoint quantization epsilon, narrower than
+    /// anything the page calls a space. Before this clause every such letter became its own block:
+    /// `01030000000103` projected 944 blocks averaging 1.2 characters, and its NID was 0.4456.
+    ///
+    /// The three runs below are 200 wide with 40 of tracking between them, and the same font draws
+    /// a space of 200. Tracking joins; a gap the width of that drawn space does not, so the two
+    /// words stay two blocks and no space the page drew is swallowed.
+    #[test]
+    fn tracking_joins_and_a_drawn_space_width_gap_does_not() {
+        // Four runs of one word, 40 centipoints of tracking between each, plus a space run so the
+        // font has a measure at all, then a second word one space-width further on.
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("O", None, 10000, 7200, Some(200), None),
+                ("n", None, 10240, 7200, Some(200), None),
+                ("c", None, 10480, 7200, Some(200), None),
+                ("e", None, 10720, 7200, Some(200), None),
+                (" ", None, 10960, 7200, Some(200), None),
+                ("t", None, 11200, 7200, Some(200), None),
+            ]),
+            vec!["Once t"],
+            "tracking narrower than the drawn space is one block"
+        );
+
+        // The same font, and a gap of exactly the space it draws: not narrower, so not joined.
+        assert_eq!(
+            blocks_of_nodes(&[
+                ("a", None, 10000, 7200, Some(200), None),
+                (" ", None, 10200, 7200, Some(200), None),
+                ("b", None, 10400, 7200, Some(200), None),
+                ("c", None, 10640, 7200, Some(200), None),
+                ("far", None, 10840 + 200, 7200, Some(200), None),
+            ])
+            .len(),
+            2,
+            "a gap the width of the page's own space is a word gap, and breaks the block"
         );
     }
 

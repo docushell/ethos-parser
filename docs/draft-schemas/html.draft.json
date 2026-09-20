@@ -51,7 +51,7 @@
       "minLength": 1,
       "description": "Version id of the projection rule. `html-blocks-v4` (v2.2-S0) emits `<p>`, `<h1>`-`<h6>` from a PDF structure tree or an EPUB's own XHTML element name and from nowhere else — never from a font size, `<ul>`/`<li>` from a tagged `/L`, and `<table>` with the document's merges carried as `rowspan`/`colspan`. Every cell is a `<td>`: no detector reads `/TH`, so a header row would be invented. SEPARATE from `markdown_rule` and it moves independently — a change to how a `<td>` is spelled is not a change to how a GFM row is. Source bytes are ENTITY-ENCODED: `&`, `<` and `>` come out as `&amp;`, `&lt;`, `&gt;`, the whole entity sits inside the `source` segment because `&lt;` contains no `<` to label, and inverting a source segment therefore means HTML-unescaping it — a total, lossless transform. The census counts the CHARACTERS the document drew, not the bytes the entity took.",
       "examples": [
-        "html-blocks-v8"
+        "html-blocks-v9"
       ]
     },
     "html": {
@@ -239,10 +239,10 @@
         "structural_erasures": []
       },
       "html": "<p>Hello Ethos</p>\n",
-      "html_rule": "html-blocks-v8",
+      "html_rule": "html-blocks-v9",
       "parser_version": "0.59.0",
-      "profile_sha256": "sha256:91a428073ade58c065eb19654a7997db2bc0110a9dfce8faaf07b5947b666959",
-      "representation_sha256": "sha256:9b604b5156d3e5665f684d1d539313446ff887f7599dd8920153b93e8ace0fbc",
+      "profile_sha256": "sha256:b21b3bc0e1da0d8d4138df9b27f73f34f2c0d65008b1a144017fe6ca9a982448",
+      "representation_sha256": "sha256:1c4e724e89e2f6d5027f28303a953af375bc70563248fb343a4e486f85f63565",
       "schema_version": "1.0.0",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3"
     }
