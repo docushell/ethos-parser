@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v9");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v10");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -844,7 +844,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v9");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v10");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1447,6 +1447,61 @@ fn an_epubs_own_heading_element_projects_as_a_heading() {
     );
 }
 
+/// **An ODT's own `text:outline-level` projects as a heading** (v2.4).
+///
+/// The end-to-end half of `markdown::tests::every_odf_outline_level_projects_at_its_own_depth`.
+/// The unit test reaches `h2`..`h6`, which no package in the corpus carries; this one proves the
+/// level survives the two hops between `<text:h text:outline-level="1">` and `# `.
+#[test]
+fn an_odts_own_outline_level_projects_as_a_heading() {
+    let dir = scratch("odt-heading");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/text-paragraphs/document.odt"),
+    );
+    let a = markdown_of(&repr);
+    let md = a["markdown"].as_str().expect("markdown string");
+
+    assert!(
+        md.contains("# Evidence, not extraction."),
+        "the `<text:h text:outline-level=\"1\">` the document declares must project as a \
+         heading:\n{md}"
+    );
+    assert_eq!(
+        md.matches('#').count(),
+        1,
+        "one `#` and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
+         heading:\n{md}"
+    );
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v10");
+}
+
+/// **An ODP `<text:h>` that states no level projects as a paragraph.**
+///
+/// The refusal, end to end, and the reason the test above cannot stand alone: a rule that emitted
+/// `# ` for every `OdfBlockKind::Heading` would pass it and be wrong here. The deck writes a bare
+/// `<text:h>` — a heading whose depth comes from an outline style in `styles.xml`, which the
+/// reader declares it did not open — so `# ` would be level one on no evidence.
+#[test]
+fn an_odp_heading_with_no_stated_level_projects_as_a_paragraph() {
+    let dir = scratch("odp-heading");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/presentation-pages/presentation.odp"),
+    );
+    let a = markdown_of(&repr);
+    let md = a["markdown"].as_str().expect("markdown string");
+
+    assert!(
+        md.contains("Evidence, not extraction."),
+        "the text is there:\n{md}"
+    );
+    assert!(
+        !md.contains('#'),
+        "and no `#` anywhere: the deck states the fact of a heading and never its level:\n{md}"
+    );
+}
+
 /// **A tagged PDF's headings are untouched by the EPUB source being added.**
 ///
 /// The two sources sit in one function, so the cheapest way for this change to have gone wrong is
@@ -1495,7 +1550,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         1,
         "one heading, and no body line became one"
     );
-    assert_eq!(md["markdown_rule"], "markdown-blocks-v9");
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v10");
 
     let first = &md["anchor_map"]["segments"][0];
     assert_eq!(
@@ -1517,7 +1572,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         text.starts_with("<h1>Display line</h1>\n"),
         "the same line, the same level, in the other syntax: {text:?}"
     );
-    assert_eq!(html["html_rule"], "html-blocks-v9");
+    assert_eq!(html["html_rule"], "html-blocks-v10");
 }
 
 /// **`--source` is the same two stages in one process, and the bytes say so.**

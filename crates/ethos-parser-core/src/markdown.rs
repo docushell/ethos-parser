@@ -140,6 +140,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
 /// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
+/// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -157,7 +158,20 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// else moved, and a document whose fonts draw no space at all projects byte for byte what `-v8`
 /// projected. Both projection ids move together, as they did at `-v8`, because the join lives in
 /// `markdown` and `html` calls it.
-pub const MARKDOWN_RULE_BLOCKS_V9: &str = "markdown-blocks-v9";
+///
+/// `-v10` at the ODF heading slice: `heading_level` gained a **fourth** source, and a declared one
+/// — the `text:outline-level` an ODT or ODP `<text:h>` states. A bump rather than a new name,
+/// under the test this repository applies: a new name means different evidence, and a bump means
+/// the same evidence, more of it. The evidence is unchanged — the document saying *heading, level
+/// two* in as many words, which is what `/H2` and `<h2>` already said — and what moved is how many
+/// formats can say it. It is the same move `-v3` made when EPUB's XHTML element name became a
+/// source, made now for a third vocabulary.
+///
+/// A document with an ODT heading comes out differently: `# Evidence, not extraction.` where it
+/// projected a bare paragraph before. Everything else projects byte for byte what `-v9` projected
+/// — no PDF document projects a different byte, and a `<text:h>` that stated no level still
+/// projects as a paragraph, because an absent `text:outline-level` is not level one.
+pub const MARKDOWN_RULE_BLOCKS_V10: &str = "markdown-blocks-v10";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -648,21 +662,38 @@ pub fn normalize(s: &str) -> String {
 /// two can never both be present; a later edit reordering this function would still find the flag
 /// absent wherever a declaration exists.
 ///
+/// **ODT and ODP**, since v2.4, are a fourth source and a declared one: the `text:outline-level`
+/// a `<text:h>` states, which `crate::OfficeParagraphAttributes::outline_level` and
+/// `crate::OfficeOdfShapeAttributes::outline_level` carry. The slice that added them settled the
+/// question this comment used to leave open — **an absent `text:outline-level` is not level one**,
+/// because the level a bare `<text:h>` displays at comes from an outline style in `styles.xml`,
+/// which the reader declares it did not open. So a heading that stated no level projects as a
+/// paragraph rather than as `#`.
+///
 /// # What this does NOT reach, and why each is a different job
 ///
-/// **ODT, ODS and ODP.** `crate::OdfBlockKind` is `Paragraph | Heading` — the fact of a heading is
-/// on the wire and its **level is not**, because the ODT reader does not read `text:outline-level`.
-/// Emitting `#` for a block the file marks `outline-level="3"` would be a false claim about
-/// structure, so nothing is emitted, and the fix is upstream of this function: read the attribute,
-/// carry it, and this match arm follows. That slice also has to settle what an absent
-/// `text:outline-level` means in ODF before it can be honest about it.
+/// **ODS.** `crate::OdfBlockKind` reaches the wire for ODT and ODP and not for a spreadsheet: the
+/// reader reads `heading` off the block and discards it when the block closes, and
+/// `crate::OfficeOdfCellAttributes` has nowhere to put it. A level there would be a qualifier
+/// outliving the thing it qualifies, so ODS carries neither.
 ///
 /// **DOCX.** Earlier still: the reader keeps no `<w:pStyle>`, so no heading reaches the wire at all
-/// and this function cannot see one to project. Resolving a style name to a level means reading
-/// `styles.xml` and following style inheritance, which is a reader slice of its own.
+/// and this function cannot see one to project. Two things stand in the way and the first is
+/// structural: `docx.rs` has no `Event::Empty` arm, and `<w:pStyle/>` and `<w:outlineLvl/>` are
+/// always self-closing, so they are invisible to that reader as written. The second is the
+/// honesty question — `w:val="Heading1"` is a **styleId**, an author-chosen token, while the
+/// built-in name ECMA-376 fixes lives in `<w:name>` inside `word/styles.xml`. Mapping the id to a
+/// level without opening that part is matching a convention rather than reading a declaration, so
+/// DOCX is a reader slice of its own and not a match arm here.
 pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     if let crate::NodeAttributes::EpubBlock(e) = &node.attributes {
         return xhtml_heading_level(&e.element);
+    }
+    if let crate::NodeAttributes::OfficeParagraph(a) = &node.attributes {
+        return odf_heading_level(a.block, a.outline_level);
+    }
+    if let crate::NodeAttributes::OfficeOdfShape(a) = &node.attributes {
+        return odf_heading_level(a.block, a.outline_level);
     }
     if let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() {
         let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
@@ -685,6 +716,31 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     text_run_attributes(node)
         .is_some_and(|a| a.inferred_heading)
         .then_some(1)
+}
+
+/// An ODF block's level: the one its own `<text:h>` stated, where that is a depth these two
+/// formats have somewhere to put it.
+///
+/// **Two ways to be `None`, and neither is a guess.** A `<text:p>` is not a heading, which the
+/// element name settles. And a `<text:h>` that stated no `text:outline-level` is a heading whose
+/// depth this record does not know: ODF lets the attribute be omitted and resolves the level
+/// through an outline style in `styles.xml`, a part the reader declares it did not open, so `#`
+/// here would be level one on no evidence at all. It projects as a paragraph instead — the honest
+/// output for an exporter that has the fact of a heading and not its depth.
+///
+/// **A level past six also projects as a paragraph.** ODF names no ceiling and the reader clamps
+/// nothing, so `text:outline-level="300"` arrives here intact; Markdown has six `#` depths and
+/// HTML six `<h>` elements, and emitting `#######` or `<h300>` would be this exporter inventing a
+/// depth neither format has. Dropping to a paragraph loses the depth and states nothing false,
+/// which is the trade every other clause here makes.
+fn odf_heading_level(block: crate::OdfBlockKind, level: Option<u32>) -> Option<u8> {
+    if !matches!(block, crate::OdfBlockKind::Heading) {
+        return None;
+    }
+    match level {
+        Some(l @ 1..=6) => u8::try_from(l).ok(),
+        _ => None,
+    }
 }
 
 /// `h1` … `h6` to a level, and `None` for every other XHTML element name.
@@ -3133,6 +3189,77 @@ pub(crate) mod tests {
         assert!(a.coverage.balances());
     }
 
+    /// One ODF block node, whose block kind and stated outline level are the facts under test.
+    ///
+    /// The sibling of [`epub_node`], built for the same reason it was: without a builder, every
+    /// test of the ODF half of `heading_level` would have to go through a real package, and the
+    /// two ODF packages in the corpus carry one level between them — `outline-level="1"` in the
+    /// text document and a bare `<text:h>` in the presentation. Neither reaches `h2`..`h6`, and
+    /// neither reaches a level past the six these formats can express.
+    fn odf_node(
+        alloc: &mut IdAllocator,
+        parent: &NodeId,
+        ordinal: u32,
+        block: crate::OdfBlockKind,
+        level: Option<u32>,
+    ) -> Node {
+        Node {
+            id: alloc.next(IdKind::Span).unwrap(),
+            kind: NodeKind::TextRun,
+            parent: parent.clone(),
+            ordinal,
+            text: match level {
+                Some(l) => format!("Text at level {l}"),
+                None => "Text with no level".to_string(),
+            },
+            native_locator: NativeLocator::Odt(crate::OdtLocator {
+                part: "content.xml".into(),
+                paragraph: ordinal,
+            }),
+            structural_locator: None,
+            derivation: DerivationClass::Extracted,
+            attributes: NodeAttributes::OfficeParagraph(crate::OfficeParagraphAttributes {
+                block,
+                outline_level: level,
+            }),
+        }
+    }
+
+    /// A page-less representation of ODF blocks, one per `(kind, level)` pair.
+    pub(crate) fn odf_repr_of(
+        blocks: &[(crate::OdfBlockKind, Option<u32>)],
+    ) -> DocumentRepresentation {
+        let mut alloc = IdAllocator::new(Profile::default().profile_sha256().unwrap());
+        let root = alloc.next(IdKind::Part).unwrap();
+        let nodes: Vec<Node> = blocks
+            .iter()
+            .enumerate()
+            .map(|(i, (block, level))| odf_node(&mut alloc, &root, i as u32 + 1, *block, *level))
+            .collect();
+        let geometry = nodes
+            .iter()
+            .map(|n| NodeGeometry {
+                node: n.id.clone(),
+                presence: GeometryPresence::Absent(crate::GeometryAbsence::NotApplicableToKind),
+            })
+            .collect();
+        let mut payload = payload(nodes, Vec::new());
+        payload.source.media_type = "application/vnd.oasis.opendocument.text".into();
+        payload.assurance = crate::assurance::Assurance::new(
+            Capabilities::V0,
+            0,
+            Vec::new(),
+            vec![Limitation::document(
+                crate::assurance::codes::GEOMETRY_ABSENT_NOT_GROUNDABLE,
+                "every node here is an ODF block, and an ODF block has no ink box by \
+                 construction — `content.xml` states the text and a layout this reader does not \
+                 perform would state the boxes.",
+            )],
+        )
+        .unwrap();
+        DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
     /// One EPUB block node, whose XHTML element name is the fact under test.
     ///
     /// The sibling of [`text_node`], and its absence is why the XHTML half of `heading_level` went
@@ -3202,6 +3329,61 @@ pub(crate) mod tests {
         )
         .unwrap();
         DocumentRepresentation::seal(payload, geometry).unwrap()
+    }
+
+    /// **Every ODF level projects at its own depth, and every way of having no usable level
+    /// projects as a paragraph.** The sibling of the XHTML test below, written at the same time as
+    /// the arm it guards rather than after it — `heading_level`'s XHTML half shipped unguarded
+    /// above level 1 and stayed that way for a release, invisible to a suite of 1380.
+    #[test]
+    fn every_odf_outline_level_projects_at_its_own_depth() {
+        use crate::OdfBlockKind::{Heading, Paragraph};
+        let a = artifact_of(odf_repr_of(&[
+            (Heading, Some(1)),
+            (Heading, Some(2)),
+            (Heading, Some(3)),
+            (Heading, Some(4)),
+            (Heading, Some(5)),
+            (Heading, Some(6)),
+        ]));
+        assert_eq!(
+            a.markdown,
+            "# Text at level 1\n\n\
+             ## Text at level 2\n\n\
+             ### Text at level 3\n\n\
+             #### Text at level 4\n\n\
+             ##### Text at level 5\n\n\
+             ###### Text at level 6\n"
+        );
+        assert!(a.coverage.balances());
+    }
+
+    /// The three ways an ODF block is not a heading this projection can write, each of which would
+    /// be a false claim if it came out as `#`.
+    #[test]
+    fn an_odf_block_with_no_usable_level_projects_as_a_paragraph() {
+        use crate::OdfBlockKind::{Heading, Paragraph};
+        let a = artifact_of(odf_repr_of(&[
+            // A `<text:h>` that stated no level. It is a heading, and its depth lives in
+            // `styles.xml`, which the reader declares unread — so `#` would be level one on no
+            // evidence.
+            (Heading, None),
+            // A level past the six `#` depths Markdown has. `#######` is not a heading.
+            (Heading, Some(7)),
+            (Heading, Some(300)),
+            // A `<text:p>` is not a heading whatever attribute rides along on it.
+            (Paragraph, Some(1)),
+        ]));
+        assert_eq!(
+            a.markdown,
+            "Text with no level\n\n\
+             Text at level 7\n\n\
+             Text at level 300\n\n\
+             Text at level 1\n",
+            "no `#` anywhere: each of these is a block this projection has the fact of and not a \
+             depth it can honestly write"
+        );
+        assert!(a.coverage.balances());
     }
 
     /// **All six XHTML heading levels, and this is a table because a fixture cannot be one**

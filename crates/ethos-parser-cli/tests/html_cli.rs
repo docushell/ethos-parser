@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v9");
+    assert_eq!(a["html_rule"], "html-blocks-v10");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
@@ -739,6 +739,63 @@ fn an_epubs_own_heading_element_projects_as_an_h_element() {
     assert!(
         !html.contains("<h1>Rows &amp; columns"),
         "a `<p>` must NOT become a heading:\n{html}"
+    );
+}
+
+/// **An ODT's own `text:outline-level` reaches the HTML projection** (v2.4).
+///
+/// The end-to-end half of `html::tests::every_odf_outline_level_projects_as_its_own_h_element`:
+/// that one builds the nodes, this one runs a real package through the reader, the wire and the
+/// projection. Both are needed — the unit test reaches `h2`..`h6`, which no package in the corpus
+/// carries, and this one proves the level survives the two hops between the element and the tag.
+#[test]
+fn an_odts_own_outline_level_projects_as_an_h_element() {
+    let dir = scratch("odt-heading-html");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/text-paragraphs/document.odt"),
+    );
+    let a = html_of(&repr);
+    let html = a["html"].as_str().expect("html string");
+
+    assert!(
+        html.contains("<h1>Evidence, not extraction.</h1>"),
+        "the `<text:h text:outline-level=\"1\">` the document declares must project as \
+         `<h1>`:\n{html}"
+    );
+    assert_eq!(
+        html.matches("<h").count(),
+        1,
+        "one heading and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
+         heading:\n{html}"
+    );
+    assert_eq!(a["html_rule"], "html-blocks-v10");
+}
+
+/// **An ODP `<text:h>` that states no level projects as a paragraph, not as `<h1>`.**
+///
+/// The refusal, end to end. The presentation fixture writes a bare `<text:h>`: it is a heading,
+/// and the level it displays at comes from an outline style in `styles.xml`, which the reader
+/// declares it did not open. `<h1>` here would be level one on no evidence, which is the whole of
+/// what `OfficeParagraphAttributes::outline_level`'s `None` means.
+#[test]
+fn an_odp_heading_with_no_stated_level_projects_as_a_paragraph() {
+    let dir = scratch("odp-heading-html");
+    let repr = extract_to(
+        &dir,
+        &repo_root().join("fixtures/office/presentation-pages/presentation.odp"),
+    );
+    let a = html_of(&repr);
+    let html = a["html"].as_str().expect("html string");
+
+    assert!(
+        html.contains("<p>Evidence, not extraction.</p>"),
+        "a `<text:h>` with no `text:outline-level` has no depth to project:\n{html}"
+    );
+    assert!(
+        !html.contains("<h"),
+        "no heading element anywhere: the deck states the fact of a heading and never its \
+         level:\n{html}"
     );
 }
 

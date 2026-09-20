@@ -129,9 +129,15 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V9` documents. Both ids
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V10` documents — an ODT
+/// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
+/// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
+/// `heading_level`, which both projections call. A level past six projects `<p>`, because
+/// `<h300>` is not an element.
+///
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V10` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
-pub const HTML_RULE_BLOCKS_V9: &str = "html-blocks-v9";
+pub const HTML_RULE_BLOCKS_V10: &str = "html-blocks-v10";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -780,6 +786,43 @@ mod tests {
             &[0],
         ));
         assert_eq!(a.html, "<h1>Chapter One</h1>\n<p>Body text</p>\n");
+        assert_tiles(&a);
+    }
+
+    /// **The narrowing is not optional here.** `flush_block` and the opener both write
+    /// `<h{l}>` with no guard, so a level this projection accepted past six would emit `<h300>`,
+    /// which is not an element — the bound lives in `heading_level` and this is what holds it
+    /// there.
+    #[test]
+    fn every_odf_outline_level_projects_as_its_own_h_element() {
+        use crate::OdfBlockKind::{Heading, Paragraph};
+        let a = artifact_of(crate::markdown::tests::odf_repr_of(&[
+            (Heading, Some(1)),
+            (Heading, Some(2)),
+            (Heading, Some(3)),
+            (Heading, Some(4)),
+            (Heading, Some(5)),
+            (Heading, Some(6)),
+            // The four that have no `<h>` element to go to. `<h300>` is not one, and neither is
+            // an element for a heading whose depth the document never stated.
+            (Heading, None),
+            (Heading, Some(7)),
+            (Heading, Some(300)),
+            (Paragraph, Some(1)),
+        ]));
+        assert_eq!(
+            a.html,
+            "<h1>Text at level 1</h1>\n\
+             <h2>Text at level 2</h2>\n\
+             <h3>Text at level 3</h3>\n\
+             <h4>Text at level 4</h4>\n\
+             <h5>Text at level 5</h5>\n\
+             <h6>Text at level 6</h6>\n\
+             <p>Text with no level</p>\n\
+             <p>Text at level 7</p>\n\
+             <p>Text at level 300</p>\n\
+             <p>Text at level 1</p>\n"
+        );
         assert_tiles(&a);
     }
 
