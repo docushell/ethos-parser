@@ -3337,7 +3337,7 @@ pub(crate) mod tests {
     /// above level 1 and stayed that way for a release, invisible to a suite of 1380.
     #[test]
     fn every_odf_outline_level_projects_at_its_own_depth() {
-        use crate::OdfBlockKind::{Heading, Paragraph};
+        use crate::OdfBlockKind::Heading;
         let a = artifact_of(odf_repr_of(&[
             (Heading, Some(1)),
             (Heading, Some(2)),
