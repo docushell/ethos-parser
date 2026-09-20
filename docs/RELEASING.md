@@ -192,6 +192,21 @@ unchanged, then:
    platform from its absence. Pushing the tag also starts the workflow below; a release that is to
    carry its binaries waits for its `verify` job.
 
+   **Amended 2026-09-20, measured on GitHub at 0.60.0: a published release is immutable here, so
+   the assets are whatever the first click attached.** Editing them afterwards fails with *"You
+   cannot edit the tag or assets on a published immutable release"*; the body and title stay
+   editable, and the tag cannot be moved or deleted either. Two consequences, both learned the
+   expensive way:
+
+   - **Attach the five files, never `release-bundle.zip` whole.** The workflow's bundle is a
+     convenience for the person doing the attaching, not the shape a consumer wants: a user who
+     runs the Install block against a zip gets no `SHA256SUMS.txt` and no tarball at top level, and
+     both of the next two commands fail. 0.60.0 shipped as the zip and could not be repaired —
+     its notes were rewritten to describe unzipping instead, which works but makes every consumer
+     download all four platforms to verify one.
+   - **Check the asset list before publishing, because there is no afterwards.** The draft is the
+     only place this is fixable. What ships is what a user must live with for that version.
+
 ### Linux and Windows binaries come from the workflow
 
 **Amended 2026-09-18, the day `main` was first pushed with this workflow on it. Two corrections,
