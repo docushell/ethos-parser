@@ -207,26 +207,64 @@ fn an_empty_block_holds_its_position_without_becoming_a_node() {
 #[test]
 fn both_block_kinds_reach_the_artifact_as_the_file_states_them() {
     let sealed = ethos_parser_office::read(&fixture("text-paragraphs")).expect("the fixture reads");
-    let kinds: Vec<(u32, OdfBlockKind)> = sealed
+    let kinds: Vec<(u32, OdfBlockKind, Option<u32>)> = sealed
         .payload()
         .nodes
         .iter()
         .map(|n| match (&n.native_locator, &n.attributes) {
-            (NativeLocator::Odt(l), NodeAttributes::OfficeParagraph(a)) => (l.paragraph, a.block),
+            (NativeLocator::Odt(l), NodeAttributes::OfficeParagraph(a)) => {
+                (l.paragraph, a.block, a.outline_level)
+            }
             other => panic!("expected an ODF paragraph, got {other:?}"),
         })
         .collect();
     assert_eq!(
         kinds,
         vec![
-            (1, OdfBlockKind::Heading),
-            (2, OdfBlockKind::Paragraph),
-            (4, OdfBlockKind::Paragraph),
-            (5, OdfBlockKind::Paragraph),
-            (6, OdfBlockKind::Paragraph),
-            (7, OdfBlockKind::Paragraph),
+            (1, OdfBlockKind::Heading, Some(1)),
+            (2, OdfBlockKind::Paragraph, None),
+            (4, OdfBlockKind::Paragraph, None),
+            (5, OdfBlockKind::Paragraph, None),
+            (6, OdfBlockKind::Paragraph, None),
+            (7, OdfBlockKind::Paragraph, None),
         ],
-        "one `<text:h>` and five `<text:p>`, each labelled by its element name"
+        "one `<text:h text:outline-level=\"1\">` and five `<text:p>`, each labelled by its \
+         element name and carrying only the level its own element stated"
+    );
+}
+
+/// **The level is absent from the wire rather than present as null, and only a heading has one.**
+///
+/// The field set is the check that matters, for the reason the locator's is: a `null` would be a
+/// third state between "level two" and "stated none", and a `0` would be a level. A paragraph's
+/// attributes must be byte-for-byte what they were before this field existed, which is what keeps
+/// every artifact of a document without headings identical across the change.
+#[test]
+fn an_unstated_outline_level_is_absent_from_the_wire_rather_than_null() {
+    let sealed = ethos_parser_office::read(&fixture("text-paragraphs")).expect("the fixture reads");
+    let nodes = &sealed.payload().nodes;
+
+    let heading = serde_json::to_value(&nodes[0].attributes).expect("serializes");
+    let fields: BTreeSet<&str> = heading["office_paragraph"]
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+    assert_eq!(fields, BTreeSet::from(["block", "outline_level"]));
+    assert_eq!(heading["office_paragraph"]["outline_level"], 1);
+
+    let paragraph = serde_json::to_value(&nodes[1].attributes).expect("serializes");
+    let fields: BTreeSet<&str> = paragraph["office_paragraph"]
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+    assert_eq!(
+        fields,
+        BTreeSet::from(["block"]),
+        "no `outline_level` key at all on a block that stated none"
     );
 }
 

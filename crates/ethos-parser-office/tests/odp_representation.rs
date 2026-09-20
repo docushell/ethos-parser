@@ -117,6 +117,12 @@ fn a_title_resolves_to_a_node_addressed_by_the_document_itself() {
             );
             assert_eq!(a.draw_page_name.as_deref(), Some("Rows & Columns"));
             assert_eq!(a.shape_name.as_deref(), Some("Title 1"));
+            assert_eq!(
+                a.outline_level, None,
+                "the fixture writes a bare `<text:h>`: it is a heading, and it stated no level. \
+                 `Some(1)` here would be a level resolved out of the master page this reader \
+                 declares it did not open"
+            );
         }
         other => panic!("expected a presentation shape, got {other:?}"),
     }

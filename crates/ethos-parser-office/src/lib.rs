@@ -916,6 +916,7 @@ fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
                 } else {
                     OdfBlockKind::Paragraph
                 },
+                outline_level: block.outline_level,
             }),
         });
     }
@@ -1273,14 +1274,17 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
                 shape: block.shape,
                 paragraph: block.paragraph,
             }),
-            // `styles.xml` and the master pages are not read, so no structural address is claimed
-            // — and a presentation layout's outline level is exactly the half-claim v2-S5 refused.
+            // `styles.xml` and the master pages are not read, so no structural address is
+            // claimed — and a presentation LAYOUT's outline level is exactly the half-claim v2-S5
+            // refused, which is still refused. What `outline_level` carries is the block
+            // element's own `text:outline-level`, which needs no layout to read.
             structural_locator: None,
             derivation: DerivationClass::Extracted,
             attributes: NodeAttributes::OfficeOdfShape(OfficeOdfShapeAttributes {
                 draw_page_name: block.draw_page_name.clone(),
                 shape_name: block.shape_name.clone(),
                 block: odp::block_kind(block.heading),
+                outline_level: block.outline_level,
             }),
         });
     }

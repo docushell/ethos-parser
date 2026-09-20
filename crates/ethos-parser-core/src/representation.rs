@@ -1636,20 +1636,45 @@ pub struct OfficeSlideRunAttributes {
 
 /// An OpenDocument paragraph's facts: what `content.xml` states about the block (v2-S5).
 ///
-/// One field, and it is the one thing the element says about itself that [`OdtLocator`] does not
+/// Two fields, and both are things the element says about itself that [`OdtLocator`] does not
 /// carry. Everything else a paragraph could carry — `text:style-name`, a list level, a language —
 /// resolves through `styles.xml`, which this slice does not read, and a field nobody populated is
 /// worse than no field.
 ///
-/// **`text:outline-level` is deliberately absent.** A `<text:h>` states one, and it is a real fact
-/// the file contains — but reading it would put a document *outline* on the wire while
+/// **`text:outline-level` was deliberately absent until v2.4, and this is the decision it was
+/// waiting for.** The v2-S5 note read: *"reading it would put a document outline on the wire while
 /// `structural_locators` is false and no structure was read, which is a half of a claim rather
-/// than a small one. Named here so the next slice finds the decision.
+/// than a small one."* The objection is answered rather than overruled, and the answer is that a
+/// level is not an outline. **An outline is a tree**: it says this heading is inside that one,
+/// which is a relation between nodes and is exactly what a structural locator addresses. **A level
+/// is one element's statement about itself**, in the same grammar as [`OdfBlockKind::Heading`] —
+/// which has been on this wire since v2-S5, under `structural_locators: false`, for precisely the
+/// reason that the file said it in as many words. The level is that same sentence with its depth
+/// left in. So [`Node::structural_locator`] stays `None`, `capabilities.structural_locators` stays
+/// false, and nothing here claims a parent, a child or a position in any tree.
+///
+/// The half-claim the note feared is still refused next door: a level supplied out of `styles.xml`
+/// would be a number from a part [`crate::assurance`] declares unread, and
+/// [`OfficeOdfShapeAttributes`] still carries no `presentation:class` for the same reason.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfficeParagraphAttributes {
     /// Which of ODF's two text blocks this node was read from.
     pub block: OdfBlockKind,
+    /// The `text:outline-level` the `<text:h>` stated, or **absent** where it stated none.
+    ///
+    /// `None` is not level one, and the distinction is the whole of the field's honesty: ODF makes
+    /// the attribute optional, and a `<text:h>` that omits it resolves its level through an
+    /// outline style in `styles.xml` — a part this reader declares it did not open. Absent
+    /// therefore means *this element stated no level*, never *this element is a level-one
+    /// heading*. Always absent on [`OdfBlockKind::Paragraph`], which ODF gives the attribute no
+    /// meaning on.
+    ///
+    /// `u32` because ODF types it as a positive integer and names no ceiling. A level past the six
+    /// headings HTML has is carried as written and simply not projected; clamping it in the reader
+    /// would repair a document that is not broken.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline_level: Option<u32>,
 }
 
 /// Whether an OpenDocument block was a paragraph or a heading (v2-S5).
@@ -1869,6 +1894,17 @@ pub struct OfficeOdfShapeAttributes {
     /// `<text:p>` mean in a presentation exactly what they mean in a text document, and a second
     /// enum for one of them is the drift the shared allowlist exists to prevent.
     pub block: OdfBlockKind,
+    /// The `text:outline-level` the `<text:h>` stated, or **absent** where it stated none.
+    ///
+    /// The same attribute on the same element, read by the same function as
+    /// [`OfficeParagraphAttributes::outline_level`], and absent under the same rule.
+    ///
+    /// **Not a placeholder level.** A presentation's outline — the one that makes a shape the
+    /// title and the shape under it the first bullet — lives in a `<style:master-page>` and a
+    /// layout this reader does not open, and it stays refused beside `presentation:class` above.
+    /// What this carries is only what the block element itself wrote down.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline_level: Option<u32>,
 }
 
 /// A Rich Text Format paragraph's facts: how the stream ended it (v2-S8).
