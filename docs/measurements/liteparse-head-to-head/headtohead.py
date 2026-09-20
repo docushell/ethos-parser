@@ -99,6 +99,21 @@ def run_ethos(pdf: Path, out_dir: Path) -> dict:
             "ok": bool(markdown), "exit": code_a or code_b}
 
 
+def run_ethos_source(pdf: Path, out_dir: Path) -> dict:
+    """`markdown --source`: the same two stages in one process (0.59.0+)."""
+    md_json = out_dir / f"{pdf.stem}.json"
+    secs, peak, code = measured([ETHOS, "markdown", "--source", str(pdf)], md_json)
+    markdown = ""
+    if code == 0:
+        try:
+            markdown = json.loads(md_json.read_text(encoding="utf-8"))["markdown"]
+        except Exception:
+            markdown = ""
+    md_json.unlink(missing_ok=True)
+    (out_dir / f"{pdf.stem}.md").write_text(markdown, encoding="utf-8")
+    return {"seconds": secs, "peak_bytes": peak, "ok": bool(markdown), "exit": code}
+
+
 def run_lit(pdf: Path, out_dir: Path, flags: list[str]) -> dict:
     """`lit parse --format markdown`, with OCR off: this build has no tesseract feature."""
     target = out_dir / f"{pdf.stem}.md"
@@ -164,7 +179,9 @@ def main() -> None:
     # The published figures are the full corpus, and the JSON records how many documents it saw.
     if limit := int(os.environ.get("HEAD_TO_HEAD_LIMIT", "0")):
         docs = docs[:limit]
-    engines = [("ethos-parser", None)] + [(f"liteparse:{name}", name) for name in FLAG_SETS]
+    engines = [("ethos-parser", None), ("ethos-parser:source", "ethos-source")] + [
+        (f"liteparse:{name}", name) for name in FLAG_SETS
+    ]
     results: dict[str, dict] = {}
 
     for engine, flag_set in engines:
@@ -173,8 +190,12 @@ def main() -> None:
         print(f"\n  {engine} over {len(docs)} documents…", flush=True)
         per_doc = {}
         for pdf in docs:
-            per_doc[pdf.stem] = (run_ethos(pdf, out_dir) if flag_set is None
-                                 else run_lit(pdf, out_dir, FLAG_SETS[flag_set]))
+            if flag_set is None:
+                per_doc[pdf.stem] = run_ethos(pdf, out_dir)
+            elif flag_set == "ethos-source":
+                per_doc[pdf.stem] = run_ethos_source(pdf, out_dir)
+            else:
+                per_doc[pdf.stem] = run_lit(pdf, out_dir, FLAG_SETS[flag_set])
         scored = score(out_dir, {pdf.stem for pdf in docs})
         failed = [d for d, r in per_doc.items() if not r["ok"]]
         print(f"    {len(docs) - len(failed)} of {len(docs)} produced Markdown"
@@ -191,7 +212,7 @@ def main() -> None:
         results[engine] = {"per_document": per_doc, "stats": stats,
                            "scored": {k: dict(v) for k, v in scored.items()},
                            "failed": failed,
-                           "flags": FLAG_SETS.get(flag_set or "", [])}
+                           "flags": FLAG_SETS.get(flag_set or "", []) if flag_set != "ethos-source" else ["--source"]}
 
     # A control this run did not produce: the harness's own stored liteparse predictions, scored by
     # the same evaluators. It is the check on the invocation above — a fresh run far below the
