@@ -95,7 +95,7 @@ pub use diagnostics::{Diagnostics, DiagnosticsRun, HostInfo, Stage, DIAGNOSTICS_
 pub use error::EngineError;
 pub use geom::{quantize, QRect, QRectError, QuantizeError, MAX_SAFE_INT, QUANTUM_PER_POINT};
 pub use html::{
-    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V10, HTML_SCHEMA_VERSION,
+    to_html, HtmlArtifact, HTML_ARTIFACT_TYPE, HTML_RULE_BLOCKS_V11, HTML_SCHEMA_VERSION,
 };
 pub use identity::{
     ArtifactBinding, ArtifactIdentity, CoordinateOrigin, CoordinateSystem, CoordinateUnit,
@@ -112,7 +112,7 @@ pub use markdown::{
     StructuralErasure, BASELINE_RUN_JOINS_ABUTTED, BASELINE_RUN_JOINS_SPACED, GFM_CELL_NOT_PLACED,
     GFM_CELL_RUN_CLAIMED_TWICE, GFM_LIST_ITEM_RUN_JOINS, GFM_ROW_ZERO_SEPARATOR,
     GFM_SPAN_SLOTS_UNREPRESENTABLE, GFM_TABLE_NOT_PROJECTED, HEADING_LEVEL_UNREPRESENTABLE,
-    HEADING_LEVEL_UNRESOLVED, MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_BLOCKS_V10,
+    HEADING_LEVEL_UNRESOLVED, MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_BLOCKS_V11,
     MARKDOWN_SCHEMA_VERSION, MCID_RUN_JOINS,
 };
 pub use profile::{

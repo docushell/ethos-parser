@@ -141,6 +141,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
 /// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared |
+/// | v2.4 | `markdown-blocks-v11` | a declared heading that projects as a paragraph is counted |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -171,7 +172,21 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// projected a bare paragraph before. Everything else projects byte for byte what `-v9` projected
 /// — no PDF document projects a different byte, and a `<text:h>` that stated no level still
 /// projects as a paragraph, because an absent `text:outline-level` is not level one.
-pub const MARKDOWN_RULE_BLOCKS_V10: &str = "markdown-blocks-v10";
+///
+/// `-v11` at the erasure declaration, and **it is the first move where not one character of
+/// `markdown` or `html` changes.** The projection does exactly what `-v10` did; what ends is the
+/// silence about it. A block the document called a heading that comes out as body text now
+/// carries a count — [`HEADING_LEVEL_UNRESOLVED`] or [`HEADING_LEVEL_UNREPRESENTABLE`] — in
+/// `coverage.structural_erasures`.
+///
+/// **The census is output.** `fixtures/office/presentation-pages/presentation.odp` yields
+/// different `ethos.markdown.v1` bytes after this slice than before it, and
+/// `crate::html`'s own header names the state that forbids leaving the id alone: *"a rule id that
+/// stayed put while its output changed is the one dishonesty a version id exists to prevent."*
+/// A bump rather than a new name, on the same test as every bump here: no new source is read and
+/// no new fact is found — the condition counted is the one `odf_heading_level` already branches
+/// on, which is *why* the block projects as a paragraph. Same evidence, counted.
+pub const MARKDOWN_RULE_BLOCKS_V11: &str = "markdown-blocks-v11";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -1756,7 +1771,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v10`
+/// # The rule, in full — `markdown-blocks-v11`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying

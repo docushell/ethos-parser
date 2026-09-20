@@ -188,7 +188,7 @@ fn html_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.html.v1");
     assert_eq!(a["schema_version"], "1.0.0");
-    assert_eq!(a["html_rule"], "html-blocks-v10");
+    assert_eq!(a["html_rule"], "html-blocks-v11");
     assert_eq!(a["html"], "<p>Hello Ethos</p>\n");
 
     for key in [
@@ -769,7 +769,7 @@ fn an_odts_own_outline_level_projects_as_an_h_element() {
         "one heading and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
          heading:\n{html}"
     );
-    assert_eq!(a["html_rule"], "html-blocks-v10");
+    assert_eq!(a["html_rule"], "html-blocks-v11");
 }
 
 /// **An ODP `<text:h>` that states no level projects as a paragraph, not as `<h1>`.**

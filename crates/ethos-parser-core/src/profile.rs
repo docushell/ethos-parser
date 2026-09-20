@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V10`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V11`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V10`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V11`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -1293,7 +1293,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V10`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V11`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1304,7 +1304,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V10`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V11`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1368,9 +1368,9 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V10.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V11.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V10.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V11.to_string(),
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
@@ -2293,7 +2293,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v11","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v11","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3168,11 +3168,23 @@ mod tests {
              different byte under `-v10` than under `-v9`. A `<text:h>` that stated no \
              level still projects as a paragraph: an absent `text:outline-level` resolves \
              through `styles.xml`, which the ODF readers declare unread, so level one \
-             there would be a claim out of a part nobody opened."
+             there would be a claim out of a part nobody opened.\n\n\
+             Moved again for the erasure declaration: `markdown_rule` \
+             `markdown-blocks-v10` -> `-v11` and `html_rule` `html-blocks-v10` -> `-v11`, \
+             together, and nothing else. **The first move where not one character of \
+             either projection changes.** A block the document called a heading that \
+             comes out as body text now carries a count in \
+             `coverage.structural_erasures` — `heading-level-unresolved-v1` where the \
+             element stated no level, `heading-level-unrepresentable-v1` where it stated \
+             a depth neither format has. The census is output: \
+             `fixtures/office/presentation-pages/presentation.odp` yields different \
+             `ethos.markdown.v1` bytes after this than before, and an id that stayed put \
+             while its output changed is the one dishonesty a version id exists to \
+             prevent."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:850e4fa3d742d93aabb530fe352f8145e302d85f98f38924143b1a27dd2d934e"
+            "sha256:360df096405b56f1b53bd5bc1aeb5045b7068eabbf4dec2576b5e93be34c13dc"
         );
     }
 

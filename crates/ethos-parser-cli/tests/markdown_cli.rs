@@ -168,7 +168,7 @@ fn markdown_on_simple_text_is_the_artifact_the_scope_document_describes() {
 
     assert_eq!(a["artifact_type"], "ethos.markdown.v1");
     assert_eq!(a["schema_version"], "1.1.0");
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v10");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v11");
     assert_eq!(a["markdown"], "Hello Ethos\n");
 
     // Every artifact carries the four identity fields plus both bindings.
@@ -844,7 +844,7 @@ fn the_profile_names_the_block_rule_and_has_retired_the_linear_one() {
          grid the Markdown now has. Deleted, not reworded, the way v1-S2 and v1-S8 retired theirs."
     );
 
-    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v10");
+    assert_eq!(markdown_of(&repr)["markdown_rule"], "markdown-blocks-v11");
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1473,7 +1473,7 @@ fn an_odts_own_outline_level_projects_as_a_heading() {
         "one `#` and no other: five `<text:p>` follow it, and a `<text:p>` is not a \
          heading:\n{md}"
     );
-    assert_eq!(a["markdown_rule"], "markdown-blocks-v10");
+    assert_eq!(a["markdown_rule"], "markdown-blocks-v11");
 }
 
 /// **An ODP `<text:h>` that states no level projects as a paragraph.**
@@ -1550,7 +1550,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         1,
         "one heading, and no body line became one"
     );
-    assert_eq!(md["markdown_rule"], "markdown-blocks-v10");
+    assert_eq!(md["markdown_rule"], "markdown-blocks-v11");
 
     let first = &md["anchor_map"]["segments"][0];
     assert_eq!(
@@ -1572,7 +1572,7 @@ fn an_inferred_heading_projects_as_a_level_one_heading() {
         text.starts_with("<h1>Display line</h1>\n"),
         "the same line, the same level, in the other syntax: {text:?}"
     );
-    assert_eq!(html["html_rule"], "html-blocks-v10");
+    assert_eq!(html["html_rule"], "html-blocks-v11");
 }
 
 /// **`--source` is the same two stages in one process, and the bytes say so.**
