@@ -3,7 +3,7 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third, 0.58.0 the fourth and 0.59.0 the fifth** — each tagged, with macOS binaries on
+**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third, 0.58.0 the fourth, 0.59.0 the fifth and 0.60.0 the sixth** — each tagged, with macOS binaries on
 the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
 in-tree only. Nothing is on crates.io, npm or PyPI.
 
@@ -16,6 +16,85 @@ the unit of work that had acceptance criteria. The per-slice reasoning behind ea
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.60.0] — one process from a document to its Markdown, and a block join the page's own space decides
+
+**A MINOR, because an emitter changed.** Two things: `markdown` learned to take a source document
+and run both stages in one process, and the undeclared block join learned that a gap narrower than
+the space a page itself draws is not a word gap. The first changes no byte of any artifact; the
+second changes the Markdown and HTML of every document whose fonts draw spaces and set type with
+tracking, which is why both projection rule ids move. **The wire changes a 0.59.0 consumer sees:**
+
+- **`markdown_rule` and `html_rule` move to `markdown-blocks-v9` and `html-blocks-v9`**, together,
+  as they moved at `-v8`, because the join lives in `markdown` and `html` calls it. A document whose
+  fonts draw no space at all projects byte for byte what `-v8` projected.
+- **Nothing else.** No representation, extract, classification, grounding or locations artifact
+  changes shape, no schema version moves, and no declaration is added or removed. `profile_sha256`
+  is `sha256:53bb81a1…`.
+
+**How it was measured.** Both changes were measured over the 200 opendataloader-bench documents
+against the build before them, and the engine was profiled stage by stage before either was written
+(`crates/ethos-parser-cli/tests/pipeline_cost.rs`, an ignored instrument). The full comparison,
+including what was tried and reverted, is
+[`docs/measurements/liteparse-head-to-head/README.md`](docs/measurements/liteparse-head-to-head/README.md)
+§7.
+
+### Added
+
+- **`ethos-parser markdown --source <FILE>`** runs extraction and projection in one process. The
+  artifact is **byte-identical** to `extract` piped into `markdown` — asserted on three fixtures in
+  both projections, and checked by hand on 30 corpus documents — because it is the same two library
+  calls under the same default profile. What it skips is serialising a 250 KB representation to
+  JSON, writing it, reading it back, parsing it, re-verifying a fingerprint this process computed
+  moments earlier, and a second process start. **Measured: 0.035 s to 0.020 s per document**, mean
+  over 200 documents, at 9.4 MB of peak memory. The fingerprint is still verified on the record
+  path, where the record came from a file this process did not write; that asymmetry is the point,
+  and the equality test is what licenses it. `html` keeps its single input, which the equality test
+  also asserts, so the asymmetry is deliberate.
+
+### Changed
+
+- **A gap narrower than the space the page draws is not a word gap.** `ink_sequenced` accepted a gap
+  of at most 12 centipoints — a quantization epsilon sized for rounding — or one the reader had
+  already filled with a space of its own. A page set with letter-spacing draws each glyph as its own
+  run and leaves a few centipoints between the ink boxes, which is neither, so every letter became
+  its own block: one bench document projected **944 blocks averaging 1.2 characters** where the page
+  draws *"Once the slides are created"*. It now projects 48.
+
+The measure is the page's own: the median advance of the runs it draws whose text is nothing but
+whitespace, per font, per size. **It is not the gap epsilon 0.47.0 refused** — that would have been
+a constant chosen to sit in a trough Latin has and CJK has not; this is measured per font per
+document, and a font that draws no space supplies no measure and joins nothing new. The alternative
+of falling back to one glyph's pitch was built and measured at NID 0.8696 against 0.8714, because it
+swallows word spaces, and refused on that.
+
+Over the 200 bench documents: **NID 0.8694 → 0.8714, MHS 0.3321 → 0.3353**, TEDS unchanged, 58
+documents moved and none down.
+
+### Not done, with the measurement that says why
+
+Three gaps against another engine on that corpus stay open, and each was attempted or costed rather
+than argued about:
+
+- **Reading order** (0.8714 here). The repair
+  [`reading-order-causes.md`](docs/measurements/opendataloader-bench/reading-order-causes.md)
+  prescribes — peel a full-width band, then look for gutters in what remains — was built and
+  measures **net −0.1042** over 4 documents. The 178 documents on the identity arm are not hiding
+  columns; their content streams are out of order, and reordering those needs a rule that reorders
+  on position alone, which `reading_order.rs` refuses in its header.
+- **Headings** (0.3353 here). Decision #29's S5 font-weight clause was built: it reads the font's
+  own `/FontDescriptor /Flags` ForceBold bit or a `/BaseFont` name saying Bold, and it buys MHS
+  **0.3353 → 0.5198**. It costs both of §7.5's bounds — rate band 0.00%..10.15% against 5%, count
+  bound breached on three documents — and the guard that would bound it has no gap to stand on: the
+  bounded and breaching documents interleave on every share measured. Not shipped, twice measured
+  ([`docs/measurements/headings/README.md`](docs/measurements/headings/README.md) §7, §7.1).
+- **Tables** (0.1704 here). The 28 documents scoring zero are 2 whose truth transcribes a picture
+  (OCR, which this profile refuses), 12 where a drawn grid was built and refused, 11 past the
+  4,096-cell ceiling and 3 under the gutter floor. Fixing only the causes that cannot fabricate
+  reaches about 0.60; going further needs the relaxation `table-gate-v1.md` records fabricating a
+  table on five of eight gate documents.
 
 ---
 

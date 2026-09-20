@@ -2293,7 +2293,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v9","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v9","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.59.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v9","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v9","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3152,11 +3152,16 @@ mod tests {
              The undeclared join now accepts a gap narrower than the space the font itself \
              draws on this page, so a document set with tracking stops projecting one block \
              per glyph — `01030000000103` went from 944 blocks to 48. A document whose fonts \
-             draw no space at all projects what `-v8` projected, byte for byte."
+             draw no space at all projects what `-v8` projected, byte for byte.\n\n\
+             Moved again at 0.60.0: the version alone, on top of the block-join move \
+             above, which re-pinned this while `parser_version` still read 0.59.0. No \
+             rule id moves here — `markdown --source` changes the shape of a call and \
+             not a byte of what it emits, which is what \
+             `the_source_path_equals_the_two_step_path` asserts."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b21b3bc0e1da0d8d4138df9b27f73f34f2c0d65008b1a144017fe6ca9a982448"
+            "sha256:53bb81a1b39caffb6f6fa3691a21ae3758fd1a85af372cf2b93790c600e9091c"
         );
     }
 
