@@ -770,6 +770,17 @@ fn an_odts_own_outline_level_projects_as_an_h_element() {
          heading:\n{html}"
     );
     assert_eq!(a["html_rule"], "html-blocks-v11");
+    // **The negative, and it is the one that earns its place.** A heading that projected at its
+    // own depth flattened nothing — the only guard that a predicate which forgot to short-circuit
+    // on a level it CAN write would fail.
+    assert_eq!(
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "nothing was flattened: {}",
+        a["coverage"]["structural_erasures"]
+    );
 }
 
 /// **An ODP `<text:h>` that states no level projects as a paragraph, not as `<h1>`.**
@@ -796,6 +807,16 @@ fn an_odp_heading_with_no_stated_level_projects_as_a_paragraph() {
         !html.contains("<h"),
         "no heading element anywhere: the deck states the fact of a heading and never its \
          level:\n{html}"
+    );
+    // **Kept at the same count as the Markdown artifact's**, because this projection commits the
+    // same flattening. Two artifacts of one document that disagreed about how many headings it
+    // lost would both be wrong to cite.
+    assert_eq!(
+        *a["coverage"]["structural_erasures"]
+            .as_array()
+            .expect("an array"),
+        vec![serde_json::json!({"code": "heading-level-unresolved-v1", "count": 2})],
+        "two bare `<text:h>`, one count each, and no other code"
     );
 }
 

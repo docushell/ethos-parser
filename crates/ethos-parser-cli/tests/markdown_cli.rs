@@ -1474,6 +1474,17 @@ fn an_odts_own_outline_level_projects_as_a_heading() {
          heading:\n{md}"
     );
     assert_eq!(a["markdown_rule"], "markdown-blocks-v11");
+    // **The negative, and it is the one that earns its place.** A heading that projected at its
+    // own depth flattened nothing — this is the only guard that a predicate which forgot to
+    // short-circuit on a level it CAN write would fail.
+    assert_eq!(
+        a["coverage"]["structural_erasures"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "nothing was flattened: {}",
+        a["coverage"]["structural_erasures"]
+    );
 }
 
 /// **An ODP `<text:h>` that states no level projects as a paragraph.**
@@ -1499,6 +1510,15 @@ fn an_odp_heading_with_no_stated_level_projects_as_a_paragraph() {
     assert!(
         !md.contains('#'),
         "and no `#` anywhere: the deck states the fact of a heading and never its level:\n{md}"
+    );
+    // **And it says so.** Before the erasure declaration this projection dropped two declared
+    // headings to body text and the artifact carried no trace of it.
+    assert_eq!(
+        *a["coverage"]["structural_erasures"]
+            .as_array()
+            .expect("an array"),
+        vec![serde_json::json!({"code": "heading-level-unresolved-v1", "count": 2})],
+        "two bare `<text:h>`, one count each, and no other code"
     );
 }
 
