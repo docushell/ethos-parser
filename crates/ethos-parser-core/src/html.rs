@@ -90,8 +90,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::markdown::{
     census, dropped_code, heading_level, hyphen_tail, list_role, normalize, plan_tables, AnchorMap,
-    Coverage, Emit, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS, GFM_ROW_ZERO_SEPARATOR,
-    GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
+    Coverage, Emit, FontMeasure, SlotRole, TablePlan, GFM_LIST_ITEM_RUN_JOINS,
+    GFM_ROW_ZERO_SEPARATOR, GFM_SPAN_SLOTS_UNREPRESENTABLE, HYPHENATION_REJOIN_DROPPED,
 };
 use crate::{sha256_hex_bytes, ArtifactIdentity, DocumentRepresentation, EngineError, Sha256Hex};
 
@@ -129,7 +129,9 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-pub const HTML_RULE_BLOCKS_V8: &str = "html-blocks-v8";
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V9` documents. Both ids
+/// move together because both projections call `ink_sequenced`.
+pub const HTML_RULE_BLOCKS_V9: &str = "html-blocks-v9";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -387,7 +389,7 @@ pub fn to_html(
     // drift: a document that reads as one block there must read as one `<p>` here.
     let pitch = crate::markdown::pitch_reference(&payload.nodes);
     let mut open_line: Option<crate::markdown::LineKey> = None;
-    let mut line_ink: Option<(&crate::Node, i64, i64)> = None;
+    let mut line_ink: Option<(&crate::Node, i64, FontMeasure)> = None;
 
     for (i, node) in payload.nodes.iter().enumerate() {
         in_representation += node.text.chars().count();
