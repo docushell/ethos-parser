@@ -568,7 +568,14 @@ pub fn to_html(
         let level = heading_level(node);
         match level {
             Some(l) => e.syntax(&format!("<h{l}>")),
-            None => e.syntax("<p>"),
+            None => {
+                e.syntax("<p>");
+                // Kept, not dropped: this projection commits the same flattening at the same
+                // count, and `census`'s own rule is whether the projection commits the erasure.
+                if let Some(code) = crate::markdown::odf_heading_erasure(node) {
+                    *erasures.entry(code).or_insert(0) += 1;
+                }
+            }
         }
         open_block = Some(level);
 
@@ -824,6 +831,34 @@ mod tests {
              <p>Text at level 1</p>\n"
         );
         assert_tiles(&a);
+
+        // **Kept, at the same count as Markdown's.** `census`'s rule is whether THIS projection
+        // commits the erasure, and it commits exactly the same one — a declared heading coming out
+        // as body text. Two artifacts of one document that disagreed about how many headings it
+        // flattened would both be wrong to cite.
+        let count = |code: &str| -> usize {
+            a.coverage
+                .structural_erasures
+                .iter()
+                .find(|e| e.code == code)
+                .map_or(0, |e| e.count)
+        };
+        assert_eq!(
+            count(crate::markdown::HEADING_LEVEL_UNRESOLVED),
+            1,
+            "the `<text:h>` that stated no level"
+        );
+        assert_eq!(
+            count(crate::markdown::HEADING_LEVEL_UNREPRESENTABLE),
+            2,
+            "levels 7 and 300"
+        );
+        assert_eq!(
+            a.coverage.structural_erasures.len(),
+            2,
+            "and nothing from the six that projected, nor from the paragraph: {:?}",
+            a.coverage.structural_erasures
+        );
     }
 
     /// **All six XHTML heading levels reach this projection too** (v2.2-S4).

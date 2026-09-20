@@ -266,6 +266,60 @@ pub const BASELINE_RUN_JOINS_ABUTTED: &str = "baseline-run-joins-abutted-v1";
 /// with it.
 pub const BASELINE_RUN_JOINS_SPACED: &str = "baseline-run-joins-spaced-v1";
 
+/// A block the document declared a **heading** whose depth this engine did not resolve, projected
+/// as a paragraph (v2.4).
+///
+/// One per block, counted where the block opens. ODF makes `text:outline-level` optional, and a
+/// `<text:h>` that omits it takes its depth from an outline style in `styles.xml` — a part the ODF
+/// readers declare unread on the same artifact. So `heading_level` returns `None`, the block comes
+/// out as body text, and the fact that the document called it a heading survives only on the
+/// representation. This is the number that says how often.
+///
+/// **Distinct from [`HEADING_LEVEL_UNREPRESENTABLE`], and the axis is the one
+/// `crate::assurance::codes::NON_TEXT_NODES_NOT_PROJECTED` names:** that one means the node was
+/// read perfectly well and the target schema has nowhere to put it; this one is a gap in what was
+/// *read*. The practical difference is a date. A slice that opens `styles.xml` drives this count
+/// toward zero on the same documents; nothing will ever make `<h300>` an element. One integer over
+/// both would tell a consumer deciding whether to wait for a better build of this engine exactly
+/// the wrong thing.
+///
+/// **Not a character bucket.** Every character of the heading is emitted — only the `#` that was
+/// never written is missing, and a `dropped` entry reading `0` is the disclosure-shaped noise
+/// [`DroppedBucket`]'s own doc refuses. **Not counted on a block that opened none**: a `<text:h>`
+/// whose text normalizes empty emits nothing at all, so there is no paragraph it was flattened
+/// into and no erasure to declare.
+///
+/// Reachable today, on a committed fixture: `fixtures/office/presentation-pages/presentation.odp`
+/// writes two bare `<text:h>` and trips this twice. Format-neutral by intent — `heading_level`'s
+/// own documentation names DOCX as the next reader slice, and a `<w:pStyle>` whose built-in name
+/// lives in `word/styles.xml` reaches this code with the same meaning and no rename.
+pub const HEADING_LEVEL_UNRESOLVED: &str = "heading-level-unresolved-v1";
+
+/// A block the document declared a heading **at a depth neither projection can write**, projected
+/// as a paragraph (v2.4).
+///
+/// One per block, counted where the block opens. ODF types `text:outline-level` as a positive
+/// integer and names no ceiling, and the reader carries what it finds rather than clamping a
+/// document that is not broken — so `text:outline-level="300"` reaches the projection intact.
+/// Markdown has six `#` depths and HTML six `<h>` elements. Emitting `#######` or `<h300>` would
+/// be this exporter inventing a depth neither format has, so the block drops to body text and the
+/// loss is counted here.
+///
+/// The complement of `1..=6` rather than "past six", which is why the name does not say so: a
+/// record hand-built with level `0` lands here too. The ODF readers refuse a zero at read time, so
+/// that path arrives only from a representation this engine did not write — which is
+/// [`GFM_TABLE_NOT_PROJECTED`]'s situation and gets [`GFM_TABLE_NOT_PROJECTED`]'s answer, a count
+/// rather than a panic.
+///
+/// `unrepresentable` is deliberately the word [`GFM_SPAN_SLOTS_UNREPRESENTABLE`] uses: both are
+/// this census's target-format ceilings, and a reader who has read one should read the other
+/// correctly. **Distinct from [`HEADING_LEVEL_UNRESOLVED`]** — see that code for the axis.
+///
+/// **No committed fixture trips it**, and it ships anyway for the reason
+/// [`GFM_SPAN_SLOTS_UNREPRESENTABLE`] shipped at corpus zero: real documents are not the corpus.
+/// An absent code means zero.
+pub const HEADING_LEVEL_UNREPRESENTABLE: &str = "heading-level-unrepresentable-v1";
+
 // -------------------------------------------------------------------------------------------
 // The map
 // -------------------------------------------------------------------------------------------
@@ -689,11 +743,8 @@ pub(crate) fn heading_level(node: &crate::Node) -> Option<u8> {
     if let crate::NodeAttributes::EpubBlock(e) = &node.attributes {
         return xhtml_heading_level(&e.element);
     }
-    if let crate::NodeAttributes::OfficeParagraph(a) = &node.attributes {
-        return odf_heading_level(a.block, a.outline_level);
-    }
-    if let crate::NodeAttributes::OfficeOdfShape(a) = &node.attributes {
-        return odf_heading_level(a.block, a.outline_level);
+    if let Some((block, level)) = odf_block(node) {
+        return odf_heading_level(block, level);
     }
     if let Some(crate::StructuralLocator::PdfTagged(t)) = node.structural_locator.as_ref() {
         let path = t.standard_role_path.as_ref().unwrap_or(&t.role_path);
@@ -741,6 +792,45 @@ fn odf_heading_level(block: crate::OdfBlockKind, level: Option<u32>) -> Option<u
         Some(l @ 1..=6) => u8::try_from(l).ok(),
         _ => None,
     }
+}
+
+/// The two facts an ODF block states about itself, from whichever attribute variant carries it.
+///
+/// One accessor rather than two `if let` arms, because `heading_level` and
+/// [`odf_heading_erasure`] must agree about what an ODF block is or the census would count a
+/// flattening the projection did not commit. `None` for every other node, which is what keeps the
+/// PDF and EPUB paths out of both.
+fn odf_block(node: &crate::Node) -> Option<(crate::OdfBlockKind, Option<u32>)> {
+    match &node.attributes {
+        crate::NodeAttributes::OfficeParagraph(a) => Some((a.block, a.outline_level)),
+        crate::NodeAttributes::OfficeOdfShape(a) => Some((a.block, a.outline_level)),
+        _ => None,
+    }
+}
+
+/// The erasure a block commits by projecting as a paragraph the document called a heading, or
+/// `None` where nothing was flattened (v2.4).
+///
+/// **The complement of [`odf_heading_level`], and the reason it is a second function rather than a
+/// wider return type on `heading_level`:** that signature is `Option<u8>` and three callers read
+/// it as a boolean — `hyphen_tail` twice, to refuse welding a word across a heading. Widening it
+/// would put a census decision inside a predicate about hyphens.
+///
+/// Both projections call this at block open, each into its own `erasures` map, because `to_html`
+/// builds its own and the two are not the same set. The *predicate* is here once so the two counts
+/// are equal by construction.
+///
+/// Three ways to return `None`, and only the first is a non-event: the block is not a heading; the
+/// block is a heading that projected at its own depth; the node is not ODF at all.
+pub(crate) fn odf_heading_erasure(node: &crate::Node) -> Option<&'static str> {
+    let (block, level) = odf_block(node)?;
+    if !matches!(block, crate::OdfBlockKind::Heading) || odf_heading_level(block, level).is_some() {
+        return None;
+    }
+    Some(match level {
+        None => HEADING_LEVEL_UNRESOLVED,
+        Some(_) => HEADING_LEVEL_UNREPRESENTABLE,
+    })
 }
 
 /// `h1` … `h6` to a level, and `None` for every other XHTML element name.
@@ -1991,6 +2081,11 @@ pub fn to_markdown(
         if let Some(level) = heading_level(node) {
             e.syntax(&"#".repeat(level as usize));
             e.syntax(" ");
+        } else if let Some(code) = odf_heading_erasure(node) {
+            // A block the document called a heading, coming out as body text. Counted here rather
+            // than beside the predicate, for the reason the marker is emitted here: this is block
+            // open, and a run joined into an open block must not count a second time.
+            *erasures.entry(code).or_insert(0) += 1;
         }
 
         // A word the page broke across a line, closed up here and nowhere else. The two halves
@@ -3356,6 +3451,11 @@ pub(crate) mod tests {
              ###### Text at level 6\n"
         );
         assert!(a.coverage.balances());
+        assert!(
+            a.coverage.structural_erasures.is_empty(),
+            "a heading that projected at its own depth flattened nothing: {:?}",
+            a.coverage.structural_erasures
+        );
     }
 
     /// The three ways an ODF block is not a heading this projection can write, each of which would
@@ -3384,6 +3484,33 @@ pub(crate) mod tests {
              depth it can honestly write"
         );
         assert!(a.coverage.balances());
+
+        // **The silence ends here.** Before v2.4 all four of these flattened a declared heading
+        // and the artifact said nothing at all; the `#` that was never written is not a dropped
+        // character, so the character census cannot carry it and this second census must.
+        assert_eq!(
+            erasure(&a, HEADING_LEVEL_UNRESOLVED),
+            1,
+            "the `<text:h>` that stated no level"
+        );
+        assert_eq!(
+            erasure(&a, HEADING_LEVEL_UNREPRESENTABLE),
+            2,
+            "levels 7 and 300 — one per block, and `0` would reach this arm too"
+        );
+        // And the paragraph is not a case: nothing was flattened, because a `<text:p>` was never
+        // a heading. Two codes and two only, which is also the sort order a reader sees.
+        let codes: Vec<&str> = a
+            .coverage
+            .structural_erasures
+            .iter()
+            .map(|e| e.code.as_str())
+            .collect();
+        assert_eq!(
+            codes,
+            vec![HEADING_LEVEL_UNREPRESENTABLE, HEADING_LEVEL_UNRESOLVED],
+            "sorted by code, and the pair prints adjacent"
+        );
     }
 
     /// **All six XHTML heading levels, and this is a table because a fixture cannot be one**
