@@ -211,3 +211,61 @@ headings and the text between them, and cannot tell this rule's one level from a
 a wrong one. **And the bench carries no author tags**, so it scores what the rule finds and cannot
 see what it fabricates — which is why S3's false-positive measurement on the eleven tagged documents
 is the bound the rule ships on, and this is its recall side.
+
+---
+
+## 7. S5 — the font-weight clause, built and refused on its own measurement (2026-09-20)
+
+`28-HEADINGS-SCOPE.md`'s S5 held the font clause as conditional on "its own measurement on the
+shipped signal, with its own bound set before its code". This is that measurement. **It was built,
+measured on both sides, and is not shipped**: the numbers are here, the code is not in the tree.
+
+**The signal, narrower than §7.3's proxy.** §7.3 measured "a font the body text is not set in",
+which is why its band reached 15.76%. What was built instead reads the font's own declaration and
+nothing else: `/FontDescriptor /Flags` **ForceBold** (bit 19), or a `/BaseFont` name containing
+`Bold`. No `/StemV` and no `/FontWeight` — both are numbers that would need a threshold nobody
+measured. A line is bold when every run of it carrying text is, and the clause fires only where the
+document's body is **not** itself bold, measured at the body's own size by characters, so a deck or
+a form whose prose is bold withdraws the clause rather than reading every line as a heading.
+
+**What it bought**, over opendataloader-bench's 200 documents, the harness's own evaluator: MHS
+**0.3353 → 0.5198**, and the documents scoring zero **49 → 15**. NID did not move (0.8714 → 0.8711).
+It is a real signal: it is exactly the signal those documents use, and they set their headings at
+body size in bold.
+
+**What it cost**, over the eleven documents whose authors declare headings, tree stripped, by
+[`falsepos.py`](falsepos.py) unchanged — per-document readings in
+[`falsepos-weight-refused.json`](falsepos-weight-refused.json):
+
+| document | declared | fired | true | false | FP rate | recall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `irs-fw9` | 28 | 26 | 26 | 0 | 0.00% | 92.86% |
+| `irs-form-1040-2025` | 24 | 23 | 22 | 1 | 0.43% | 91.67% |
+| `nist-sp-800-53Ar5` | 61 | 78 | 26 | 52 | 0.06% | 42.62% |
+| `nist-sp-800-53r5` | 389 | 39 | 10 | 29 | 0.13% | 2.57% |
+| `nist-sp-800-207` | 57 | 27 | 9 | 18 | 0.96% | 15.79% |
+| `nist-sp-800-37r2` | 957 | 353 | 55 | 298 | 3.76% | 5.75% |
+| `nist-sp-800-171r3` | 180 | 372 | 169 | **203** | 4.98% | 93.89% |
+| `cfpb-home-loan-toolkit` | 83 | 75 | 23 | 52 | **5.71%** | 27.71% |
+| `nist-sp-800-161r1` | 454 | 1416 | 118 | **1297** | **10.15%** | 25.99% |
+| `irs-f1040sd-2025` (counts only) | 9 | 3 | 1 | 2 | — | 11.11% |
+| `nist-sp-800-218` (counts only) | 7 | 35 | 7 | **28** | — | 100.00% |
+
+**Both bounds fail, and not narrowly.** The rate band over the nine bounded documents is
+**0.00%..10.15%**, worst `nist-sp-800-161r1`, with `cfpb-home-loan-toolkit` also over at 5.71%
+against §7.5's 5%. The count bound — no more false headings than the author declared — is breached
+on three: `nist-sp-800-161r1` 1297 against 454, `nist-sp-800-171r3` 203 against 180, and
+`nist-sp-800-218` 28 against 7, which is the document whose earlier breach of 10 the owner accepted.
+The instrument's own verdict line reads `ALL BOUNDS: NOT MET`.
+
+**Why it fails, which is the part worth keeping.** The clause is not weak — where weight means
+*heading*, it is the best signal this rule has had: `irs-fw9` 92.86% recall at 0.00%,
+`nist-sp-800-171r3` 93.89% at 4.98%. It collapses where a document uses weight for something else,
+and the long NIST standards do exactly that: bold defined terms, bold table headers, bold inline
+emphasis. **A signal that is excellent on four documents and unbounded on two is not a bounded
+rule**, and §7.5's bound exists to say so before the code ships rather than after.
+
+**What would reopen it.** A guard that withdraws the clause where weight is *common* in the
+document, the way `body_is_bold` withdraws it where the body is bold — a share rather than a
+majority. That is a new threshold, and it would need what `BODY_SHARE_DEN`'s 1/20 got: a measured
+gap in the evidence to sit in, plus a re-run of both instruments. Nothing here sets one.
