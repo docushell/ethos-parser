@@ -140,8 +140,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S1 | `markdown-blocks-v4` | runs in one marked-content sequence become one block |
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
 /// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
-/// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared |
-/// | v2.4 | `markdown-blocks-v11` | a declared heading that projects as a paragraph is counted |
+/// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -173,20 +172,23 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// — no PDF document projects a different byte, and a `<text:h>` that stated no level still
 /// projects as a paragraph, because an absent `text:outline-level` is not level one.
 ///
-/// `-v11` at the erasure declaration, and **it is the first move where not one character of
-/// `markdown` or `html` changes.** The projection does exactly what `-v10` did; what ends is the
-/// silence about it. A block the document called a heading that comes out as body text now
+/// **`-v10` covers two slices, folded deliberately.** The second added no source and changed no
+/// emitted character: a block the document called a heading that comes out as body text now
 /// carries a count — [`HEADING_LEVEL_UNRESOLVED`] or [`HEADING_LEVEL_UNREPRESENTABLE`] — in
-/// `coverage.structural_erasures`.
+/// `coverage.structural_erasures`. The census is output, so that *is* an artifact change, and it
+/// went under this id rather than a `-v11` because no release carries either half: the two are
+/// one slice as far as any consumer will ever see, and an id that moves twice between tags tells
+/// a reader there were two comparability boundaries when there is one.
 ///
-/// **The census is output.** `fixtures/office/presentation-pages/presentation.odp` yields
-/// different `ethos.markdown.v1` bytes after this slice than before it, and
-/// `crate::html`'s own header names the state that forbids leaving the id alone: *"a rule id that
-/// stayed put while its output changed is the one dishonesty a version id exists to prevent."*
-/// A bump rather than a new name, on the same test as every bump here: no new source is read and
-/// no new fact is found — the condition counted is the one `odf_heading_level` already branches
-/// on, which is *why* the block projects as a paragraph. Same evidence, counted.
-pub const MARKDOWN_RULE_BLOCKS_V11: &str = "markdown-blocks-v11";
+/// **What that costs, recorded rather than hidden.** Between `d963edf` and the fold, `main`
+/// carried a `-v10` that projected ODF headings without counting the ones it flattened, so two
+/// commits in this repository's own history emit different `ethos.markdown.v1` bytes under this
+/// string. That is the state `crate::html`'s header calls the one dishonesty a version id exists
+/// to prevent, and it is accepted here on one fact only: **no artifact was ever published under
+/// the intermediate** — no tag, no release, no distributed binary, only source. A reader
+/// comparing two artifacts in the wild cannot meet both. Anyone who built `main` in that window
+/// and kept the output should re-run it.
+pub const MARKDOWN_RULE_BLOCKS_V10: &str = "markdown-blocks-v10";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -1780,7 +1782,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v11`
+/// # The rule, in full — `markdown-blocks-v10`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying

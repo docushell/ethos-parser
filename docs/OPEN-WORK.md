@@ -18,8 +18,9 @@ pushed with all three tags — `v0.58.0`, `v0.59.0`, `v0.60.0` — and the relea
 on the last two. **Revised again later on 2026-09-20**, when the ODF heading slice closed §6's
 ODT/ODP defect: `text:outline-level` is read, carried and projected, under
 `markdown-blocks-v10` / `html-blocks-v10`. **Revised once more the same day**, when the
-flattening that slice left behind stopped being silent — two `structural_erasures` codes, under
-`markdown-blocks-v11` / `html-blocks-v11`.
+flattening that slice left behind stopped being silent — two `structural_erasures` codes — and
+**the owner folded both slices under one `markdown-blocks-v10` / `html-blocks-v10`**, so there is
+one identity move between 0.60.0 and whatever is cut next, not two.
 
 **How to read the status column.**
 - **ready** means nothing but effort stands in the way.
@@ -166,9 +167,13 @@ boxes, which doc 22 refused.
   prefix**, on `MCID_RUN_JOINS`'s precedent. One predicate, `odf_heading_erasure`, called by both
   projections into their own maps, so the counts are equal by construction;
   `heading_level`'s `Option<u8>` is deliberately not widened, because `hyphen_tail` reads it twice
-  as a boolean. **Both rule ids moved to `-v11` and `profile_sha256` to `sha256:360df096…`** — the
-  first move where not one character of either projection changes, taken because the census is
-  output and `presentation.odp` yields different bytes under the same id otherwise.
+  as a boolean. **Folded under the same `-v10` as the slice below, on the owner's
+  decision 2026-09-20**, so `profile_sha256` stays `sha256:850e4fa3…` and the two slices are one
+  comparability boundary. The fold is recorded in `profile.rs`'s move log with what it costs: an
+  intermediate `-v10` was on `origin/main` between `d963edf` and the fold that projected ODF
+  headings without counting the flattened ones, so two commits in this repository's history emit
+  different artifacts under one id. Accepted because **no artifact was ever published under the
+  intermediate** — no tag, no release, source only.
 - ~~**An ODT or ODP declared heading projects as a paragraph**~~ — **done 2026-09-20**, the §6
   defect closed. `odt::outline_level` reads `text:outline-level` through `xml::resolved_attribute`
   on `<text:h>` only; `OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each carry it as

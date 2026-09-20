@@ -139,20 +139,18 @@ pub const HTML_SCHEMA_VERSION: &str = "1.0.0";
 /// one baseline, now project into one `<p>` where `-v4` projected two. Both ids move together
 /// again, for the same reason as last time — the clauses live in `crate::markdown` and this
 /// projection calls them.
-/// `-v11`: the erasure declaration `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` documents. Not one
-/// character of the HTML changes; a declared heading that comes out `<p>` is now counted, and this
-/// artifact keeps that count at the same value its sibling does, because both projections commit
-/// the same flattening. Both ids move together for the reason `-v3` gives.
-///
-/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` documents — an ODT
+/// `-v10`: the ODF heading source `crate::markdown::MARKDOWN_RULE_BLOCKS_V10` documents — an ODT
 /// or ODP `<text:h>` now projects as `<h1>`..`<h6>` at the level it declared, where before it
 /// projected `<p>`. Both ids move together for the reason `-v3` gives: the change went through
 /// `heading_level`, which both projections call. A level past six projects `<p>`, because
-/// `<h300>` is not an element.
+/// `<h300>` is not an element. **The same id also carries the erasure declaration**, folded for
+/// the reason `crate::markdown::MARKDOWN_RULE_BLOCKS_V10` gives: a declared heading that comes out
+/// `<p>` is counted, at the same value its sibling counts, because both projections commit the
+/// same flattening. Not one character of the HTML changes; the census does.
 ///
-/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V11` documents. Both ids
+/// `-v9`: the block-join repair `crate::markdown::MARKDOWN_RULE_BLOCKS_V10` documents. Both ids
 /// move together because both projections call `ink_sequenced`.
-pub const HTML_RULE_BLOCKS_V11: &str = "html-blocks-v11";
+pub const HTML_RULE_BLOCKS_V10: &str = "html-blocks-v10";
 
 // -------------------------------------------------------------------------------------------
 // The artifact
@@ -326,7 +324,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v11`
+/// # The rule, in full — `html-blocks-v10`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).

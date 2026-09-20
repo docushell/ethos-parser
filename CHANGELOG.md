@@ -53,12 +53,21 @@ the naming half: *"It is **not** a `GFM_*` code: GFM is not what causes it."* Th
 format-neutral on purpose: a DOCX `<w:pStyle>` whose built-in name lives in `word/styles.xml`
 reaches `-unresolved-` with the same meaning and no rename.
 
-**`markdown_rule` and `html_rule` move to `markdown-blocks-v11` and `html-blocks-v11`**, and this
-is **the first move where not one character of either projection changes**. The census is output:
-`fixtures/office/presentation-pages/presentation.odp` yields different `ethos.markdown.v1` bytes
-after this than before, and an id that stayed put while its output changed is the one dishonesty a
-version id exists to prevent. `profile_sha256` is `sha256:360df096…`. Neither schema version
-moves — a code is a value inside an existing key.
+**This ships under the same `markdown-blocks-v10` / `html-blocks-v10` as the projection above**,
+folded into one identity move. Not one character of either projection changes here — but the
+census *is* output, so `fixtures/office/presentation-pages/presentation.odp` does emit different
+`ethos.markdown.v1` bytes than it did before either slice. One id rather than two because **no
+release carries either half**: to every consumer that will ever exist the two are one change, and
+an id that moved twice between tags would claim two comparability boundaries where there is one.
+`profile_sha256` is `sha256:850e4fa3…`. Neither schema version moves — a code is a value inside an
+existing key.
+
+**What the fold costs, stated rather than hidden.** Between `d963edf` and the fold, `origin/main`
+carried an intermediate `-v10` that projected ODF headings without counting the ones it flattened,
+so two commits in this repository's own history emit different artifacts under one rule id — the
+state a rule id exists to make impossible. It is accepted on one fact: **no artifact was ever
+published under the intermediate.** No tag, no release, no distributed binary, source only. Anyone
+who built `main` in that window and kept the output should re-run it.
 
 **What counts nothing:** a `<text:p>`, whatever attribute rides along on it; a heading that
 projected at its own depth; and a `<text:h>` whose text normalizes empty, which emits nothing at
@@ -76,15 +85,15 @@ came out a bare paragraph: the reader put the *fact* of a heading on the wire an
 - **`markdown_rule` and `html_rule` moved to `markdown-blocks-v10` and `html-blocks-v10`**,
   together, for the reason they moved at `-v3` and `-v8`: the change is in `heading_level`, which
   both projections call. A bump rather than a new id — the evidence is the same as `/H2` and
-  `<h2>` already carried, and what moved is how many formats can state it. **`-v10` is an
-  intermediate no release carries**: the declaration above moved both ids again, to `-v11`, before
-  either was tagged. A consumer coming from 0.60.0 sees `-v9` become `-v11`.
+  `<h2>` already carried, and what moved is how many formats can state it. **The same `-v10`
+  also carries the erasure declaration above**, folded into one move: a consumer coming from
+  0.60.0 sees `-v9` become `-v10`, once.
 - **`OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each gain `outline_level`**, an
   optional integer, **absent** where the block stated no level. A block that stated none
   serialises exactly the bytes it did before the field existed, so no artifact of a document
   without ODF headings moves except through `profile_sha256`.
 - **Nothing else.** No schema version moves, no declaration is added or removed, and no PDF
-  document projects a different byte. `profile_sha256` was `sha256:850e4fa3…` at this point and is `sha256:360df096…` after the declaration above.
+  document projects a different byte. `profile_sha256` is `sha256:850e4fa3…`.
 
 **Three things it refuses, each of which would have been easier:**
 
