@@ -3665,6 +3665,76 @@ mod tests {
         }
     }
 
+    /// **Both directions, for the optional level v2.4 added to the two ODF attribute structs.**
+    ///
+    /// Forward — an older consumer meeting `outline_level` — is `deny_unknown_fields` doing its
+    /// job: it refuses, loudly, rather than dropping a field it does not know. That refusal is the
+    /// reason the projection rule id moves in the same release, and it is asserted here by poking
+    /// an unknown field into the same two objects, which is the identical code path.
+    ///
+    /// Backward — this build meeting an artifact written before the field existed — must parse,
+    /// must yield `None`, and must re-serialise to the bytes it arrived as. The last clause is the
+    /// one that matters: if `skip_serializing_if` were dropped, an old artifact would come back
+    /// carrying `"outline_level":null` and every digest over it would move.
+    ///
+    /// Stripping this field is safe where stripping `PdfTaggedLocator::derivation` would not have
+    /// been, and the asymmetry is the point: an absent level claims *less* structure, while an
+    /// absent derivation would have laundered a `Computed` value into an `Extracted` one.
+    #[test]
+    fn an_odf_blocks_outline_level_is_optional_in_both_directions() {
+        for (name, old, with_level) in [
+            (
+                "office_paragraph",
+                r#"{"office_paragraph":{"block":"heading"}}"#,
+                r#"{"office_paragraph":{"block":"heading","outline_level":2}}"#,
+            ),
+            (
+                "office_odf_shape",
+                r#"{"office_odf_shape":{"block":"heading"}}"#,
+                r#"{"office_odf_shape":{"block":"heading","outline_level":2}}"#,
+            ),
+        ] {
+            // Backward: the pre-v2.4 shape parses, states no level, and comes back unchanged.
+            let parsed: NodeAttributes = serde_json::from_str(old)
+                .unwrap_or_else(|e| panic!("`{name}` without a level must still parse: {e}"));
+            let level = match &parsed {
+                NodeAttributes::OfficeParagraph(a) => a.outline_level,
+                NodeAttributes::OfficeOdfShape(a) => a.outline_level,
+                other => panic!("expected an ODF block, got {other:?}"),
+            };
+            assert_eq!(level, None, "`{name}` stated no level, so it has none");
+            assert_eq!(
+                serde_json::to_string(&parsed).expect("serializes"),
+                old,
+                "`{name}` must re-serialise to the bytes it arrived as — a `null` here moves \
+                 every digest over every artifact written before the field existed"
+            );
+
+            // And the level, where it is stated, survives the same round trip.
+            let parsed: NodeAttributes = serde_json::from_str(with_level).expect("parses");
+            assert_eq!(
+                serde_json::to_string(&parsed).expect("serializes"),
+                with_level
+            );
+
+            // Forward: the path an older build takes when it meets a field it does not know.
+            let mut v: serde_json::Value = serde_json::from_str(old).expect("parses");
+            v.as_object_mut()
+                .expect("object")
+                .get_mut(name)
+                .expect("the variant")
+                .as_object_mut()
+                .expect("object")
+                .insert("future_knob".into(), serde_json::Value::from(1));
+            let parsed: Result<NodeAttributes, _> = serde_json::from_value(v);
+            assert!(
+                parsed.is_err(),
+                "an unknown field inside `{name}` must be refused, which is what an older \
+                 build does with `outline_level`"
+            );
+        }
+    }
+
     #[test]
     fn the_node_kind_wire_spelling_matches_the_grounding_id_pattern() {
         // `ethos.grounding.v1` constrains `kind` to ^[a-z0-9][a-z0-9_-]*$. The representation's
