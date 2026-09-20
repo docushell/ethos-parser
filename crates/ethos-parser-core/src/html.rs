@@ -311,7 +311,7 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 
 /// Project a representation into HTML plus its map.
 ///
-/// # The rule, in full — `html-blocks-v8`
+/// # The rule, in full — `html-blocks-v10`
 ///
 /// 1. **Text runs only**, with every other node kind dropped into the same named bucket the
 ///    Markdown projection uses. Page artifacts are **not** dropped (O21/O22).

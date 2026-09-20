@@ -24,6 +24,53 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
+## [Unreleased] — an ODF heading projects at the level it declared
+
+**A MINOR when it ships, because an emitter changed.** An ODT or ODP `<text:h>` now projects as
+`# ` and `<h1>`..`<h6>` at the level the element itself states. Before this, every ODF heading
+came out a bare paragraph: the reader put the *fact* of a heading on the wire and left
+`text:outline-level` unread, so the projection had nothing to emit a depth from.
+
+**The wire changes a 0.60.0 consumer sees:**
+
+- **`markdown_rule` and `html_rule` move to `markdown-blocks-v10` and `html-blocks-v10`**,
+  together, for the reason they moved at `-v3` and `-v8`: the change is in `heading_level`, which
+  both projections call. A bump rather than a new id — the evidence is the same as `/H2` and
+  `<h2>` already carried, and what moved is how many formats can state it.
+- **`OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each gain `outline_level`**, an
+  optional integer, **absent** where the block stated no level. A block that stated none
+  serialises exactly the bytes it did before the field existed, so no artifact of a document
+  without ODF headings moves except through `profile_sha256`.
+- **Nothing else.** No schema version moves, no declaration is added or removed, and no PDF
+  document projects a different byte. `profile_sha256` is `sha256:850e4fa3…`.
+
+**Three things it refuses, each of which would have been easier:**
+
+- **An absent `text:outline-level` is not level 1.** ODF makes the attribute optional and a bare
+  `<text:h>` takes its depth from an outline style in `styles.xml` — a part these readers declare
+  they did not open, on the same artifact. A default here would put a number on the wire that came
+  out of a part the record says nobody read, so a heading that stated no level projects as a
+  paragraph. The ODP fixture is exactly this case and is tested as such.
+- **A level past six projects as a paragraph.** ODF names no ceiling, so the reader carries
+  `outline-level="300"` as written rather than clamping a document that is not broken; `#######`
+  and `<h300>` are not things these formats have.
+- **`capabilities.structural_locators` stays false.** The v2-S5 note that kept this field off the
+  wire said reading it *"would put a document outline on the wire while `structural_locators` is
+  false"*. An outline is a tree — a relation between nodes, which is what a structural locator
+  addresses — and a level is one element's statement about itself, in the same grammar
+  `OdfBlockKind::Heading` has been on this wire in since v2-S5. No parent, child or tree position
+  is claimed.
+
+**Not in scope, and why.** **DOCX** carries no heading at all and still does not: `docx.rs` has no
+`Event::Empty` arm, and `<w:pStyle/>` and `<w:outlineLvl/>` are always self-closing, so they are
+invisible to that reader as written — and `w:val="Heading1"` is a styleId, an author-chosen token,
+where the built-in name ECMA-376 fixes lives in `<w:name>` inside `word/styles.xml`. Mapping the id
+to a level without opening that part is matching a convention, not reading a declaration. **ODS**
+reads the heading flag and discards it when the block closes, and `OfficeOdfCellAttributes` has
+nowhere to put it, so a level there would be a qualifier outliving the thing it qualifies.
+
+---
+
 ## [0.60.0] — one process from a document to its Markdown, and a block join the page's own space decides
 
 **A MINOR, because an emitter changed.** Two things: `markdown` learned to take a source document

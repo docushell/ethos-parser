@@ -15,7 +15,9 @@ and verified); local `main` carries it and, after it, everything this page marks
 2026-09-16/17*, for 0.59.0. **Revised again 2026-09-18, at the 0.59.0 release commit**, cut on local `main`
 after the full gate passed 9/9. **Revised again 2026-09-20**, when 0.60.0 was cut and `main` was
 pushed with all three tags — `v0.58.0`, `v0.59.0`, `v0.60.0` — and the release workflow ran green
-on the last two.
+on the last two. **Revised again later on 2026-09-20**, when the ODF heading slice closed §6's
+ODT/ODP defect: `text:outline-level` is read, carried and projected, under
+`markdown-blocks-v10` / `html-blocks-v10`.
 
 **How to read the status column.**
 - **ready** means nothing but effort stands in the way.
@@ -151,6 +153,21 @@ boxes, which doc 22 refused.
 
 ## 5. Ready now — no decision needed
 
+- ~~**An ODT or ODP declared heading projects as a paragraph**~~ — **done 2026-09-20**, the §6
+  defect closed. `odt::outline_level` reads `text:outline-level` through `xml::resolved_attribute`
+  on `<text:h>` only; `OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each carry it as
+  `Option<u32>` with `skip_serializing_if`, so a block that stated none serialises the bytes it
+  did before the field existed; `heading_level` gained a fourth source and both projection ids
+  moved to `-v10`. **Three questions the slice had to settle, each answered against guessing:** an
+  absent `text:outline-level` is `None` and never level 1, because the level a bare `<text:h>`
+  displays at comes from an outline style in `styles.xml`, which the readers declare unread; the
+  type is `u32`, because ODF names no ceiling and clamping repairs a document that is not broken;
+  and a level past six projects as a paragraph, because `#######` and `<h300>` are not things
+  these formats have. `structural_locators` **stays false** on both ODF profiles — an outline is a
+  tree and a level is one element's statement about itself, which is the grammar
+  `OdfBlockKind::Heading` has been on the wire in since v2-S5. **Not in scope and still open:**
+  DOCX, which needs an `Event::Empty` arm before `<w:pStyle/>` is even visible, and ODS, which
+  discards the heading flag when a block closes.
 - ~~**Headings inferred from font size or font name** (decision #29)~~ — **done 2026-09-18, S0 to
   S4, for 0.59.0**; S5, the font clause, stays conditional on its own measurement. Scoped in
   [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md). **S1, the reader**: the rule reads the rendered
@@ -195,7 +212,7 @@ boxes, which doc 22 refused.
 | --- | --- |
 | `advance` on a CTM- or `/Rotate`-turned page is measured before the rotation, so it disagrees with the box and with the contract's "after page rotation" | `PdfLocator::advance` rustdoc; doc 22 amendments |
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
-| An ODT or ODP heading is on the wire as a heading and projects as a **paragraph**: `<text:h>` sets `OdfBlockKind::Heading`, and `text:outline-level` is unread, so no level exists to emit. Found while scoping inferred headings, where decision #29's rider that a declared heading always wins stands beside a declared heading that wins nothing | [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) §6.2 |
+| ~~An ODT or ODP heading is on the wire as a heading and projects as a **paragraph**~~ — **fixed 2026-09-20**, see §5 | [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) §6.2, amended |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |
 | A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |

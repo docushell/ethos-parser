@@ -1666,7 +1666,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v8`
+/// # The rule, in full — `markdown-blocks-v10`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
