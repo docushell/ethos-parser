@@ -3,9 +3,14 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**0.55.0 was the first version released, 0.56.0 the second, 0.57.0 the third, 0.58.0 the fourth, 0.59.0 the fifth and 0.60.0 the sixth** — each tagged, with macOS binaries on
-the repository's GitHub Release ([`RELEASING.md`](docs/RELEASING.md) §8). Every earlier number is
-in-tree only. Nothing is on crates.io, npm or PyPI.
+**Six versions are tagged, 0.55.0 through 0.60.0, and four of them carry binaries.** 0.55.0, 0.56.0
+and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub Release
+([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it ships:**
+Linux, Windows and both macOS architectures, one fingerprint across four runners, delivered as the
+single `release-bundle.zip` its own notes tell a reader to unzip. **0.58.0 and 0.59.0 are tags with
+no release object**, and little is lost by that: 0.60.0 descends from both, so their work is in the
+binaries above, and a reader who needs one of those two exactly builds it from its tag under the
+pinned toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
