@@ -1007,6 +1007,10 @@ fn read_document(
                                 // distinction, so it is left false and the element's own name is
                                 // carried beside it instead.
                                 heading: false,
+                                // ODF's attribute, on ODF's element. XHTML states a heading's
+                                // level in the element name, which `EpubBlockAttributes::element`
+                                // already carries verbatim.
+                                outline_level: None,
                                 text: String::new(),
                                 pending_space: false,
                                 foreign_depth: 0,

@@ -153,6 +153,13 @@ pub struct TextBlock {
     pub paragraph: u32,
     /// Whether the block was a `<text:h>` rather than a `<text:p>`.
     pub heading: bool,
+    /// The `text:outline-level` the `<text:h>` stated, or `None` where it stated none.
+    ///
+    /// The same attribute `<text:h>` carries in a text document, read by the same function, and
+    /// `None` on a `<text:p>` for the same reason — see [`odt::outline_level`]. A presentation
+    /// LAYOUT's outline level is a different fact and stays unread: it lives in a master page
+    /// this reader does not open.
+    pub outline_level: Option<u32>,
     /// The block's displayed text, under ODF's whitespace rule.
     pub text: String,
 }
@@ -398,9 +405,17 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                                 }
                                 _ => None,
                             };
+                            // Gated on `heading` for `odt`'s reason: the attribute has no
+                            // meaning on a `<text:p>`, so it is not read there.
+                            let level = if heading {
+                                odt::outline_level(&reader, &start)?
+                            } else {
+                                None
+                            };
                             open.push(OpenBlock {
                                 ordinal: opened,
                                 heading,
+                                outline_level: level,
                                 text: String::new(),
                                 pending_space: false,
                                 foreign_depth: 0,
@@ -522,6 +537,7 @@ pub fn read_content(part: &[u8]) -> Result<Presentation, EngineError> {
                                             shape_name: at.shape_name,
                                             paragraph: at.paragraph,
                                             heading: block.heading,
+                                            outline_level: block.outline_level,
                                             text: block.text,
                                         },
                                     )),

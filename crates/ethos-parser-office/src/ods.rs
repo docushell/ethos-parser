@@ -421,6 +421,11 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                                 // already carries the field.
                                 ordinal: opened,
                                 heading,
+                                // Never read here. A spreadsheet's block is a cell's text, and
+                                // `OfficeOdfCellAttributes` carries no block kind — `heading`
+                                // itself is discarded when the block closes, so a level beside
+                                // it would be a qualifier outliving the thing it qualifies.
+                                outline_level: None,
                                 text: String::new(),
                                 pending_space: false,
                                 foreign_depth: 0,

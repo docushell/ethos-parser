@@ -134,7 +134,7 @@ use quick_xml::name::ResolveResult;
 
 use crate::xml::{
     attribute_value, cdata_text, check_closed, decode, local_name, new_ns_reader, new_reader,
-    parse_error, parse_error_at, resolve_reference,
+    parse_error, parse_error_at, resolve_reference, resolved_attribute,
 };
 
 /// The three OpenDocument namespaces this reader resolves element names in.
@@ -297,6 +297,12 @@ pub struct Paragraph {
     pub ordinal: u32,
     /// Whether the block was a `<text:h>` rather than a `<text:p>`.
     pub heading: bool,
+    /// The `text:outline-level` the `<text:h>` stated, or `None` where it stated none.
+    ///
+    /// Always `None` on a `<text:p>`, which ODF gives the attribute no meaning on, and `None`
+    /// rather than `1` on a `<text:h>` that omits it — see [`outline_level`] for why the missing
+    /// case is not defaulted.
+    pub outline_level: Option<u32>,
     /// The text at this block's own level, under ODF's own whitespace rule, with `<text:s>`,
     /// `<text:tab>` and `<text:line-break>` resolved to the characters they state — and
     /// **without** the text of any block nested inside it.
@@ -307,6 +313,11 @@ pub struct Paragraph {
 pub(crate) struct OpenBlock {
     pub(crate) ordinal: u32,
     pub(crate) heading: bool,
+    /// What `<text:h text:outline-level="…">` stated, read once when the block opened.
+    ///
+    /// Read at open rather than carried from the element later, because the attribute is on the
+    /// start tag and nothing after it restates the level.
+    pub(crate) outline_level: Option<u32>,
     pub(crate) text: String,
     /// Whether collapsible whitespace has been seen since the last character was appended.
     ///
@@ -657,9 +668,20 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                                     configured: MAX_BLOCK_NESTING.to_string(),
                                 });
                             }
+                            // **Only a `<text:h>` states one.** Reading the attribute on a
+                            // `<text:p>` would record a level for a block that declared none,
+                            // and would refuse a whole package over a stray value ODF gives no
+                            // meaning where it sits — `spaces`'s rule for a count in a branch
+                            // nobody reads, applied to a block that is not a heading.
+                            let level = if heading {
+                                outline_level(&reader, &start)?
+                            } else {
+                                None
+                            };
                             open.push(OpenBlock {
                                 ordinal,
                                 heading,
+                                outline_level: level,
                                 text: String::new(),
                                 pending_space: false,
                                 foreign_depth: 0,
@@ -759,6 +781,7 @@ pub fn read_content(part: &[u8]) -> Result<Content, EngineError> {
                                 paragraphs.push(Paragraph {
                                     ordinal: block.ordinal,
                                     heading: block.heading,
+                                    outline_level: block.outline_level,
                                     text: block.text,
                                 });
                             }
@@ -988,6 +1011,46 @@ pub(crate) fn spaces(start: &BytesStart<'_>, skipping: bool) -> Result<String, E
         }
     }
     Ok(" ".into())
+}
+
+/// `text:outline-level` on a `<text:h>`, or `None` where the element states none.
+///
+/// **The level the file states, and nothing where it states nothing.** ODF makes the attribute
+/// optional, and a `<text:h>` that omits it takes its level from the outline style in
+/// `styles.xml` — a part [`unread_entries`] declares this reader did not open. Defaulting to `1`
+/// here would put a number on the wire that came out of a part the artifact says was not read,
+/// which is the half-claim `OfficeParagraphAttributes` refuses; `None` says the element stated no
+/// level, which is what happened.
+///
+/// `u32` rather than `u8`, because ODF types the attribute as a positive integer and names no
+/// ceiling: a conforming `text:outline-level="300"` is a level, and this reader carries it as
+/// written. What a projection does with a level past `h6` is the projection's question — a reader
+/// that clamped it here would be repairing a document that is not broken.
+///
+/// Zero and a value that will not parse are refused by name, for [`spaces`]'s reason and
+/// `ods::repeat_count`'s: the attribute exists to state a heading's depth, so a value this reader
+/// cannot read is a depth of unknown size, and guessing one would claim a structure the document
+/// did not state.
+pub(crate) fn outline_level(
+    reader: &quick_xml::NsReader<&[u8]>,
+    start: &BytesStart<'_>,
+) -> Result<Option<u32>, EngineError> {
+    let Some(raw) = resolved_attribute(reader, start, NS_TEXT, b"outline-level", CONTENT_PART)?
+    else {
+        return Ok(None);
+    };
+    match raw.trim().parse::<u32>() {
+        Ok(0) | Err(_) => Err(EngineError::Malformed {
+            what: CONTENT_PART.into(),
+            detail: format!(
+                "`<text:h text:outline-level=\"{raw}\">` does not state a heading level. \
+                 `text:outline-level` is a positive integer; refused rather than repaired, \
+                 because a repaired level claims a place in the document's outline that the \
+                 document did not state — and a zero states a heading at no depth at all."
+            ),
+        }),
+        Ok(n) => Ok(Some(n)),
+    }
 }
 
 #[cfg(test)]
@@ -1236,6 +1299,76 @@ mod tests {
         );
         assert!(content.paragraphs[0].heading);
         assert_eq!(content.foreign_text_not_read, 1);
+    }
+
+    /// **The level the element states, and `None` where it states none.**
+    ///
+    /// A `<text:h>` without the attribute takes its level from an outline style in `styles.xml`,
+    /// which `unread_entries` declares unread — so the honest answer is that this element stated
+    /// no level, not that it stated level one.
+    #[test]
+    fn a_headings_outline_level_is_read_and_an_absent_one_is_not_defaulted() {
+        let content = read(
+            "<text:h text:outline-level=\"2\">Scope</text:h>\
+             <text:h>Unlevelled</text:h>",
+        );
+        assert_eq!(content.paragraphs[0].outline_level, Some(2));
+        assert_eq!(
+            content.paragraphs[1].outline_level, None,
+            "`None` rather than `Some(1)`: the level would have come from a part this reader \
+             declares it did not open"
+        );
+        assert!(
+            content.paragraphs[1].heading,
+            "still a heading, with no level stated"
+        );
+    }
+
+    /// **ODF gives the attribute no meaning on a `<text:p>`, so it is not read there.**
+    ///
+    /// Recording it would put a level on a block that declared none, and refusing on it would
+    /// fail a package over an attribute that means nothing where it sits.
+    #[test]
+    fn a_paragraphs_outline_level_is_not_read() {
+        let content = read("<text:p text:outline-level=\"1\">Not a heading</text:p>");
+        assert!(!content.paragraphs[0].heading);
+        assert_eq!(content.paragraphs[0].outline_level, None);
+    }
+
+    /// **A level past `h6` is carried as written.** ODF types the attribute as a positive integer
+    /// and names no ceiling; clamping here would repair a document that is not broken, and what a
+    /// projection emits for a level it has no element for is the projection's question.
+    #[test]
+    fn an_outline_level_past_the_six_html_headings_is_carried_rather_than_clamped() {
+        let content = read("<text:h text:outline-level=\"300\">Deep</text:h>");
+        assert_eq!(content.paragraphs[0].outline_level, Some(300));
+    }
+
+    /// The `text:c` refusal, for the attribute that states a heading's depth.
+    #[test]
+    fn an_outline_level_that_is_not_a_positive_integer_is_refused_rather_than_repaired() {
+        for raw in ["0", "deep", "-1", ""] {
+            let xml = body(&format!("<text:h text:outline-level=\"{raw}\">H</text:h>"));
+            assert!(
+                read_content(xml.as_bytes()).is_err(),
+                "`text:outline-level=\"{raw}\"` states no depth, and a guessed one claims a \
+                 place in the outline the document did not"
+            );
+        }
+    }
+
+    /// …and the same value inside a region nobody reads does **not** refuse the document, which is
+    /// why the read sits in the branch that opens a block rather than in `classify`.
+    #[test]
+    fn a_malformed_outline_level_in_a_passed_over_region_does_not_refuse_the_document() {
+        let content = read(
+            "<text:p>read<text:note><text:note-body>\
+             <text:h text:outline-level=\"deep\">skipped</text:h>\
+             </text:note-body></text:note></text:p>",
+        );
+        assert_eq!(content.paragraphs.len(), 1);
+        assert_eq!(content.paragraphs[0].text, "read");
+        assert_eq!(content.regions_not_read, 1);
     }
 
     /// **Ruby: the base is the word, the ruby text is the pronunciation guide.** The ODF twin of
