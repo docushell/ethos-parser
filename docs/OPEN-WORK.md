@@ -17,7 +17,9 @@ after the full gate passed 9/9. **Revised again 2026-09-20**, when 0.60.0 was cu
 pushed with all three tags — `v0.58.0`, `v0.59.0`, `v0.60.0` — and the release workflow ran green
 on the last two. **Revised again later on 2026-09-20**, when the ODF heading slice closed §6's
 ODT/ODP defect: `text:outline-level` is read, carried and projected, under
-`markdown-blocks-v10` / `html-blocks-v10`.
+`markdown-blocks-v10` / `html-blocks-v10`. **Revised once more the same day**, when the
+flattening that slice left behind stopped being silent — two `structural_erasures` codes, under
+`markdown-blocks-v11` / `html-blocks-v11`.
 
 **How to read the status column.**
 - **ready** means nothing but effort stands in the way.
@@ -153,6 +155,20 @@ boxes, which doc 22 refused.
 
 ## 5. Ready now — no decision needed
 
+- ~~**A declared heading that projects as a paragraph says nothing about it**~~ — **done
+  2026-09-20**, in the slice after the one below. `Coverage::structural_erasures` gains
+  `heading-level-unresolved-v1` (the element stated no level; its depth is in `styles.xml`, which
+  the readers declare unread) and `heading-level-unrepresentable-v1` (it stated a depth neither
+  Markdown's six `#` nor HTML's six `<h>` can write). **Two codes rather than one**, on
+  `NON_TEXT_NODES_NOT_PROJECTED`'s rule — *"Folding the two together would make one count answer
+  two questions"* — and the axis between them is a date: a slice that opens `styles.xml` drives the
+  first toward zero, and nothing will ever make `<h300>` an element. **Neither carries a `gfm-`
+  prefix**, on `MCID_RUN_JOINS`'s precedent. One predicate, `odf_heading_erasure`, called by both
+  projections into their own maps, so the counts are equal by construction;
+  `heading_level`'s `Option<u8>` is deliberately not widened, because `hyphen_tail` reads it twice
+  as a boolean. **Both rule ids moved to `-v11` and `profile_sha256` to `sha256:360df096…`** — the
+  first move where not one character of either projection changes, taken because the census is
+  output and `presentation.odp` yields different bytes under the same id otherwise.
 - ~~**An ODT or ODP declared heading projects as a paragraph**~~ — **done 2026-09-20**, the §6
   defect closed. `odt::outline_level` reads `text:outline-level` through `xml::resolved_attribute`
   on `<text:h>` only; `OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each carry it as

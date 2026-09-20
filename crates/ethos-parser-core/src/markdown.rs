@@ -555,7 +555,13 @@ pub struct DroppedBucket {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StructuralErasure {
-    /// Stable machine-readable reason. One of the `GFM_*` constants in this module.
+    /// Stable machine-readable reason. One of this module's erasure constants — the `GFM_*` set,
+    /// the join codes, or the heading-level pair.
+    ///
+    /// **Not only the `GFM_*` ones**, and it has not been since v2.2-S1: `MCID_RUN_JOINS` says so
+    /// in its own words, *"It is **not** a `GFM_*` code: GFM is not what causes it."* The prefix
+    /// on the six that carry it is the name of the slice that first met them, not a claim about
+    /// what a code may be.
     pub code: String,
     /// How many of them. **Never a severity and never a ratio** (`docs/01-CONTRACT.md` §9).
     pub count: usize,
@@ -582,9 +588,12 @@ pub struct Coverage {
     pub dropped: Vec<DroppedBucket>,
     /// Structure the projection flattened, by named class, sorted by code (v1.1-S2).
     ///
-    /// Empty on a document with no tables and no tagged lists — an **empty array rather than an
+    /// Empty on a document this projection flattened nothing in — an **empty array rather than an
     /// absent key**, so "nothing was flattened" and "this artifact does not track flattening" are
-    /// distinguishable without reading the schema version.
+    /// distinguishable without reading the schema version. (It read "no tables and no tagged
+    /// lists" until v2.4, which was already stale for the three join codes and is stale again for
+    /// the heading pair. What empties it is the whole set being zero, not one kind of structure
+    /// being absent.)
     pub structural_erasures: Vec<StructuralErasure>,
 }
 

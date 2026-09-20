@@ -24,7 +24,47 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased] — an ODF heading projects at the level it declared
+## [Unreleased] — an ODF heading projects at the level it declared, and the one that cannot says so
+
+### The declaration, added after the projection
+
+**A block the document called a heading that comes out as body text is now counted.** Until this,
+the projection flattened it and the artifact said nothing at all — and
+`docs/history/14-V2-SCOPE.md` §9's third standing rule is *"No silent drop and no silent repair"*.
+
+Two codes in `coverage.structural_erasures`, not one:
+
+- **`heading-level-unresolved-v1`** — the element stated no level. ODF makes `text:outline-level`
+  optional and resolves an omitted one through an outline style in `styles.xml`, a part these
+  readers declare unread on the same artifact. **A gap in what was read.**
+- **`heading-level-unrepresentable-v1`** — it stated a depth neither target format has a place
+  for. Markdown has six `#` depths and HTML six `<h>` elements. **Read perfectly well, nowhere to
+  put it.**
+
+`NON_TEXT_NODES_NOT_PROJECTED` draws exactly this line — *"Folding the two together would make one
+count answer two questions"* — and here the difference is a date: a slice that opens `styles.xml`
+drives the first toward zero on the same documents, and nothing will ever make `<h300>` an
+element. One integer over both would tell a consumer deciding whether to wait for a better build of
+this engine precisely the wrong thing.
+
+Neither carries a `gfm-` prefix. The test, in `html.rs`'s own words, is not *"is the code named
+`gfm-*`"* but *"does this projection commit that erasure"* — and `MCID_RUN_JOINS` already settled
+the naming half: *"It is **not** a `GFM_*` code: GFM is not what causes it."* The names are
+format-neutral on purpose: a DOCX `<w:pStyle>` whose built-in name lives in `word/styles.xml`
+reaches `-unresolved-` with the same meaning and no rename.
+
+**`markdown_rule` and `html_rule` move to `markdown-blocks-v11` and `html-blocks-v11`**, and this
+is **the first move where not one character of either projection changes**. The census is output:
+`fixtures/office/presentation-pages/presentation.odp` yields different `ethos.markdown.v1` bytes
+after this than before, and an id that stayed put while its output changed is the one dishonesty a
+version id exists to prevent. `profile_sha256` is `sha256:360df096…`. Neither schema version
+moves — a code is a value inside an existing key.
+
+**What counts nothing:** a `<text:p>`, whatever attribute rides along on it; a heading that
+projected at its own depth; and a `<text:h>` whose text normalizes empty, which emits nothing at
+all, so there is no paragraph it was flattened into.
+
+### The projection
 
 **A MINOR when it ships, because an emitter changed.** An ODT or ODP `<text:h>` now projects as
 `# ` and `<h1>`..`<h6>` at the level the element itself states. Before this, every ODF heading
@@ -33,16 +73,18 @@ came out a bare paragraph: the reader put the *fact* of a heading on the wire an
 
 **The wire changes a 0.60.0 consumer sees:**
 
-- **`markdown_rule` and `html_rule` move to `markdown-blocks-v10` and `html-blocks-v10`**,
+- **`markdown_rule` and `html_rule` moved to `markdown-blocks-v10` and `html-blocks-v10`**,
   together, for the reason they moved at `-v3` and `-v8`: the change is in `heading_level`, which
   both projections call. A bump rather than a new id — the evidence is the same as `/H2` and
-  `<h2>` already carried, and what moved is how many formats can state it.
+  `<h2>` already carried, and what moved is how many formats can state it. **`-v10` is an
+  intermediate no release carries**: the declaration above moved both ids again, to `-v11`, before
+  either was tagged. A consumer coming from 0.60.0 sees `-v9` become `-v11`.
 - **`OfficeParagraphAttributes` and `OfficeOdfShapeAttributes` each gain `outline_level`**, an
   optional integer, **absent** where the block stated no level. A block that stated none
   serialises exactly the bytes it did before the field existed, so no artifact of a document
   without ODF headings moves except through `profile_sha256`.
 - **Nothing else.** No schema version moves, no declaration is added or removed, and no PDF
-  document projects a different byte. `profile_sha256` is `sha256:850e4fa3…`.
+  document projects a different byte. `profile_sha256` was `sha256:850e4fa3…` at this point and is `sha256:360df096…` after the declaration above.
 
 **Three things it refuses, each of which would have been easier:**
 

@@ -55,6 +55,16 @@
 //! rule id that stayed put while its output changed is the one dishonesty a version id exists to
 //! prevent.
 //!
+//! **The table above is the six-code table it was written as, and the set has grown past it.**
+//! Left as found rather than extended, for the reason the `mcid-` and `baseline-` codes were left
+//! out of it: its `here` column can only answer *dropped* or *recomputed*, and a code this
+//! projection commits at the same count as its sibling has no row to be. The standing rule is the
+//! sentence the table opens with — **does this projection commit that erasure** — and under it
+//! everything not listed above is kept unchanged. That is `mcid-run-joins-v1`, the two
+//! `baseline-run-joins-*`, and, since v2.4, `heading-level-unresolved-v1` and
+//! `heading-level-unrepresentable-v1`: a block the document declared a heading comes out `<p>`
+//! here exactly as it comes out body text there, so the two artifacts owe the same number.
+//!
 //! # The four laws are the same four laws
 //!
 //! 1. **Never one without the other.** [`HtmlArtifact`] holds `html` and `anchor_map` together,

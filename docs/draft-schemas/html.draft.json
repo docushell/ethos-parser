@@ -192,7 +192,9 @@
                   "gfm-list-item-run-joins-v1",
                   "mcid-run-joins-v1",
                   "baseline-run-joins-abutted-v1",
-                  "baseline-run-joins-spaced-v1"
+                  "baseline-run-joins-spaced-v1",
+        "heading-level-unresolved-v1",
+        "heading-level-unrepresentable-v1"
                 ]
               },
               "count": {
