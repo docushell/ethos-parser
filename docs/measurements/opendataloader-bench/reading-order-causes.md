@@ -225,6 +225,9 @@ could set aside a full-width band first, and then look for gutters in what remai
 the 126 multi-sweep documents without touching the 74. **That is a new rule reading new evidence
 and it needs its own id**, exactly as `gutter-columns-v2` and `-v3` did.
 
+> **This paragraph's prescription was built and measured, and it does not hold. Read the amendment
+> of 2026-09-22 at the end of this document before acting on it.**
+
 ## What could not be measured, and what it would need
 
 1. **A counterfactual for any of these fixes.** Attempted for the smallest and best-isolated cause:
@@ -248,3 +251,84 @@ and it needs its own id**, exactly as `gutter-columns-v2` and `-v3` did.
    1.00 and precision 0.47–0.52 — all three declare `off-page-text` on 649, 789 and 703 runs, so
    this is most likely the same cause as `01030000000027`. Confirming it would mean rendering each
    page and reading it, which needs a renderer this engine does not have.
+
+---
+
+## Amendment, 2026-09-22 — the prescribed repair failed, and a third party implements the other half
+
+Two things happened after this document was written. Both bear on the decision its last section
+frames, and neither was measured here, so both are recorded rather than folded into the numbers
+above. **Nothing in the measurement changes: NID is still 0.8697, ordering cost is still 0.0465,
+and the 126/74 split still stands.**
+
+### 1. The repair this document prescribes was built, and measures worse than doing nothing
+
+"What a fix would have to do" above prescribes peeling a full-width band first and then looking for
+gutters in what remains. **That was built on 2026-09-20 and measures net −0.1042 over four
+documents** (recorded in `docs/OPEN-WORK.md` §4's reading-order row). The reason is stated there and
+is the useful part: **the 178 identity-arm documents are not hiding columns — their content streams
+are simply out of order.** A better precondition for cutting cannot help a page that has no columns
+to find, so the +0.0465 above is not reachable by any improvement to the cut.
+
+That leaves exactly one route to it, and it is the one `reading_order.rs` refuses: reordering on
+position where the cut found no evidence of columns.
+
+### 2. PageIndex ships that route in production, and bounds it two ways
+
+[`VectifyAI/PageIndex`](https://github.com/VectifyAI/PageIndex) (MIT) was read against this engine on
+2026-09-22; the full review is in `.plans/PAGEINDEX-REVIEW.md`. Its `flash` layer is a deterministic,
+LLM-free PDF layout extractor, and it orders a page like this — **read in its source at `9c4c3ff`,
+not taken from its documentation**:
+
+- **A recursive XY-cut whose leaf ordinal is the primary sort key.** `recursive_split`
+  (`flash/columns/splitting.py`) puts row-break and column-break candidates into **one** pool at
+  every level and takes the single best-scoring gap on either axis. It threads a `column_offset`
+  down: on a row split the upper half gets `column_offset` and the lower `column_offset + len(upper)`
+  (:140-150); on a column split the left gets `column_offset` and the right `column_offset + len(left)`
+  (:174-186). Every recursion returns at least one rect, so the later offset is strictly greater, and
+  an ascending sort on that index emits upper-before-lower and left-before-right. **So the cut does
+  order the page** — this is worth stating plainly because the opposite is the natural first reading
+  and it is wrong.
+- **A downward sweep inside each leaf, and only inside it.** `assign_reading_order`
+  (`flash/phases/page_view.py:72`) sorts by `(column_index, -top, -bottom, left, right)`. With y
+  increasing upward (`flash/model/rects.py:25`), descending `top` is topmost-first. The sweep is the
+  tiebreak **within** one cut region; it is never global.
+- **The sort atom is a block, deliberately, and the author says why.** From that function's own
+  docstring: *"The column-aware path expects blocks, not raw lines, because the sort key reads the
+  first child line's column index. Passing raw lines would read a different flag from the first
+  span."*
+
+**Where a page yields no cut at all it becomes one leaf, and the sweep over blocks is the whole
+ordering rule** — which is precisely the 178-document case this document measures.
+
+### 3. What this is evidence of, and what it is not
+
+**It is not a measurement on this corpus.** No PageIndex run was made, here or anywhere, and no
+number of theirs appears above or below. `06-STEAL-REFUSE.md` O26 stands.
+
+**What it is:** an existence proof that a downward sweep is serviceable in production *when it
+carries two properties this engine's refusal does not assume*. `reading_order.rs`:56-64 refuses
+sorting by y then x on the ground that *"a global sort is not a reading-order rule; it is a claim
+that the content stream carries no information about order, which is false for the single-column
+pages that are most of every corpus."* That argument is about a **global** sort over **runs**. A
+sweep scoped inside a region, over **blocks**, is a different rule — it would still reorder the 74
+single-sweep documents that are already right, so the objection is narrowed rather than answered,
+and it would still need its own id (`gutter-columns-v4`).
+
+**One suspected obstacle is not there.** A sweep over blocks looks circular, because
+`crate::blocks::subdivide` is called *after* `arrange_page` (`extract.rs`:830 then :851) and takes
+the finished order as an argument. It is not: the partition key is `(band_of(i), subdivision[i])`,
+where `band_of` reads `regions` and `subdivision[i]` is computed from run baselines, the band's
+distinct lines and the modal leading (`blocks.rs`:150-206). The `order` argument is used at exactly
+one place, to **number** the blocks along the finished order (`blocks.rs`:222-230). **Block
+membership is geometry, not order**, so blocks are available as a sort atom before any ordering
+decision is made.
+
+### 4. What would still have to be measured
+
+Everything that decides it. This amendment moves no number and makes no recommendation. If the owner
+takes the sweep, the measurement is the one §"What could not be measured" already names: the rule
+built in the engine and the 200-document corpus re-run, old bytes against new at the same version
+string, with every changed node categorised — and specifically **what it costs on the 74
+single-sweep documents**, which are the population the refusal exists to protect and the one this
+amendment cannot speak for.
