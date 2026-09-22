@@ -193,6 +193,29 @@ fn parts_this_slice_does_not_read_are_declared_with_a_count() {
     );
 }
 
+/// **The same declaration rides a page-less artifact**, which is the half the core unit test
+/// cannot prove: `declared_limitations` is pinned in `ethos-parser-core`, but that the code
+/// survives `Assurance::new`'s normalize and reaches a real non-PDF artifact is a fact about this
+/// crate. `docProps/core.xml` is opened by nothing, and the artifact says so rather than leaving
+/// an absent author to be read as a declared absence.
+#[test]
+fn document_metadata_is_declared_unread_on_an_office_artifact() {
+    let sealed = ethos_parser_office::read(&fixture("simple-paragraphs")).expect("reads");
+    let limitation = sealed
+        .payload()
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_core::assurance::codes::DOCUMENT_METADATA_NOT_READ)
+        .expect("declared under every profile this build can produce");
+
+    assert!(
+        limitation.detail.contains("docProps"),
+        "the declaration must name what is not opened: {}",
+        limitation.detail
+    );
+}
+
 /// The clean fixture declares no erasure, so the code above means something when it appears.
 #[test]
 fn a_package_with_nothing_unread_declares_no_erasure() {

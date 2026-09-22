@@ -258,6 +258,22 @@ pub mod codes {
     /// Detecting contrast would need all of that plus a threshold — and a threshold over
     /// appearance is the `garbled` trap this project already refuses once.
     pub const LOW_CONTRAST_NOT_DETECTED: &str = "low-contrast-not-detected";
+    /// The document's own author-declared metadata is not read, under any profile.
+    ///
+    /// **Unconditional and profile-scoped, exactly like [`LOW_CONTRAST_NOT_DETECTED`]**, and for
+    /// the same reason: no code path in this workspace opens a metadata part for its values, so
+    /// the sentence is true of every run under every profile this build can produce.
+    ///
+    /// **Profile scope rather than document scope**, because [`super::LimitationScope::Document`]
+    /// means *declared only where it actually applies*, and knowing whether THIS document carries
+    /// an `/Info` dictionary would mean reading it. The gap belongs to the profile, not to the
+    /// document.
+    ///
+    /// **Not partnered to a [`Capabilities`] flag, deliberately.** A capability claims that *this
+    /// profile looks*; this profile does not look. A flag belongs to the slice that ships a
+    /// reader, where it would move `profile_sha256` for a real change in what an artifact
+    /// contains rather than to record a `false`.
+    pub const DOCUMENT_METADATA_NOT_READ: &str = "document-metadata-not-read";
     /// Inline images are counted and not emitted as nodes (v1-S6).
     ///
     /// `BI`/`ID`/`EI` embeds sample data directly in the content stream rather than in an XObject,
@@ -669,6 +685,23 @@ impl Capabilities {
              refuses for `garbled`, and a wrong one would flag ordinary light-grey body text as \
              hidden. The findings that ARE reported — invisible rendering mode and off-page text \
              — rest on the content stream's own state rather than on an appearance judgement.",
+        ));
+        // Declared unconditionally, for the reason above it: no reader in this workspace opens a
+        // metadata part for its values, in any of the nine formats, so it is true of every run
+        // under every profile. Profile-scoped because the gap belongs to the profile — deciding
+        // that a document HAS no metadata would mean reading the metadata.
+        out.push(Limitation::profile(
+            codes::DOCUMENT_METADATA_NOT_READ,
+            "No document-level METADATA is read, under any profile this build can produce. Every \
+             format this engine reads carries author-declared metadata and no reader opens it for \
+             its values: a PDF's `/Info` dictionary and its `/Metadata` XMP stream, an OOXML \
+             package's `docProps/`, an ODF `meta.xml`, and an EPUB package document's `<dc:>` \
+             elements — that package document is read for its SPINE and walked past for its \
+             values. So no title, author, producer, creation date, keyword or language from the \
+             document's own header reaches this artifact, and no node addresses one. Where a \
+             format keeps metadata in a part of its own, that part may already be inside this \
+             reader's unread-entry count — but a count names a part and never what it holds. An \
+             artifact that names no author is not evidence that the document declares none.",
         ));
         if !measured_ink_boxes {
             out.push(Limitation::profile(
@@ -1549,12 +1582,13 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            13,
-            "one limitation per false capability, plus `low-contrast-not-detected`, which is \
-             declared UNCONDITIONALLY because no profile this build can produce reads colour — \
-             it is not partnered to a capability in either direction, and pretending otherwise \
-             would mean inventing a `contrast` flag nothing sets. Thirteen since v1.1-S4, which \
-             added `html`"
+            14,
+            "one limitation per false capability, plus the two declared UNCONDITIONALLY: \
+             `low-contrast-not-detected`, because no profile this build can produce reads colour, \
+             and `document-metadata-not-read`, because none of them opens a metadata part for its \
+             values. Neither is partnered to a capability in either direction, and pretending \
+             otherwise would mean inventing a `contrast` or `metadata` flag nothing sets. \
+             Thirteen since v1.1-S4, which added `html`; fourteen since the metadata declaration"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1589,13 +1623,15 @@ mod tests {
                 codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED,
                 codes::IMAGE_PAYLOAD_NOT_EMBEDDED,
                 codes::LOW_CONTRAST_NOT_DETECTED,
+                codes::DOCUMENT_METADATA_NOT_READ,
                 codes::READING_ORDER_GEOMETRIC_ONLY,
             ],
             "an all-true profile keeps the limitations that partner TRUE capabilities — what the \
              Markdown projection does NOT carry, what the table rules still miss, what an image \
-             node does NOT say, and what the reading-order rule cannot see — plus \
-             `low-contrast-not-detected`, which is unconditional because no profile this build \
-             can produce reads colour at all"
+             node does NOT say, and what the reading-order rule cannot see — plus the two \
+             unconditional ones: `low-contrast-not-detected`, because no profile this build can \
+             produce reads colour at all, and `document-metadata-not-read`, because none of them \
+             opens a metadata part for its values"
         );
         assert!(
             !remaining.contains(&"markdown-table-structure-not-projected"),
