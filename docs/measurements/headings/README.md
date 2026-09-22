@@ -310,3 +310,75 @@ bound. The quantity is not the signal, and nothing measured here is.
 bound (§7), and the guard that would bound it has no gap to stand on (this section). Reopening it
 needs evidence this repository does not have — a signal that separates a bold heading from bold
 prose *within* a document, rather than a property of the document as a whole.
+
+## 8. PI-C — the cross-page recurrence gate, refused on its own measurement (2026-09-22)
+
+[`06-STEAL-REFUSE.md`](../../06-STEAL-REFUSE.md) row **PI-C** proposed a seventh clause, taken from
+PageIndex's header detection: *a line whose normalized text appears on N or more distinct pages is
+not an inferred heading*. Its motive is a real gap — `type-size-v2`'s only page-furniture exclusion
+is `/Artifact` marked content, a **tagged**-PDF convention, and the rule fires only where a document
+declares no structure, so the guard does not fire on the population the rule runs on. A running head
+set at 1.20× body em fires on every page.
+
+The clause is **subtractive**: it can only withhold a heading the rule already emitted, so it cannot
+fabricate one, and §7.5's bar 1 is safe by construction. **Bar 2 is the whole question** — *"MHS
+rises, and falls on no document"*, binding since §6's first measurement — and "falls on no document"
+means the clause must withhold **zero** author-declared headings anywhere.
+
+Measured with [`recurrence.py`](recurrence.py), which reuses [`falsepos.py`](falsepos.py)'s machinery
+unchanged: each of the eleven §7.1.1 documents read twice from one file, the original carrying the
+author's labels and a `/StructTreeRoot`-stripped copy carrying the shipped rule's verdict, joined
+node by node under the same three guards. Data: [`recurrence.json`](recurrence.json).
+
+### 8.1 The sweep
+
+`w / tT` is *w lines withheld, of which t were author-declared headings*.
+
+| N | withheld | **declared headings withheld** | documents breaching bar 2 | digits folded |
+| ---: | ---: | ---: | ---: | --- |
+| 2 | 71 | **14** | 3 | 78 / **19** declared |
+| 3 | 12 | **4** | 1 | 12 / 4 |
+| 4 | 12 | **4** | 1 | 12 / 4 |
+| 5 | 5 | **4** | 1 | 5 / 4 |
+| 10 | 1 | **0** | **0** | 1 / 0 |
+
+**Only N=10 clears bar 2, and there the clause withholds one line across all eleven documents.** It
+is safe exactly where it does nothing, and does work exactly where it destroys headings. A rule id
+move costs `profile_sha256` and makes every artifact before and after non-comparable; one withheld
+line does not buy that.
+
+**Folding digits is worse, not better.** It takes N=2's breach from 14 declared headings to 19,
+because numbered siblings collapse to one key and a whole run of real section headings goes with
+them. The crude normalization is the better of the two, and both fail.
+
+### 8.2 Why it fails, which is more useful than the number
+
+At N=2 the population splits cleanly, and not by page count:
+
+| | documents | shape |
+| --- | ---: | --- |
+| **pure gain** — withholds only false positives | **6** | `nist-sp-800-218` removes all 10 of its fired lines, every one a false positive; `nist-sp-800-161r1` 12 of 13; `nist-sp-800-53r5` 6, all false; also `-207`, `-53Ar5`, `cfpb-home-loan-toolkit` |
+| **breach** — withholds real headings | **3** | `nist-sp-800-37r2` removes 7 declared of 22; `nist-sp-800-171r3` 6 of 10; `irs-fw9` 1 — and that document's rule is currently perfect, 26 fired against 26 declared |
+| no effect | 2 | `irs-f1040sd-2025`, `irs-form-1040-2025` |
+
+**The clause is strongly right where a document's false headings are running heads, and destructive
+where its recurrent lines are genuinely repeated section headings.** What separates those two
+populations is **position** — a running head sits in a margin band and a repeated section heading
+does not — and position is the one signal decision #29's rider forbids this rule to read, enforced
+by `headings.rs`'s `the_rule_reads_no_region_and_no_block`.
+
+**That is the finding.** PageIndex's own detector agrees: `header_footer.py:296-298` gates on a
+top-20%/bottom-20% band **first** and uses recurrence only to *confirm* candidates position already
+selected. Its design is right for it. The half this engine is permitted to take is precisely the
+half that does not work alone.
+
+### 8.3 What would reopen it
+
+Not a different N — the sweep covers the useful range and the failure is structural, not a tuning
+miss. It reopens on **a signal that separates a running head from a repeated heading without reading
+position**, which this repository does not have and this measurement does not suggest. The nearest
+candidate — the document's own `/Artifact` marks — is the guard that already exists and is exactly
+what these untagged documents do not carry.
+
+The gap PI-C aimed at is therefore still open and still real, and §7.5's bars are why this is not
+shipped rather than an argument that the gap does not matter.

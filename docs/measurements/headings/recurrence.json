@@ -1,0 +1,662 @@
+[
+ {
+  "document": "irs-f1040sd-2025",
+  "lines": 120,
+  "fired": 3,
+  "fired_declared": 1,
+  "plain": {
+   "2": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 1,
+    "withheld_true": 0,
+    "withheld_false": 1
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "irs-fw9",
+  "lines": 697,
+  "fired": 26,
+  "fired_declared": 26,
+  "plain": {
+   "2": {
+    "withheld": 1,
+    "withheld_true": 1,
+    "withheld_false": 0
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 5,
+    "withheld_true": 5,
+    "withheld_false": 0
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-218",
+  "lines": 1848,
+  "fired": 10,
+  "fired_declared": 0,
+  "plain": {
+   "2": {
+    "withheld": 10,
+    "withheld_true": 0,
+    "withheld_false": 10
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 10,
+    "withheld_true": 0,
+    "withheld_false": 10
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-207",
+  "lines": 1884,
+  "fired": 5,
+  "fired_declared": 0,
+  "plain": {
+   "2": {
+    "withheld": 4,
+    "withheld_true": 0,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 4,
+    "withheld_true": 0,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-171r3",
+  "lines": 4077,
+  "fired": 10,
+  "fired_declared": 6,
+  "plain": {
+   "2": {
+    "withheld": 10,
+    "withheld_true": 6,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "4": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 10,
+    "withheld_true": 6,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "4": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-37r2",
+  "lines": 7930,
+  "fired": 38,
+  "fired_declared": 16,
+  "plain": {
+   "2": {
+    "withheld": 22,
+    "withheld_true": 7,
+    "withheld_false": 15
+   },
+   "3": {
+    "withheld": 8,
+    "withheld_true": 4,
+    "withheld_false": 4
+   },
+   "4": {
+    "withheld": 8,
+    "withheld_true": 4,
+    "withheld_false": 4
+   },
+   "5": {
+    "withheld": 4,
+    "withheld_true": 4,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 22,
+    "withheld_true": 7,
+    "withheld_false": 15
+   },
+   "3": {
+    "withheld": 8,
+    "withheld_true": 4,
+    "withheld_false": 4
+   },
+   "4": {
+    "withheld": 8,
+    "withheld_true": 4,
+    "withheld_false": 4
+   },
+   "5": {
+    "withheld": 4,
+    "withheld_true": 4,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-161r1",
+  "lines": 12792,
+  "fired": 13,
+  "fired_declared": 0,
+  "plain": {
+   "2": {
+    "withheld": 12,
+    "withheld_true": 0,
+    "withheld_false": 12
+   },
+   "3": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "4": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "5": {
+    "withheld": 1,
+    "withheld_true": 0,
+    "withheld_false": 1
+   },
+   "10": {
+    "withheld": 1,
+    "withheld_true": 0,
+    "withheld_false": 1
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 12,
+    "withheld_true": 0,
+    "withheld_false": 12
+   },
+   "3": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "4": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "5": {
+    "withheld": 1,
+    "withheld_true": 0,
+    "withheld_false": 1
+   },
+   "10": {
+    "withheld": 1,
+    "withheld_true": 0,
+    "withheld_false": 1
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-53Ar5",
+  "lines": 80093,
+  "fired": 43,
+  "fired_declared": 9,
+  "plain": {
+   "2": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 2,
+    "withheld_true": 0,
+    "withheld_false": 2
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "nist-sp-800-53r5",
+  "lines": 21513,
+  "fired": 21,
+  "fired_declared": 7,
+  "plain": {
+   "2": {
+    "withheld": 6,
+    "withheld_true": 0,
+    "withheld_false": 6
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 6,
+    "withheld_true": 0,
+    "withheld_false": 6
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "cfpb-home-loan-toolkit",
+  "lines": 1195,
+  "fired": 61,
+  "fired_declared": 19,
+  "plain": {
+   "2": {
+    "withheld": 4,
+    "withheld_true": 0,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 4,
+    "withheld_true": 0,
+    "withheld_false": 4
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ },
+ {
+  "document": "irs-form-1040-2025",
+  "lines": 233,
+  "fired": 23,
+  "fired_declared": 22,
+  "plain": {
+   "2": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  },
+  "digits_folded": {
+   "2": {
+    "withheld": 2,
+    "withheld_true": 1,
+    "withheld_false": 1
+   },
+   "3": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "4": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "5": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   },
+   "10": {
+    "withheld": 0,
+    "withheld_true": 0,
+    "withheld_false": 0
+   }
+  }
+ }
+]
