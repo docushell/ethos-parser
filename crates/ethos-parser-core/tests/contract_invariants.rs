@@ -518,6 +518,77 @@ fn the_backend_name_is_declared_and_hash_bearing() {
     );
 }
 
+/// The declared backend **version** is the version this workspace actually locks.
+///
+/// The test above pins the backend *name*. The version beside it is typed by hand
+/// (`profile.rs`'s `BackendIdentity::default`) while every manifest asks for
+/// `lopdf = { version = "0.44.0", .. }` — a bare requirement, which is the caret range
+/// `>=0.44.0, <0.45.0`. The literal is correct today and nothing was keeping it correct: a
+/// `cargo update -p lopdf` landing 0.44.1 would move the lock, move the code that is built, and
+/// leave every PDF artifact declaring a backend it was not built with, with the whole suite green.
+///
+/// The eight office profiles cannot drift this way — their backend *is* this workspace, so they
+/// read `env!("CARGO_PKG_VERSION")`. The PDF one has no such source and needs this.
+///
+/// It reads a file rather than depending on `lopdf`, because `ethos_parser_core_has_no_pdf_dependency`
+/// above forbids that dependency and is right to. The mechanism is
+/// `ethos-parser-grounding`'s `no_renderer_has_entered_the_dependency_graph`, which reads the same
+/// lock file for the same shape of reason. Text, not a `toml` parse: no `toml` crate exists anywhere
+/// in this workspace, and one fact does not justify adding one.
+///
+/// **When this fails, the repair is an identity event, not a test edit.** Move the literal in
+/// `profile.rs`, re-bless the pinned profile JSON, and say in the commit that `profile_sha256`
+/// moved: artifacts from before and after are correctly non-comparable.
+#[test]
+fn the_backend_version_is_the_one_the_lock_file_resolves() {
+    let lock = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("Cargo.lock");
+    let text = std::fs::read_to_string(&lock).unwrap_or_else(|e| panic!("{}: {e}", lock.display()));
+
+    let declared = Profile::default().backend;
+    let needle = format!("name = \"{}\"", declared.name);
+    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+
+    // A `[[package]]` entry writes `name` then `version`. A dependency *list* writes a bare
+    // `"lopdf",`, which this cannot match.
+    let locked: Vec<&str> = lines
+        .windows(2)
+        .filter(|pair| pair[0] == needle)
+        .map(|pair| {
+            pair[1]
+                .strip_prefix("version = \"")
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Cargo.lock: `{}`'s package entry is not followed by a version line \
+                         ({:?}), so this guard can no longer read the lock file's shape",
+                        declared.name, pair[1]
+                    )
+                })
+        })
+        .collect();
+
+    assert_eq!(
+        locked.len(),
+        1,
+        "Cargo.lock holds {} `{}` package entries ({locked:?}). The profile declares one backend \
+         version and cannot name two.",
+        locked.len(),
+        declared.name
+    );
+    assert_eq!(
+        locked[0], declared.version,
+        "the profile declares backend `{} {}` and Cargo.lock resolves `{}` to `{}`. The manifests \
+         ask for a caret range, so a patch bump lands here without touching the declaration and \
+         every artifact then names a backend it was not built with. Move the literal in \
+         `profile.rs` and re-bless the profile pins — `profile_sha256` moves, deliberately.",
+        declared.name, declared.version, declared.name, locked[0]
+    );
+}
+
 /// No verification concept has leaked in (`docs/07-VERIFY-BOUNDARY.md`).
 #[test]
 fn no_verification_concept_in_ethos_parser_core() {

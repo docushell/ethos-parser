@@ -573,6 +573,12 @@ impl Default for BackendIdentity {
             // The resolved `lopdf` version, wired in at M2 when the dependency landed. Bumping
             // the crate moves this string, which moves `profile_sha256` — which is the point:
             // a backend change is fingerprint-visible rather than silent.
+            //
+            // That was a discipline, not a fact: the manifests ask for a caret range, so a patch
+            // bump would land in `Cargo.lock` without touching this literal and every artifact
+            // would name a backend it was not built with. `contract_invariants.rs`'s
+            // `the_backend_version_is_the_one_the_lock_file_resolves` reads the lock file and
+            // fails on the drift, so the sentence above is now enforced rather than asserted.
             version: "0.44.0".into(),
         }
     }
