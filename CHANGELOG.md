@@ -26,6 +26,52 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased] — an ODF heading projects at the level it declared, and the one that cannot says so
 
+### The metadata nobody reads now says so, and the backend version is measured rather than typed
+
+Three repairs, none of which changes what this engine extracts. Each closes a place where the
+artifact — or the build behind it — asserted a discipline that nothing enforced.
+
+**`document-metadata-not-read`, declared unconditionally.** Every format this engine reads carries
+author-declared metadata — a PDF's `/Info` dictionary and `/Metadata` XMP stream, an OOXML
+`docProps/`, an ODF `meta.xml`, an EPUB package document's `<dc:>` elements — and no reader opens
+any of it for its values. That absence was in **neither** `CAPABILITY.md` table, among none of
+`assurance.rs`'s codes, and behind no capability flag, while the same page closes with *"Everything
+the engine could not do is **stated** — as a named limitation, a typed absence, or a counted
+bucket."* It was the counterexample. The code is profile-scoped and unconditional, on
+`low-contrast-not-detected`'s precedent: document scope means *declared only where it applies*, and
+deciding that a document **has** no metadata would mean reading the metadata.
+
+It rides every representation and every classification, all nine formats — the two artifact shapes
+that carry an assurance block. **The Markdown, HTML and `locate` artifacts carry none**, so they say
+nothing about it either way, and the `CAPABILITY.md` row says that rather than claiming every
+artifact. `profile_sha256` does **not** move: limitations live in `assurance`, not in `Profile`. No
+reader is built here, and the capability flag is deliberately deferred to the slice that ships one —
+a flag claims *this profile looks*, and this profile does not look.
+
+**The declared backend version is now the version the lock file resolves.**
+`BackendIdentity::default` types `"0.44.0"` by hand while every manifest asks for
+`lopdf = { version = "0.44.0", .. }` — a bare requirement, which is the caret range
+`>=0.44.0, <0.45.0`. The literal was correct and nothing was keeping it correct: a `cargo update -p
+lopdf` landing 0.44.1 would have moved the lock, moved the code that is built, and left every PDF
+artifact declaring a backend it was not built with, with the whole suite green. The comment at that
+literal already said *"Bumping the crate moves this string"* — a discipline, not a fact. The new
+guard in `contract_invariants.rs` reads `Cargo.lock`, on
+`no_renderer_has_entered_the_dependency_graph`'s precedent, and fails on the drift. The eight office
+profiles never had this defect: their backend **is** this workspace, so they read
+`env!("CARGO_PKG_VERSION")`. The PDF one has no such source.
+
+**`ci/gate.sh` compares the oracle's commit instead of printing it.** The block resolved
+`../ethos-oracle`, printed its short HEAD for a human to eyeball, and compared it to nothing; the
+one identity test asserts only that `--version` exits 0 and is non-empty. `ci.yml`'s own comment
+says why that is not an identity — *"`ethos --version` cannot tell two builds of one version
+apart"* — and ends with a rule that lived in prose: *"move ../ethos-oracle to it before trusting
+ci/gate.sh."* The gate now reads the 40-character `ETHOS_ORACLE_REF` out of the workflow, refuses an
+off-pin or dirty checkout before step 1 rather than after a six-minute compile, and says which
+sibling repository moved so *"the gate is red"* from `ci/release-preflight.sh` is not read as this
+repository being red. An operator's own `ETHOS_BIN` still wins and is never second-guessed — the
+test for it sits **above** the script's own export, which is the whole trick — and the bypass is now
+announced rather than silent.
+
 ### The declaration, added after the projection
 
 **A block the document called a heading that comes out as body text is now counted.** Until this,
