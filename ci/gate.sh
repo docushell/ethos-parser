@@ -99,11 +99,59 @@ export RUSTFLAGS="-D warnings"
 # deliberately NOT consulted, because docs/07-VERIFY-BOUNDARY.md §4 requires a verifier swap to
 # be visible and "whatever main was that afternoon" is exactly the invisible swap. Absent both,
 # nothing is exported and the oracle tests fail by name.
-if [ -z "${ETHOS_BIN:-}" ] && [ -x ../ethos-oracle/target/release/ethos ]; then
+#
+# **The pinned commit is compared, not printed.** This block used to print the checkout's short HEAD
+# for a human to eyeball and compare it to nothing, and the one identity test —
+# `oracle.rs::ethos_oracle_binary_is_available` — asserts only that `--version` exits 0 and is
+# non-empty. `ci.yml`'s own comment on `ETHOS_ORACLE_REF` says why that is not an identity: "`ethos
+# --version` cannot tell two builds of one version apart". That same comment ends "move
+# ../ethos-oracle to it before trusting ci/gate.sh" — a rule that lived in prose, which is the shape
+# `ci/doc-version.sh` exists to repair. The pin is read out of `.github/workflows/ci.yml` because
+# that is the copy CI's own checkout uses; a second copy here would be one more thing to drift.
+#
+# **Order is the whole trick.** This script exports `ETHOS_BIN` itself a few lines down, so "the
+# operator set it" has to be tested BEFORE that export or it is always true and the pin is never
+# checked. There is deliberately no second knob: bypassing the pin on purpose is already
+# `ETHOS_BIN=... ci/gate.sh`, and the bypass is announced rather than silent.
+#
+# Not a numbered step. `check` runs no such command, and the header above says every step here is
+# one of `check`'s. This is a precondition, like the resolution it guards.
+want_oracle="$(awk -F'"' '/^  ETHOS_ORACLE_REF:/ { print $2; exit }' .github/workflows/ci.yml 2>/dev/null || true)"
+if [[ ! "$want_oracle" =~ ^[0-9a-f]{40}$ ]]; then
+  printf 'gate: no 40-character ETHOS_ORACLE_REF in .github/workflows/ci.yml (read %s).\n' \
+    "${want_oracle:-nothing}" >&2
+  printf '      The key moved and this check went blind; fix the pattern, not the symptom.\n' >&2
+  exit 2
+fi
+
+if [ -n "${ETHOS_BIN:-}" ]; then
+  # Set by the operator — the export below has not run yet, so this branch is the deliberate
+  # override and nothing else. Which commit that binary was built from is unknowable here.
+  printf 'gate: ETHOS_BIN set by hand (%s) — the oracle pin %s is BYPASSED, not checked.\n' \
+    "$ETHOS_BIN" "${want_oracle:0:12}"
+elif [ -x ../ethos-oracle/target/release/ethos ]; then
+  head_oracle="$(git -C ../ethos-oracle rev-parse HEAD 2>/dev/null || true)"
+  if [ "$head_oracle" != "$want_oracle" ]; then
+    printf 'gate: ../ethos-oracle is not at the pinned oracle commit. Nothing in THIS repository\n' >&2
+    printf '      is red; a sibling checkout moved.\n' >&2
+    printf '      HEAD:      %s\n' "${head_oracle:-unknown (not a git checkout)}" >&2
+    printf '      ci.yml:39: %s\n' "$want_oracle" >&2
+    printf '      `ethos --version` cannot tell two builds of one version apart, so the commit is\n' >&2
+    printf '      the only identity there is. Move it and rebuild:\n' >&2
+    printf '        git -C ../ethos-oracle checkout %s\n' "$want_oracle" >&2
+    printf '        (cd ../ethos-oracle && cargo build --release --locked --bin ethos)\n' >&2
+    printf '      Or bypass the pin on purpose, out loud:  ETHOS_BIN=... ci/gate.sh\n' >&2
+    exit 1
+  fi
+  if [ -n "$(git -C ../ethos-oracle status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    printf 'gate: ../ethos-oracle is at the pinned commit but has uncommitted changes to tracked\n' >&2
+    printf '      files, so the binary need not be that commit. Stash them, or pass ETHOS_BIN.\n' >&2
+    exit 1
+  fi
   ETHOS_BIN="$(cd ../ethos-oracle/target/release && pwd)/ethos"
   export ETHOS_BIN
-  printf 'gate: oracle at %s (%s, %s)\n' "$ETHOS_BIN" "$("$ETHOS_BIN" --version 2>/dev/null || echo '?')" \
-    "$(git -C ../ethos-oracle rev-parse --short=12 HEAD 2>/dev/null || echo 'commit ?')"
+  printf 'gate: oracle at %s (%s, %s — the ci.yml pin)\n' "$ETHOS_BIN" \
+    "$("$ETHOS_BIN" --version 2>/dev/null || echo '?')" "${want_oracle:0:12}"
 fi
 
 step=0
