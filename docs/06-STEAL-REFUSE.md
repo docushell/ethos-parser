@@ -26,6 +26,34 @@ cross-check, and citation verification.**
 That last sentence is the product. The first four are how it gets built without re-deriving twenty
 years of PDF handling.
 
+Take from **PageIndex** almost nothing — and that is the finding, not an omission. See below.
+
+## The fifth source is a consumer, not a peer
+
+**[VectifyAI/PageIndex](https://github.com/VectifyAI/PageIndex)** (MIT) was read against this engine on
+2026-09-22 at `9c4c3ff`. It is the first surveyed project that is **not a parser**. The four above
+answer *what does this document contain*; PageIndex answers *which part of it should I read*, and
+stacks two layers to do it: `pageindex/flash/**`, a deterministic LLM-free PDF layout-to-outline
+extractor, and above it a reasoning retrieval layer with tree search, citations and MCP.
+
+That makes it the first evidence in this survey of **what a retriever actually asks a parser for** —
+which is why its rows below are mostly `REFUSE`. A consumer's conveniences are exactly the places a
+producer is tempted to guess, and PageIndex guesses in eleven documented ways. The rows are worth having
+anyway: until now several of this repository's rules argued only from its own documents, and a rule
+with an external, code-level case study behind it is harder to talk someone out of.
+
+**What it gets right, and this engine does not.** Its `embedded_toc.py` reads the document's own
+`/Outlines` and **grades how far that declaration can be trusted** — FULL, SKELETON or IGNORE, on
+measured properties — then states its residual uncertainty in this repository's own idiom: *"a
+bookmark target carries no reliable on-page position, so a section runs onto the page where the next
+entry starts (the boundary page is shared; slack, never truncation)."* This engine reads
+`/StructTreeRoot` and has never opened `/Outlines`. That is `PI-A` below, and it is the only
+capability in the fifth source worth wanting.
+
+**A model's routing problem is a real cost of this engine's refusals**, and `PI7` names it rather than
+pretending otherwise: with no outline on the wire, a model using this engine has no cheap way to
+choose where to look, so it is pushed toward reading everything.
+
 ## Decision vocabulary
 
 | Decision | Meaning |
@@ -53,12 +81,23 @@ years of PDF handling.
 | O23 | A mode that rewrites the evidence | The artifact is the record |
 | L13 | Undeclared form "repair" and always-on widget flattening | A repair that is not recorded is a fabrication |
 | P14 | Style and role inferred from font names or text prefixes | Presentation is not structure. **Narrowed 2026-09-17** by [North Star decision #29](00-NORTH-STAR.md), for headings alone: a heading may be inferred from font size or font name where a document declares no structure, as `Computed`. Every other role stays refused |
-| O26 | "#1", "fastest", or any bake-off claim | Every headline in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags |
+| O26 | "#1", "fastest", or any bake-off claim | Every headline in this landscape is publisher-owned, and one is provably 34 points off depending on invocation flags. **The discriminator is the comparator, not the number** (sharpened against PageIndex, 2026-09-22): it publishes cost and accuracy curves of its own system under declared config, corpus and invocation, and those are honest; the same README's FinanceBench headline compares to an unnamed, unconfigured "Vector RAG", and **that** is what this row refuses. Measuring yourself in public is not the sin. Choosing your rival's invocation is |
 | O28 | A JVM runtime dependency | One project's cost of entry, and why its capabilities cannot be borrowed wholesale |
 | L31 | An unpinned build-time renderer download | Vendor fork, by tag, no checksum, so the build is network-dependent by default |
 | L19 | Sourcing character origins from one competitor's design | **Structural:** the character-origin call has zero call sites there. The fingerprint-critical primitive is not bound at all, so that design cannot be the grounded PDF core |
 | — | Wrapping any competitor as the grounded PDF core | Reference only — see below |
 | — | A `liteparse` → `ethos.grounding.v1` adapter | **Measured and refused at v1.2-S5** — see below |
+| **PI1** | **A node's text substituted from a navigation label** | PageIndex overwrites an extracted heading with the `/Outlines` string when the two are fuzzy-similar (`embedded_toc.py:322`), keeps the extracted node's page index, and records nothing — so a node can claim `start_index: N` carrying a title that appears nowhere on page N. Breaks contract §6 rule 1: *"Nothing overwrites `Extracted`. Not merged, not preferred, not reconciled."* If the two disagree that is a fact to count, not a defect to repair. **Load-bearing if `PI-A` ships** |
+| **PI2** | **Provenance carried in an identifier instead of a field** | The pipeline mints `0266.1` for an LLM-expanded node, calls that provenance in its own docstring (`tree_optimize.py:207-224`), then relabels it flat and drops the per-node source log (`flash/api.py:95-99`). **Not** a refusal of generated content beside measured content — North Star #12 and contract §6 rules 2–3 permit exactly that. What is refused is the mechanism: **a derivation class is a field on the node, never an id convention, because an id convention is the first thing a later pass normalises away** |
+| **PI3** | **A line-number rail deleted from the text** | `strip_line_numbers` (`phases/line_numbers.py:105-162`) runs before stats or clustering, removes the first span of every line in a detected margin rail, and drops the line entirely when it empties — no count, no flag. **A fifth kind for the O21/O22/L27/L28 row**, and worse than the header case: the deleted span is the leading token of a body line, so a caller comparing against the rendered page has no cue. The hazard is real and already handled here without deleting — `docs/measurements/block-subdivision/labelled.py:22-26` calls it the *digit-line drop* |
+| **PI4** | **A mined phrase list used as a classification input** | `flash/data/boilerplate_phrases.json` is 5 904 unversioned, unattributed strings compiled into a case-folded trie; a match silently disqualifies a block from being body text. **At least eleven entries are not phrases at all** — ten runs of mis-decoded halfwidth katakana, the first five entries of the file among them, plus an HTML-escaped Office conditional comment. The admissible shape, so this is not read as banning all data: a normative table from a published specification (P9) is *data*; a list of what documents in someone's corpus tended to say is a *judgement* |
+| **PI5** | **A second text source reconciled by ordinal alignment** | Text from PDFium, re-decoded from its own content-stream walk, patched one over the other on a list-length equality (`unicode_apply.py:66`) with silence as the fallback. That is the opposite of E6, which refuses the output when two sources disagree and names the disagreement on the wire. **The refusal is the reconciliation mechanism, not the second source** — L14 page screenshots sits in the TAKE table at v1, and North Star #14 permits PDFium caller-provided under an explicit ADR |
+| **PI6** | **Normalization, bidi reordering or character substitution before the wire** | A 1 377-entry compatibility table rewrites `ſ` to `s` and `Ĳ` to `IJ`, changing the scalar count a citation is measured in. Severs `char_start`/`char_end` and `locate-scalar-exact-v1`, and contract §4 already settles it: *"No Unicode normalization — extracted text is preserved exactly as extracted"* |
+| **PI7** | **A tool argument that lets the model name the page, plus a resolver that trusts it** | `client.py:2299-2302` promotes a model's guessed page into a structured citation record with no check anywhere. This is the only external, code-level case study for why `no_tool_argument_names_a_coordinate` exists; until now that test argued from `docs/history/12-V12-SCOPE.md` §3 alone. **The row names its own cost** — see the routing paragraph above — because a refusal that omits what it costs is the dishonest version of itself |
+| **PI8** | **Fabricated titles** | `api.py:102-118`: where layout yields no hierarchy, one node per page titled `Page N`; on **every** path including the bookmark ones, a node titled `Preface` covering the pages before the first entry. Neither string is text any document wrote, and in the output they are indistinguishable from the real headings beside them. `17-D1-SCOPE.md:130` already refuses the related half — *"a boundary inferred from a bookmark is invented no matter how reasonable the inference looks"* |
+| **PI9** | **A parsing rule implemented a second time in another language** | `flash` is transliterated JavaScript: `numbering.py:42-70` implements ECMAScript's `ToNumber` grammar — hex, octal, binary, `Infinity` — inside a *PDF section-number parser*; `aggregates.py:23-33` is an `Array.prototype.sort` callback run through `cmp_to_key`; every class carries minifier slot names. `docs/naming-rules.md:3-6` confirms the JS implementation ships, and the only cross-implementation conformance corpus governs **filename sanitisation**. **Attaches to the WASM DEFER** (`A9`/`P18`): a WASM build compiled from the same Rust is the same implementation and is fine; a hand-written re-implementation of the same rule ids is what this refuses |
+| **PI10** | **A single score fusing signals of different kinds** | `heading_score = dominant_font_size + (2 if caps_heavy) + (1 if bold)` (`model/block.py:216`) puts three signals on one axis measured in points, then compares it to `body + 0.5`, `+1`, `+1.5`, `+2`, `+5`, `1.5×body`. A body-size ALL-CAPS line is indistinguishable from a 2 pt-larger mixed-case one at every downstream test, and nothing records which signal supplied the points. **Cites an existing rule rather than creating one** — `28-HEADINGS-SCOPE.md:724` already refuses "a confidence, **a score**, a near-miss or an ordering of candidates". It refuses the **mechanism**, not the case signal, which remains an S5-shaped question needing its own instrument and its own bound |
+| **PI11** | **Caption-to-figure association** | Already settled four times over — P14, North Star #29's rider 3, `images.rs`'s field-name test, and `23-AUTO-TAGGING-SCOPE.md:265` (*"No heading, list, table, caption or span is ever written"*). Recorded so the next reader of the fifth source does not reopen it. PageIndex's version would breach twice: its flash pipeline never reads an image XObject at all, so for a figure-type region it infers the figure from **the area of the region containing no text** — a figure inferred from the absence of evidence |
 
 ### The adapter that was measured and refused
 
@@ -93,6 +132,32 @@ test fails so this decision gets taken again on purpose rather than lapsing.
 gains a way to declare box semantics on the wire. Neither is this repository's to do for them, and
 widening `ethos.grounding.v1` is a change to the *verifier's* contract, not an adapter's business.
 
+### Form XObject descent — measured 2026-09-22, and the verdict split
+
+PageIndex descends into a `/Form` XObject's content stream. This engine counts the `Do` and does not,
+and **nothing here refuses it**: the limitation exists because the work was not done. So it was
+measured before being proposed, and the answer was not the one expected.
+Full method and figures: [`measurements/form-xobjects/`](measurements/form-xobjects/README.md).
+
+**The broad case is refuted.** Over the 8 gate documents and the 200 `opendataloader-bench` ones, 47
+declare `form-xobjects-not-descended`, holding 70 forms; 44 of those show any text, and together they
+show **1 464 bytes** — about a third of a page across the whole corpus, against 1 803 517 text nodes
+in one gate fixture alone. Two independent instruments agree on 70 forms in 47 documents by different
+routes. **Bytes and not operations**, because one `Tj` can draw a paragraph, and that distinction is
+what settled it.
+
+**The narrow case is real and is the one the counter was written for.** Read by exact code name, the
+981-document OmniDocBench census holds **256 declaring it, of which 14 emit an entirely empty artifact
+and are not scans** — born-digital pages whose whole content sits behind a form, the shape
+`extract.rs:1043` describes. For those the loss is total. **How much text is behind them is
+unmeasured**: that corpus cannot be re-fetched.
+
+**Unbuilt, on narrower grounds than "not worth it."** The recall argument is refuted, and for the
+population where loss is total the v2.2-S2 document-scoped counter already declares the emptiness, so
+it cannot be mistaken for a blank page. **What reopens it:** a redistributable corpus of that shape,
+or **any one of those 14 documents pinned here as a fixture**, which would give the slice a regression
+test on day one.
+
 ---
 
 ## IMPROVE — take the goal, change the mechanism
@@ -112,6 +177,9 @@ widening `ethos.grounding.v1` is a change to the *verifier's* contract, not an a
 | O8 | Markdown **only** with the anchor map | v1.1 | No projection at all beats a projection without one |
 | P20 | Cross-reference repair or refusal | v0.1 | See [`01-CONTRACT.md`](01-CONTRACT.md) §8.1 — one bounded, declared repair |
 | A14 | Declared erasure | v2 | If something is removed, the artifact says so and says how much — **per kind**, because one number cannot honestly answer *how much* for two kinds of erasure |
+| **PI-A** | **Read the document's own `/Outlines`** | **pending — D1 §5** | The idea is right and nowhere near P14: a bookmark tree is a hierarchy the **author wrote**, which puts it beside O13 and P19 and on `structure.rs`'s own rule, *"Consume, never synthesise."* A repo-wide search of `crates/` for `Outlines`, `Bookmark` and `/Dest` returns **zero**. Four things in PageIndex's version are refused separately — PI1 (title repair), PI8 (`Preface`), the silent drop of entries whose destination does not resolve, and **re-stacking the levels**, so the depth on its wire is a position in a pruned stack rather than the depth the document declared. **What must be re-argued first is D1 §5's evidence bar, not P14**: §3 there refused `/Outlines` as a *document-boundary* signal and §6 conditioned the refusal on the name. Measured for that argument: **6 of 70 fixture PDFs carry one**, holding 2 273 entries, max depth 5, zero unresolvable destinations, 2 backward-stepping entries, 97.4% of titles present in the text of their resolved page. D1's own band was a single point at zero on 45 fixtures |
+| **PI-B** | **The bookmark-title-versus-page-text cross-check** | **with PI-A** | `embedded_toc.py:286-295` asks whether a bookmark's normalised title appears in the text of the page its destination resolves to — declared structure checked against where the text really is, which is **E6's shape pointed at a new pair**. PageIndex spends it as a silent insert gate (`:456`). Here it is spent as **a count**: one named code per entry whose title was not found on its resolved page, in `markdown.rs:313`'s idiom. No entry dropped, no title rewritten. The folding the check needs is its own versioned rule id, not a flag — `locate-scalar-exact-v1`'s precedent |
+| **PI-C** | **Cross-page recurrence as a furniture guard on inferred headings** | **unscoped** | `type-size-v2`'s only page-furniture exclusion is `/Artifact` marked content, a **tagged**-PDF convention — and the rule fires only where a document declares no structure, so the guard does not fire on the population it runs on. A running head at 1.20× body em fires on every page. **Take only the recurrence half, and only as a negative gate**: a line whose normalized text appears on N or more distinct pages is not an inferred heading. **Text identity across pages and nothing else** — PageIndex's `detect_header_footer` gates on a top-20%/bottom-20% band *first* (`header_footer.py:296-298`) and uses recurrence only to confirm, and a band reads position, which row 29's rider forbids and `the_rule_reads_no_region_and_no_block` enforces. Subtractive, so it can only withhold and cannot fabricate; every withholding counted. **Needs §7.5's four bars set before code** — bar 2 is binding now that the first MHS measurement has happened |
 
 ## TAKE — build it as the source does
 
@@ -122,7 +190,7 @@ widening `ethos.grounding.v1` is a change to the *verifier's* contract, not an a
 | L3 | A boolean derived from the reason list | LiteParse | v0 |
 | **L4** | No confidence in the classify output | LiteParse | v0 |
 | L5 | Per-page detail, 1-indexed | LiteParse | v0 |
-| **L6** | A flag for a synthesized trailing space — the best honesty field in the four projects | LiteParse | v0 |
+| **L6** | A flag for a synthesized trailing space — the best honesty field in the four parser projects | LiteParse | v0 |
 | L7 | Glyph codes alongside the text, with the ligature caveat stated rather than papered over | LiteParse | v0 |
 | P11 | One document load shared by classify and extract | pdf-inspector | v0 |
 | P9 | Vendored encoding tables | pdf-inspector | v0 |
@@ -186,7 +254,7 @@ bounds, metadata and XFA (v1+)
 
 ## Native to this engine — the reason it exists
 
-None of the four sources has these. They are not borrowed and they are not optional.
+None of the five sources has these. They are not borrowed and they are not optional.
 
 | # | Capability | Ver |
 | --- | --- | --- |
