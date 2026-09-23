@@ -337,8 +337,10 @@ fn a_synthesized_character_inside_an_occurrence_is_declared() {
 /// occur and its reversal does.
 ///
 /// This test records a limitation rather than hiding one: `docs/CAPABILITY.md`'s bidi row states
-/// it, and `docs/OPEN-WORK.md` §4 carries the owner's open question of whether an artifact should
-/// declare no-bidi. A reader who wants the logical word needs a bidi reordering this engine does
+/// it, and **since 2026-09-23 the artifact states it too** — `right-to-left-not-reordered`,
+/// document-scoped, counting the runs affected. `locate` itself is unchanged and still matches on
+/// scalars exactly; what changed is that a caller getting an empty answer here can now see from
+/// the representation why. A reader who wants the logical word needs a bidi reordering this engine does
 /// not do.
 #[test]
 fn right_to_left_text_is_searched_as_the_page_drew_it() {

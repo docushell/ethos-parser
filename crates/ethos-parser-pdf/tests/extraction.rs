@@ -4730,7 +4730,8 @@ fn the_empty_destination_offsets_a_ligature() {
 /// Unicode bidi algorithm would reorder characters the document did not, and a reordered string is
 /// not what any byte of the page says. The consequence is real and belongs to the consumer: a
 /// quote copied out of a viewer matches this run, and a quote typed in logical order does not.
-/// Whether an artifact should declare that is an owner decision (`docs/OPEN-WORK.md` §4).
+/// **The artifact declares that as of 2026-09-23** — `right-to-left-not-reordered`, asserted
+/// below, which is the owner decision `docs/OPEN-WORK.md` §4 held open until then.
 #[test]
 fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
     let a = extract_ok(engine_fx("rtl-hebrew-visual-order"));
@@ -4764,4 +4765,39 @@ fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
         }
         GeometryPresence::Absent(reason) => panic!("the fixture has metrics: {reason:?}"),
     }
+
+    // And the artifact says so. Before this code the consequence above lived only in
+    // `CAPABILITY.md` and in this test — true, and unreadable by anything consuming the artifact.
+    let declared: Vec<_> = a
+        .assurance
+        .limitations
+        .iter()
+        .filter(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED)
+        .collect();
+    assert_eq!(declared.len(), 1, "declared once: {declared:?}");
+    assert_eq!(
+        declared[0].scope,
+        ethos_parser_core::LimitationScope::Document,
+        "document-scoped: the condition is measurable, so it is a fact about THIS document"
+    );
+    assert!(
+        declared[0].detail.starts_with("1 run(s)"),
+        "the count is runs, and this fixture has one: {}",
+        declared[0].detail
+    );
+}
+
+/// **A document that draws no right-to-left scalar declares nothing**, which is what makes the
+/// declaration above worth reading. The negative control for the test above: without it, a code
+/// that rode every artifact would pass that assertion just as well.
+#[test]
+fn a_document_without_right_to_left_text_declares_nothing_about_it() {
+    let a = extract_ok(engine_fx("markdown-two-blocks"));
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
+        "no right-to-left scalar is drawn here, so nothing is declared about one"
+    );
 }
