@@ -25,7 +25,7 @@
   "counts": {
     "conformance_ethos_owned": 15,
     "benchmark": 4,
-    "engine_owned": 62,
+    "engine_owned": 63,
     "gate": 8
   },
   "fixtures": [
@@ -261,7 +261,16 @@
       "path": "rtl-hebrew-visual-order/document.pdf",
       "sha256": "sha256:ac62ea0b6c5a08087486ffa8e8cd25631c2e6adfc4c335b6f125003e1a0d9458",
       "owner": "engine",
-      "notes": "Right-to-left text, the shape nothing in either owned corpus carried (2026-09-18). Four Hebrew glyphs under /Identity-H whose /ToUnicode maps CID 1 to \u05e9, 2 to \u05dc, 3 to \u05d5 and 4 to \u05dd \u2014 the letters of \u05e9\u05dc\u05d5\u05dd in LOGICAL order \u2014 drawn as <0004000300020001>, which is the order the glyphs sit on the page for a producer whose layout engine has already resolved bidi. Expect ONE run, text \u05dd\u05d5\u05dc\u05e9, the logical string REVERSED, with char_codes [4, 3, 2, 1] and a measured box 2400 centipoints wide (four glyphs at /W 500, 6 pt each at 12 pt). That is the measured statement: this engine reports the codes in the order the page shows them and applies no bidi algorithm anywhere, so a quote in logical order does not match this run's text while a quote copied out of a viewer does. Whether an artifact should declare that is an owner decision, recorded in docs/OPEN-WORK.md \u00a74."
+      "notes": "Right-to-left text, the shape nothing in either owned corpus carried (2026-09-18). Four Hebrew glyphs under /Identity-H whose /ToUnicode maps CID 1 to \u05e9, 2 to \u05dc, 3 to \u05d5 and 4 to \u05dd \u2014 the letters of \u05e9\u05dc\u05d5\u05dd in LOGICAL order \u2014 drawn as <0004000300020001>, which is the order the glyphs sit on the page for a producer whose layout engine has already resolved bidi. Expect ONE run, text \u05dd\u05d5\u05dc\u05e9, the logical string REVERSED, with char_codes [4, 3, 2, 1] and a measured box 2400 centipoints wide (four glyphs at /W 500, 6 pt each at 12 pt). That is the measured statement: this engine reports the codes in the order the page shows them and applies no bidi algorithm anywhere, so a quote in logical order does not match this run's text while a quote copied out of a viewer does. The artifact DECLARES that as of 2026-09-23: `right-to-left-not-reordered`, document-scoped, counting the runs affected."
+    },
+    {
+      "id": "scalar-units-non-bmp",
+      "root": "engine",
+      "group": "engine",
+      "path": "scalar-units-non-bmp/document.pdf",
+      "sha256": "sha256:d9a40653e3bd0ba4de2ce27442f804e011a0e7694672149e69c5d700201c0718",
+      "owner": "engine",
+      "notes": "A non-BMP scalar and a combining sequence, the two shapes no fixture in either corpus carried (2026-09-23). Three CIDs under /Identity-H: CID 1 maps to U+1D11E MUSICAL SYMBOL G CLEF, written in the /ToUnicode destination as the surrogate pair <D834DD1E> because a destination is UTF-16BE (\u00a79.10.3); CIDs 2 and 3 map to `e` and COMBINING ACUTE ACCENT. Expect ONE run, text \ud834\udd1e followed by e\u0301, char_codes [1, 2, 3] and scalar_code_mismatch FALSE. That flag is the point: the run is 3 SCALARS, 4 UTF-16 units and 7 UTF-8 bytes, so a reader counting units or bytes reports a mismatch here and one counting scalars does not \u2014 the contract says a char offset counts scalars, and no document could tell the two apart before this. The combining sequence is the second half: it is canonically equivalent to the single scalar U+00E9, so any reader applying NFC silently turns three scalars into two, which is what `locate`'s no-normalisation rule forbids and what 26-LOCATE-SCOPE.md \u00a79 could until now hold only with hand-built structs."
     },
     {
       "id": "ruled-table-grid",

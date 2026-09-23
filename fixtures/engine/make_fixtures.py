@@ -105,6 +105,9 @@ Each is a minimal, hand-built PDF exercising exactly one behaviour:
                                                                                         [v2.2-S3]
   rtl-hebrew-visual-order    four Hebrew glyphs under Identity-H, drawn in VISUAL order the way a
                              producer that has already resolved bidi writes them, so the code
+  scalar-units-non-bmp      one non-BMP scalar (U+1D11E, a surrogate pair in /ToUnicode) and a
+                             two-scalar combining sequence, so scalar-vs-unit-vs-byte counting
+                             and the no-normalisation rule are checkable on a real document
                              sequence is the logical string reversed. Right-to-left text was in
                              neither owned corpus, so nothing said what this engine does with it
                                                                                    [2026-09-18]
@@ -1139,6 +1142,11 @@ FIXTURES = {
     "rtl-hebrew-visual-order": (
         "BT /F1 12 Tf 1 0 0 1 40 100 Tm <0004000300020001> Tj ET"
     ),
+    # Three CIDs: a non-BMP scalar, then `e` and a combining acute. Drawn in that order, so the
+    # run's text is one astral scalar followed by a two-scalar combining sequence.
+    "scalar-units-non-bmp": (
+        "BT /F1 12 Tf 1 0 0 1 40 100 Tm <000100020003> Tj ET"
+    ),
     # The SAME image, declared and never drawn. `Do` is what makes a node; a resource nobody
     # painted is a resource, and zero image nodes is the correct answer.
     "image-declared-not-drawn": "BT /F1 12 Tf 1 0 0 1 40 60 Tm (No Do here) Tj ET",
@@ -1710,6 +1718,52 @@ _RTL_TOUNICODE = (
 )
 
 
+# The three CIDs of `scalar-units-non-bmp`. The point of each destination:
+#
+#   <D834DD1E> is U+1D11E MUSICAL SYMBOL G CLEF, written as the SURROGATE PAIR a `/ToUnicode`
+#             destination must use — it is UTF-16BE by §9.10.3. One scalar. Two UTF-16 units.
+#             FOUR UTF-8 bytes. Those three numbers differ, which is the whole reason it is here:
+#             the contract says a char offset counts SCALARS, and until this fixture no document
+#             in either corpus could tell a reader that counted units or bytes from one that did
+#             not.
+#   <0065> <0301> are `e` and COMBINING ACUTE ACCENT, drawn as two codes. They are canonically
+#             equivalent to the single scalar U+00E9, so any reader applying NFC normalisation
+#             silently turns three scalars into two — and `locate`'s no-normalisation rule, which
+#             `26-LOCATE-SCOPE.md` §9 holds by hand-built structs alone, becomes checkable on a
+#             real document.
+_SCALAR_TOUNICODE = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\nbegincmap\n"
+    b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+    b"3 beginbfchar\n"
+    b"<0001> <D834DD1E>\n"  # U+1D11E, outside the BMP, as a surrogate pair
+    b"<0002> <0065>\n"  # e
+    b"<0003> <0301>\n"  # combining acute accent
+    b"endbfchar\n"
+    b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend"
+)
+
+
+def _scalar_tounicode() -> bytes:
+    return b"<< /Length %d >>\nstream\n%s\nendstream" % (
+        len(_SCALAR_TOUNICODE),
+        _SCALAR_TOUNICODE,
+    )
+
+
+def _scalar_cid_font() -> bytes:
+    """The descendant CIDFont for `scalar-units-non-bmp`: three CIDs, one uniform width.
+
+    Uniform on purpose, as the right-to-left fixture's is: the widths are not what this fixture
+    pins, and a reader that mis-sourced one would still show the counting defect it exists for.
+    """
+    return (
+        b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Helvetica "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        b"/DW 500 /W [ 1 3 500 ] /FontDescriptor 8 0 R >>"
+    )
+
+
 def _rtl_tounicode() -> bytes:
     return b"<< /Length %d >>\nstream\n%s\nendstream" % (
         len(_RTL_TOUNICODE),
@@ -1808,6 +1862,7 @@ RAW_FONTS = {
 COMPOSITE_FONTS = {
     "composite-font-cid-widths": _type0_font("Identity-H"),
     "rtl-hebrew-visual-order": _type0_font("Identity-H"),
+    "scalar-units-non-bmp": _type0_font("Identity-H"),
     # The SAME descendant, the same /W, the same /DW — and a predefined CMap this profile does not
     # parse. `/W` is keyed by CID and the code -> CID map is that CMap, so the CID is unknown and
     # a width read here would be a plausible number for the wrong glyph. Must refuse, and must
@@ -1820,6 +1875,8 @@ COMPOSITE_OBJECTS = {
     name: (
         [_rtl_cid_font(), _rtl_tounicode(), _cid_descriptor()]
         if name == "rtl-hebrew-visual-order"
+        else [_scalar_cid_font(), _scalar_tounicode(), _cid_descriptor()]
+        if name == "scalar-units-non-bmp"
         else [_cid_font(), _cid_tounicode(), _cid_descriptor()]
     )
     for name in COMPOSITE_FONTS

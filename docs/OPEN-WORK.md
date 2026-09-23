@@ -220,13 +220,19 @@ boxes, which doc 22 refused.
 - **A committed fixture for the `<mc:AlternateContent>` path.** Neither `docx.rs` nor `pptx.rs`
   has one: both readers' branch rule is held by unit tests on inline XML, and no document in any
   corpus here carries the element, so the mutation suite and the digest lists never reach it.
-- **A committed fixture carrying a non-BMP scalar or a combining mark.** No engine fixture holds
-  either, checked across `make_fixtures.py` on 2026-09-18, so `locate`'s scalar-unit and
-  no-normalisation rules are held by hand-built representation tests
-  ([`26-LOCATE-SCOPE.md`](26-LOCATE-SCOPE.md) §9, T10 and T11) and the mutation suite and the digest
-  lists never reach them. Authoring one is a font and a `/ToUnicode` map, which
-  `simple-font-two-byte-tounicode` and `rtl-hebrew-visual-order` both already demonstrate.
-- **The doc fixes in §7.**
+- ~~**A committed fixture carrying a non-BMP scalar or a combining mark.**~~ — **done 2026-09-23**:
+  `scalar-units-non-bmp`, three CIDs under `/Identity-H`. CID 1 maps to U+1D11E, written in the
+  `/ToUnicode` destination as the surrogate pair `<D834DD1E>` because a destination is UTF-16BE;
+  CIDs 2 and 3 map to `e` and COMBINING ACUTE ACCENT. **Its one run is 3 scalars, 4 UTF-16 units
+  and 7 UTF-8 bytes** — three different numbers, so `scalar_code_mismatch` discriminates: a reader
+  counting units or bytes sets it here and one counting scalars does not. The combining sequence is
+  canonically equivalent to the single scalar U+00E9, so an NFC-applying reader turns three scalars
+  into two. It now reaches **both** places §5 said it could not: the mutation suite damages it six
+  ways (one survivor, `junk-after-eof`, the mutant every engine fixture survives) and
+  `geometry_digest`'s `PINNED` carries its box digest.
+- ~~**The doc fixes in §7.**~~ — **nothing to do, checked 2026-09-23.** All three rows there say
+  *"stands"* or *"left as written"*: they are dated records, corrected elsewhere rather than
+  edited in place. This bullet asked for work §7 itself refuses.
 
 ## 6. Known defects — recorded, not fixed
 
