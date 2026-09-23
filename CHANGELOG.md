@@ -26,6 +26,36 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased] — an ODF heading projects at the level it declared, and the one that cannot says so
 
+### Right-to-left text: the artifact now says the order is the page's
+
+A producer whose layout engine has resolved bidi draws Hebrew or Arabic in **visual** order, so a
+run's text is the logical word reversed and `char_codes` carries the page's order beside it. This
+engine applies no bidi algorithm anywhere — applying one would reorder characters no byte of the
+page put in that order. The consequence belongs to the consumer: **a quote copied out of a viewer
+matches this text, and a quote typed in logical order does not.**
+
+Until now that lived only in `CAPABILITY.md`, in the fixture's manifest note and in two test
+comments. All true, and none of it readable by anything consuming the artifact.
+`right-to-left-not-reordered` is now on the wire, counting the runs affected.
+
+**Document-scoped, and that is the difference from the two unconditional codes.**
+`low-contrast-not-detected` and `document-metadata-not-read` ride every artifact because deciding
+whether they *apply* would mean reading what the profile never reads. Here the reader already has
+the text, so the condition is measurable — a document that draws no right-to-left scalar declares
+nothing, which is what makes the declaration worth reading when it does appear.
+
+**The test is a block test and the wording says so.** Unicode's `Bidi_Class` is the property that
+answers *is this character right-to-left*, and this engine carries no Unicode character database.
+The predicate reads three ranges — `U+0590`–`U+08FF`, `U+FB1D`–`U+FDFF`, `U+FE70`–`U+FEFF` — so it
+also matches a few scalars in those blocks that are not themselves right-to-left; an Arabic-Indic
+digit is `Bidi_Class` `AN`. Over-declaring a limitation is the safe direction, and the limitation
+claims blocks rather than classes.
+
+**What moves on the wire.** Measured old against new at the same version string over all 70 fixture
+PDFs: **exactly one artifact moved** — `rtl-hebrew-visual-order` — and 69 did not. On that one,
+nodes, pages, geometry and every other member of the assurance block are identical. `profile_sha256`
+does **not** move: a limitation is not a profile field.
+
 ### The metadata nobody reads now says so, and the backend version is measured rather than typed
 
 Three repairs, none of which changes what this engine extracts. Each closes a place where the
