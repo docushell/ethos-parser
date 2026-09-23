@@ -333,6 +333,10 @@ const PINNED: &[(&str, &str)] = &[
         "sha256:e285d38740728ad114e6b4f0c8df2a18c1d16bb33263bc6ec9331546b9ac472f",
     ),
     (
+        "engine/scalar-units-non-bmp/document.pdf",
+        "sha256:d59edef053b62455e74adbdf578267f40381198cc91cf731f4806319bb9c8a6a",
+    ),
+    (
         "engine/shared-content-stream/document.pdf",
         "sha256:269ae951831809a4a7de7ca7db13987857d71ac29242f25840aba0ede46ebc2a",
     ),

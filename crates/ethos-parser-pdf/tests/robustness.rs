@@ -471,7 +471,7 @@ fn run_mutant(bytes: &[u8], deep: bool) -> Result<Read, EngineError> {
 /// usually good and still wants a commit message.
 /// (Four and eleven at M7, when the corpus was fifteen documents; nine and forty-six at v2-S13.1;
 /// eighteen and forty-six at v2-S19.)
-const EXPECTED_SURVIVORS: [&str; 85] = [
+const EXPECTED_SURVIVORS: [&str; 86] = [
     "absent-font-metrics/junk-after-eof",
     "absent-font-widths/junk-after-eof",
     "annotation-contents/junk-after-eof",
@@ -523,6 +523,7 @@ const EXPECTED_SURVIVORS: [&str; 85] = [
     "off-page-and-offset-box/junk-after-eof",
     "rotated-and-mirrored-text/junk-after-eof",
     "rtl-hebrew-visual-order/junk-after-eof",
+    "scalar-units-non-bmp/junk-after-eof",
     "ruled-table-grid/junk-after-eof",
     "ruled-table-overlap/junk-after-eof",
     "ruled-wins-shared-region/junk-after-eof",
@@ -893,8 +894,18 @@ fn every_fixture_is_mutated_and_the_coverage_is_reported() {
 
     assert_eq!(
         fixtures.len(),
-        89,
-        "the manifest should declare 89 fixtures across FOUR roots. C1 S1 moved this from 86 by \
+        90,
+        "the manifest should declare 90 fixtures across FOUR roots. `OPEN-WORK.md` §5 moved this \
+         from 89 by adding `scalar-units-non-bmp`: a non-BMP scalar and a combining sequence were \
+         in NEITHER owned corpus, checked across `make_fixtures.py` on 2026-09-18, so the \
+         contract's rule that a char offset counts SCALARS — not UTF-8 bytes, not UTF-16 units — \
+         and `locate`'s no-normalisation rule were held by hand-built representation structs \
+         (`26-LOCATE-SCOPE.md` §9, T10 and T11) and by nothing the mutation suite or the digest \
+         lists could reach. Its one run is 3 scalars, 4 UTF-16 units and 7 UTF-8 bytes, so a \
+         reader counting the wrong unit reports a `scalar_code_mismatch` here and a reader \
+         counting scalars does not; and its `e` plus COMBINING ACUTE is canonically equivalent to \
+         one scalar, so any reader applying NFC turns three scalars into two. C1 S1 moved this \
+         from 86 by \
          adding the three pages decision #29's heading rule is proved on — \
          `heading-display-line`, one display line at twice the body type above five body lines \
          and no tree; `heading-display-line-tagged`, the same stream under a /StructTreeRoot that \

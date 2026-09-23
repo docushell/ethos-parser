@@ -4787,6 +4787,67 @@ fn right_to_left_text_is_reported_in_the_order_the_page_draws_it() {
     );
 }
 
+/// **A char offset counts SCALARS — not UTF-8 bytes, not UTF-16 units — and nothing is normalised.**
+///
+/// `scalar-units-non-bmp` is the first document in either corpus that can tell those apart. Its one
+/// run draws three CIDs: U+1D11E MUSICAL SYMBOL G CLEF, then `e`, then COMBINING ACUTE ACCENT. That
+/// is **3 scalars, 4 UTF-16 units and 7 UTF-8 bytes** — three different numbers, which is the whole
+/// reason the fixture exists. `scalar_code_mismatch` compares the scalar count against the code
+/// count, so a reader counting units or bytes reports a mismatch on this run and a reader counting
+/// scalars does not.
+///
+/// The combining sequence is the second half. `e` + U+0301 is canonically equivalent to the single
+/// scalar U+00E9, so any reader applying NFC turns three scalars into two — which is what
+/// `locate`'s no-normalisation rule forbids and what `26-LOCATE-SCOPE.md` §9 could hold only with
+/// hand-built structs until this document existed.
+#[test]
+fn a_char_offset_counts_scalars_and_nothing_is_normalised() {
+    let a = extract_ok(engine_fx("scalar-units-non-bmp"));
+    let run = runs(&a);
+    assert_eq!(run.len(), 1, "one string, one run");
+
+    // Built from its scalars rather than written as a literal, so the three counts below are
+    // read off the same characters this names.
+    let expected: String = ['\u{1D11E}', 'e', '\u{301}'].iter().collect();
+    assert_eq!(
+        run[0].text, expected,
+        "the three scalars the /ToUnicode map names"
+    );
+
+    // The three counts that differ, stated as the numbers they are.
+    assert_eq!(run[0].text.chars().count(), 3, "scalars");
+    assert_eq!(
+        run[0].text.encode_utf16().count(),
+        4,
+        "UTF-16 units — the clef is a surrogate pair"
+    );
+    assert_eq!(run[0].text.len(), 7, "UTF-8 bytes");
+
+    assert_eq!(
+        run[0].char_codes,
+        vec![1, 2, 3],
+        "one code per scalar, in the page's order"
+    );
+    assert!(
+        !run[0].scalar_code_mismatch,
+        "three codes and three SCALARS agree. A reader counting UTF-16 units would see 4 against \
+         3 here and set this flag, which is what makes this fixture discriminate"
+    );
+
+    // Not normalised: the combining sequence survives as two scalars, as the document wrote it.
+    let composed = '\u{E9}';
+    assert!(
+        !run[0].text.contains(composed),
+        "NFC would compose `e` + U+0301 into U+00E9 and turn three scalars into two: {:?}",
+        run[0].text
+    );
+    assert_eq!(
+        run[0].text.chars().nth(2),
+        Some('\u{301}'),
+        "the combining mark is still its own scalar"
+    );
+}
+
 /// **A document that draws no right-to-left scalar declares nothing**, which is what makes the
 /// declaration above worth reading. The negative control for the test above: without it, a code
 /// that rode every artifact would pass that assertion just as well.
