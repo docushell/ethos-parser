@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 11] = [
+const PDF_COUNTERS: [&str; 12] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -103,6 +103,11 @@ const PDF_COUNTERS: [&str; 11] = [
     // `headings-inferred-from-type` names. Caught the same way again: C1's targeted runs did not
     // include this file, and the first run that did found it.
     "fired",
+    // The right-to-left declaration (2026-09-23, `OPEN-WORK.md` §4). The runs holding a scalar
+    // from a right-to-left block, the count `right-to-left-not-reordered` names. Caught the same
+    // way a fourth time — the author had read `readers()` and concluded this file scanned only
+    // `ethos-parser-office/src`, missing the PDF half forty lines below it.
+    "rtl_runs",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.

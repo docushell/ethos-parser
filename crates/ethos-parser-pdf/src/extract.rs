@@ -167,6 +167,25 @@ fn declared_len(count: usize) -> u32 {
 /// binding* — only on a tree mixing an author's elements with this engine's, which is a shape the
 /// writer never produces (it tags only a document with no tree), and the conservative reading of
 /// a document someone else edited.
+/// Whether a scalar lies in one of the right-to-left blocks, for
+/// [`crate::limitations::right_to_left_not_reordered`].
+///
+/// **A block test, deliberately, and named so.** Unicode's `Bidi_Class` is the property that
+/// actually answers *is this character right-to-left*, and this engine carries no Unicode
+/// character database — so this reads the three ranges the right-to-left scripts occupy instead:
+/// `U+0590`–`U+08FF` is Hebrew through Arabic Extended-A (Syriac, Thaana, NKo, Samaritan and
+/// Mandaic among them), and the two presentation-form ranges follow.
+///
+/// It therefore also matches a few scalars in those blocks that are not themselves right-to-left
+/// — an Arabic-Indic digit is `Bidi_Class` `AN`, not `R` or `AL`. That is the safe direction: the
+/// limitation it fires is a statement about what this reader did NOT do, and declaring it on a
+/// document that needed no reordering costs a consumer nothing, while missing one costs them a
+/// quote that silently will not match. The limitation's own wording claims blocks, not classes,
+/// so what it says is true of what this measures.
+fn is_right_to_left_block(c: char) -> bool {
+    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+}
+
 fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
     match tree {
         None => true,
@@ -1633,6 +1652,30 @@ pub(crate) fn extract_with_positions(
                 &profile.heading_inference_rule,
                 body_em,
             ));
+        }
+    }
+
+    // Right-to-left text, declared where it occurs (`OPEN-WORK.md` §4, decided 2026-09-23).
+    //
+    // Counted here, at document level over the runs already built, for the reason the block above
+    // is here: nothing per-page needs to know. No counter is threaded through the page struct.
+    //
+    // **The condition is measurable, so the scope is the document's and not the profile's.**
+    // `low-contrast-not-detected` and `document-metadata-not-read` ride every artifact because
+    // deciding whether they APPLY would mean reading what this profile never reads. Here the text
+    // is already in hand, so a document that draws no right-to-left scalar says nothing — which
+    // is what makes the declaration worth reading when it does appear.
+    {
+        let mut rtl_runs: u32 = 0;
+        for page in &pages {
+            for run in &page.runs {
+                if run.text.chars().any(is_right_to_left_block) {
+                    rtl_runs = rtl_runs.saturating_add(1);
+                }
+            }
+        }
+        if rtl_runs > 0 {
+            limitations.push(lim::right_to_left_not_reordered(rtl_runs));
         }
     }
     if props_by_name > 0 {

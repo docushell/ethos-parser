@@ -717,6 +717,35 @@ pub fn form_xobjects_not_descended(count: u32) -> Limitation {
     )
 }
 
+/// Right-to-left text, reported in the order the page drew it (`OPEN-WORK.md` §4, 2026-09-23).
+///
+/// The count is runs, not scalars, because the run is the unit a citation quotes.
+///
+/// **What the test actually checks is blocks, and the wording says so.** A scalar counts when it
+/// lies in `U+0590`–`U+08FF` (Hebrew through Arabic Extended-A), `U+FB1D`–`U+FDFF` (Hebrew and
+/// Arabic presentation forms A) or `U+FE70`–`U+FEFF` (Arabic presentation forms B). That is a
+/// *block* test, not Unicode's `Bidi_Class`, which this engine does not carry — so it also catches
+/// a few scalars in those blocks that are not themselves right-to-left, an Arabic-Indic digit
+/// among them. Over-declaring a limitation is the safe direction and the claim is written to be
+/// true of what it measures.
+pub fn right_to_left_not_reordered(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED,
+        format!(
+            "{count} run(s) on this document hold scalars from a right-to-left block — Hebrew, \
+             Arabic, Syriac, Thaana, NKo and the Arabic presentation forms — and their text is in \
+             the order the PAGE DREW IT, not logical order. No bidi algorithm is applied anywhere \
+             in this engine. A producer whose layout engine has already resolved bidi emits the \
+             glyphs left to right as they sit on the page, so such a run's text is the logical \
+             word REVERSED and `char_codes` carries the page's order beside it. The consequence \
+             is the point: **a quote copied out of a viewer matches this text, and a quote typed \
+             in logical order does not.** Reordering here would put characters in an order no \
+             byte of the page states, so the order is reported and this says so instead. The test \
+             is a block test, not Unicode's `Bidi_Class`, which this engine does not carry."
+        ),
+    )
+}
+
 /// Inline images were drawn and are not nodes (v1-S6).
 pub fn inline_images_not_emitted(count: u32) -> Limitation {
     Limitation::document(

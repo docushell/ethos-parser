@@ -280,6 +280,19 @@ pub mod codes {
     /// so it has no object number to address and no stream to digest independently. It is counted
     /// so that "this page has no image nodes" cannot be read as "this page has no images".
     pub const INLINE_IMAGES_NOT_EMITTED: &str = "inline-images-not-emitted";
+    /// Right-to-left text is reported in the order the page drew it, unreordered.
+    ///
+    /// **Document-scoped and conditional**, unlike [`LOW_CONTRAST_NOT_DETECTED`] and
+    /// [`DOCUMENT_METADATA_NOT_READ`]: whether a document holds right-to-left scalars is a fact
+    /// about *that document*, and the reader already has its text, so the condition is measurable
+    /// rather than a guess.
+    ///
+    /// A producer whose layout engine has resolved bidi draws Hebrew or Arabic in **visual**
+    /// order, so the run's text is the logical word reversed. This engine applies no bidi
+    /// algorithm anywhere — doing so would reorder characters no byte of the page put in that
+    /// order. The consequence a consumer cannot otherwise see: **a quote copied out of a viewer
+    /// matches this text, and a quote typed in logical order does not.**
+    pub const RIGHT_TO_LEFT_NOT_REORDERED: &str = "right-to-left-not-reordered";
     /// [`crate::Capabilities::images`] is true: what an image node does and does not say.
     pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
     /// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).
