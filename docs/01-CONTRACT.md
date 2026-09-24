@@ -184,11 +184,21 @@ departs from this construction, that is a defect; [`22-WORD-BOXES-SCOPE.md`](22-
 A detected table's or cell's box is the rectangle its detection rule measured from the page's ink.
 The table record names that rule, and the profile's `table_detection` names the rules in force.
 
-**Open: the text-run box is not declared as what it is.** The tree calls it an *ink box*, and the
-representation's `assurance.capabilities.measured_ink_boxes` says one was produced; that name is not
-a declaration of kind, and the box is not ink. `ethos.grounding.v1` has no field for a box's kind
-(§11). §6 places boxes from font metrics under a versioned rule, and the profile names none for this
-one. Pending decision.
+**Settled 2026-09-24: the profile names the rule that built the box.** `text_box_rule` carries
+`advance-over-font-envelope-v1`, and the id is the declaration — it says the box is the pen's
+advance along the baseline over the font's ascent-to-descent envelope across it, which is not glyph
+ink. Narrowing the box to ink would be a different construction and would move the id.
+
+It is on the **profile** and not on each box, because every text-run box in an artifact is built the
+same way: a per-box field would repeat one fact per run and still not say it where a consumer sizing
+a request would look. The tree's *ink box* naming stays — `capabilities.measured_ink_boxes` is on
+the wire and renaming it would break a consumer to fix a word — and its own documentation already
+says it "says a box was produced, not what kind". The rule id is what says the kind.
+
+**`ethos.grounding.v1` still has no field for a box's kind** (§11), and that is not this
+repository's to add: widening the grounding schema is a change to the *verifier's* contract. A
+consumer reading a grounding artifact alone therefore still cannot tell, and the representation is
+where the declaration lives.
 
 ### 5.4 The geometric/structural cross-check
 

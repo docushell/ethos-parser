@@ -26,6 +26,43 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ## [Unreleased] — an ODF heading projects at the level it declared, and the one that cannot says so
 
+### The outline a document declares, and what kind of box this engine draws
+
+**`/Outlines` is read** — `outlines-v1`. A PDF catalog's outline is a hierarchy the **author wrote
+down**, so it is consumed rather than inferred, and `P14` — which refuses *role inferred from
+presentation* — does not bear on a declaration. It lands as its own record on the representation,
+never as `Node`s: a bookmark title is text no content stream painted, so it has no native locator
+and North Star #4 requires one on every node. **The consequence is deliberate: an outline title is
+not quotable.** `locate` and grounding both read `nodes`.
+
+Measured on six gate documents carrying one: **2 273 entries**, per-document 1251/433/347/160/69/13
+at declared depths 5/5/3/3/3/2, **zero unresolved destinations**. Every figure matches an
+instrument that measured them before the reader existed.
+
+**Four things it refuses.** A cycling `/First`/`/Next` is refused by name rather than followed or
+truncated. The depth is the chain's own and is never renumbered. No section end is emitted — an
+entry declares where one *begins*, and two entries in this corpus target a page *before* their
+predecessor's, where an inferred end would run backwards. A title holding a byte in `0x80`–`0x9F`
+is absent and counted, not guessed: that block is where PDFDocEncoding, Latin-1 and Windows-1252
+disagree, and the table already in this tree is Windows-1252, which would turn `Backup –
+Cryptographic` into `Backup … Cryptographic`.
+
+**Nothing is dropped.** An unresolved destination and an undecodable title each leave the entry
+emitted with that one part absent and counted. `outline-absent` says *this catalog names none*
+where `capabilities.outlines` says *this profile looks*.
+
+**The box now says what kind it is** — contract §5.3, open since the box existed, closed by
+`text_box_rule: advance-over-font-envelope-v1`. No box changes shape. What changes is that the
+artifact says what shape they were: the pen's advance along the baseline over the font's
+ascent-to-descent envelope across it, which is **not glyph ink**. `capabilities.measured_ink_boxes`
+is named for ink and says only that a box was produced — the same ambiguity row `L18` refuses in
+another parser, carried here while refusing it there.
+
+**Identity.** `REPRESENTATION_SCHEMA_VERSION` 0.6.0 → 0.7.0, `EXTRACT_SCHEMA_VERSION` 0.4.0 → 0.5.0,
+and `profile_sha256` moves three times across these slices to `sha256:b41f27cab5…`, each move in the
+move log with its reason. A capability flip is a **claim**, not a knob: an artifact from before
+never opened the catalog and one from after either carries the entries or declares `outline-absent`.
+
 ### Right-to-left text: the artifact now says the order is the page's
 
 A producer whose layout engine has resolved bidi draws Hebrew or Arabic in **visual** order, so a

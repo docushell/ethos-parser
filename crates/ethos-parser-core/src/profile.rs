@@ -485,6 +485,27 @@ pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 /// Any of those changing moves this id and the profile hash with it.
 pub const OUTLINE_RULE_V1: &str = "outlines-v1";
 
+/// The rule that builds a text run's box — contract §5.3, §6.
+///
+/// **The id says what the box IS, which is the whole reason it exists.** Along the baseline the
+/// box is the *pen*: from the run's origin to where the pen stands after its last code, each code
+/// advancing once by its own declared width, carried through the text matrix, the CTM and the
+/// page's `/Rotate`. Across the baseline it is the *font's* ascent-to-descent envelope scaled to
+/// the rendered em — every glyph of a font gets the same two numbers, so a line reading `acme` is
+/// boxed as tall as one reading `Ãj`.
+///
+/// **It is therefore not glyph ink**, and until this id existed nothing on the wire said so:
+/// `capabilities.measured_ink_boxes` is named for ink, and its own documentation admits the name
+/// "says a box was produced, not what kind". That is the gap `06-STEAL-REFUSE.md` row **L18**
+/// refuses in another parser — *loose em boxes sold as precise positioning, with nothing in the
+/// output saying which they are* — and this engine carried the same ambiguity while refusing it
+/// elsewhere.
+///
+/// A consumer can now tell the two uses apart without reading this crate: the construction is
+/// right for line grouping and wrong for a citation highlight, and the id is what says which one
+/// it got. Narrowing the box to ink would be a different rule and would move this id.
+pub const TEXT_BOX_RULE_V1: &str = "advance-over-font-envelope-v1";
+
 /// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3), repaired on
 /// measurement.
 ///
@@ -1315,6 +1336,12 @@ pub struct Profile {
     /// the reason the heading rule is its own: a tree and an outline are two declarations, read
     /// by two rules, and one id covering both could not say which of them moved.
     pub outline_rule: String,
+    /// The rule that built the text-run boxes, or [`NOT_RUN`].
+    ///
+    /// See [`TEXT_BOX_RULE_V1`]. `NOT_RUN` on the eight office profiles, which set
+    /// `measured_ink_boxes: false` and emit no coordinate at all, so there is no box for a rule
+    /// to have built.
+    pub text_box_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
     /// See [`HEADING_INFERENCE_RULE_V2`]. Its own field and not a fold into `struct_tree_rule`,
@@ -1403,6 +1430,7 @@ impl Default for Profile {
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V1.to_string(),
+            text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V10.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
@@ -1489,6 +1517,7 @@ impl Profile {
             reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1557,6 +1586,7 @@ impl Profile {
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1619,6 +1649,7 @@ impl Profile {
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1685,6 +1716,7 @@ impl Profile {
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1738,6 +1770,7 @@ impl Profile {
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1797,6 +1830,7 @@ impl Profile {
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1854,6 +1888,7 @@ impl Profile {
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1915,6 +1950,7 @@ impl Profile {
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
+            text_box_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -2068,6 +2104,7 @@ mod tests {
                 },
             struct_tree_rule: _,
             outline_rule: _,
+            text_box_rule: _,
             heading_inference_rule: _,
             markdown_rule: _,
             html_rule: _,
@@ -2347,7 +2384,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3256,12 +3293,52 @@ mod tests {
              one from after either carries the entries or declares `outline-absent`, so an empty \
              `outlines` array on either side of the move says nothing about the two documents \
              and everything about the two profiles. The eight office profiles stay false and \
-             permanently so — an OOXML or ODF package has no PDF catalog to carry an outline."
+             permanently so — an OOXML or ODF package has no PDF catalog to carry an outline.\n\n\
+             Moved again by the text-box rule, `sha256:3de0bdda33…` -> `sha256:b41f27cab5…`: the \
+             new `text_box_rule`, closing contract §5.3's *pending decision*. **No box changes \
+             shape**; what changes is that the artifact now SAYS what shape they were. The box is \
+             the pen's advance along the baseline over the font's ascent-to-descent envelope \
+             across it, which is not glyph ink — and `capabilities.measured_ink_boxes` is named \
+             for ink and says only that a box was produced. That was the same ambiguity `L18` \
+             refuses in another parser, carried here while refusing it there. A profile from \
+             before this names no box rule and one from after names `advance-over-font-envelope-v1`, \
+             so the two are correctly non-comparable on what their boxes mean."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:3de0bdda3385633d2ad17fc19bee9981aeba9791e24fb0cf0ff4643494599bbc"
+            "sha256:b41f27cab5fe19d2faae6999067e6a9e0c83b4dbffa176b414966fe5dfc769a3"
         );
+    }
+
+    /// **The box's kind is on the wire, and moving the rule moves the identity** — contract §5.3.
+    ///
+    /// The gap this closes: `capabilities.measured_ink_boxes` is named for ink and says only that
+    /// a box was produced. The box is the pen's advance over the font's ascent-to-descent
+    /// envelope, which is not ink, so a consumer could not tell a box right for line grouping
+    /// from one right for a citation highlight. `06-STEAL-REFUSE.md`'s **L18** refuses exactly
+    /// that in another parser; this engine carried it while refusing it there.
+    #[test]
+    fn the_profile_names_the_box_rule_and_moving_it_moves_the_hash() {
+        let base = Profile::default();
+        assert_eq!(base.text_box_rule, TEXT_BOX_RULE_V1);
+        assert_eq!(
+            TEXT_BOX_RULE_V1, "advance-over-font-envelope-v1",
+            "the id names the CONSTRUCTION, not the word `ink`: that is the whole point of it"
+        );
+
+        let mut narrowed = Profile::default();
+        narrowed.text_box_rule = "glyph-ink-v1".into();
+        assert_ne!(
+            narrowed.profile_sha256().unwrap(),
+            base.profile_sha256().unwrap(),
+            "narrowing the box to ink is a different construction, and an artifact built under \
+             one must not compare with an artifact built under the other"
+        );
+
+        // The office profiles emit no coordinate at all, so there is no box for a rule to have
+        // built and claiming one would be the false claim this field exists to prevent.
+        assert_eq!(Profile::docx_v0().text_box_rule, NOT_RUN);
+        assert!(!Profile::docx_v0().capabilities.measured_ink_boxes);
     }
 
     /// All four rules are named on the profile, and any one moving moves the identity.

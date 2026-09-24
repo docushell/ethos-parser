@@ -23,6 +23,7 @@
     "html_rule",
     "locate_rule",
     "table_detection",
+    "text_box_rule",
     "outline_rule",
     "struct_tree_rule",
     "heading_inference_rule",
@@ -251,6 +252,10 @@
     "outline_rule": {
       "type": "string",
       "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v1` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
+    },
+    "text_box_rule": {
+      "type": "string",
+      "$comment": "docs/01-CONTRACT.md §5.3 and §6. The rule that built the text-run boxes. `advance-over-font-envelope-v1` on the PDF profile: along the baseline the pen's advance, across it the font's ascent-to-descent envelope scaled to the rendered em — which is NOT glyph ink, and is what this id exists to say. `not-run` on the eight office profiles, which emit no coordinate at all."
     }
   },
   "$defs": {
@@ -430,6 +435,7 @@
         "tagged": "tagged-tables-v1",
         "unruled": "unruled-align-v1"
       },
+      "text_box_rule": "advance-over-font-envelope-v1",
       "text_code_rule": "declared-font-codes-v1",
       "verifier": {
         "mode": "not_pinned"
