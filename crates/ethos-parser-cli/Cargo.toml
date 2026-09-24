@@ -35,4 +35,4 @@ serde_json.workspace = true
 # Auto-tagging S3. `tests/tag_roundtrip.rs` strips the owner attribute from the writer's own
 # output through lopdf — the mutation `docs/24-AUTO-TAGGING-MILESTONES.md` §S3 names — and
 # nothing else here touches a PDF object. Tests only: the binary keeps no logic and no PDF concept.
-lopdf = { version = "0.44.0", default-features = false }
+lopdf = { version = "0.45.0", default-features = false }
