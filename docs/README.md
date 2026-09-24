@@ -3,7 +3,7 @@
 Everything the project has decided, and where it is written down. Start with the root
 [`README.md`](../README.md) if you just want to know what the tool does.
 
-**Version 0.60.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
+**Version 0.61.0.** PDF and eight office formats read. Markdown, HTML, MCP and both SDKs ship.
 `tag`, the tenth subcommand, writes a structure tree over an untagged PDF from the block cut, marked
 computed; it fills absence only ([`23-AUTO-TAGGING-SCOPE.md`](23-AUTO-TAGGING-SCOPE.md)).
 `locate`, the eleventh, reports where a string lies in a representation — node ids, offsets and the

@@ -167,7 +167,7 @@ bucket. A gap is never dressed up as a success.
 
 ## Where things stand
 
-Version 0.60.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
+Version 0.61.0. PDF and eight office formats read; Markdown, HTML, MCP and both SDKs ship.
 
 **Tables, stated as a capability rather than as an average.** The engine does four things, and the
 fourth is the one to read first:

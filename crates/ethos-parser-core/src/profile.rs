@@ -2384,7 +2384,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.61.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3302,11 +3302,17 @@ mod tests {
              for ink and says only that a box was produced. That was the same ambiguity `L18` \
              refuses in another parser, carried here while refusing it there. A profile from \
              before this names no box rule and one from after names `advance-over-font-envelope-v1`, \
-             so the two are correctly non-comparable on what their boxes mean."
+             so the two are correctly non-comparable on what their boxes mean.\n\n\
+             Moved a final time for the release itself, `sha256:b41f27cab5…` -> \
+             `sha256:78fcfe87e9…`: the 0.60.0 -> 0.61.0 workspace bump, on `parser_version` \
+             ALONE. No capability, rule id or knob moves with it. This is the mechanism \
+             working rather than a change in what the engine does: two builds are correctly \
+             non-comparable even when nothing else changed, which is why the release notes \
+             say so of every version rather than treating it as a regression."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b41f27cab5fe19d2faae6999067e6a9e0c83b4dbffa176b414966fe5dfc769a3"
+            "sha256:78fcfe87e98e15faee5916b69a3dcf8d2e941ce7125c399015d5a7a9e250f7e6"
         );
     }
 
@@ -3326,8 +3332,10 @@ mod tests {
             "the id names the CONSTRUCTION, not the word `ink`: that is the whole point of it"
         );
 
-        let mut narrowed = Profile::default();
-        narrowed.text_box_rule = "glyph-ink-v1".into();
+        let narrowed = Profile {
+            text_box_rule: "glyph-ink-v1".into(),
+            ..Profile::default()
+        };
         assert_ne!(
             narrowed.profile_sha256().unwrap(),
             base.profile_sha256().unwrap(),

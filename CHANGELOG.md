@@ -3,14 +3,18 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Six versions are tagged, 0.55.0 through 0.60.0, and four of them carry binaries.** 0.55.0, 0.56.0
+**Seven versions are tagged, 0.55.0 through 0.61.0, and four of them carry binaries.** 0.55.0,
+0.56.0
 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub Release
 ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it ships:**
 Linux, Windows and both macOS architectures, one fingerprint across four runners, delivered as the
 single `release-bundle.zip` its own notes tell a reader to unzip. **0.58.0 and 0.59.0 are tags with
 no release object**, and little is lost by that: 0.60.0 descends from both, so their work is in the
 binaries above, and a reader who needs one of those two exactly builds it from its tag under the
-pinned toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
+pinned toolchain. **0.61.0 is a tag with no release object either**, and for a different reason
+than those two: its push builds the same four targets, but turning that into a Release is a
+separate deliberate act ([`RELEASING.md`](docs/RELEASING.md) §6) that has not been taken. Every
+earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
@@ -24,7 +28,15 @@ milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/
 
 ---
 
-## [Unreleased] — an ODF heading projects at the level it declared, and the one that cannot says so
+## [0.61.0] — the outline an author wrote down, and an ODF heading at the level it declared
+
+**A MINOR, because readers changed.** A PDF catalog's `/Outlines` is read for the first time,
+and an ODF `<text:h>` projects at the level its own element states — so on bytes 0.60.0 already
+accepted, this build emits an outline record it emitted none of, and Markdown and HTML whose
+heading levels differ. Three further changes move nothing and put on the wire what the tree
+already knew and no consumer could read: **what kind of box** `measured_ink_boxes` has always
+meant, **the bidi order** this engine never reorders, and **the document metadata** no reader
+opens. The first two were open questions in the contract; the third was true and unsaid.
 
 ### The outline a document declares, and what kind of box this engine draws
 
