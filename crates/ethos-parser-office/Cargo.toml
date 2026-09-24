@@ -21,7 +21,7 @@ flate2 = "1"
 # declarations are exactly the surface where a hand-rolled reader silently gets text wrong, and
 # text is the evidence. `quick-xml` is MIT and its only dependency is `memchr`, which this graph
 # already carries.
-quick-xml = "0.41"
+quick-xml = "0.42"
 serde.workspace = true
 
 [dev-dependencies]
