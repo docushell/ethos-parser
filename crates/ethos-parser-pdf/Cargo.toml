@@ -18,7 +18,7 @@ ethos-parser-core.workspace = true
 # twice over — via `lopdf`'s stream decompression and `ethos-parser-office`'s ZIP reader — so the
 # primitive that actually matters (a strict inflate with its stream-end status) costs nothing new.
 flate2 = "1"
-lopdf = { version = "0.44.0", default-features = false }
+lopdf = { version = "0.45.0", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 # `skrifa` 0.39, not the current 0.44: the newer tree needs Rust 1.89 and this workspace pins
@@ -32,7 +32,7 @@ serde_json.workspace = true
 skrifa = "0.39.0"
 
 [dev-dependencies]
-lopdf = { version = "0.44.0", default-features = false }
+lopdf = { version = "0.45.0", default-features = false }
 serde_json.workspace = true
 # v1-S7b. NFC for the table-gate metric's whitespace rule (`accuracy::normalize`).
 #
