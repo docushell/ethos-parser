@@ -58,7 +58,7 @@ jobs:
     # timeout, which reads as an infrastructure blip rather than the budget it actually is.
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The two grep criteria, first: they scan source text, need no compiler and finish in
       # seconds, so a forbidden token fails this job before the oracle build rather than after it.
@@ -81,7 +81,7 @@ jobs:
       # working checkout into a broken one. If the repo ever goes private, that is the moment to
       # revisit, and the fix is a PAT, never making these steps optional.
       - name: Check out Ethos (fixture corpus + CLI oracle)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: docushell/ethos
           ref: ${{ env.ETHOS_ORACLE_REF }}
@@ -367,11 +367,11 @@ jobs:
             run: ci/forbidden-tokens.sh verification
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out Ethos (fixture corpus)
         if: matrix.corpus
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: docushell/ethos
           ref: ${{ env.ETHOS_ORACLE_REF }}
@@ -452,10 +452,10 @@ jobs:
             run: cargo test --workspace --locked -- xref repaired_and_declares a_profile_that_refuses a_different_malformation never_repaired
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out Ethos (fixture corpus + CLI)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: docushell/ethos
           ref: ${{ env.ETHOS_ORACLE_REF }}
@@ -521,10 +521,10 @@ jobs:
             run: "cargo test --workspace --locked -- every_true_capability_names_a_proof_test a_changed_capability_set_changes_the_artifacts_profile_hash every_false_capability_declares_a_limitation the_xref_posture"
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out Ethos (fixture corpus)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: docushell/ethos
           ref: ${{ env.ETHOS_ORACLE_REF }}
@@ -589,10 +589,10 @@ jobs:
             run: "cargo test -p ethos-parser-pdf --lib --locked -- --nocapture accuracy::"
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out Ethos (fixture corpus)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: docushell/ethos
           ref: ${{ env.ETHOS_ORACLE_REF }}
@@ -633,7 +633,7 @@ jobs:
     outputs:
       parser: ${{ steps.filter.outputs.parser }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -700,7 +700,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: nightly
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Pinned by SHA like every other action here, with ONE difference that matters:
       # `dtolnay/rust-toolchain` selects the toolchain from the REF NAME when no
@@ -801,7 +801,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
         with:
@@ -835,7 +835,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
@@ -885,7 +885,7 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: check DCO sign-offs
@@ -945,7 +945,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Installed and asserted as `check` does, for the reasons given there.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
