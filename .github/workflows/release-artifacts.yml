@@ -210,7 +210,7 @@ jobs:
       # Everything the script wrote: the tarball, the fingerprint of the binary inside it, this
       # runner's own SHA256SUMS.txt and the build log. `verify` consumes the first three.
       # `overwrite`, so re-running a leg does not fail on the name the first attempt uploaded.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: built-${{ matrix.target }}
           path: target/release-artifacts/
@@ -248,7 +248,7 @@ jobs:
       # then the `gh release create` line in docs/RELEASING.md §8 over dist/*.tar.gz and
       # dist/SHA256SUMS.txt. The fingerprints ride along so a locally built binary can be held to
       # the runners' bytes with `ci/release-artifacts.sh --fingerprint-only` and `diff`.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-bundle
           path: |
