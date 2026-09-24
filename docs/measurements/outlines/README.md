@@ -4,8 +4,13 @@
 §2.1, which is the argument for reopening [`../../17-D1-SCOPE.md`](../../17-D1-SCOPE.md) §5's bar:
 *a detector with no positive case is an assertion*.
 
-**Nothing is built.** This engine reads no part of `/Outlines`; the instrument here opens the trees
-with `lopdf` so the scope's numbers are measured rather than asserted.
+**Nothing was built when this was measured**, which is the point: the instrument opened the trees
+with `lopdf` so the scope's numbers came from somewhere other than the code they would judge.
+
+**The reader shipped on 2026-09-24** as `outlines-v1`, and it reproduces every figure below —
+2 273 entries, the per-document counts and depths, 0 unresolved, 69 undecodable titles. That is
+`29-OUTLINES-SCOPE.md` §8 bar 1 met against constants set before the code existed rather than
+re-derived from it, which is the only version of that check worth running.
 
 ## What ran
 
@@ -102,8 +107,7 @@ non-UTF-16 branch cannot produce. True of the UTF-16 branch, false of the other.
 **Whether a title appears in the text of the page its destination resolves to** — the PI-B
 cross-check. That join needs the engine's own per-page text and is deliberately deferred: the
 decoding gap above would corrupt it, since an undecoded `0x85` cannot match a page that draws an
-**en dash**, so the count would measure the decoder rather than the document. It is
-`29-OUTLINES-SCOPE.md` slice S3, after `S-ENC`.
+**en dash**, so the count would measure the decoder rather than the document. It is `29-OUTLINES-SCOPE.md` slice S3, after `S-ENC`, and neither has shipped.
 
 **A rate for exactly this join was published in `06-STEAL-REFUSE.md` row PI-A on 2026-09-22 and
 withdrawn on 2026-09-23** (`f185611`): it came from the PageIndex review's reader agent and nothing
