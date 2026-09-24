@@ -293,6 +293,13 @@ pub mod codes {
     /// order. The consequence a consumer cannot otherwise see: **a quote copied out of a viewer
     /// matches this text, and a quote typed in logical order does not.**
     pub const RIGHT_TO_LEFT_NOT_REORDERED: &str = "right-to-left-not-reordered";
+    /// The document's own declared outline is not read (`docs/29-OUTLINES-SCOPE.md`).
+    ///
+    /// Partners a **false** [`Capabilities::outlines`], and exists so that
+    /// `RepresentationPayload::outlines` being an empty array cannot read as *"the reader
+    /// looked and the catalog named none"*. It means nobody looked, and an empty array on its
+    /// own cannot say which.
+    pub const OUTLINES_NOT_READ: &str = "outlines-not-read";
     /// [`crate::Capabilities::images`] is true: what an image node does and does not say.
     pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
     /// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).
@@ -540,6 +547,7 @@ impl Capabilities {
             spans,
             char_offsets,
             tables,
+            outlines,
             measured_ink_boxes,
             multi_column_reading_order,
             structural_locators,
@@ -605,6 +613,19 @@ impl Capabilities {
                  without an Anchor Map severs a citation from its evidence, and no projection at \
                  all is preferable to one that does. A consumer wanting HTML from this build \
                  must produce it itself, and owns the consequence.",
+            ));
+        }
+        if !outlines {
+            out.push(Limitation::profile(
+                codes::OUTLINES_NOT_READ,
+                "This profile does not read the document's own declared outline, so the \
+                 `outlines` array is empty because NOBODY LOOKED — not because the document \
+                 declares none. The two are different statements and an empty array cannot \
+                 carry both, which is the whole reason this code exists. For a PDF that means \
+                 the catalog's `/Outlines` tree is unread: a hierarchy the author wrote down, \
+                 not an inference over the page, and therefore not something a consumer can \
+                 reconstruct from the nodes. For the office formats it is permanent — an OOXML \
+                 or ODF package has no PDF catalog to carry one.",
             ));
         }
         if tables {
@@ -1560,6 +1581,7 @@ mod tests {
             spans: false,
             char_offsets: false,
             tables: false,
+            outlines: false,
             images: false,
             page_screenshots: false,
             measured_ink_boxes: false,
@@ -1595,13 +1617,14 @@ mod tests {
         }
         assert_eq!(
             declared.len(),
-            14,
+            15,
             "one limitation per false capability, plus the two declared UNCONDITIONALLY: \
              `low-contrast-not-detected`, because no profile this build can produce reads colour, \
              and `document-metadata-not-read`, because none of them opens a metadata part for its \
              values. Neither is partnered to a capability in either direction, and pretending \
              otherwise would mean inventing a `contrast` or `metadata` flag nothing sets. \
-             Thirteen since v1.1-S4, which added `html`; fourteen since the metadata declaration"
+             Thirteen since v1.1-S4, which added `html`; fourteen since the metadata declaration; fifteen \
+             since `outlines` joined the capability set with `outlines-not-read` beside it"
         );
 
         // The mirror, with one deliberate exception. A profile claiming everything declares no
@@ -1615,6 +1638,11 @@ mod tests {
             spans: true,
             char_offsets: true,
             tables: true,
+            // True here like every other flag: this literal exists to check what survives when NOTHING
+            // is switched off, and leaving one false would quietly turn a false-capability
+            // limitation into evidence about true ones — the argument `page_screenshots` below
+            // already makes.
+            outlines: true,
             measured_ink_boxes: true,
             multi_column_reading_order: true,
             structural_locators: true,

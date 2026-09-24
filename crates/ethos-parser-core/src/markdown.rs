@@ -2725,6 +2725,7 @@ pub(crate) mod tests {
             pages,
             nodes,
             tables,
+            outlines: Vec::new(),
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

@@ -634,6 +634,9 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         tables: Vec::new(),
         // No pages, so nothing was authorized and nothing has a page state. The coverage summary
         // reconciles zero against zero, which is what a document with no pages honestly is.
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -816,6 +819,9 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // IR, produced by the PDF detectors from ruled and unruled evidence. Those never ran;
         // this artifact carries cells, and `Profile::xlsx_v0` declares `tables: false` to say so.
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -997,6 +1003,9 @@ fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         pages: Vec::new(),
         nodes,
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1185,6 +1194,9 @@ fn read_ods(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // states outright — putting them here would claim a detector ran, and `capabilities.tables`
         // is false for the same reason.
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1383,6 +1395,9 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
         // and a `TableRecord` is the PDF detector's finding about a grid it inferred from ink;
         // `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1520,6 +1535,9 @@ fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         // they are a fact the file states — a `TableRecord` is the PDF detector's finding about a
         // grid it inferred from ink, and `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1724,6 +1742,9 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         // block it is; a `TableRecord` is the PDF detector's finding about a grid it inferred from
         // ink, and `capabilities.tables` is false because no detector ran.
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 
@@ -1904,6 +1925,9 @@ fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         pages: Vec::new(),
         nodes,
         tables: Vec::new(),
+        // No PDF catalog here, so no outline to read. `capabilities.outlines` is what says this
+        // profile does not look; an empty array on its own would read as "looked, found none".
+        outlines: Vec::new(),
         assurance: Assurance::new(profile.capabilities, 0, Vec::new(), limitations)?,
     };
 

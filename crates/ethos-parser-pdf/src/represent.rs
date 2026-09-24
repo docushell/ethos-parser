@@ -524,6 +524,11 @@ pub fn to_representation(
         pages,
         nodes,
         tables,
+        // The reader does not open `/Outlines` yet (`docs/29-OUTLINES-SCOPE.md` S1). Empty
+        // here is not the same statement as the office readers' empty: there the catalog
+        // does not exist, here it does and is unread — `capabilities.outlines` carries the
+        // difference, and `outline-absent` will carry the per-document half when S1 lands.
+        outlines: Vec::new(),
         assurance,
     };
 

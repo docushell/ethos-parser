@@ -213,6 +213,7 @@ const CORE: &[&str] = &[
     // v2-S2. The second format's address, its facts, and the rule ids a profile carries when a
     // rule does not run for that format.
     "DocxLocator",
+    "OutlineRecord",
     "OfficeRunAttributes",
     "NOT_RUN",
     "DOCX_READING_ORDER_RULE_V1",
@@ -369,6 +370,7 @@ const CORE: &[&str] = &[
     "geom",
     "identity",
     "ids",
+    "outlines",
     "page_binding_status",
     "profile",
     "profile_sha256",

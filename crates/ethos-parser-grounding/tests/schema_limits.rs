@@ -84,6 +84,7 @@ fn payload(
         pages,
         nodes,
         tables: Vec::new(),
+        outlines: Vec::new(),
         assurance: Assurance::new(Capabilities::V0, authorized, states, limitations)
             .expect("the assurance block is well-formed"),
     }

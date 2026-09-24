@@ -75,7 +75,13 @@ pub const REPRESENTATION_ARTIFACT_TYPE: &str = "ethos.parser.representation.v0";
 /// box as absent rather than carry an invented one. A record written under `0.5.0` has a `bbox`
 /// key this shape does not, and vice versa, so the two are genuinely non-comparable and the version
 /// says so rather than a reader silently coercing one into the other.
-pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.6.0";
+///
+/// `0.7.0` at the outlines slice (`docs/29-OUTLINES-SCOPE.md`): the payload gained a ninth member,
+/// [`RepresentationPayload::outlines`], carrying the hierarchy a PDF's catalog declares. A record
+/// written under `0.6.0` has no `outlines` key and one written under `0.7.0` always does — empty
+/// where the catalog names no outline — so the absence of the key and an empty array are different
+/// statements and the version is what tells them apart.
+pub const REPRESENTATION_SCHEMA_VERSION: &str = "0.7.0";
 
 /// What was read: the media type and the digest of the exact source bytes.
 ///
@@ -2104,6 +2110,15 @@ pub struct RepresentationPayload {
     /// would create a second place for the same text to live and a second place for it to drift.
     #[serde(default)]
     pub tables: Vec<crate::tables::TableRecord>,
+    /// The outline the document declares, in the order its `/First`/`/Next` chain gives
+    /// (`docs/29-OUTLINES-SCOPE.md`).
+    ///
+    /// **An empty array means the reader looked and the catalog named none**, never that it did
+    /// not look — `capabilities.outlines` says which, on `tables`' precedent directly above.
+    /// Carried as its own array rather than as `nodes` because a bookmark title is text no content
+    /// stream painted, so it has no native locator and North Star #4 requires one on every node.
+    #[serde(default)]
+    pub outlines: Vec<crate::outlines::OutlineRecord>,
     /// M4's L1 gate, carried forward by value: capabilities, limitations, per-page state,
     /// coverage, terminal state.
     pub assurance: Assurance,
@@ -2163,6 +2178,7 @@ impl RepresentationPayload {
             coordinate_system,
             pages,
             nodes,
+            outlines,
             tables,
             assurance,
         } = self;
@@ -2185,7 +2201,9 @@ impl RepresentationPayload {
             }
             sink.canonical(node).map_err(malformed)?;
         }
-        sink.push(b"],\"pages\":");
+        sink.push(b"],\"outlines\":");
+        sink.canonical(outlines).map_err(malformed)?;
+        sink.push(b",\"pages\":");
         sink.canonical(pages).map_err(malformed)?;
         sink.push(b",\"processing_run\":");
         sink.canonical(processing_run).map_err(malformed)?;
@@ -2865,6 +2883,7 @@ mod tests {
             pages,
             nodes,
             tables: Vec::new(),
+            outlines: Vec::new(),
             assurance: Assurance::new(
                 Capabilities::V0,
                 authorized,

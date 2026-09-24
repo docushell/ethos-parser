@@ -54,6 +54,7 @@ the items re-exported at the crate root.
 | `error` | `EngineError` — the six-variant taxonomy |
 | `diagnostics` | `Diagnostics`, `DiagnosticsRun`, `HostInfo`, `Stage`, `DIAGNOSTICS_VERSION` — **new at M7** |
 | `verifier` | `VerifierBinary`, `relay`, `RelayRequest`, `Relayed`, `GROUNDING_ADAPTER`, `RELAY_OK`, `RELAY_REFUSED`, `RELAY_UNAVAILABLE` — **new at v0.1** |
+| `outlines` | `OutlineRecord` — **new at the outlines slice** (`29-OUTLINES-SCOPE.md`). One entry of the hierarchy a PDF catalog declares, carried on `RepresentationPayload::outlines` rather than as a `Node`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node. The consequence is deliberate — **an outline title is not quotable**, because `locate` and grounding both read `nodes` |
 | `tables` | `CellSlot`, `TableCellPosition`, `SlotCover`, `SlotFault`, `TableRecord`, `TableCellRecord`, `LocatorCheck`, `CheckStatus`, `GeometricFault`, `LOCATOR_CHECK_V1` — **new at v1-S1** · `TaggedGridCheck`, `TaggedGridStatus`, `TaggedGridFault`, `TAGGED_GRID_CHECK_V1` — **new at v1-S3** |
 
 Plus `CRATE_NAME`, which exists so the M0 link harness can assert the workspace builds.

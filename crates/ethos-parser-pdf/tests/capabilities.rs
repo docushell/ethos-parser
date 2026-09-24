@@ -126,6 +126,7 @@ fn proof_table() -> Vec<Proof> {
         spans,
         char_offsets,
         tables,
+        outlines,
         measured_ink_boxes,
         multi_column_reading_order,
         structural_locators,
@@ -164,6 +165,21 @@ fn proof_table() -> Vec<Proof> {
             // text — including the empty one.
             proof_test: Some("a_ruled_grid_is_reconstructed_with_spans_and_parent_ids"),
             why_not: None,
+        },
+        Proof {
+            field: "outlines",
+            claimed: outlines,
+            proof_test: None,
+            why_not: Some(
+                "The catalog's `/Outlines` tree is not read, so the payload's `outlines` array is \
+                 empty because nobody looked rather than because the document declares none. The \
+                 two are different statements and an empty array cannot carry both, which is why \
+                 this flag exists beside it and why `outlines-not-read` is declared. Scoped in \
+                 `docs/29-OUTLINES-SCOPE.md`, whose S1 is the slice that reads the tree; the \
+                 measurement behind it is 6 of 70 fixtures carrying one, 2 273 entries, every \
+                 destination resolving. Nothing about it is inference — a bookmark is a hierarchy \
+                 the author wrote down — so this is a gap left open, not a decision against it.",
+            ),
         },
         Proof {
             field: "measured_ink_boxes",

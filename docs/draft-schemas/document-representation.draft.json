@@ -12,7 +12,7 @@
       "const": "ethos.parser.representation.v0",
       "$comment": "At the TOP LEVEL, before any payload (§2), so a reader can fail closed on an unrecognised shape before parsing it (§8). Mirrors representation.identity.artifact_type, and a parse-time check refuses an artifact where the two disagree — a mirror that can disagree is worse than no mirror."
     },
-    "schema_version": { "const": "0.6.0" },
+    "schema_version": { "const": "0.7.0" },
     "representation": {
       "$ref": "#/$defs/payload",
       "$comment": "THE HASHED SUBTREE. representation_c14n_sha256 is the digest of exactly this member and nothing else."
@@ -72,6 +72,16 @@
         "coordinate_system": { "$ref": "urn:ethos-parser:draft-schema:coordinate-system:0" },
         "pages": { "type": "array", "items": { "$ref": "#/$defs/page_record" } },
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "tables": {
+          "type": "array",
+          "$comment": "v1-S1. Optional on the wire (`#[serde(default)]`) and always written. An empty array means the detector LOOKED and found none; `assurance.capabilities.tables` says whether it looked. Absent from this schema until 2026-09-24 while `additionalProperties` was already false, so this file described a payload the engine had not emitted since v1-S1.",
+          "items": { "type": "object" }
+        },
+        "outlines": {
+          "type": "array",
+          "$comment": "docs/29-OUTLINES-SCOPE.md. The hierarchy a PDF catalog declares, one record per `/Outlines` entry, in `/First`/`/Next` order. Optional on the wire and always written: an empty array means the reader LOOKED and the catalog named none, and `assurance.capabilities.outlines` says whether it looked. Never `nodes`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node.",
+          "items": { "type": "object" }
+        },
         "assurance": {
           "$ref": "urn:ethos-parser:draft-schema:coverage:0",
           "$comment": "M4's L1 gate, carried forward by value: capabilities, limitations, per-page state, coverage, terminal state. An artifact without it has not reached 'extracted' regardless of how good its text is."

@@ -874,6 +874,10 @@ fn project_within(
         spans: spans_claimed,
         char_offsets,
         tables,
+        // The projection reads `nodes`; an outline record is deliberately not one, so
+        // nothing here changes whether this capability is true or false
+        // (`docs/29-OUTLINES-SCOPE.md`: an outline title is not quotable).
+        outlines: _,
         measured_ink_boxes: _,
         multi_column_reading_order: _,
         structural_locators: _,
@@ -1280,6 +1284,7 @@ mod schema_limit_tests {
             },
             coordinate_system: CoordinateSystem::V0,
             tables: Vec::new(),
+            outlines: Vec::new(),
             assurance: Assurance::new(
                 capabilities,
                 pages.iter().map(|p| p.index).max().unwrap_or(0),

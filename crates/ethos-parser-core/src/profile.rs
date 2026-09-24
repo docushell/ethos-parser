@@ -701,6 +701,19 @@ pub struct Capabilities {
     /// still declared: an edge the document never drew is not supplied to complete a grid
     /// (`codes::UNDRAWN_TABLE_EDGES_NOT_SUPPLIED`).
     pub tables: bool,
+    /// The document's own declared outline (`/Outlines`) is read.
+    ///
+    /// **False on every profile this build can produce.** The field it partners,
+    /// [`crate::RepresentationPayload::outlines`], is on the wire and always written — so
+    /// without this flag an empty array would read as *"the reader looked and the catalog
+    /// named none"*, which is not what it means today. It means nobody looked, and this is
+    /// what says so. `docs/29-OUTLINES-SCOPE.md` S1 is the slice that reads the tree and
+    /// flips this; until then the claim is the one this flag is for — **this profile looks**
+    /// — and the honest answer is that it does not.
+    ///
+    /// It is false on the eight office profiles for a different reason, and permanently: an
+    /// OOXML or ODF package has no PDF catalog to carry an outline at all.
+    pub outlines: bool,
     /// Text-run boxes come from font metrics rather than being absent.
     ///
     /// **Named for ink; the box is not glyph ink.** It is the run's pen advance over its font's
@@ -824,6 +837,7 @@ impl Capabilities {
         spans: true,
         char_offsets: true,
         tables: true,
+        outlines: false,
         measured_ink_boxes: true,
         multi_column_reading_order: true,
         structural_locators: true,
@@ -1435,6 +1449,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1504,6 +1519,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1564,6 +1580,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1628,6 +1645,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1679,6 +1697,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1736,6 +1755,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1791,6 +1811,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1850,6 +1871,7 @@ impl Profile {
                 spans: true,
                 char_offsets: false,
                 tables: false,
+                outlines: false,
                 measured_ink_boxes: false,
                 multi_column_reading_order: false,
                 structural_locators: false,
@@ -1997,6 +2019,7 @@ mod tests {
                     spans: _,
                     char_offsets: _,
                     tables: _,
+                    outlines: _,
                     measured_ink_boxes: _,
                     multi_column_reading_order: _,
                     structural_locators: _,
@@ -2299,7 +2322,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":false,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3191,11 +3214,20 @@ mod tests {
              to prevent. Accepted on one fact only: **no artifact was ever published \
              under the intermediate.** No tag, no release, no distributed binary, source \
              only. Anyone who built `main` in that window and kept the output should \
-             re-run it."
+             re-run it.\n\n\
+             Moved again at the outlines slice (`docs/29-OUTLINES-SCOPE.md`), \
+             `sha256:850e4fa3…` -> `sha256:d967d6a0…`: `Capabilities` gained `outlines`, \
+             false on every profile this build can produce. It is in the hash because it \
+             is a capability, and it had to arrive WITH \
+             `RepresentationPayload::outlines` rather than after it — that field is always \
+             written, so an empty array with no flag beside it would read as *the reader \
+             looked and the catalog named none*, which is not what it means while no \
+             reader looks. `outlines-not-read` carries the same statement per artifact. \
+             The reader itself is S1 and is not built here."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:850e4fa3d742d93aabb530fe352f8145e302d85f98f38924143b1a27dd2d934e"
+            "sha256:d967d6a0f2eccea1e161516f73d6f84782ee074f49b9004ab535b6d0d5980c03"
         );
     }
 

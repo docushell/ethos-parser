@@ -79,6 +79,7 @@ pub mod identity;
 pub mod ids;
 pub mod locate;
 pub mod markdown;
+pub mod outlines;
 pub mod profile;
 pub mod representation;
 pub mod tables;
@@ -115,6 +116,7 @@ pub use markdown::{
     HEADING_LEVEL_UNRESOLVED, MARKDOWN_ARTIFACT_TYPE, MARKDOWN_RULE_BLOCKS_V10,
     MARKDOWN_SCHEMA_VERSION, MCID_RUN_JOINS,
 };
+pub use outlines::OutlineRecord;
 pub use profile::{
     profile_sha256, BackendIdentity, Capabilities, PageBudget, Profile, RasterDpi, TableDetection,
     VerifierPin, XrefRepair, CMAP_DATA_VERSION, DOCX_READING_ORDER_RULE_V1, DOCX_TEXT_CODE_RULE_V2,

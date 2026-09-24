@@ -389,6 +389,7 @@
         "markdown": true,
         "measured_ink_boxes": true,
         "multi_column_reading_order": true,
+        "outlines": false,
         "page_screenshots": false,
         "spans": true,
         "structural_locators": true,
