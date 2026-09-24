@@ -110,7 +110,7 @@ decoding gap above would corrupt it, since an undecoded `0x85` cannot match a pa
 **en dash**, so the count would measure the decoder rather than the document. It is `29-OUTLINES-SCOPE.md` slice S3, after `S-ENC`, and neither has shipped.
 
 **A rate for exactly this join was published in `06-STEAL-REFUSE.md` row PI-A on 2026-09-22 and
-withdrawn on 2026-09-23** (`f185611`): it came from the PageIndex review's reader agent and nothing
+withdrawn on 2026-09-23** (`3bc9126`): it came from the PageIndex review's reader agent and nothing
 in this directory produces it. It is not re-derived here for the reason above.
 
 **Also not measured, and owed before `S-ENC` is argued:** how many annotation and form-field strings

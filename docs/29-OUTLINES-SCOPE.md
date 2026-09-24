@@ -2,11 +2,11 @@
 
 **Status: proposal. Nothing here ships until the owner reopens `17-D1-SCOPE.md` §5's evidence bar**
 — §2 is the argument, §2.1 the measurement it rests on. Written 2026-09-23 against `main` at
-`f185611`, workspace 0.60.0.
+`3bc9126`, workspace 0.60.0.
 
 Source: [`06-STEAL-REFUSE.md`](06-STEAL-REFUSE.md) row **PI-A**, from the PageIndex review. **Every
 number below was measured by this session** with [`measurements/outlines/`](measurements/outlines/README.md).
-A title-versus-page-text rate briefly published in PI-A was **withdrawn as unmeasured** (`f185611`);
+A title-versus-page-text rate briefly published in PI-A was **withdrawn as unmeasured** (`3bc9126`);
 that join is §7's and has not been run.
 
 **Revised after an adversarial review** (four lenses: doctrine, code, measurement, omissions). It
