@@ -717,6 +717,58 @@ pub fn form_xobjects_not_descended(count: u32) -> Limitation {
     )
 }
 
+/// The catalog declares no outline (`docs/29-OUTLINES-SCOPE.md`).
+///
+/// On `untagged_structure_tree_absent`'s precedent, and it is the same distinction: **a statement
+/// about THIS DOCUMENT**, not about the profile. `capabilities.outlines` says the reader looks;
+/// this says it looked here and the catalog named nothing. Without it an empty `outlines` array
+/// cannot tell those two apart.
+pub fn outline_absent() -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::OUTLINE_ABSENT,
+        "This document's catalog declares no `/Outlines`, so the `outlines` array is empty \
+         because the document has no outline — not because this reader did not look. \
+         `capabilities.outlines` carries the other half of that distinction. Nothing is \
+         inferred to fill the gap: an outline is a hierarchy an author writes down, and a \
+         document that writes none has none."
+            .to_string(),
+    )
+}
+
+/// Outline titles holding a byte this engine will not decode.
+pub fn outline_title_undecodable(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::OUTLINE_TITLE_UNDECODABLE,
+        format!(
+            "{count} outline entry title(s) hold a byte this engine will not decode, so those \
+             entries carry NO title while keeping their depth, their object id and their page. \
+             A PDF text string is UTF-16BE behind a byte-order mark and PDFDocEncoding otherwise \
+             (§7.9.2.2), and `0x80`–`0x9F` is exactly where PDFDocEncoding, Latin-1 and \
+             Windows-1252 disagree. This engine vendors no PDFDocEncoding table for that block, \
+             so decoding one would be a guess — and decoding it as Latin-1, which is what the \
+             table already in this tree would do, puts C1 control characters inside a title that \
+             still reads as well-formed. Absent and counted is the honest answer, and \
+             `docs/29-OUTLINES-SCOPE.md` §4 records what would change it."
+        ),
+    )
+}
+
+/// Outline destinations that named no page of this document.
+pub fn outline_destination_unresolved(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::OUTLINE_DESTINATION_UNRESOLVED,
+        format!(
+            "{count} outline entry destination(s) named no page of this document, so those \
+             entries carry NO page while keeping their title and their depth. The entry is \
+             emitted either way: dropping it would lose a declaration the author made, and \
+             guessing a page would invent one. A destination may be explicit, a name or string \
+             through `/Names`→`/Dests`, or a `/GoTo` action — all three are resolved. One that \
+             is none of those, or whose first array element is an integer, is a REMOTE \
+             destination naming a page in another file, which is not this document's to report."
+        ),
+    )
+}
+
 /// Right-to-left text, reported in the order the page drew it (`OPEN-WORK.md` §4, 2026-09-23).
 ///
 /// The count is runs, not scalars, because the run is the unit a citation quotes.

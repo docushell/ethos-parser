@@ -300,6 +300,15 @@ pub mod codes {
     /// looked and the catalog named none"*. It means nobody looked, and an empty array on its
     /// own cannot say which.
     pub const OUTLINES_NOT_READ: &str = "outlines-not-read";
+    /// This document's catalog declares no outline (`docs/29-OUTLINES-SCOPE.md`).
+    ///
+    /// Document-scoped, on `untagged-structure-tree-absent`'s precedent: a statement about the
+    /// DOCUMENT, where [`OUTLINES_NOT_READ`] is a statement about the profile.
+    pub const OUTLINE_ABSENT: &str = "outline-absent";
+    /// Outline titles holding a byte this engine will not decode, counted.
+    pub const OUTLINE_TITLE_UNDECODABLE: &str = "outline-title-undecodable";
+    /// Outline destinations that named no page of this document, counted.
+    pub const OUTLINE_DESTINATION_UNRESOLVED: &str = "outline-destination-unresolved";
     /// [`crate::Capabilities::images`] is true: what an image node does and does not say.
     pub const IMAGE_PAYLOAD_NOT_EMBEDDED: &str = "image-payload-not-embedded";
     /// A composite font's code width came from its `/ToUnicode` codespace (v1-S6.1).

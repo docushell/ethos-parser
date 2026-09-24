@@ -75,6 +75,9 @@ fn conformance(rel: &str) -> PathBuf {
 fn engine_fx(name: &str) -> PathBuf {
     path_in("engine", &format!("{name}/document.pdf"))
 }
+fn gate(name: &str) -> PathBuf {
+    path_in("gate", &format!("{name}.pdf"))
+}
 fn bench(name: &str) -> PathBuf {
     path_in("benchmark", name)
 }
@@ -169,17 +172,8 @@ fn proof_table() -> Vec<Proof> {
         Proof {
             field: "outlines",
             claimed: outlines,
-            proof_test: None,
-            why_not: Some(
-                "The catalog's `/Outlines` tree is not read, so the payload's `outlines` array is \
-                 empty because nobody looked rather than because the document declares none. The \
-                 two are different statements and an empty array cannot carry both, which is why \
-                 this flag exists beside it and why `outlines-not-read` is declared. Scoped in \
-                 `docs/29-OUTLINES-SCOPE.md`, whose S1 is the slice that reads the tree; the \
-                 measurement behind it is 6 of 70 fixtures carrying one, 2 273 entries, every \
-                 destination resolving. Nothing about it is inference — a bookmark is a hierarchy \
-                 the author wrote down — so this is a gap left open, not a decision against it.",
-            ),
+            proof_test: Some("the_declared_outline_is_read_as_the_document_declared_it"),
+            why_not: None,
         },
         Proof {
             field: "measured_ink_boxes",
@@ -1183,5 +1177,75 @@ fn limitations_are_sorted_and_free_of_duplicates() {
     assert_eq!(
         a.assurance.limitations, sorted,
         "the emitted order must already be canonical"
+    );
+}
+
+/// **The declared outline is read as the document declared it** — the proof for
+/// `capabilities.outlines`, rule `outlines-v1` (`docs/29-OUTLINES-SCOPE.md`).
+///
+/// `nist-sp-800-218` is the smallest outline in the gate corpus and the numbers are the ones
+/// `docs/measurements/outlines/` measured with an independent instrument before any of this was
+/// written: **13 entries, maximum declared depth 2, every destination resolving, 3 titles holding
+/// a byte this engine will not decode.** A reader that renumbered depths, dropped the entries it
+/// could not title, or guessed a page would miss at least one of them.
+#[test]
+fn the_declared_outline_is_read_as_the_document_declared_it() {
+    let a = extract_ok(gate("nist-sp-800-218"));
+
+    assert_eq!(a.outlines.len(), 13, "the entries the chain declares");
+    assert_eq!(
+        a.outlines.iter().map(|o| o.depth).max(),
+        Some(2),
+        "the depth is the `/First`/`/Next` chain's own, never renumbered"
+    );
+    assert!(
+        a.outlines.iter().all(|o| o.page.is_some()),
+        "every destination in this document resolves to one of its pages"
+    );
+    assert!(
+        a.outlines
+            .iter()
+            .all(|o| o.derivation == ethos_parser_core::DerivationClass::Extracted),
+        "the hierarchy and the titles are the author's statement, not this engine's"
+    );
+
+    // Three titles carry a byte in 0x80-0x9F. They are ABSENT and COUNTED, never guessed — and
+    // the entries still carry their depth, their object id and their page.
+    let untitled = a.outlines.iter().filter(|o| o.title.is_none()).count();
+    assert_eq!(untitled, 3, "titles this engine will not decode");
+    let declared: Vec<_> = a
+        .assurance
+        .limitations
+        .iter()
+        .filter(|l| l.code == ethos_parser_core::codes::OUTLINE_TITLE_UNDECODABLE)
+        .collect();
+    assert_eq!(
+        declared.len(),
+        1,
+        "counted once, on the document: {declared:?}"
+    );
+    assert!(
+        declared[0].detail.starts_with("3 outline entry title(s)"),
+        "the count is on the wire: {}",
+        declared[0].detail
+    );
+
+    // No entry is dropped for lacking a title, which is the difference between reporting a gap
+    // and hiding one.
+    assert!(
+        a.outlines.iter().all(|o| o.object != 0),
+        "every entry keeps the object id that addresses it"
+    );
+
+    // And a document whose catalog names no outline says THAT, rather than being silent.
+    let none = extract_ok(engine_fx("markdown-two-blocks"));
+    assert!(none.outlines.is_empty());
+    assert!(
+        none.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::OUTLINE_ABSENT),
+        "an empty array and `outline-absent` together say the document has none, where the \
+         capability flag says the reader looked"
     );
 }

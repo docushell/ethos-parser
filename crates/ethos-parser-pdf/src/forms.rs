@@ -487,7 +487,40 @@ fn text_at(doc: &lopdf::Document, dict: &Dictionary, key: &[u8]) -> Option<Strin
 /// evidence. A field's title or an annotation's author name is a label, and losing the whole
 /// annotation over one unmappable byte in its author's name would delete content to protect a
 /// string nobody cites.
-fn decode_text(bytes: &[u8]) -> String {
+/// Decode a PDF text string, **refusing the bytes this engine cannot decode** rather than
+/// substituting for them.
+///
+/// The same two encodings as [`decode_text`] (§7.9.2.2), and the same UTF-16BE branch. The
+/// difference is the other one. `decode_text` maps every remaining byte through `char::from`,
+/// which is Latin-1 — so `0x85` becomes `U+0085`, a C1 control character, inside a string that
+/// still reads as well-formed. That is a deliberate choice **for a label**: losing a whole
+/// annotation over one unmappable byte in an author's name would delete content to protect a
+/// string nobody cites.
+///
+/// An outline title is not that. `0x80`–`0x9F` is exactly where PDFDocEncoding, Latin-1 and
+/// Windows-1252 disagree, this engine vendors no PDFDocEncoding table for it, and **69 of the
+/// 2 273 entries in this repository's own corpus carry such a byte**
+/// (`docs/measurements/outlines/`). So this returns `None` and the caller counts it, which is the
+/// engine's ordinary answer to *I could not read this* — and `docs/29-OUTLINES-SCOPE.md` §4
+/// records why vendoring the block is a separate, optional slice rather than a precondition.
+pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
+    if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        return String::from_utf16(&units).ok();
+    }
+    // PDFDocEncoding agrees with Latin-1 over 0x20..=0x7E and 0xA0..=0xFF. Everything else --
+    // the C0 controls, 0x7F, and the 0x80..=0x9F block the three encodings disagree over -- is
+    // refused rather than guessed.
+    bytes
+        .iter()
+        .all(|b| (0x20..=0x7E).contains(b) || *b >= 0xA0)
+        .then(|| bytes.iter().map(|b| char::from(*b)).collect())
+}
+
+pub(crate) fn decode_text(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
         let units: Vec<u16> = bytes[2..]
             .chunks_exact(2)

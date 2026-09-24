@@ -63,7 +63,7 @@ pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.parser.extract.v0";
 /// unknown fields never comes into play: a tagged table's cells are tagged runs, refused first.
 /// All three are named in their release notes. The artifact is a draft library surface with no
 /// stored fixtures: only this build's own bytes are ever parsed back, in two round-trip tests.
-pub const EXTRACT_SCHEMA_VERSION: &str = "0.4.0";
+pub const EXTRACT_SCHEMA_VERSION: &str = "0.5.0";
 
 /// The extract artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +85,16 @@ pub struct ExtractArtifact {
     /// A page missing from this list was not read; [`Assurance::page_states`] says which of the
     /// reasons applied. Its absence is never evidence that the page holds no text.
     pub pages: Vec<PageExtract>,
+    /// The outline the catalog declares, in `/First`/`/Next` order (`outlines-v1`).
+    ///
+    /// **Document-level, unlike `tables`, which ride their page.** An outline is one tree over
+    /// the whole catalog and an entry names a page rather than belonging to one.
+    ///
+    /// Optional on the wire so an extract written before this slice still reads. An empty array
+    /// means the reader looked and the catalog named none; `capabilities.outlines` is what says
+    /// whether it looked at all.
+    #[serde(default)]
+    pub outlines: Vec<ethos_parser_core::OutlineRecord>,
     /// Declared capabilities, limitations, per-page state, coverage, and terminal state.
     ///
     /// **The L1 gate** (`docs/01-CONTRACT.md` §7). Absorbs what M3 emitted as `not_decoded`:
@@ -1278,6 +1288,10 @@ pub(crate) fn extract_with_positions(
     // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
     // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
     let structure = crate::structure::read(doc.inner())?;
+    // `outlines-v1`. The other declaration this document may carry, read here for the same
+    // reason the tree is: it is the author's statement, not an inference over the page, and a
+    // cycling chain is refused by name rather than followed or truncated.
+    let outline = crate::outlines::read(doc)?;
     // The tree's citations grouped by page, built once: the per-page loop below
     // consults only its own page's keys, where iterating `tree.keys()` per page made
     // the reconciliation O(pages × total keys) across the document.
@@ -1745,6 +1759,21 @@ pub(crate) fn extract_with_positions(
         ));
     }
 
+    // The document half of the outline declarations. `capabilities.outlines` says this profile
+    // LOOKS; these say what it found here, and the three are different statements a consumer
+    // cannot recover from an empty array on its own.
+    if !outline.declared {
+        limitations.push(lim::outline_absent());
+    }
+    if outline.undecodable_titles > 0 {
+        limitations.push(lim::outline_title_undecodable(outline.undecodable_titles));
+    }
+    if outline.unresolved_destinations > 0 {
+        limitations.push(lim::outline_destination_unresolved(
+            outline.unresolved_destinations,
+        ));
+    }
+
     let artifact = ExtractArtifact {
         identity: ArtifactIdentity {
             artifact_type: EXTRACT_ARTIFACT_TYPE.to_string(),
@@ -1759,6 +1788,7 @@ pub(crate) fn extract_with_positions(
         reading_order_rule: profile.reading_order_rule.clone(),
         page_count,
         pages,
+        outlines: outline.records,
         assurance: Assurance::new(profile.capabilities, page_count, page_states, limitations)?,
     };
     Ok((artifact, positions))

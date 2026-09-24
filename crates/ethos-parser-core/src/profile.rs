@@ -477,6 +477,14 @@ pub const STRUCT_TREE_RULE_V1: &str = "struct-tree-v1";
 /// produces no role path and says so.
 pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 
+/// The rule that reads a PDF catalog's `/Outlines` (`docs/29-OUTLINES-SCOPE.md`).
+///
+/// Covers the walk order (`/First` then `/Next`, pre-order), the depth semantics — the chain's
+/// own, **never renumbered** — and which destination forms resolve: an explicit array, a name or
+/// byte string through `/Names`→`/Dests` or the catalog's older `/Dests`, and `/A` with `/GoTo`.
+/// Any of those changing moves this id and the profile hash with it.
+pub const OUTLINE_RULE_V1: &str = "outlines-v1";
+
 /// The heading-inference rule decision #29 ships (`docs/28-HEADINGS-SCOPE.md` §3), repaired on
 /// measurement.
 ///
@@ -703,13 +711,14 @@ pub struct Capabilities {
     pub tables: bool,
     /// The document's own declared outline (`/Outlines`) is read.
     ///
-    /// **False on every profile this build can produce.** The field it partners,
+    /// **True for the PDF profile since `outlines-v1`; false on the eight office ones.** The
+    /// field it partners,
     /// [`crate::RepresentationPayload::outlines`], is on the wire and always written — so
     /// without this flag an empty array would read as *"the reader looked and the catalog
     /// named none"*, which is not what it means today. It means nobody looked, and this is
-    /// what says so. `docs/29-OUTLINES-SCOPE.md` S1 is the slice that reads the tree and
-    /// flips this; until then the claim is the one this flag is for — **this profile looks**
-    /// — and the honest answer is that it does not.
+    /// what says so. The claim is the narrow one this flag is for — **this profile looks** — and
+    /// it does not claim every document declares an outline: a catalog naming none declares
+    /// `outline-absent`, which is the document-scoped half of the same distinction.
     ///
     /// It is false on the eight office profiles for a different reason, and permanently: an
     /// OOXML or ODF package has no PDF catalog to carry an outline at all.
@@ -837,7 +846,7 @@ impl Capabilities {
         spans: true,
         char_offsets: true,
         tables: true,
-        outlines: false,
+        outlines: true,
         measured_ink_boxes: true,
         multi_column_reading_order: true,
         structural_locators: true,
@@ -1300,6 +1309,12 @@ pub struct Profile {
     /// class that path carries: the owner attribute read under `/A` and through `/ClassMap` is
     /// what puts `computed` on a `pdf_tagged` locator.
     pub struct_tree_rule: String,
+    /// The rule that read the declared outline, or [`NOT_RUN`].
+    ///
+    /// See [`OUTLINE_RULE_V1`]. Its own field rather than a fold into `struct_tree_rule`, for
+    /// the reason the heading rule is its own: a tree and an outline are two declarations, read
+    /// by two rules, and one id covering both could not say which of them moved.
+    pub outline_rule: String,
     /// Version id of the heading-inference rule in force (decision #29).
     ///
     /// See [`HEADING_INFERENCE_RULE_V2`]. Its own field and not a fold into `struct_tree_rule`,
@@ -1387,6 +1402,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V3.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
+            outline_rule: OUTLINE_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V10.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
@@ -1472,6 +1488,7 @@ impl Profile {
             },
             reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1539,6 +1556,7 @@ impl Profile {
             },
             reading_order_rule: XLSX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1600,6 +1618,7 @@ impl Profile {
             },
             reading_order_rule: PPTX_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1665,6 +1684,7 @@ impl Profile {
             },
             reading_order_rule: ODT_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1717,6 +1737,7 @@ impl Profile {
             },
             reading_order_rule: ODS_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1775,6 +1796,7 @@ impl Profile {
             },
             reading_order_rule: ODP_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1831,6 +1853,7 @@ impl Profile {
             },
             reading_order_rule: RTF_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -1891,6 +1914,7 @@ impl Profile {
             },
             reading_order_rule: EPUB_READING_ORDER_RULE_V1.to_string(),
             struct_tree_rule: NOT_RUN.into(),
+            outline_rule: NOT_RUN.into(),
             heading_inference_rule: NOT_RUN.into(),
             markdown_rule: NOT_RUN.into(),
             locate_rule: NOT_RUN.into(),
@@ -2043,6 +2067,7 @@ mod tests {
                     tagged: _,
                 },
             struct_tree_rule: _,
+            outline_rule: _,
             heading_inference_rule: _,
             markdown_rule: _,
             html_rule: _,
@@ -2322,7 +2347,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":false,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.60.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3223,11 +3248,19 @@ mod tests {
              written, so an empty array with no flag beside it would read as *the reader \
              looked and the catalog named none*, which is not what it means while no \
              reader looks. `outlines-not-read` carries the same statement per artifact. \
-             The reader itself is S1 and is not built here."
+             The reader itself follows immediately below.\n\n\
+             Moved once more by that reader, `sha256:d967d6a0…` -> `sha256:3de0bdda33…`: \
+             `capabilities.outlines` false -> true for the PDF profile, and the new \
+             `outline_rule` naming `outlines-v1`. **A CLAIM, not a knob**, in the sense the fourth and sixth moves \
+             above name: an artifact from before this never opened the catalog's `/Outlines` and \
+             one from after either carries the entries or declares `outline-absent`, so an empty \
+             `outlines` array on either side of the move says nothing about the two documents \
+             and everything about the two profiles. The eight office profiles stay false and \
+             permanently so — an OOXML or ODF package has no PDF catalog to carry an outline."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:d967d6a0f2eccea1e161516f73d6f84782ee074f49b9004ab535b6d0d5980c03"
+            "sha256:3de0bdda3385633d2ad17fc19bee9981aeba9791e24fb0cf0ff4643494599bbc"
         );
     }
 

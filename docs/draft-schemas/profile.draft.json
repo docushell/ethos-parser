@@ -23,6 +23,7 @@
     "html_rule",
     "locate_rule",
     "table_detection",
+    "outline_rule",
     "struct_tree_rule",
     "heading_inference_rule",
     "form_annotation_rule",
@@ -246,6 +247,10 @@
       "examples": [
         "declared-font-codes-v1"
       ]
+    },
+    "outline_rule": {
+      "type": "string",
+      "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v1` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
     }
   },
   "$defs": {
@@ -303,7 +308,7 @@
         },
         "images": {
           "type": "boolean",
-          "$comment": "true since v1-S6 — proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared \u2014 and since 0.45.0 the form XObjects a document actually drew are counted too, on `form-xobjects-not-descended`, outside this flag: what that count declares is text this reader did not read rather than a picture it declined to emit. Carries no description, caption or alt text — that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
+          "$comment": "true since v1-S6 — proof: an_image_is_a_node_with_a_placement_and_a_digest. Claims only that this profile LOOKS: a page painting none yields no image nodes. Images inside form XObjects are not seen and inline images are counted rather than emitted, both separately declared — and since 0.45.0 the form XObjects a document actually drew are counted too, on `form-xobjects-not-descended`, outside this flag: what that count declares is text this reader did not read rather than a picture it declined to emit. Carries no description, caption or alt text — that would be OCR or a model's opinion, and neither is evidence (checklist O20)."
         },
         "markdown": {
           "type": "boolean",
@@ -389,7 +394,7 @@
         "markdown": true,
         "measured_ink_boxes": true,
         "multi_column_reading_order": true,
-        "outlines": false,
+        "outlines": true,
         "page_screenshots": false,
         "spans": true,
         "structural_locators": true,
@@ -397,17 +402,18 @@
       },
       "classify_sample_pages": 8,
       "cmap_data_version": "annex-d-encodings-1",
-      "font_metrics_data_version": "core14-afm-2",
       "coordinate_system": {
         "origin": "top-left",
         "unit": "centipoint"
       },
+      "font_metrics_data_version": "core14-afm-2",
       "form_annotation_rule": "form-annotations-v1",
       "heading_inference_rule": "type-size-v2",
       "html_rule": "html-blocks-v10",
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v10",
       "observation_rule": "page-observations-v1",
+      "outline_rule": "outlines-v1",
       "page_budget": {
         "mode": "unlimited"
       },
@@ -420,9 +426,9 @@
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
         "ruled": "ruled-rects-v6",
-        "unruled": "unruled-align-v1",
         "stroke_ruled": "stroke-ruled-v1",
-        "tagged": "tagged-tables-v1"
+        "tagged": "tagged-tables-v1",
+        "unruled": "unruled-align-v1"
       },
       "text_code_rule": "declared-font-codes-v1",
       "verifier": {

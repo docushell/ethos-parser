@@ -72,6 +72,7 @@ pub(crate) mod magic;
 pub(crate) mod metrics;
 pub(crate) mod nodes;
 pub(crate) mod ops;
+pub(crate) mod outlines;
 pub(crate) mod overlay;
 pub(crate) mod reading_order;
 pub(crate) mod reasons;
