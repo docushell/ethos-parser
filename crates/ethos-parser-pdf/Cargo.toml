@@ -29,7 +29,7 @@ serde_json.workspace = true
 # ttf-parser's author declared it unmaintained with no safe upgrade available, and names skrifa
 # (Google Fonts' fontations project) as the maintained successor. Swapping beats ignoring the
 # advisory.
-skrifa = "0.39.0"
+skrifa = "0.47.0"
 
 [dev-dependencies]
 lopdf = { version = "0.44.0", default-features = false }
