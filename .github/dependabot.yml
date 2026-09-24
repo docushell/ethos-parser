@@ -1,0 +1,68 @@
+# Dependabot version updates.
+#
+# `OPEN-WORK.md` §4 recorded dependabot as off, among the repository's security settings. Three of
+# those four — secret scanning, push protection and organisation 2FA — live in GitHub's settings
+# and are the owner's. This one is a file, so it lives here with everything else that decides what
+# this build is made of.
+#
+# # Why it arrives with the SHA pins, and not before them
+#
+# Every third-party `uses:` in `.github/workflows/` was a mutable ref until 2026-09-24:
+# `actions/checkout@v4` is a tag the publisher can re-point, and `dtolnay/rust-toolchain@master`
+# is a branch that moves by design. The release workflow builds the binary whose fingerprint four
+# runners must agree on before `SHA256SUMS.txt` is written, so an action changing underneath that
+# job changes what `verified` means with nothing in the repository recording it.
+#
+# Pinning fixes that and freezes it. Dependabot is the other half: it proposes the bumps as
+# reviewable pull requests, so the pins stay current instead of rotting into permanent staleness.
+# One without the other is either a moving target or a museum.
+#
+# # `--locked` is why cargo is here at a monthly cadence and not weekly
+#
+# `Cargo.lock` is committed and every build runs `--locked`, so a dependency cannot move without a
+# deliberate commit. The lock file is also what `the_backend_version_is_the_one_the_lock_file_resolves`
+# reads to prove the profile's declared backend is the one that ran. A cargo bump is therefore an
+# identity event, reviewed as one — monthly keeps that deliberate rather than routine.
+version: 2
+updates:
+  # The actions the pins above froze.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(ci)"
+    labels:
+      - "dependencies"
+
+  # The workspace. A bump here moves `Cargo.lock`, and may move `profile_sha256` with it if it
+  # moves `lopdf` — see `crates/ethos-parser-core/src/profile.rs`'s `BackendIdentity`.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+
+  # The two SDKs. Neither ships a lock file to a registry yet and neither is published, so these
+  # are dev-surface updates: they keep the suites `ci/sdk-suites.sh` runs from drifting out of
+  # support, and nothing they touch reaches an artifact.
+  - package-ecosystem: "npm"
+    directory: "/packages/node"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/python"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"

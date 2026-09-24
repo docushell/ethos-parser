@@ -152,7 +152,7 @@ boxes, which doc 22 refused.
 | Semver for byte-identical but source-breaking type changes: the `Arc` in `StructuralLocator::PdfTagged`, and `GeometryAbsence` growing without `#[non_exhaustive]` | Release policy |
 | `font_size` stays the raw `Tf` operand, and `advance` stays in its pre-rotation frame: keep, document, or change | Wire meaning |
 | The research memos in the root commit `f04c488`, reachable from public `main` and three immutable releases. Removal means rewriting every SHA | **Irreversible** either way |
-| Repository security settings: secret scanning, push protection and dependabot are off, and org-wide 2FA is not required | Settings |
+| Repository security settings. **Dependabot is done 2026-09-24** — it is a file, `.github/dependabot.yml`, and it arrived with the other half of the same problem: every third-party `uses:` in `.github/workflows/` was a mutable ref and all 48 are now pinned by SHA. **The remaining three are GitHub settings and cannot be changed from here**: secret scanning, push protection, and organisation-wide 2FA. All three are off on a PUBLIC repository | Settings, owner |
 
 ## 5. Ready now — no decision needed
 

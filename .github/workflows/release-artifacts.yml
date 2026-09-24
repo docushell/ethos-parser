@@ -145,7 +145,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.ref }}
 
@@ -153,7 +153,7 @@ jobs:
       # selects 1.88.0; the action only preinstalls it, and naming the version keeps the two in
       # agreement. No rust-cache: a release is built cold from the pinned lockfile, and this
       # workflow runs rarely.
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch, 2026-09-24
         with:
           toolchain: "1.88.0"
 
@@ -210,7 +210,7 @@ jobs:
       # Everything the script wrote: the tarball, the fingerprint of the binary inside it, this
       # runner's own SHA256SUMS.txt and the build log. `verify` consumes the first three.
       # `overwrite`, so re-running a leg does not fail on the name the first attempt uploaded.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: built-${{ matrix.target }}
           path: target/release-artifacts/
@@ -229,14 +229,14 @@ jobs:
       # from fixtures/gate and the version from Cargo.toml, so an upload built from a different
       # tree fails by name rather than assembling. No tag step here — every leg already refused
       # a tag that does not name this version, before it uploaded anything.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.ref }}
 
       # One directory per runner under dist/, which is the shape `--assemble` reads. The pattern
       # must not match `release-bundle`, or a re-run of this job would read its own last output
       # as a fifth runner.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: built-*
           path: dist
@@ -248,7 +248,7 @@ jobs:
       # then the `gh release create` line in docs/RELEASING.md §8 over dist/*.tar.gz and
       # dist/SHA256SUMS.txt. The fingerprints ride along so a locally built binary can be held to
       # the runners' bytes with `ci/release-artifacts.sh --fingerprint-only` and `diff`.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-bundle
           path: |
