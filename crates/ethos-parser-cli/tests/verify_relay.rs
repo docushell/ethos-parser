@@ -238,6 +238,47 @@ fn a_missing_verifier_is_a_named_failure_with_no_report() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **A verifier beside the working directory is not run.** `verify` resolved
+/// `<cwd>/../ethos/target/release/ethos` ahead of `PATH`, so whoever controlled a parent directory
+/// chose the program, and a planted script's output came back as the report.
+#[cfg(unix)]
+#[test]
+fn a_verifier_beside_the_working_directory_is_not_run() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch("planted");
+    let planted = dir.join("ethos/target/release/ethos");
+    let ran = dir.join("ran");
+    std::fs::create_dir_all(planted.parent().expect("a parent")).expect("planted dir");
+    std::fs::write(
+        &planted,
+        format!("#!/bin/sh\necho ran > '{}'\n", ran.display()),
+    )
+    .expect("planted");
+    std::fs::set_permissions(&planted, std::fs::Permissions::from_mode(0o755)).expect("mode");
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).expect("work dir");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .args(["verify", "grounding.json", "--citations", "citations.json"])
+        .current_dir(&work)
+        .env_remove("ETHOS_BIN")
+        // No `ethos` on this PATH, so the planted one is the only verifier within reach.
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("the engine binary runs");
+
+    assert!(!ran.exists(), "the planted verifier ran");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "no verifier is a named failure: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // -------------------------------------------------------------------------------------------
 // 2. The bytes are the verifier's
 // -------------------------------------------------------------------------------------------

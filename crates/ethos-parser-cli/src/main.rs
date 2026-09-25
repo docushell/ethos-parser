@@ -1194,9 +1194,9 @@ fn run_verify(args: VerifyArgs) -> ExitCode {
     // `ETHOS_BIN` is read here rather than in the library: which environment variable pins the
     // verifier is a property of how this tool is deployed, not of the relay.
     let explicit = std::env::var_os("ETHOS_BIN").map(PathBuf::from);
-    let repo_relative = std::env::current_dir().ok();
-
-    let binary = match VerifierBinary::resolve(explicit.as_deref(), repo_relative.as_deref()) {
+    // No working-directory sibling: a binary found by where the caller happens to stand is one
+    // anybody who controls a parent directory can plant. The pin or PATH, nothing else.
+    let binary = match VerifierBinary::resolve(explicit.as_deref(), None) {
         Ok(b) => b,
         // Exit 2 with nothing on stdout. A caller that got a report here would have one the
         // engine invented, which is the single outcome this subcommand exists to make impossible.

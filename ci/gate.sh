@@ -48,7 +48,9 @@
 #     candidate becomes `crates/ethos/target/release/ethos` and is never found. Nine tests in
 #     `html_cli`, `markdown_cli` and `verify_relay` therefore failed on every local run, for a
 #     reason unrelated to whatever the developer had changed. A gate that is red for everybody
-#     all the time is a gate people learn to skip.
+#     all the time is a gate people learn to skip. **Since 2026-09-25 the CLI passes no
+#     working directory at all**, so `ethos-parser verify` resolves `ETHOS_BIN` or `PATH` only:
+#     a binary found by where the caller stands is one anybody controlling a parent can plant.
 #
 #   * **The toolchain-pin tripwire** (`check` → "Assert the toolchain pin is in force"). It exists
 #     because a CI runner installs a toolchain from the workflow and could disagree with
