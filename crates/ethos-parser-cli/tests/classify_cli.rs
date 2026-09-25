@@ -131,6 +131,25 @@ fn exit_two_for_every_could_not_read_case() {
     }
 }
 
+/// **An artifact that could not be written exits 2, not 0.** Every subcommand discarded the result
+/// of its write to stdout, so a reader that had gone away saw exit 0 and no artifact. The pipe here
+/// is closed before the engine starts, so its write fails on every run.
+#[test]
+fn exit_two_when_stdout_is_closed() {
+    let (reader, writer) = std::io::pipe().expect("a pipe");
+    drop(reader);
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("extract")
+        .arg(repo_root().join("fixtures/engine/measured-ink-box/document.pdf"))
+        .stdout(writer)
+        .output()
+        .expect("the engine binary runs");
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(code(&out), 2, "stderr: {stderr}");
+    assert!(stderr.contains("writing to stdout"), "{stderr}");
+}
+
 #[test]
 fn stdout_is_byte_identical_across_runs() {
     let path = bench("nist-sp-800-63b.pdf");
