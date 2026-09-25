@@ -602,13 +602,10 @@ fn run_classify(args: ClassifyArgs) -> ExitCode {
 
     match &result {
         Ok(classification) => match classification.to_canonical_bytes() {
-            Ok(bytes) => {
-                let mut out = std::io::stdout().lock();
-                let _ = out.write_all(&bytes);
-                let _ = out.write_all(b"\n");
-                let _ = out.flush();
-                ExitCode::from(exit_code(&result) as u8)
-            }
+            Ok(bytes) => match write_stdout(&bytes, true) {
+                Ok(()) => ExitCode::from(exit_code(&result) as u8),
+                Err(e) => fail(&e),
+            },
             Err(e) => fail(&e),
         },
         Err(e) => fail(e),
@@ -631,12 +628,10 @@ fn run_overlay(args: OverlayArgs) -> ExitCode {
         });
 
     match result {
-        Ok(bytes) => {
-            let mut out = std::io::stdout().lock();
-            let _ = out.write_all(&bytes);
-            let _ = out.flush();
-            ExitCode::from(EXTRACTED as u8)
-        }
+        Ok(bytes) => match write_stdout(&bytes, false) {
+            Ok(()) => ExitCode::from(EXTRACTED as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -655,12 +650,10 @@ fn run_tag(args: TagArgs) -> ExitCode {
         .and_then(|doc| ethos_parser_pdf::write_tags(&doc, &profile));
 
     match result {
-        Ok(bytes) => {
-            let mut out = std::io::stdout().lock();
-            let _ = out.write_all(&bytes);
-            let _ = out.flush();
-            ExitCode::from(EXTRACTED as u8)
-        }
+        Ok(bytes) => match write_stdout(&bytes, false) {
+            Ok(()) => ExitCode::from(EXTRACTED as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -809,13 +802,10 @@ fn emit_representation(
 ) -> ExitCode {
     match result {
         Ok(artifact) => match artifact.to_canonical_bytes() {
-            Ok(bytes) => {
-                let mut out = std::io::stdout().lock();
-                let _ = out.write_all(&bytes);
-                let _ = out.write_all(b"\n");
-                let _ = out.flush();
-                ExitCode::from(EXTRACTED as u8)
-            }
+            Ok(bytes) => match write_stdout(&bytes, true) {
+                Ok(()) => ExitCode::from(EXTRACTED as u8),
+                Err(e) => fail(&e),
+            },
             Err(e) => fail(&e),
         },
         Err(e) => fail(&e),
@@ -913,15 +903,12 @@ fn run_locate(args: LocateArgs) -> ExitCode {
     };
 
     match found.to_canonical_bytes() {
-        Ok(out) => {
-            let mut stdout = std::io::stdout().lock();
-            let _ = stdout.write_all(&out);
-            let _ = stdout.write_all(b"\n");
-            let _ = stdout.flush();
+        Ok(out) => match write_stdout(&out, true) {
             // **Answered.** Not "found": an empty `occurrences` array is an answer, and there is
             // no other code for it.
-            ExitCode::from(PROJECTED as u8)
-        }
+            Ok(()) => ExitCode::from(PROJECTED as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -984,13 +971,10 @@ fn run_markdown(args: MarkdownArgs) -> ExitCode {
     };
 
     match artifact.to_canonical_bytes() {
-        Ok(out) => {
-            let mut stdout = std::io::stdout().lock();
-            let _ = stdout.write_all(&out);
-            let _ = stdout.write_all(b"\n");
-            let _ = stdout.flush();
-            ExitCode::from(PROJECTED as u8)
-        }
+        Ok(out) => match write_stdout(&out, true) {
+            Ok(()) => ExitCode::from(PROJECTED as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -1058,13 +1042,10 @@ fn run_html(args: HtmlArgs) -> ExitCode {
     };
 
     match artifact.to_canonical_bytes() {
-        Ok(out) => {
-            let mut stdout = std::io::stdout().lock();
-            let _ = stdout.write_all(&out);
-            let _ = stdout.write_all(b"\n");
-            let _ = stdout.flush();
-            ExitCode::from(PROJECTED as u8)
-        }
+        Ok(out) => match write_stdout(&out, true) {
+            Ok(()) => ExitCode::from(PROJECTED as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -1103,10 +1084,9 @@ fn run_ground(args: GroundArgs) -> ExitCode {
 
     match ethos_parser_grounding::to_canonical_bytes(&projection.source) {
         Ok(out) => {
-            let mut stdout = std::io::stdout().lock();
-            let _ = stdout.write_all(&out);
-            let _ = stdout.write_all(b"\n");
-            let _ = stdout.flush();
+            if let Err(e) = write_stdout(&out, true) {
+                return fail(&e);
+            }
 
             // On stderr, deliberately: stdout is the artifact and must stay byte-identical
             // across runs. A consumer that wants this durably reads the representation's
@@ -1196,13 +1176,10 @@ fn run_grounding_check(args: GroundingCheckArgs) -> ExitCode {
     };
 
     match report.to_canonical_bytes() {
-        Ok(bytes) => {
-            let mut out = std::io::stdout().lock();
-            let _ = out.write_all(&bytes);
-            let _ = out.write_all(b"\n");
-            let _ = out.flush();
-            ExitCode::from(report.exit_code() as u8)
-        }
+        Ok(bytes) => match write_stdout(&bytes, true) {
+            Ok(()) => ExitCode::from(report.exit_code() as u8),
+            Err(e) => fail(&e),
+        },
         Err(e) => fail(&e),
     }
 }
@@ -1217,9 +1194,9 @@ fn run_verify(args: VerifyArgs) -> ExitCode {
     // `ETHOS_BIN` is read here rather than in the library: which environment variable pins the
     // verifier is a property of how this tool is deployed, not of the relay.
     let explicit = std::env::var_os("ETHOS_BIN").map(PathBuf::from);
-    let repo_relative = std::env::current_dir().ok();
-
-    let binary = match VerifierBinary::resolve(explicit.as_deref(), repo_relative.as_deref()) {
+    // No working-directory sibling: a binary found by where the caller happens to stand is one
+    // anybody who controls a parent directory can plant. The pin or PATH, nothing else.
+    let binary = match VerifierBinary::resolve(explicit.as_deref(), None) {
         Ok(b) => b,
         // Exit 2 with nothing on stdout. A caller that got a report here would have one the
         // engine invented, which is the single outcome this subcommand exists to make impossible.
@@ -1242,9 +1219,9 @@ fn run_verify(args: VerifyArgs) -> ExitCode {
 
     // Verbatim, in both directions. The report goes to stdout because it is the artifact of this
     // subcommand; the verifier's own diagnostics go to stderr because they are its, not ours.
-    let mut out = std::io::stdout().lock();
-    let _ = out.write_all(&relayed.stdout);
-    let _ = out.flush();
+    if let Err(e) = write_stdout(&relayed.stdout, false) {
+        return fail(&e);
+    }
     if !relayed.stderr.is_empty() {
         let mut err = std::io::stderr().lock();
         let _ = err.write_all(&relayed.stderr);
@@ -1259,6 +1236,24 @@ fn run_verify(args: VerifyArgs) -> ExitCode {
 /// Deliberately not reusing `SIMPLE`: exit 0 means different things for the two subcommands, and
 /// naming them separately keeps that visible.
 const EXTRACTED: i32 = 0;
+
+/// Write an artifact to stdout, or say why it could not be written. A pipe closed early or a
+/// full disk leaves a truncated artifact behind, and exit 0 would call that a success.
+fn write_stdout(bytes: &[u8], newline: bool) -> Result<(), EngineError> {
+    let mut out = std::io::stdout().lock();
+    out.write_all(bytes)
+        .and_then(|()| {
+            if newline {
+                out.write_all(b"\n")
+            } else {
+                Ok(())
+            }
+        })
+        .and_then(|()| out.flush())
+        .map_err(|e| EngineError::Io {
+            detail: format!("writing to stdout: {e}"),
+        })
+}
 
 /// Report a failure on stderr and exit 2.
 ///

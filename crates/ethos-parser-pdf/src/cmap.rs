@@ -81,6 +81,20 @@ impl ToUnicode {
 
         let mut map = BTreeMap::new();
         let mut code_bytes = 1usize;
+        // Every `bfchar` entry and every code a `bfrange` covers, counted against one ceiling.
+        // The per-range cap below bounds one row; this bounds the rows.
+        const MAX_MAPPINGS: u64 = 1 << 20;
+        let mut mapped: u64 = 0;
+        let mut spend = |codes: u64| -> Result<(), EngineError> {
+            mapped = mapped.saturating_add(codes);
+            if mapped > MAX_MAPPINGS {
+                return Err(EngineError::ResourceLimit {
+                    limit: "ToUnicode mappings".into(),
+                    configured: MAX_MAPPINGS.to_string(),
+                });
+            }
+            Ok(())
+        };
         let mut i = 0;
 
         while i < tokens.len() {
@@ -105,6 +119,7 @@ impl ToUnicode {
                             return Err(malformed("bfchar entry is not a pair of hex strings"));
                         };
                         let code = hex_to_u32(&src_hex)?;
+                        spend(1)?;
                         map.insert(code, utf16be_hex_to_string(&dst_hex)?);
                         i += 2;
                     }
@@ -133,20 +148,31 @@ impl ToUnicode {
                                 configured: "65536".into(),
                             });
                         }
+                        spend(u64::from(hi - lo) + 1)?;
 
                         match tokens.get(i + 2) {
                             Some(t) if t == "[" => {
                                 // Per-code destinations, one array element each.
-                                let mut code = lo;
+                                let mut offset: u32 = 0;
                                 let mut j = i + 3;
                                 while j < tokens.len() && tokens[j] != "]" {
+                                    let code = lo
+                                        .checked_add(offset)
+                                        .filter(|c| *c <= hi)
+                                        .ok_or_else(|| {
+                                            malformed(
+                                                "bfrange array holds more destinations than its \
+                                                 range has codes",
+                                            )
+                                        })?;
                                     let Some(h) = hex_of(&tokens[j]) else {
                                         return Err(malformed(
                                             "bfrange array holds a non-hex entry",
                                         ));
                                     };
                                     map.insert(code, utf16be_hex_to_string(&h)?);
-                                    code += 1;
+                                    // At most `hi - lo + 1` ≤ 65 537 elements pass the check above.
+                                    offset += 1;
                                     j += 1;
                                 }
                                 i = j + 1;
@@ -374,6 +400,37 @@ end";
     fn a_non_hex_entry_is_still_refused_after_white_space_is_stripped() {
         let src = b"begincmap\nbeginbfchar\n<29><00zz>\nendbfchar\nendcmap";
         assert!(ToUnicode::parse(src).is_err());
+    }
+
+    /// **Every mapping counts against one ceiling.** The span cap bounds one `bfrange` row, and
+    /// nothing bounded the rows: seventeen of 65,536 codes each pass it, and together they are
+    /// past 2^20.
+    #[test]
+    fn mappings_past_the_ceiling_are_refused() {
+        let rows = "<0000> <FFFF> <D800DC00>\n".repeat(17);
+        let src = format!("begincmap\nbeginbfrange\n{rows}endbfrange\nendcmap");
+        let e = ToUnicode::parse(src.as_bytes()).expect_err("refused at the ceiling");
+        assert_eq!(e.code(), "resource_limit", "{e}");
+        assert!(e.to_string().contains("ToUnicode mappings"), "{e}");
+    }
+
+    /// **A `bfrange` array maps only the codes its range names.** An element past `hi` mapped
+    /// the code after it, and one past `0xFFFFFFFF` wrapped to code 0 in a release build.
+    #[test]
+    fn a_bfrange_array_maps_no_code_past_its_range() {
+        for row in [
+            "<01> <02> [<0041> <0042> <0043>]",
+            "<FFFFFFFF> <FFFFFFFF> [<0041> <0042>]",
+        ] {
+            let src = format!("begincmap\nbeginbfrange\n{row}\nendbfrange\nendcmap");
+            let e = ToUnicode::parse(src.as_bytes()).expect_err(row);
+            assert_eq!(e.code(), "malformed", "{e}");
+            assert!(
+                e.to_string()
+                    .contains("more destinations than its range has codes"),
+                "{e}"
+            );
+        }
     }
 
     /// One code, two scalars. This is the ligature caveat at its source.

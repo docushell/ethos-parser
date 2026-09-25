@@ -142,7 +142,24 @@ impl Document {
             });
         }
 
-        let pages: Vec<(u32, lopdf::ObjectId)> = inner.get_pages().into_iter().collect();
+        // An object stream that the cross-reference table itself lists as a compressed object is
+        // malformed (PDF 32000-1 §7.5.7 stores no stream inside an object stream), and lopdf
+        // 0.44.0's encrypted loader resolves that conflict in `HashMap` iteration order — so the
+        // same bytes could load as different objects in two runs. Refused before anything reads
+        // them. The unencrypted loader resolves it in cross-reference order and needs no guard.
+        if inner.was_encrypted() {
+            if let Some((object, container)) = nested_object_stream(&inner) {
+                return Err(EngineError::Malformed {
+                    what: "object stream".into(),
+                    detail: format!(
+                        "object {object} is stored in object stream {container}, which the \
+                         cross-reference table does not list as an uncompressed object"
+                    ),
+                });
+            }
+        }
+
+        let pages = walk_page_tree(&inner)?;
 
         Ok(Self {
             // **The ORIGINAL bytes**, deliberately, even after a repair. The artifact must bind
@@ -307,6 +324,108 @@ fn map_lopdf_error(e: lopdf::Error) -> EngineError {
             detail: other.to_string(),
         },
     }
+}
+
+/// The first compressed object whose container is not an uncompressed object, if any.
+fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
+    use lopdf::xref::XrefEntry;
+    let entries = &doc.reference_table.entries;
+    entries.iter().find_map(|(&object, entry)| match entry {
+        XrefEntry::Compressed { container, .. }
+            if !matches!(entries.get(container), Some(XrefEntry::Normal { .. })) =>
+        {
+            Some((object, *container))
+        }
+        _ => None,
+    })
+}
+
+/// A `/Pages` node's `/Kids`, or a refusal naming the node.
+fn kids_of(doc: &lopdf::Document, id: lopdf::ObjectId) -> Result<&[lopdf::Object], EngineError> {
+    doc.get_dictionary(id)
+        .and_then(|d| d.get_deref(b"Kids", doc))
+        .and_then(lopdf::Object::as_array)
+        .map(Vec::as_slice)
+        .map_err(|e| EngineError::Malformed {
+            what: "page tree".into(),
+            detail: format!("/Pages {} {} R has no /Kids array: {e}", id.0, id.1),
+        })
+}
+
+/// The pages the document's own tree lists, in the tree's order — refusing a tree that is not one.
+///
+/// `lopdf`'s `get_pages` keeps no visited set: a `/Kids` entry naming an ancestor or naming one
+/// page twice yields pages the document does not contain, bounded only by how many objects the
+/// file holds; and it skips, without a word, a kid that is neither `/Page` nor `/Pages`, a kid it
+/// could not load, and a `/Pages` node beneath 256 pending sibling lists. Each of those is a page
+/// count the artifact would state as `complete` while the document says otherwise. For a tree
+/// that is a tree, this is the same depth-first order and the same numbering.
+fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, EngineError> {
+    const MAX_DEPTH: usize = 256;
+    let malformed = |detail: String| EngineError::Malformed {
+        what: "page tree".into(),
+        detail,
+    };
+    let root = doc
+        .catalog()
+        .and_then(|c| c.get(b"Pages"))
+        .and_then(lopdf::Object::as_reference)
+        .map_err(|_| EngineError::MissingPart {
+            part: "/Pages".into(),
+        })?;
+    let mut seen = std::collections::BTreeSet::from([root]);
+    let mut pages = Vec::new();
+    let mut stack = vec![kids_of(doc, root)?.iter()];
+    while let Some(level) = stack.last_mut() {
+        let Some(kid) = level.next() else {
+            stack.pop();
+            continue;
+        };
+        let id = kid
+            .as_reference()
+            .map_err(|_| malformed("a /Kids entry is not an indirect reference".into()))?;
+        if !seen.insert(id) {
+            return Err(malformed(format!(
+                "object {} {} R is reached twice, so the page tree is not a tree",
+                id.0, id.1
+            )));
+        }
+        let dict = doc.get_dictionary(id).map_err(|e| {
+            malformed(format!(
+                "kid {} {} R did not load as a dictionary: {e}",
+                id.0, id.1
+            ))
+        })?;
+        let kind = dict
+            .get(b"Type")
+            .and_then(lopdf::Object::as_name)
+            .map_err(|_| {
+                malformed(format!(
+                    "kid {} {} R names no /Type, so it is neither /Page nor /Pages",
+                    id.0, id.1
+                ))
+            })?;
+        match kind {
+            b"Page" => {
+                let number = u32::try_from(pages.len() + 1)
+                    .map_err(|_| malformed("more pages than a u32 counts".into()))?;
+                pages.push((number, id));
+            }
+            b"Pages" if stack.len() < MAX_DEPTH => stack.push(kids_of(doc, id)?.iter()),
+            b"Pages" => {
+                return Err(malformed(format!("/Pages nests past {MAX_DEPTH} levels")));
+            }
+            other => {
+                return Err(malformed(format!(
+                    "kid {} {} R has /Type /{}, neither /Page nor /Pages",
+                    id.0,
+                    id.1,
+                    String::from_utf8_lossy(other)
+                )));
+            }
+        }
+    }
+    Ok(pages)
 }
 
 #[cfg(test)]

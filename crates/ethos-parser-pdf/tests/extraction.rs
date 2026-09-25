@@ -4401,6 +4401,41 @@ fn a_tail_lopdf_would_drop_is_refused_by_name() {
     assert!(message.contains("drops the remaining"), "{message}");
 }
 
+/// **A content stream `lopdf` did not load is refused by name.** Its lenient loader drops an
+/// object whose bytes do not parse, and the page loop skipped the reference that no longer
+/// resolved: one stray `)` in the stream's dictionary read as a blank page, `complete`. A
+/// reference the cross-reference table never listed is null (§7.3.10), and still draws nothing.
+#[test]
+fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
+    let page = |contents: &str, stream_dict: &str| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents {contents} >>")
+                .into_bytes(),
+            format!("<< /Length 3 {stream_dict}>>\nstream\nq Q\nendstream").into_bytes(),
+        ])
+    };
+    let dropped = page("4 0 R", "/X ) ");
+    assert!(
+        lopdf::Document::load_mem(&dropped)
+            .expect("lopdf loads the rest")
+            .get_object((4, 0))
+            .is_err(),
+        "the control: lopdf dropped the stream at load, without a word"
+    );
+
+    let e = extracted(&dropped).expect_err("refused, not read as a blank page");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string()
+            .starts_with("malformed content stream: page 1: /Contents names 4 0 R"),
+        "{e}"
+    );
+
+    extracted(&page("[4 0 R 5 0 R]", "")).expect("an object nothing defines is null");
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
@@ -4445,6 +4480,78 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
         runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
         ["Measured"]
     );
+}
+
+/// **A content stream whose filter does not decode is refused by name**, where `lopdf`'s
+/// `get_page_content` fell back to the stream's raw bytes: operators under `/ASCIIHexDecode`, a
+/// standard filter `lopdf` does not implement, or under a name no standard defines, read as text
+/// no viewer draws. A filter that decodes still reads: the whole-deflate control above.
+#[test]
+fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
+    let under = |filter: &str, content: &[u8]| {
+        let mut doc = lopdf::Document::load_mem(&with_content(content, None)).expect("loads");
+        let id = doc.get_page_contents(doc.get_pages()[&1])[0];
+        doc.get_object_mut(id)
+            .and_then(lopdf::Object::as_stream_mut)
+            .expect("the page's stream")
+            .dict
+            .set("Filter", filter);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    };
+    for filter in ["ASCIIHexDecode", "NoSuchDecode"] {
+        let e = extracted(&under(filter, MEASURED)).expect_err("refused, not read as raw bytes");
+        assert_eq!(e.code(), "unsupported", "{e}");
+        assert!(
+            e.to_string()
+                .contains(&format!("the filter chain [/{filter}] did not decode")),
+            "{e}"
+        );
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// A page tree that is not a tree is refused, not counted
+// -------------------------------------------------------------------------------------------
+
+/// **A `/Kids` array that names a page twice, names its own node, or names a kid of no type is
+/// refused.** `lopdf`'s `get_pages` keeps no visited set and skips a kid it cannot place, so the
+/// first two read as two pages of one, and the third as none — each a page count an artifact
+/// stated as `complete`.
+#[test]
+fn a_page_tree_that_is_not_a_tree_is_refused() {
+    for (kids, page_type, refusal, lopdf_pages) in [
+        (
+            "[3 0 R 3 0 R]",
+            "/Type /Page",
+            "object 3 0 R is reached twice",
+            2,
+        ),
+        (
+            "[3 0 R 2 0 R]",
+            "/Type /Page",
+            "object 2 0 R is reached twice",
+            2,
+        ),
+        ("[3 0 R]", "", "kid 3 0 R names no /Type", 0),
+    ] {
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            format!("<< /Type /Pages /Kids {kids} /Count 1 >>").into_bytes(),
+            format!("<< {page_type} /Parent 2 0 R /MediaBox [0 0 300 144] >>").into_bytes(),
+        ]);
+        let lenient = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+        assert_eq!(
+            lenient.get_pages().len(),
+            lopdf_pages,
+            "the control, for {kids}"
+        );
+
+        let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(refusal);
+        assert_eq!(e.code(), "malformed", "{e}");
+        assert!(e.to_string().contains(refusal), "{e}");
+    }
 }
 
 // -------------------------------------------------------------------------------------------
@@ -4536,6 +4643,63 @@ fn a_document_the_empty_user_password_opened_declares_it() {
             .contains(&ethos_parser_pdf::limitations::ENCRYPTED_EMPTY_USER_PASSWORD.to_string()),
         "{:?}",
         codes(&plain)
+    );
+}
+
+/// **An encrypted open whose object streams nest is refused.** `lopdf` 0.44.0's encrypted loader
+/// fills object streams in `HashMap` order, so where one object stream is stored in another —
+/// which PDF 32000-1 §7.5.7 forbids — which object a number resolves to depended on the run: a
+/// 1,157-byte file built that way gave two different artifacts over twenty. The cross-reference
+/// stream appended here lists object `n + 1` in object stream `n + 2`, and `n + 2` in a third. The
+/// fixture's own objects are untouched, so only the refusal stands between it and an artifact.
+#[test]
+fn an_encrypted_open_whose_object_streams_nest_is_refused() {
+    let mut bytes = encrypted_fixture("");
+    let loaded = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+    let root = loaded
+        .trailer
+        .get(b"Root")
+        .and_then(lopdf::Object::as_reference)
+        .expect("a /Root");
+    let encrypt = loaded
+        .encryption_state
+        .as_ref()
+        .and_then(lopdf::EncryptionState::encrypt_object_id)
+        .expect("an /Encrypt dictionary");
+    let n = loaded.max_id + 1;
+    // Two `/W [1 4 1]` rows of type 2, each naming its container.
+    let rows: Vec<u8> = [n + 2, n + 3]
+        .iter()
+        .flat_map(|container| [&[2][..], &container.to_be_bytes(), &[0]].concat())
+        .collect();
+    let at = bytes.len();
+    // The `/ID` is the one `encrypted_fixture` fixes, which the key derivation reads.
+    let dict = format!(
+        "<< /Type /XRef /Size {} /Index [{} 2] /W [1 4 1] /Root {} {} R /Encrypt {} {} R \
+         /ID [(0123456789abcdef) (0123456789abcdef)] /Prev {} /Length {} >>",
+        n + 3,
+        n + 1,
+        root.0,
+        root.1,
+        encrypt.0,
+        encrypt.1,
+        loaded.xref_start,
+        rows.len()
+    );
+    bytes.extend_from_slice(format!("{n} 0 obj\n{dict}\nstream\n").as_bytes());
+    bytes.extend_from_slice(&rows);
+    bytes.extend_from_slice(format!("\nendstream\nendobj\nstartxref\n{at}\n%%EOF\n").as_bytes());
+
+    let e = Document::open_bytes(&bytes, &Profile::default())
+        .expect_err("refused, not read in hash order");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string().contains(&format!(
+            "object {} is stored in object stream {}",
+            n + 1,
+            n + 2
+        )),
+        "{e}"
     );
 }
 
