@@ -2099,8 +2099,23 @@ pub(crate) fn page_operations(
     page_id: lopdf::ObjectId,
 ) -> Result<Vec<lopdf::content::Operation>, EngineError> {
     for id in doc.get_page_contents(page_id) {
-        let Ok(stream) = doc.get_object(id).and_then(lopdf::Object::as_stream) else {
-            continue;
+        let stream = match doc.get_object(id) {
+            Ok(lopdf::Object::Stream(stream)) => stream,
+            // No in-use cross-reference entry: an undefined object, which PDF 32000-1 §7.3.10
+            // reads as null. This entry draws nothing, and that is what the page says.
+            Err(_) if !in_use(doc, id) => continue,
+            // Listed and not loadable, or not a stream: the page draws something this reader
+            // cannot read, and an empty page in its place would be a read nobody made.
+            _ => {
+                return Err(EngineError::Malformed {
+                    what: "content stream".into(),
+                    detail: format!(
+                        "page {page_number}: /Contents names {} {} R, which the cross-reference \
+                         table lists but which did not load as a stream",
+                        id.0, id.1
+                    ),
+                })
+            }
         };
         let flate_first = stream
             .filters()
@@ -2130,6 +2145,15 @@ pub(crate) fn page_operations(
         })?;
     crate::tagging::agrees_with_lopdf(&tokens, &decoded.operations).map_err(on_page)?;
     Ok(decoded.operations)
+}
+
+/// Whether the cross-reference table lists `id` as an object in use.
+fn in_use(doc: &lopdf::Document, id: lopdf::ObjectId) -> bool {
+    use lopdf::xref::XrefEntry;
+    matches!(
+        doc.reference_table.entries.get(&id.0),
+        Some(XrefEntry::Normal { .. } | XrefEntry::Compressed { .. })
+    )
 }
 
 fn quantize_err(_: ethos_parser_core::QuantizeError) -> EngineError {

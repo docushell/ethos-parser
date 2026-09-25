@@ -4401,6 +4401,41 @@ fn a_tail_lopdf_would_drop_is_refused_by_name() {
     assert!(message.contains("drops the remaining"), "{message}");
 }
 
+/// **A content stream `lopdf` did not load is refused by name.** Its lenient loader drops an
+/// object whose bytes do not parse, and the page loop skipped the reference that no longer
+/// resolved: one stray `)` in the stream's dictionary read as a blank page, `complete`. A
+/// reference the cross-reference table never listed is null (§7.3.10), and still draws nothing.
+#[test]
+fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
+    let page = |contents: &str, stream_dict: &str| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents {contents} >>")
+                .into_bytes(),
+            format!("<< /Length 3 {stream_dict}>>\nstream\nq Q\nendstream").into_bytes(),
+        ])
+    };
+    let dropped = page("4 0 R", "/X ) ");
+    assert!(
+        lopdf::Document::load_mem(&dropped)
+            .expect("lopdf loads the rest")
+            .get_object((4, 0))
+            .is_err(),
+        "the control: lopdf dropped the stream at load, without a word"
+    );
+
+    let e = extracted(&dropped).expect_err("refused, not read as a blank page");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string()
+            .starts_with("malformed content stream: page 1: /Contents names 4 0 R"),
+        "{e}"
+    );
+
+    extracted(&page("[4 0 R 5 0 R]", "")).expect("an object nothing defines is null");
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
