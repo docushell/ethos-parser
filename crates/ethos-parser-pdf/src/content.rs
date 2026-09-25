@@ -1002,7 +1002,7 @@ fn distinct(values: impl Iterator<Item = f64>) -> Vec<f64> {
             out.push(v);
         }
     }
-    out.sort_by(|a, b| a.partial_cmp(b).expect("path coordinates are finite"));
+    out.sort_by(f64::total_cmp);
     out
 }
 
@@ -1131,6 +1131,22 @@ mod tests {
             i.shown.is_empty(),
             "no partial output may survive a fail-closed parse"
         );
+    }
+
+    /// **A NaN path coordinate is sorted, not a panic.** Nine `1e38` scalings overflow the CTM to
+    /// infinity, and a point at the origin then maps to `0 × ∞`, NaN on both axes. The rectangle
+    /// test sorted those with `partial_cmp(..).expect(..)`, and under the release profile's
+    /// `panic = "abort"` one page ended the process.
+    #[test]
+    fn a_nan_path_coordinate_is_not_a_panic() {
+        let scale = format!("1{}.0 0 0 1 0 0 cm ", "0".repeat(38));
+        let fonts = no_fonts();
+        let mut i = Interpreter::new(&fonts);
+        i.run(&ops(&format!(
+            "{}0 0 m 0 0 l 0 0 l 0 0 l S",
+            scale.repeat(9)
+        )))
+        .expect("a path at a NaN point is still a path");
     }
 
     /// A usable font, so a test can actually reach the show-text path.
