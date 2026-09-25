@@ -4482,6 +4482,35 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
     );
 }
 
+/// **A content stream whose filter does not decode is refused by name**, where `lopdf`'s
+/// `get_page_content` fell back to the stream's raw bytes: operators under `/ASCIIHexDecode`, a
+/// standard filter `lopdf` does not implement, or under a name no standard defines, read as text
+/// no viewer draws. A filter that decodes still reads: the whole-deflate control above.
+#[test]
+fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
+    let under = |filter: &str, content: &[u8]| {
+        let mut doc = lopdf::Document::load_mem(&with_content(content, None)).expect("loads");
+        let id = doc.get_page_contents(doc.get_pages()[&1])[0];
+        doc.get_object_mut(id)
+            .and_then(lopdf::Object::as_stream_mut)
+            .expect("the page's stream")
+            .dict
+            .set("Filter", filter);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    };
+    for filter in ["ASCIIHexDecode", "NoSuchDecode"] {
+        let e = extracted(&under(filter, MEASURED)).expect_err("refused, not read as raw bytes");
+        assert_eq!(e.code(), "unsupported", "{e}");
+        assert!(
+            e.to_string()
+                .contains(&format!("the filter chain [/{filter}] did not decode")),
+            "{e}"
+        );
+    }
+}
+
 // -------------------------------------------------------------------------------------------
 // A page tree that is not a tree is refused, not counted
 // -------------------------------------------------------------------------------------------

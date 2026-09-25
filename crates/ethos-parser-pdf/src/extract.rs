@@ -2098,6 +2098,7 @@ pub(crate) fn page_operations(
     page_number: u32,
     page_id: lopdf::ObjectId,
 ) -> Result<Vec<lopdf::content::Operation>, EngineError> {
+    let mut content = Vec::new();
     for id in doc.get_page_contents(page_id) {
         let stream = match doc.get_object(id) {
             Ok(lopdf::Object::Stream(stream)) => stream,
@@ -2117,10 +2118,18 @@ pub(crate) fn page_operations(
                 })
             }
         };
-        let flate_first = stream
-            .filters()
-            .is_ok_and(|filters| filters.first().is_some_and(|f| f == b"FlateDecode"));
-        if flate_first {
+        let refuse_filter = |detail: String| EngineError::Unsupported {
+            what: "content stream filter".into(),
+            detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
+        };
+        let filters = if stream.dict.get(b"Filter").is_ok() {
+            stream.filters().map_err(|e| {
+                refuse_filter(format!("/Filter is not a name or an array of names: {e}"))
+            })?
+        } else {
+            Vec::new()
+        };
+        if filters.first().is_some_and(|f| *f == b"FlateDecode") {
             crate::tagging::deflate_reaches_its_end(&stream.content).map_err(|detail| {
                 EngineError::Malformed {
                     what: "content stream".into(),
@@ -2128,8 +2137,22 @@ pub(crate) fn page_operations(
                 }
             })?;
         }
+        // Decoded here rather than through `get_page_content`, whose fallback for a filter it
+        // cannot decode is the stream's raw bytes: text the stream's own filter says is not there.
+        let bytes = stream.decompressed_content().map_err(|_| {
+            let chain: Vec<String> = filters
+                .iter()
+                .map(|f| format!("/{}", String::from_utf8_lossy(f)))
+                .collect();
+            refuse_filter(format!(
+                "the filter chain [{}] did not decode, and its raw bytes are not what the \
+                 page draws",
+                chain.join(" ")
+            ))
+        })?;
+        content.extend_from_slice(&bytes);
+        content.push(b'\n');
     }
-    let content = doc.get_page_content(page_id);
     let on_page = |e: EngineError| match e {
         EngineError::Unsupported { what, detail } => EngineError::Unsupported {
             what,
