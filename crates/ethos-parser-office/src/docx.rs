@@ -187,6 +187,18 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
             }
             Ok(Event::Eof) => break,
 
+            // A self-closing `<w:p/>` or `<w:r/>` is still an element in the file, and the
+            // ordinals count elements in the file. Written `<w:p></w:p>` the same paragraph
+            // counted, so without this a locator depended on how the XML was serialized.
+            Ok(Event::Empty(empty)) => match local_name(empty.name().as_ref()) {
+                b"p" => {
+                    paragraph += 1;
+                    run_in_paragraph = 0;
+                }
+                b"r" => run_in_paragraph += 1,
+                _ => {}
+            },
+
             Ok(Event::Start(start)) => {
                 depth += 1;
                 let qualified = start.name();
@@ -361,6 +373,27 @@ mod tests {
             runs[1].space_preserved,
             "the attribute is read, not guessed"
         );
+    }
+
+    /// **A self-closing `<w:p/>` or `<w:r/>` counts.** Only a start tag advanced the ordinals, so
+    /// an empty paragraph or run written short moved every later address, and two serializations
+    /// of one document cited the same text at different places.
+    #[test]
+    fn a_self_closing_paragraph_or_run_still_counts() {
+        let long = r#"<w:document xmlns:w="x"><w:body><w:p></w:p>
+            <w:p><w:r></w:r><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>"#;
+        let short = r#"<w:document xmlns:w="x"><w:body><w:p/>
+            <w:p><w:r/><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>"#;
+        let addresses = |xml: &str| {
+            read_runs(xml.as_bytes())
+                .expect("well-formed")
+                .runs
+                .iter()
+                .map(|r| (r.text.clone(), r.paragraph, r.run))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(addresses(long), [("kept".to_string(), 2, 2)]);
+        assert_eq!(addresses(short), addresses(long));
     }
 
     #[test]
