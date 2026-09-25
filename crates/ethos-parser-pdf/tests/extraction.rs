@@ -4483,6 +4483,49 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
 }
 
 // -------------------------------------------------------------------------------------------
+// A page tree that is not a tree is refused, not counted
+// -------------------------------------------------------------------------------------------
+
+/// **A `/Kids` array that names a page twice, names its own node, or names a kid of no type is
+/// refused.** `lopdf`'s `get_pages` keeps no visited set and skips a kid it cannot place, so the
+/// first two read as two pages of one, and the third as none — each a page count an artifact
+/// stated as `complete`.
+#[test]
+fn a_page_tree_that_is_not_a_tree_is_refused() {
+    for (kids, page_type, refusal, lopdf_pages) in [
+        (
+            "[3 0 R 3 0 R]",
+            "/Type /Page",
+            "object 3 0 R is reached twice",
+            2,
+        ),
+        (
+            "[3 0 R 2 0 R]",
+            "/Type /Page",
+            "object 2 0 R is reached twice",
+            2,
+        ),
+        ("[3 0 R]", "", "kid 3 0 R names no /Type", 0),
+    ] {
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            format!("<< /Type /Pages /Kids {kids} /Count 1 >>").into_bytes(),
+            format!("<< {page_type} /Parent 2 0 R /MediaBox [0 0 300 144] >>").into_bytes(),
+        ]);
+        let lenient = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+        assert_eq!(
+            lenient.get_pages().len(),
+            lopdf_pages,
+            "the control, for {kids}"
+        );
+
+        let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(refusal);
+        assert_eq!(e.code(), "malformed", "{e}");
+        assert!(e.to_string().contains(refusal), "{e}");
+    }
+}
+
+// -------------------------------------------------------------------------------------------
 // A document the empty user password opened says so (decision #31)
 // -------------------------------------------------------------------------------------------
 
