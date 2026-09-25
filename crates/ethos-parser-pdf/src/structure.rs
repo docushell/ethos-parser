@@ -281,12 +281,18 @@ pub fn read(doc: &lopdf::Document) -> Result<Option<StructureTree>, EngineError>
     let class_map = read_class_map(doc, root);
 
     let mut tree = StructureTree::default();
+    // A shared child reached through N sibling references is walked N times, so a DAG of depth L
+    // costs N^L with no cycle for `on_path` to catch. Four resolutions per object in the file,
+    // plus slack, never binds on a tree, where each element is resolved once.
+    let visit_budget = doc.objects.len().saturating_mul(4).saturating_add(1024);
     let mut walker = Walker {
         doc,
         role_map: &role_map,
         class_map: &class_map,
         tree: &mut tree,
         on_path: BTreeSet::new(),
+        visits_left: visit_budget,
+        visit_budget,
         tables: Vec::new(),
         cells: Vec::new(),
     };
@@ -376,6 +382,10 @@ struct Walker<'a> {
     tree: &'a mut StructureTree,
     /// Object ids on the current path. A child that points back at one of them is a cycle.
     on_path: BTreeSet<ObjectId>,
+    /// Indirect references this walk may still resolve before it is refused as unbounded.
+    visits_left: usize,
+    /// The budget `visits_left` started from, for the refusal's message.
+    visit_budget: usize,
     /// Tables currently open, innermost last. A table nested in a cell is a different table.
     tables: Vec<TableCtx>,
     /// Cells currently open, innermost last, as `(table index, cell index)` (v1-S7b).
@@ -435,6 +445,13 @@ impl Walker<'_> {
                 Ok(())
             }
             Object::Reference(id) => {
+                let Some(left) = self.visits_left.checked_sub(1) else {
+                    return Err(EngineError::ResourceLimit {
+                        limit: "structure tree references resolved".into(),
+                        configured: self.visit_budget.to_string(),
+                    });
+                };
+                self.visits_left = left;
                 if !self.on_path.insert(*id) {
                     return Err(EngineError::Malformed {
                         what: "structure tree".into(),
@@ -1150,6 +1167,34 @@ mod tests {
                  not independent of one built from boxes"
             );
         }
+    }
+
+    /// **A subtree shared by sibling references is refused, not walked once per path.**
+    /// `on_path` catches a cycle and not a DAG: an element named ten times by each of five
+    /// levels was walked 10^5 times, and at seven levels 4.9 s. The budget refuses it by name.
+    #[test]
+    fn a_shared_subtree_is_refused_rather_than_walked_once_per_path() {
+        use lopdf::{dictionary, Object};
+
+        let mut doc = lopdf::Document::with_version("1.7");
+        let mut element = doc.add_object(dictionary! { "Type" => "StructElem", "S" => "P" });
+        for _ in 0..5 {
+            element = doc.add_object(dictionary! {
+                "Type" => "StructElem",
+                "S" => "Div",
+                "K" => vec![Object::Reference(element); 10],
+            });
+        }
+        let root = doc.add_object(dictionary! { "Type" => "StructTreeRoot", "K" => element });
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "StructTreeRoot" => root });
+        doc.trailer.set("Root", catalog);
+
+        let e = super::read(&doc).expect_err("refused, not walked 10^5 times");
+        assert_eq!(e.code(), "resource_limit", "{e}");
+        assert!(
+            e.to_string().contains("structure tree references resolved"),
+            "{e}"
+        );
     }
 
     /// **A tagged cell claims the marked content the tree puts under it** (v1-S7b).
