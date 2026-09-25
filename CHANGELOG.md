@@ -3,18 +3,18 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Seven versions are tagged, 0.55.0 through 0.61.0, and four of them carry binaries.** 0.55.0,
-0.56.0
-and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub Release
-([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it ships:**
-Linux, Windows and both macOS architectures, one fingerprint across four runners, delivered as the
-single `release-bundle.zip` its own notes tell a reader to unzip. **0.58.0 and 0.59.0 are tags with
-no release object**, and little is lost by that: 0.60.0 descends from both, so their work is in the
-binaries above, and a reader who needs one of those two exactly builds it from its tag under the
-pinned toolchain. **0.61.0 is a tag with no release object either**, and for a different reason
-than those two: its push builds the same four targets, but turning that into a Release is a
-separate deliberate act ([`RELEASING.md`](docs/RELEASING.md) §6) that has not been taken. Every
-earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
+**Seven versions are tagged, 0.55.0 through 0.61.0, and five of them carry binaries.** 0.55.0,
+0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
+Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
+ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
+delivered, unfortunately, as the single `release-bundle.zip` its own notes tell a reader to unzip.
+**0.61.0 is the first to ship those four as five separate assets** — the four archives and
+`SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
+instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.58.0 and
+0.59.0 are tags with no release object**, and little is lost by that: 0.60.0 descends from both, so
+their work is in the binaries above, and a reader who needs one of those two exactly builds it from
+its tag under the pinned toolchain. Every earlier number is in-tree only. Nothing is on crates.io,
+npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
