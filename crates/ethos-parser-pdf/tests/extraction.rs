@@ -4539,6 +4539,63 @@ fn a_document_the_empty_user_password_opened_declares_it() {
     );
 }
 
+/// **An encrypted open whose object streams nest is refused.** `lopdf` 0.44.0's encrypted loader
+/// fills object streams in `HashMap` order, so where one object stream is stored in another —
+/// which PDF 32000-1 §7.5.7 forbids — which object a number resolves to depended on the run: a
+/// 1,157-byte file built that way gave two different artifacts over twenty. The cross-reference
+/// stream appended here lists object `n + 1` in object stream `n + 2`, and `n + 2` in a third. The
+/// fixture's own objects are untouched, so only the refusal stands between it and an artifact.
+#[test]
+fn an_encrypted_open_whose_object_streams_nest_is_refused() {
+    let mut bytes = encrypted_fixture("");
+    let loaded = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+    let root = loaded
+        .trailer
+        .get(b"Root")
+        .and_then(lopdf::Object::as_reference)
+        .expect("a /Root");
+    let encrypt = loaded
+        .encryption_state
+        .as_ref()
+        .and_then(lopdf::EncryptionState::encrypt_object_id)
+        .expect("an /Encrypt dictionary");
+    let n = loaded.max_id + 1;
+    // Two `/W [1 4 1]` rows of type 2, each naming its container.
+    let rows: Vec<u8> = [n + 2, n + 3]
+        .iter()
+        .flat_map(|container| [&[2][..], &container.to_be_bytes(), &[0]].concat())
+        .collect();
+    let at = bytes.len();
+    // The `/ID` is the one `encrypted_fixture` fixes, which the key derivation reads.
+    let dict = format!(
+        "<< /Type /XRef /Size {} /Index [{} 2] /W [1 4 1] /Root {} {} R /Encrypt {} {} R \
+         /ID [(0123456789abcdef) (0123456789abcdef)] /Prev {} /Length {} >>",
+        n + 3,
+        n + 1,
+        root.0,
+        root.1,
+        encrypt.0,
+        encrypt.1,
+        loaded.xref_start,
+        rows.len()
+    );
+    bytes.extend_from_slice(format!("{n} 0 obj\n{dict}\nstream\n").as_bytes());
+    bytes.extend_from_slice(&rows);
+    bytes.extend_from_slice(format!("\nendstream\nendobj\nstartxref\n{at}\n%%EOF\n").as_bytes());
+
+    let e = Document::open_bytes(&bytes, &Profile::default())
+        .expect_err("refused, not read in hash order");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string().contains(&format!(
+            "object {} is stored in object stream {}",
+            n + 1,
+            n + 2
+        )),
+        "{e}"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // A dropped run still advances the pen (doc 22 amendments, OPEN-WORK §6)
 // -------------------------------------------------------------------------------------------

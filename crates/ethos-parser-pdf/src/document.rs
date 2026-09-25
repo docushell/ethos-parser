@@ -142,6 +142,23 @@ impl Document {
             });
         }
 
+        // An object stream that the cross-reference table itself lists as a compressed object is
+        // malformed (PDF 32000-1 §7.5.7 stores no stream inside an object stream), and lopdf
+        // 0.44.0's encrypted loader resolves that conflict in `HashMap` iteration order — so the
+        // same bytes could load as different objects in two runs. Refused before anything reads
+        // them. The unencrypted loader resolves it in cross-reference order and needs no guard.
+        if inner.was_encrypted() {
+            if let Some((object, container)) = nested_object_stream(&inner) {
+                return Err(EngineError::Malformed {
+                    what: "object stream".into(),
+                    detail: format!(
+                        "object {object} is stored in object stream {container}, which the \
+                         cross-reference table does not list as an uncompressed object"
+                    ),
+                });
+            }
+        }
+
         let pages: Vec<(u32, lopdf::ObjectId)> = inner.get_pages().into_iter().collect();
 
         Ok(Self {
@@ -307,6 +324,20 @@ fn map_lopdf_error(e: lopdf::Error) -> EngineError {
             detail: other.to_string(),
         },
     }
+}
+
+/// The first compressed object whose container is not an uncompressed object, if any.
+fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
+    use lopdf::xref::XrefEntry;
+    let entries = &doc.reference_table.entries;
+    entries.iter().find_map(|(&object, entry)| match entry {
+        XrefEntry::Compressed { container, .. }
+            if !matches!(entries.get(container), Some(XrefEntry::Normal { .. })) =>
+        {
+            Some((object, *container))
+        }
+        _ => None,
+    })
 }
 
 #[cfg(test)]
