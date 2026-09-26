@@ -4482,24 +4482,26 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
     );
 }
 
+/// `with_content(stream, None)` with `/Filter` set to `filter` over the stream's bytes as written.
+fn under(filter: impl Into<lopdf::Object>, stream: &[u8]) -> Vec<u8> {
+    let mut doc = lopdf::Document::load_mem(&with_content(stream, None)).expect("loads");
+    let id = doc.get_page_contents(doc.get_pages()[&1])[0];
+    doc.get_object_mut(id)
+        .and_then(lopdf::Object::as_stream_mut)
+        .expect("the page's stream")
+        .dict
+        .set("Filter", filter);
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
 /// **A content stream whose filter does not decode is refused by name**, where `lopdf`'s
 /// `get_page_content` fell back to the stream's raw bytes: operators under `/ASCIIHexDecode`, a
 /// standard filter `lopdf` does not implement, or under a name no standard defines, read as text
 /// no viewer draws. A filter that decodes still reads: the whole-deflate control above.
 #[test]
 fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
-    let under = |filter: &str, content: &[u8]| {
-        let mut doc = lopdf::Document::load_mem(&with_content(content, None)).expect("loads");
-        let id = doc.get_page_contents(doc.get_pages()[&1])[0];
-        doc.get_object_mut(id)
-            .and_then(lopdf::Object::as_stream_mut)
-            .expect("the page's stream")
-            .dict
-            .set("Filter", filter);
-        let mut out = Vec::new();
-        doc.save_to(&mut out).expect("saves");
-        out
-    };
     for filter in ["ASCIIHexDecode", "NoSuchDecode"] {
         let e = extracted(&under(filter, MEASURED)).expect_err("refused, not read as raw bytes");
         assert_eq!(e.code(), "unsupported", "{e}");
@@ -4509,6 +4511,18 @@ fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
             "{e}"
         );
     }
+}
+
+/// **An empty filter array is no filter** (review 2026-09-26 N09): the stream's own bytes are the
+/// page, as Ghostscript and qpdf read them. `lopdf` decodes an empty chain to no bytes at all, and
+/// the page read as blank and `complete`.
+#[test]
+fn an_empty_filter_array_reads_the_streams_own_bytes() {
+    let a = extracted(&under(lopdf::Object::Array(Vec::new()), MEASURED)).expect("reads");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Measured"]
+    );
 }
 
 // -------------------------------------------------------------------------------------------

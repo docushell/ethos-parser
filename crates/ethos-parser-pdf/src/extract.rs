@@ -2139,7 +2139,13 @@ pub(crate) fn page_operations(
         }
         // Decoded here rather than through `get_page_content`, whose fallback for a filter it
         // cannot decode is the stream's raw bytes: text the stream's own filter says is not there.
-        let bytes = stream.decompressed_content().map_err(|_| {
+        // An empty chain is no filter, so the stream's own bytes, which `lopdf` decodes to none.
+        let decoded = if filters.is_empty() {
+            Ok(stream.content.clone())
+        } else {
+            stream.decompressed_content()
+        };
+        let bytes = decoded.map_err(|_| {
             let chain: Vec<String> = filters
                 .iter()
                 .map(|f| format!("/{}", String::from_utf8_lossy(f)))
