@@ -1228,7 +1228,8 @@ impl PageCounters {
 /// - [`EngineError::Unsupported`] — an operator outside PDF 32000-1 Table A.1, or a character
 ///   code this profile cannot decode. **Fails closed**: a skipped operator can move or delete
 ///   text, and a substituted character is a character the document does not contain.
-/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure.
+/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure; or
+///   a `profile` whose `xref_repair` is not the one `doc` was opened under.
 /// - [`EngineError::MissingPart`] — a font resource a `Tf` refers to is absent.
 pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, EngineError> {
     extract_with_positions(doc, profile).map(|(artifact, _)| artifact)
@@ -1253,6 +1254,16 @@ pub(crate) fn extract_with_positions(
             what: "profile".into(),
             detail: e.to_string(),
         })?;
+    // The open decided whether the cross-reference repair could run, so an artifact must not
+    // name a profile that would have refused the document it describes.
+    if doc.opened_under() != profile.xref_repair {
+        return Err(EngineError::Malformed {
+            what: "profile".into(),
+            detail: "the document was opened under a different `xref_repair` than this profile \
+                     names; open and extract under one profile"
+                .into(),
+        });
+    }
 
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());

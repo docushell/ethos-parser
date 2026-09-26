@@ -48,12 +48,32 @@ pub const PROCESSOR_NAME: &str = "ethos-parser";
 ///
 /// [`EngineError::Malformed`] if the artifact will not satisfy the representation's structural
 /// invariants — most usefully, if a **measured box falls outside its page**, which means the
-/// measurement or the coordinate transform is wrong and is refused rather than clamped.
+/// measurement or the coordinate transform is wrong and is refused rather than clamped — or if
+/// `profile` is not the profile the extract was made under.
 /// [`EngineError::ResourceLimit`] if id allocation overflows.
 pub fn to_representation(
     extract: &ExtractArtifact,
     profile: &Profile,
 ) -> Result<DocumentRepresentation, EngineError> {
+    // The record's identity comes from the extract and its backend from `profile`: the two must
+    // be one profile, or the sealed record describes a run nobody made.
+    let named = profile
+        .profile_sha256()
+        .map_err(|e| EngineError::Malformed {
+            what: "profile".into(),
+            detail: e.to_string(),
+        })?;
+    if named != extract.identity.profile_sha256 {
+        return Err(EngineError::Malformed {
+            what: "profile".into(),
+            detail: format!(
+                "the extract was made under {} and this call names {}; a representation is \
+                 sealed under the profile that produced its extract",
+                extract.identity.profile_sha256.as_str(),
+                named.as_str()
+            ),
+        });
+    }
     let mut alloc = IdAllocator::new(extract.identity.profile_sha256.clone());
 
     let mut pages = Vec::with_capacity(extract.pages.len());

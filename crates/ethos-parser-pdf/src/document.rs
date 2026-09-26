@@ -47,6 +47,9 @@ pub struct Document {
     /// declare it; a repaired open that produced an artifact indistinguishable from an
     /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
     xref_entries_padded: Option<u32>,
+    /// The `xref_repair` this document was opened under, which decided whether the repair could
+    /// run. `extract` refuses a profile naming another (review 2026-09-26 N55).
+    opened_under: ethos_parser_core::XrefRepair,
     /// Whether the backend decrypted this document with the empty user password at load.
     ///
     /// `lopdf` authenticates the empty password itself, decrypts every object and removes
@@ -184,6 +187,7 @@ impl Document {
             opened_encrypted: inner.was_encrypted(),
             inner,
             xref_entries_padded,
+            opened_under: profile.xref_repair,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
         })
     }
@@ -253,6 +257,11 @@ impl Document {
         // wrong with it and the original error is still the honest answer.
         let doc = lopdf::Document::load_mem(&repair.bytes).ok()?;
         Some((doc, repair.entries_padded))
+    }
+
+    /// The `xref_repair` this document was opened under.
+    pub(crate) fn opened_under(&self) -> ethos_parser_core::XrefRepair {
+        self.opened_under
     }
 
     /// How many cross-reference entries the bounded repair padded, or `None` if it did not run.

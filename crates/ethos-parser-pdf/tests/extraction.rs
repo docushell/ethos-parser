@@ -791,6 +791,37 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
     );
 }
 
+/// **One profile from the open to the representation** (review 2026-09-26 N55). The open decides
+/// whether the repair runs, so the hostile document opened under it and extracted under a profile
+/// that refuses it named the refusing profile while carrying `xref-entry-padded`. And
+/// `to_representation` took the record's identity from the extract and its backend from its own
+/// argument, so the sealed record could describe a run nobody made.
+#[test]
+fn the_library_binds_one_profile_from_open_to_representation() {
+    let repairs = Profile::default();
+    let refuses = Profile {
+        xref_repair: ethos_parser_core::XrefRepair::Refuse,
+        ..Profile::default()
+    };
+    let doc = Document::open(
+        &conformance("synthetic/table-regular-grid/document.pdf"),
+        &repairs,
+    )
+    .expect("repaired");
+    let e = ethos_parser_pdf::extract(&doc, &refuses).expect_err("not under a refusing profile");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(e.to_string().contains("`xref_repair`"), "{e}");
+
+    let extract = ethos_parser_pdf::extract(&doc, &repairs).expect("one profile");
+    let budget = Profile {
+        page_budget: ethos_parser_core::PageBudget::AtMost(1),
+        ..Profile::default()
+    };
+    let e = ethos_parser_pdf::to_representation(&extract, &budget).expect_err("another profile");
+    assert_eq!(e.code(), "malformed", "{e}");
+    ethos_parser_pdf::to_representation(&extract, &repairs).expect("its own profile");
+}
+
 // -------------------------------------------------------------------------------------------
 // 10. Determinism
 // -------------------------------------------------------------------------------------------
