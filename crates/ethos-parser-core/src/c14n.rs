@@ -274,9 +274,42 @@ pub(crate) fn canonical_bytes_into<T: serde::Serialize + ?Sized>(
     value: &T,
     out: &mut Vec<u8>,
 ) -> Result<(), C14nError> {
+    canonical_bytes_with(value, out, &mut Work::default())
+}
+
+/// [`canonical_bytes_into`] with the caller's [`Work`], so a caller canonicalizing many values
+/// reuses one set of working buffers.
+fn canonical_bytes_with<T: serde::Serialize + ?Sized>(
+    value: &T,
+    out: &mut Vec<u8>,
+    work: &mut Work,
+) -> Result<(), C14nError> {
+    work.members.clear();
     value
-        .serialize(CanonicalSerializer { out })
+        .serialize(CanonicalSerializer { out, work })
         .map_err(|e| e.0)
+}
+
+/// Working memory for one canonicalization, shared by every object inside it.
+///
+/// An object's members are written straight into the output in the order serde hands them over,
+/// each as `"key":value`, and recorded here as a span; the object's `finish` then puts the spans
+/// in key order in place. `members` is a stack: an open object owns `members[base..]`, and a nested
+/// object pushes above it and truncates back before its parent resumes.
+#[derive(Default)]
+struct Work {
+    members: Vec<Member>,
+    order: Vec<usize>,
+    offsets: Vec<usize>,
+    moved: Vec<u8>,
+}
+
+struct Member {
+    /// The raw key, for the sort: escaped bytes do not order like code points.
+    key: std::borrow::Cow<'static, str>,
+    /// `out[start..end]` is `"key":value`, without a separator.
+    start: usize,
+    end: usize,
 }
 
 /// A sink that hashes what it is given and keeps none of it.
@@ -289,6 +322,7 @@ pub(crate) struct Sha256Sink {
     hasher: Sha256,
     /// Bytes written but not yet hashed. Never the whole payload: it is drained whenever it fills.
     buf: Vec<u8>,
+    work: Work,
 }
 
 /// How much the sink accumulates before hashing.
@@ -303,6 +337,7 @@ impl Sha256Sink {
         Self {
             hasher: Sha256::new(),
             buf: Vec::with_capacity(SINK_BLOCK * 2),
+            work: Work::default(),
         }
     }
 
@@ -317,7 +352,7 @@ impl Sha256Sink {
         &mut self,
         value: &T,
     ) -> Result<(), C14nError> {
-        canonical_bytes_into(value, &mut self.buf)?;
+        canonical_bytes_with(value, &mut self.buf, &mut self.work)?;
         self.drain_if_full();
         Ok(())
     }
@@ -361,11 +396,29 @@ fn ser_err(message: &str) -> SerError {
     SerError(err(message))
 }
 
+/// The decimal digits of `u`, without a heap allocation: the bytes `u.to_string()` would give.
+fn write_u64_digits(mut u: u64, out: &mut Vec<u8>) {
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (u % 10) as u8;
+        u /= 10;
+        if u == 0 {
+            break;
+        }
+    }
+    out.extend_from_slice(&buf[i..]);
+}
+
 fn write_checked_i64(i: i64, out: &mut Vec<u8>) -> Result<(), SerError> {
     if i.unsigned_abs() > MAX_SAFE_INT as u64 {
         return Err(ser_err("integer exceeds 2^53-1 in canonical value"));
     }
-    out.extend_from_slice(i.to_string().as_bytes());
+    if i < 0 {
+        out.push(b'-');
+    }
+    write_u64_digits(i.unsigned_abs(), out);
     Ok(())
 }
 
@@ -373,117 +426,142 @@ fn write_checked_u64(u: u64, out: &mut Vec<u8>) -> Result<(), SerError> {
     if u > MAX_SAFE_INT as u64 {
         return Err(ser_err("integer exceeds 2^53-1 in canonical value"));
     }
-    out.extend_from_slice(u.to_string().as_bytes());
+    write_u64_digits(u, out);
     Ok(())
 }
 
 struct CanonicalSerializer<'a> {
     out: &'a mut Vec<u8>,
+    work: &'a mut Work,
 }
 
 /// Streams sequence elements straight into the parent buffer — arrays keep their
 /// order, so nothing needs staging.
 struct CanonicalSeq<'a> {
     out: &'a mut Vec<u8>,
+    work: &'a mut Work,
     first: bool,
 }
 
-/// Buffers `(raw key, value bytes)` pairs and writes them sorted on end — the
-/// map/struct counterpart of [`c14n_bytes`]'s explicit write-time sort. The raw
-/// key is kept for the sort because escaped bytes do not order like code points.
+/// Writes each member into `out` as it arrives and sorts the members in place on end — the
+/// map/struct counterpart of [`c14n_bytes`]'s explicit write-time sort. The raw key is kept for
+/// the sort because escaped bytes do not order like code points.
 struct CanonicalMap<'a> {
     out: &'a mut Vec<u8>,
-    entries: Vec<(String, Vec<u8>)>,
+    work: &'a mut Work,
+    /// This object's members are `work.members[base..]`.
+    base: usize,
+    /// Where this object's members begin in `out`: just after its `{`.
+    body: usize,
     pending_key: Option<String>,
     /// A variant wrapper (`{"variant":…}`) already opened in `out`, to close.
     close_variant: bool,
 }
 
-impl CanonicalMap<'_> {
+impl<'a> CanonicalMap<'a> {
+    fn open(out: &'a mut Vec<u8>, work: &'a mut Work, close_variant: bool) -> Self {
+        out.push(b'{');
+        let body = out.len();
+        let base = work.members.len();
+        CanonicalMap {
+            out,
+            work,
+            base,
+            body,
+            pending_key: None,
+            close_variant,
+        }
+    }
+
+    /// Write `"key":value` (after a comma, unless it is the first member) and record its span.
+    fn member<T: serde::Serialize + ?Sized>(
+        &mut self,
+        key: std::borrow::Cow<'static, str>,
+        value: &T,
+    ) -> Result<(), SerError> {
+        if self.work.members.len() > self.base {
+            self.out.push(b',');
+        }
+        let start = self.out.len();
+        write_string(&key, self.out);
+        self.out.push(b':');
+        value.serialize(CanonicalSerializer {
+            out: &mut *self.out,
+            work: &mut *self.work,
+        })?;
+        let end = self.out.len();
+        self.work.members.push(Member { key, start, end });
+        Ok(())
+    }
+
     fn finish(self) -> Result<(), SerError> {
-        let mut entries = self.entries;
-        entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        // Refused, not collapsed: a `#[serde(flatten)]` whose inner and outer
-        // fields collide reaches a streaming serializer as two entries under one
-        // key. Emitting both would be invalid canonical JSON (idempotence breaks);
-        // silently keeping one — the `to_value` route's last-wins behavior — would
-        // drop a field no one decided to drop. No serialized type in this
-        // workspace collides today, so the refusal costs nothing and a future
-        // collision fails loudly at the first emit instead of shipping.
-        if let Some(window) = entries.windows(2).find(|pair| pair[0].0 == pair[1].0) {
-            return Err(SerError(C14nError::new(format!(
-                "duplicate key \"{}\" in canonical value",
-                window[0].0
-            ))));
-        }
-        // **At the top level, adopt the largest entry's buffer instead of copying it.** Sorting keys
-        // means every field is serialized into its own staging buffer first, and the loop below then
-        // copies each into `out`. For a representation payload the largest staging buffer is `nodes`
-        // — 99.9% of the payload, 805 MiB on the largest gate document — and for the length of that
-        // copy it existed twice, once in staging and once in `out`, inside `seal`, which is where
-        // that document peaks. Nothing has been written to `out` exactly when this is the top level,
-        // so the result can be built AROUND that buffer instead: shift its bytes right in place,
-        // write the prefix into the gap, append the suffix. The bytes are the ones the loop would
-        // have written, in the order it would have written them.
-        //
-        // Measured on this code, interleaved, five runs a side: peak RSS 4664.8 -> 3717.0 MiB
-        // (-947.9) on `nist-sp-800-53Ar5`, peak footprint -910.9, output byte-identical, wall time
-        // within 2%.
-        // Reserving `out` at its final size was measured beside it and bought nothing: the regrowth
-        // that prevents only ever added capacity nobody wrote. `docs/measurements/memory-ceiling/`
-        // §11.
-        if self.out.is_empty() {
-            if let Some(big) = entries
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, (_, value))| value.len())
-                .map(|(i, _)| i)
+        let Work {
+            members,
+            order,
+            offsets,
+            moved,
+        } = &mut *self.work;
+        let mine = &members[self.base..];
+        // Already strictly in key order — the common case for maps, and every struct whose fields
+        // are declared sorted — means the bytes in `out` are already the canonical bytes.
+        if !mine.windows(2).all(|pair| pair[0].key < pair[1].key) {
+            order.clear();
+            order.extend(0..mine.len());
+            order.sort_unstable_by(|&a, &b| mine[a].key.cmp(&mine[b].key));
+            // Refused, not collapsed: a `#[serde(flatten)]` whose inner and outer
+            // fields collide reaches a streaming serializer as two entries under one
+            // key. Emitting both would be invalid canonical JSON (idempotence breaks);
+            // silently keeping one — the `to_value` route's last-wins behavior — would
+            // drop a field no one decided to drop.
+            if let Some(pair) = order
+                .windows(2)
+                .find(|pair| mine[pair[0]].key == mine[pair[1]].key)
             {
-                let mut prefix = vec![b'{'];
-                for (i, (key, value)) in entries[..big].iter().enumerate() {
-                    if i > 0 {
-                        prefix.push(b',');
-                    }
-                    write_string(key, &mut prefix);
-                    prefix.push(b':');
-                    prefix.extend_from_slice(value);
-                }
-                if big > 0 {
-                    prefix.push(b',');
-                }
-                write_string(&entries[big].0, &mut prefix);
-                prefix.push(b':');
-                let mut suffix = Vec::new();
-                for (key, value) in &entries[big + 1..] {
-                    suffix.push(b',');
-                    write_string(key, &mut suffix);
-                    suffix.push(b':');
-                    suffix.extend_from_slice(value);
-                }
-                suffix.push(b'}');
-                if self.close_variant {
-                    suffix.push(b'}');
-                }
-                let mut adopted = std::mem::take(&mut entries[big].1);
-                let (gap, len) = (prefix.len(), adopted.len());
-                adopted.reserve(gap + suffix.len());
-                adopted.resize(len + gap, 0);
-                adopted.copy_within(0..len, gap);
-                adopted[..gap].copy_from_slice(&prefix);
-                adopted.extend_from_slice(&suffix);
-                *self.out = adopted;
-                return Ok(());
+                return Err(SerError(C14nError::new(format!(
+                    "duplicate key \"{}\" in canonical value",
+                    mine[pair[0]].key
+                ))));
             }
-        }
-        self.out.push(b'{');
-        for (i, (key, value)) in entries.into_iter().enumerate() {
-            if i > 0 {
-                self.out.push(b',');
+            // Permute the spans in place. The body's length cannot change: the same spans, the
+            // same number of commas. The largest span is moved once within `out` — on a
+            // representation payload that is `nodes`, 99.9% of it, so it is never copied out —
+            // and every other span goes through `moved` and back.
+            let len = |m: &Member| m.end - m.start;
+            let big = (0..mine.len())
+                .max_by_key(|&i| len(&mine[i]))
+                .expect("an object out of order has members");
+            moved.clear();
+            offsets.clear();
+            offsets.resize(mine.len(), 0);
+            for (i, m) in mine.iter().enumerate() {
+                if i != big {
+                    offsets[i] = moved.len();
+                    moved.extend_from_slice(&self.out[m.start..m.end]);
+                }
             }
-            write_string(&key, self.out);
-            self.out.push(b':');
-            self.out.extend_from_slice(&value);
+            let mut at = self.body;
+            for &i in order.iter() {
+                if i == big {
+                    break;
+                }
+                at += len(&mine[i]) + 1;
+            }
+            self.out.copy_within(mine[big].start..mine[big].end, at);
+            let mut w = self.body;
+            for (k, &i) in order.iter().enumerate() {
+                if k > 0 {
+                    self.out[w] = b',';
+                    w += 1;
+                }
+                let n = len(&mine[i]);
+                if i != big {
+                    self.out[w..w + n].copy_from_slice(&moved[offsets[i]..offsets[i] + n]);
+                }
+                w += n;
+            }
+            debug_assert_eq!(w, self.out.len());
         }
+        members.truncate(self.base);
         self.out.push(b'}');
         if self.close_variant {
             self.out.push(b'}');
@@ -709,7 +787,7 @@ impl<'a> serde::Serializer for CanonicalSerializer<'a> {
             if i > 0 {
                 self.out.push(b',');
             }
-            self.out.extend_from_slice(byte.to_string().as_bytes());
+            write_u64_digits(u64::from(*byte), self.out);
         }
         self.out.push(b']');
         Ok(())
@@ -755,7 +833,10 @@ impl<'a> serde::Serializer for CanonicalSerializer<'a> {
         self.out.push(b'{');
         write_string(variant, self.out);
         self.out.push(b':');
-        value.serialize(CanonicalSerializer { out: self.out })?;
+        value.serialize(CanonicalSerializer {
+            out: &mut *self.out,
+            work: self.work,
+        })?;
         self.out.push(b'}');
         Ok(())
     }
@@ -763,6 +844,7 @@ impl<'a> serde::Serializer for CanonicalSerializer<'a> {
         self.out.push(b'[');
         Ok(CanonicalSeq {
             out: self.out,
+            work: self.work,
             first: true,
         })
     }
@@ -788,45 +870,31 @@ impl<'a> serde::Serializer for CanonicalSerializer<'a> {
         self.out.extend_from_slice(b":[");
         Ok(CanonicalSeq {
             out: self.out,
+            work: self.work,
             first: true,
         })
     }
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, SerError> {
-        Ok(CanonicalMap {
-            out: self.out,
-            entries: Vec::new(),
-            pending_key: None,
-            close_variant: false,
-        })
+        Ok(CanonicalMap::open(self.out, self.work, false))
     }
     fn serialize_struct(
         self,
         _: &'static str,
-        len: usize,
+        _: usize,
     ) -> Result<Self::SerializeStruct, SerError> {
-        Ok(CanonicalMap {
-            out: self.out,
-            entries: Vec::with_capacity(len),
-            pending_key: None,
-            close_variant: false,
-        })
+        Ok(CanonicalMap::open(self.out, self.work, false))
     }
     fn serialize_struct_variant(
         self,
         _: &'static str,
         _: u32,
         variant: &'static str,
-        len: usize,
+        _: usize,
     ) -> Result<Self::SerializeStructVariant, SerError> {
         self.out.push(b'{');
         write_string(variant, self.out);
         self.out.push(b':');
-        Ok(CanonicalMap {
-            out: self.out,
-            entries: Vec::with_capacity(len),
-            pending_key: None,
-            close_variant: true,
-        })
+        Ok(CanonicalMap::open(self.out, self.work, true))
     }
     fn is_human_readable(&self) -> bool {
         // `serde_json` answers true, and types branch on this (hex vs raw bytes);
@@ -846,7 +914,10 @@ impl serde::ser::SerializeSeq for CanonicalSeq<'_> {
             self.out.push(b',');
         }
         self.first = false;
-        value.serialize(CanonicalSerializer { out: self.out })
+        value.serialize(CanonicalSerializer {
+            out: &mut *self.out,
+            work: &mut *self.work,
+        })
     }
     fn end(self) -> Result<(), SerError> {
         self.out.push(b']');
@@ -903,10 +974,7 @@ impl serde::ser::SerializeMap for CanonicalMap<'_> {
             .pending_key
             .take()
             .ok_or_else(|| ser_err("map value serialized before its key"))?;
-        let mut bytes = Vec::new();
-        value.serialize(CanonicalSerializer { out: &mut bytes })?;
-        self.entries.push((key, bytes));
-        Ok(())
+        self.member(std::borrow::Cow::Owned(key), value)
     }
     fn end(self) -> Result<(), SerError> {
         self.finish()
@@ -921,10 +989,7 @@ impl serde::ser::SerializeStruct for CanonicalMap<'_> {
         key: &'static str,
         value: &T,
     ) -> Result<(), SerError> {
-        let mut bytes = Vec::new();
-        value.serialize(CanonicalSerializer { out: &mut bytes })?;
-        self.entries.push((key.to_string(), bytes));
-        Ok(())
+        self.member(std::borrow::Cow::Borrowed(key), value)
     }
     fn end(self) -> Result<(), SerError> {
         self.finish()
@@ -1229,12 +1294,12 @@ mod tests {
         );
     }
 
-    /// **Adopting the largest entry writes the bytes the copy loop would have.** The top level is
-    /// the only place `finish` adopts, so every position the largest value can sort into is
-    /// covered — first, middle, last, alone — plus the empty object and a nested value, each against
-    /// the `Value` route, which shares no code with `finish`.
+    /// **The largest member is byte-identical wherever it sorts** — first, middle, last, alone —
+    /// plus the empty object and a nested value, each against the `Value` route. Written for the
+    /// top-level adopt path `finish` once had; `Value`'s maps arrive sorted, so the in-place
+    /// permutation that replaced it is exercised by the out-of-order property below.
     #[test]
-    fn adopting_the_largest_entry_is_byte_identical_wherever_it_sorts() {
+    fn the_largest_member_is_byte_identical_wherever_it_sorts() {
         let big = "y".repeat(10_000);
         for v in [
             json!({ "a": big, "m": "x", "z": [1, 2] }),
@@ -1252,8 +1317,9 @@ mod tests {
         }
     }
 
-    /// A struct variant opens its `{"Variant":` wrapper in `out` before its fields are staged, so
-    /// `out` is not empty and the adopt path must not run — the wrapper still has to close.
+    /// A struct variant opens its `{"Variant":` wrapper in `out` before its members, so its body
+    /// does not start at 0; its members arrive out of order and are permuted behind the wrapper,
+    /// which still has to close.
     #[test]
     fn a_top_level_struct_variant_still_closes_its_wrapper() {
         #[derive(serde::Serialize)]
@@ -1348,6 +1414,57 @@ mod tests {
         })
     }
 
+    /// A value whose object members reach the serializer in the order they are listed.
+    ///
+    /// `Value`'s maps always arrive sorted — a `BTreeMap`, or under `preserve_order` an insertion
+    /// order `arb_canonical_value` takes from one — so no property above ever makes `finish`
+    /// permute. A struct's field declarations do, on every node of every representation.
+    #[derive(Clone, Debug)]
+    enum Arriving {
+        Leaf(Value),
+        Array(Vec<Arriving>),
+        Object(Vec<(String, Arriving)>),
+    }
+
+    impl Arriving {
+        fn to_value(&self) -> Value {
+            match self {
+                Self::Leaf(v) => v.clone(),
+                Self::Array(items) => Value::Array(items.iter().map(Self::to_value).collect()),
+                Self::Object(members) => Value::Object(
+                    members
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.to_value()))
+                        .collect(),
+                ),
+            }
+        }
+    }
+
+    impl serde::Serialize for Arriving {
+        fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            match self {
+                Self::Leaf(v) => serde::Serialize::serialize(v, s),
+                Self::Array(items) => s.collect_seq(items),
+                Self::Object(members) => s.collect_map(members.iter().map(|(k, v)| (k, v))),
+            }
+        }
+    }
+
+    fn arb_arriving() -> impl Strategy<Value = Arriving> {
+        arb_canonical_value()
+            .prop_map(Arriving::Leaf)
+            .prop_recursive(4, 32, 8, |inner| {
+                prop_oneof![
+                    proptest::collection::vec(inner.clone(), 0..6).prop_map(Arriving::Array),
+                    proptest::collection::btree_map("\\PC*", inner, 0..6)
+                        .prop_map(|m| m.into_iter().collect::<Vec<_>>())
+                        .prop_shuffle()
+                        .prop_map(Arriving::Object),
+                ]
+            })
+    }
+
     proptest! {
         /// The idempotence gate: `c14n(parse(c14n(v))) == c14n(v)`.
         #[test]
@@ -1377,6 +1494,15 @@ mod tests {
         #[test]
         fn canonical_bytes_of_matches_the_value_route(v in arb_canonical_value()) {
             prop_assert_eq!(canonical_bytes_of(&v).unwrap(), c14n_bytes(&v).unwrap());
+        }
+
+        /// Members that arrive in any order are permuted into the `Value` route's bytes, at every
+        /// depth and wherever the largest member sorts.
+        #[test]
+        fn members_arriving_out_of_order_are_permuted_into_the_value_routes_bytes(
+            a in arb_arriving()
+        ) {
+            prop_assert_eq!(canonical_bytes_of(&a).unwrap(), c14n_bytes(&a.to_value()).unwrap());
         }
 
         /// Key insertion order never reaches the output.

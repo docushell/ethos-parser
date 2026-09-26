@@ -2152,7 +2152,7 @@ impl RepresentationPayload {
     /// Write this payload's canonical bytes into `sink` without ever holding them all.
     ///
     /// **Why this exists rather than hashing [`Self::canonical_bytes`].** c14n sorts an object's
-    /// keys by staging every field of it first, so canonicalizing a payload materializes `nodes` —
+    /// keys once every field of it is written, so canonicalizing a payload materializes `nodes` —
     /// 99.9% of the artifact, 805 MiB on the largest gate document — before a byte could reach a
     /// hasher. A generic streaming sink would not help for that reason. This writes the eight
     /// members in the order c14n sorts them and serializes each value — each node, one at a time —

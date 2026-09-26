@@ -400,6 +400,13 @@ adopting leaves peak RSS unchanged while footprint falls 79 MiB. The likeliest r
 37r2's RSS peak falls outside `seal`, so removing a duplicate inside `seal` cannot lower it; that
 has not been verified.
 
+**Amended 2026-09-26:** the adopt path is gone (branch `perf/c14n-allocation-free`).
+`CanonicalMap` now writes every member straight into the output and, when members arrive out of
+key order, moves the largest one within the output and the rest through one reused buffer, so
+`nodes` is still never copied out. Against the build that adopted, interleaved, median of 3:
+`nist-sp-800-53Ar5` peaks at 3818.3 MiB against 3824.6 and runs 7.31 s against 12.89,
+byte-identical.
+
 ### The corpus after the adopt change
 
 Re-measured on the shipped build with `ci/bench.py --repeat 5`
