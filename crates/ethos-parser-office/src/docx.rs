@@ -200,6 +200,12 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                     run_in_paragraph = 0;
                 }
                 b"r" => run_in_paragraph += 1,
+                // Taken, as `<mc:Choice></mc:Choice>` is, so a later branch is passed over.
+                b"Choice" if skip_from.is_none() => {
+                    if let Some(taken) = alt_taken.last_mut() {
+                        *taken = true;
+                    }
+                }
                 name if skip_from.is_none() => push_stated(name, open_run.as_mut()),
                 _ => {}
             },
@@ -530,6 +536,24 @@ mod tests {
             vec!["first"]
         );
         assert_eq!(out.alternatives_not_read, 2);
+    }
+
+    /// **A self-closing `<mc:Choice/>` is taken, as the same element written long is.** Only a
+    /// start tag marked a branch taken, so after `<mc:Choice/>` the next Choice was read as well,
+    /// and two serializations of one document said different things.
+    #[test]
+    fn a_self_closing_choice_is_taken_like_a_long_one() {
+        let long = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body><mc:AlternateContent>
+            <mc:Choice Requires="a"></mc:Choice>
+            <mc:Choice Requires="b"><w:p><w:r><w:t>second</w:t></w:r></w:p></mc:Choice>
+        </mc:AlternateContent></w:body></w:document>"#;
+        let short = long.replace("\"a\"></mc:Choice>", "\"a\"/>");
+        let read = |xml: &str| {
+            let out = read_runs(xml.as_bytes()).expect("well-formed");
+            (out.runs.len(), out.alternatives_not_read)
+        };
+        assert_eq!(read(long), (0, 1), "the second Choice is passed over");
+        assert_eq!(read(&short), read(long));
     }
 
     #[test]
