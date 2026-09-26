@@ -4707,6 +4707,48 @@ fn a_page_tree_that_is_not_a_tree_is_refused() {
     }
 }
 
+/// **A `/Pages` tree reads as deep as `get_pages` reads it** (review 2026-09-26 N64). The walk
+/// bounded levels where `get_pages` bounds pending sibling lists, so a legal 300-level chain, which
+/// v0.61.0, Ghostscript and qpdf each read as one page, was refused. The bound now sits where
+/// `get_pages` skips a node without a word, and nowhere else.
+#[test]
+fn a_page_tree_reads_as_deep_as_get_pages_reads_it() {
+    // `levels` nested /Pages nodes and a page at the bottom. Each of the first `siblings` nodes
+    // also holds a page after the node below it, pending while the walk descends.
+    let tree = |levels: usize, siblings: usize| {
+        let mut objects = vec![b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()];
+        for n in 2..levels + 2 {
+            let sibling = if n - 1 <= siblings {
+                format!(" {} 0 R", levels + 1 + n)
+            } else {
+                String::new()
+            };
+            objects.push(format!("<< /Type /Pages /Kids [{} 0 R{sibling}] >>", n + 1).into());
+        }
+        for parent in std::iter::once(levels + 1).chain(2..siblings + 2) {
+            let page = format!("<< /Type /Page /Parent {parent} 0 R /MediaBox [0 0 300 144] >>");
+            objects.push(page.into());
+        }
+        pdf_from_objects(&objects)
+    };
+    for (levels, siblings, reads) in [(300, 0, true), (257, 256, true), (258, 256, false)] {
+        let bytes = tree(levels, siblings);
+        let pages = siblings + 1;
+        let lenient = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+        assert_eq!(
+            lenient.get_pages().len() == pages,
+            reads,
+            "the control, {levels}"
+        );
+
+        match Document::open_bytes(&bytes, &Profile::default()) {
+            Ok(doc) if reads => assert_eq!(doc.page_count() as usize, pages),
+            Err(e) if !reads => assert!(e.to_string().contains("nests past 256 levels"), "{e}"),
+            other => panic!("{levels} levels, {siblings} pending: {other:?}"),
+        }
+    }
+}
+
 // -------------------------------------------------------------------------------------------
 // A document the empty user password opened says so (decision #31)
 // -------------------------------------------------------------------------------------------

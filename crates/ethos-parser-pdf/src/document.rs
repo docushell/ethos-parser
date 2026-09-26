@@ -430,6 +430,9 @@ fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, 
             stack.pop();
             continue;
         };
+        // A level with no kid left holds no pending sibling. It is dropped before descending, so
+        // every level under the top of the stack still holds one.
+        let exhausted = level.len() == 0;
         let id = kid
             .as_reference()
             .map_err(|_| malformed("a /Kids entry is not an indirect reference".into()))?;
@@ -460,9 +463,16 @@ fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, 
                     .map_err(|_| malformed("more pages than a u32 counts".into()))?;
                 pages.push((number, id));
             }
-            b"Pages" if stack.len() < MAX_DEPTH => stack.push(kids_of(doc, id)?.iter()),
             b"Pages" => {
-                return Err(malformed(format!("/Pages nests past {MAX_DEPTH} levels")));
+                // `get_pages` skips a `/Pages` node beneath 256 pending sibling lists, and those
+                // lists are the levels under this one: the bound counts them, not levels.
+                if stack.len() > MAX_DEPTH {
+                    return Err(malformed(format!("/Pages nests past {MAX_DEPTH} levels")));
+                }
+                if exhausted {
+                    stack.pop();
+                }
+                stack.push(kids_of(doc, id)?.iter());
             }
             other => {
                 return Err(malformed(format!(
