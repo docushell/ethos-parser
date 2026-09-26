@@ -658,6 +658,9 @@ fn control_token(stream: &[u8], at: usize) -> Result<Token, EngineError> {
         // An optional hyphen displays nothing unless a line breaks on it, and where a line breaks
         // is the layout this reader does not perform. Matched, and contributes no character.
         b'-' => TokenKind::Word("softhyphen".into()),
+        // The specification's own rule: a carriage return or line feed preceded by a backslash
+        // is a `\par`. Cocoa's writer (TextEdit, textutil) ends every paragraph this way.
+        b'\n' | b'\r' => TokenKind::Word("par".into()),
         other => TokenKind::Word(format!("symbol-{other:02x}")),
     };
     Ok(Token {
@@ -1030,6 +1033,23 @@ mod tests {
     fn a_line_feed_in_the_source_is_not_a_paragraph_break() {
         let document = read(b"{\\rtf1 one\r\ntwo}").expect("the stream reads");
         assert_eq!(texts(&document), vec!["onetwo"]);
+    }
+
+    /// **A backslash before a line feed or carriage return is `\par`**, and it is how Cocoa's
+    /// writer ends every paragraph. Read as an unknown control symbol, a TextEdit document was one
+    /// paragraph at ordinal 1, its paragraphs' words welded together.
+    #[test]
+    fn a_backslash_before_a_line_break_is_a_paragraph_break() {
+        let document = read(b"{\\rtf1 one\\\ntwo\\\r\nthree}").expect("the stream reads");
+        assert_eq!(texts(&document), vec!["one", "two", "three"]);
+        assert_eq!(
+            document
+                .paragraphs
+                .iter()
+                .map(|p| p.ordinal)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
     }
 
     // ---------------------------------------------------------------------------------------
