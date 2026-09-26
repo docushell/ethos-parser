@@ -723,6 +723,11 @@ fn resolve_unit(unit: u16, pending_high: &mut Option<u16>) -> Option<char> {
 /// character the fallback may swallow.
 fn skip_fallback(stream: &[u8], mut at: usize, count: u32) -> usize {
     for _ in 0..count {
+        // A carriage return or line feed is stream layout, which this reader ignores everywhere
+        // else, so it is not one of the `\ucN` characters either.
+        while matches!(stream.get(at), Some(b'\r' | b'\n')) {
+            at += 1;
+        }
         match stream.get(at) {
             None | Some(b'{') | Some(b'}') => return at,
             Some(b'\\') => {
@@ -732,9 +737,6 @@ fn skip_fallback(stream: &[u8], mut at: usize, count: u32) -> usize {
                     Ok(token) => at = token.next,
                     Err(_) => return at,
                 }
-            }
-            Some(b'\r') | Some(b'\n') => {
-                at += 1;
             }
             Some(_) => at += 1,
         }
@@ -1006,6 +1008,19 @@ mod tests {
     fn the_stated_fallback_length_is_honoured() {
         let document = read_body(r"\uc3 x\u233 ???y");
         assert_eq!(texts(&document), vec!["xéy"]);
+    }
+
+    /// **A line break is not a fallback character.** A CR or LF between a `\uN` and its fallback
+    /// is stream layout, and counting it let the fallback itself through as text: `café?`.
+    #[test]
+    fn a_line_break_is_not_a_fallback_character() {
+        for stream in [
+            &b"{\\rtf1\\uc1 caf\\u233\n?}"[..],
+            b"{\\rtf1\\uc1 caf\\u233\r\n?}",
+        ] {
+            let document = read(stream).expect("the stream reads");
+            assert_eq!(texts(&document), vec!["caf\u{e9}"]);
+        }
     }
 
     /// **A byte above 0x7F is declared, never guessed.**
