@@ -37,6 +37,10 @@ Note what that change also settles about this paragraph's own former explanation
 `canonical_bytes_of` returning one `Vec<u8>` while the nodes were still alive. That buffer is real
 — 950 MiB on the largest document — but an A/B measured the print instant sitting 1.1-2.1 GiB
 BELOW the high-water mark, so removing it moves no peak at all.
+**Amended 2026-09-26:** that A/B ran at 97fa562, before the adopt change took ~950 MiB out of
+`seal`. After it the print instant WAS the peak, and `extract` now streams the artifact instead of
+assembling it: `nist-sp-800-53Ar5` peaks at 3059.9 MiB rather than 3825.2, and `nist-sp-800-161r1`
+at 875.4 rather than 1161.4, byte-identical (`docs/measurements/memory-ceiling/` §6).
 
 **An earlier draft of this paragraph said "roughly 300x the input" and that figure was withdrawn.**
 Measured at 97fa562 it runs 143x to 933x — a 6.5x spread, so it is a corpus median and not a

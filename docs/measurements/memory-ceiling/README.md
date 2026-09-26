@@ -164,7 +164,7 @@ twice:
 
 | proposal | why it died |
 | --- | --- |
-| Stream the artifact instead of one `Vec<u8>` | A real 950 MiB at the print instant — but that instant sits 1.1-2.1 GiB BELOW the high-water mark. Peak does not move. |
+| Stream the artifact instead of one `Vec<u8>` | A real 950 MiB at the print instant — but that instant sits 1.1-2.1 GiB BELOW the high-water mark. Peak does not move. **Amended 2026-09-26:** measured at 97fa562, before §11 took ~950 MiB out of `seal`. After §11 the print instant WAS the high-water mark, and nobody re-measured. Streaming it (`DocumentRepresentation::write_canonical_to`, branch `perf/c14n-allocation-free`) takes `nist-sp-800-53Ar5` from 3825.2 to 3059.9 MiB and `nist-sp-800-161r1` from 1161.4 to 875.4, interleaved, median of 3, byte-identical. |
 | Swap the allocator (mimalloc) | **+1293 MiB (+22%)**. The system allocator tracks live data to within 4.9%; there is no fragmentation to reclaim. |
 | Bound rayon's thread count | Saturates at ~97 MiB (1.5%) and costs +47-54% wall clock. One refuter measured it as a +138 MiB regression. |
 | Narrow the parallel page fold | The v2-S15 refusal in disguise, exactly as `extract.rs:1030` warns. Ceiling <=21.6 MiB; realizable -4.7 MiB, i.e. worse. |
@@ -225,6 +225,9 @@ provisioning should err. *Restated in §15 with the process floor separated.*
 Do not re-propose chunking the parallel page fold, streaming the artifact buffer, a different
 allocator, freeing the object graph or the extract sooner, or reserving c14n's output buffer at its
 final size. All six are in §6's, §9's and §11's tables with the measurement that killed them.
+**Amended 2026-09-26:** streaming the artifact buffer is off this list. §6 refused it on a
+measurement §11 made stale; re-measured after §11 it takes 765 MiB off `nist-sp-800-53Ar5`'s
+peak, and `extract` streams now (§6's table). The other five stand.
 
 ## 9. Freeing memory earlier made the peak worse, and was refused
 

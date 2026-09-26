@@ -2833,6 +2833,49 @@ impl DocumentRepresentation {
         }
         crate::c14n::canonical_bytes_of(self).map_err(malformed)
     }
+
+    /// [`Self::to_canonical_bytes`], written to `w` without assembling the artifact in one buffer.
+    ///
+    /// Every fallible canonicalization happens before the first byte is written, so a refusal
+    /// writes nothing; only `w` can fail part-way, and its error is returned.
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::Malformed`] if the artifact will not canonicalize; [`EngineError::Io`] if
+    /// `w` fails.
+    pub fn write_canonical_to<W: std::io::Write>(&self, w: &mut W) -> Result<(), EngineError> {
+        let malformed = |e: crate::c14n::C14nError| EngineError::Malformed {
+            what: "representation".into(),
+            detail: e.to_string(),
+        };
+        let Some(payload_bytes) = &self.payload_c14n else {
+            return Ok(w.write_all(&self.to_canonical_bytes()?)?);
+        };
+        let artifact_type =
+            crate::c14n::canonical_bytes_of(&self.artifact_type).map_err(malformed)?;
+        let schema_version =
+            crate::c14n::canonical_bytes_of(&self.schema_version).map_err(malformed)?;
+        let digest =
+            crate::c14n::canonical_bytes_of(&self.representation_c14n_sha256).map_err(malformed)?;
+        let geometry = crate::c14n::canonical_bytes_of(&self.geometry).map_err(malformed)?;
+        // The five members in code-point order, as `canonical_object` sorts them.
+        for (i, (key, value)) in [
+            ("artifact_type", artifact_type.as_slice()),
+            ("geometry", geometry.as_slice()),
+            ("representation", payload_bytes.as_slice()),
+            ("representation_c14n_sha256", digest.as_slice()),
+            ("schema_version", schema_version.as_slice()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            w.write_all(if i == 0 { b"{\"" } else { b",\"" })?;
+            w.write_all(key.as_bytes())?;
+            w.write_all(b"\":")?;
+            w.write_all(value)?;
+        }
+        Ok(w.write_all(b"}")?)
+    }
 }
 
 #[cfg(test)]
