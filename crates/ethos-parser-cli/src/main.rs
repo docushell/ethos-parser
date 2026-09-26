@@ -580,7 +580,13 @@ fn timed(stage: Stage, enabled: bool, path: &Path, run: impl FnOnce() -> ExitCod
             }
             // Reported, not fatal, and not on stdout. A diagnostic that could fail a run would be
             // a reason not to turn diagnostics on.
-            Err(e) => eprintln!("engine: diagnostics unavailable: {e} [{}]", e.code()),
+            Err(e) => {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "engine: diagnostics unavailable: {e} [{}]",
+                    e.code()
+                );
+            }
         }
     }
     code
@@ -1090,9 +1096,12 @@ fn run_ground(args: GroundArgs) -> ExitCode {
 
             // On stderr, deliberately: stdout is the artifact and must stay byte-identical
             // across runs. A consumer that wants this durably reads the representation's
-            // `geometry-absent-not-groundable` limitation, which carries the same count.
+            // `geometry-absent-not-groundable` limitation, which carries the same count. Best
+            // effort, as `fail`'s report is: the artifact is already written.
+            let mut err = std::io::stderr();
             if projection.omission.is_lossy() {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} of {} node(s) omitted from the grounding artifact — no measurable \
                      ink box [{}]. The nodes remain in the representation with their text and \
                      native locators; the grounding schema requires a bbox and this engine does \
@@ -1103,7 +1112,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(w) = projection.spans_withheld {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} span(s) withheld — more than the {} `ethos.grounding.v1` admits \
                      [{}]. The artifact carries its elements only (`capabilities.spans` and \
                      `char_offsets` false): every block is still grounded, at block rather than \
@@ -1112,7 +1122,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(o) = projection.elements_omitted {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} element(s) omitted from the grounding artifact, and {} span(s) \
                      with them — text longer than the {} bytes, or a locator longer than the {}, \
                      that `ethos.grounding.v1` admits [{}]. The text remains in the \
@@ -1121,7 +1132,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(t) = projection.tables_withheld {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} table(s) withheld — {} over the {} tables the schema admits, {} \
                      cell(s) longer than its {} bytes, {} grid(s) with more cells than it admits \
                      [{}]. The artifact carries no tables (`capabilities.tables: false`); \
@@ -1258,8 +1270,10 @@ fn write_stdout(bytes: &[u8], newline: bool) -> Result<(), EngineError> {
 /// Report a failure on stderr and exit 2.
 ///
 /// The artifact never appears on stdout in this path: a partial or absent classification must not
-/// be mistaken for a real one by something reading the pipe.
+/// be mistaken for a real one by something reading the pipe. The report is best effort: when
+/// stderr is a closed pipe `eprintln!` panics, and `panic = "abort"` turned that into SIGABRT,
+/// exit 134, in place of this exit 2 (`2>&1 | head` closes both streams at once).
 fn fail(e: &EngineError) -> ExitCode {
-    eprintln!("engine: {} [{}]", e, e.code());
+    let _ = writeln!(std::io::stderr(), "engine: {} [{}]", e, e.code());
     ExitCode::from(COULD_NOT_READ as u8)
 }
