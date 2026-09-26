@@ -30,7 +30,9 @@
 //! threshold. The only question asked is geometric — *is there a vertical band of this page that
 //! no text crosses* — and the answer does not move when a line is added on either side of it.
 //! A `fixtures/engine/two-column-14-lines` / `-15-lines` pair exists to hold that: the same order
-//! comes out of both, and a port of the line-count rule fails on exactly that pair.
+//! comes out of both, and a port of the line-count rule fails on exactly that pair. (That is
+//! steps 1–4. Step 5's slabs, since `-v4`, rest on a mode over the page's line gaps; see "Why not
+//! sort by y, then x".)
 //!
 //! # The rule
 //!
@@ -47,10 +49,14 @@
 //!    list does not. See [`bands_sit_side_by_side`].
 //! 4. **Horizontal cut,** inside a band only: the same sweep on the y axis, splitting a column
 //!    into blocks read top to bottom, and each block may split into columns again.
-//! 5. **No gutter, no reordering.** A page whose first vertical cut fails comes out in
-//!    content-stream order, unchanged, byte for byte. This is the single-column case and it is
-//!    the overwhelmingly common one; see [`arrange`] for why the fallback is identity rather than
-//!    a y-then-x sort.
+//! 5. **No gutter: down the page by slab** (`gutter-columns-v4`, decision #32, 2026-09-26).
+//!    A page whose first vertical cut fails is one band, and [`crate::blocks::slabs`] divides it
+//!    where its own leading says one stretch of text ended — the same slabs `block` numbers. The
+//!    slabs are read top to bottom and everything inside one keeps content-stream order; a table
+//!    goes whole, with the smallest slab its runs sit on. A page with no leading, or no gap wide
+//!    enough to open a second slab, is one slab and comes out in content-stream order, unchanged,
+//!    byte for byte — as every page the cut did not divide did through `-v3`. See
+//!    [`sweep_down`].
 //!
 //! # Why not sort by y, then x
 //!
@@ -59,6 +65,17 @@
 //! sort is not a reading-order rule; it is a claim that the content stream carries no information
 //! about order, which is false for the single-column pages that are most of every corpus. This
 //! rule reorders only where it has geometric evidence of columns and otherwise does nothing.
+//!
+//! **Amended 2026-09-26, and the refusal stands.** Step 5 now sorts, but by slab and never by
+//! baseline, and stably: a superscript, an indent or an off-by-a-quantum baseline sits inside its
+//! slab and keeps its stream position, and only a whole stretch its leading separates moves, past
+//! other whole stretches. That is the measured difference — on opendataloader-bench the 74
+//! documents already read in one downward sweep do not move at all, and mean NID goes 0.8714 ->
+//! 0.8810. What it costs is stated too: the slab's boundary is measured against the page's modal
+//! leading, and `blocks` declines a band whose modal gap holds under a quarter of its gaps — a
+//! statistic of the page's lines, so unlike steps 1–4 an added line can move step 5; and a page
+//! set in columns the cut cannot divide is read across them wherever they break at one height,
+//! which is the cause of the three largest of the four falls on that corpus.
 //!
 //! # Why not the structure tree
 //!
@@ -103,8 +120,9 @@ pub const COLUMN_GUTTER_MIN: i64 = 1_200;
 /// a six-point floor separates paragraphs and headings from the lines inside them.
 ///
 /// This one only ever fires **inside** an accepted column band. A page that never split
-/// vertically is never cut horizontally either, so this constant cannot reorder a single-column
-/// page.
+/// vertically is never cut horizontally by it either, so this constant cannot reorder a
+/// single-column page. Since `gutter-columns-v4` (2026-09-26) such a page is divided by its own
+/// leading instead, in [`sweep_down`].
 pub const BLOCK_GUTTER_MIN: i64 = 600;
 
 /// The horizontal extent given to a run whose font supplies no advance, in centipoints.
@@ -270,6 +288,15 @@ impl Regions {
         self.opened
     }
 
+    /// Whether a vertical cut was accepted anywhere on the page.
+    ///
+    /// [`Self::open`] is called once for the page and then once per band of an accepted vertical
+    /// cut, and a cut yields at least two bands — so a page the cut never divided has opened
+    /// exactly one, and one is the whole test.
+    fn divided(&self) -> bool {
+        self.opened >= 2
+    }
+
     /// Record that a leaf group belongs to the band it was reached through.
     fn assign(&mut self, group: &[usize], band: u32) {
         for &a in group {
@@ -293,13 +320,10 @@ impl Regions {
     /// A table is one atom, so a table's runs all share its region — the cut saw the grid as a
     /// single object and this reports what the cut saw.
     fn per_run(&self, atoms: &[Atom], runs: usize, order: &[usize]) -> Vec<Option<u32>> {
-        // **Decide before allocating.** [`Self::open`] is called once for the page and then once
-        // per band of an accepted vertical cut, and a cut yields at least two bands — so a page
-        // the cut never divided has opened exactly one, and one is the whole test. An earlier
-        // draft built both vectors below and threw them away here, which put two allocations and
-        // two passes over every run on the single-column page that is most of every corpus, in
-        // order to return nothing.
-        if self.opened < 2 {
+        // **Decide before allocating**, on [`Self::divided`]. An earlier draft built both vectors
+        // below and threw them away here, which put two allocations and two passes over every run
+        // on the single-column page that is most of every corpus, in order to return nothing.
+        if !self.divided() {
             return Vec::new();
         }
 
@@ -400,7 +424,10 @@ pub fn arrange_page(runs: &[RunGeometry], tables: &[QuantRect]) -> Arrangement {
 
     let atoms = atomize(runs, tables);
     let mut regions = Regions::new(atoms.len());
-    let arranged = arrange(&atoms, &mut regions);
+    let mut arranged = arrange(&atoms, &mut regions);
+    if !regions.divided() {
+        sweep_down(runs, &atoms, &mut arranged);
+    }
 
     let mut out = Vec::with_capacity(runs.len());
     for a in arranged {
@@ -421,6 +448,24 @@ pub fn arrange_page(runs: &[RunGeometry], tables: &[QuantRect]) -> Arrangement {
         order: out,
         regions,
     }
+}
+
+/// Step 5 (`gutter-columns-v4`): a page the cut never divided, read downward one leading-gap slab
+/// at a time.
+///
+/// The slab is [`crate::blocks::slabs`] over the whole page as one band — the same computation
+/// that numbers `block`, so a slab is exactly a block of this page. Membership is geometry and the
+/// sort only groups: it is **stable**, so inside a slab the atoms keep the order the document drew
+/// them in. A table atom goes with the smallest slab any of its members sits on and moves whole,
+/// because a cut never runs through an atom. A page with no leading, or no gap wide enough to open
+/// a second slab, is one slab, and the sort leaves it exactly as it was.
+fn sweep_down(runs: &[RunGeometry], atoms: &[Atom], arranged: &mut [usize]) {
+    let slab = crate::blocks::slabs(runs, &[]);
+    let of_atom: Vec<u32> = atoms
+        .iter()
+        .map(|a| a.members.iter().map(|&m| slab[m]).min().unwrap_or(0))
+        .collect();
+    arranged.sort_by_key(|&a| of_atom[a]);
 }
 
 /// Group the page's runs into atoms: one per table, one per loose run.
@@ -505,7 +550,9 @@ fn extent(run: &RunGeometry) -> (i64, i64) {
 /// **The `else` branch is the important one.** When no vertical gutter meets the rule, this
 /// returns the identity — content-stream order, untouched. That is decision 10 and it is what
 /// makes the change safe for the corpus: a single-column page is byte-identical before and after
-/// this slice apart from the profile hash and the rule id.
+/// this slice apart from the profile hash and the rule id. Since `gutter-columns-v4` (2026-09-26)
+/// that identity is not the page's last word: [`arrange_page`] hands a page this left undivided
+/// to [`sweep_down`].
 fn arrange(atoms: &[Atom], regions: &mut Regions) -> Vec<usize> {
     let index: Vec<usize> = (0..atoms.len()).collect();
     let whole = regions.open();
@@ -1168,6 +1215,115 @@ mod tests {
         for _ in 0..8 {
             assert_eq!(order(&runs, &[]), first);
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // gutter-columns-v4: a page the cut never divided is read downward, one leading-gap slab at a
+    // time. Text below is set at a 12pt leading, and a 24pt gap — twice the leading, past
+    // `blocks`' 1.6x — is the only slab boundary. Only (e) has a gutter for the cut to find.
+    // ---------------------------------------------------------------------------------------
+
+    /// Three lines, a paragraph gap, three lines: two slabs.
+    fn two_slabs() -> (Vec<RunGeometry>, Vec<RunGeometry>) {
+        let upper = vec![run(7_200, 6_000), run(7_200, 7_200), run(7_200, 8_400)];
+        let lower = vec![run(7_200, 10_800), run(7_200, 12_000), run(7_200, 13_200)];
+        (upper, lower)
+    }
+
+    /// (a) The stream draws the lower slab first, and the page is read top to bottom.
+    #[test]
+    fn a_page_the_cut_never_divided_is_read_down_its_slabs() {
+        let (upper, lower) = two_slabs();
+        let runs: Vec<RunGeometry> = lower.into_iter().chain(upper).collect();
+        let page = arrange_page(&runs, &[]);
+        assert_eq!(
+            page.order,
+            vec![3, 4, 5, 0, 1, 2],
+            "the upper slab first, each slab in the order the stream drew it"
+        );
+        assert!(
+            page.regions.is_empty(),
+            "the sweep reorders; it does not divide, so no region is reported"
+        );
+    }
+
+    /// (b) A stream already drawn top to bottom comes back exactly as it was.
+    #[test]
+    fn a_page_already_drawn_top_to_bottom_is_unchanged_by_the_sweep() {
+        let (upper, lower) = two_slabs();
+        let mut runs: Vec<RunGeometry> = upper.into_iter().chain(lower).collect();
+        runs.extend([run(7_200, 15_600), run(7_200, 16_800)]); // a third slab
+        assert_eq!(order(&runs, &[]), (0..runs.len()).collect::<Vec<_>>());
+    }
+
+    /// (c) **The refusal of `sort by y, then x` still holds.** No gap here reaches 1.6x the
+    /// leading, so the page is one slab, and runs out of y order stay where the stream put them:
+    /// a line drawn before the one above it, an indented line, and a superscript drawn after its
+    /// line and 4pt above it — its own baseline, one a y sort would move ahead of its line.
+    #[test]
+    fn a_page_with_no_slab_boundary_keeps_stream_order_out_of_y_order() {
+        let runs = vec![
+            wide(7_200, 6_000, 30_000),
+            wide(7_200, 8_400, 30_000), // drawn before the line above it
+            wide(9_000, 7_200, 28_000), // indented
+            wide(7_200, 9_600, 29_000), // a line
+            wide(36_300, 9_200, 600),   // its superscript, drawn after it and above its baseline
+            wide(7_200, 10_800, 30_000),
+            wide(7_200, 12_000, 30_000),
+        ];
+        assert_eq!(
+            order(&runs, &[]),
+            (0..runs.len()).collect::<Vec<_>>(),
+            "one slab is identity: the sort key is the slab, never the baseline"
+        );
+    }
+
+    /// (d) A table whose rows sit on two slabs moves whole, at the smaller of the two.
+    ///
+    /// A paragraph gap separates the table's two rows, so row 1 is slab 1 and row 2 slab 2, and a
+    /// loose line under row 2 shares slab 2. The table atom takes slab 1 — ahead of that line,
+    /// which the stream drew first — and its four runs stay together in the order they were drawn.
+    #[test]
+    fn a_table_spanning_two_slabs_moves_whole_at_its_smallest() {
+        let runs = vec![
+            run(7_200, 14_400),  // 0: loose, under row 2 (slab 2)
+            run(7_200, 10_800),  // 1: row 1, cell 1 (slab 1)
+            run(7_200, 16_800),  // 2: last paragraph (slab 3)
+            run(7_200, 13_200),  // 3: row 2, cell 1 (slab 2)
+            run(7_200, 6_000),   // 4: first paragraph (slab 0)
+            run(14_000, 10_800), // 5: row 1, cell 2
+            run(14_000, 13_200), // 6: row 2, cell 2
+            run(7_200, 7_200),   // 7
+            run(7_200, 8_400),   // 8
+            run(7_200, 18_000),  // 9
+            run(7_200, 19_200),  // 10
+        ];
+        let table = QuantRect {
+            x0: 6_000,
+            y0: 10_000,
+            x1: 20_000,
+            y1: 14_000,
+        };
+        let page = arrange_page(&runs, &[table]);
+        assert!(page.regions.is_empty(), "this page must not divide");
+        assert_eq!(page.order, vec![4, 7, 8, 1, 3, 5, 6, 0, 2, 9, 10]);
+    }
+
+    /// (e) A page the vertical cut divided is not swept: its order is the cut's, as under v3.
+    ///
+    /// Two columns, each with a paragraph gap at the same height, the right one drawn first. Swept
+    /// as one page, the slabs would run across the gutter — the row-major reading v1-S5 ended.
+    #[test]
+    fn a_page_the_cut_divided_is_left_to_the_cut() {
+        let mut runs = Vec::new();
+        for x in [30_000, 7_200] {
+            for y in [6_000, 7_200, 8_400, 10_800, 12_000, 13_200] {
+                runs.push(run(x, y));
+            }
+        }
+        let page = arrange_page(&runs, &[]);
+        assert!(!page.regions.is_empty(), "this page must divide");
+        assert_eq!(page.order, vec![6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5]);
     }
 
     /// This module's own code: comments stripped, and everything from the test attribute down

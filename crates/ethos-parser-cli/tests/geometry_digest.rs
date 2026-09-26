@@ -312,9 +312,10 @@ const PINNED: &[(&str, &str)] = &[
         "engine/off-page-and-offset-box/document.pdf",
         "sha256:6d4bc69319a24d1cd8acd7f904a6d39a280e8ea834c0da530a6215ed0082c96b",
     ),
+    // gutter-columns-v4: the page's two slabs swap, so s1..s5 name other runs; no box moved.
     (
         "engine/rotated-and-mirrored-text/document.pdf",
-        "sha256:1e35803a16bd36592fda0833641fffa7dc931818dafd3de4bdbe4391292dfd8e",
+        "sha256:cb42330caa34ab6751a528bf26958485ee77ac452ba09c678ce96936a238f026",
     ),
     (
         "engine/rtl-hebrew-visual-order/document.pdf",

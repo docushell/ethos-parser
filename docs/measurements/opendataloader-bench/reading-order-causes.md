@@ -332,3 +332,58 @@ built in the engine and the 200-document corpus re-run, old bytes against new at
 string, with every changed node categorised — and specifically **what it costs on the 74
 single-sweep documents**, which are the population the refusal exists to protect and the one this
 amendment cannot speak for.
+
+---
+
+## Amendment, 2026-09-26 — the sweep was built, and measured
+
+The owner took the sweep (`docs/00-NORTH-STAR.md` #32) and it was built as `gutter-columns-v4`: where
+the vertical cut divides nothing, the page is read top to bottom by the slabs `blocks.rs` already
+computes for `block`, content-stream order kept inside each slab and a table moving whole at the
+smallest slab its runs sit on. A page the cut divides is untouched. The sort atom is the slab §3
+above asked for, never a run, so `reading_order.rs`'s refusal of a global sort stands.
+
+**What ran.** Old: the 2d6a564 release build (`0.61.0`, sha256 `af504fee…`). New: the
+`feat/reading-order-slab-sweep` tip's release build, same version string. `score.py` unmodified from
+each checkout; the sweep classes are `sweeps.py`'s, computed on the OLD build's artifacts; the
+ordering split is `analyse_order.py`'s identity over the same predictions.
+
+| | before | after |
+| --- | ---: | ---: |
+| NID mean | 0.8714 | **0.8810** |
+| NID median | 0.9243 | 0.9332 |
+| NID band, worst | 0.0068..0.9973, `01030000000141` | 0.0068..0.9986, `01030000000141` |
+| TEDS mean (42 scored, every one unchanged) | 0.1704 | 0.1704 |
+| MHS mean | 0.3353 | 0.3438 |
+| MHS median | 0.1565 | 0.1502 |
+| ordering cost | 0.0465 | **0.0368** |
+| population cost | 0.0626 | 0.0626 |
+
+| sweeps per page, on the old artifacts | documents | NID before | NID after | up | down | unchanged |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 74 | 0.9068 | 0.9068 | 0 | 0 | 74 |
+| more than 1 | 126 | 0.8507 | 0.8658 | 49 | 4 | 73 |
+
+**The population the refusal protects did not move.** Not one of the 74 single-sweep documents
+changes order, let alone NID; the 60 documents the rule reordered are all multi-sweep, and every NID
+or MHS change is on one of them.
+
+**It buys a fifth of the ceiling, not the ceiling.** Ordering cost falls 0.0097 of the 0.0465 that
+0.9162 named. The largest rises: `01030000000017` 0.6291 → 0.9776, `01030000000015` 0.6228 → 0.9260,
+`01030000000103` 0.5708 → 0.8567, `01030000000066` 0.7484 → 0.9468. Of the five ordering failures
+named above, only `01030000000103` moves: the most common gap on `01030000000183` and
+`01030000000070` is under six points (2.4 and 3.0), and on `01030000000085` and `01030000000149` no
+gap holds a quarter of the page's, so `blocks.rs` declines their band and the page stays one slab.
+
+**What it costs.** Four documents fall. Three are pages set in columns the cut cannot divide, read
+across them where they break at one height: `01030000000013` 0.9306 → 0.7594 (a two-column page
+under a full-width running head), `01030000000036` 0.9376 → 0.8717 (two columns around a chart),
+`01030000000147` 0.8241 → 0.8150 (a multi-column table no detector accepted). `01030000000177`, 0.9148 →
+0.9139, moves a figure caption. MHS falls on one document, `01030000000103` 0.1565 → 0.1411, which
+was the median document, so the median falls while the mean rises; ten rise.
+
+**One property the cut had and step 5 does not.** The slab's boundary is measured against the page's
+modal leading, and the band is declined when that mode holds under a quarter of the gaps — a
+statistic of the page's lines. On this corpus 8 of the 178 undivided pages sit one added line from
+that guard flipping, and 6 more have a runner-up gap within one count of the mode, where one added
+line can move the leading itself.

@@ -770,14 +770,18 @@ impl Capabilities {
                 "Reading order is decided by WHITESPACE IN PAGE SPACE and by nothing else. Two \
                  consequences a consumer must not read past. First, a document whose column \
                  structure exists only in its tag tree — columns that touch, or two flows \
-                 interleaved without a clear vertical band between them — is NOT reordered, and \
-                 comes out in content-stream order; the structure tree is read for addresses and \
+                 interleaved without a clear vertical band between them — is NOT read as \
+                 columns: it is read top to bottom by the stretches its own leading separates, \
+                 in content-stream order within each, so two such columns breaking at one \
+                 height are read across the gap; the structure tree is read for addresses and \
                  is never consulted as a sorter, because emitting nodes in `/K` order is a \
                  different rule and would need its own id. Second, a run whose font supplies no \
                  advance has an UNKNOWN horizontal extent, so the rule gives it a fixed minimum \
                  rather than a measured width and judges gutters against that floor. No extent is \
-                 ever derived from a font size. Where the rule finds no gutter it reorders \
-                 nothing, which is what a single-column page means and not a failure to look. \
+                 ever derived from a font size. Where the rule finds no gutter it moves only \
+                 whole stretches its leading separates, and a page with no such gap keeps \
+                 content-stream order, which is what a single-column page means and not a \
+                 failure to look. \
                  THE `region` FIELD, added at D4-S2, is that same cut reporting where it put \
                  each run, and it says less than its name may suggest. A region is opened by a \
                  VERTICAL cut only, so a region boundary is a COLUMN boundary: runs stacked \

@@ -2640,13 +2640,20 @@ mod tests {
     fn the_reading_order_rule_is_the_gutter_rule_and_not_the_v0_id() {
         assert_eq!(
             Profile::default().reading_order_rule,
-            ethos_parser_core::READING_ORDER_RULE_V3,
-            "the block cut moved the default to the id that promises the block field too"
+            ethos_parser_core::READING_ORDER_RULE_V4,
+            "the downward sweep moved the default to the id that promises it (decision #32)"
         );
+        assert_eq!(
+            ethos_parser_core::READING_ORDER_RULE_V4,
+            "gutter-columns-v4",
+            "the id is data on every artifact; changing the string is an identity event"
+        );
+        // **`-v3` keeps its exact spelling**: artifacts exist under it, and on a page the cut never
+        // divided they list runs in the order `-v4` changes.
         assert_eq!(
             ethos_parser_core::READING_ORDER_RULE_V3,
             "gutter-columns-v3",
-            "the id is data on every artifact; changing the string is an identity event"
+            "an id under which artifacts were produced is frozen, not renamed"
         );
         // **`-v2` keeps its exact spelling for the reason the older two do.** Artifacts exist
         // under it, and it promises a region and no block. A spelling that moved would make one
@@ -2667,6 +2674,10 @@ mod tests {
         );
         assert_eq!(ethos_parser_core::READING_ORDER_RULE_V0, "single-column-v1");
         for (a, b) in [
+            (
+                ethos_parser_core::READING_ORDER_RULE_V4,
+                ethos_parser_core::READING_ORDER_RULE_V3,
+            ),
             (
                 ethos_parser_core::READING_ORDER_RULE_V2,
                 ethos_parser_core::READING_ORDER_RULE_V1,
