@@ -658,6 +658,9 @@ fn control_token(stream: &[u8], at: usize) -> Result<Token, EngineError> {
         // An optional hyphen displays nothing unless a line breaks on it, and where a line breaks
         // is the layout this reader does not perform. Matched, and contributes no character.
         b'-' => TokenKind::Word("softhyphen".into()),
+        // The specification's own rule: a carriage return or line feed preceded by a backslash
+        // is a `\par`. Cocoa's writer (TextEdit, textutil) ends every paragraph this way.
+        b'\n' | b'\r' => TokenKind::Word("par".into()),
         other => TokenKind::Word(format!("symbol-{other:02x}")),
     };
     Ok(Token {
@@ -720,6 +723,11 @@ fn resolve_unit(unit: u16, pending_high: &mut Option<u16>) -> Option<char> {
 /// character the fallback may swallow.
 fn skip_fallback(stream: &[u8], mut at: usize, count: u32) -> usize {
     for _ in 0..count {
+        // A carriage return or line feed is stream layout, which this reader ignores everywhere
+        // else, so it is not one of the `\ucN` characters either.
+        while matches!(stream.get(at), Some(b'\r' | b'\n')) {
+            at += 1;
+        }
         match stream.get(at) {
             None | Some(b'{') | Some(b'}') => return at,
             Some(b'\\') => {
@@ -729,9 +737,6 @@ fn skip_fallback(stream: &[u8], mut at: usize, count: u32) -> usize {
                     Ok(token) => at = token.next,
                     Err(_) => return at,
                 }
-            }
-            Some(b'\r') | Some(b'\n') => {
-                at += 1;
             }
             Some(_) => at += 1,
         }
@@ -1005,6 +1010,19 @@ mod tests {
         assert_eq!(texts(&document), vec!["xéy"]);
     }
 
+    /// **A line break is not a fallback character.** A CR or LF between a `\uN` and its fallback
+    /// is stream layout, and counting it let the fallback itself through as text: `café?`.
+    #[test]
+    fn a_line_break_is_not_a_fallback_character() {
+        for stream in [
+            &b"{\\rtf1\\uc1 caf\\u233\n?}"[..],
+            b"{\\rtf1\\uc1 caf\\u233\r\n?}",
+        ] {
+            let document = read(stream).expect("the stream reads");
+            assert_eq!(texts(&document), vec!["caf\u{e9}"]);
+        }
+    }
+
     /// **A byte above 0x7F is declared, never guessed.**
     #[test]
     fn an_undecodable_byte_is_counted_rather_than_rendered() {
@@ -1030,6 +1048,23 @@ mod tests {
     fn a_line_feed_in_the_source_is_not_a_paragraph_break() {
         let document = read(b"{\\rtf1 one\r\ntwo}").expect("the stream reads");
         assert_eq!(texts(&document), vec!["onetwo"]);
+    }
+
+    /// **A backslash before a line feed or carriage return is `\par`**, and it is how Cocoa's
+    /// writer ends every paragraph. Read as an unknown control symbol, a TextEdit document was one
+    /// paragraph at ordinal 1, its paragraphs' words welded together.
+    #[test]
+    fn a_backslash_before_a_line_break_is_a_paragraph_break() {
+        let document = read(b"{\\rtf1 one\\\ntwo\\\r\nthree}").expect("the stream reads");
+        assert_eq!(texts(&document), vec!["one", "two", "three"]);
+        assert_eq!(
+            document
+                .paragraphs
+                .iter()
+                .map(|p| p.ordinal)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
     }
 
     // ---------------------------------------------------------------------------------------
