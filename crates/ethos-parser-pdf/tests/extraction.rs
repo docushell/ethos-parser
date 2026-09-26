@@ -4438,6 +4438,39 @@ fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
     extracted(&page("[4 0 R 5 0 R]", "")).expect("an object nothing defines is null");
 }
 
+/// **A `/Contents` entry the table does not list at that generation, or an explicit `null`, draws
+/// nothing** (review 2026-09-26 N63). PDF 32000-1 §7.3.10 reads both as null, and v0.61.0 read
+/// both; the check above compared object numbers alone and did not take a loaded `null` for one,
+/// so it refused each page as unreadable.
+#[test]
+fn a_contents_entry_that_is_null_draws_nothing() {
+    for other in ["4 1 R", "5 0 R"] {
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font \
+                 << /F1 6 0 R >> >> /Contents [4 0 R {other}] >>"
+            )
+            .into_bytes(),
+            [
+                format!("<< /Length {} >>\nstream\n", MEASURED.len()).as_bytes(),
+                MEASURED,
+                b"endstream",
+            ]
+            .concat(),
+            b"null".to_vec(),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        ]);
+        let a = extracted(&bytes).unwrap_or_else(|e| panic!("{other}: {e}"));
+        assert_eq!(
+            runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            ["Measured"],
+            "{other}"
+        );
+    }
+}
+
 /// **An object `lopdf` did not load is refused at open, whatever would read it** (review
 /// 2026-09-26 N08). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
 /// to one stray `)` vanished without a word, and an image whose `/Length` names no object loaded
