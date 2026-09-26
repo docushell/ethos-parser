@@ -824,13 +824,24 @@ fn emit_representation(
     result: Result<ethos_parser_core::DocumentRepresentation, EngineError>,
 ) -> ExitCode {
     match result {
-        Ok(artifact) => match artifact.to_canonical_bytes() {
-            Ok(bytes) => match write_stdout(&bytes, true) {
+        Ok(artifact) => {
+            // Streamed, not assembled: one buffer holding the whole artifact was the run's peak.
+            // Everything that can refuse runs before the first byte is written.
+            let mut out = std::io::stdout().lock();
+            let written = artifact.write_canonical_to(&mut out).and_then(|()| {
+                out.write_all(b"\n")
+                    .and_then(|()| out.flush())
+                    .map_err(EngineError::from)
+            });
+            match written {
                 Ok(()) => ExitCode::from(EXTRACTED as u8),
+                // `write_stdout`'s words: the library does not know its writer is stdout.
+                Err(EngineError::Io { detail }) => fail(&EngineError::Io {
+                    detail: format!("writing to stdout: {detail}"),
+                }),
                 Err(e) => fail(&e),
-            },
-            Err(e) => fail(&e),
-        },
+            }
+        }
         Err(e) => fail(&e),
     }
 }

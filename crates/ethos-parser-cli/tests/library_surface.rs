@@ -138,6 +138,50 @@ fn extract_and_represent_are_reachable_and_canonical_from_the_library() {
     );
 }
 
+/// **`extract` streams, and what it streams is `to_canonical_bytes`.** The subcommand writes the
+/// representation with `write_canonical_to`, member by member, instead of assembling it in one
+/// buffer. PDF and office representations are minted here, so their payload bytes come from
+/// `seal`'s cache; their parsed round trips have no cache and take the other branch.
+#[test]
+fn write_canonical_to_writes_the_bytes_to_canonical_bytes_returns() {
+    let profile = Profile::default();
+    let mut minted = Vec::new();
+    for name in [
+        "measured-ink-box",
+        "ruled-table-grid",
+        "annotation-contents",
+        "image-xobject-drawn",
+        "tagged-structure-roles",
+    ] {
+        let doc = Document::open(&engine_fx(name), &profile).expect("opens");
+        let extract = ethos_parser_pdf::extract(&doc, &profile).expect("extracts");
+        minted.push(ethos_parser_pdf::to_representation(&extract, &profile).expect("represents"));
+    }
+    for rel in [
+        "simple-paragraphs/document.docx",
+        "workbook-cells/workbook.xlsx",
+        "deck-slides/deck.pptx",
+        "book-spine/book.epub",
+    ] {
+        let bytes = std::fs::read(repo_root().join("fixtures/office").join(rel)).expect("reads");
+        minted.push(ethos_parser_office::read(&bytes).expect("reads"));
+    }
+
+    for repr in minted {
+        let expected = repr.to_canonical_bytes().expect("canonicalizes");
+        let parsed: DocumentRepresentation = serde_json::from_slice(&expected).expect("parses");
+        for r in [&repr, &parsed] {
+            let mut streamed = Vec::new();
+            r.write_canonical_to(&mut streamed).expect("writes");
+            assert!(
+                streamed == expected,
+                "a streamed {} representation differs from to_canonical_bytes",
+                r.payload().source.media_type
+            );
+        }
+    }
+}
+
 /// `ethos-parser ground` — reachable as parse → `verify_fingerprint` → `project` → canonical bytes.
 ///
 /// Including the fingerprint check, because that is a *behaviour of the subcommand*: `ground`
