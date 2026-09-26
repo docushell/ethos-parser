@@ -590,6 +590,20 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
                 ),
             })?;
         Decoder::ToUnicode(ToUnicode::parse(&bytes)?)
+    } else if FontKind::from_subtype(&subtype) == FontKind::Composite
+        && !matches!(fd.get(b"Encoding"), Ok(lopdf::Object::Name(_)))
+    {
+        // A composite font's codes are CIDs under the CMap its `/Encoding` names, and an embedded
+        // CMap is not parsed here. Read one byte at a time through a simple encoding they are
+        // characters the document never stated: refused, as a named CMap with no `/ToUnicode` is.
+        return Err(EngineError::Unsupported {
+            what: "encoding".into(),
+            detail: format!(
+                "composite font /{id} names no CMap this profile reads as its /Encoding (an \
+                 embedded CMap is not parsed) and supplies no `/ToUnicode`, so this profile has \
+                 no source for CID to Unicode"
+            ),
+        });
     } else {
         Decoder::Simple(load_simple_encoding(doc, fd)?)
     };
@@ -1649,6 +1663,28 @@ mod tests {
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
+    }
+
+    /// **A composite font whose `/Encoding` is an embedded CMap, and which has no `/ToUnicode`, is
+    /// refused** (review 2026-09-26 N16), as its `/Identity-H` sibling is. Read one byte at a time
+    /// through StandardEncoding, CIDs 0x3441 0x245E 0x2447 came out as `4A$^$G`, `extracted`.
+    #[test]
+    fn a_composite_font_with_an_embedded_cmap_and_no_tounicode_is_refused() {
+        let mut doc = lopdf::Document::new();
+        let cmap = doc.add_object(lopdf::Stream::new(
+            lopdf::Dictionary::new(),
+            b"begincmap endcmap".to_vec(),
+        ));
+        let mut fd = lopdf::Dictionary::new();
+        fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
+        fd.set("Encoding", lopdf::Object::Reference(cmap));
+        let e = load_font(&doc, "F1", &fd).expect_err("no source for CID to Unicode");
+        assert_eq!(e.code(), "unsupported", "{e}");
+        assert!(
+            e.to_string()
+                .starts_with("unsupported encoding: composite font /F1 names no CMap"),
+            "{e}"
+        );
     }
 
     /// **A `/ToUnicode` whose filter does not decode is refused, not parsed from its raw bytes**
