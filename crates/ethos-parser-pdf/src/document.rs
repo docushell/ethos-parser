@@ -69,6 +69,8 @@ pub struct Document {
     /// a limitation recorded on a later page would carry an earlier page's name. A `Mutex`
     /// rather than a `RefCell` so the handle stays `Sync`.
     font_cache: std::sync::Mutex<BTreeMap<(lopdf::ObjectId, String), Arc<crate::fonts::Font>>>,
+    /// Parsed `/ToUnicode` CMaps, one per stream, against one budget for the whole document.
+    tounicode: crate::cmap::ToUnicodeCache,
 }
 
 impl core::fmt::Debug for Document {
@@ -202,6 +204,7 @@ impl Document {
             xref_entries_padded,
             opened_under: profile.xref_repair,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
+            tounicode: crate::cmap::ToUnicodeCache::default(),
         })
     }
 
@@ -238,6 +241,11 @@ impl Document {
         id: &str,
     ) -> Option<Arc<crate::fonts::Font>> {
         self.fonts().get(&(oid, id.to_string())).cloned()
+    }
+
+    /// The document's parsed `/ToUnicode` CMaps.
+    pub(crate) fn tounicode(&self) -> &crate::cmap::ToUnicodeCache {
+        &self.tounicode
     }
 
     /// Record a parsed font for reuse by later pages.

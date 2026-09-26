@@ -1441,6 +1441,11 @@ pub(crate) fn extract_with_positions(
         })
         .collect();
 
+    // Ahead of every page's own error: the pages ran in parallel, so which of them crossed the
+    // document's `ToUnicode` budget is not a property of the document, and an earlier page's
+    // error would otherwise win or lose by timing (review 2026-09-26 N11).
+    doc.tounicode().refusal()?;
+
     for (page_number, outcome) in outcomes {
         let Some(result) = outcome else {
             page_states.push(PageStateEntry {

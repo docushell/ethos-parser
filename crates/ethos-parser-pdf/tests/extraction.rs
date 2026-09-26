@@ -4594,6 +4594,58 @@ fn a_w_entry_lopdf_would_allocate_is_refused_before_it_reads_the_file() {
     }
 }
 
+/// **A document's `ToUnicode` CMaps share one ceiling, and crossing it refuses the document ahead
+/// of any page's own error** (review 2026-09-26 N11). Page 2's CMap sits at the ceiling and page
+/// 3's holds one mapping more, in another stream, so together they cross it whichever runs first;
+/// page 1 names a font that does not resolve. Pages run in parallel, so without the precedence the
+/// error reported would depend on which of pages 2 and 3 got there second.
+#[test]
+fn a_documents_tounicode_ceiling_refuses_it_ahead_of_any_page_error() {
+    let cmap = |rows: String| {
+        let body = format!("begincmap\nbeginbfrange\n{rows}endbfrange\nendcmap");
+        format!("<< /Length {} >>\nstream\n{body}\nendstream", body.len()).into_bytes()
+    };
+    let font = |tounicode: u32| {
+        format!(
+            "<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H \
+             /DescendantFonts [7 0 R] /ToUnicode {tounicode} 0 R >>"
+        )
+        .into_bytes()
+    };
+    let page = |font: &str| {
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] \
+             /Resources << /Font << /F0 {font} >> >> /Contents 6 0 R >>"
+        )
+        .into_bytes()
+    };
+    let objects = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>".to_vec(),
+        page("99 0 R"),
+        page("8 0 R"),
+        page("9 0 R"),
+        b"<< /Length 0 >>\nstream\n\nendstream".to_vec(),
+        b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /X /CIDSystemInfo << /Registry (Adobe) \
+          /Ordering (Identity) /Supplement 0 >> /DW 500 >>"
+            .to_vec(),
+        font(10),
+        font(11),
+        cmap(
+            (0..16)
+                .map(|k| format!("<{k:04X}0000> <{k:04X}FFFF> <E000>\n"))
+                .collect(),
+        ),
+        cmap("<00100000> <00100000> <0041>\n".into()),
+    ];
+    let e = extracted(&pdf_from_objects(&objects)).expect_err("refused");
+    assert_eq!(e.code(), "resource_limit", "{e}");
+    assert!(
+        e.to_string().contains("ToUnicode mappings per document"),
+        "{e}"
+    );
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
