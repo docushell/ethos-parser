@@ -490,33 +490,48 @@ fn text_at(doc: &lopdf::Document, dict: &Dictionary, key: &[u8]) -> Option<Strin
 /// Decode a PDF text string, **refusing the bytes this engine cannot decode** rather than
 /// substituting for them.
 ///
-/// The same two encodings as [`decode_text`] (§7.9.2.2), and the same UTF-16BE branch. The
-/// difference is the other one. `decode_text` maps every remaining byte through `char::from`,
+/// The same two encodings as [`decode_text`] (§7.9.2.2), plus UTF-8 behind its byte-order mark
+/// (ISO 32000-2 §7.9.2.2.1). Its UTF-16BE branch also refuses half a code unit and a language
+/// escape rather than trimming or decoding them. The larger difference is the other branch.
+/// `decode_text` maps every remaining byte through `char::from`,
 /// which is Latin-1 — so `0x85` becomes `U+0085`, a C1 control character, inside a string that
 /// still reads as well-formed. That is a deliberate choice **for a label**: losing a whole
 /// annotation over one unmappable byte in an author's name would delete content to protect a
 /// string nobody cites.
 ///
 /// An outline title is not that. `0x80`–`0x9F` is exactly where PDFDocEncoding, Latin-1 and
-/// Windows-1252 disagree, this engine vendors no PDFDocEncoding table for it, and **69 of the
+/// Windows-1252 disagree (and `0xA0` and `0xAD` are two more places PDFDocEncoding and Latin-1
+/// do), this engine vendors no PDFDocEncoding table for it, and **69 of the
 /// 2 273 entries in this repository's own corpus carry such a byte**
 /// (`docs/measurements/outlines/`). So this returns `None` and the caller counts it, which is the
 /// engine's ordinary answer to *I could not read this* — and `docs/29-OUTLINES-SCOPE.md` §4
 /// records why vendoring the block is a separate, optional slice rather than a precondition.
 pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+        // An odd trailing byte is half a code unit, and U+001B opens a language escape (§7.9.2.2)
+        // whose code is not text: refused, not trimmed and not decoded as characters.
+        if bytes.len() % 2 != 0 {
+            return None;
+        }
         let units: Vec<u16> = bytes[2..]
             .chunks_exact(2)
             .map(|c| u16::from_be_bytes([c[0], c[1]]))
             .collect();
-        return String::from_utf16(&units).ok();
+        return String::from_utf16(&units)
+            .ok()
+            .filter(|text| !text.contains('\u{1b}'));
     }
-    // PDFDocEncoding agrees with Latin-1 over 0x20..=0x7E and 0xA0..=0xFF. Everything else --
-    // the C0 controls, 0x7F, and the 0x80..=0x9F block the three encodings disagree over -- is
-    // refused rather than guessed.
+    // ISO 32000-2 §7.9.2.2.1: UTF-8 behind its byte-order mark.
+    if let Some(utf8) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8(utf8.to_vec()).ok();
+    }
+    // PDFDocEncoding agrees with Latin-1 over 0x20..=0x7E and 0xA1..=0xFF except 0xAD. Everything
+    // else -- the C0 controls, 0x7F, the 0x80..=0x9F block the three encodings disagree over, 0xA0
+    // (the euro sign in PDFDocEncoding, a no-break space in Latin-1) and 0xAD (undefined in
+    // PDFDocEncoding) -- is refused rather than guessed.
     bytes
         .iter()
-        .all(|b| (0x20..=0x7E).contains(b) || *b >= 0xA0)
+        .all(|b| (0x20..=0x7E).contains(b) || (*b >= 0xA1 && *b != 0xAD))
         .then(|| bytes.iter().map(|b| char::from(*b)).collect())
 }
 
@@ -582,6 +597,34 @@ mod tests {
             bytes.extend_from_slice(&u.to_be_bytes());
         }
         assert_eq!(decode_text(&bytes), "héllo");
+    }
+
+    /// **The strict decoder refuses what it used to guess** (review 2026-09-26 N17): the two bytes
+    /// above 0x9F where PDFDocEncoding and Latin-1 disagree, half a UTF-16 code unit and a
+    /// language escape; and it reads a UTF-8 title (ISO 32000-2 §7.9.2.2.1) as UTF-8.
+    #[test]
+    fn the_strict_decoder_refuses_what_it_would_have_guessed() {
+        assert_eq!(
+            decode_text_strict(b"Price \xa05"),
+            None,
+            "0xA0 is the euro sign"
+        );
+        assert_eq!(decode_text_strict(b"co\xadop"), None, "0xAD is undefined");
+        assert_eq!(
+            decode_text_strict(b"\xef\xbb\xbfCaf\xc3\xa9").as_deref(),
+            Some("Caf\u{e9}")
+        );
+        assert_eq!(
+            decode_text_strict(b"\xfe\xff\x00\x1ben\x00\x1b\x00H\x00i"),
+            None,
+            "a language escape"
+        );
+        assert_eq!(
+            decode_text_strict(b"\xfe\xff\x00A\x00"),
+            None,
+            "half a code unit"
+        );
+        assert_eq!(decode_text_strict(b"Caf\xe9").as_deref(), Some("Caf\u{e9}"));
     }
 
     #[test]

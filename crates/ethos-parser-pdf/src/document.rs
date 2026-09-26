@@ -47,6 +47,9 @@ pub struct Document {
     /// declare it; a repaired open that produced an artifact indistinguishable from an
     /// unrepaired one would be exactly the silent repair `docs/01-CONTRACT.md` §12 forbids.
     xref_entries_padded: Option<u32>,
+    /// The `xref_repair` this document was opened under, which decided whether the repair could
+    /// run. `extract` refuses a profile naming another (review 2026-09-26 N55).
+    opened_under: ethos_parser_core::XrefRepair,
     /// Whether the backend decrypted this document with the empty user password at load.
     ///
     /// `lopdf` authenticates the empty password itself, decrypts every object and removes
@@ -159,6 +162,17 @@ impl Document {
             }
         }
 
+        // `lopdf` drops an object it cannot parse, and leaves a stream whose `/Length` does not
+        // resolve without its data. Every later lookup reads the loss as an absence: an
+        // annotation, a field or a `/ToUnicode` gone without a word, and a writer copying the
+        // document writes the loss out. Refused here, once, before anything reads the document.
+        if let Some((id, why)) = unloaded_in_use(&inner) {
+            return Err(EngineError::Malformed {
+                what: "pdf object".into(),
+                detail: format!("object {} {} R {why}", id.0, id.1),
+            });
+        }
+
         let pages = walk_page_tree(&inner)?;
 
         Ok(Self {
@@ -173,6 +187,7 @@ impl Document {
             opened_encrypted: inner.was_encrypted(),
             inner,
             xref_entries_padded,
+            opened_under: profile.xref_repair,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
         })
     }
@@ -242,6 +257,11 @@ impl Document {
         // wrong with it and the original error is still the honest answer.
         let doc = lopdf::Document::load_mem(&repair.bytes).ok()?;
         Some((doc, repair.entries_padded))
+    }
+
+    /// The `xref_repair` this document was opened under.
+    pub(crate) fn opened_under(&self) -> ethos_parser_core::XrefRepair {
+        self.opened_under
     }
 
     /// How many cross-reference entries the bounded repair padded, or `None` if it did not run.
@@ -340,6 +360,44 @@ fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
     })
 }
 
+/// The first object the cross-reference table lists in use whose data `lopdf` did not load, and
+/// why. `/Encrypt` is the exception: `lopdf` removes it on purpose after decrypting.
+///
+/// A stream whose `/Length` resolves read its data at load, an empty one included, so only one
+/// whose `/Length` does not resolve can have lost it that way.
+fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static str)> {
+    use lopdf::xref::XrefEntry;
+    let encrypt = doc
+        .encryption_state
+        .as_ref()
+        .and_then(lopdf::EncryptionState::encrypt_object_id);
+    for (&number, entry) in &doc.reference_table.entries {
+        let id = match *entry {
+            XrefEntry::Normal { generation, .. } => (number, generation),
+            XrefEntry::Compressed { .. } => (number, 0),
+            _ => continue,
+        };
+        let why = match doc.objects.get(&id) {
+            _ if Some(id) == encrypt => continue,
+            None => "is in use in the cross-reference table and did not load",
+            Some(lopdf::Object::Stream(s))
+                if s.content.is_empty()
+                    && s.start_position.is_some()
+                    && s.dict
+                        .get(b"Length")
+                        .and_then(|l| doc.dereference(l))
+                        .and_then(|(_, l)| l.as_i64())
+                        .is_err() =>
+            {
+                "is a stream whose /Length does not resolve, so its data did not load"
+            }
+            _ => continue,
+        };
+        return Some((id, why));
+    }
+    None
+}
+
 /// A `/Pages` node's `/Kids`, or a refusal naming the node.
 fn kids_of(doc: &lopdf::Document, id: lopdf::ObjectId) -> Result<&[lopdf::Object], EngineError> {
     doc.get_dictionary(id)
@@ -381,6 +439,9 @@ fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, 
             stack.pop();
             continue;
         };
+        // A level with no kid left holds no pending sibling. It is dropped before descending, so
+        // every level under the top of the stack still holds one.
+        let exhausted = level.len() == 0;
         let id = kid
             .as_reference()
             .map_err(|_| malformed("a /Kids entry is not an indirect reference".into()))?;
@@ -411,9 +472,16 @@ fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, 
                     .map_err(|_| malformed("more pages than a u32 counts".into()))?;
                 pages.push((number, id));
             }
-            b"Pages" if stack.len() < MAX_DEPTH => stack.push(kids_of(doc, id)?.iter()),
             b"Pages" => {
-                return Err(malformed(format!("/Pages nests past {MAX_DEPTH} levels")));
+                // `get_pages` skips a `/Pages` node beneath 256 pending sibling lists, and those
+                // lists are the levels under this one: the bound counts them, not levels.
+                if stack.len() > MAX_DEPTH {
+                    return Err(malformed(format!("/Pages nests past {MAX_DEPTH} levels")));
+                }
+                if exhausted {
+                    stack.pop();
+                }
+                stack.push(kids_of(doc, id)?.iter());
             }
             other => {
                 return Err(malformed(format!(

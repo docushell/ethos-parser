@@ -791,6 +791,37 @@ fn the_hostile_xref_fixture_is_repaired_and_extracts_its_real_content() {
     );
 }
 
+/// **One profile from the open to the representation** (review 2026-09-26 N55). The open decides
+/// whether the repair runs, so the hostile document opened under it and extracted under a profile
+/// that refuses it named the refusing profile while carrying `xref-entry-padded`. And
+/// `to_representation` took the record's identity from the extract and its backend from its own
+/// argument, so the sealed record could describe a run nobody made.
+#[test]
+fn the_library_binds_one_profile_from_open_to_representation() {
+    let repairs = Profile::default();
+    let refuses = Profile {
+        xref_repair: ethos_parser_core::XrefRepair::Refuse,
+        ..Profile::default()
+    };
+    let doc = Document::open(
+        &conformance("synthetic/table-regular-grid/document.pdf"),
+        &repairs,
+    )
+    .expect("repaired");
+    let e = ethos_parser_pdf::extract(&doc, &refuses).expect_err("not under a refusing profile");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(e.to_string().contains("`xref_repair`"), "{e}");
+
+    let extract = ethos_parser_pdf::extract(&doc, &repairs).expect("one profile");
+    let budget = Profile {
+        page_budget: ethos_parser_core::PageBudget::AtMost(1),
+        ..Profile::default()
+    };
+    let e = ethos_parser_pdf::to_representation(&extract, &budget).expect_err("another profile");
+    assert_eq!(e.code(), "malformed", "{e}");
+    ethos_parser_pdf::to_representation(&extract, &repairs).expect("its own profile");
+}
+
 // -------------------------------------------------------------------------------------------
 // 10. Determinism
 // -------------------------------------------------------------------------------------------
@@ -3086,20 +3117,33 @@ fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
          wire the document never called one"
     );
 
-    let doc_scoped = a
-        .assurance
-        .limitations
-        .iter()
-        .find(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED)
+    let declared = |scope| {
+        a.assurance.limitations.iter().find(|l| {
+            l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED && l.scope == scope
+        })
+    };
+    let doc_scoped = declared(ethos_parser_core::LimitationScope::Document)
         .expect("the `Do` happened HERE, and the artifact has to say so");
-    assert_eq!(
-        doc_scoped.scope,
-        ethos_parser_core::LimitationScope::Document
-    );
     assert!(
         doc_scoped.detail.starts_with("1 form XObject(s)"),
         "the COUNT is the whole content of this limitation, not its prose: {}",
         doc_scoped.detail
+    );
+
+    // And on the page it cost (review 2026-09-26 N20), which is what the binding API reads: a
+    // search that finds nothing on page 1 has not observed that page 1 says nothing.
+    let page_scoped = declared(ethos_parser_core::LimitationScope::Page(1))
+        .expect("the page that drew the form says so too");
+    assert!(
+        page_scoped.detail.starts_with("1 form XObject(s)"),
+        "{}",
+        page_scoped.detail
+    );
+    assert_eq!(
+        a.assurance.page_binding_status(1),
+        ethos_parser_core::PageBindingResult::CapabilityLimited {
+            limitation_code: ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED.into()
+        }
     );
 
     // Present alongside, and different. Losing the distinction is how this defect survived.
@@ -4405,6 +4449,7 @@ fn a_tail_lopdf_would_drop_is_refused_by_name() {
 /// object whose bytes do not parse, and the page loop skipped the reference that no longer
 /// resolved: one stray `)` in the stream's dictionary read as a blank page, `complete`. A
 /// reference the cross-reference table never listed is null (§7.3.10), and still draws nothing.
+/// Since review 2026-09-26 N08 the open refuses the lost object, before the page loop reads it.
 #[test]
 fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
     let page = |contents: &str, stream_dict: &str| {
@@ -4425,15 +4470,106 @@ fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
         "the control: lopdf dropped the stream at load, without a word"
     );
 
-    let e = extracted(&dropped).expect_err("refused, not read as a blank page");
+    let e = Document::open_bytes(&dropped, &Profile::default())
+        .expect_err("refused, not read as a blank page");
     assert_eq!(e.code(), "malformed", "{e}");
     assert!(
         e.to_string()
-            .starts_with("malformed content stream: page 1: /Contents names 4 0 R"),
+            .starts_with("malformed pdf object: object 4 0 R is in use"),
         "{e}"
     );
 
     extracted(&page("[4 0 R 5 0 R]", "")).expect("an object nothing defines is null");
+}
+
+/// **A `/Contents` entry the table does not list at that generation, or an explicit `null`, draws
+/// nothing** (review 2026-09-26 N63). PDF 32000-1 §7.3.10 reads both as null, and v0.61.0 read
+/// both; the check above compared object numbers alone and did not take a loaded `null` for one,
+/// so it refused each page as unreadable.
+#[test]
+fn a_contents_entry_that_is_null_draws_nothing() {
+    for other in ["4 1 R", "5 0 R"] {
+        let bytes = pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font \
+                 << /F1 6 0 R >> >> /Contents [4 0 R {other}] >>"
+            )
+            .into_bytes(),
+            [
+                format!("<< /Length {} >>\nstream\n", MEASURED.len()).as_bytes(),
+                MEASURED,
+                b"endstream",
+            ]
+            .concat(),
+            b"null".to_vec(),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        ]);
+        let a = extracted(&bytes).unwrap_or_else(|e| panic!("{other}: {e}"));
+        assert_eq!(
+            runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            ["Measured"],
+            "{other}"
+        );
+    }
+}
+
+/// **An object `lopdf` did not load is refused at open, whatever would read it** (review
+/// 2026-09-26 N08). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
+/// to one stray `)` vanished without a word, and an image whose `/Length` names no object loaded
+/// with no data — each in an artifact marked `complete`, and in what `tag` and `overlay` wrote.
+#[test]
+fn an_object_lopdf_did_not_load_is_refused_at_open() {
+    let stream = |dict: &str, data: &str| {
+        format!(
+            "<< /Length {} {dict}>>\nstream\n{data}\nendstream",
+            data.len()
+        )
+        .into_bytes()
+    };
+    let cases: [(&str, Vec<Vec<u8>>, &str); 3] = [
+        (
+            "/Annots [4 0 R]",
+            vec![
+                b"<< /Type /Annot /Subtype /Text /Rect [0 0 9 9] /Contents (note) /X ) >>".to_vec(),
+            ],
+            "object 4 0 R is in use in the cross-reference table and did not load",
+        ),
+        (
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R",
+            vec![
+                b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 5 0 R >>".to_vec(),
+                stream("/X ) ", "begincmap endcmap"),
+                stream("", "BT /F1 24 Tf 72 72 Td (ABC) Tj ET"),
+            ],
+            "object 5 0 R is in use in the cross-reference table and did not load",
+        ),
+        (
+            "/Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R",
+            vec![
+                b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+                  /BitsPerComponent 8 /Length 99 0 R >>\nstream\n\x80\nendstream"
+                    .to_vec(),
+                stream("", "q 9 0 0 9 0 0 cm /Im1 Do Q"),
+            ],
+            "object 4 0 R is a stream whose /Length does not resolve",
+        ),
+    ];
+    for (page, rest, refusal) in cases {
+        let mut objects = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] {page} >>").into_bytes(),
+        ];
+        objects.extend(rest);
+        let bytes = pdf_from_objects(&objects);
+        lopdf::Document::load_mem(&bytes).expect("the control: lopdf loads it without a word");
+
+        let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(refusal);
+        assert_eq!(e.code(), "malformed", "{e}");
+        assert!(e.to_string().contains(refusal), "{e}");
+    }
 }
 
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
@@ -4482,24 +4618,26 @@ fn a_whole_flate_stream_with_a_wrong_check_still_reads() {
     );
 }
 
+/// `with_content(stream, None)` with `/Filter` set to `filter` over the stream's bytes as written.
+fn under(filter: impl Into<lopdf::Object>, stream: &[u8]) -> Vec<u8> {
+    let mut doc = lopdf::Document::load_mem(&with_content(stream, None)).expect("loads");
+    let id = doc.get_page_contents(doc.get_pages()[&1])[0];
+    doc.get_object_mut(id)
+        .and_then(lopdf::Object::as_stream_mut)
+        .expect("the page's stream")
+        .dict
+        .set("Filter", filter);
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
 /// **A content stream whose filter does not decode is refused by name**, where `lopdf`'s
 /// `get_page_content` fell back to the stream's raw bytes: operators under `/ASCIIHexDecode`, a
 /// standard filter `lopdf` does not implement, or under a name no standard defines, read as text
 /// no viewer draws. A filter that decodes still reads: the whole-deflate control above.
 #[test]
 fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
-    let under = |filter: &str, content: &[u8]| {
-        let mut doc = lopdf::Document::load_mem(&with_content(content, None)).expect("loads");
-        let id = doc.get_page_contents(doc.get_pages()[&1])[0];
-        doc.get_object_mut(id)
-            .and_then(lopdf::Object::as_stream_mut)
-            .expect("the page's stream")
-            .dict
-            .set("Filter", filter);
-        let mut out = Vec::new();
-        doc.save_to(&mut out).expect("saves");
-        out
-    };
     for filter in ["ASCIIHexDecode", "NoSuchDecode"] {
         let e = extracted(&under(filter, MEASURED)).expect_err("refused, not read as raw bytes");
         assert_eq!(e.code(), "unsupported", "{e}");
@@ -4509,6 +4647,65 @@ fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
             "{e}"
         );
     }
+}
+
+/// ASCII85 (PDF 32000-1 §7.4.3), closed by its `~>` marker.
+fn ascii85(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for chunk in bytes.chunks(4) {
+        let mut word = [0u8; 4];
+        word[..chunk.len()].copy_from_slice(chunk);
+        let mut n = u32::from_be_bytes(word);
+        let mut digits = [0u8; 5];
+        for d in digits.iter_mut().rev() {
+            *d = b'!' + (n % 85) as u8;
+            n /= 85;
+        }
+        out.extend_from_slice(&digits[..=chunk.len()]);
+    }
+    out.extend_from_slice(b"~>");
+    out
+}
+
+/// **`FlateDecode` after another filter is checked as a first one is** (review 2026-09-26 N23).
+/// `lopdf` returns a truncated inflate's partial output as a success wherever the filter sits, and
+/// only a first filter's deflate data was checked: a page under `[/ASCII85Decode /FlateDecode]`
+/// whose deflate data stops at a flush point read as the text before it, `complete`. The same
+/// chain whole still reads.
+#[test]
+fn a_flate_stream_after_another_filter_that_does_not_reach_its_end_is_refused() {
+    use std::io::Write;
+    // `Measured`, flushed, and nothing after: whole blocks that decode to the line, and no end.
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    z.write_all(MEASURED).expect("in memory");
+    z.flush().expect("in memory");
+    let cut = z.get_ref().clone();
+    let chain = || lopdf::Object::Array(vec!["ASCII85Decode".into(), "FlateDecode".into()]);
+
+    let e = extracted(&under(chain(), &ascii85(&cut))).expect_err("refused, not read in part");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(e.to_string().contains("without reaching its end"), "{e}");
+
+    let whole = extracted(&under(chain(), &ascii85(&zlib(MEASURED)))).expect("reads");
+    assert_eq!(
+        runs(&whole)
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Measured"]
+    );
+}
+
+/// **An empty filter array is no filter** (review 2026-09-26 N09): the stream's own bytes are the
+/// page, as Ghostscript and qpdf read them. `lopdf` decodes an empty chain to no bytes at all, and
+/// the page read as blank and `complete`.
+#[test]
+fn an_empty_filter_array_reads_the_streams_own_bytes() {
+    let a = extracted(&under(lopdf::Object::Array(Vec::new()), MEASURED)).expect("reads");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Measured"]
+    );
 }
 
 // -------------------------------------------------------------------------------------------
@@ -4551,6 +4748,48 @@ fn a_page_tree_that_is_not_a_tree_is_refused() {
         let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(refusal);
         assert_eq!(e.code(), "malformed", "{e}");
         assert!(e.to_string().contains(refusal), "{e}");
+    }
+}
+
+/// **A `/Pages` tree reads as deep as `get_pages` reads it** (review 2026-09-26 N64). The walk
+/// bounded levels where `get_pages` bounds pending sibling lists, so a legal 300-level chain, which
+/// v0.61.0, Ghostscript and qpdf each read as one page, was refused. The bound now sits where
+/// `get_pages` skips a node without a word, and nowhere else.
+#[test]
+fn a_page_tree_reads_as_deep_as_get_pages_reads_it() {
+    // `levels` nested /Pages nodes and a page at the bottom. Each of the first `siblings` nodes
+    // also holds a page after the node below it, pending while the walk descends.
+    let tree = |levels: usize, siblings: usize| {
+        let mut objects = vec![b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()];
+        for n in 2..levels + 2 {
+            let sibling = if n - 1 <= siblings {
+                format!(" {} 0 R", levels + 1 + n)
+            } else {
+                String::new()
+            };
+            objects.push(format!("<< /Type /Pages /Kids [{} 0 R{sibling}] >>", n + 1).into());
+        }
+        for parent in std::iter::once(levels + 1).chain(2..siblings + 2) {
+            let page = format!("<< /Type /Page /Parent {parent} 0 R /MediaBox [0 0 300 144] >>");
+            objects.push(page.into());
+        }
+        pdf_from_objects(&objects)
+    };
+    for (levels, siblings, reads) in [(300, 0, true), (257, 256, true), (258, 256, false)] {
+        let bytes = tree(levels, siblings);
+        let pages = siblings + 1;
+        let lenient = lopdf::Document::load_mem(&bytes).expect("lopdf loads it");
+        assert_eq!(
+            lenient.get_pages().len() == pages,
+            reads,
+            "the control, {levels}"
+        );
+
+        match Document::open_bytes(&bytes, &Profile::default()) {
+            Ok(doc) if reads => assert_eq!(doc.page_count() as usize, pages),
+            Err(e) if !reads => assert!(e.to_string().contains("nests past 256 levels"), "{e}"),
+            other => panic!("{levels} levels, {siblings} pending: {other:?}"),
+        }
     }
 }
 
@@ -5024,5 +5263,70 @@ fn a_document_without_right_to_left_text_declares_nothing_about_it() {
             .iter()
             .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
         "no right-to-left scalar is drawn here, so nothing is declared about one"
+    );
+}
+
+/// **An astral right-to-left scalar is declared too** (review 2026-09-26 N44). The block test read
+/// three BMP ranges, so Adlam, Hanifi Rohingya, Imperial Aramaic or the Arabic mathematical
+/// alphabet declared nothing, where the declaration's absence reads as *no right-to-left text*.
+#[test]
+fn an_astral_right_to_left_scalar_is_declared() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream(b"BT /F1 24 Tf 72 72 Td (A) Tj ET"),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>".to_vec(),
+        // U+1E900, ADLAM CAPITAL LETTER ALIF, as its UTF-16 surrogate pair.
+        stream(
+            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 1 beginbfchar \
+              <41> <D83ADD00> endbfchar endcmap",
+        ),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    assert_eq!(runs(&a)[0].text, "\u{1E900}");
+    assert!(
+        a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
+        "an Adlam run is right-to-left text drawn in page order, like a Hebrew one"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// Outline titles
+// -------------------------------------------------------------------------------------------
+
+/// **An outline `/Title` held in an indirect object is read where it points** (review 2026-09-26
+/// N17). PDF 32000-1 §7.3.10 lets any value be indirect, and the reader counted such a title as one
+/// holding a byte it would not decode.
+#[test]
+fn an_indirect_outline_title_is_read() {
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >>".to_vec(),
+        b"<< /Type /Outlines /First 5 0 R /Last 5 0 R /Count 1 >>".to_vec(),
+        b"<< /Title 6 0 R /Parent 4 0 R /Dest [3 0 R /Fit] >>".to_vec(),
+        b"(Chapter one)".to_vec(),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    assert_eq!(
+        a.outlines
+            .iter()
+            .map(|o| o.title.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("Chapter one")]
     );
 }

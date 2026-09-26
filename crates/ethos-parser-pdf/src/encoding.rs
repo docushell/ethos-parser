@@ -525,7 +525,9 @@ pub(crate) fn glyph_name_to_str(name: &str) -> Option<&'static str> {
 /// Map a single ASCII byte to a static string, without allocating.
 fn single_ascii(b: u8) -> Option<&'static str> {
     const TABLE: [Option<&str>; 256] = build_win_ansi();
-    if b.is_ascii_alphanumeric() {
+    // Letters only: `/a` and `/Z` are Adobe Glyph List names, and `/1` is not (the digit one is
+    // `/one`).
+    if b.is_ascii_alphabetic() {
         TABLE[b as usize]
     } else {
         None
@@ -680,5 +682,16 @@ mod tests {
         let e = SimpleEncoding::new(BaseEncoding::WinAnsi, d);
         assert_eq!(e.decode(0x01).unwrap(), "a");
         assert_eq!(e.decode(0x02).unwrap(), "Z");
+    }
+
+    /// **A digit is not a glyph name** (review 2026-09-26 N38). The Adobe Glyph List names the
+    /// digit one `/one`; `/1` names nothing this profile knows, and is refused like any unknown
+    /// name rather than read as `1`.
+    #[test]
+    fn a_digit_is_not_a_glyph_name() {
+        let mut d = BTreeMap::new();
+        d.insert(0x01u8, "1".to_string());
+        let e = SimpleEncoding::new(BaseEncoding::WinAnsi, d);
+        assert_eq!(e.decode(0x01).unwrap_err().code(), "unsupported");
     }
 }

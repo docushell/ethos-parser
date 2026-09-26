@@ -182,9 +182,12 @@ fn declared_len(count: usize) -> u32 {
 ///
 /// **A block test, deliberately, and named so.** Unicode's `Bidi_Class` is the property that
 /// actually answers *is this character right-to-left*, and this engine carries no Unicode
-/// character database — so this reads the three ranges the right-to-left scripts occupy instead:
+/// character database — so this reads the ranges the right-to-left scripts occupy instead:
 /// `U+0590`–`U+08FF` is Hebrew through Arabic Extended-A (Syriac, Thaana, NKo, Samaritan and
-/// Mandaic among them), and the two presentation-form ranges follow.
+/// Mandaic among them), and the two presentation-form ranges follow. The two astral ranges are the
+/// ones Unicode reserves for right-to-left scripts, whose unassigned code points default to
+/// `Bidi_Class` R or AL: `U+10800`–`U+10FFF` (Kharoshthi, Old Turkic, Hanifi Rohingya, Sogdian
+/// and more) and `U+1E800`–`U+1EFFF` (Mende Kikakui, Adlam, the Arabic mathematical alphabet).
 ///
 /// It therefore also matches a few scalars in those blocks that are not themselves right-to-left
 /// — an Arabic-Indic digit is `Bidi_Class` `AN`, not `R` or `AL`. That is the safe direction: the
@@ -193,7 +196,10 @@ fn declared_len(count: usize) -> u32 {
 /// quote that silently will not match. The limitation's own wording claims blocks, not classes,
 /// so what it says is true of what this measures.
 fn is_right_to_left_block(c: char) -> bool {
-    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+    matches!(
+        c as u32,
+        0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x1_0800..=0x1_0FFF | 0x1_E800..=0x1_EFFF
+    )
 }
 
 fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {
@@ -1222,7 +1228,8 @@ impl PageCounters {
 /// - [`EngineError::Unsupported`] — an operator outside PDF 32000-1 Table A.1, or a character
 ///   code this profile cannot decode. **Fails closed**: a skipped operator can move or delete
 ///   text, and a substituted character is a character the document does not contain.
-/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure.
+/// - [`EngineError::Malformed`] — operands of the wrong shape, or an unreadable page structure; or
+///   a `profile` whose `xref_repair` is not the one `doc` was opened under.
 /// - [`EngineError::MissingPart`] — a font resource a `Tf` refers to is absent.
 pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, EngineError> {
     extract_with_positions(doc, profile).map(|(artifact, _)| artifact)
@@ -1247,6 +1254,16 @@ pub(crate) fn extract_with_positions(
             what: "profile".into(),
             detail: e.to_string(),
         })?;
+    // The open decided whether the cross-reference repair could run, so an artifact must not
+    // name a profile that would have refused the document it describes.
+    if doc.opened_under() != profile.xref_repair {
+        return Err(EngineError::Malformed {
+            what: "profile".into(),
+            detail: "the document was opened under a different `xref_repair` than this profile \
+                     names; open and extract under one profile"
+                .into(),
+        });
+    }
 
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut pages = Vec::with_capacity(doc.pages().len());
@@ -1566,6 +1583,12 @@ pub(crate) fn extract_with_positions(
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
+        if y.undescended_xobjects > 0 {
+            limitations.push(lim::form_xobjects_not_descended_on_page(
+                page_number,
+                y.undescended_xobjects,
+            ));
+        }
         composite_fonts = declare(composite_fonts, y.composite_fonts);
         for (code, n) in y.findings_seen {
             *findings_seen.entry(code).or_insert(0) += n;
@@ -2076,8 +2099,8 @@ fn run_findings(
 /// decode operator for operator, which together prove the page was read to its end. The operations
 /// returned are `lopdf`'s own, so an operation index means what it meant before these checks.
 ///
-/// A stream whose filter chain does not start with `FlateDecode` is decoded as before; a
-/// `LZWDecode` or `ASCII85Decode` stream that is corrupt part way is not caught here.
+/// A `FlateDecode` filter is checked wherever it sits in the chain; a `LZWDecode` or
+/// `ASCII85Decode` stream that is corrupt part way is not caught here.
 ///
 /// **Measured on a corpus, 2026-09-18.** Over OmniDocBench's 981 born-digital `v1_0` pages this
 /// refuses one document, `jiaocaineedrop_chap10.pdf_8.pdf`, whose page content `lopdf` stops
@@ -2105,6 +2128,8 @@ pub(crate) fn page_operations(
             // No in-use cross-reference entry: an undefined object, which PDF 32000-1 §7.3.10
             // reads as null. This entry draws nothing, and that is what the page says.
             Err(_) if !in_use(doc, id) => continue,
+            // An explicit `null` is that same null.
+            Ok(lopdf::Object::Null) => continue,
             // Listed and not loadable, or not a stream: the page draws something this reader
             // cannot read, and an empty page in its place would be a read nobody made.
             _ => {
@@ -2129,8 +2154,27 @@ pub(crate) fn page_operations(
         } else {
             Vec::new()
         };
-        if filters.first().is_some_and(|f| *f == b"FlateDecode") {
-            crate::tagging::deflate_reaches_its_end(&stream.content).map_err(|detail| {
+        // `lopdf` returns a truncated inflate's partial output as a success wherever `FlateDecode`
+        // sits in the chain, so each one's input is checked: the stream's bytes for the first
+        // filter, and for a later one what the filters before it decode them to.
+        for at in (0..filters.len()).filter(|&at| filters[at] == b"FlateDecode") {
+            let decoded_before;
+            let input: &[u8] = if at == 0 {
+                &stream.content
+            } else {
+                let mut before = stream.clone();
+                let names = filters[..at]
+                    .iter()
+                    .map(|f| lopdf::Object::Name(f.to_vec()));
+                before.dict.set("Filter", names.collect::<Vec<_>>());
+                // Filters that do not decode fail the whole chain, which is refused below.
+                let Ok(bytes) = before.decompressed_content() else {
+                    break;
+                };
+                decoded_before = bytes;
+                &decoded_before
+            };
+            crate::tagging::deflate_reaches_its_end(input).map_err(|detail| {
                 EngineError::Malformed {
                     what: "content stream".into(),
                     detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
@@ -2139,7 +2183,13 @@ pub(crate) fn page_operations(
         }
         // Decoded here rather than through `get_page_content`, whose fallback for a filter it
         // cannot decode is the stream's raw bytes: text the stream's own filter says is not there.
-        let bytes = stream.decompressed_content().map_err(|_| {
+        // An empty chain is no filter, so the stream's own bytes, which `lopdf` decodes to none.
+        let decoded = if filters.is_empty() {
+            Ok(stream.content.clone())
+        } else {
+            stream.decompressed_content()
+        };
+        let bytes = decoded.map_err(|_| {
             let chain: Vec<String> = filters
                 .iter()
                 .map(|f| format!("/{}", String::from_utf8_lossy(f)))
@@ -2170,13 +2220,14 @@ pub(crate) fn page_operations(
     Ok(decoded.operations)
 }
 
-/// Whether the cross-reference table lists `id` as an object in use.
+/// Whether the cross-reference table lists `id`, its generation included, as an object in use.
 fn in_use(doc: &lopdf::Document, id: lopdf::ObjectId) -> bool {
     use lopdf::xref::XrefEntry;
-    matches!(
-        doc.reference_table.entries.get(&id.0),
-        Some(XrefEntry::Normal { .. } | XrefEntry::Compressed { .. })
-    )
+    match doc.reference_table.entries.get(&id.0) {
+        Some(XrefEntry::Normal { generation, .. }) => *generation == id.1,
+        Some(XrefEntry::Compressed { .. }) => id.1 == 0,
+        _ => false,
+    }
 }
 
 fn quantize_err(_: ethos_parser_core::QuantizeError) -> EngineError {
