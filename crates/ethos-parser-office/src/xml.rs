@@ -265,20 +265,21 @@ pub(crate) fn cdata_text<'a>(
     cdata: &'a quick_xml::events::BytesCData<'_>,
     part_name: &str,
 ) -> Result<std::borrow::Cow<'a, str>, EngineError> {
-    match std::str::from_utf8(cdata.as_ref()) {
-        Ok(text) => Ok(std::borrow::Cow::Borrowed(text)),
-        Err(e) => Err(EngineError::Malformed {
-            what: part_name.to_string(),
-            detail: format!("a CDATA section is not UTF-8: {e}"),
-        }),
-    }
+    // The end-of-line rule `decode` applies holds for a CDATA section too.
+    cdata.xml10_content().map_err(|e| EngineError::Malformed {
+        what: part_name.to_string(),
+        detail: format!("a CDATA section is not UTF-8: {e}"),
+    })
 }
 
+/// Character data, **end-of-line normalised** as XML 1.0 §2.11 requires: a parser hands a CRLF or
+/// a lone CR to the application as one LF. `BytesText::decode` does not, so without this a file's
+/// own line ends reached the text.
 pub(crate) fn decode<'a>(
     text: &'a quick_xml::events::BytesText<'_>,
     part_name: &str,
 ) -> Result<std::borrow::Cow<'a, str>, EngineError> {
-    text.decode().map_err(|e| EngineError::Malformed {
+    text.xml10_content().map_err(|e| EngineError::Malformed {
         what: part_name.to_string(),
         detail: format!("text will not decode: {e}"),
     })
@@ -415,6 +416,23 @@ mod tests {
                 "the refusal names its reason: {error}"
             );
         }
+    }
+
+    /// **A CRLF or a lone CR in text reaches a reader as one LF** (XML 1.0 §2.11), in character
+    /// data and in a CDATA section alike.
+    #[test]
+    fn text_and_cdata_line_ends_are_normalised() {
+        let mut reader = new_reader(b"<t>a\r\nb\rc<![CDATA[d\r\ne\rf]]></t>", "p").expect("UTF-8");
+        let mut read = String::new();
+        loop {
+            match reader.read_event().expect("well-formed") {
+                quick_xml::events::Event::Text(text) => read += &decode(&text, "p").expect("text"),
+                quick_xml::events::Event::CData(c) => read += &cdata_text(&c, "p").expect("CDATA"),
+                quick_xml::events::Event::Eof => break,
+                _ => {}
+            }
+        }
+        assert_eq!(read, "a\nb\ncd\ne\nf");
     }
 
     #[test]

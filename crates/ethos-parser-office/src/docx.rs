@@ -299,10 +299,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
 
             Ok(Event::Text(text)) if in_text => {
                 if let Some(run) = open_run.as_mut() {
-                    let decoded = text.decode().map_err(|e| EngineError::Malformed {
-                        what: MAIN_PART.into(),
-                        detail: format!("text will not decode: {e}"),
-                    })?;
+                    let decoded = crate::xml::decode(&text, MAIN_PART)?;
                     run.text.push_str(decoded.as_ref());
                     run_has_text |= !decoded.is_empty();
                 }
@@ -565,6 +562,15 @@ mod tests {
             runs[0].text, "a & b < c",
             "this is why XML is not hand-rolled"
         );
+    }
+
+    /// **A line end in a `<w:t>` is the LF an XML parser delivers**, not the file's own CRLF or CR.
+    #[test]
+    fn a_crlf_or_a_lone_cr_in_run_text_is_one_line_feed() {
+        let xml = "<w:document xmlns:w=\"x\"><w:body><w:p><w:r>\
+            <w:t xml:space=\"preserve\">a\r\nb\rc</w:t></w:r></w:p></w:body></w:document>";
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        assert_eq!(runs[0].text, "a\nb\nc");
     }
 
     #[test]
