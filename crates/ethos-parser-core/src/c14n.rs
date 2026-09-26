@@ -157,24 +157,34 @@ fn write_value(value: &Value, out: &mut Vec<u8>) -> Result<(), C14nError> {
 /// evidence, and NFC-folding it would silently change bytes a citation may quote.
 fn write_string(s: &str, out: &mut Vec<u8>) {
     out.push(b'"');
-    for c in s.chars() {
-        match c {
-            '"' => out.extend_from_slice(b"\\\""),
-            '\\' => out.extend_from_slice(b"\\\\"),
-            '\u{0008}' => out.extend_from_slice(b"\\b"),
-            '\t' => out.extend_from_slice(b"\\t"),
-            '\n' => out.extend_from_slice(b"\\n"),
-            '\u{000C}' => out.extend_from_slice(b"\\f"),
-            '\r' => out.extend_from_slice(b"\\r"),
-            c if (c as u32) < 0x20 => {
-                out.extend_from_slice(format!("\\u{:04x}", c as u32).as_bytes());
-            }
-            c => {
-                let mut buf = [0u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-            }
+    // Byte-wise: every byte of a multi-byte UTF-8 sequence is >= 0x80, so the only bytes that need
+    // escaping are the ASCII ones below, and everything between two of them is copied as one run.
+    let bytes = s.as_bytes();
+    let mut run = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        let short: &[u8] = match b {
+            b'"' => b"\\\"",
+            b'\\' => b"\\\\",
+            0x08 => b"\\b",
+            b'\t' => b"\\t",
+            b'\n' => b"\\n",
+            0x0C => b"\\f",
+            b'\r' => b"\\r",
+            0x00..=0x1F => b"",
+            _ => continue,
+        };
+        out.extend_from_slice(&bytes[run..i]);
+        if short.is_empty() {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            out.extend_from_slice(b"\\u00");
+            out.push(HEX[usize::from(b >> 4)]);
+            out.push(HEX[usize::from(b & 0x0F)]);
+        } else {
+            out.extend_from_slice(short);
         }
+        run = i + 1;
     }
+    out.extend_from_slice(&bytes[run..]);
     out.push(b'"');
 }
 
@@ -1465,6 +1475,19 @@ mod tests {
             })
     }
 
+    /// Strings dense in what `write_string` escapes — every C0 control, the quote, the
+    /// backslash — between arbitrary chars, so multi-byte runs sit on both sides of an escape.
+    /// `"\\PC*"`, which every property above draws from, generates no control character at all.
+    fn arb_escapable_string() -> impl Strategy<Value = String> {
+        let c = prop_oneof![
+            (0u8..0x20).prop_map(char::from),
+            Just('"'),
+            Just('\\'),
+            any::<char>(),
+        ];
+        proptest::collection::vec(c, 0..32).prop_map(String::from_iter)
+    }
+
     proptest! {
         /// The idempotence gate: `c14n(parse(c14n(v))) == c14n(v)`.
         #[test]
@@ -1503,6 +1526,17 @@ mod tests {
             a in arb_arriving()
         ) {
             prop_assert_eq!(canonical_bytes_of(&a).unwrap(), c14n_bytes(&a.to_value()).unwrap());
+        }
+
+        /// **`write_string` against an implementation it shares no code with.** Both routes above
+        /// call it, so their equivalence cannot see a fault in it. `serde_json` escapes exactly
+        /// the c14n v1 set — `"`, `\`, the five short control escapes, every other C0 control as
+        /// lowercase `\u00xx`, nothing else — so its bytes are the reference.
+        #[test]
+        fn write_string_escapes_exactly_as_serde_json_does(s in arb_escapable_string()) {
+            let mut out = Vec::new();
+            write_string(&s, &mut out);
+            prop_assert_eq!(out, serde_json::to_string(&s).unwrap().into_bytes());
         }
 
         /// Key insertion order never reaches the output.
