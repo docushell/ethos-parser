@@ -246,7 +246,7 @@ boxes, which doc 22 refused.
 | Office markdown and html stamp the PDF default profile's `profile_sha256`, not the profile that produced the representation | `409102d` commit message |
 | ~~An ODT or ODP heading is on the wire as a heading and projects as a **paragraph**~~ — **fixed 2026-09-20**, see §5 | [`28-HEADINGS-SCOPE.md`](28-HEADINGS-SCOPE.md) §6.2, amended |
 | On `nist-sp-800-53Ar5` page 47, 23 characters of a turned table header (`Assessor /`, `Assessment Team`) are absent from the extract | `docs/measurements/rotated-text/README.md` |
-| A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`. No page of any corpus here carries either filter | `extract.rs::page_operations` |
+| A `LZWDecode` or `ASCII85Decode` content stream corrupt part way decodes in part and is accepted: `lopdf`'s decoders for both return their partial output as a success, and the reader's check covers `FlateDecode`, wherever it sits in the chain. No page of any corpus here carries either filter | `extract.rs::page_operations` |
 | Five gate documents cite one `(page, mcid)` pair from two structure elements; the reader keeps the last binding it walked | `measurements/auto-tagging/README.md` §1 |
 | `docs/measurements/block-subdivision/structelem.py` drops every `/P` whose `/K` holds more than a bare integer (a paragraph with a link), so `probe3b.py`'s population is 314 of 407 paragraphs | `measurements/auto-tagging/README.md` §1 |
 

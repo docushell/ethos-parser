@@ -2076,8 +2076,8 @@ fn run_findings(
 /// decode operator for operator, which together prove the page was read to its end. The operations
 /// returned are `lopdf`'s own, so an operation index means what it meant before these checks.
 ///
-/// A stream whose filter chain does not start with `FlateDecode` is decoded as before; a
-/// `LZWDecode` or `ASCII85Decode` stream that is corrupt part way is not caught here.
+/// A `FlateDecode` filter is checked wherever it sits in the chain; a `LZWDecode` or
+/// `ASCII85Decode` stream that is corrupt part way is not caught here.
 ///
 /// **Measured on a corpus, 2026-09-18.** Over OmniDocBench's 981 born-digital `v1_0` pages this
 /// refuses one document, `jiaocaineedrop_chap10.pdf_8.pdf`, whose page content `lopdf` stops
@@ -2129,8 +2129,27 @@ pub(crate) fn page_operations(
         } else {
             Vec::new()
         };
-        if filters.first().is_some_and(|f| *f == b"FlateDecode") {
-            crate::tagging::deflate_reaches_its_end(&stream.content).map_err(|detail| {
+        // `lopdf` returns a truncated inflate's partial output as a success wherever `FlateDecode`
+        // sits in the chain, so each one's input is checked: the stream's bytes for the first
+        // filter, and for a later one what the filters before it decode them to.
+        for at in (0..filters.len()).filter(|&at| filters[at] == b"FlateDecode") {
+            let decoded_before;
+            let input: &[u8] = if at == 0 {
+                &stream.content
+            } else {
+                let mut before = stream.clone();
+                let names = filters[..at]
+                    .iter()
+                    .map(|f| lopdf::Object::Name(f.to_vec()));
+                before.dict.set("Filter", names.collect::<Vec<_>>());
+                // Filters that do not decode fail the whole chain, which is refused below.
+                let Ok(bytes) = before.decompressed_content() else {
+                    break;
+                };
+                decoded_before = bytes;
+                &decoded_before
+            };
+            crate::tagging::deflate_reaches_its_end(input).map_err(|detail| {
                 EngineError::Malformed {
                     what: "content stream".into(),
                     detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),

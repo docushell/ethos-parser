@@ -4513,6 +4513,53 @@ fn a_content_stream_whose_filter_does_not_decode_is_refused_by_name() {
     }
 }
 
+/// ASCII85 (PDF 32000-1 §7.4.3), closed by its `~>` marker.
+fn ascii85(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for chunk in bytes.chunks(4) {
+        let mut word = [0u8; 4];
+        word[..chunk.len()].copy_from_slice(chunk);
+        let mut n = u32::from_be_bytes(word);
+        let mut digits = [0u8; 5];
+        for d in digits.iter_mut().rev() {
+            *d = b'!' + (n % 85) as u8;
+            n /= 85;
+        }
+        out.extend_from_slice(&digits[..=chunk.len()]);
+    }
+    out.extend_from_slice(b"~>");
+    out
+}
+
+/// **`FlateDecode` after another filter is checked as a first one is** (review 2026-09-26 N23).
+/// `lopdf` returns a truncated inflate's partial output as a success wherever the filter sits, and
+/// only a first filter's deflate data was checked: a page under `[/ASCII85Decode /FlateDecode]`
+/// whose deflate data stops at a flush point read as the text before it, `complete`. The same
+/// chain whole still reads.
+#[test]
+fn a_flate_stream_after_another_filter_that_does_not_reach_its_end_is_refused() {
+    use std::io::Write;
+    // `Measured`, flushed, and nothing after: whole blocks that decode to the line, and no end.
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    z.write_all(MEASURED).expect("in memory");
+    z.flush().expect("in memory");
+    let cut = z.get_ref().clone();
+    let chain = || lopdf::Object::Array(vec!["ASCII85Decode".into(), "FlateDecode".into()]);
+
+    let e = extracted(&under(chain(), &ascii85(&cut))).expect_err("refused, not read in part");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(e.to_string().contains("without reaching its end"), "{e}");
+
+    let whole = extracted(&under(chain(), &ascii85(&zlib(MEASURED)))).expect("reads");
+    assert_eq!(
+        runs(&whole)
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Measured"]
+    );
+}
+
 /// **An empty filter array is no filter** (review 2026-09-26 N09): the stream's own bytes are the
 /// page, as Ghostscript and qpdf read them. `lopdf` decodes an empty chain to no bytes at all, and
 /// the page read as blank and `complete`.
