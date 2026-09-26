@@ -121,8 +121,9 @@ pub enum WidthSource {
 /// How a glyph's characters are determined.
 #[derive(Debug, Clone)]
 pub enum Decoder {
-    /// The document's own `ToUnicode` CMap. Authoritative.
-    ToUnicode(ToUnicode),
+    /// The document's own `ToUnicode` CMap. Authoritative, and shared by every font naming its
+    /// stream (review 2026-09-26 N11).
+    ToUnicode(Arc<ToUnicode>),
     /// A simple encoding plus `/Differences`.
     Simple(SimpleEncoding),
 }
@@ -551,7 +552,7 @@ pub fn load_page_fonts(
                 detail: format!("/{id} does not resolve to a dictionary"),
             });
         };
-        let font = Arc::new(load_font(doc.inner(), &id, &fd)?);
+        let font = Arc::new(load_font(doc.inner(), &id, &fd, doc.tounicode())?);
         if let Some(oid) = reference {
             doc.cache_font(oid, &id, Arc::clone(&font));
         }
@@ -561,7 +562,12 @@ pub fn load_page_fonts(
     Ok(out)
 }
 
-fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<Font, EngineError> {
+fn load_font(
+    doc: &lopdf::Document,
+    id: &str,
+    fd: &lopdf::Dictionary,
+    tounicode: &crate::cmap::ToUnicodeCache,
+) -> Result<Font, EngineError> {
     let subtype = fd
         .get(b"Subtype")
         .ok()
@@ -580,16 +586,23 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     //    leaves the stream's raw bytes, which by its own declaration are not the CMap: refused,
     //    as a page's content stream is, rather than parsed.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
-        let bytes = stream
-            .decompressed_content()
-            .map_err(|_| EngineError::Unsupported {
-                what: "ToUnicode stream filter".into(),
-                detail: format!(
-                    "/{id}: the /ToUnicode stream's filter did not decode, and its raw bytes are \
-                     not the CMap the font declares"
-                ),
-            })?;
-        Decoder::ToUnicode(ToUnicode::parse(&bytes)?)
+        let bytes = || {
+            stream
+                .decompressed_content()
+                .map_err(|_| EngineError::Unsupported {
+                    what: "ToUnicode stream filter".into(),
+                    detail: format!(
+                        "/{id}: the /ToUnicode stream's filter did not decode, and its raw bytes \
+                         are not the CMap the font declares"
+                    ),
+                })
+        };
+        // Parsed once per stream and shared, whatever font names it. A stream is always an
+        // indirect object in a parsed document; the direct arm is for one built in memory.
+        Decoder::ToUnicode(match fd.get(b"ToUnicode") {
+            Ok(lopdf::Object::Reference(oid)) => tounicode.get_or_parse(*oid, bytes)?,
+            _ => Arc::new(ToUnicode::parse(&bytes()?)?),
+        })
     } else if FontKind::from_subtype(&subtype) == FontKind::Composite
         && !matches!(fd.get(b"Encoding"), Ok(lopdf::Object::Name(_)))
     {
@@ -1351,7 +1364,7 @@ mod tests {
             WidthSource::Absent { reason: "x".into() },
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
-        f.decoder = Decoder::ToUnicode(two_byte_cmap());
+        f.decoder = Decoder::ToUnicode(Arc::new(two_byte_cmap()));
         assert_eq!(f.kind, FontKind::Simple);
         assert_eq!(
             f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
@@ -1372,7 +1385,7 @@ mod tests {
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
         f.kind = FontKind::Composite;
-        f.decoder = Decoder::ToUnicode(two_byte_cmap());
+        f.decoder = Decoder::ToUnicode(Arc::new(two_byte_cmap()));
         assert_eq!(
             f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
             vec![0x0041, 0x0042]
@@ -1589,7 +1602,8 @@ mod tests {
     #[test]
     fn a_symbolic_font_with_no_tounicode_and_no_base_declares_the_assumption() {
         let fd = symbolic_font(4, None);
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(
             font.builtin_encoding_assumed.as_deref(),
             Some("BaseFont ABCDEF+CMEX10"),
@@ -1611,7 +1625,8 @@ mod tests {
             lopdf::Object::Name(b"WinAnsiEncoding".to_vec()),
         );
         let fd = symbolic_font(4, Some(lopdf::Object::Dictionary(enc)));
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
@@ -1626,7 +1641,8 @@ mod tests {
             lopdf::Object::Name(b"MacExpertEncoding".to_vec()),
         );
         let fd = symbolic_font(32, Some(lopdf::Object::Dictionary(enc)));
-        let e = load_font(&lopdf::Document::new(), "F1", &fd).expect_err("refused, not guessed");
+        let e = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
+            .expect_err("refused, not guessed");
         assert_eq!(e.code(), "unsupported", "{e}");
         assert!(
             e.to_string().contains("/BaseEncoding /MacExpertEncoding"),
@@ -1638,7 +1654,8 @@ mod tests {
     #[test]
     fn a_nonsymbolic_font_declares_nothing() {
         let fd = symbolic_font(32, None);
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
@@ -1647,7 +1664,8 @@ mod tests {
     #[test]
     fn a_font_flagged_both_symbolic_and_nonsymbolic_declares_nothing() {
         let fd = symbolic_font(4 | 32, None);
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
@@ -1665,7 +1683,7 @@ mod tests {
             let mut fd = lopdf::Dictionary::new();
             fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
             fd.set("Encoding", lopdf::Object::Name(name.to_vec()));
-            let err = load_font(&lopdf::Document::new(), "F1", &fd)
+            let err = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
                 .expect_err("no /ToUnicode and no simple encoding is still a refusal");
             let detail = format!("{err}");
             assert!(
@@ -1686,7 +1704,8 @@ mod tests {
         let mut fd = lopdf::Dictionary::new();
         fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
         fd.set("Encoding", lopdf::Object::Name(b"GBK-EUC-H".to_vec()));
-        let err = load_font(&lopdf::Document::new(), "F1", &fd).expect_err("refused");
+        let err = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
+            .expect_err("refused");
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
@@ -1705,7 +1724,8 @@ mod tests {
         let mut fd = lopdf::Dictionary::new();
         fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
         fd.set("Encoding", lopdf::Object::Reference(cmap));
-        let e = load_font(&doc, "F1", &fd).expect_err("no source for CID to Unicode");
+        let e = load_font(&doc, "F1", &fd, &Default::default())
+            .expect_err("no source for CID to Unicode");
         assert_eq!(e.code(), "unsupported", "{e}");
         assert!(
             e.to_string()
@@ -1732,7 +1752,7 @@ mod tests {
                 "ToUnicode",
                 lopdf::Object::Stream(lopdf::Stream::new(dict, cmap.to_vec())),
             );
-            load_font(&lopdf::Document::new(), "F1", &fd)
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
         };
         // The control: unfiltered, the same bytes are the CMap the font uses.
         assert!(matches!(
@@ -1805,7 +1825,13 @@ mod tests {
     #[test]
     fn a_type3_font_keeps_an_envelope_only_where_its_font_matrix_vertical_is_the_default() {
         let load = |m: Option<Vec<lopdf::Object>>| {
-            load_font(&lopdf::Document::new(), "F1", &type3_font(m, true, None)).expect("loads")
+            load_font(
+                &lopdf::Document::new(),
+                "F1",
+                &type3_font(m, true, None),
+                &Default::default(),
+            )
+            .expect("loads")
         };
         let kept = FontInk::Measured {
             ascent: 700.0,
@@ -1883,7 +1909,9 @@ mod tests {
         let mut fd = type3_font(None, true, None);
         fd.set("FontMatrix", lopdf::Object::Reference(p20));
         assert_eq!(
-            load_font(&doc, "F1", &fd).expect("loads").ink,
+            load_font(&doc, "F1", &fd, &Default::default())
+                .expect("loads")
+                .ink,
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
             "p20's matrix as an indirect object is resolved, as `load_widths` resolves it"
         );
@@ -1896,7 +1924,7 @@ mod tests {
     fn a_type3_font_named_for_a_standard_14_face_gets_no_envelope_under_a_non_default_matrix() {
         let load = |entries: &[f32]| {
             let fd = type3_font(Some(matrix(entries)), false, Some("Helvetica"));
-            load_font(&lopdf::Document::new(), "F1", &fd).expect("loads")
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads")
         };
         assert_eq!(
             load(&[0.01, 0.0, 0.0, 0.01, 0.0, 0.0]).ink,
@@ -1930,10 +1958,12 @@ mod tests {
             descent: -207.0,
             source: "font-descriptor",
         };
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(font.ink, kept, "Type1");
         fd.remove(b"Subtype");
-        let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
+        let font =
+            load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
         assert_eq!(font.ink, kept, "no /Subtype");
     }
 }

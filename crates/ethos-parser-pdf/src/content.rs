@@ -1193,9 +1193,9 @@ mod tests {
             std::sync::Arc::new(Font {
                 id: "F1".into(),
                 kind: FontKind::Composite,
-                decoder: Decoder::ToUnicode(
+                decoder: Decoder::ToUnicode(std::sync::Arc::new(
                     crate::cmap::ToUnicode::parse(tounicode).expect("test ToUnicode parses"),
-                ),
+                )),
                 widths: WidthSource::Cid {
                     spans: BTreeMap::new(),
                     default: 500.0,
@@ -1458,10 +1458,10 @@ mod tests {
         // standard-14 widths instead of `/Widths`. The gate reads the font's kind, not its decoder
         // or its width source, so code 32 still takes `Tw`.
         let mut courier = (*one_font()["F1"]).clone();
-        courier.decoder = crate::fonts::Decoder::ToUnicode(
+        courier.decoder = crate::fonts::Decoder::ToUnicode(std::sync::Arc::new(
             crate::cmap::ToUnicode::parse(b"2 beginbfchar <41> <0041> <20> <0020> endbfchar")
                 .expect("test ToUnicode parses"),
-        );
+        ));
         let metrics = crate::afm::for_base_font("Courier").expect("Courier is standard 14");
         courier.widths = crate::fonts::WidthSource::Standard14 {
             face: metrics.face,

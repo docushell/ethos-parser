@@ -23,8 +23,13 @@
 //! naming a predefined CMap **fails closed** rather than guessing.
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use ethos_parser_core::EngineError;
+
+/// The most mappings one `ToUnicode` CMap may hold, and since review 2026-09-26 N11 the most
+/// every CMap of one document may hold between them. The largest real CMap measured uses 248.
+const MAX_MAPPINGS: u64 = 1 << 20;
 
 /// A parsed `ToUnicode` mapping.
 ///
@@ -49,17 +54,16 @@ impl ToUnicode {
         self.code_bytes
     }
 
-    /// Number of mappings. Test-only.
-    #[cfg(test)]
+    /// Number of mappings: what [`ToUnicodeCache`] charges the document for this CMap.
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
     /// Whether the map is empty. Test-only.
     ///
-    /// Both this and [`ToUnicode::len`] became `#[cfg(test)]` at M7, when `cmap` stopped being a
-    /// public module: nothing outside the tests reads either, and a private module's unused
-    /// accessor is dead code the compiler was previously unable to see.
+    /// This and [`ToUnicode::len`] became `#[cfg(test)]` at M7, when `cmap` stopped being a
+    /// public module: nothing outside the tests read either, and a private module's unused
+    /// accessor is dead code the compiler was previously unable to see. `len` has a reader again.
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
@@ -83,7 +87,6 @@ impl ToUnicode {
         let mut code_bytes = 1usize;
         // Every `bfchar` entry and every code a `bfrange` covers, counted against one ceiling.
         // The per-range cap below bounds one row; this bounds the rows.
-        const MAX_MAPPINGS: u64 = 1 << 20;
         let mut mapped: u64 = 0;
         let mut spend = |codes: u64| -> Result<(), EngineError> {
             mapped = mapped.saturating_add(codes);
@@ -199,6 +202,69 @@ impl ToUnicode {
         }
 
         Ok(Self { map, code_bytes })
+    }
+}
+
+/// One document's `ToUnicode` CMaps, parsed once per stream and shared by every font naming it.
+///
+/// Review 2026-09-26 N11. [`ToUnicode::parse`]'s ceiling bounds one CMap, and a document
+/// multiplied it: 32 font dictionaries naming one stream parsed it 32 times and kept every copy,
+/// so a 9,179-byte file held 2.4 GB. Here the stream parses once, and the mappings of every
+/// distinct stream count against [`MAX_MAPPINGS`] again, for the whole document.
+///
+/// **The lock is held while a stream parses**, so two pages naming one cold stream parse it once
+/// and no mapping is charged twice: the charge depends on which streams the document's pages name,
+/// never on which page got there first.
+#[derive(Debug, Default)]
+pub struct ToUnicodeCache {
+    parsed: Mutex<(BTreeMap<lopdf::ObjectId, Arc<ToUnicode>>, u64)>,
+}
+
+impl ToUnicodeCache {
+    /// Stream `id`'s CMap, parsed from `bytes()` on first use.
+    ///
+    /// # Errors
+    ///
+    /// Whatever `bytes` or [`ToUnicode::parse`] returns, and [`EngineError::ResourceLimit`] once
+    /// the document's streams hold more than [`MAX_MAPPINGS`] between them.
+    pub fn get_or_parse(
+        &self,
+        id: lopdf::ObjectId,
+        bytes: impl FnOnce() -> Result<Vec<u8>, EngineError>,
+    ) -> Result<Arc<ToUnicode>, EngineError> {
+        let mut guard = self.parsed.lock().unwrap_or_else(PoisonError::into_inner);
+        let (parsed, mapped) = &mut *guard;
+        if let Some(hit) = parsed.get(&id) {
+            return Ok(Arc::clone(hit));
+        }
+        Self::within(*mapped)?;
+        let map = ToUnicode::parse(&bytes()?)?;
+        *mapped = mapped.saturating_add(u64::try_from(map.len()).unwrap_or(u64::MAX));
+        Self::within(*mapped)?;
+        let map = Arc::new(map);
+        parsed.insert(id, Arc::clone(&map));
+        Ok(map)
+    }
+
+    /// The document's refusal, if its streams crossed [`MAX_MAPPINGS`] on any page.
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::ResourceLimit`], the same one whichever page crossed: pages run in
+    /// parallel, so which one did is not a property of the document.
+    pub fn refusal(&self) -> Result<(), EngineError> {
+        let mapped = self.parsed.lock().unwrap_or_else(PoisonError::into_inner).1;
+        Self::within(mapped)
+    }
+
+    fn within(mapped: u64) -> Result<(), EngineError> {
+        if mapped > MAX_MAPPINGS {
+            return Err(EngineError::ResourceLimit {
+                limit: "ToUnicode mappings per document".into(),
+                configured: MAX_MAPPINGS.to_string(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -431,6 +497,45 @@ end";
         let e = ToUnicode::parse(src.as_bytes()).expect_err("refused at the ceiling");
         assert_eq!(e.code(), "resource_limit", "{e}");
         assert!(e.to_string().contains("ToUnicode mappings"), "{e}");
+    }
+
+    /// **A stream parses once per document, and a document holds one ceiling of mappings**
+    /// (review 2026-09-26 N11). The ceiling bounded one parse, and 32 fonts naming one stream
+    /// parsed it 32 times: a 9,179-byte file held 2.4 GB. The CMap is that file's: sixteen rows
+    /// of 65,536 distinct codes, 2^20 mappings, exactly at the ceiling.
+    #[test]
+    fn a_stream_parses_once_and_a_document_holds_one_ceiling_of_mappings() {
+        let rows: String = (0..16)
+            .map(|k| format!("<{k:04X}0000> <{k:04X}FFFF> <E000>\n"))
+            .collect();
+        let cache = ToUnicodeCache::default();
+        let mut reads = 0;
+        let mut read = || {
+            reads += 1;
+            Ok(format!("begincmap\nbeginbfrange\n{rows}endbfrange\nendcmap").into_bytes())
+        };
+        let first = cache
+            .get_or_parse((5, 0), &mut read)
+            .expect("one CMap at the ceiling is within it");
+        let again = cache
+            .get_or_parse((5, 0), &mut read)
+            .expect("the same stream again");
+        assert!(Arc::ptr_eq(&first, &again), "one parse, shared");
+        assert_eq!(reads, 1, "the stream was read once");
+        cache
+            .refusal()
+            .expect("one ceiling's worth fits the document");
+
+        let one = || Ok(b"begincmap\nbeginbfchar\n<01> <0041>\nendbfchar\nendcmap".to_vec());
+        let e = cache
+            .get_or_parse((6, 0), one)
+            .expect_err("one mapping more, in another stream");
+        assert_eq!(e.code(), "resource_limit", "{e}");
+        assert!(
+            e.to_string().contains("ToUnicode mappings per document"),
+            "{e}"
+        );
+        assert!(cache.refusal().is_err(), "and the document stays refused");
     }
 
     /// **A `bfrange` array maps only the codes its range names.** An element past `hi` mapped
