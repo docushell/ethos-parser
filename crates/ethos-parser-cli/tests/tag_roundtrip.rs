@@ -577,7 +577,7 @@ fn an_engine_written_tree_is_declared_on_the_artifact_and_not_as_authors() {
             "{name}: the declaration is document-scoped"
         );
         assert!(
-            declaration.detail.contains("gutter-columns-v3"),
+            declaration.detail.contains("gutter-columns-v4"),
             "{name}: the declaration names the rule: {}",
             declaration.detail
         );

@@ -83,6 +83,7 @@
       "minLength": 1,
       "description": "Version id of the reading-order rule in force. Versioned because the rule is part of identity. `gutter-columns-v2` (D4-S2) is the same cut as `gutter-columns-v1` (v1-S5) — same constants, same order — and additionally reports the regions it made, as `region` on each text run; the id moved because the artifact gained a field, not because the sequence changed. `single-column-v1` means content-stream order with no reordering. `gutter-columns-v1` took a new id rather than bumping `single-column-v1`, because those two read different evidence and can list the same runs in a different sequence.",
       "examples": [
+        "gutter-columns-v4",
         "gutter-columns-v3",
         "gutter-columns-v1",
         "single-column-v1"
@@ -297,7 +298,7 @@
         },
         "multi_column_reading_order": {
           "type": "boolean",
-          "$comment": "true since v1-S5 — proof: multi_column_order_is_read_and_single_column_is_left_alone. Where the rule finds no gutter it reorders nothing, and reading-order-geometric-only declares what it still cannot see. A profile setting this false declares multi-column-reading-order instead and must also name single-column-v1"
+          "$comment": "true since v1-S5 — proof: multi_column_order_is_read_and_single_column_is_left_alone. Where the rule finds no gutter it reorders nothing through gutter-columns-v3, and since gutter-columns-v4 moves only whole leading-gap slabs, top to bottom; reading-order-geometric-only declares what it still cannot see. A profile setting this false declares multi-column-reading-order instead and must also name single-column-v1"
         },
         "form_fields": {
           "type": "boolean",
@@ -427,7 +428,7 @@
       "raster_dpi": {
         "mode": "not_emitted"
       },
-      "reading_order_rule": "gutter-columns-v3",
+      "reading_order_rule": "gutter-columns-v4",
       "struct_tree_rule": "struct-tree-v2",
       "table_detection": {
         "ruled": "ruled-rects-v6",

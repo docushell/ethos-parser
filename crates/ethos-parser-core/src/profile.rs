@@ -142,6 +142,37 @@ pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
 /// from an older build that had no block field — the same confusion v2 was bumped to prevent.
 pub const READING_ORDER_RULE_V3: &str = "gutter-columns-v3";
 
+/// The cut, and where it divides nothing, a downward sweep over the page's leading-gap slabs
+/// (decision #32, 2026-09-26).
+///
+/// # What changed, and what did not
+///
+/// **A page the vertical cut divides is untouched** — same constants, same recursion, same order,
+/// regions and blocks as `gutter-columns-v3`. What changed is the page it does not divide, which
+/// `-v3` left in content-stream order. That page is now read top to bottom by the slabs its
+/// leading-gap half already computes for `block` — lines within 1.5pt of each other, and a
+/// boundary where a gap reaches 1.6x the page's modal leading — keeping content-stream order
+/// inside each slab, with a table moving whole at the smallest slab its runs sit on. A page with
+/// no leading, or no gap wide enough to open a second slab, is one slab and still comes out in
+/// content-stream order, byte for byte.
+///
+/// # Why a bump and not a new name
+///
+/// [`READING_ORDER_RULE_V2`]'s test: a new name is for a rule that reads *different evidence*.
+/// This reads whitespace in page space as `-v1` to `-v3` did, and the slab is the cut's own
+/// horizontal half, on the wire as `block` since `-v3`. Unlike `-v2` and `-v3`, which reported
+/// more of what the cut found, this one **reorders**: two artifacts either side of it can list the
+/// same runs in a different sequence, the shape of change v1-S5 was.
+///
+/// # What an artifact naming this promises, and what it does not
+///
+/// It promises that a run moves only with its whole slab, and never past a run of its own slab:
+/// a superscript, an indent or a baseline a quantum off its neighbour's stays where the stream
+/// put it. It does **not** promise a page read right. A two-column page whose gutter a
+/// full-width line bridges is still one band, and where both columns break at one height the
+/// sweep reads across the gutter a slab at a time — the cost decision #32 measured and accepted.
+pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
+
 /// The rule v1-S6 ships for images and text findings: what is observed, and how.
 ///
 /// One id covering both because they are one pass over one content stream, reading the same
@@ -754,13 +785,16 @@ pub struct Capabilities {
     ///
     /// **True since v1-S5**, and what it claims is the usual narrow thing — *this profile orders
     /// text by page geometry rather than by stream position*. It does not claim every layout is
-    /// resolved. Where the page shows no column gutter the rule reorders nothing, and that is an
-    /// answer rather than a gap: content-stream order is what a single-column page means.
+    /// resolved. Where the page shows no column gutter, [`READING_ORDER_RULE_V4`] (2026-09-26)
+    /// reads it top to bottom by leading-gap slabs and keeps content-stream order inside each;
+    /// through `-v3` such a page kept content-stream order whole.
     ///
     /// v0 through v1-S4 left this false and said so on every artifact, because the known
     /// heuristic flips on `min_lines < 15` and a one-line edit reordered a whole page. What
     /// replaced it is a rule over whitespace, whose id is [`READING_ORDER_RULE_V1`] and whose
-    /// floors are compile-time constants, so a document's line count cannot move its order.
+    /// floors are compile-time constants, so a document's line count cannot move its column cut.
+    /// The `-v4` slabs are measured against the page's own modal leading, which an added line can
+    /// move.
     ///
     /// A profile may still set this `false`; the partnering limitation is still declared, and
     /// such a profile must also name [`READING_ORDER_RULE_V0`] so the two agree.
@@ -1426,7 +1460,7 @@ impl Default for Profile {
             coordinate_system: CoordinateSystem::V0,
             capabilities: Capabilities::V0,
             page_budget: PageBudget::Unlimited,
-            reading_order_rule: READING_ORDER_RULE_V3.to_string(),
+            reading_order_rule: READING_ORDER_RULE_V4.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
             outline_rule: OUTLINE_RULE_V1.to_string(),
@@ -2384,7 +2418,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.61.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v3","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.61.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3308,11 +3342,25 @@ mod tests {
              ALONE. No capability, rule id or knob moves with it. This is the mechanism \
              working rather than a change in what the engine does: two builds are correctly \
              non-comparable even when nothing else changed, which is why the release notes \
-             say so of every version rather than treating it as a regression."
+             say so of every version rather than treating it as a regression.\n\n\
+             Moved again for decision #32, `sha256:78fcfe87…` -> `sha256:da27f2df…`: \
+             `reading_order_rule` `gutter-columns-v3` -> `-v4`, and nothing else. Like v1-S5's \
+             move and unlike `-v2`'s and `-v3`'s, this one REORDERS EVIDENCE: a page the \
+             vertical cut does not divide is read top to bottom by its leading-gap slabs, with \
+             content-stream order kept inside each. Measured against the 2d6a564 build over 426 \
+             inputs, 67 documents change run order on 196 pages — 60 of opendataloader-bench's \
+             200, four gate documents (nist-sp-800-171r3 on 111 of 120 pages, where each page's \
+             number was drawn first and is now read last), two gate-zero documents and one \
+             engine fixture — and 3,906 of the 219,393 runs on those pages move; the rest keep \
+             their relative order. No text, locator, box, table cell or inferred heading \
+             changes; node ids — the ones a table cell cites too — ordinals and block numbers \
+             follow the order. On opendataloader-bench NID goes \
+             0.8714 -> 0.8810, and the 74 documents already read in one downward sweep do not \
+             move. `parser_version` does not move here."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:78fcfe87e98e15faee5916b69a3dcf8d2e941ce7125c399015d5a7a9e250f7e6"
+            "sha256:da27f2dff280dd688feec69eb17199a83d0ba70f8c17f7caae48a945b7ecb8ed"
         );
     }
 
@@ -3518,7 +3566,7 @@ mod tests {
         // stable rule existed, and the known one flipped on a line count. `gutter-columns-v1`
         // reads whitespace, so the claim this flag makes — *this profile orders by geometry* —
         // is now true. It still does not claim every layout is resolved: a page with no gutter
-        // is left in content-stream order, and `reading-order-geometric-only` says so.
+        // is only swept by leading-gap slabs (`-v4`), and `reading-order-geometric-only` says so.
         assert!(
             c.multi_column_reading_order,
             "v1-S5 orders by page geometry under a versioned rule"

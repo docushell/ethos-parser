@@ -70,6 +70,35 @@ fn engine_fixture(name: &str) -> Vec<u8> {
     fixture("engine", &format!("{name}/document.pdf"))
 }
 
+/// A hand-written `engine-tagged-*` fixture with its `/Rule` naming the rule this build writes.
+///
+/// The fixtures were written under `gutter-columns-v3` and stay so, because they are also the
+/// files an earlier build tagged, which `tagging_read.rs` requires the reader to keep accepting.
+/// `gutter-columns-v4` moved the profile's id and the writer writes the profile's id. The swap is
+/// the same length, so the file's own offsets hold, and the rule id is the only byte string the
+/// comparison lets differ.
+fn under_this_rule(mut bytes: Vec<u8>) -> Vec<u8> {
+    let from = b"(gutter-columns-v3)".as_slice();
+    let to = format!("({})", Profile::default().reading_order_rule);
+    assert_eq!(from.len(), to.len(), "a same-length swap keeps the offsets");
+    let mut swapped = 0;
+    let mut i = 0;
+    while i + from.len() <= bytes.len() {
+        if bytes[i..].starts_with(from) {
+            bytes[i..i + from.len()].copy_from_slice(to.as_bytes());
+            swapped += 1;
+            i += from.len();
+        } else {
+            i += 1;
+        }
+    }
+    assert!(
+        swapped > 0,
+        "the fixture names the rule it was written under"
+    );
+    bytes
+}
+
 // -------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------
@@ -378,7 +407,7 @@ fn declaration<'a>(a: &'a ExtractArtifact, code: &str) -> &'a ethos_parser_core:
 #[test]
 fn the_writer_emits_the_readers_fixture_shape() {
     let written = tagged("leading-gap-two-blocks");
-    let by_hand = engine_fixture("engine-tagged-blocks");
+    let by_hand = under_this_rule(engine_fixture("engine-tagged-blocks"));
 
     assert_eq!(
         tree(&written),
@@ -391,7 +420,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
             attribute: vec![
                 ("Derivation".into(), "/Computed".into()),
                 ("O".into(), "/EthosParser".into()),
-                ("Rule".into(), "(gutter-columns-v3)".into()),
+                ("Rule".into(), "(gutter-columns-v4)".into()),
             ],
             has_page: false,
             ids: vec![],
@@ -401,7 +430,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
                     attribute: vec![
                         ("Derivation".into(), "/Computed".into()),
                         ("O".into(), "/EthosParser".into()),
-                        ("Rule".into(), "(gutter-columns-v3)".into()),
+                        ("Rule".into(), "(gutter-columns-v4)".into()),
                     ],
                     has_page: true,
                     ids: vec![0],
@@ -412,7 +441,7 @@ fn the_writer_emits_the_readers_fixture_shape() {
                     attribute: vec![
                         ("Derivation".into(), "/Computed".into()),
                         ("O".into(), "/EthosParser".into()),
-                        ("Rule".into(), "(gutter-columns-v3)".into()),
+                        ("Rule".into(), "(gutter-columns-v4)".into()),
                     ],
                     has_page: true,
                     ids: vec![1],
@@ -741,7 +770,7 @@ fn the_two_column_page_gets_one_div_per_band_in_reading_order() {
     for needle in [
         "3 of its 3 structure element(s)",
         "15 text run(s)",
-        "gutter-columns-v3",
+        "gutter-columns-v4",
     ] {
         assert!(
             declaration.detail.contains(needle),
@@ -1371,7 +1400,7 @@ fn an_inline_image_is_never_enclosed() {
 #[test]
 fn the_nested_frames_twin_matches_its_fixture() {
     let written = tagged("leading-gap-nested-frames");
-    let by_hand = engine_fixture("engine-tagged-nested-frames");
+    let by_hand = under_this_rule(engine_fixture("engine-tagged-nested-frames"));
     assert_eq!(tree(&written), tree(&by_hand));
     assert_eq!(read(&written), read(&by_hand));
     assert_eq!(page_tokens(&written, 1), page_tokens(&by_hand, 1));
