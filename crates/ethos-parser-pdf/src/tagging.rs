@@ -534,6 +534,101 @@ pub(crate) fn agrees_with_lopdf(
     Ok(())
 }
 
+/// Refuse a page this reader would read otherwise than a renderer (review 2026-09-26 N07).
+///
+/// Two shapes. A string or an inline image cut by the end of a `/Contents` stream: the streams are
+/// joined with `\n`, which reads `<416D6F756E74` then `20647565>` as one hex string, while a
+/// renderer ends each stream's tokens with the stream, as PDF 32000-1 §7.8.2 puts the division
+/// between tokens; an operation, an array or a dictionary may still run on into the next stream.
+/// And a filtered inline image whose
+/// data does not end in its filter's end-of-data where the `EI` window was found: that window is
+/// `lopdf`'s rule, a renderer reads the data to the filter's end, and what the window ends early is
+/// read here as operators and by a renderer as image bytes. `ASCIIHexDecode` ends in `>`,
+/// `ASCII85Decode` in `~>`, and `FlateDecode` where its deflate data does; another filter keeps
+/// the window, as before.
+///
+/// `ends` holds the offset of the `\n` after each stream.
+///
+/// # Errors
+///
+/// The detail of the first shape found.
+pub(crate) fn read_as_rendered(bytes: &[u8], t: &Tokenised, ends: &[usize]) -> Result<(), String> {
+    let lx = Lexer { bytes };
+    for (k, &end) in ends.iter().enumerate() {
+        let i = t.ops.partition_point(|op| op.end <= end);
+        let Some(op) = t.ops.get(i).filter(|op| op.start <= end) else {
+            continue;
+        };
+        // Only a string or an inline image can hold the `\n` that joins the streams: every other
+        // token ends at white space, here as in a renderer, and an array or a dictionary may be
+        // divided between its tokens.
+        let mut straddles = op.operator == "BI";
+        let mut p = op.start;
+        while p < op.end && !straddles {
+            if let Some(e) = lx.literal_string(p).or_else(|| lx.hex_string(p)) {
+                straddles = p < end && end < e;
+                p = e;
+            } else if lx.at(p) == Some(b'%') {
+                p = lx.comment(p).unwrap_or(op.end);
+            } else {
+                p += 1;
+            }
+        }
+        if straddles {
+            return Err(format!(
+                "stream {} of the page's /Contents ends inside a string or an inline image at byte \
+                 {end}; a renderer ends it with the stream, and this reader would carry it into \
+                 the next",
+                k + 1
+            ));
+        }
+    }
+    for op in t.ops.iter().filter(|op| op.operator == "BI") {
+        let mut entries = Vec::new();
+        let Ok(q) = lx.inner_dictionary(
+            lx.content_space(op.start + 2),
+            MAX_NESTING_DEPTH,
+            Some(&mut entries),
+        ) else {
+            continue;
+        };
+        let data = lx.content_space(q + 2);
+        // Sized from the dictionary, the data ends at its length and no window was looked for.
+        if !matches!(lx.image_data_end(&entries, data), Ok(None)) {
+            continue;
+        }
+        let get = |key: &[u8]| entries.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v);
+        let (Some(Val::Name(filter) | Val::Array(filter)), Some(raw)) = (
+            get(b"F").or_else(|| get(b"Filter")),
+            // The window's white space before `EI` sits three bytes before the operation's end.
+            bytes.get(data..op.end.saturating_sub(3)),
+        ) else {
+            continue;
+        };
+        let text = &raw[..raw
+            .iter()
+            .rposition(|&c| !is_whitespace(c))
+            .map_or(0, |i| i + 1)];
+        let ends_there = match filter.as_slice() {
+            b"AHx" | b"ASCIIHexDecode" => text.ends_with(b">"),
+            b"A85" | b"ASCII85Decode" => text.ends_with(b"~>"),
+            b"Fl" | b"FlateDecode" => deflate_reaches_its_end(raw).is_ok(),
+            _ => continue,
+        };
+        if !ends_there {
+            return Err(format!(
+                "the inline image at byte {} is /{} data that does not end where its EI window \
+                 was found, at byte {}; a renderer reads the data to its filter's end and draws \
+                 none of what this reader would read after the window",
+                op.start,
+                String::from_utf8_lossy(filter),
+                op.end - 2
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A point past which `lopdf`'s parser would not recover either — nom's `Failure`, as opposed
 /// to the `Error` a combinator backtracks over.
 #[derive(Debug)]
@@ -552,6 +647,9 @@ enum Val {
     Integer(i64),
     Boolean(bool),
     Name(Vec<u8>),
+    /// An array whose first element is this name: a filter chain's first filter, the one the
+    /// image's bytes are written in.
+    Array(Vec<u8>),
     Other,
 }
 
@@ -896,7 +994,11 @@ impl Lexer<'_> {
             return Ok(Some((n, Val::Other)));
         }
         if let Some(n) = self.array(p, depth)? {
-            return Ok(Some((n, Val::Other)));
+            let first = self.space(p + 1);
+            let v = self
+                .name(first)
+                .map_or(Val::Other, |e| Val::Array(self.name_value(first, e)));
+            return Ok(Some((n, v)));
         }
         if let Some(n) = self.dictionary(p, depth)? {
             return Ok(Some((n, Val::Other)));

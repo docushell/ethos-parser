@@ -2127,6 +2127,8 @@ pub(crate) fn page_operations(
     page_id: lopdf::ObjectId,
 ) -> Result<Vec<lopdf::content::Operation>, EngineError> {
     let mut content = Vec::new();
+    // The offset of the `\n` after each stream, where a token may not continue.
+    let mut ends = Vec::new();
     for id in doc.get_page_contents(page_id) {
         let stream = match doc.get_object(id) {
             Ok(lopdf::Object::Stream(stream)) => stream,
@@ -2207,6 +2209,7 @@ pub(crate) fn page_operations(
         })?;
         content.extend_from_slice(&bytes);
         content.push(b'\n');
+        ends.push(content.len() - 1);
     }
     let on_page = |e: EngineError| match e {
         EngineError::Unsupported { what, detail } => EngineError::Unsupported {
@@ -2216,6 +2219,12 @@ pub(crate) fn page_operations(
         other => other,
     };
     let tokens = crate::tagging::tokenise(&content).map_err(on_page)?;
+    crate::tagging::read_as_rendered(&content, &tokens, &ends).map_err(|detail| {
+        EngineError::Malformed {
+            what: "content stream".into(),
+            detail: format!("page {page_number}: {detail}"),
+        }
+    })?;
     let decoded =
         lopdf::content::Content::decode(&content).map_err(|e| EngineError::Malformed {
             what: "content stream".into(),

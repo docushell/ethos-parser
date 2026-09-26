@@ -4646,6 +4646,85 @@ fn a_documents_tounicode_ceiling_refuses_it_ahead_of_any_page_error() {
     );
 }
 
+/// **A page this reader would read otherwise than a renderer is refused** (review 2026-09-26
+/// N07). Renderers end a token with its `/Contents` stream and read a filtered inline image's data
+/// to its filter's end. This reader joined the streams with `\n` and ended the data at the first
+/// `EI` window, so a hex string split across two streams, or text after a false `EI` inside
+/// ASCII85 data, was extracted where Ghostscript draws nothing, and `tag` then made it drawn.
+#[test]
+fn a_page_read_otherwise_than_a_renderer_reads_it_is_refused() {
+    let two_streams = |first: &[u8], second: &[u8]| {
+        let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+        let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+        let page = doc.get_pages()[&1];
+        let ids: Vec<lopdf::Object> = [first, second]
+            .iter()
+            .map(|c| {
+                let stream = lopdf::Stream::new(lopdf::Dictionary::new(), c.to_vec());
+                lopdf::Object::Reference(doc.add_object(stream))
+            })
+            .collect();
+        doc.get_dictionary_mut(page)
+            .expect("the page")
+            .set("Contents", ids);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("saves");
+        out
+    };
+    let e = extracted(&two_streams(
+        b"BT /F1 24 Tf 72 72 Td <4D65",
+        b"6173> Tj ET\n",
+    ))
+    .expect_err("a hex string cut by the end of its stream");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string()
+            .contains("stream 1 of the page's /Contents ends inside a string"),
+        "{e}"
+    );
+    // An operation or a dictionary divided between its tokens reads, as the IRS forms divide them.
+    extracted(&two_streams(b"BT /F1 24 Tf 72 72 Td (Meas)", b"Tj ET\n"))
+        .expect("an operand carried into the next stream reads");
+    extracted(&two_streams(
+        b"/Artifact <</MCID ",
+        b"0 >>BDC EMC BT /F1 24 Tf 72 72 Td (Meas) Tj ET\n",
+    ))
+    .expect("a dictionary divided between its tokens reads");
+
+    let image = |filter: &str, data: &[u8]| {
+        let mut c =
+            format!("q 9 0 0 9 0 0 cm BI /W 1 /H 1 /BPC 8 /CS /G /F {filter} ID ").into_bytes();
+        c.extend_from_slice(data);
+        c.extend_from_slice(b" EI Q\n");
+        c.extend_from_slice(MEASURED);
+        with_content(&c, None)
+    };
+    let deflated = zlib(b"\x80");
+    let cut = &deflated[..deflated.len() / 2];
+    for (filter, data, reads) in [
+        ("/A85", &b"z~>"[..], true),
+        ("/A85", b"zzz", false),
+        ("[/A85]", b"zzz", false),
+        ("/AHx", b"80>", true),
+        ("/AHx", b"80", false),
+        ("/Fl", &deflated[..], true),
+        ("/Fl", cut, false),
+    ] {
+        let result = extracted(&image(filter, data));
+        if reads {
+            result.unwrap_or_else(|e| panic!("{filter} {data:?}: {e}"));
+        } else {
+            let e = result.expect_err(filter);
+            assert_eq!(e.code(), "malformed", "{filter}: {e}");
+            assert!(
+                e.to_string()
+                    .contains("does not end where its EI window was found"),
+                "{filter}: {e}"
+            );
+        }
+    }
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
