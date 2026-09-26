@@ -1535,6 +1535,7 @@ pub(crate) fn shows_from_runs(
 /// runs skipped.
 pub(crate) fn blocks_in_reading_order(runs: &[crate::nodes::TextRun]) -> Vec<BlockKey> {
     let mut order: Vec<BlockKey> = Vec::new();
+    let mut seen: std::collections::BTreeSet<BlockKey> = std::collections::BTreeSet::new();
     for run in runs {
         if matches!(
             run.structural,
@@ -1543,7 +1544,7 @@ pub(crate) fn blocks_in_reading_order(runs: &[crate::nodes::TextRun]) -> Vec<Blo
             continue;
         }
         let key = (run.region, run.block);
-        if !order.contains(&key) {
+        if seen.insert(key) {
             order.push(key);
         }
     }
@@ -1806,13 +1807,16 @@ pub(crate) fn plan_page(
     let kinds: Vec<OpKind> = ops.iter().map(OpKind::of).collect();
 
     // The greedy grouping, per block, in stream order.
+    let mut shown_by: BTreeMap<BlockKey, Vec<usize>> = BTreeMap::new();
+    for (i, show) in shows.iter().enumerate() {
+        if let Some(Shows::Block(block)) = show {
+            shown_by.entry(*block).or_default().push(i);
+        }
+    }
     let mut sequences: Vec<Sequence> = Vec::new();
     for &block in order {
         let mut open: Option<(usize, usize)> = None;
-        for (i, show) in shows.iter().enumerate() {
-            if *show != Some(Shows::Block(block)) {
-                continue;
-            }
+        for &i in shown_by.get(&block).map_or(&[][..], Vec::as_slice) {
             match open {
                 Some((first, last)) if gap_is_clear(&kinds, nesting, last, i, nesting[last]) => {
                     open = Some((first, i));
@@ -1898,17 +1902,13 @@ pub(crate) fn plan_page(
             .map(|&prev_last| split_cause(&kinds, nesting, shows, prev_last, seq.first));
         last_of_block.insert(seq.block, seq.last);
     }
+    let mut ids_of: BTreeMap<BlockKey, Vec<i64>> = BTreeMap::new();
+    for s in &sequences {
+        ids_of.entry(s.block).or_default().push(s.mcid);
+    }
     let blocks: Vec<(BlockKey, Vec<i64>)> = order
         .iter()
-        .map(|&block| {
-            let ids: Vec<i64> = sequences
-                .iter()
-                .filter(|s| s.block == block)
-                .map(|s| s.mcid)
-                .collect();
-            (block, ids)
-        })
-        .filter(|(_, ids)| !ids.is_empty())
+        .filter_map(|&block| ids_of.remove(&block).map(|ids| (block, ids)))
         .collect();
     PagePlan { sequences, blocks }
 }
@@ -2369,11 +2369,16 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 ///    `/StructTreeRoot` — a written tag fills absence only; or an object carries `/StructParents`
 ///    or `/StructParent`, a key into a parent tree the document no longer has, which the tree
 ///    written here would answer with elements that do not hold that object's content.
-/// 2. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
+/// 2. [`EngineError::Encrypted`]: the empty user password opened the document, and a rewritten
+///    copy would carry neither its encryption nor its permissions; then
+///    [`EngineError::Unsupported`] with `what` = `tagging`: a dictionary carries `/ByteRange`, a
+///    digital signature, which would no longer cover the bytes it signed; or an object or the
+///    trailer holds a real outside `f32`'s range, which `lopdf`'s writer prints as `inf`.
+/// 3. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
 ///    checks read its artifact.
-/// 3. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
+/// 4. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
 ///    page unprocessed; a run binds a bare marked-content id (an inline `/MCID` and no tree).
-/// 4. Per page, in page order, the first of: [`EngineError::Malformed`] or
+/// 5. Per page, in page order, the first of: [`EngineError::Malformed`] or
 ///    [`EngineError::Unsupported`] from the strict decoder and the tokeniser, naming the page,
 ///    the stream and the cause — a `/Contents` entry that is not a stream, a filter other than
 ///    none or `FlateDecode`, a `/DecodeParms` with a predictor, a stream that does not decode to
@@ -2383,9 +2388,9 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 ///    carrying `/MCID`, or one the page's `/Properties` does not hold; an operation shows runs
 ///    the cut placed in two blocks. A later page's decoder error therefore comes after an
 ///    earlier page's tagging refusal.
-/// 5. [`EngineError::Unsupported`] with `what` = `tagging`: no text run outside an `/Artifact`
+/// 6. [`EngineError::Unsupported`] with `what` = `tagging`: no text run outside an `/Artifact`
 ///    frame, so there is nothing to tag.
-/// 6. After emission, [`EngineError::Malformed`] with `what` = `tagging self-check`: the output,
+/// 7. After emission, [`EngineError::Malformed`] with `what` = `tagging self-check`: the output,
 ///    read back, differs from the extract it was written from — a run, a binding, a per-page
 ///    counter or record, a limitation, the tree's grouping or a written sequence — naming the
 ///    first difference. Nothing is returned in that case.
@@ -2421,6 +2426,7 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
              content (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
         )));
     }
+    refuse_rewrite(doc, "tagging")?;
 
     let (artifact, traces) = crate::extract::extract_with_positions(doc, profile)?;
 
@@ -2506,10 +2512,14 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
                 run_mcids.push(None);
                 continue;
             }
+            // Sequences are disjoint and sorted by `first`: the holder is the last one opening at
+            // or before `at`, if it has not closed.
             let holder = plan
                 .sequences
-                .iter()
-                .find(|s| s.first <= at && at <= s.last)
+                .partition_point(|s| s.first <= at)
+                .checked_sub(1)
+                .map(|k| &plan.sequences[k])
+                .filter(|s| at <= s.last)
                 .ok_or_else(|| {
                     malformed(format!(
                         "page {number}: run {i} `{}` (operation {at}) is in no sequence",
@@ -2540,6 +2550,66 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
         traces,
         pages,
     })
+}
+
+/// What a full re-serialisation would break without a word, refused by name before a byte is
+/// written: a source `lopdf` decrypted with the empty user password, which would be written back
+/// without its encryption or its permissions; a digital signature, whose `/ByteRange` would no
+/// longer cover the bytes it signed; a real outside `f32`'s range, which `lopdf` reads as infinite
+/// and its writer prints as `inf`, a token no reader accepts. Both writers call it; `what` names
+/// the caller.
+pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineError> {
+    if doc.opened_encrypted() {
+        return Err(EngineError::Encrypted {
+            detail: format!(
+                "{what}: the document is encrypted and opened with the empty user password, and a \
+                 rewritten copy would carry neither its encryption nor its permissions"
+            ),
+        });
+    }
+    // Every object, then the trailer's values: the writer prints both.
+    let inner = doc.inner();
+    let objects = inner.objects.iter().map(|(&id, o)| (Some(id), o));
+    let trailer = inner.trailer.iter().map(|(_, o)| (None, o));
+    for (id, object) in objects.chain(trailer) {
+        let refuse = |why: &str| EngineError::Unsupported {
+            what: what.to_string(),
+            detail: match id {
+                Some((number, generation)) => format!("object {number} {generation} R {why}"),
+                None => format!("the trailer {why}"),
+            },
+        };
+        let mut stack = vec![object];
+        while let Some(o) = stack.pop() {
+            let dict = match o {
+                Object::Real(v) if !v.is_finite() => {
+                    return Err(refuse(&format!(
+                        "holds a real outside f32's range, which the writer would print as \
+                         `{v}`, a token no reader accepts"
+                    )));
+                }
+                Object::Dictionary(d) => d,
+                Object::Stream(s) => &s.dict,
+                Object::Array(items) => {
+                    stack.extend(items);
+                    continue;
+                }
+                _ => continue,
+            };
+            // A null value is an absent entry (PDF 32000-1 §7.3.7), so it signs nothing.
+            if dict
+                .get(b"ByteRange")
+                .is_ok_and(|v| !matches!(v, Object::Null))
+            {
+                return Err(refuse(
+                    "carries a digital signature's /ByteRange: the signature covers the source's \
+                     bytes, and a rewritten file would carry one that no longer verifies",
+                ));
+            }
+            stack.extend(dict.iter().map(|(_, v)| v));
+        }
+    }
+    Ok(())
 }
 
 /// The first object, in object-number order, holding `/StructParents` or `/StructParent` in any

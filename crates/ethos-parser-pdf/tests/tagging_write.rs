@@ -1384,3 +1384,180 @@ fn the_nested_frames_twin_matches_its_fixture() {
     assert_eq!(seqs[2].inside, None);
     assert_eq!(seqs[3].inside, None);
 }
+
+// -------------------------------------------------------------------------------------------
+// What a full rewrite would break, refused by both writers
+// -------------------------------------------------------------------------------------------
+
+/// Both writers on one document, each named by the `what` its refusals carry: `tag`, then
+/// `overlay` over the document's own extract.
+fn both_writers(bytes: &[u8]) -> [(&'static str, Result<Vec<u8>, EngineError>); 2] {
+    let doc = open(bytes);
+    let profile = Profile::default();
+    let overlay = ethos_parser_pdf::extract(&doc, &profile)
+        .and_then(|a| ethos_parser_pdf::build_overlay(&doc, &a, &profile));
+    [
+        ("tagging", write_tags(&doc, &profile)),
+        ("overlay", overlay),
+    ]
+}
+
+/// **A document the empty user password opened is refused by both writers, as encrypted.**
+/// `lopdf` decrypts such a document at load and removes `/Encrypt`, so a rewrite writes it back
+/// in the clear with its permissions gone: `overlay` did, exit 0, and `tag` refused only in its
+/// self-check, after two extractions, because a limitation differed.
+#[test]
+fn a_document_the_empty_user_password_opened_is_refused_by_both_writers() {
+    let encrypted = edited("leading-gap-two-blocks", |doc| {
+        // The key derivation reads the first `/ID` string, and this fixture's trailer has none.
+        let id = Object::String(
+            b"0123456789abcdef".to_vec(),
+            lopdf::StringFormat::Hexadecimal,
+        );
+        doc.trailer.set("ID", vec![id.clone(), id]);
+        let state = lopdf::EncryptionState::try_from(lopdf::EncryptionVersion::V1 {
+            document: doc,
+            owner_password: "owner",
+            user_password: "",
+            permissions: lopdf::Permissions::default(),
+        })
+        .expect("an RC4-40 encryption state");
+        doc.encrypt(&state)
+            .expect("encrypts every string and stream");
+    });
+    assert!(
+        open(&encrypted).opened_encrypted(),
+        "the control: the empty user password opened it"
+    );
+    for (writer, result) in both_writers(&encrypted) {
+        let e = result.expect_err(writer);
+        assert_eq!(e.code(), "encrypted", "{writer}: {e}");
+        assert!(
+            e.to_string().starts_with(&format!(
+                "encrypted source: {writer}: the document is encrypted and opened with the empty \
+                 user password, and a rewritten copy would carry neither its encryption nor its \
+                 permissions"
+            )),
+            "{writer}: {e}"
+        );
+    }
+}
+
+/// **A signed document is refused by both writers, naming the signature.** A signature's
+/// `/ByteRange` covers offsets in the file it signed, and a full re-serialisation moves every
+/// byte: `overlay` exited 0 on the three signed IRS forms of the corpora, and `tag` on an untagged
+/// signed file, and no output's signature verified. A null `/ByteRange` is absent (PDF 32000-1
+/// §7.3.7) and signs nothing.
+#[test]
+fn a_signed_document_is_refused_by_both_writers() {
+    // The signature as the IRS forms carry theirs, under the catalog's `/Perms /UR3`.
+    let with_signature = |byte_range: Object| {
+        let mut signature = None;
+        let bytes = edited("leading-gap-two-blocks", |doc| {
+            let sig = doc.add_object(dictionary! {
+                "Type" => "Sig",
+                "Filter" => "Adobe.PPKLite",
+                "SubFilter" => "adbe.pkcs7.detached",
+                "ByteRange" => byte_range,
+                "Contents" => Object::String(vec![0; 8], lopdf::StringFormat::Hexadecimal),
+            });
+            let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+            doc.get_dictionary_mut(root)
+                .unwrap()
+                .set("Perms", dictionary! { "UR3" => sig });
+            signature = Some(sig);
+        });
+        (bytes, signature.expect("the signature was added"))
+    };
+
+    let (signed, (number, generation)) =
+        with_signature([0, 100, 200, 300].map(Object::Integer).to_vec().into());
+    for (writer, result) in both_writers(&signed) {
+        match result {
+            Err(EngineError::Unsupported { what, detail }) if what == writer => assert!(
+                detail.starts_with(&format!(
+                    "object {number} {generation} R carries a digital signature's /ByteRange: the \
+                     signature covers the source's bytes"
+                )),
+                "{writer}: {detail}"
+            ),
+            Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+            Err(other) => panic!("{writer}: expected a refusal naming the signature, got {other}"),
+        }
+    }
+
+    let (null, _) = with_signature(Object::Null);
+    for (writer, result) in both_writers(&null) {
+        result.unwrap_or_else(|e| panic!("{writer}: a null /ByteRange signs nothing: {e}"));
+    }
+}
+
+/// **A real outside `f32`'s range is refused by both writers, naming where it is.** `lopdf` reads
+/// a real spelled out past `f32::MAX` as infinite, and its writer prints the bare token `inf`,
+/// which qpdf refuses: `tag` wrote a font descriptor's `/XHeight` so, exit 0, and `overlay` a
+/// page's `/PieceInfo` scale, after which Ghostscript found no page. The trailer is written too.
+#[test]
+fn a_real_outside_f32s_range_is_refused_by_both_writers() {
+    // `lopdf` writes a name at `/EthosHuge`, and the name is then overwritten byte for byte by a
+    // real past `f32::MAX`, so no offset moves.
+    let with_huge_real = |place: fn(&mut lopdf::Document, Object)| {
+        let name = "EthosPlaceholder".repeat(3);
+        let mut bytes = edited("leading-gap-two-blocks", |doc| {
+            place(doc, Object::Name(name.clone().into_bytes()))
+        });
+        let from = format!("/{name}");
+        let to = format!(" 4{}.0", "0".repeat(from.len() - 4));
+        let at = bytes
+            .windows(from.len())
+            .position(|w| w == from.as_bytes())
+            .expect("the placeholder is written");
+        bytes[at..at + from.len()].copy_from_slice(to.as_bytes());
+        bytes
+    };
+    let on_the_page = with_huge_real(|doc, value| {
+        let page = first_page(doc);
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("EthosHuge", value);
+    });
+    let in_the_trailer = with_huge_real(|doc, value| doc.trailer.set("EthosHuge", value));
+
+    let loaded = lopdf::Document::load_mem(&on_the_page).unwrap();
+    let (number, generation) = first_page(&loaded);
+    let infinite = Object::Real(f32::INFINITY);
+    assert_eq!(
+        loaded
+            .get_dictionary((number, generation))
+            .unwrap()
+            .get(b"EthosHuge")
+            .unwrap(),
+        &infinite,
+        "the control: lopdf reads the page's real as infinite"
+    );
+    let loaded = lopdf::Document::load_mem(&in_the_trailer).unwrap();
+    assert_eq!(
+        loaded.trailer.get(b"EthosHuge").unwrap(),
+        &infinite,
+        "and the trailer's"
+    );
+
+    for (bytes, place) in [
+        (on_the_page, format!("object {number} {generation} R")),
+        (in_the_trailer, "the trailer".to_string()),
+    ] {
+        for (writer, result) in both_writers(&bytes) {
+            match result {
+                Err(EngineError::Unsupported { what, detail }) if what == writer => assert_eq!(
+                    detail,
+                    format!(
+                        "{place} holds a real outside f32's range, which the writer would print \
+                         as `inf`, a token no reader accepts"
+                    ),
+                    "{writer}"
+                ),
+                Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+                Err(other) => panic!("{writer}: expected a refusal naming {place}, got {other}"),
+            }
+        }
+    }
+}
