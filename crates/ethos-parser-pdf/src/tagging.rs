@@ -2369,11 +2369,13 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 ///    `/StructTreeRoot` — a written tag fills absence only; or an object carries `/StructParents`
 ///    or `/StructParent`, a key into a parent tree the document no longer has, which the tree
 ///    written here would answer with elements that do not hold that object's content.
-/// 2. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
+/// 2. [`EngineError::Encrypted`]: the empty user password opened the document, and a rewritten
+///    copy would carry neither its encryption nor its permissions.
+/// 3. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
 ///    checks read its artifact.
-/// 3. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
+/// 4. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
 ///    page unprocessed; a run binds a bare marked-content id (an inline `/MCID` and no tree).
-/// 4. Per page, in page order, the first of: [`EngineError::Malformed`] or
+/// 5. Per page, in page order, the first of: [`EngineError::Malformed`] or
 ///    [`EngineError::Unsupported`] from the strict decoder and the tokeniser, naming the page,
 ///    the stream and the cause — a `/Contents` entry that is not a stream, a filter other than
 ///    none or `FlateDecode`, a `/DecodeParms` with a predictor, a stream that does not decode to
@@ -2383,9 +2385,9 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 ///    carrying `/MCID`, or one the page's `/Properties` does not hold; an operation shows runs
 ///    the cut placed in two blocks. A later page's decoder error therefore comes after an
 ///    earlier page's tagging refusal.
-/// 5. [`EngineError::Unsupported`] with `what` = `tagging`: no text run outside an `/Artifact`
+/// 6. [`EngineError::Unsupported`] with `what` = `tagging`: no text run outside an `/Artifact`
 ///    frame, so there is nothing to tag.
-/// 6. After emission, [`EngineError::Malformed`] with `what` = `tagging self-check`: the output,
+/// 7. After emission, [`EngineError::Malformed`] with `what` = `tagging self-check`: the output,
 ///    read back, differs from the extract it was written from — a run, a binding, a per-page
 ///    counter or record, a limitation, the tree's grouping or a written sequence — naming the
 ///    first difference. Nothing is returned in that case.
@@ -2421,6 +2423,7 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
              content (docs/23-AUTO-TAGGING-SCOPE.md §3.6)"
         )));
     }
+    refuse_rewrite(doc, "tagging")?;
 
     let (artifact, traces) = crate::extract::extract_with_positions(doc, profile)?;
 
@@ -2540,6 +2543,21 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
         traces,
         pages,
     })
+}
+
+/// What a full re-serialisation would break without a word, refused by name before a byte is
+/// written: a source `lopdf` decrypted with the empty user password, which would be written back
+/// without its encryption or its permissions. Both writers call it; `what` names the caller.
+pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineError> {
+    if doc.opened_encrypted() {
+        return Err(EngineError::Encrypted {
+            detail: format!(
+                "{what}: the document is encrypted and opened with the empty user password, and a \
+                 rewritten copy would carry neither its encryption nor its permissions"
+            ),
+        });
+    }
+    Ok(())
 }
 
 /// The first object, in object-number order, holding `/StructParents` or `/StructParent` in any

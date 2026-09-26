@@ -90,6 +90,8 @@ const FLAGGED_RUN: Mark = Mark {
 ///
 /// - [`EngineError::Malformed`] if the extract does not describe this document, or if the source
 ///   bytes will not re-parse.
+/// - [`EngineError::Encrypted`] if the empty user password opened the document: the copy would
+///   carry neither its encryption nor its permissions.
 pub fn build_overlay(
     doc: &Document,
     extract: &ExtractArtifact,
@@ -106,6 +108,7 @@ pub fn build_overlay(
             ),
         });
     }
+    crate::tagging::refuse_rewrite(doc, "overlay")?;
 
     // **A fresh copy per call, never the handle itself and never a cached one.** lopdf's writer
     // MUTATES the document it saves — `write_cross_reference_stream` increments `max_id` and

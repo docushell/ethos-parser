@@ -1384,3 +1384,61 @@ fn the_nested_frames_twin_matches_its_fixture() {
     assert_eq!(seqs[2].inside, None);
     assert_eq!(seqs[3].inside, None);
 }
+
+// -------------------------------------------------------------------------------------------
+// What a full rewrite would break, refused by both writers
+// -------------------------------------------------------------------------------------------
+
+/// Both writers on one document, each named by the `what` its refusals carry: `tag`, then
+/// `overlay` over the document's own extract.
+fn both_writers(bytes: &[u8]) -> [(&'static str, Result<Vec<u8>, EngineError>); 2] {
+    let doc = open(bytes);
+    let profile = Profile::default();
+    let overlay = ethos_parser_pdf::extract(&doc, &profile)
+        .and_then(|a| ethos_parser_pdf::build_overlay(&doc, &a, &profile));
+    [
+        ("tagging", write_tags(&doc, &profile)),
+        ("overlay", overlay),
+    ]
+}
+
+/// **A document the empty user password opened is refused by both writers, as encrypted.**
+/// `lopdf` decrypts such a document at load and removes `/Encrypt`, so a rewrite writes it back
+/// in the clear with its permissions gone: `overlay` did, exit 0, and `tag` refused only in its
+/// self-check, after two extractions, because a limitation differed.
+#[test]
+fn a_document_the_empty_user_password_opened_is_refused_by_both_writers() {
+    let encrypted = edited("leading-gap-two-blocks", |doc| {
+        // The key derivation reads the first `/ID` string, and this fixture's trailer has none.
+        let id = Object::String(
+            b"0123456789abcdef".to_vec(),
+            lopdf::StringFormat::Hexadecimal,
+        );
+        doc.trailer.set("ID", vec![id.clone(), id]);
+        let state = lopdf::EncryptionState::try_from(lopdf::EncryptionVersion::V1 {
+            document: doc,
+            owner_password: "owner",
+            user_password: "",
+            permissions: lopdf::Permissions::default(),
+        })
+        .expect("an RC4-40 encryption state");
+        doc.encrypt(&state)
+            .expect("encrypts every string and stream");
+    });
+    assert!(
+        open(&encrypted).opened_encrypted(),
+        "the control: the empty user password opened it"
+    );
+    for (writer, result) in both_writers(&encrypted) {
+        let e = result.expect_err(writer);
+        assert_eq!(e.code(), "encrypted", "{writer}: {e}");
+        assert!(
+            e.to_string().starts_with(&format!(
+                "encrypted source: {writer}: the document is encrypted and opened with the empty \
+                 user password, and a rewritten copy would carry neither its encryption nor its \
+                 permissions"
+            )),
+            "{writer}: {e}"
+        );
+    }
+}
