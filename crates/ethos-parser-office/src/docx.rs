@@ -63,7 +63,8 @@ pub struct Run {
     pub paragraph: u32,
     /// 1-based position of this `<w:r>` within that paragraph.
     pub run: u32,
-    /// The text, concatenated from this run's `<w:t>` elements, verbatim.
+    /// The text, concatenated from this run's `<w:t>` elements, verbatim, with the characters its
+    /// `<w:tab/>`, `<w:br/>`, `<w:cr/>` and `<w:noBreakHyphen/>` state, in place.
     pub text: String,
     /// Whether any `<w:t>` in this run carried `xml:space="preserve"`.
     pub space_preserved: bool,
@@ -162,6 +163,9 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     let mut open_run: Option<Run> = None;
     // `true` while inside a `<w:t>`, so text outside one is not collected.
     let mut in_text = false;
+    // Whether the open run's `<w:t>` elements held any text. The characters a run states as an
+    // element separate that text and never make the run a node on their own.
+    let mut run_has_text = false;
     // Element depth, checked at EOF. `quick-xml` reports a *mismatched* close tag on its own but
     // reaching the end of input with elements still open is not an error to it — and a body that
     // stopped halfway is a shorter document that still looks whole, which is exactly what
@@ -196,6 +200,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                     run_in_paragraph = 0;
                 }
                 b"r" => run_in_paragraph += 1,
+                name if skip_from.is_none() => push_stated(name, open_run.as_mut()),
                 _ => {}
             },
 
@@ -229,6 +234,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                     b"r" => {
                         run_in_paragraph += 1;
                         if !skipping {
+                            run_has_text = false;
                             open_run = Some(Run {
                                 paragraph,
                                 run: run_in_paragraph,
@@ -249,6 +255,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                             }
                         }
                     }
+                    name if !skipping => push_stated(name, open_run.as_mut()),
                     _ => {}
                 }
             }
@@ -275,7 +282,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                             // A run with no `<w:t>` — a tab, a break, a drawing anchor — carries no
                             // text to cite. It is not an erasure either: there was never a character
                             // in it. Skipped without a count, deliberately.
-                            if !run.text.is_empty() {
+                            if run_has_text {
                                 runs.push(run);
                             }
                         }
@@ -291,6 +298,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                         detail: format!("text will not decode: {e}"),
                     })?;
                     run.text.push_str(decoded.as_ref());
+                    run_has_text |= !decoded.is_empty();
                 }
             }
             // **`quick-xml` 0.41 delivers an entity as its own event**, so a reader that only
@@ -306,6 +314,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                 let resolved = resolved.as_ref();
                 if let Some(run) = open_run.as_mut() {
                     run.text.push_str(resolved);
+                    run_has_text |= !resolved.is_empty();
                 }
             }
             Ok(_) => {}
@@ -328,6 +337,27 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
 }
 
 use crate::xml::local_name;
+
+/// Append the character a run-content element states, if it states one (ECMA-376 §17.3.3).
+///
+/// `<w:tab/>` is a tab, `<w:br/>` and `<w:cr/>` a line feed, `<w:noBreakHyphen/>` U+2011 — the
+/// characters `odt.rs` reads from `<text:tab/>` and `<text:line-break/>` and `rtf.rs` from `\tab`,
+/// `\line` and `\_`. Without them the text on either side is welded into one word.
+///
+/// **They never make a run a node on their own.** A run inside `<w:del>` keeps its text in
+/// `<w:delText>`, which is not read, but states its tabs, breaks and hyphens with these same
+/// elements, so counting a run a node for holding one would put a deleted hyphen in the evidence.
+fn push_stated(name: &[u8], run: Option<&mut Run>) {
+    let stated = match name {
+        b"tab" => '\t',
+        b"br" | b"cr" => '\n',
+        b"noBreakHyphen" => '\u{2011}',
+        _ => return,
+    };
+    if let Some(run) = run {
+        run.text.push(stated);
+    }
+}
 
 fn has_preserve(start: &quick_xml::events::BytesStart<'_>) -> Result<bool, EngineError> {
     for attribute in start.attributes() {
@@ -407,6 +437,32 @@ mod tests {
         assert_eq!(
             runs[0].run, 2,
             "the empty run still counted for the address"
+        );
+    }
+
+    /// **A tab or a break a run states as an element is a character**, so the text on either
+    /// side is not welded: `textutil`'s `Line one<br>Line two` read as `Line oneLine two`. A run
+    /// holding only a break is still not a node, nor is a deleted run holding a no-break hyphen,
+    /// and a passed-over branch states nothing.
+    #[test]
+    fn stated_tabs_and_breaks_separate_the_text_they_sit_between() {
+        let xml = r#"<w:document xmlns:w="x" xmlns:mc="mc"><w:body>
+            <w:p><w:r><w:t>Line one</w:t><w:br/><w:t>Line two</w:t></w:r></w:p>
+            <w:p><w:r><w:t>Name:</w:t><w:tab></w:tab><w:t>Value</w:t></w:r><w:r><w:br/></w:r></w:p>
+            <w:p><w:r><w:t>A</w:t><w:cr/><w:t>B</w:t><w:noBreakHyphen/><w:t>C</w:t></w:r>
+              <w:del><w:r><w:delText>x</w:delText><w:noBreakHyphen/></w:r></w:del></w:p>
+            <w:p><w:r><w:t>kept</w:t><mc:AlternateContent><mc:Choice Requires="a"></mc:Choice>
+              <mc:Fallback><w:tab/><w:br></w:br></mc:Fallback></mc:AlternateContent></w:r></w:p>
+        </w:body></w:document>"#;
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            [
+                "Line one\nLine two",
+                "Name:\tValue",
+                "A\nB\u{2011}C",
+                "kept"
+            ]
         );
     }
 
