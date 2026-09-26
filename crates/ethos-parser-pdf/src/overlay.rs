@@ -93,7 +93,8 @@ const FLAGGED_RUN: Mark = Mark {
 /// - [`EngineError::Encrypted`] if the empty user password opened the document: the copy would
 ///   carry neither its encryption nor its permissions.
 /// - [`EngineError::Unsupported`] with `what` = `overlay` if a dictionary carries `/ByteRange`: a
-///   digital signature would no longer cover the bytes it signed.
+///   digital signature would no longer cover the bytes it signed; or if an object or the trailer
+///   holds a real outside `f32`'s range, which `lopdf`'s writer prints as `inf`.
 pub fn build_overlay(
     doc: &Document,
     extract: &ExtractArtifact,

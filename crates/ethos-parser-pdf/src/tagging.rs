@@ -2372,7 +2372,8 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 /// 2. [`EngineError::Encrypted`]: the empty user password opened the document, and a rewritten
 ///    copy would carry neither its encryption nor its permissions; then
 ///    [`EngineError::Unsupported`] with `what` = `tagging`: a dictionary carries `/ByteRange`, a
-///    digital signature, which would no longer cover the bytes it signed.
+///    digital signature, which would no longer cover the bytes it signed; or an object or the
+///    trailer holds a real outside `f32`'s range, which `lopdf`'s writer prints as `inf`.
 /// 3. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
 ///    checks read its artifact.
 /// 4. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
@@ -2550,7 +2551,9 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
 /// What a full re-serialisation would break without a word, refused by name before a byte is
 /// written: a source `lopdf` decrypted with the empty user password, which would be written back
 /// without its encryption or its permissions; a digital signature, whose `/ByteRange` would no
-/// longer cover the bytes it signed. Both writers call it; `what` names the caller.
+/// longer cover the bytes it signed; a real outside `f32`'s range, which `lopdf` reads as infinite
+/// and its writer prints as `inf`, a token no reader accepts. Both writers call it; `what` names
+/// the caller.
 pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineError> {
     if doc.opened_encrypted() {
         return Err(EngineError::Encrypted {
@@ -2560,10 +2563,27 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
             ),
         });
     }
-    for (&(number, generation), object) in &doc.inner().objects {
+    // Every object, then the trailer's values: the writer prints both.
+    let inner = doc.inner();
+    let objects = inner.objects.iter().map(|(&id, o)| (Some(id), o));
+    let trailer = inner.trailer.iter().map(|(_, o)| (None, o));
+    for (id, object) in objects.chain(trailer) {
+        let refuse = |why: &str| EngineError::Unsupported {
+            what: what.to_string(),
+            detail: match id {
+                Some((number, generation)) => format!("object {number} {generation} R {why}"),
+                None => format!("the trailer {why}"),
+            },
+        };
         let mut stack = vec![object];
         while let Some(o) = stack.pop() {
             let dict = match o {
+                Object::Real(v) if !v.is_finite() => {
+                    return Err(refuse(&format!(
+                        "holds a real outside f32's range, which the writer would print as \
+                         `{v}`, a token no reader accepts"
+                    )));
+                }
                 Object::Dictionary(d) => d,
                 Object::Stream(s) => &s.dict,
                 Object::Array(items) => {
@@ -2577,14 +2597,10 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
                 .get(b"ByteRange")
                 .is_ok_and(|v| !matches!(v, Object::Null))
             {
-                return Err(EngineError::Unsupported {
-                    what: what.to_string(),
-                    detail: format!(
-                        "object {number} {generation} R carries a digital signature's /ByteRange: \
-                         the signature covers the source's bytes, and a rewritten file would carry \
-                         one that no longer verifies"
-                    ),
-                });
+                return Err(refuse(
+                    "carries a digital signature's /ByteRange: the signature covers the source's \
+                     bytes, and a rewritten file would carry one that no longer verifies",
+                ));
             }
             stack.extend(dict.iter().map(|(_, v)| v));
         }

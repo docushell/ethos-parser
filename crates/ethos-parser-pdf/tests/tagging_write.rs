@@ -1491,3 +1491,73 @@ fn a_signed_document_is_refused_by_both_writers() {
         result.unwrap_or_else(|e| panic!("{writer}: a null /ByteRange signs nothing: {e}"));
     }
 }
+
+/// **A real outside `f32`'s range is refused by both writers, naming where it is.** `lopdf` reads
+/// a real spelled out past `f32::MAX` as infinite, and its writer prints the bare token `inf`,
+/// which qpdf refuses: `tag` wrote a font descriptor's `/XHeight` so, exit 0, and `overlay` a
+/// page's `/PieceInfo` scale, after which Ghostscript found no page. The trailer is written too.
+#[test]
+fn a_real_outside_f32s_range_is_refused_by_both_writers() {
+    // `lopdf` writes a name at `/EthosHuge`, and the name is then overwritten byte for byte by a
+    // real past `f32::MAX`, so no offset moves.
+    let with_huge_real = |place: fn(&mut lopdf::Document, Object)| {
+        let name = "EthosPlaceholder".repeat(3);
+        let mut bytes = edited("leading-gap-two-blocks", |doc| {
+            place(doc, Object::Name(name.clone().into_bytes()))
+        });
+        let from = format!("/{name}");
+        let to = format!(" 4{}.0", "0".repeat(from.len() - 4));
+        let at = bytes
+            .windows(from.len())
+            .position(|w| w == from.as_bytes())
+            .expect("the placeholder is written");
+        bytes[at..at + from.len()].copy_from_slice(to.as_bytes());
+        bytes
+    };
+    let on_the_page = with_huge_real(|doc, value| {
+        let page = first_page(doc);
+        doc.get_dictionary_mut(page)
+            .unwrap()
+            .set("EthosHuge", value);
+    });
+    let in_the_trailer = with_huge_real(|doc, value| doc.trailer.set("EthosHuge", value));
+
+    let loaded = lopdf::Document::load_mem(&on_the_page).unwrap();
+    let (number, generation) = first_page(&loaded);
+    let infinite = Object::Real(f32::INFINITY);
+    assert_eq!(
+        loaded
+            .get_dictionary((number, generation))
+            .unwrap()
+            .get(b"EthosHuge")
+            .unwrap(),
+        &infinite,
+        "the control: lopdf reads the page's real as infinite"
+    );
+    let loaded = lopdf::Document::load_mem(&in_the_trailer).unwrap();
+    assert_eq!(
+        loaded.trailer.get(b"EthosHuge").unwrap(),
+        &infinite,
+        "and the trailer's"
+    );
+
+    for (bytes, place) in [
+        (on_the_page, format!("object {number} {generation} R")),
+        (in_the_trailer, "the trailer".to_string()),
+    ] {
+        for (writer, result) in both_writers(&bytes) {
+            match result {
+                Err(EngineError::Unsupported { what, detail }) if what == writer => assert_eq!(
+                    detail,
+                    format!(
+                        "{place} holds a real outside f32's range, which the writer would print \
+                         as `inf`, a token no reader accepts"
+                    ),
+                    "{writer}"
+                ),
+                Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+                Err(other) => panic!("{writer}: expected a refusal naming {place}, got {other}"),
+            }
+        }
+    }
+}
