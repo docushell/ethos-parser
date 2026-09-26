@@ -2370,7 +2370,9 @@ fn on_page(number: u32, e: EngineError) -> EngineError {
 ///    or `/StructParent`, a key into a parent tree the document no longer has, which the tree
 ///    written here would answer with elements that do not hold that object's content.
 /// 2. [`EngineError::Encrypted`]: the empty user password opened the document, and a rewritten
-///    copy would carry neither its encryption nor its permissions.
+///    copy would carry neither its encryption nor its permissions; then
+///    [`EngineError::Unsupported`] with `what` = `tagging`: a dictionary carries `/ByteRange`, a
+///    digital signature, which would no longer cover the bytes it signed.
 /// 3. Whatever [`crate::extract`] refuses, unchanged. Extraction runs here because the next two
 ///    checks read its artifact.
 /// 4. [`EngineError::Unsupported`] with `what` = `tagging`: the profile's page budget left a
@@ -2547,7 +2549,8 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
 
 /// What a full re-serialisation would break without a word, refused by name before a byte is
 /// written: a source `lopdf` decrypted with the empty user password, which would be written back
-/// without its encryption or its permissions. Both writers call it; `what` names the caller.
+/// without its encryption or its permissions; a digital signature, whose `/ByteRange` would no
+/// longer cover the bytes it signed. Both writers call it; `what` names the caller.
 pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineError> {
     if doc.opened_encrypted() {
         return Err(EngineError::Encrypted {
@@ -2556,6 +2559,35 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
                  rewritten copy would carry neither its encryption nor its permissions"
             ),
         });
+    }
+    for (&(number, generation), object) in &doc.inner().objects {
+        let mut stack = vec![object];
+        while let Some(o) = stack.pop() {
+            let dict = match o {
+                Object::Dictionary(d) => d,
+                Object::Stream(s) => &s.dict,
+                Object::Array(items) => {
+                    stack.extend(items);
+                    continue;
+                }
+                _ => continue,
+            };
+            // A null value is an absent entry (PDF 32000-1 §7.3.7), so it signs nothing.
+            if dict
+                .get(b"ByteRange")
+                .is_ok_and(|v| !matches!(v, Object::Null))
+            {
+                return Err(EngineError::Unsupported {
+                    what: what.to_string(),
+                    detail: format!(
+                        "object {number} {generation} R carries a digital signature's /ByteRange: \
+                         the signature covers the source's bytes, and a rewritten file would carry \
+                         one that no longer verifies"
+                    ),
+                });
+            }
+            stack.extend(dict.iter().map(|(_, v)| v));
+        }
     }
     Ok(())
 }

@@ -1442,3 +1442,52 @@ fn a_document_the_empty_user_password_opened_is_refused_by_both_writers() {
         );
     }
 }
+
+/// **A signed document is refused by both writers, naming the signature.** A signature's
+/// `/ByteRange` covers offsets in the file it signed, and a full re-serialisation moves every
+/// byte: `overlay` exited 0 on the three signed IRS forms of the corpora, and `tag` on an untagged
+/// signed file, and no output's signature verified. A null `/ByteRange` is absent (PDF 32000-1
+/// §7.3.7) and signs nothing.
+#[test]
+fn a_signed_document_is_refused_by_both_writers() {
+    // The signature as the IRS forms carry theirs, under the catalog's `/Perms /UR3`.
+    let with_signature = |byte_range: Object| {
+        let mut signature = None;
+        let bytes = edited("leading-gap-two-blocks", |doc| {
+            let sig = doc.add_object(dictionary! {
+                "Type" => "Sig",
+                "Filter" => "Adobe.PPKLite",
+                "SubFilter" => "adbe.pkcs7.detached",
+                "ByteRange" => byte_range,
+                "Contents" => Object::String(vec![0; 8], lopdf::StringFormat::Hexadecimal),
+            });
+            let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+            doc.get_dictionary_mut(root)
+                .unwrap()
+                .set("Perms", dictionary! { "UR3" => sig });
+            signature = Some(sig);
+        });
+        (bytes, signature.expect("the signature was added"))
+    };
+
+    let (signed, (number, generation)) =
+        with_signature([0, 100, 200, 300].map(Object::Integer).to_vec().into());
+    for (writer, result) in both_writers(&signed) {
+        match result {
+            Err(EngineError::Unsupported { what, detail }) if what == writer => assert!(
+                detail.starts_with(&format!(
+                    "object {number} {generation} R carries a digital signature's /ByteRange: the \
+                     signature covers the source's bytes"
+                )),
+                "{writer}: {detail}"
+            ),
+            Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+            Err(other) => panic!("{writer}: expected a refusal naming the signature, got {other}"),
+        }
+    }
+
+    let (null, _) = with_signature(Object::Null);
+    for (writer, result) in both_writers(&null) {
+        result.unwrap_or_else(|e| panic!("{writer}: a null /ByteRange signs nothing: {e}"));
+    }
+}

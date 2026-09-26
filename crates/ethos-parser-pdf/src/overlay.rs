@@ -92,6 +92,8 @@ const FLAGGED_RUN: Mark = Mark {
 ///   bytes will not re-parse.
 /// - [`EngineError::Encrypted`] if the empty user password opened the document: the copy would
 ///   carry neither its encryption nor its permissions.
+/// - [`EngineError::Unsupported`] with `what` = `overlay` if a dictionary carries `/ByteRange`: a
+///   digital signature would no longer cover the bytes it signed.
 pub fn build_overlay(
     doc: &Document,
     extract: &ExtractArtifact,
