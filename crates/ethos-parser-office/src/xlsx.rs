@@ -324,7 +324,8 @@ pub fn resolve_sheets(
 ///
 /// # Errors
 ///
-/// [`EngineError::Malformed`] if the XML will not parse or carries an unresolvable entity.
+/// [`EngineError::Malformed`] if the XML will not parse, carries an unresolvable entity, or
+/// carries an `_xHHHH_` escape that names no character.
 pub fn read_shared_strings(part: &[u8], part_name: &str) -> Result<Vec<String>, EngineError> {
     let name = part_name;
     let mut reader = new_reader(part, name)?;
@@ -368,7 +369,7 @@ pub fn read_shared_strings(part: &[u8], part_name: &str) -> Result<Vec<String>, 
                         // Pushed even when empty. The index a cell carries is a **position** in
                         // this list, so an entry skipped for being empty would shift every
                         // string after it and silently repoint every later citation.
-                        strings.push(std::mem::take(&mut current));
+                        strings.push(unescape_xstring(&std::mem::take(&mut current), name)?);
                     }
                     b"rPh" => in_phonetic = false,
                     b"t" => in_text = false,
@@ -405,7 +406,7 @@ pub fn read_shared_strings(part: &[u8], part_name: &str) -> Result<Vec<String>, 
 ///
 /// [`EngineError::Malformed`] if the XML will not parse, a `<c>` carries no `r` attribute, an `r`
 /// is not an A1 reference, a `<c>`'s row disagrees with its `<row>`'s, a `t` is not a legal
-/// `ST_CellType`, or a shared-string index does not exist.
+/// `ST_CellType`, a shared-string index does not exist, or an `_xHHHH_` escape names no character.
 pub fn read_cells(
     part: &[u8],
     part_name: &str,
@@ -568,6 +569,53 @@ pub fn read_cells(
     Ok(cells)
 }
 
+/// Decode SpreadsheetML's `_xHHHH_` escapes (ECMA-376 Part 1, `ST_Xstring`), once.
+///
+/// A workbook writes a character XML cannot carry — a carriage return, a control character — as
+/// `_x000D_`, and escapes the underscore of a literal `_x0008_` as `_x005F_`. The escape belongs
+/// to the storage format, as `&amp;` does, so leaving it in puts characters in a cell's text that
+/// the workbook does not display. Consecutive escapes are UTF-16 code units, so a surrogate pair
+/// written as two joins; a surrogate that pairs with nothing names no character and is refused.
+fn unescape_xstring(stored: &str, part_name: &str) -> Result<String, EngineError> {
+    // The code unit an escape at the start of `s` names, if one starts there.
+    fn escaped_unit(s: &str) -> Option<u16> {
+        let hex = s.strip_prefix("_x")?.get(..5)?.strip_suffix('_')?;
+        if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        u16::from_str_radix(hex, 16).ok()
+    }
+    let mut out = String::with_capacity(stored.len());
+    let mut rest = stored;
+    while let Some(at) = rest.find("_x") {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let mut units = Vec::new();
+        while let Some(unit) = escaped_unit(rest) {
+            units.push(unit);
+            rest = &rest[7..];
+        }
+        if units.is_empty() {
+            // An `_x` that starts no escape is text.
+            out.push_str("_x");
+            rest = &rest[2..];
+        }
+        for decoded in char::decode_utf16(units) {
+            out.push(decoded.map_err(|e| EngineError::Malformed {
+                what: part_name.to_string(),
+                detail: format!(
+                    "`_x{:04X}_` names no Unicode scalar. The escape is how a workbook writes a \
+                     character XML cannot carry, so one this reader cannot resolve is a \
+                     character of unknown identity rather than one it may choose.",
+                    e.unpaired_surrogate()
+                ),
+            })?);
+        }
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
 /// Which of a cell's three text-bearing children the reader is inside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Collect {
@@ -707,21 +755,22 @@ impl OpenCell {
                 if !self.has_value {
                     return Ok(None);
                 }
+                // Its `_xHHHH_` escapes were decoded when the table was read, and only then.
                 shared_string(&self.value, shared, part_name, &self.column, self.row)?
             }
             CellValueType::InlineString => {
                 if !self.has_inline {
                     return Ok(None);
                 }
-                self.inline
+                unescape_xstring(&self.inline, part_name)?
             }
             _ => {
                 if self.has_value {
-                    self.value
+                    unescape_xstring(&self.value, part_name)?
                 } else if self.has_inline {
-                    self.inline
+                    unescape_xstring(&self.inline, part_name)?
                 } else if self.has_formula {
-                    self.formula
+                    unescape_xstring(&self.formula, part_name)?
                 } else {
                     return Ok(None);
                 }
@@ -1145,6 +1194,30 @@ mod tests {
         let table =
             sst(r#"<si><r><t>Split </t></r><r><t>across runs</t></r></si>"#).expect("well-formed");
         assert_eq!(table, vec!["Split across runs"]);
+    }
+
+    /// **`_xHHHH_` is how a workbook writes a character XML cannot carry** (ECMA-376
+    /// `ST_Xstring`), and it is decoded once. `_x005F_` escapes the underscore of a literal
+    /// `_x0008_`, so a cell pointing at that entry must not decode it a second time.
+    #[test]
+    fn xstring_escapes_decode_once() {
+        let table =
+            sst(r#"<si><t>a_x000D_b _x005F_x0008_ _xD83D__xDE00_</t></si>"#).expect("well-formed");
+        assert_eq!(table, ["a\rb _x0008_ \u{1F600}"]);
+        let read = cells(
+            r#"<c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>c_x0009_d</t></is></c>
+               <c r="C1" t="str"><f>B1</f><v>e_x000A_f</v></c><c r="D1"><f>"_x0041_"</f></c>"#,
+            &[table[0].as_str()],
+        )
+        .expect("well-formed");
+        assert_eq!(
+            read.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+            ["a\rb _x0008_ \u{1F600}", "c\td", "e\nf", "\"A\""]
+        );
+        assert!(
+            sst("<si><t>_xD83D_</t></si>").is_err(),
+            "a lone surrogate names no character"
+        );
     }
 
     #[test]
