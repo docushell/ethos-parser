@@ -5221,3 +5221,30 @@ fn a_document_without_right_to_left_text_declares_nothing_about_it() {
         "no right-to-left scalar is drawn here, so nothing is declared about one"
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// Outline titles
+// -------------------------------------------------------------------------------------------
+
+/// **An outline `/Title` held in an indirect object is read where it points** (review 2026-09-26
+/// N17). PDF 32000-1 §7.3.10 lets any value be indirect, and the reader counted such a title as one
+/// holding a byte it would not decode.
+#[test]
+fn an_indirect_outline_title_is_read() {
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >>".to_vec(),
+        b"<< /Type /Outlines /First 5 0 R /Last 5 0 R /Count 1 >>".to_vec(),
+        b"<< /Title 6 0 R /Parent 4 0 R /Dest [3 0 R /Fit] >>".to_vec(),
+        b"(Chapter one)".to_vec(),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    assert_eq!(
+        a.outlines
+            .iter()
+            .map(|o| o.title.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("Chapter one")]
+    );
+}

@@ -31,8 +31,8 @@
 //!   own corpus contains **two entries whose target page precedes their predecessor's**, where an
 //!   inferred end would run backwards.
 //! - **Guessing a title byte.** `0x80`–`0x9F` is where PDFDocEncoding, Latin-1 and Windows-1252
-//!   disagree and this engine vendors no table for it, so such a title is absent and counted
-//!   (`crate::forms::decode_text_strict`).
+//!   disagree, and `0xA0` and `0xAD` are where PDFDocEncoding and Latin-1 do; this engine vendors
+//!   no table for them, so such a title is absent and counted (`crate::forms::decode_text_strict`).
 //! - **Dropping an entry.** An unresolved destination, an undecodable title and a page outside the
 //!   budget are each *absent and counted* on a record that is still emitted.
 
@@ -146,7 +146,11 @@ fn walk(
             });
         };
 
-        let title = match item.get(b"Title") {
+        // A `/Title` may be an indirect object (§7.3.10); it is read where it points.
+        let title_object = item
+            .get(b"Title")
+            .and_then(|o| doc.dereference(o).map(|(_, o)| o));
+        let title = match title_object {
             Ok(Object::String(bytes, _)) => match crate::forms::decode_text_strict(bytes) {
                 Some(t) => Some(t),
                 None => {
