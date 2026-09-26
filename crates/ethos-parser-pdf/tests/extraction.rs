@@ -4646,6 +4646,111 @@ fn a_documents_tounicode_ceiling_refuses_it_ahead_of_any_page_error() {
     );
 }
 
+/// **An object a later revision deleted is refused, not read as live** (review 2026-09-26 N06).
+/// An update deletes an object with a free entry in its newer cross-reference section, and `lopdf`
+/// records no free entry, so the older section's entry loaded the deleted annotation: its text
+/// reached the artifact, and `tag` and `overlay` drew it again. The update deletes it here as a
+/// table and as a cross-reference stream. A hybrid file whose table frees the object while its
+/// `/XRefStm` lists it in use, and a third revision that reuses the freed number, still open.
+#[test]
+fn an_object_a_later_revision_deleted_is_refused_not_read_as_live() {
+    let first = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Annots [4 0 R] >>".to_vec(),
+        b"<< /Type /Annot /Subtype /Text /Rect [0 0 9 9] /Contents (deleted remark) >>".to_vec(),
+    ]);
+    let text = String::from_utf8_lossy(&first).into_owned();
+    let prev = text
+        .rsplit("startxref\n")
+        .next()
+        .and_then(|t| t.lines().next())
+        .expect("the first revision's startxref")
+        .to_string();
+    let annotation = text.find("4 0 obj").expect("object 4");
+    let open = |bytes: &[u8]| Document::open_bytes(bytes, &Profile::default());
+    let free_four = "xref\n0 1\n0000000000 65535 f \n4 1\n0000000000 00001 f \n";
+
+    // One `/W [1 4 2]` entry, and a cross-reference stream, object 5, for objects 4 and 5.
+    let row = |kind: u8, field: usize, generation: u8| {
+        let mut r = vec![kind];
+        r.extend_from_slice(&u32::try_from(field).expect("fits").to_be_bytes());
+        r.extend_from_slice(&[0, generation]);
+        r
+    };
+    let xref_stream = |bytes: &mut Vec<u8>, four: Vec<u8>, keys: &str| {
+        let at = bytes.len();
+        let mut data = four;
+        data.extend(row(1, at, 0));
+        bytes.extend_from_slice(
+            format!(
+                "5 0 obj\n<< /Type /XRef /Size 6 /W [1 4 2] /Index [4 2] /Length {}{keys} >>\n\
+                 stream\n",
+                data.len()
+            )
+            .as_bytes(),
+        );
+        bytes.extend_from_slice(&data);
+        bytes.extend_from_slice(b"\nendstream\nendobj\n");
+        at
+    };
+
+    let mut table = first.clone();
+    let freed_at = table.len();
+    table.extend_from_slice(
+        format!(
+            "{free_four}trailer\n<< /Size 5 /Root 1 0 R /Prev {prev} >>\nstartxref\n{freed_at}\n\
+             %%EOF\n"
+        )
+        .as_bytes(),
+    );
+    let mut stream = first.clone();
+    let at = xref_stream(
+        &mut stream,
+        row(0, 0, 1),
+        &format!(" /Root 1 0 R /Prev {prev}"),
+    );
+    stream.extend_from_slice(format!("startxref\n{at}\n%%EOF\n").as_bytes());
+    for (shape, bytes) in [("table", &table), ("stream", &stream)] {
+        lopdf::Document::load_mem(bytes).expect("the control: lopdf loads it without a word");
+        let e = open(bytes).expect_err(shape);
+        assert_eq!(e.code(), "malformed", "{shape}: {e}");
+        assert!(
+            e.to_string()
+                .contains("object 4 0 R was deleted by a later revision"),
+            "{shape}: {e}"
+        );
+    }
+
+    let mut hybrid = first.clone();
+    let hidden = xref_stream(&mut hybrid, row(1, annotation, 0), "");
+    let at = hybrid.len();
+    hybrid.extend_from_slice(
+        format!(
+            "{free_four}trailer\n<< /Size 6 /Root 1 0 R /Prev {prev} /XRefStm {hidden} >>\n\
+             startxref\n{at}\n%%EOF\n"
+        )
+        .as_bytes(),
+    );
+    // A third revision reuses the number the second freed: the newest word on object 4 wins.
+    let mut reused = table.clone();
+    let four = reused.len();
+    reused.extend_from_slice(
+        b"4 1 obj\n<< /Type /Annot /Subtype /Text /Rect [0 0 9 9] /Contents (new) >>\nendobj\n",
+    );
+    let at = reused.len();
+    reused.extend_from_slice(
+        format!(
+            "xref\n0 1\n0000000000 65535 f \n4 1\n{four:010} 00001 n \ntrailer\n\
+             << /Size 5 /Root 1 0 R /Prev {freed_at} >>\nstartxref\n{at}\n%%EOF\n"
+        )
+        .as_bytes(),
+    );
+    for (shape, bytes) in [("hybrid", &hybrid), ("reused", &reused)] {
+        open(bytes).unwrap_or_else(|e| panic!("{shape}: {e}"));
+    }
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
