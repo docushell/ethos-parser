@@ -752,7 +752,15 @@ fn load_simple_encoding(
         Some(obj) => {
             if let Some(ed) = resolve_dict(doc, Some(obj)) {
                 if let Ok(lopdf::Object::Name(n)) = ed.get(b"BaseEncoding") {
-                    base = BaseEncoding::from_name(n).unwrap_or(BaseEncoding::Builtin);
+                    // A base this profile does not carry is refused, as the same name is under
+                    // `/Encoding`: read as StandardEncoding, MacExpert's `ff fi fl` is `V W X`.
+                    base = BaseEncoding::from_name(n).ok_or_else(|| EngineError::Unsupported {
+                        what: "encoding".into(),
+                        detail: format!(
+                            "/BaseEncoding /{} is not a simple encoding this profile carries",
+                            String::from_utf8_lossy(n)
+                        ),
+                    })?;
                 }
                 if let Ok(lopdf::Object::Array(items)) = ed.get(b"Differences") {
                     let mut code: i64 = 0;
@@ -1605,6 +1613,25 @@ mod tests {
         let fd = symbolic_font(4, Some(lopdf::Object::Dictionary(enc)));
         let font = load_font(&lopdf::Document::new(), "F1", &fd).expect("loads");
         assert_eq!(font.builtin_encoding_assumed, None);
+    }
+
+    /// **A `/BaseEncoding` this profile does not carry is refused** (review 2026-09-26 N38), as the
+    /// same name under `/Encoding` is. Read as StandardEncoding, MacExpert's `ff fi fl` came out as
+    /// `V W X`.
+    #[test]
+    fn an_unknown_base_encoding_is_refused() {
+        let mut enc = lopdf::Dictionary::new();
+        enc.set(
+            "BaseEncoding",
+            lopdf::Object::Name(b"MacExpertEncoding".to_vec()),
+        );
+        let fd = symbolic_font(32, Some(lopdf::Object::Dictionary(enc)));
+        let e = load_font(&lopdf::Document::new(), "F1", &fd).expect_err("refused, not guessed");
+        assert_eq!(e.code(), "unsupported", "{e}");
+        assert!(
+            e.to_string().contains("/BaseEncoding /MacExpertEncoding"),
+            "{e}"
+        );
     }
 
     /// **A nonsymbolic font is exactly the case §9.6.6.2 licenses**, so it declares nothing.

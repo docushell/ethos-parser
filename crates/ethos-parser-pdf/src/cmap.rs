@@ -226,11 +226,19 @@ fn tokenize(src: &str) -> Vec<String> {
                 out.push(hex);
             }
             '[' | ']' => out.push(c.to_string()),
+            // A PostScript comment runs to the end of its line and is not program text.
+            '%' => {
+                for c in chars.by_ref() {
+                    if c == '\n' || c == '\r' {
+                        break;
+                    }
+                }
+            }
             c if c.is_whitespace() => {}
             _ => {
                 let mut word = String::from(c);
                 while let Some(&n) = chars.peek() {
-                    if n.is_whitespace() || n == '<' || n == '[' || n == ']' {
+                    if n.is_whitespace() || n == '<' || n == '[' || n == ']' || n == '%' {
                         break;
                     }
                     word.push(n);
@@ -392,6 +400,17 @@ end";
         assert_eq!(m.get(0x1a), Some("ffl"));
         assert_eq!(m.get(0x1b), Some("fl"));
         assert_eq!(m.get(0x1c), Some("fi"));
+    }
+
+    /// **A comment is not a mapping** (review 2026-09-26 N38). PostScript's `%` runs to the end of
+    /// its line. Read as program text, a comment after an entry failed a legal CMap, and a
+    /// commented-out block remapped `<01>` to `X` where Ghostscript draws `A`.
+    #[test]
+    fn a_comment_is_not_a_mapping() {
+        let src = b"begincmap\nbeginbfchar\n<01> <0041> % capital A\nendbfchar\n\
+            % beginbfchar <01> <0058> endbfchar\nendcmap";
+        let m = ToUnicode::parse(src).expect("a comment is legal");
+        assert_eq!(m.get(0x01), Some("A"));
     }
 
     /// **A genuinely non-hex entry is still refused.** Ignoring white space must not become
