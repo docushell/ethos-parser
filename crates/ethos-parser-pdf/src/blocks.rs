@@ -145,20 +145,58 @@ pub fn subdivide(
     if runs.is_empty() {
         return Vec::new();
     }
+    let subdivision = slabs(runs, regions);
 
-    // Band per run. An empty `regions` means the vertical cut divided nothing, so one band.
-    let band_of = |i: usize| -> u32 {
-        if regions.is_empty() {
-            0
-        } else {
-            regions[i].unwrap_or(0)
-        }
-    };
+    // Number the (band, subdivision) pairs by FIRST APPEARANCE along the finished order.
+    //
+    // **Not "advance on every change", which is what `reading_order` does for regions.** That
+    // walk is correct there because the arrangement guarantees each band is visited contiguously
+    // — it built the order by band. This rule's key is finer than the order's own grouping, so
+    // nothing guarantees the same: a run that revisits an earlier key would take a second ordinal
+    // under that walk, and one block would arrive as two. First appearance cannot do that, and
+    // costs one map.
+    //
+    // In practice reading order does visit a block contiguously, so the two agree on every real
+    // page measured. This is the cheaper assumption to drop, not a defect being worked around.
+    let mut assigned: std::collections::BTreeMap<(u32, u32), u32> =
+        std::collections::BTreeMap::new();
+    let mut out = vec![None; runs.len()];
+    let mut block = 0u32;
+    for &r in order {
+        let key = (band_of(regions, r), subdivision[r]);
+        let n = *assigned.entry(key).or_insert_with(|| {
+            block += 1;
+            block
+        });
+        out[r] = Some(n);
+    }
 
+    // Fewer than two blocks is no subdivision, and says so by being empty — the region contract.
+    if block < 2 {
+        return Vec::new();
+    }
+    out
+}
+
+/// The band a run sits in. An empty `regions` means the vertical cut divided nothing, so one band.
+fn band_of(regions: &[Option<u32>], i: usize) -> u32 {
+    if regions.is_empty() {
+        0
+    } else {
+        regions[i].unwrap_or(0)
+    }
+}
+
+/// Per run, the leading-gap **slab** of its band it sits on: how many boundaries this rule finds
+/// above its line within its band, so slabs count from 0, top to bottom.
+///
+/// **Membership is geometry, never order.** It reads baselines and the band assignment and
+/// nothing else — [`subdivide`] takes the finished order only to number what this returns.
+pub fn slabs(runs: &[RunGeometry], regions: &[Option<u32>]) -> Vec<u32> {
     // Distinct line baselines per band, and the runs that sit on each.
     let mut bands: std::collections::BTreeMap<u32, Vec<i64>> = std::collections::BTreeMap::new();
     for (i, r) in runs.iter().enumerate() {
-        bands.entry(band_of(i)).or_default().push(r.y);
+        bands.entry(band_of(regions, i)).or_default().push(r.y);
     }
     let mut lines_of_band: std::collections::BTreeMap<u32, Vec<i64>> =
         std::collections::BTreeMap::new();
@@ -193,7 +231,7 @@ pub fn subdivide(
     // Subdivision index per run: how many cuts precede its line within its band.
     let mut subdivision = vec![0u32; runs.len()];
     for (i, r) in runs.iter().enumerate() {
-        let band = band_of(i);
+        let band = band_of(regions, i);
         let lines = &lines_of_band[&band];
         let starts = &cuts_of_band[&band];
         // The line this run sits on: the last line at or below its baseline.
@@ -204,36 +242,7 @@ pub fn subdivide(
         };
         subdivision[i] = starts[..=li].iter().filter(|s| **s).count() as u32;
     }
-
-    // Number the (band, subdivision) pairs by FIRST APPEARANCE along the finished order.
-    //
-    // **Not "advance on every change", which is what `reading_order` does for regions.** That
-    // walk is correct there because the arrangement guarantees each band is visited contiguously
-    // — it built the order by band. This rule's key is finer than the order's own grouping, so
-    // nothing guarantees the same: a run that revisits an earlier key would take a second ordinal
-    // under that walk, and one block would arrive as two. First appearance cannot do that, and
-    // costs one map.
-    //
-    // In practice reading order does visit a block contiguously, so the two agree on every real
-    // page measured. This is the cheaper assumption to drop, not a defect being worked around.
-    let mut assigned: std::collections::BTreeMap<(u32, u32), u32> =
-        std::collections::BTreeMap::new();
-    let mut out = vec![None; runs.len()];
-    let mut block = 0u32;
-    for &r in order {
-        let key = (band_of(r), subdivision[r]);
-        let n = *assigned.entry(key).or_insert_with(|| {
-            block += 1;
-            block
-        });
-        out[r] = Some(n);
-    }
-
-    // Fewer than two blocks is no subdivision, and says so by being empty — the region contract.
-    if block < 2 {
-        return Vec::new();
-    }
-    out
+    subdivision
 }
 
 /// The band's modal binned gap, or `None` when the band is not a text flow.
