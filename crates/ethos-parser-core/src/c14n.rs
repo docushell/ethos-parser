@@ -228,7 +228,10 @@ pub fn canonical_object(mut fields: Vec<(&str, &[u8])>) -> Result<Vec<u8>, C14nE
             pair[0].0
         )));
     }
-    let mut out = Vec::with_capacity(fields.iter().map(|(k, v)| k.len() + v.len() + 4).sum());
+    // `"key":value` per member, a comma between members and two braces: Σ(k + v + 4) + 1 bytes
+    // when no key needs escaping. One short, and the closing brace doubles the buffer.
+    let members: usize = fields.iter().map(|(k, v)| k.len() + v.len() + 4).sum();
+    let mut out = Vec::with_capacity(members + 1);
     out.push(b'{');
     for (i, (key, value)) in fields.iter().enumerate() {
         if i > 0 {
@@ -1344,6 +1347,17 @@ mod tests {
             canonical_bytes_of(&v).expect("streaming"),
             c14n_bytes(&serde_json::to_value(&v).expect("value")).expect("value route"),
         );
+    }
+
+    /// **`canonical_object` reserves the bytes it writes, closing brace included.** One byte
+    /// short, the brace reallocated a buffer the size of the artifact at twice its size.
+    /// `Vec::with_capacity(n)` reports a capacity of exactly `n`, so any regrowth shows here.
+    #[test]
+    fn canonical_object_reserves_its_closing_brace() {
+        let out = canonical_object(vec![("b", b"[2]".as_slice()), ("a", b"1".as_slice())])
+            .expect("no duplicate key");
+        assert_eq!(out, br#"{"a":1,"b":[2]}"#);
+        assert_eq!(out.capacity(), out.len());
     }
 
     #[test]
