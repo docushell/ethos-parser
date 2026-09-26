@@ -3086,20 +3086,33 @@ fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
          wire the document never called one"
     );
 
-    let doc_scoped = a
-        .assurance
-        .limitations
-        .iter()
-        .find(|l| l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED)
+    let declared = |scope| {
+        a.assurance.limitations.iter().find(|l| {
+            l.code == ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED && l.scope == scope
+        })
+    };
+    let doc_scoped = declared(ethos_parser_core::LimitationScope::Document)
         .expect("the `Do` happened HERE, and the artifact has to say so");
-    assert_eq!(
-        doc_scoped.scope,
-        ethos_parser_core::LimitationScope::Document
-    );
     assert!(
         doc_scoped.detail.starts_with("1 form XObject(s)"),
         "the COUNT is the whole content of this limitation, not its prose: {}",
         doc_scoped.detail
+    );
+
+    // And on the page it cost (review 2026-09-26 N20), which is what the binding API reads: a
+    // search that finds nothing on page 1 has not observed that page 1 says nothing.
+    let page_scoped = declared(ethos_parser_core::LimitationScope::Page(1))
+        .expect("the page that drew the form says so too");
+    assert!(
+        page_scoped.detail.starts_with("1 form XObject(s)"),
+        "{}",
+        page_scoped.detail
+    );
+    assert_eq!(
+        a.assurance.page_binding_status(1),
+        ethos_parser_core::PageBindingResult::CapabilityLimited {
+            limitation_code: ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED.into()
+        }
     );
 
     // Present alongside, and different. Losing the distinction is how this defect survived.

@@ -1572,6 +1572,12 @@ pub(crate) fn extract_with_positions(
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
+        if y.undescended_xobjects > 0 {
+            limitations.push(lim::form_xobjects_not_descended_on_page(
+                page_number,
+                y.undescended_xobjects,
+            ));
+        }
         composite_fonts = declare(composite_fonts, y.composite_fonts);
         for (code, n) in y.findings_seen {
             *findings_seen.entry(code).or_insert(0) += n;

@@ -717,6 +717,21 @@ pub fn form_xobjects_not_descended(count: u32) -> Limitation {
     )
 }
 
+/// The same gap as [`form_xobjects_not_descended`], stated on the page it cost (review 2026-09-26
+/// N20). Without the page, a page whose only drawing is an undescended form reads `processed` with
+/// no runs, and `page_binding_status` called a negative search over it a real observation.
+pub fn form_xobjects_not_descended_on_page(page: u32, count: u32) -> Limitation {
+    Limitation::page(
+        page,
+        ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED,
+        format!(
+            "{count} form XObject(s) drawn on this page with `Do` were NOT descended into, so any \
+             text they draw is absent from this page's runs. A short or empty run list on this \
+             page is a declared gap, not a sparse page."
+        ),
+    )
+}
+
 /// The catalog declares no outline (`docs/29-OUTLINES-SCOPE.md`).
 ///
 /// On `untagged_structure_tree_absent`'s precedent, and it is the same distinction: **a statement

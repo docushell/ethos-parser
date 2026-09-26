@@ -1267,8 +1267,24 @@ impl Assurance {
     }
 
     /// What a query binding to `page` may honestly conclude. See [`page_binding_status`].
+    ///
+    /// A processed page that carries a page-scoped limitation is capability-limited as well: the
+    /// artifact declares a gap on that page, so a negative search over it is not a real
+    /// observation.
     pub fn page_binding_status(&self, page: u32) -> PageBindingResult {
-        page_binding_status(&self.coverage, &self.page_states, page)
+        match page_binding_status(&self.coverage, &self.page_states, page) {
+            PageBindingResult::Ok => match self
+                .limitations
+                .iter()
+                .find(|l| l.scope == LimitationScope::Page(page))
+            {
+                Some(l) => PageBindingResult::CapabilityLimited {
+                    limitation_code: l.code.clone(),
+                },
+                None => PageBindingResult::Ok,
+            },
+            other => other,
+        }
     }
 
     /// Whether every gap names a limitation this artifact actually declares.
