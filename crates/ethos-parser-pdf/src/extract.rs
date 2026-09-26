@@ -182,9 +182,12 @@ fn declared_len(count: usize) -> u32 {
 ///
 /// **A block test, deliberately, and named so.** Unicode's `Bidi_Class` is the property that
 /// actually answers *is this character right-to-left*, and this engine carries no Unicode
-/// character database — so this reads the three ranges the right-to-left scripts occupy instead:
+/// character database — so this reads the ranges the right-to-left scripts occupy instead:
 /// `U+0590`–`U+08FF` is Hebrew through Arabic Extended-A (Syriac, Thaana, NKo, Samaritan and
-/// Mandaic among them), and the two presentation-form ranges follow.
+/// Mandaic among them), and the two presentation-form ranges follow. The two astral ranges are the
+/// ones Unicode reserves for right-to-left scripts, whose unassigned code points default to
+/// `Bidi_Class` R or AL: `U+10800`–`U+10FFF` (Kharoshthi, Old Turkic, Hanifi Rohingya, Sogdian
+/// and more) and `U+1E800`–`U+1EFFF` (Mende Kikakui, Adlam, the Arabic mathematical alphabet).
 ///
 /// It therefore also matches a few scalars in those blocks that are not themselves right-to-left
 /// — an Arabic-Indic digit is `Bidi_Class` `AN`, not `R` or `AL`. That is the safe direction: the
@@ -193,7 +196,10 @@ fn declared_len(count: usize) -> u32 {
 /// quote that silently will not match. The limitation's own wording claims blocks, not classes,
 /// so what it says is true of what this measures.
 fn is_right_to_left_block(c: char) -> bool {
-    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+    matches!(
+        c as u32,
+        0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x1_0800..=0x1_0FFF | 0x1_E800..=0x1_EFFF
+    )
 }
 
 fn no_author_structure(tree: Option<&crate::structure::StructureTree>) -> bool {

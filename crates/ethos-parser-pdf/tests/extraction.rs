@@ -5222,6 +5222,44 @@ fn a_document_without_right_to_left_text_declares_nothing_about_it() {
     );
 }
 
+/// **An astral right-to-left scalar is declared too** (review 2026-09-26 N44). The block test read
+/// three BMP ranges, so Adlam, Hanifi Rohingya, Imperial Aramaic or the Arabic mathematical
+/// alphabet declared nothing, where the declaration's absence reads as *no right-to-left text*.
+#[test]
+fn an_astral_right_to_left_scalar_is_declared() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+           >> >> /Contents 4 0 R >>"
+            .to_vec(),
+        stream(b"BT /F1 24 Tf 72 72 Td (A) Tj ET"),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>".to_vec(),
+        // U+1E900, ADLAM CAPITAL LETTER ALIF, as its UTF-16 surrogate pair.
+        stream(
+            b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange 1 beginbfchar \
+              <41> <D83ADD00> endbfchar endcmap",
+        ),
+    ]);
+    let a = extracted(&bytes).expect("reads");
+    assert_eq!(runs(&a)[0].text, "\u{1E900}");
+    assert!(
+        a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
+        "an Adlam run is right-to-left text drawn in page order, like a Hebrew one"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // Outline titles
 // -------------------------------------------------------------------------------------------

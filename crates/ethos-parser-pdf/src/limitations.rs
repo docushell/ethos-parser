@@ -775,7 +775,9 @@ pub fn outline_destination_unresolved(count: u32) -> Limitation {
 ///
 /// **What the test actually checks is blocks, and the wording says so.** A scalar counts when it
 /// lies in `U+0590`–`U+08FF` (Hebrew through Arabic Extended-A), `U+FB1D`–`U+FDFF` (Hebrew and
-/// Arabic presentation forms A) or `U+FE70`–`U+FEFF` (Arabic presentation forms B). That is a
+/// Arabic presentation forms A), `U+FE70`–`U+FEFF` (Arabic presentation forms B), or the two
+/// astral ranges Unicode reserves for right-to-left scripts, `U+10800`–`U+10FFF` and
+/// `U+1E800`–`U+1EFFF`. That is a
 /// *block* test, not Unicode's `Bidi_Class`, which this engine does not carry — so it also catches
 /// a few scalars in those blocks that are not themselves right-to-left, an Arabic-Indic digit
 /// among them. Over-declaring a limitation is the safe direction and the claim is written to be
