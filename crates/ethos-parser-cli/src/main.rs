@@ -299,6 +299,10 @@ struct ExtractArgs {
     /// Changing this changes `profile_sha256`, exactly as `classify --sample-pages` does, so a
     /// bounded artifact and an unbounded one are correctly non-comparable rather than quietly
     /// different.
+    ///
+    /// **A PDF's pages only.** Bytes the office reader takes are refused under this flag, by name:
+    /// that reader has no page budget, and an unbounded artifact is not an answer to a bounded
+    /// request.
     #[arg(long, value_name = "N")]
     max_pages: Option<u32>,
 }
@@ -580,7 +584,13 @@ fn timed(stage: Stage, enabled: bool, path: &Path, run: impl FnOnce() -> ExitCod
             }
             // Reported, not fatal, and not on stdout. A diagnostic that could fail a run would be
             // a reason not to turn diagnostics on.
-            Err(e) => eprintln!("engine: diagnostics unavailable: {e} [{}]", e.code()),
+            Err(e) => {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "engine: diagnostics unavailable: {e} [{}]",
+                    e.code()
+                );
+            }
         }
     }
     code
@@ -696,6 +706,15 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // fixed here for the shape rather than for one more member of it.
     let mut profile = Profile::default();
     if let Some(n) = args.max_pages {
+        // The office readers take no profile, so a budget handed to them would be dropped.
+        if routes_to_office(&head) {
+            return fail(&EngineError::Unsupported {
+                what: "option".into(),
+                detail: "--max-pages bounds the pages of a PDF; these bytes go to the office \
+                         reader, which has no page budget, so the bound cannot be applied"
+                    .into(),
+            });
+        }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
     emit_representation(representation_for_bytes(&head, &profile))
@@ -716,13 +735,7 @@ pub(crate) fn representation_for_bytes(
     head: &[u8],
     profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
-    if ethos_parser_office::is_docx(head)
-        || ethos_parser_office::is_xlsx(head)
-        || ethos_parser_office::is_pptx(head)
-        || ethos_parser_office::is_opendocument(head)
-        || ethos_parser_office::is_rtf(head)
-        || ethos_parser_office::zip::looks_like_zip(head)
-    {
+    if routes_to_office(head) {
         return ethos_parser_office::read(head);
     }
 
@@ -761,6 +774,16 @@ pub(crate) fn representation_for_bytes(
     let doc = Document::open_bytes(head, profile)?;
     let extract = ethos_parser_pdf::extract(&doc, profile)?;
     ethos_parser_pdf::to_representation(&extract, profile)
+}
+
+/// Whether `representation_for_bytes` hands these bytes to the office reader.
+fn routes_to_office(head: &[u8]) -> bool {
+    ethos_parser_office::is_docx(head)
+        || ethos_parser_office::is_xlsx(head)
+        || ethos_parser_office::is_pptx(head)
+        || ethos_parser_office::is_opendocument(head)
+        || ethos_parser_office::is_rtf(head)
+        || ethos_parser_office::zip::looks_like_zip(head)
 }
 
 /// The refusal for bytes that state no format at all (v2-S10).
@@ -1090,9 +1113,12 @@ fn run_ground(args: GroundArgs) -> ExitCode {
 
             // On stderr, deliberately: stdout is the artifact and must stay byte-identical
             // across runs. A consumer that wants this durably reads the representation's
-            // `geometry-absent-not-groundable` limitation, which carries the same count.
+            // `geometry-absent-not-groundable` limitation, which carries the same count. Best
+            // effort, as `fail`'s report is: the artifact is already written.
+            let mut err = std::io::stderr();
             if projection.omission.is_lossy() {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} of {} node(s) omitted from the grounding artifact — no measurable \
                      ink box [{}]. The nodes remain in the representation with their text and \
                      native locators; the grounding schema requires a bbox and this engine does \
@@ -1103,7 +1129,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(w) = projection.spans_withheld {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} span(s) withheld — more than the {} `ethos.grounding.v1` admits \
                      [{}]. The artifact carries its elements only (`capabilities.spans` and \
                      `char_offsets` false): every block is still grounded, at block rather than \
@@ -1112,7 +1139,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(o) = projection.elements_omitted {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} element(s) omitted from the grounding artifact, and {} span(s) \
                      with them — text longer than the {} bytes, or a locator longer than the {}, \
                      that `ethos.grounding.v1` admits [{}]. The text remains in the \
@@ -1121,7 +1149,8 @@ fn run_ground(args: GroundArgs) -> ExitCode {
                 );
             }
             if let Some(t) = projection.tables_withheld {
-                eprintln!(
+                let _ = writeln!(
+                    err,
                     "engine: {} table(s) withheld — {} over the {} tables the schema admits, {} \
                      cell(s) longer than its {} bytes, {} grid(s) with more cells than it admits \
                      [{}]. The artifact carries no tables (`capabilities.tables: false`); \
@@ -1258,8 +1287,10 @@ fn write_stdout(bytes: &[u8], newline: bool) -> Result<(), EngineError> {
 /// Report a failure on stderr and exit 2.
 ///
 /// The artifact never appears on stdout in this path: a partial or absent classification must not
-/// be mistaken for a real one by something reading the pipe.
+/// be mistaken for a real one by something reading the pipe. The report is best effort: when
+/// stderr is a closed pipe `eprintln!` panics, and `panic = "abort"` turned that into SIGABRT,
+/// exit 134, in place of this exit 2 (`2>&1 | head` closes both streams at once).
 fn fail(e: &EngineError) -> ExitCode {
-    eprintln!("engine: {} [{}]", e, e.code());
+    let _ = writeln!(std::io::stderr(), "engine: {} [{}]", e, e.code());
     ExitCode::from(COULD_NOT_READ as u8)
 }

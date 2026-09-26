@@ -150,6 +150,24 @@ fn exit_two_when_stdout_is_closed() {
     assert!(stderr.contains("writing to stdout"), "{stderr}");
 }
 
+/// **A closed stderr cannot abort the engine either.** `fail` reported with `eprintln!`, which
+/// panics when its write fails, and `panic = "abort"` made that SIGABRT: `extract … 2>&1 | head -c
+/// 20` exited 134 on every run. Both streams here are one pipe whose read end is closed before the
+/// engine starts, so both writes fail on every run.
+#[test]
+fn exit_two_when_stdout_and_stderr_are_closed() {
+    let (reader, writer) = std::io::pipe().expect("a pipe");
+    drop(reader);
+    let status = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("extract")
+        .arg(repo_root().join("fixtures/engine/measured-ink-box/document.pdf"))
+        .stdout(writer.try_clone().expect("a second handle to the pipe"))
+        .stderr(writer)
+        .status()
+        .expect("the engine binary runs");
+    assert_eq!(status.code(), Some(2), "{status}");
+}
+
 #[test]
 fn stdout_is_byte_identical_across_runs() {
     let path = bench("nist-sp-800-63b.pdf");

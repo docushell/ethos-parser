@@ -1072,6 +1072,47 @@ fn the_omission_report_goes_to_stderr_so_stdout_stays_byte_identical() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **A closed stderr cannot abort `ground` once its artifact is written.** The omission note was an
+/// `eprintln!`, which panics when its write fails, and `panic = "abort"` made that SIGABRT: exit
+/// 134 with the whole artifact already on stdout. The note is best effort, and the exit code is the
+/// artifact's.
+#[test]
+fn a_closed_stderr_does_not_abort_ground() {
+    let out = Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+        .arg("extract")
+        .arg(engine_fx("absent-font-metrics"))
+        .output()
+        .expect("runs");
+    let dir = std::env::temp_dir().join(format!(
+        "ethos-parser-m5-closed-stderr-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("repr.json");
+    std::fs::write(&p, &out.stdout).unwrap();
+    let ground = || {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_ethos-parser"));
+        c.arg("ground").arg(&p);
+        c
+    };
+
+    let (reader, writer) = std::io::pipe().expect("a pipe");
+    drop(reader);
+    let closed = ground().stderr(writer).output().expect("runs");
+    let open = ground().output().expect("runs");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        String::from_utf8_lossy(&open.stderr).contains("1 of 1 node(s) omitted"),
+        "the control: this run writes the note"
+    );
+    assert_eq!(closed.status.code(), Some(0), "{}", closed.status);
+    assert_eq!(
+        closed.stdout, open.stdout,
+        "and the artifact is the whole artifact"
+    );
+}
+
 /// A budgeted run: the record stays coherent when pages are quarantined.
 ///
 /// The interaction M4 and M5 create between them, and the one most likely to go wrong quietly.
