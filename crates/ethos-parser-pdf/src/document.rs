@@ -113,11 +113,24 @@ impl Document {
     ///   known-hostile `synthetic/table-regular-grid`, whose xref entries are 19 bytes where PDF
     ///   32000-1 §7.5.4 requires 20.
     /// - [`EngineError::MissingPart`] — a required structure is absent.
+    /// - [`EngineError::ResourceLimit`] — a `/W` array entry above [`W_ENTRY_MAX`], refused
+    ///   before `lopdf` reads the file.
     pub fn open_bytes(bytes: &[u8], profile: &Profile) -> Result<Self, EngineError> {
         // Magic first, always. An encrypted or wrong-magic file is refused here and never
         // reaches the repair below — repairing either was never on the table
         // (`docs/01-CONTRACT.md` §12).
         crate::magic::check_pdf_magic(bytes)?;
+
+        // Before `lopdf` reads a byte. It allocates a cross-reference stream's `/W` field widths
+        // before reading the stream, and a failed allocation aborts the process: no `Result` and
+        // no `catch_unwind` survives it, so one 454-byte file ended an MCP session (review
+        // 2026-09-26 N10).
+        if let Some((at, entry)) = wide_w_entry(bytes) {
+            return Err(EngineError::ResourceLimit {
+                limit: format!("/W entry {entry} at byte {at}"),
+                configured: W_ENTRY_MAX.to_string(),
+            });
+        }
 
         // The document as written, first. The repair is a fallback and nothing else: a
         // well-formed document never goes near it, so the common path is byte-for-byte the v0
@@ -344,6 +357,82 @@ fn map_lopdf_error(e: lopdf::Error) -> EngineError {
             detail: other.to_string(),
         },
     }
+}
+
+/// The largest of a `/W` array's first three integers that reaches `lopdf`.
+///
+/// `lopdf` 0.44 reads a cross-reference stream by zero-allocating one buffer per field width
+/// (`parser_aux.rs:568`), so `/W [70368744177664 4 2]` asks for 64 TiB. No cross-reference field
+/// is wider than 8 bytes, but [`wide_w_entry`] reads every `/W` in the file, and a CIDFont's `/W`
+/// opens with CIDs and glyph widths. 2^20 sits far above those and far below any allocation a
+/// machine refuses: three buffers of 1 MiB at most.
+const W_ENTRY_MAX: i64 = 1 << 20;
+
+/// The first of a `/W` array's first three integers above [`W_ENTRY_MAX`], as its byte offset
+/// and its text.
+///
+/// **Every `/W` in the file**, not only a cross-reference stream's: `lopdf` decodes whatever
+/// stream `startxref`, `/Prev` or `/XRefStm` names, `/Type /XRef` or not, and those offsets can
+/// point anywhere. The name, the whitespace and the `%` comments are read as `lopdf` reads them,
+/// so `/#57` is `/W` too. An integer too long for `i64` counts as above the ceiling.
+fn wide_w_entry(bytes: &[u8]) -> Option<(usize, String)> {
+    const WHITESPACE: &[u8] = b" \t\n\r\0\x0c";
+    let skip_space = |mut i: usize| {
+        while let Some(&c) = bytes.get(i) {
+            if c == b'%' {
+                while bytes.get(i).is_some_and(|c| !b"\r\n".contains(c)) {
+                    i += 1;
+                }
+            } else if WHITESPACE.contains(&c) {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        i
+    };
+    for at in (0..bytes.len()).filter(|&i| bytes[i] == b'/') {
+        let name = &bytes[at + 1..];
+        let len = match name {
+            [b'W', ..] => 1,
+            [b'#', b'5', b'7', ..] => 3,
+            _ => continue,
+        };
+        // `/Width` and `/W2` are other names: a name runs to whitespace or a delimiter.
+        if name
+            .get(len)
+            .is_some_and(|c| !WHITESPACE.contains(c) && !b"()<>[]{}/%".contains(c))
+        {
+            continue;
+        }
+        let mut i = skip_space(at + 1 + len);
+        if bytes.get(i) != Some(&b'[') {
+            continue;
+        }
+        i += 1;
+        for _ in 0..3 {
+            i = skip_space(i);
+            let sign = usize::from(bytes.get(i).is_some_and(|c| b"+-".contains(c)));
+            let digits = bytes[i + sign..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+            let end = i + sign + digits;
+            // A real, a reference or a nested array: `lopdf` reads no width from this array.
+            if digits == 0 || bytes.get(end) == Some(&b'.') {
+                break;
+            }
+            let text = &bytes[i..end];
+            let value = std::str::from_utf8(text)
+                .ok()
+                .and_then(|t| t.parse::<i64>().ok());
+            if value.is_none_or(|v| v > W_ENTRY_MAX) {
+                return Some((i, String::from_utf8_lossy(text).into_owned()));
+            }
+            i = end;
+        }
+    }
+    None
 }
 
 /// The first compressed object whose container is not an uncompressed object, if any.
