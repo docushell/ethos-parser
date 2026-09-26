@@ -1535,6 +1535,7 @@ pub(crate) fn shows_from_runs(
 /// runs skipped.
 pub(crate) fn blocks_in_reading_order(runs: &[crate::nodes::TextRun]) -> Vec<BlockKey> {
     let mut order: Vec<BlockKey> = Vec::new();
+    let mut seen: std::collections::BTreeSet<BlockKey> = std::collections::BTreeSet::new();
     for run in runs {
         if matches!(
             run.structural,
@@ -1543,7 +1544,7 @@ pub(crate) fn blocks_in_reading_order(runs: &[crate::nodes::TextRun]) -> Vec<Blo
             continue;
         }
         let key = (run.region, run.block);
-        if !order.contains(&key) {
+        if seen.insert(key) {
             order.push(key);
         }
     }
@@ -1806,13 +1807,16 @@ pub(crate) fn plan_page(
     let kinds: Vec<OpKind> = ops.iter().map(OpKind::of).collect();
 
     // The greedy grouping, per block, in stream order.
+    let mut shown_by: BTreeMap<BlockKey, Vec<usize>> = BTreeMap::new();
+    for (i, show) in shows.iter().enumerate() {
+        if let Some(Shows::Block(block)) = show {
+            shown_by.entry(*block).or_default().push(i);
+        }
+    }
     let mut sequences: Vec<Sequence> = Vec::new();
     for &block in order {
         let mut open: Option<(usize, usize)> = None;
-        for (i, show) in shows.iter().enumerate() {
-            if *show != Some(Shows::Block(block)) {
-                continue;
-            }
+        for &i in shown_by.get(&block).map_or(&[][..], Vec::as_slice) {
             match open {
                 Some((first, last)) if gap_is_clear(&kinds, nesting, last, i, nesting[last]) => {
                     open = Some((first, i));
@@ -1898,17 +1902,13 @@ pub(crate) fn plan_page(
             .map(|&prev_last| split_cause(&kinds, nesting, shows, prev_last, seq.first));
         last_of_block.insert(seq.block, seq.last);
     }
+    let mut ids_of: BTreeMap<BlockKey, Vec<i64>> = BTreeMap::new();
+    for s in &sequences {
+        ids_of.entry(s.block).or_default().push(s.mcid);
+    }
     let blocks: Vec<(BlockKey, Vec<i64>)> = order
         .iter()
-        .map(|&block| {
-            let ids: Vec<i64> = sequences
-                .iter()
-                .filter(|s| s.block == block)
-                .map(|s| s.mcid)
-                .collect();
-            (block, ids)
-        })
-        .filter(|(_, ids)| !ids.is_empty())
+        .filter_map(|&block| ids_of.remove(&block).map(|ids| (block, ids)))
         .collect();
     PagePlan { sequences, blocks }
 }
@@ -2512,10 +2512,14 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
                 run_mcids.push(None);
                 continue;
             }
+            // Sequences are disjoint and sorted by `first`: the holder is the last one opening at
+            // or before `at`, if it has not closed.
             let holder = plan
                 .sequences
-                .iter()
-                .find(|s| s.first <= at && at <= s.last)
+                .partition_point(|s| s.first <= at)
+                .checked_sub(1)
+                .map(|k| &plan.sequences[k])
+                .filter(|s| at <= s.last)
                 .ok_or_else(|| {
                     malformed(format!(
                         "page {number}: run {i} `{}` (operation {at}) is in no sequence",
