@@ -114,6 +114,45 @@ fn two_runs_over_one_docx_produce_identical_bytes() {
     assert_eq!(first, second);
 }
 
+/// **`--max-pages` is refused for bytes the office reader takes, naming the option.** That reader
+/// takes no profile, so the bound was dropped: the run exited 0 with the unbounded artifact, byte
+/// for byte, and nothing on stderr. A PDF under the same flag still comes out `partial`.
+#[test]
+fn max_pages_is_refused_for_an_office_document() {
+    let with_one_page = |path: PathBuf| {
+        Command::new(env!("CARGO_BIN_EXE_ethos-parser"))
+            .args(["extract", "--max-pages", "1"])
+            .arg(path)
+            .output()
+            .expect("the engine binary runs")
+    };
+
+    let office = with_one_page(fixture());
+    let stderr = String::from_utf8_lossy(&office.stderr);
+    assert_eq!(office.status.code(), Some(2), "{stderr}");
+    assert!(
+        office.stdout.is_empty(),
+        "no artifact for a bound not applied"
+    );
+    assert!(
+        stderr.starts_with("engine: unsupported option: --max-pages bounds the pages of a PDF"),
+        "{stderr}"
+    );
+
+    let pdf = with_one_page(repo_root().join("fixtures/gate/irs-fw9.pdf"));
+    assert_eq!(
+        pdf.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&pdf.stderr)
+    );
+    let artifact: Value = serde_json::from_slice(&pdf.stdout).expect("canonical JSON");
+    assert_eq!(
+        artifact["representation"]["assurance"]["terminal_state"]["state"],
+        "partial"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // Under (b), `ground` refuses — and says why
 // -------------------------------------------------------------------------------------------

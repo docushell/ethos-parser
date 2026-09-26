@@ -299,6 +299,10 @@ struct ExtractArgs {
     /// Changing this changes `profile_sha256`, exactly as `classify --sample-pages` does, so a
     /// bounded artifact and an unbounded one are correctly non-comparable rather than quietly
     /// different.
+    ///
+    /// **A PDF's pages only.** Bytes the office reader takes are refused under this flag, by name:
+    /// that reader has no page budget, and an unbounded artifact is not an answer to a bounded
+    /// request.
     #[arg(long, value_name = "N")]
     max_pages: Option<u32>,
 }
@@ -702,6 +706,15 @@ fn run_extract(args: ExtractArgs) -> ExitCode {
     // fixed here for the shape rather than for one more member of it.
     let mut profile = Profile::default();
     if let Some(n) = args.max_pages {
+        // The office readers take no profile, so a budget handed to them would be dropped.
+        if routes_to_office(&head) {
+            return fail(&EngineError::Unsupported {
+                what: "option".into(),
+                detail: "--max-pages bounds the pages of a PDF; these bytes go to the office \
+                         reader, which has no page budget, so the bound cannot be applied"
+                    .into(),
+            });
+        }
         profile.page_budget = ethos_parser_core::PageBudget::AtMost(n);
     }
     emit_representation(representation_for_bytes(&head, &profile))
@@ -722,13 +735,7 @@ pub(crate) fn representation_for_bytes(
     head: &[u8],
     profile: &Profile,
 ) -> Result<ethos_parser_core::DocumentRepresentation, EngineError> {
-    if ethos_parser_office::is_docx(head)
-        || ethos_parser_office::is_xlsx(head)
-        || ethos_parser_office::is_pptx(head)
-        || ethos_parser_office::is_opendocument(head)
-        || ethos_parser_office::is_rtf(head)
-        || ethos_parser_office::zip::looks_like_zip(head)
-    {
+    if routes_to_office(head) {
         return ethos_parser_office::read(head);
     }
 
@@ -767,6 +774,16 @@ pub(crate) fn representation_for_bytes(
     let doc = Document::open_bytes(head, profile)?;
     let extract = ethos_parser_pdf::extract(&doc, profile)?;
     ethos_parser_pdf::to_representation(&extract, profile)
+}
+
+/// Whether `representation_for_bytes` hands these bytes to the office reader.
+fn routes_to_office(head: &[u8]) -> bool {
+    ethos_parser_office::is_docx(head)
+        || ethos_parser_office::is_xlsx(head)
+        || ethos_parser_office::is_pptx(head)
+        || ethos_parser_office::is_opendocument(head)
+        || ethos_parser_office::is_rtf(head)
+        || ethos_parser_office::zip::looks_like_zip(head)
 }
 
 /// The refusal for bytes that state no format at all (v2-S10).
