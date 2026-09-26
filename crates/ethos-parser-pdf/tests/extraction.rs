@@ -4572,6 +4572,28 @@ fn an_object_lopdf_did_not_load_is_refused_at_open() {
     }
 }
 
+/// **A `/W` entry `lopdf` would allocate is refused before `lopdf` reads the file** (review
+/// 2026-09-26 N10). `lopdf` zero-allocates a cross-reference stream's field widths before reading
+/// the stream, so `/W [70368744177664 4 2]` asked for 64 TiB, the failed allocation aborted the
+/// process, and `extract`, `classify` and an MCP session died with exit 134.
+#[test]
+fn a_w_entry_lopdf_would_allocate_is_refused_before_it_reads_the_file() {
+    // `/#57` is `/W` to `lopdf`'s name parser.
+    for name in ["/W", "/#57"] {
+        let bytes = format!(
+            "%PDF-1.7\n1 0 obj\n<< {name} [70368744177664 4 2] /Size 1 /Length 0 >>\nstream\n\n\
+             endstream\nendobj\nstartxref\n9\n%%EOF\n"
+        )
+        .into_bytes();
+        let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(name);
+        assert_eq!(e.code(), "resource_limit", "{e}");
+        assert!(
+            e.to_string().contains("/W entry 70368744177664 at byte"),
+            "{e}"
+        );
+    }
+}
+
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
 /// what came before the damage and returns it as a success.
 #[test]
