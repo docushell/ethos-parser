@@ -159,6 +159,17 @@ impl Document {
             }
         }
 
+        // `lopdf` drops an object it cannot parse, and leaves a stream whose `/Length` does not
+        // resolve without its data. Every later lookup reads the loss as an absence: an
+        // annotation, a field or a `/ToUnicode` gone without a word, and a writer copying the
+        // document writes the loss out. Refused here, once, before anything reads the document.
+        if let Some((id, why)) = unloaded_in_use(&inner) {
+            return Err(EngineError::Malformed {
+                what: "pdf object".into(),
+                detail: format!("object {} {} R {why}", id.0, id.1),
+            });
+        }
+
         let pages = walk_page_tree(&inner)?;
 
         Ok(Self {
@@ -338,6 +349,44 @@ fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
         }
         _ => None,
     })
+}
+
+/// The first object the cross-reference table lists in use whose data `lopdf` did not load, and
+/// why. `/Encrypt` is the exception: `lopdf` removes it on purpose after decrypting.
+///
+/// A stream whose `/Length` resolves read its data at load, an empty one included, so only one
+/// whose `/Length` does not resolve can have lost it that way.
+fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static str)> {
+    use lopdf::xref::XrefEntry;
+    let encrypt = doc
+        .encryption_state
+        .as_ref()
+        .and_then(lopdf::EncryptionState::encrypt_object_id);
+    for (&number, entry) in &doc.reference_table.entries {
+        let id = match *entry {
+            XrefEntry::Normal { generation, .. } => (number, generation),
+            XrefEntry::Compressed { .. } => (number, 0),
+            _ => continue,
+        };
+        let why = match doc.objects.get(&id) {
+            _ if Some(id) == encrypt => continue,
+            None => "is in use in the cross-reference table and did not load",
+            Some(lopdf::Object::Stream(s))
+                if s.content.is_empty()
+                    && s.start_position.is_some()
+                    && s.dict
+                        .get(b"Length")
+                        .and_then(|l| doc.dereference(l))
+                        .and_then(|(_, l)| l.as_i64())
+                        .is_err() =>
+            {
+                "is a stream whose /Length does not resolve, so its data did not load"
+            }
+            _ => continue,
+        };
+        return Some((id, why));
+    }
+    None
 }
 
 /// A `/Pages` node's `/Kids`, or a refusal naming the node.

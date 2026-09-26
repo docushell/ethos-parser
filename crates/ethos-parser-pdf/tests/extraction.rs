@@ -4405,6 +4405,7 @@ fn a_tail_lopdf_would_drop_is_refused_by_name() {
 /// object whose bytes do not parse, and the page loop skipped the reference that no longer
 /// resolved: one stray `)` in the stream's dictionary read as a blank page, `complete`. A
 /// reference the cross-reference table never listed is null (§7.3.10), and still draws nothing.
+/// Since review 2026-09-26 N08 the open refuses the lost object, before the page loop reads it.
 #[test]
 fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
     let page = |contents: &str, stream_dict: &str| {
@@ -4425,15 +4426,73 @@ fn a_content_stream_lopdf_did_not_load_is_refused_by_name() {
         "the control: lopdf dropped the stream at load, without a word"
     );
 
-    let e = extracted(&dropped).expect_err("refused, not read as a blank page");
+    let e = Document::open_bytes(&dropped, &Profile::default())
+        .expect_err("refused, not read as a blank page");
     assert_eq!(e.code(), "malformed", "{e}");
     assert!(
         e.to_string()
-            .starts_with("malformed content stream: page 1: /Contents names 4 0 R"),
+            .starts_with("malformed pdf object: object 4 0 R is in use"),
         "{e}"
     );
 
     extracted(&page("[4 0 R 5 0 R]", "")).expect("an object nothing defines is null");
+}
+
+/// **An object `lopdf` did not load is refused at open, whatever would read it** (review
+/// 2026-09-26 N08). The check above guarded `/Contents` alone: an annotation or a `/ToUnicode` lost
+/// to one stray `)` vanished without a word, and an image whose `/Length` names no object loaded
+/// with no data — each in an artifact marked `complete`, and in what `tag` and `overlay` wrote.
+#[test]
+fn an_object_lopdf_did_not_load_is_refused_at_open() {
+    let stream = |dict: &str, data: &str| {
+        format!(
+            "<< /Length {} {dict}>>\nstream\n{data}\nendstream",
+            data.len()
+        )
+        .into_bytes()
+    };
+    let cases: [(&str, Vec<Vec<u8>>, &str); 3] = [
+        (
+            "/Annots [4 0 R]",
+            vec![
+                b"<< /Type /Annot /Subtype /Text /Rect [0 0 9 9] /Contents (note) /X ) >>".to_vec(),
+            ],
+            "object 4 0 R is in use in the cross-reference table and did not load",
+        ),
+        (
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R",
+            vec![
+                b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 5 0 R >>".to_vec(),
+                stream("/X ) ", "begincmap endcmap"),
+                stream("", "BT /F1 24 Tf 72 72 Td (ABC) Tj ET"),
+            ],
+            "object 5 0 R is in use in the cross-reference table and did not load",
+        ),
+        (
+            "/Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R",
+            vec![
+                b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray \
+                  /BitsPerComponent 8 /Length 99 0 R >>\nstream\n\x80\nendstream"
+                    .to_vec(),
+                stream("", "q 9 0 0 9 0 0 cm /Im1 Do Q"),
+            ],
+            "object 4 0 R is a stream whose /Length does not resolve",
+        ),
+    ];
+    for (page, rest, refusal) in cases {
+        let mut objects = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] {page} >>").into_bytes(),
+        ];
+        objects.extend(rest);
+        let bytes = pdf_from_objects(&objects);
+        lopdf::Document::load_mem(&bytes).expect("the control: lopdf loads it without a word");
+
+        let e = Document::open_bytes(&bytes, &Profile::default()).expect_err(refusal);
+        assert_eq!(e.code(), "malformed", "{e}");
+        assert!(e.to_string().contains(refusal), "{e}");
+    }
 }
 
 /// **A `FlateDecode` stream cut short, or corrupt, is refused by name**, where `lopdf` inflates
