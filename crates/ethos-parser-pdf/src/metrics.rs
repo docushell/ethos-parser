@@ -70,9 +70,9 @@ fn from_embedded_program(doc: &lopdf::Document, descriptor: &lopdf::Dictionary) 
     let stream = resolve_stream(doc, descriptor.get(b"FontFile2").ok())
         .or_else(|| resolve_stream(doc, descriptor.get(b"FontFile3").ok()))?;
 
-    let bytes = stream
-        .decompressed_content()
-        .unwrap_or_else(|_| stream.content.clone());
+    // A filter that does not decode leaves the raw bytes, which are not the program: the
+    // descriptor answers instead, as it does for a program `skrifa` cannot parse.
+    let bytes = stream.decompressed_content().ok()?;
 
     // `skrifa`, not `ttf-parser`: RUSTSEC-2026-0192 records that ttf-parser's author has
     // declared it unmaintained with no safe upgrade, and names skrifa (Google Fonts' fontations
@@ -271,6 +271,69 @@ mod tests {
                 source: "font-descriptor",
             },
             "a broken embedded program must not lose the descriptor's declared metrics"
+        );
+    }
+
+    /// A TrueType program holding only `head` (1000 units per em) and `hhea`: the two tables
+    /// `skrifa` reads an ascent and a descent from.
+    fn font_program(ascent: i16, descent: i16) -> Vec<u8> {
+        let mut head = [0u8; 54];
+        head[18..20].copy_from_slice(&1000u16.to_be_bytes());
+        let mut hhea = [0u8; 36];
+        hhea[4..6].copy_from_slice(&ascent.to_be_bytes());
+        hhea[6..8].copy_from_slice(&descent.to_be_bytes());
+        // Version 1.0, two tables; each record is a tag, an unchecked sum, an offset, a length.
+        let mut out = vec![0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0];
+        let mut offset = 12 + 2 * 16;
+        for (tag, table) in [(b"head", &head[..]), (b"hhea", &hhea[..])] {
+            out.extend_from_slice(tag);
+            out.extend_from_slice(&[0; 4]);
+            out.extend_from_slice(&(offset as u32).to_be_bytes());
+            out.extend_from_slice(&(table.len() as u32).to_be_bytes());
+            offset += table.len();
+        }
+        out.extend_from_slice(&head);
+        out.extend_from_slice(&hhea);
+        out
+    }
+
+    /// **A font program whose filter does not decode is not read from its raw bytes** (review
+    /// 2026-09-26 N05). By the stream's own declaration they are not the program, so the
+    /// descriptor answers, as it does for a program `skrifa` cannot parse.
+    #[test]
+    fn a_font_program_whose_filter_does_not_decode_falls_through_to_the_descriptor() {
+        let fd = |filter: Option<&str>| {
+            let mut program = Dictionary::new();
+            if let Some(filter) = filter {
+                program.set("Filter", Object::Name(filter.as_bytes().to_vec()));
+            }
+            let mut desc = Dictionary::new();
+            desc.set("Ascent", Object::Integer(750));
+            desc.set("Descent", Object::Integer(-250));
+            desc.set(
+                "FontFile2",
+                Object::Stream(lopdf::Stream::new(program, font_program(900, -100))),
+            );
+            let mut fd = Dictionary::new();
+            fd.set("FontDescriptor", Object::Dictionary(desc));
+            fd
+        };
+        // The control: unfiltered, the same bytes are the program, and the program answers.
+        assert_eq!(
+            resolve_font_ink(&doc(), &fd(None)),
+            FontInk::Measured {
+                ascent: 900.0,
+                descent: -100.0,
+                source: "embedded-font-program",
+            }
+        );
+        assert_eq!(
+            resolve_font_ink(&doc(), &fd(Some("ASCIIHexDecode"))),
+            FontInk::Measured {
+                ascent: 750.0,
+                descent: -250.0,
+                source: "font-descriptor",
+            }
         );
     }
 }

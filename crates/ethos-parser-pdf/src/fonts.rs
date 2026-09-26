@@ -576,11 +576,19 @@ fn load_font(doc: &lopdf::Document, id: &str, fd: &lopdf::Dictionary) -> Result<
     // supplying them for `Arial` is the substitution that stays refused. So the name now has two
     // readers — the standard-14 lookup below, and `base_font_detail` for limitation details.
 
-    // 1. Decoder — ToUnicode wins when the document ships one.
+    // 1. Decoder — ToUnicode wins when the document ships one. A filter that does not decode
+    //    leaves the stream's raw bytes, which by its own declaration are not the CMap: refused,
+    //    as a page's content stream is, rather than parsed.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
         let bytes = stream
             .decompressed_content()
-            .unwrap_or_else(|_| stream.content.clone());
+            .map_err(|_| EngineError::Unsupported {
+                what: "ToUnicode stream filter".into(),
+                detail: format!(
+                    "/{id}: the /ToUnicode stream's filter did not decode, and its raw bytes are \
+                     not the CMap the font declares"
+                ),
+            })?;
         Decoder::ToUnicode(ToUnicode::parse(&bytes)?)
     } else {
         Decoder::Simple(load_simple_encoding(doc, fd)?)
@@ -1641,6 +1649,42 @@ mod tests {
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
+    }
+
+    /// **A `/ToUnicode` whose filter does not decode is refused, not parsed from its raw bytes**
+    /// (review 2026-09-26 N05). By the stream's own declaration those bytes are not the CMap. These
+    /// map `A B C` to `Z Y X`, which a page read as until this, where Ghostscript draws `ABC`.
+    #[test]
+    fn a_tounicode_whose_filter_does_not_decode_is_refused() {
+        let cmap = b"begincmap 1 begincodespacerange <00> <FF> endcodespacerange \
+            3 beginbfchar <41> <005A> <42> <0059> <43> <0058> endbfchar endcmap";
+        let font = |filter: Option<&str>| {
+            let mut dict = lopdf::Dictionary::new();
+            if let Some(filter) = filter {
+                dict.set("Filter", lopdf::Object::Name(filter.as_bytes().to_vec()));
+            }
+            let mut fd = lopdf::Dictionary::new();
+            fd.set("Subtype", lopdf::Object::Name(b"Type1".to_vec()));
+            fd.set(
+                "ToUnicode",
+                lopdf::Object::Stream(lopdf::Stream::new(dict, cmap.to_vec())),
+            );
+            load_font(&lopdf::Document::new(), "F1", &fd)
+        };
+        // The control: unfiltered, the same bytes are the CMap the font uses.
+        assert!(matches!(
+            font(None).expect("loads").decoder,
+            Decoder::ToUnicode(_)
+        ));
+        for filter in ["ASCIIHexDecode", "NoSuchDecode"] {
+            let e = font(Some(filter)).expect_err("refused, not read as raw bytes");
+            assert_eq!(e.code(), "unsupported", "{e}");
+            assert!(
+                e.to_string()
+                    .starts_with("unsupported ToUnicode stream filter: /F1: "),
+                "{e}"
+            );
+        }
     }
 
     /// A Type 3 font dictionary: code 97, width 500, an optional `/FontMatrix`, an optional
