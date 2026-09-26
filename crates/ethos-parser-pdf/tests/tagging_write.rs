@@ -1590,3 +1590,32 @@ fn a_real_outside_f32s_range_is_refused_by_both_writers() {
         }
     }
 }
+
+/// **Object numbers far past the object count are refused by both writers** (review 2026-09-26
+/// N28). `lopdf`'s writer walks every number below the highest, which one object sets: five
+/// objects, one numbered 1,000,000,000, kept `overlay` busy 2.2 s. One object numbered 100,000
+/// here is past the ceiling and still quick to write without it.
+#[test]
+fn object_numbers_far_past_the_object_count_are_refused_by_both_writers() {
+    let bytes = edited("leading-gap-two-blocks", |doc| {
+        doc.objects.insert((100_000, 0), Object::Null);
+        doc.max_id = 100_000;
+    });
+    let objects = lopdf::Document::load_mem(&bytes)
+        .expect("the control: lopdf loads it")
+        .objects
+        .len();
+    for (writer, result) in both_writers(&bytes) {
+        match result {
+            Err(EngineError::ResourceLimit { limit, configured }) => {
+                assert_eq!(
+                    limit,
+                    format!("{writer}: object numbers reaching 100000 for {objects} object(s)")
+                );
+                assert_eq!(configured, (objects * 16 + 1024).to_string(), "{writer}");
+            }
+            Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+            Err(other) => panic!("{writer}: expected a resource limit, got {other}"),
+        }
+    }
+}
