@@ -2658,8 +2658,9 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
 /// written: a source `lopdf` decrypted with the empty user password, which would be written back
 /// without its encryption or its permissions; a digital signature, whose `/ByteRange` would no
 /// longer cover the bytes it signed; a real outside `f32`'s range, which `lopdf` reads as infinite
-/// and its writer prints as `inf`, a token no reader accepts. Both writers call it; `what` names
-/// the caller.
+/// and its writer prints as `inf`, a token no reader accepts; object numbers running far past the
+/// object count, which the writer walks one at a time. Both writers call it; `what` names the
+/// caller.
 pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineError> {
     if doc.opened_encrypted() {
         return Err(EngineError::Encrypted {
@@ -2669,8 +2670,24 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
             ),
         });
     }
-    // Every object, then the trailer's values: the writer prints both.
+    // `lopdf`'s writer walks every object number below the document's highest, which a single
+    // object can set anywhere up to 2^32: five objects, one of them numbered 1,000,000,000, kept
+    // `overlay` busy 2.2 s, and a number four times larger would take four times as long
+    // (review 2026-09-26 N28). Real numbering is dense: the highest number is at most 1.17 times
+    // the object count on 939 corpus documents.
     let inner = doc.inner();
+    let ceiling = inner.objects.len().saturating_mul(16).saturating_add(1024);
+    if usize::try_from(inner.max_id).map_or(true, |highest| highest > ceiling) {
+        return Err(EngineError::ResourceLimit {
+            limit: format!(
+                "{what}: object numbers reaching {} for {} object(s)",
+                inner.max_id,
+                inner.objects.len()
+            ),
+            configured: ceiling.to_string(),
+        });
+    }
+    // Every object, then the trailer's values: the writer prints both.
     let objects = inner.objects.iter().map(|(&id, o)| (Some(id), o));
     let trailer = inner.trailer.iter().map(|(_, o)| (None, o));
     for (id, object) in objects.chain(trailer) {
