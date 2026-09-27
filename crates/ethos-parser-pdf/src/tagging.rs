@@ -2687,6 +2687,10 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
             configured: ceiling.to_string(),
         });
     }
+    // The writer prints a real with `Display`, which writes no exponent, so a real from 2^63 up
+    // is an integer token past the 64-bit range qpdf and `lopdf` read one into: qpdf reads the
+    // object holding it as null, and `lopdf` does not load it (tracker I17).
+    let integral = -(2f32.powi(63))..2f32.powi(63);
     // Every object, then the trailer's values: the writer prints both.
     let objects = inner.objects.iter().map(|(&id, o)| (Some(id), o));
     let trailer = inner.trailer.iter().map(|(_, o)| (None, o));
@@ -2705,6 +2709,12 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
                     return Err(refuse(&format!(
                         "holds a real outside f32's range, which the writer would print as \
                          `{v}`, a token no reader accepts"
+                    )));
+                }
+                Object::Real(v) if !integral.contains(v) => {
+                    return Err(refuse(&format!(
+                        "holds a real the writer would print as the integer `{v}`, past the \
+                         64-bit range qpdf reads an integer into"
                     )));
                 }
                 Object::Dictionary(d) => d,

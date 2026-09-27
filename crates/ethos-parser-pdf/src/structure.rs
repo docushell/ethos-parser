@@ -159,6 +159,9 @@ pub struct StructureTree {
     pub items_without_page: usize,
     /// How many structure elements were reached.
     pub elements: usize,
+    /// How many of them carry `/ActualText`, `/Alt` or `/E` (review 2026-09-26 N22), none of
+    /// which this profile reads.
+    pub alternate_texts: usize,
     /// What the tree said about elements carrying this engine's own attribute (auto-tagging S1).
     ///
     /// `None` when no element carries `/O /EthosParser` under `/A` or through `/C` — every
@@ -552,6 +555,12 @@ impl Walker<'_> {
             return Ok(());
         };
         self.tree.elements += 1;
+        if [b"ActualText".as_slice(), b"Alt", b"E"]
+            .iter()
+            .any(|key| d.has(key))
+        {
+            self.tree.alternate_texts += 1;
+        }
 
         let element_id = d
             .get(b"ID")

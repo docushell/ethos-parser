@@ -3184,6 +3184,85 @@ fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
     }
 }
 
+/// **An image that did not load as a stream is counted unresolved, not called a form** (tracker
+/// I17). A direct `/Length` that misses the data makes `lopdf` load the object as its bare
+/// dictionary, and a renderer that finds `endstream` still draws the image; it was declared a
+/// form this profile did not descend into, on a page that draws no form. A form lost the same way
+/// is still one, and still counted on its page.
+#[test]
+fn an_image_that_did_not_load_as_a_stream_is_counted_unresolved_not_as_a_form() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let xobject = |subtype: &str, length: usize| {
+        [
+            format!(
+                "<< /Type /XObject /Subtype /{subtype} /Width 2 /Height 2 /ColorSpace /DeviceGray \
+                 /BitsPerComponent 8 /BBox [0 0 1 1] /Length {length} >>\nstream\n"
+            )
+            .as_bytes(),
+            b"ABCD\nendstream",
+        ]
+        .concat()
+    };
+    let document = |subtype: &str, length: usize| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /XObject << \
+               /X1 5 0 R >> /Font << /F1 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(b"q 50 0 0 50 10 10 cm /X1 Do Q BT /F1 12 Tf 10 100 Td (Caption) Tj ET"),
+            xobject(subtype, length),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        ])
+    };
+    let declared = |a: &ExtractArtifact, code: &str, scope| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == code && l.scope == scope)
+            .map(|l| l.detail.clone())
+    };
+    let (document_scope, page_one) = (
+        ethos_parser_core::LimitationScope::Document,
+        ethos_parser_core::LimitationScope::Page(1),
+    );
+    let forms = ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED;
+    let unresolved = ethos_parser_core::codes::XOBJECT_NAME_UNRESOLVED;
+
+    // Four bytes under a `/Length` of 2: the image is lost, and counted as what it is.
+    let lost = extracted(&document("Image", 2)).expect("reads");
+    assert_eq!(runs(&lost)[0].text, "Caption");
+    assert_eq!(lost.pages[0].images.len(), 0);
+    assert_eq!(
+        declared(&lost, forms, document_scope),
+        None,
+        "no form is drawn"
+    );
+    assert_eq!(declared(&lost, forms, page_one), None);
+    let detail = declared(&lost, unresolved, document_scope)
+        .expect("the page drew something this reader cannot say");
+    assert!(detail.starts_with("1 `Do` operator(s)"), "{detail}");
+
+    // The control: the same bytes under the right `/Length` are an image node, and neither count.
+    let read = extracted(&document("Image", 4)).expect("reads");
+    assert_eq!(read.pages[0].images.len(), 1);
+    assert_eq!(declared(&read, unresolved, document_scope), None);
+    assert_eq!(declared(&read, forms, document_scope), None);
+
+    // A form lost the same way is still a form whose text is absent from its page.
+    let form = extracted(&document("Form", 2)).expect("reads");
+    assert_eq!(declared(&form, unresolved, document_scope), None);
+    let detail = declared(&form, forms, page_one).expect("counted on its page");
+    assert!(detail.starts_with("1 form XObject(s)"), "{detail}");
+}
+
 /// **A composite font's widths come from its descendant, and the CID is the key** (v2.2-S3).
 ///
 /// `load_widths` read `/Widths` and `/FirstChar` — the SIMPLE font shape. PDF 32000-1 §9.7.4.3
@@ -5559,6 +5638,132 @@ fn an_astral_right_to_left_scalar_is_declared() {
             .iter()
             .any(|l| l.code == ethos_parser_core::codes::RIGHT_TO_LEFT_NOT_REORDERED),
         "an Adlam run is right-to-left text drawn in page order, like a Hebrew one"
+    );
+}
+
+/// **A `U+FFFD` the document's own `/ToUnicode` maps a code to is read and counted** (review
+/// 2026-09-26 N21). It entered the evidence with nothing declared, where nothing downstream can
+/// tell it from a substitution — which this engine never makes.
+#[test]
+fn a_replacement_character_a_font_maps_a_code_to_is_read_and_counted() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |destination: &str| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(b"BT /F1 24 Tf 72 72 Td (AB) Tj ET"),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>".to_vec(),
+            stream(
+                format!(
+                    "begincmap 1 begincodespacerange <00> <FF> endcodespacerange 2 beginbfchar \
+                     <41> <0041> <42> <{destination}> endbfchar endcmap"
+                )
+                .as_bytes(),
+            ),
+        ])
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .filter(|l| l.code == ethos_parser_core::codes::REPLACEMENT_CHARACTER_IN_TEXT)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    let a = extracted(&document("FFFD")).expect("reads");
+    assert_eq!(
+        runs(&a)[0].text,
+        "A\u{FFFD}",
+        "read as the document writes it"
+    );
+    let limitation = declared(&a);
+    assert_eq!(limitation.len(), 1, "declared once: {limitation:?}");
+    assert_eq!(
+        limitation[0].scope,
+        ethos_parser_core::LimitationScope::Document
+    );
+    assert!(
+        limitation[0].detail.starts_with("1 text run(s)"),
+        "{}",
+        limitation[0].detail
+    );
+
+    let b = extracted(&document("0042")).expect("reads");
+    assert_eq!(runs(&b)[0].text, "AB");
+    assert!(declared(&b).is_empty(), "no U+FFFD, nothing declared");
+}
+
+/// **`/ActualText`, `/Alt` and `/E` are declared unread** (review 2026-09-26 N22). The page's
+/// `/Span << /ActualText (Example) >>` reads `Ex-`, the glyphs drawn, where a viewer copies
+/// `Example`; and a structure element's `/Alt` is in no node. Neither was declared.
+#[test]
+fn actual_text_alt_and_e_are_declared_unread() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |props: &str, tree: bool| {
+        let root = if tree { "/StructTreeRoot 6 0 R" } else { "" };
+        pdf_from_objects(&[
+            format!("<< /Type /Catalog /Pages 2 0 R {root} >>").into_bytes(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(format!("/Span {props} BDC BT /F1 12 Tf 72 72 Td (Ex-) Tj ET EMC").as_bytes()),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            b"<< /Type /StructTreeRoot /K 7 0 R >>".to_vec(),
+            b"<< /Type /StructElem /S /Figure /P 6 0 R /Pg 3 0 R /K 0 /Alt (A chart) >>".to_vec(),
+        ])
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::ACTUAL_TEXT_NOT_READ)
+            .map(|l| (l.scope, l.detail.clone()))
+    };
+
+    let marked = extracted(&document("<< /MCID 0 /ActualText (Example) >>", false)).expect("reads");
+    assert_eq!(
+        runs(&marked)[0].text,
+        "Ex-",
+        "the glyphs drawn, not the replacement"
+    );
+    let (scope, detail) = declared(&marked).expect("declared");
+    assert_eq!(scope, ethos_parser_core::LimitationScope::Document);
+    assert!(
+        detail.starts_with("1 marked-content sequence(s) and 0 structure element(s)"),
+        "{detail}"
+    );
+
+    let element = extracted(&document("<< /MCID 0 >>", true)).expect("reads");
+    let (_, detail) = declared(&element).expect("declared");
+    assert!(
+        detail.starts_with("0 marked-content sequence(s) and 1 structure element(s)"),
+        "{detail}"
+    );
+
+    let neither = extracted(&document("<< /MCID 0 >>", false)).expect("reads");
+    assert_eq!(
+        declared(&neither),
+        None,
+        "nothing carried, nothing declared"
     );
 }
 

@@ -290,8 +290,9 @@ pub fn xref_entry_padded(entries_padded: u32) -> Limitation {
 /// The document-scoped limitation for a font whose encoding could not map every code.
 ///
 /// The runs that could not be decoded are **absent from the artifact**, and their count is here.
-/// Never a substitution character: `U+FFFD` in an evidence artifact is a character the document
-/// does not contain, and downstream nothing can tell it from one that does.
+/// Never a substitution character: a `U+FFFD` this engine put in a run would be a character the
+/// document does not contain, and downstream nothing could tell it from one the document states —
+/// which a font may, and which [`replacement_character_in_text`] counts.
 pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
     Limitation::document(
         BROKEN_FONT_ENCODING,
@@ -815,6 +816,42 @@ pub fn right_to_left_not_reordered(count: u32) -> Limitation {
     )
 }
 
+/// Text runs holding `U+FFFD` a font of the document maps a code to (review 2026-09-26 N21).
+///
+/// The count is runs, as [`right_to_left_not_reordered`]'s is, because the run is the unit a
+/// citation quotes.
+pub fn replacement_character_in_text(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::REPLACEMENT_CHARACTER_IN_TEXT,
+        format!(
+            "{count} text run(s) hold `U+FFFD` REPLACEMENT CHARACTER because a font of this \
+             document maps a code to it, as a `/ToUnicode` CMap does when it names `<FFFD>` as a \
+             destination. That is the document's own statement and is read as written; the glyph \
+             it stands for is named nowhere this reader looks. This engine never puts `U+FFFD` in \
+             a run itself: a run holding a code no mapping names is omitted and counted under \
+             `broken-font-encoding` instead, so a `U+FFFD` in this artifact's runs is always the \
+             document's."
+        ),
+    )
+}
+
+/// `/ActualText`, `/Alt` and `/E`, counted and not read (review 2026-09-26 N22).
+pub fn actual_text_not_read(sequences: u32, elements: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::ACTUAL_TEXT_NOT_READ,
+        format!(
+            "{sequences} marked-content sequence(s) and {elements} structure element(s) on this \
+             document carry `/ActualText`, `/Alt` or `/E` — the document's own replacement text, \
+             alternate description or abbreviation expansion for what they mark (PDF 32000-1 \
+             §14.9.3–§14.9.5). None of it is read. A run's text is the glyphs the page draws, so \
+             a quote copied from a viewer that gives `/ActualText` instead may not match it, and \
+             a figure's `/Alt` description is not in this artifact. A property list given by \
+             name is not resolved, so is not counted here: `mcid-property-list-by-name` counts \
+             those."
+        ),
+    )
+}
+
 /// Inline images were drawn and are not nodes (v1-S6).
 pub fn inline_images_not_emitted(count: u32) -> Limitation {
     Limitation::document(
@@ -837,8 +874,9 @@ pub fn xobject_name_unresolved(count: u32) -> Limitation {
         format!(
             "{count} `Do` operator(s) named an XObject this profile could not resolve — a name \
              absent from the page's `/Resources /XObject`, a resource embedded directly rather \
-             than by reference, or an operand that is not a name. The page drew something; this \
-             reader cannot say what, so it emits no node for it and counts it here instead. \
+             than by reference, an image that did not load as a stream, or an operand that is not \
+             a name. The page drew something; this reader cannot say what, so it emits no node \
+             for it and counts it here instead. \
              **Not a refusal**: the operator is known, the document is malformed only in this \
              bounded way, and rejecting the whole file over it would turn documents that read \
              today into failures. Not a silent skip either — that is what this count is for."

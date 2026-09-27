@@ -317,6 +317,12 @@ pub struct Interpreter<'a> {
     /// Those may carry an `/MCID` this profile did not resolve, so their content can look
     /// untagged when it is not. Counted rather than assumed away.
     pub props_by_name: u32,
+    /// How many `BDC` sequences carry `/ActualText`, `/Alt` or `/E` in an inline property list
+    /// (review 2026-09-26 N22).
+    ///
+    /// Each is the document's own text for what it marks, which this profile does not read: a run
+    /// is the glyphs the page draws. Counted so the artifact can say so.
+    pub alternate_texts: u32,
     /// Image XObjects this page painted, in the order it painted them (v1-S6).
     pub images: Vec<ImagePlacement>,
     /// `Do` calls naming an XObject this profile could not resolve (v1-S6).
@@ -361,6 +367,7 @@ impl<'a> Interpreter<'a> {
             pending_segments: Vec::new(),
             dropped_runs: 0,
             props_by_name: 0,
+            alternate_texts: 0,
             images: Vec::new(),
             unresolved_xobjects: 0,
             inline_images: 0,
@@ -606,6 +613,9 @@ impl<'a> Interpreter<'a> {
                     // can say so: an unread id and an absent id are different facts, and only
                     // one of them means "this content is outside the structure tree".
                     self.props_by_name = self.props_by_name.saturating_add(1);
+                }
+                if carries_alternate_text(operands) {
+                    self.alternate_texts = self.alternate_texts.saturating_add(1);
                 }
                 self.mc_stack.push(MarkedContent {
                     artifact,
@@ -1075,6 +1085,18 @@ fn mcid_from_props(operands: &[lopdf::Object]) -> Option<i64> {
 /// "no id" would make an unread id indistinguishable from an absent one.
 fn props_given_by_name(operands: &[lopdf::Object]) -> bool {
     matches!(operands.get(1), Some(lopdf::Object::Name(_)))
+}
+
+/// Whether an inline `BDC` property list carries `/ActualText`, `/Alt` or `/E` (PDF 32000-1
+/// §14.9.3–§14.9.5): replacement text, an alternate description, or the expansion of an
+/// abbreviation. A list given by name is not resolved here, and is counted as `props_by_name`.
+fn carries_alternate_text(operands: &[lopdf::Object]) -> bool {
+    match operands.get(1) {
+        Some(lopdf::Object::Dictionary(d)) => [b"ActualText".as_slice(), b"Alt", b"E"]
+            .iter()
+            .any(|key| d.has(key)),
+        _ => false,
+    }
 }
 
 /// The tag operand of a `BDC`/`BMC`, which is always the first.

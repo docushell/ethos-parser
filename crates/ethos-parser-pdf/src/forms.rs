@@ -525,6 +525,12 @@ pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
     if let Some(utf8) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
         return String::from_utf8(utf8.to_vec()).ok();
     }
+    // A UTF-16LE byte-order mark, which no PDF version lets a text string use. Read as
+    // PDFDocEncoding, as the branch below would, it is `ÿþ` and mojibake after it, where qpdf
+    // reads UTF-16LE: refused rather than read either way.
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return None;
+    }
     // PDFDocEncoding agrees with Latin-1 over 0x20..=0x7E and 0xA1..=0xFF except 0xAD. Everything
     // else -- the C0 controls, 0x7F, the 0x80..=0x9F block the three encodings disagree over, 0xA0
     // (the euro sign in PDFDocEncoding, a no-break space in Latin-1) and 0xAD (undefined in
@@ -601,7 +607,8 @@ mod tests {
 
     /// **The strict decoder refuses what it used to guess** (review 2026-09-26 N17): the two bytes
     /// above 0x9F where PDFDocEncoding and Latin-1 disagree, half a UTF-16 code unit and a
-    /// language escape; and it reads a UTF-8 title (ISO 32000-2 §7.9.2.2.1) as UTF-8.
+    /// language escape, and (tracker I17) a UTF-16LE byte-order mark; and it reads a UTF-8 title
+    /// (ISO 32000-2 §7.9.2.2.1) as UTF-8.
     #[test]
     fn the_strict_decoder_refuses_what_it_would_have_guessed() {
         assert_eq!(
@@ -623,6 +630,11 @@ mod tests {
             decode_text_strict(b"\xfe\xff\x00A\x00"),
             None,
             "half a code unit"
+        );
+        assert_eq!(
+            decode_text_strict(b"\xff\xfe-N\xfdV"),
+            None,
+            "a UTF-16LE byte-order mark, which qpdf reads as `中国` and PDFDocEncoding as `ÿþ-NýV`"
         );
         assert_eq!(decode_text_strict(b"Caf\xe9").as_deref(), Some("Caf\u{e9}"));
     }

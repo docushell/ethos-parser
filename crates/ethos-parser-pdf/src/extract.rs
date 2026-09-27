@@ -362,6 +362,7 @@ struct PageYield {
     /// This page's share of the document's body em. Empty unless the heading rule runs.
     em_tally: crate::headings::EmTally,
     props_by_name: u32,
+    alternate_texts: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
     inline_images: u32,
@@ -405,6 +406,7 @@ fn extract_page(
     let mut unclaimed_tree_items: u32 = 0;
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
+    let mut alternate_texts: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
     let mut inline_images: u32 = 0;
@@ -711,6 +713,7 @@ fn extract_page(
             ),
         );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
+        alternate_texts = alternate_texts.saturating_add(interp.alternate_texts);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
         // user space and go through the SAME transform and quantum as a glyph origin — a table
@@ -1089,7 +1092,25 @@ fn extract_page(
                 // `inline_images` two arms away in `content.rs` — *"no image nodes" must not be
                 // able to mean "there were images and the reader lost them"* — applied to the one
                 // case it had not been.
-                undescended_xobjects = undescended_xobjects.saturating_add(1);
+                //
+                // An image that did not load as a stream is no form: it is a resource this reader
+                // could not resolve. `lopdf` loads a stream whose direct `/Length` misses its data
+                // as the bare dictionary, so an image drawn by every renderer that finds
+                // `endstream` was declared a form not descended (tracker I17). A form lost the same
+                // way stays counted as one: its text is absent from the page either way, and the
+                // page-scoped count is what tells a search over that page so.
+                let lost_image = match doc.inner().get_object(placement.object) {
+                    Ok(lopdf::Object::Dictionary(d)) => d
+                        .get(b"Subtype")
+                        .and_then(lopdf::Object::as_name)
+                        .is_ok_and(|s| s == b"Image"),
+                    _ => false,
+                };
+                if lost_image {
+                    unresolved_xobjects = unresolved_xobjects.saturating_add(1);
+                } else {
+                    undescended_xobjects = undescended_xobjects.saturating_add(1);
+                }
                 continue;
             };
             // **The capability gates the NODE, not the count above it**, and the order is the
@@ -1148,6 +1169,7 @@ fn extract_page(
         heading_lines,
         em_tally,
         props_by_name,
+        alternate_texts,
         tagged_without_geometric,
         unresolved_field_parents,
         inline_images,
@@ -1329,6 +1351,7 @@ pub(crate) fn extract_with_positions(
     // Auto-tagging S1. Runs bound under this engine's own elements, summed like `mcids_unbound`.
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
+    let mut alternate_texts: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
@@ -1583,6 +1606,7 @@ pub(crate) fn extract_with_positions(
         unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
         computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
+        alternate_texts = declare(alternate_texts, y.alternate_texts);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
         inline_images = declare(inline_images, y.inline_images);
@@ -1707,21 +1731,41 @@ pub(crate) fn extract_with_positions(
     // deciding whether they APPLY would mean reading what this profile never reads. Here the text
     // is already in hand, so a document that draws no right-to-left scalar says nothing — which
     // is what makes the declaration worth reading when it does appear.
+    //
+    // A `U+FFFD` in a run is counted over the same runs (review 2026-09-26 N21). This engine never
+    // puts one there, so each is a character a font of the document maps a code to: read as
+    // written, and declared, because nothing downstream can otherwise tell it from a substitution.
     {
         let mut rtl_runs: u32 = 0;
+        let mut replacement_runs: u32 = 0;
         for page in &pages {
             for run in &page.runs {
                 if run.text.chars().any(is_right_to_left_block) {
                     rtl_runs = rtl_runs.saturating_add(1);
+                }
+                if run.text.contains('\u{FFFD}') {
+                    replacement_runs = replacement_runs.saturating_add(1);
                 }
             }
         }
         if rtl_runs > 0 {
             limitations.push(lim::right_to_left_not_reordered(rtl_runs));
         }
+        if replacement_runs > 0 {
+            limitations.push(lim::replacement_character_in_text(replacement_runs));
+        }
     }
     if props_by_name > 0 {
         limitations.push(lim::mcid_property_list_by_name(props_by_name));
+    }
+    // Review 2026-09-26 N22: the document's own text for what it marks, in a marked-content
+    // property list or on a structure element, none of it read.
+    let alternate_elements = structure.as_ref().map_or(0, |t| t.alternate_texts);
+    if alternate_texts > 0 || alternate_elements > 0 {
+        limitations.push(lim::actual_text_not_read(
+            alternate_texts,
+            declared_len(alternate_elements),
+        ));
     }
     if !tagged_without_geometric.is_empty() {
         limitations.push(lim::tagged_table_without_geometric_table(
