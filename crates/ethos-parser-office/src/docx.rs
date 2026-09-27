@@ -304,6 +304,15 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                     run_has_text |= !decoded.is_empty();
                 }
             }
+            // Matched, not ignored, as `pptx.rs` matches it: an unhandled `CData` arm is a silent
+            // drop, and this reader had one — `<w:t>kept <![CDATA[and this]]></w:t>` read `kept `.
+            Ok(Event::CData(cdata)) if in_text => {
+                if let Some(run) = open_run.as_mut() {
+                    let decoded = crate::xml::cdata_text(&cdata, MAIN_PART)?;
+                    run.text.push_str(decoded.as_ref());
+                    run_has_text |= !decoded.is_empty();
+                }
+            }
             // **`quick-xml` 0.41 delivers an entity as its own event**, so a reader that only
             // handled `Text` would drop `&amp;` silently and hand back `a  b` for `a &amp; b` —
             // measured, not feared: that is what the first version of this file did, and the
@@ -379,6 +388,19 @@ fn has_preserve(start: &quick_xml::events::BytesStart<'_>) -> Result<bool, Engin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A CDATA section in `<w:t>` is text** (found building the 2026-09-26 office fixes): the
+    /// reader had no arm for it, so `kept <![CDATA[and this]]>` read `kept ` and declared nothing.
+    #[test]
+    fn a_cdata_section_in_a_text_element_is_read() {
+        let xml = r#"<w:document xmlns:w="x"><w:body>
+              <w:p><w:r><w:t>kept <![CDATA[and this]]></w:t></w:r></w:p>
+              <w:p><w:r><w:t><![CDATA[alone]]></w:t></w:r></w:p>
+            </w:body></w:document>"#;
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        let texts: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, vec!["kept and this", "alone"]);
+    }
 
     #[test]
     fn runs_carry_the_positions_the_part_states() {
