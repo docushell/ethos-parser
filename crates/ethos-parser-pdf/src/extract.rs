@@ -362,6 +362,7 @@ struct PageYield {
     /// This page's share of the document's body em. Empty unless the heading rule runs.
     em_tally: crate::headings::EmTally,
     props_by_name: u32,
+    alternate_texts: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
     inline_images: u32,
@@ -405,6 +406,7 @@ fn extract_page(
     let mut unclaimed_tree_items: u32 = 0;
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
+    let mut alternate_texts: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
     let mut inline_images: u32 = 0;
@@ -711,6 +713,7 @@ fn extract_page(
             ),
         );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
+        alternate_texts = alternate_texts.saturating_add(interp.alternate_texts);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
         // user space and go through the SAME transform and quantum as a glyph origin — a table
@@ -1166,6 +1169,7 @@ fn extract_page(
         heading_lines,
         em_tally,
         props_by_name,
+        alternate_texts,
         tagged_without_geometric,
         unresolved_field_parents,
         inline_images,
@@ -1347,6 +1351,7 @@ pub(crate) fn extract_with_positions(
     // Auto-tagging S1. Runs bound under this engine's own elements, summed like `mcids_unbound`.
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
+    let mut alternate_texts: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
@@ -1601,6 +1606,7 @@ pub(crate) fn extract_with_positions(
         unclaimed_tree_items = declare(unclaimed_tree_items, y.unclaimed_tree_items);
         computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
+        alternate_texts = declare(alternate_texts, y.alternate_texts);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
         inline_images = declare(inline_images, y.inline_images);
@@ -1751,6 +1757,15 @@ pub(crate) fn extract_with_positions(
     }
     if props_by_name > 0 {
         limitations.push(lim::mcid_property_list_by_name(props_by_name));
+    }
+    // Review 2026-09-26 N22: the document's own text for what it marks, in a marked-content
+    // property list or on a structure element, none of it read.
+    let alternate_elements = structure.as_ref().map_or(0, |t| t.alternate_texts);
+    if alternate_texts > 0 || alternate_elements > 0 {
+        limitations.push(lim::actual_text_not_read(
+            alternate_texts,
+            declared_len(alternate_elements),
+        ));
     }
     if !tagged_without_geometric.is_empty() {
         limitations.push(lim::tagged_table_without_geometric_table(

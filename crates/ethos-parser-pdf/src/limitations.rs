@@ -835,6 +835,23 @@ pub fn replacement_character_in_text(count: u32) -> Limitation {
     )
 }
 
+/// `/ActualText`, `/Alt` and `/E`, counted and not read (review 2026-09-26 N22).
+pub fn actual_text_not_read(sequences: u32, elements: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::ACTUAL_TEXT_NOT_READ,
+        format!(
+            "{sequences} marked-content sequence(s) and {elements} structure element(s) on this \
+             document carry `/ActualText`, `/Alt` or `/E` — the document's own replacement text, \
+             alternate description or abbreviation expansion for what they mark (PDF 32000-1 \
+             §14.9.3–§14.9.5). None of it is read. A run's text is the glyphs the page draws, so \
+             a quote copied from a viewer that gives `/ActualText` instead may not match it, and \
+             a figure's `/Alt` description is not in this artifact. A property list given by \
+             name is not resolved, so is not counted here: `mcid-property-list-by-name` counts \
+             those."
+        ),
+    )
+}
+
 /// Inline images were drawn and are not nodes (v1-S6).
 pub fn inline_images_not_emitted(count: u32) -> Limitation {
     Limitation::document(

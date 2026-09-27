@@ -302,6 +302,14 @@ pub mod codes {
     /// statement, read as written, and counted because nothing downstream can otherwise tell it
     /// from a substitution.
     pub const REPLACEMENT_CHARACTER_IN_TEXT: &str = "replacement-character-in-text";
+    /// `/ActualText`, `/Alt` and `/E` are not read (review 2026-09-26 N22).
+    ///
+    /// **Document-scoped and conditional**: declared where a marked-content property list or a
+    /// structure element carries one. Each is the document's own text for what it marks —
+    /// replacement text, an alternate description, the expansion of an abbreviation (PDF 32000-1
+    /// §14.9.3–§14.9.5) — and a viewer copying text may give `/ActualText` where this engine gives
+    /// the glyphs drawn.
+    pub const ACTUAL_TEXT_NOT_READ: &str = "actual-text-not-read";
     /// The document's own declared outline is not read (`docs/29-OUTLINES-SCOPE.md`).
     ///
     /// Partners a **false** [`Capabilities::outlines`], and exists so that

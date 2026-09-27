@@ -5704,6 +5704,69 @@ fn a_replacement_character_a_font_maps_a_code_to_is_read_and_counted() {
     assert!(declared(&b).is_empty(), "no U+FFFD, nothing declared");
 }
 
+/// **`/ActualText`, `/Alt` and `/E` are declared unread** (review 2026-09-26 N22). The page's
+/// `/Span << /ActualText (Example) >>` reads `Ex-`, the glyphs drawn, where a viewer copies
+/// `Example`; and a structure element's `/Alt` is in no node. Neither was declared.
+#[test]
+fn actual_text_alt_and_e_are_declared_unread() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |props: &str, tree: bool| {
+        let root = if tree { "/StructTreeRoot 6 0 R" } else { "" };
+        pdf_from_objects(&[
+            format!("<< /Type /Catalog /Pages 2 0 R {root} >>").into_bytes(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(format!("/Span {props} BDC BT /F1 12 Tf 72 72 Td (Ex-) Tj ET EMC").as_bytes()),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            b"<< /Type /StructTreeRoot /K 7 0 R >>".to_vec(),
+            b"<< /Type /StructElem /S /Figure /P 6 0 R /Pg 3 0 R /K 0 /Alt (A chart) >>".to_vec(),
+        ])
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::ACTUAL_TEXT_NOT_READ)
+            .map(|l| (l.scope, l.detail.clone()))
+    };
+
+    let marked = extracted(&document("<< /MCID 0 /ActualText (Example) >>", false)).expect("reads");
+    assert_eq!(
+        runs(&marked)[0].text,
+        "Ex-",
+        "the glyphs drawn, not the replacement"
+    );
+    let (scope, detail) = declared(&marked).expect("declared");
+    assert_eq!(scope, ethos_parser_core::LimitationScope::Document);
+    assert!(
+        detail.starts_with("1 marked-content sequence(s) and 0 structure element(s)"),
+        "{detail}"
+    );
+
+    let element = extracted(&document("<< /MCID 0 >>", true)).expect("reads");
+    let (_, detail) = declared(&element).expect("declared");
+    assert!(
+        detail.starts_with("0 marked-content sequence(s) and 1 structure element(s)"),
+        "{detail}"
+    );
+
+    let neither = extracted(&document("<< /MCID 0 >>", false)).expect("reads");
+    assert_eq!(
+        declared(&neither),
+        None,
+        "nothing carried, nothing declared"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // Outline titles
 // -------------------------------------------------------------------------------------------
