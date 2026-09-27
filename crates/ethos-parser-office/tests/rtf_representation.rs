@@ -326,30 +326,45 @@ fn the_counter_advances_through_a_destination_it_does_not_read() {
     );
 }
 
-/// **A byte above 0x7F is declared, never rendered as a guess.**
+/// **A byte above 0x7F is read under the code page the stream declares, and counted without one.**
+///
+/// The fixture declares `\ansicpg1252`, so its `\'e9` is `é`. The same bytes with that word taken
+/// out say nothing about which character 0xE9 is, and each one is counted instead of guessed.
 #[test]
 fn an_undecodable_byte_is_counted_and_a_decodable_one_is_read() {
     let bytes = fixture("rich-text-unread-destinations");
     let source = source_of(&bytes);
     assert!(
-        source.contains(r"\'e9"),
-        "the fixture must really carry one"
+        source.contains(r"\ansicpg1252") && source.contains(r"\'e9"),
+        "the fixture must really declare Windows-1252 and carry a byte above 0x7F"
     );
     assert!(source.contains(r"\'26"), "and one below 0x80");
 
     let sealed = ethos_parser_office::read(&bytes).expect("the fixture reads");
     assert_eq!(
         text_at(&sealed, 7).as_deref(),
-        Some("Undecodable: caf and rsum."),
-        "the byte's meaning depends on a code page this reader does not read, so it contributes \
-         no character rather than a Latin-1 guess"
+        Some("Undecodable: café and résumé."),
+        "0xE9 is `é` in the Windows-1252 the stream declares"
     );
     assert_eq!(
         text_at(&sealed, 8).as_deref(),
         Some("Decodable: & and é are both read."),
         "0x26 is `&` in every ANSI code page, and `\\u233` states its scalar outright"
     );
+    assert!(
+        !a14_detail(&sealed).contains("above 0x7F"),
+        "a byte read is not counted"
+    );
 
+    let undeclared = source.replace(r"\ansicpg1252", "");
+    let sealed =
+        ethos_parser_office::read(undeclared.as_bytes()).expect("the mutated stream reads");
+    assert_eq!(
+        text_at(&sealed, 7).as_deref(),
+        Some("Undecodable: caf and rsum."),
+        "with no code page declared the byte's meaning is unknown, so it contributes no character \
+         rather than a Latin-1 guess"
+    );
     let detail = a14_detail(&sealed);
     assert!(
         detail.contains("3 byte(s) above 0x7F"),
@@ -398,9 +413,10 @@ fn the_clean_stream_declares_no_erasure_and_the_other_declares_two_kinds() {
         "the clean stream carries only what the reader consumes, so it erases nothing"
     );
 
-    let detail = a14_detail(
-        &ethos_parser_office::read(&fixture("rich-text-unread-destinations")).expect("reads"),
-    );
+    // Without its `\ansicpg1252`, so that its bytes above 0x7F are counted rather than read.
+    let undeclared =
+        source_of(&fixture("rich-text-unread-destinations")).replace(r"\ansicpg1252", "");
+    let detail = a14_detail(&ethos_parser_office::read(undeclared.as_bytes()).expect("reads"));
     assert!(detail.contains("destination(s)"), "{detail}");
     assert!(detail.contains("byte(s) above 0x7F"), "{detail}");
     assert!(

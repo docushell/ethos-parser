@@ -123,6 +123,10 @@ pub struct MainPart {
     /// Counted **only when the branch actually held a `<w:t>`**, as in `pptx.rs`: a branch
     /// wrapping only a drawing's geometry is not an erasure and must not inflate the count.
     pub alternatives_not_read: u32,
+    /// `<w:moveFrom>` regions that held text and were passed over: the old place of text a tracked
+    /// move put elsewhere, which Word shows only with changes marked and which accepting them
+    /// deletes. The text is read where the `<w:moveTo>` puts it, once.
+    pub moves_not_read: u32,
 }
 
 /// Read the runs of a `word/document.xml`.
@@ -177,6 +181,9 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     let mut skip_from: Option<i32> = None;
     let mut skipped_text = false;
     let mut alternatives_not_read: u32 = 0;
+    // Whether the subtree being passed over is a `<w:moveFrom>` rather than an alternative.
+    let mut skipping_move = false;
+    let mut moves_not_read: u32 = 0;
 
     loop {
         match reader.read_event() {
@@ -222,11 +229,21 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                         _ => {
                             skip_from = Some(depth);
                             skipped_text = false;
+                            skipping_move = false;
                         }
                     },
                     b"Fallback" if skip_from.is_none() => {
                         skip_from = Some(depth);
                         skipped_text = false;
+                        skipping_move = false;
+                    }
+                    // A tracked move's old place, ECMA-376's move source: passed over as an
+                    // alternative is, and counted apart, so the moved text is read once, where
+                    // `<w:moveTo>` puts it (review 2026-09-26 N18).
+                    b"moveFrom" if skip_from.is_none() => {
+                        skip_from = Some(depth);
+                        skipped_text = false;
+                        skipping_move = true;
                     }
                     _ => {}
                 }
@@ -274,7 +291,11 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
                 if skip_from == Some(closing) {
                     skip_from = None;
                     if skipped_text {
-                        alternatives_not_read = crate::declare(alternatives_not_read, 1);
+                        if skipping_move {
+                            moves_not_read = crate::declare(moves_not_read, 1);
+                        } else {
+                            alternatives_not_read = crate::declare(alternatives_not_read, 1);
+                        }
                     }
                     skipped_text = false;
                 }
@@ -300,6 +321,15 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
             Ok(Event::Text(text)) if in_text => {
                 if let Some(run) = open_run.as_mut() {
                     let decoded = crate::xml::decode(&text, MAIN_PART)?;
+                    run.text.push_str(decoded.as_ref());
+                    run_has_text |= !decoded.is_empty();
+                }
+            }
+            // Matched, not ignored, as `pptx.rs` matches it: an unhandled `CData` arm is a silent
+            // drop, and this reader had one — `<w:t>kept <![CDATA[and this]]></w:t>` read `kept `.
+            Ok(Event::CData(cdata)) if in_text => {
+                if let Some(run) = open_run.as_mut() {
+                    let decoded = crate::xml::cdata_text(&cdata, MAIN_PART)?;
                     run.text.push_str(decoded.as_ref());
                     run_has_text |= !decoded.is_empty();
                 }
@@ -336,6 +366,7 @@ pub fn read_runs(part: &[u8]) -> Result<MainPart, EngineError> {
     Ok(MainPart {
         runs,
         alternatives_not_read,
+        moves_not_read,
     })
 }
 
@@ -379,6 +410,39 @@ fn has_preserve(start: &quick_xml::events::BytesStart<'_>) -> Result<bool, Engin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A tracked move's text is read once, where it now stands** (review 2026-09-26 N18).
+    /// `<w:moveFrom>` holds the old place, which Word hides and accepting the changes deletes; read
+    /// as current text, `Moved sentence.` stood twice. The passed-over region is counted.
+    #[test]
+    fn a_moved_sentence_is_read_where_it_now_stands() {
+        let xml = r#"<w:document xmlns:w="x"><w:body>
+              <w:p><w:moveFrom w:id="1"><w:r><w:t>Moved sentence.</w:t></w:r></w:moveFrom><w:r><w:t xml:space="preserve"> Stays.</w:t></w:r></w:p>
+              <w:p><w:moveTo w:id="2"><w:r><w:t>Moved sentence.</w:t></w:r></w:moveTo></w:p>
+            </w:body></w:document>"#;
+        let main = read_runs(xml.as_bytes()).expect("well-formed");
+        let read: Vec<(u32, u32, &str)> = main
+            .runs
+            .iter()
+            .map(|r| (r.paragraph, r.run, r.text.as_str()))
+            .collect();
+        assert_eq!(read, vec![(1, 2, " Stays."), (2, 1, "Moved sentence.")]);
+        assert_eq!(main.moves_not_read, 1);
+        assert_eq!(main.alternatives_not_read, 0);
+    }
+
+    /// **A CDATA section in `<w:t>` is text** (found building the 2026-09-26 office fixes): the
+    /// reader had no arm for it, so `kept <![CDATA[and this]]>` read `kept ` and declared nothing.
+    #[test]
+    fn a_cdata_section_in_a_text_element_is_read() {
+        let xml = r#"<w:document xmlns:w="x"><w:body>
+              <w:p><w:r><w:t>kept <![CDATA[and this]]></w:t></w:r></w:p>
+              <w:p><w:r><w:t><![CDATA[alone]]></w:t></w:r></w:p>
+            </w:body></w:document>"#;
+        let runs = read_runs(xml.as_bytes()).expect("well-formed").runs;
+        let texts: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, vec!["kept and this", "alone"]);
+    }
 
     #[test]
     fn runs_carry_the_positions_the_part_states() {

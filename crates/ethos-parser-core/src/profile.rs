@@ -1071,16 +1071,19 @@ pub const ODP_TEXT_CODE_RULE_V2: &str = "odp-shape-blocks-verbatim-v2";
 pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
 
 /// v2-S8's RTF text rule: the characters the stream states, and **nothing decoded from a code
-/// page**.
+/// page the stream does not declare**.
 ///
-/// Three sources, all of them things the file writes down: plain 7-bit characters, `\uN` as the
-/// Unicode scalar it names, and the small closed set of special-character control words (`\tab`,
-/// `\emdash`, `\lquote`, …) that stand for exactly one character each.
+/// Four sources, all of them things the file writes down: plain 7-bit characters, `\uN` as the
+/// Unicode scalar it names, the small closed set of special-character control words (`\tab`,
+/// `\emdash`, `\lquote`, …) that stand for exactly one character each, and — since review
+/// 2026-09-26 N03 — `\'hh` above 0x7F in a font of the ANSI character set under a declared
+/// `\ansicpg1252`, as the Windows-1252 character it names.
 ///
-/// **`\'hh` above 0x7F is declared, never guessed.** The byte's meaning depends on a code page
-/// this reader does not read and does not carry a table for, so it contributes no character and is
-/// counted instead. Emitting a Latin-1 character for it would be mojibake presented as a success,
-/// which is the failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value.
+/// **Any other `\'hh` above 0x7F is declared, never guessed.** Its meaning depends on a code page
+/// this reader does not carry a table for, so it contributes no character and is counted instead.
+/// Emitting a Latin-1 character for it would be mojibake presented as a success, which is the
+/// failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value. The id moves with the
+/// release that ships the change (decision #33).
 pub const RTF_TEXT_CODE_RULE_V1: &str = "rtf-stated-characters-v1";
 
 /// v2-S9's EPUB reading order: **the spine**, then each document's own order.

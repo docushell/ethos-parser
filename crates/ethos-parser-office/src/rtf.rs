@@ -61,10 +61,14 @@
 //! Read: plain characters, `\uN` as the scalar it names, and the small closed set of
 //! special-character control words that each stand for exactly one character.
 //!
-//! Declared, never guessed: **`\'hh` above 0x7F**. That byte's meaning depends on a code page —
-//! `\ansicpg1252`, `\ansicpg932` — and this reader carries no table for one. Emitting a Latin-1
-//! character would be mojibake presented as a success. Below 0x80 the byte is the same character
-//! in every ANSI code page, so reading it is reading rather than choosing.
+//! Read under a declaration: **`\'hh` above 0x7F in a font of the ANSI character set, where the
+//! stream declares `\ansicpg1252`**, is the Windows-1252 character it names ([`cp1252`]). The byte
+//! means what a code page says it means, and here the document says which one (review 2026-09-26
+//! N03: TextEdit writes every non-ASCII character so, and dropping the byte spliced `Café` into
+//! `Caf`). Declared, never guessed: any other byte above 0x7F — under another code page or none,
+//! in a font whose `\fcharset` names another character set (a Symbol font's `\'b7` is a bullet),
+//! or one of the five bytes Windows-1252 leaves undefined. Below 0x80 the byte is the same
+//! character in every ANSI code page, so reading it is reading rather than choosing.
 //!
 //! # What this reader was and was not measured against
 //!
@@ -240,10 +244,11 @@ pub struct Document {
     /// Destinations that held characters and were not read: a font table, a style sheet, a
     /// picture, a header, a footnote, a field, or any group this reader does not recognise.
     pub destinations_not_read: u32,
-    /// Bytes written as `\'hh` above 0x7F, or appearing raw above 0x7F.
+    /// Bytes above 0x7F that stated no character this reader reads: a `\'hh` outside a declared
+    /// `\ansicpg1252` or an ANSI-charset font, one Windows-1252 leaves undefined, or a raw byte.
     ///
-    /// Their meaning depends on a code page this reader does not read, so each is counted and
-    /// contributes no character. **Not a repair and not a guess** — see the module header.
+    /// Each is counted and contributes no character. **Not a repair and not a guess** — see the
+    /// module header.
     pub undecodable_bytes: u32,
 }
 
@@ -262,6 +267,8 @@ struct Group {
     ///
     /// Inherited from the enclosing group, because `\uc` is scoped the way formatting is.
     unicode_skip: u32,
+    /// The font `\fN` set, inherited from the enclosing group: formatting is scoped by group.
+    font: Option<i64>,
     /// Whether this group's first token has been seen, which is what decides transparency.
     decided: bool,
 }
@@ -270,6 +277,8 @@ struct Group {
 struct Skip {
     from_depth: usize,
     held_text: bool,
+    /// Whether `\fonttbl` opened it: its `\fN` and `\fcharsetN` are read, its text is not.
+    fonts: bool,
 }
 
 /// Read a Rich Text Format stream into the paragraphs that carry text.
@@ -295,6 +304,12 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
     let mut paragraphs: Vec<Paragraph> = Vec::new();
     let mut destinations_not_read = 0u32;
     let mut undecodable_bytes = 0u32;
+    // What decides a `\'hh` above 0x7F: the declared code page, and the character set of the font
+    // it is set in — each font table entry's `\fcharset`, and `\deff` where no `\f` applies.
+    let mut code_page: Option<i64> = None;
+    let mut default_font: Option<i64> = None;
+    let mut charsets: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
+    let mut table_font: Option<i64> = None;
 
     let mut groups: Vec<Group> = Vec::new();
     let mut skip: Option<Skip> = None;
@@ -330,6 +345,7 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
                     .map_or(DEFAULT_UNICODE_SKIP, |g| g.unicode_skip);
                 groups.push(Group {
                     unicode_skip: inherited,
+                    font: groups.last().and_then(|g| g.font),
                     decided: false,
                 });
             }
@@ -363,6 +379,7 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
                     skip = Some(Skip {
                         from_depth: groups.len(),
                         held_text: false,
+                        fonts: matches!(&token.kind, TokenKind::Word(w) if w == "fonttbl"),
                     });
                 }
 
@@ -397,6 +414,22 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
                                 }
                                 text.clear();
                                 ordinal = advance(ordinal)?;
+                            }
+                            "ansicpg" if skip.is_none() => code_page = token.parameter,
+                            "deff" if skip.is_none() => default_font = token.parameter,
+                            "f" => match &skip {
+                                Some(open) if open.fonts => table_font = token.parameter,
+                                None => {
+                                    if let Some(group) = groups.last_mut() {
+                                        group.font = token.parameter;
+                                    }
+                                }
+                                Some(_) => {}
+                            },
+                            "fcharset" if skip.as_ref().is_some_and(|open| open.fonts) => {
+                                if let (Some(font), Some(set)) = (table_font, token.parameter) {
+                                    charsets.insert(font, set);
+                                }
                             }
                             "uc" => {
                                 let stated = token.parameter.unwrap_or(0);
@@ -489,12 +522,22 @@ pub fn read(stream: &[u8]) -> Result<Document, EngineError> {
                         }
                     }
                     TokenKind::Hex(value) => {
+                        // The font the byte is set in, and whether its character set is ANSI's:
+                        // `\fcharset0`, or no `\fcharset` stated.
+                        let font = groups.last().and_then(|g| g.font).or(default_font);
+                        let ansi = font
+                            .and_then(|f| charsets.get(&f))
+                            .is_none_or(|&set| set == 0);
                         if *value < 0x80 {
                             push(&mut text, *value as char, &mut text_bytes, &mut skip)?;
                         } else if skip.is_some() {
                             if let Some(open) = &mut skip {
                                 open.held_text = true;
                             }
+                        } else if let Some(character) =
+                            cp1252(*value).filter(|_| code_page == Some(1252) && ansi)
+                        {
+                            push(&mut text, character, &mut text_bytes, &mut skip)?;
                         } else {
                             undecodable_bytes = undecodable_bytes.saturating_add(1);
                         }
@@ -674,6 +717,50 @@ fn control_token(stream: &[u8], at: usize) -> Result<Token, EngineError> {
 fn mark_decided(groups: &mut [Group]) {
     if let Some(group) = groups.last_mut() {
         group.decided = true;
+    }
+}
+
+/// Windows-1252 above 0x7F, the code page `\ansicpg1252` declares: 0xA0 to 0xFF are U+00A0 to
+/// U+00FF, and 0x80 to 0x9F this table, whose five gaps the code page leaves undefined.
+fn cp1252(byte: u8) -> Option<char> {
+    const C1: [Option<char>; 32] = [
+        Some('\u{20AC}'),
+        None,
+        Some('\u{201A}'),
+        Some('\u{0192}'),
+        Some('\u{201E}'),
+        Some('\u{2026}'),
+        Some('\u{2020}'),
+        Some('\u{2021}'),
+        Some('\u{02C6}'),
+        Some('\u{2030}'),
+        Some('\u{0160}'),
+        Some('\u{2039}'),
+        Some('\u{0152}'),
+        None,
+        Some('\u{017D}'),
+        None,
+        None,
+        Some('\u{2018}'),
+        Some('\u{2019}'),
+        Some('\u{201C}'),
+        Some('\u{201D}'),
+        Some('\u{2022}'),
+        Some('\u{2013}'),
+        Some('\u{2014}'),
+        Some('\u{02DC}'),
+        Some('\u{2122}'),
+        Some('\u{0161}'),
+        Some('\u{203A}'),
+        Some('\u{0153}'),
+        None,
+        Some('\u{017E}'),
+        Some('\u{0178}'),
+    ];
+    match byte {
+        0x80..=0x9F => C1[usize::from(byte - 0x80)],
+        0xA0..=0xFF => Some(char::from(byte)),
+        _ => None,
     }
 }
 
@@ -1032,6 +1119,34 @@ mod tests {
             document.undecodable_bytes, 1,
             "its meaning depends on a code page this reader does not read"
         );
+    }
+
+    /// **Under a declared `\ansicpg1252`, a `\'hh` above 0x7F in an ANSI-charset font is the
+    /// Windows-1252 character it names** (review 2026-09-26 N03). TextEdit writes every non-ASCII
+    /// character so, and dropping the byte spliced `Café naïve Müller — €5` into
+    /// `Caf nave Mller  5`, which `locate` then matched. A Symbol font's byte and a byte the code
+    /// page leaves undefined stay counted, as does every byte of a stream that declares none.
+    #[test]
+    fn a_declared_windows_1252_byte_is_read_as_its_character() {
+        let textedit = read(
+            br"{\rtf1\ansi\ansicpg1252\cocoartf2822
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset2 Symbol;}
+\f0\fs24 Caf\'e9 na\'efve M\'fcller \'97 \'805\par
+{\f1 \'b7} x\'81y}",
+        )
+        .expect("the stream reads");
+        assert_eq!(
+            texts(&textedit),
+            vec!["Caf\u{e9} na\u{ef}ve M\u{fc}ller \u{2014} \u{20ac}5", " xy"]
+        );
+        assert_eq!(
+            textedit.undecodable_bytes, 2,
+            "the Symbol font's 0xB7 and the undefined 0x81"
+        );
+
+        let undeclared = read_body(r"Caf\'e9");
+        assert_eq!(texts(&undeclared), vec!["Caf"]);
+        assert_eq!(undeclared.undecodable_bytes, 1, "no code page is declared");
     }
 
     #[test]
