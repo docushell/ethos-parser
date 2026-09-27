@@ -766,6 +766,11 @@ impl<'a> Interpreter<'a> {
             });
         };
 
+        // A font whose encoding this profile does not read refuses here, at the first string shown
+        // with it, and not where the page lists it (tracker I8).
+        if let Some(refusal) = font.refusal() {
+            return Err(refusal);
+        }
         let codes = font.split_codes(bytes);
         if codes.is_empty() {
             return Ok(());

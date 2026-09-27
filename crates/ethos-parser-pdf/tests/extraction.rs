@@ -5767,6 +5767,56 @@ fn actual_text_alt_and_e_are_declared_unread() {
     );
 }
 
+/// **A font this profile cannot decode refuses where it is drawn with, not where a page lists
+/// it** (tracker I8). A page listing a `/GBK-EUC-H` font and drawing nothing with it was refused
+/// whole; one OmniDocBench document was, over a font none of its text uses.
+#[test]
+fn a_font_this_profile_cannot_decode_refuses_only_where_it_is_drawn_with() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |content: &[u8]| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               /F2 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(content),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            b"<< /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /GBK-EUC-H >>".to_vec(),
+        ])
+    };
+
+    let unused = extracted(&document(b"BT /F1 12 Tf 72 72 Td (Hello) Tj ET")).expect("reads");
+    assert_eq!(runs(&unused)[0].text, "Hello");
+    for code in [
+        ethos_parser_core::codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE,
+        ethos_parser_pdf::limitations::FONT_WIDTHS_ABSENT,
+    ] {
+        assert!(
+            !unused.assurance.limitations.iter().any(|l| l.code == code),
+            "a font nothing is drawn with is described by nothing: {code}"
+        );
+    }
+
+    let drawn = document(b"BT /F1 12 Tf 72 72 Td (Hello) Tj ET BT /F2 12 Tf 72 40 Td <3041> Tj ET");
+    let e = extracted(&drawn).expect_err("drawn with, it refuses as before");
+    assert_eq!(e.code(), "unsupported", "{e}");
+    assert!(
+        e.to_string().starts_with(
+            "unsupported encoding: /Encoding /GBK-EUC-H is not a simple encoding this profile \
+             carries"
+        ),
+        "{e}"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // Outline titles
 // -------------------------------------------------------------------------------------------

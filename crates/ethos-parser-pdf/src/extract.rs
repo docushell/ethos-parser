@@ -447,18 +447,20 @@ fn extract_page(
         // the runs end up in. Computed once per page rather than per run.
         let visible = geom.visible_in_display_space();
         let fonts = load_page_fonts(doc, page_dict)?;
+        // A font whose encoding this profile does not read refuses the page where it is drawn
+        // with (tracker I8), so until then it is described by nothing below.
+        let readable = || fonts.values().filter(|f| f.refusal().is_none());
 
         composite_fonts = declare(
             composite_fonts,
             declared_len(
-                fonts
-                    .values()
+                readable()
                     .filter(|f| f.kind == crate::fonts::FontKind::Composite)
                     .count(),
             ),
         );
 
-        for font in fonts.values() {
+        for font in readable() {
             let mut declare_once = |entry: ethos_parser_core::Limitation| {
                 if !font_limitations.contains(&entry) {
                     font_limitations.push(entry);
