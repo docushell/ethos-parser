@@ -837,8 +837,9 @@ pub fn xobject_name_unresolved(count: u32) -> Limitation {
         format!(
             "{count} `Do` operator(s) named an XObject this profile could not resolve — a name \
              absent from the page's `/Resources /XObject`, a resource embedded directly rather \
-             than by reference, or an operand that is not a name. The page drew something; this \
-             reader cannot say what, so it emits no node for it and counts it here instead. \
+             than by reference, an image that did not load as a stream, or an operand that is not \
+             a name. The page drew something; this reader cannot say what, so it emits no node \
+             for it and counts it here instead. \
              **Not a refusal**: the operator is known, the document is malformed only in this \
              bounded way, and rejecting the whole file over it would turn documents that read \
              today into failures. Not a silent skip either — that is what this count is for."

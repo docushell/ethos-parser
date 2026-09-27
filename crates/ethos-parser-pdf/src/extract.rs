@@ -1089,7 +1089,25 @@ fn extract_page(
                 // `inline_images` two arms away in `content.rs` — *"no image nodes" must not be
                 // able to mean "there were images and the reader lost them"* — applied to the one
                 // case it had not been.
-                undescended_xobjects = undescended_xobjects.saturating_add(1);
+                //
+                // An image that did not load as a stream is no form: it is a resource this reader
+                // could not resolve. `lopdf` loads a stream whose direct `/Length` misses its data
+                // as the bare dictionary, so an image drawn by every renderer that finds
+                // `endstream` was declared a form not descended (tracker I17). A form lost the same
+                // way stays counted as one: its text is absent from the page either way, and the
+                // page-scoped count is what tells a search over that page so.
+                let lost_image = match doc.inner().get_object(placement.object) {
+                    Ok(lopdf::Object::Dictionary(d)) => d
+                        .get(b"Subtype")
+                        .and_then(lopdf::Object::as_name)
+                        .is_ok_and(|s| s == b"Image"),
+                    _ => false,
+                };
+                if lost_image {
+                    unresolved_xobjects = unresolved_xobjects.saturating_add(1);
+                } else {
+                    undescended_xobjects = undescended_xobjects.saturating_add(1);
+                }
                 continue;
             };
             // **The capability gates the NODE, not the count above it**, and the order is the

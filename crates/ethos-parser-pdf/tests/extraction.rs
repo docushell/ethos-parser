@@ -3184,6 +3184,85 @@ fn a_drawn_form_xobject_is_counted_on_the_document_that_drew_it() {
     }
 }
 
+/// **An image that did not load as a stream is counted unresolved, not called a form** (tracker
+/// I17). A direct `/Length` that misses the data makes `lopdf` load the object as its bare
+/// dictionary, and a renderer that finds `endstream` still draws the image; it was declared a
+/// form this profile did not descend into, on a page that draws no form. A form lost the same way
+/// is still one, and still counted on its page.
+#[test]
+fn an_image_that_did_not_load_as_a_stream_is_counted_unresolved_not_as_a_form() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let xobject = |subtype: &str, length: usize| {
+        [
+            format!(
+                "<< /Type /XObject /Subtype /{subtype} /Width 2 /Height 2 /ColorSpace /DeviceGray \
+                 /BitsPerComponent 8 /BBox [0 0 1 1] /Length {length} >>\nstream\n"
+            )
+            .as_bytes(),
+            b"ABCD\nendstream",
+        ]
+        .concat()
+    };
+    let document = |subtype: &str, length: usize| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /XObject << \
+               /X1 5 0 R >> /Font << /F1 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(b"q 50 0 0 50 10 10 cm /X1 Do Q BT /F1 12 Tf 10 100 Td (Caption) Tj ET"),
+            xobject(subtype, length),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        ])
+    };
+    let declared = |a: &ExtractArtifact, code: &str, scope| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == code && l.scope == scope)
+            .map(|l| l.detail.clone())
+    };
+    let (document_scope, page_one) = (
+        ethos_parser_core::LimitationScope::Document,
+        ethos_parser_core::LimitationScope::Page(1),
+    );
+    let forms = ethos_parser_core::codes::FORM_XOBJECTS_NOT_DESCENDED;
+    let unresolved = ethos_parser_core::codes::XOBJECT_NAME_UNRESOLVED;
+
+    // Four bytes under a `/Length` of 2: the image is lost, and counted as what it is.
+    let lost = extracted(&document("Image", 2)).expect("reads");
+    assert_eq!(runs(&lost)[0].text, "Caption");
+    assert_eq!(lost.pages[0].images.len(), 0);
+    assert_eq!(
+        declared(&lost, forms, document_scope),
+        None,
+        "no form is drawn"
+    );
+    assert_eq!(declared(&lost, forms, page_one), None);
+    let detail = declared(&lost, unresolved, document_scope)
+        .expect("the page drew something this reader cannot say");
+    assert!(detail.starts_with("1 `Do` operator(s)"), "{detail}");
+
+    // The control: the same bytes under the right `/Length` are an image node, and neither count.
+    let read = extracted(&document("Image", 4)).expect("reads");
+    assert_eq!(read.pages[0].images.len(), 1);
+    assert_eq!(declared(&read, unresolved, document_scope), None);
+    assert_eq!(declared(&read, forms, document_scope), None);
+
+    // A form lost the same way is still a form whose text is absent from its page.
+    let form = extracted(&document("Form", 2)).expect("reads");
+    assert_eq!(declared(&form, unresolved, document_scope), None);
+    let detail = declared(&form, forms, page_one).expect("counted on its page");
+    assert!(detail.starts_with("1 form XObject(s)"), "{detail}");
+}
+
 /// **A composite font's widths come from its descendant, and the CID is the key** (v2.2-S3).
 ///
 /// `load_widths` read `/Widths` and `/FirstChar` — the SIMPLE font shape. PDF 32000-1 §9.7.4.3
