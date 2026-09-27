@@ -228,7 +228,7 @@ fn object_id_at(bytes: &[u8], at: usize) -> Option<lopdf::ObjectId> {
 }
 
 /// `lopdf`'s `space`: white space and `%` comments, a comment running to its end of line.
-fn space(bytes: &[u8], mut i: usize) -> usize {
+pub(crate) fn space(bytes: &[u8], mut i: usize) -> usize {
     loop {
         match bytes.get(i) {
             Some(b' ' | b'\t' | b'\n' | b'\r' | b'\0' | b'\x0c') => i += 1,
@@ -242,7 +242,7 @@ fn space(bytes: &[u8], mut i: usize) -> usize {
 }
 
 /// The leading ASCII digits at `i` as a number, and where they end.
-fn uint(bytes: &[u8], i: usize) -> Option<(u64, usize)> {
+pub(crate) fn uint(bytes: &[u8], i: usize) -> Option<(u64, usize)> {
     let digits = bytes
         .get(i..)?
         .iter()
@@ -256,7 +256,7 @@ fn uint(bytes: &[u8], i: usize) -> Option<(u64, usize)> {
 }
 
 /// Where `token` ends, if it starts at `i`.
-fn after(bytes: &[u8], i: usize, token: &[u8]) -> Option<usize> {
+pub(crate) fn after(bytes: &[u8], i: usize, token: &[u8]) -> Option<usize> {
     bytes
         .get(i..)?
         .starts_with(token)

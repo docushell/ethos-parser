@@ -1660,6 +1660,67 @@ fn a_real_printed_past_the_64_bit_integers_is_refused_by_both_writers() {
     }
 }
 
+/// **A stream `lopdf` read without its data is refused by both writers** (tracker I19). Data that
+/// does not end at `endstream` where `/Length` says it does makes `lopdf` load the object as its
+/// bare dictionary, and both writers copied that dictionary alone: Ghostscript's bounding box of
+/// `d2_image_length_short.pdf` reaches y = 300 on the source and y = 697 on `tag`'s output.
+#[test]
+fn a_stream_read_without_its_data_is_refused_by_both_writers() {
+    // 1,234 bytes whose `/Length` is overwritten in place, so no offset moves.
+    let with_length = |length: &[u8]| {
+        let mut bytes = edited("leading-gap-two-blocks", |doc| {
+            doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject",
+                    "Subtype" => "Image",
+                    "Width" => 1234,
+                    "Height" => 1,
+                    "ColorSpace" => "DeviceGray",
+                    "BitsPerComponent" => 8,
+                },
+                vec![0x7f; 1234],
+            ));
+        });
+        let from = b"/Length 1234";
+        let at: Vec<usize> = (0..bytes.len() - from.len())
+            .filter(|&i| bytes[i..].starts_with(from))
+            .collect();
+        assert_eq!(at.len(), 1, "the image's own /Length, once");
+        bytes[at[0]..at[0] + from.len()].copy_from_slice(length);
+        bytes
+    };
+
+    let lost = with_length(b"/Length 1200");
+    let loaded = lopdf::Document::load_mem(&lost).expect("lopdf loads it");
+    let (number, generation) = loaded
+        .objects
+        .iter()
+        .find(|(_, o)| matches!(o, Object::Dictionary(d) if d.has_type(b"XObject")))
+        .map(|(id, _)| *id)
+        .expect("the control: lopdf holds the image as its bare dictionary");
+    for (writer, result) in both_writers(&lost) {
+        match result {
+            Err(EngineError::Unsupported { what, detail }) if what == writer => assert_eq!(
+                detail,
+                format!(
+                    "object {number} {generation} R is written as a stream and was read as its \
+                     bare dictionary, without its data: its /Length does not end at \
+                     `endstream`, or its `stream` keyword is malformed, and a rewritten copy \
+                     would carry the dictionary alone"
+                ),
+                "{writer}"
+            ),
+            Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+            Err(other) => panic!("{writer}: expected a refusal, got {other}"),
+        }
+    }
+
+    // The same bytes under the right `/Length` are a stream, and are written.
+    for (writer, result) in both_writers(&with_length(b"/Length 1234")) {
+        result.unwrap_or_else(|e| panic!("{writer}: {e}"));
+    }
+}
+
 /// **Object numbers far past the object count are refused by both writers** (review 2026-09-26
 /// N28). `lopdf`'s writer walks every number below the highest, which one object sets: five
 /// objects, one numbered 1,000,000,000, kept `overlay` busy 2.2 s. One object numbered 100,000

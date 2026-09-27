@@ -2670,6 +2670,19 @@ pub(crate) fn refuse_rewrite(doc: &Document, what: &str) -> Result<(), EngineErr
             ),
         });
     }
+    // A stream `lopdf` read without its data (tracker I19): the writer would copy the dictionary
+    // alone, and a renderer draws what the source's data holds.
+    if let Some((number, generation)) = doc.lost_stream() {
+        return Err(EngineError::Unsupported {
+            what: what.to_string(),
+            detail: format!(
+                "object {number} {generation} R is written as a stream and was read as its bare \
+                 dictionary, without its data: its /Length does not end at `endstream`, or its \
+                 `stream` keyword is malformed, and a rewritten copy would carry the dictionary \
+                 alone"
+            ),
+        });
+    }
     // `lopdf`'s writer walks every object number below the document's highest, which a single
     // object can set anywhere up to 2^32: five objects, one of them numbered 1,000,000,000, kept
     // `overlay` busy 2.2 s, and a number four times larger would take four times as long
