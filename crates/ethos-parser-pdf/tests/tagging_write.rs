@@ -1591,6 +1591,75 @@ fn a_real_outside_f32s_range_is_refused_by_both_writers() {
     }
 }
 
+/// **A real the writer would print past the 64-bit integers is refused by both writers** (tracker
+/// I17). `lopdf` prints a real with `Display`, which writes no exponent, so `1e25` is a 26-digit
+/// integer token: qpdf read the object holding one as null, and `overlay` had written it, exit 0.
+/// A real inside the range prints as an integer qpdf and `lopdf` read, and is written.
+#[test]
+fn a_real_printed_past_the_64_bit_integers_is_refused_by_both_writers() {
+    // A placeholder name exactly as long as the real that overwrites it, so no offset moves.
+    let with_real = |token: &str| {
+        let name = "E".repeat(token.len() - 1);
+        let mut bytes = edited("leading-gap-two-blocks", |doc| {
+            let page = first_page(doc);
+            doc.get_dictionary_mut(page)
+                .unwrap()
+                .set("EthosBig", Object::Name(name.clone().into_bytes()));
+        });
+        let from = format!("/{name}");
+        let at = bytes
+            .windows(from.len())
+            .position(|w| w == from.as_bytes())
+            .expect("the placeholder is written");
+        bytes[at..at + from.len()].copy_from_slice(token.as_bytes());
+        bytes
+    };
+
+    let past = with_real(" 10000000000000000000000000.0");
+    let loaded = lopdf::Document::load_mem(&past).unwrap();
+    let (number, generation) = first_page(&loaded);
+    let big = loaded
+        .get_dictionary((number, generation))
+        .unwrap()
+        .get(b"EthosBig")
+        .unwrap()
+        .as_float()
+        .expect("the control: lopdf reads it as a real");
+    assert!(big.is_finite() && big > 9.3e18, "{big}");
+    for (writer, result) in both_writers(&past) {
+        match result {
+            Err(EngineError::Unsupported { what, detail }) if what == writer => assert_eq!(
+                detail,
+                format!(
+                    "object {number} {generation} R holds a real the writer would print as the \
+                     integer `{big}`, past the 64-bit range qpdf reads an integer into"
+                ),
+                "{writer}"
+            ),
+            Ok(written) => panic!("{writer}: expected a refusal, got {} bytes", written.len()),
+            Err(other) => panic!("{writer}: expected a refusal, got {other}"),
+        }
+    }
+
+    // 10^18 is inside the range: written, and read back as the integer it prints as.
+    let inside = with_real(" 1000000000000000000.0");
+    for (writer, result) in both_writers(&inside) {
+        let written = result.unwrap_or_else(|e| panic!("{writer}: {e}"));
+        let back = lopdf::Document::load_mem(&written).expect("the output loads");
+        let value = back
+            .get_dictionary(first_page(&back))
+            .unwrap()
+            .get(b"EthosBig")
+            .unwrap()
+            .clone();
+        assert_eq!(
+            value,
+            Object::Integer(1_000_000_000_000_000_000),
+            "{writer}"
+        );
+    }
+}
+
 /// **Object numbers far past the object count are refused by both writers** (review 2026-09-26
 /// N28). `lopdf`'s writer walks every number below the highest, which one object sets: five
 /// objects, one numbered 1,000,000,000, kept `overlay` busy 2.2 s. One object numbered 100,000
