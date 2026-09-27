@@ -33,6 +33,10 @@ if [[ -z "$want" ]]; then
 fi
 printf 'doc-version: workspace is %s\n' "$want"
 
+# A version: `N.N.N`, or between releases the next MINOR's pre-release, `N.N.N-dev.N`
+# (decision #33) — the dot inside a pre-release is not the sentence's full stop.
+VERSION='[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?'
+
 fail=0
 check() {
   local file="$1" label="$2" pattern="$3"
@@ -52,7 +56,7 @@ check() {
   fi
   while IFS= read -r line; do
     local got
-    got="$(printf '%s' "$line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    got="$(printf '%s' "$line" | grep -oE "$VERSION" | head -1)"
     if [[ "$got" != "$want" ]]; then
       printf '  STALE    %s:%s says %s, workspace is %s\n' \
         "$file" "${line%%:*}" "$got" "$want" >&2
@@ -63,10 +67,10 @@ check() {
   done <<< "$found"
 }
 
-check README.md              'Version N.N.N.'                  '^Version [0-9]+\.[0-9]+\.[0-9]+\.'
-check docs/README.md         '**Version N.N.N.**'              '^\*\*Version [0-9]+\.[0-9]+\.[0-9]+\.\*\*'
-check docs/CAPABILITY.md     'These tables describe N.N.N.'    'These tables describe [0-9]+\.[0-9]+\.[0-9]+\.'
-check packages/node/package.json '"version"'                   '^\s*"version":\s*"[0-9]+\.[0-9]+\.[0-9]+"'
+check README.md              'Version N.N.N.'                  "^Version $VERSION\\."
+check docs/README.md         '**Version N.N.N.**'              "^\\*\\*Version $VERSION\\.\\*\\*"
+check docs/CAPABILITY.md     'These tables describe N.N.N.'    "These tables describe $VERSION\\."
+check packages/node/package.json '"version"'                   "^\\s*\"version\":\\s*\"$VERSION\""
 
 # `packages/python/pyproject.toml` declares `dynamic = ["version"]`, so it has no literal to drift.
 # Recorded here rather than left silent: a reader looking for the Python SDK in this list should
