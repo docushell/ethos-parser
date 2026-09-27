@@ -495,6 +495,7 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     let docx::MainPart {
         runs,
         alternatives_not_read,
+        moves_not_read,
     } = docx::read_runs(&part)?;
 
     let profile = Profile::docx_v0();
@@ -559,12 +560,19 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
         ));
     }
     let unread = docx::unread_text_parts(names);
-    if unread > 0 || alternatives_not_read > 0 {
+    if unread > 0 || alternatives_not_read > 0 || moves_not_read > 0 {
         let mut detail = String::new();
         if unread > 0 {
             detail.push_str(&format!(
                 "{unread} part(s) of this package carry text and were not read — headers, \
                  footers, footnotes, endnotes or comments. "
+            ));
+        }
+        if moves_not_read > 0 {
+            detail.push_str(&format!(
+                "{moves_not_read} `<w:moveFrom>` region(s) holding text were passed over — the \
+                 old place of text a tracked move put elsewhere, which Word shows only with \
+                 changes marked; the text is read once, where its `<w:moveTo>` puts it. "
             ));
         }
         // The same claim `pptx.rs` makes, for the same reason: one phrase written twice for
