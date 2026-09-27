@@ -188,6 +188,24 @@ impl Document {
             });
         }
 
+        // The other half: an object a later revision deleted, which `lopdf` loaded from an older
+        // section because it records no free entry (review 2026-09-26 N06). Read as live, a
+        // deleted comment or redacted text is evidence, and a writer puts it back on the page.
+        let resurrected = crate::freed::resurrected(bytes, &inner);
+        if let Some(id) = resurrected
+            .iter()
+            .find_map(|&n| inner.objects.range((n, 0)..=(n, u16::MAX)).next())
+            .map(|(id, _)| *id)
+        {
+            return Err(EngineError::Malformed {
+                what: "pdf object".into(),
+                detail: format!(
+                    "object {} {} R was deleted by a later revision and read from an earlier one",
+                    id.0, id.1
+                ),
+            });
+        }
+
         let pages = walk_page_tree(&inner)?;
 
         Ok(Self {
