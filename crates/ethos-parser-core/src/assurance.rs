@@ -293,6 +293,15 @@ pub mod codes {
     /// order. The consequence a consumer cannot otherwise see: **a quote copied out of a viewer
     /// matches this text, and a quote typed in logical order does not.**
     pub const RIGHT_TO_LEFT_NOT_REORDERED: &str = "right-to-left-not-reordered";
+    /// Text runs holding `U+FFFD` because a font of the document maps a code to it (review
+    /// 2026-09-26 N21).
+    ///
+    /// **Document-scoped and conditional**, as [`RIGHT_TO_LEFT_NOT_REORDERED`] is: the reader has
+    /// the text in hand. This engine never puts `U+FFFD` in a run itself — a code no mapping names
+    /// drops its run under `broken-font-encoding` — so every one in a run is the document's own
+    /// statement, read as written, and counted because nothing downstream can otherwise tell it
+    /// from a substitution.
+    pub const REPLACEMENT_CHARACTER_IN_TEXT: &str = "replacement-character-in-text";
     /// The document's own declared outline is not read (`docs/29-OUTLINES-SCOPE.md`).
     ///
     /// Partners a **false** [`Capabilities::outlines`], and exists so that

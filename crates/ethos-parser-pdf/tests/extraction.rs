@@ -5641,6 +5641,69 @@ fn an_astral_right_to_left_scalar_is_declared() {
     );
 }
 
+/// **A `U+FFFD` the document's own `/ToUnicode` maps a code to is read and counted** (review
+/// 2026-09-26 N21). It entered the evidence with nothing declared, where nothing downstream can
+/// tell it from a substitution — which this engine never makes.
+#[test]
+fn a_replacement_character_a_font_maps_a_code_to_is_read_and_counted() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |destination: &str| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(b"BT /F1 24 Tf 72 72 Td (AB) Tj ET"),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R >>".to_vec(),
+            stream(
+                format!(
+                    "begincmap 1 begincodespacerange <00> <FF> endcodespacerange 2 beginbfchar \
+                     <41> <0041> <42> <{destination}> endbfchar endcmap"
+                )
+                .as_bytes(),
+            ),
+        ])
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .filter(|l| l.code == ethos_parser_core::codes::REPLACEMENT_CHARACTER_IN_TEXT)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    let a = extracted(&document("FFFD")).expect("reads");
+    assert_eq!(
+        runs(&a)[0].text,
+        "A\u{FFFD}",
+        "read as the document writes it"
+    );
+    let limitation = declared(&a);
+    assert_eq!(limitation.len(), 1, "declared once: {limitation:?}");
+    assert_eq!(
+        limitation[0].scope,
+        ethos_parser_core::LimitationScope::Document
+    );
+    assert!(
+        limitation[0].detail.starts_with("1 text run(s)"),
+        "{}",
+        limitation[0].detail
+    );
+
+    let b = extracted(&document("0042")).expect("reads");
+    assert_eq!(runs(&b)[0].text, "AB");
+    assert!(declared(&b).is_empty(), "no U+FFFD, nothing declared");
+}
+
 // -------------------------------------------------------------------------------------------
 // Outline titles
 // -------------------------------------------------------------------------------------------

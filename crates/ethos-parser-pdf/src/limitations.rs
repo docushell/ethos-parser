@@ -290,8 +290,9 @@ pub fn xref_entry_padded(entries_padded: u32) -> Limitation {
 /// The document-scoped limitation for a font whose encoding could not map every code.
 ///
 /// The runs that could not be decoded are **absent from the artifact**, and their count is here.
-/// Never a substitution character: `U+FFFD` in an evidence artifact is a character the document
-/// does not contain, and downstream nothing can tell it from one that does.
+/// Never a substitution character: a `U+FFFD` this engine put in a run would be a character the
+/// document does not contain, and downstream nothing could tell it from one the document states —
+/// which a font may, and which [`replacement_character_in_text`] counts.
 pub fn broken_font_encoding(runs_dropped: u32, detail: &str) -> Limitation {
     Limitation::document(
         BROKEN_FONT_ENCODING,
@@ -811,6 +812,25 @@ pub fn right_to_left_not_reordered(count: u32) -> Limitation {
              in logical order does not.** Reordering here would put characters in an order no \
              byte of the page states, so the order is reported and this says so instead. The test \
              is a block test, not Unicode's `Bidi_Class`, which this engine does not carry."
+        ),
+    )
+}
+
+/// Text runs holding `U+FFFD` a font of the document maps a code to (review 2026-09-26 N21).
+///
+/// The count is runs, as [`right_to_left_not_reordered`]'s is, because the run is the unit a
+/// citation quotes.
+pub fn replacement_character_in_text(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::REPLACEMENT_CHARACTER_IN_TEXT,
+        format!(
+            "{count} text run(s) hold `U+FFFD` REPLACEMENT CHARACTER because a font of this \
+             document maps a code to it, as a `/ToUnicode` CMap does when it names `<FFFD>` as a \
+             destination. That is the document's own statement and is read as written; the glyph \
+             it stands for is named nowhere this reader looks. This engine never puts `U+FFFD` in \
+             a run itself: a run holding a code no mapping names is omitted and counted under \
+             `broken-font-encoding` instead, so a `U+FFFD` in this artifact's runs is always the \
+             document's."
         ),
     )
 }

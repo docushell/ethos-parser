@@ -1725,17 +1725,28 @@ pub(crate) fn extract_with_positions(
     // deciding whether they APPLY would mean reading what this profile never reads. Here the text
     // is already in hand, so a document that draws no right-to-left scalar says nothing — which
     // is what makes the declaration worth reading when it does appear.
+    //
+    // A `U+FFFD` in a run is counted over the same runs (review 2026-09-26 N21). This engine never
+    // puts one there, so each is a character a font of the document maps a code to: read as
+    // written, and declared, because nothing downstream can otherwise tell it from a substitution.
     {
         let mut rtl_runs: u32 = 0;
+        let mut replacement_runs: u32 = 0;
         for page in &pages {
             for run in &page.runs {
                 if run.text.chars().any(is_right_to_left_block) {
                     rtl_runs = rtl_runs.saturating_add(1);
                 }
+                if run.text.contains('\u{FFFD}') {
+                    replacement_runs = replacement_runs.saturating_add(1);
+                }
             }
         }
         if rtl_runs > 0 {
             limitations.push(lim::right_to_left_not_reordered(rtl_runs));
+        }
+        if replacement_runs > 0 {
+            limitations.push(lim::replacement_character_in_text(replacement_runs));
         }
     }
     if props_by_name > 0 {
