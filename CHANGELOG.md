@@ -3,28 +3,185 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Seven versions are tagged, 0.55.0 through 0.61.0, and five of them carry binaries.** 0.55.0,
+**Eight versions are tagged, 0.55.0 through 0.62.0, and five of them carry binaries.** 0.55.0,
 0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
 Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
 ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
 delivered, unfortunately, as the single `release-bundle.zip` its own notes tell a reader to unzip.
 **0.61.0 is the first to ship those four as five separate assets** — the four archives and
 `SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
-instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.58.0 and
-0.59.0 are tags with no release object**, and little is lost by that: 0.60.0 descends from both, so
-their work is in the binaries above, and a reader who needs one of those two exactly builds it from
-its tag under the pinned toolchain. Every earlier number is in-tree only. Nothing is on crates.io,
-npm or PyPI.
+instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.62.0 has
+no release object yet**: its tag push builds the four archives and the manifest, and publishing them
+is the owner's separate act. **0.58.0 and 0.59.0 are tags with no release object**, and little is
+lost by that: 0.60.0 descends from both, so their work is in the binaries above, and a reader who
+needs one of those two exactly builds it from its tag under the pinned toolchain. Every earlier
+number is in-tree only. Nothing is on crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
-working, not a regression.
+working, not a regression. Between releases `main` carries the next version's pre-release
+(`X.Y.0-dev.1`, decision #33), so no build of it claims a released number.
 
 Entries through 0.1.0 are grouped by **milestone** rather than by version, because a milestone was
 the unit of work that had acceptance criteria. The per-slice reasoning behind each entry lives in the
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.62.0] — two adversarial reviews answered, and a page the cut cannot divide read top to bottom
+
+**A MINOR, because readers, writers and the reading order changed.** 0.61.0 was reviewed
+adversarially twice, on 2026-09-25 (47 findings) and 2026-09-26 (80 more), and most of this version
+is the answer. The PDF reader refuses, by name, what `lopdf` would have it read otherwise than a
+renderer draws it, or read in part. The office readers read characters their files state and used
+to drop or weld together. Both writers refuse a rewrite that would break what they copy. Four things
+that were silent are declared. One ordering change rides with them: `gutter-columns-v4` reads a page
+the vertical cut does not divide down its leading-gap slabs.
+
+**On real documents most of it moves nothing.** The reader's refusals are of malformed and crafted
+inputs: on the corpus, `extract`, `classify` and `tag` keep every exit code, and `overlay` refuses
+only the three signed IRS forms whose signature it used to invalidate. Against 0.61.0 over
+OmniDocBench v1_0's 981 documents, **4 are newly refused** — each draws with a composite font whose
+`/Encoding` is an embedded CMap and which has no `/ToUnicode`, so this profile has no source for its
+text — and **1 that 0.61.0 refused now reads**, a document listing a `/GBK-EUC-H` font none of its
+text uses. What moves on the 426-input corpus: `gutter-columns-v4`'s order on 67 documents, three
+new declarations, one RTF fixture whose declared Windows-1252 bytes now read, two reworded
+sentences every PDF artifact carries, those three `overlay` refusals, and the identity every
+version moves.
+
+### What `lopdf` reads otherwise is refused, by name
+
+`lopdf` 0.44 is lenient where a renderer is not, and where it is lenient this reader emitted a
+`complete` artifact of what `lopdf` happened to hold. Each shape below now refuses, naming the page,
+the stream or the object:
+
+- **An object the cross-reference table lists in use and `lopdf` did not load** — dropped for one
+  stray `)`, or a stream whose `/Length` resolves nowhere — refuses at open. A lost `/ToUnicode`
+  extracted `ABC` through the base encoding where Ghostscript draws `ZYX`. 0 false refusals on the
+  review's 1,316 corpus pairs. An undefined `/Contents` reference and an explicit `null` still read
+  as the nothing §7.3.10 makes them.
+- **An object a later revision deleted.** `lopdf` records no free entry, so an older section's
+  in-use entry resurrected it: a deleted annotation extracted as evidence, and `tag` drew it again.
+  The cost is stated: a legitimate update that replaces an object and frees the old one is refused
+  too.
+- **A content stream whose filter does not decode**, a `/ToUnicode` likewise, and a `FlateDecode`
+  anywhere in a chain whose deflate data stops early. `lopdf` hands back the raw or partial bytes as
+  a success. `/Filter []` names no filter, so it reads the stream's own bytes, where it used to read
+  nothing.
+- **A page tree that is not a tree** — a kid named twice, a node naming itself, a kid of no type.
+  One self-naming node gave 3, 8 and 53 pages as unrelated objects were added. A legal 300-level
+  chain reads, as `get_pages` reads it.
+- **A page read otherwise than a renderer reads it**: a string cut by the end of a `/Contents`
+  stream, and a filtered inline image whose data holds a false `EI` window. The first extracted
+  `Amount due` where Ghostscript draws nothing; the second, `HIDDEN FROM VIEWERS`, which `tag` then
+  drew.
+- **Work that grew without a bound.** A structure tree referencing one subtree from many places ran
+  past 60 s at 2,953 bytes; 100 `bfrange` rows reached 461 MiB; 32 fonts naming one CMap parsed it
+  32 times, 2,456 MB, and now parse it once, 81 MB, under one ceiling per document; a 454-byte file
+  whose xref `/W` asks for 64 TiB aborted every command and ended an MCP session. Each is bounded
+  now, and past its bound refuses as `resource_limit`.
+- **An encrypted document whose object streams nest**, which `lopdf` resolved in `HashMap` order:
+  20 runs of one binary gave two different artifacts.
+
+Two more are not refusals: a NaN path coordinate no longer panics, and an image `lopdf` loaded
+without its stream — a `/Length` that misses the data — is counted as an unresolved `Do`, where it
+was declared a form not descended on a page that draws no form.
+
+**A font this profile cannot decode refuses where text is drawn with it**, not where a page lists
+it — the one OmniDocBench document above.
+
+### Characters the file states, read
+
+- **RTF.** A backslash before a line break is `\par`, which is how Cocoa ends every paragraph: every
+  TextEdit or `textutil` file came out as one paragraph, and now reads as its own. A byte a stream
+  declares Windows-1252 (`\ansicpg1252`, in an ANSI-charset font) is that character, so `Café naïve
+  Müller — €5` no longer reads `Caf nave Mller  5`; any other byte above 0x7F is counted as before.
+  A line break is no longer one of the fallback characters a `\ucN` skips.
+- **DOCX.** A run's `<w:tab/>`, `<w:br/>`, `<w:cr/>` and `<w:noBreakHyphen/>` are the characters
+  they state (`Line oneLine two` read one word across the break). A CDATA section in `<w:t>` is
+  read. A tracked move's text is read once, where `<w:moveTo>` puts it; its old place in
+  `<w:moveFrom>` is counted. A self-closing `<mc:Choice/>` is taken as a long one is, and a
+  self-closing `<w:p/>` or `<w:r/>` is counted, so an address no longer depends on how the file was
+  serialized.
+- **XLSX.** `_xHHHH_` escapes are the characters they name, decoded once.
+- **Every XML reader** normalises line ends as XML 1.0 §2.11 requires; a `<w:t>` holding CRLF read
+  `a\r\nb`.
+- **PDF.** A CMap's `%` comment is not a mapping, an uncarried `/BaseEncoding` is refused as the
+  same name under `/Encoding` is, `/1` is not a glyph name for `1`, and a composite font with an
+  embedded CMap and no `/ToUnicode` is refused rather than read a byte at a time. An outline title
+  is decoded by the strict rule throughout: `0xA0`, `0xAD`, half a UTF-16 unit, a language escape
+  and a UTF-16LE byte-order mark leave it absent and counted; UTF-8 behind its mark reads as UTF-8;
+  an indirect `/Title` is read.
+
+### Four silences, now declared
+
+- **`form-xobjects-not-descended` is on the page that drew the form**, the first page-scoped
+  limitation this engine emits, and `page_binding_status` answers `CapabilityLimited` for that page:
+  a search that finds nothing there has not observed that the page says nothing. 49 corpus documents
+  gain 52 such entries.
+- **`replacement-character-in-text`** counts runs holding a `U+FFFD` the document's own font maps a
+  code to — read as written, and counted because nothing else tells it from a substitution this
+  engine never makes. 11 corpus documents, 275 runs.
+- **`actual-text-not-read`** counts marked-content sequences and structure elements carrying
+  `/ActualText`, `/Alt` or `/E`: 57 corpus documents, 378 sequences and 465 elements. Reading
+  `/ActualText` would replace drawn text and is its own decision; declaring it is not.
+- **`right-to-left-not-reordered`** also covers the astral right-to-left ranges, so Adlam or
+  Imperial Aramaic no longer declares nothing.
+
+### The writers refuse what a rewrite would break
+
+`tag` and `overlay` re-serialise the whole document, and on each shape below at least one of them
+wrote a broken copy and exited 0. Both now refuse before any work: a document the empty user
+password opened (written back in the clear, its permissions gone); a signed one (`overlay`
+invalidated the usage-rights signature on three IRS forms); a real `lopdf` read as infinite or would
+print as an integer past 2^63 (qpdf refused, or read the object as null); object numbers far past
+the object count (one object numbered 10^9 kept `overlay` busy 2.2 s); and a stream `lopdf` read as
+its bare dictionary, whose image Ghostscript draws in the source and not in the copy. `tag`'s
+planner is no longer quadratic in a page's blocks: 32,000 blocks, 6.63 s to 1.02 s, byte-identical.
+
+### A page the cut cannot divide is read top to bottom
+
+`gutter-columns-v4` (decision #32). Where the first vertical cut finds no gutter, the page is read
+down its leading-gap slabs, content-stream order kept inside each. On opendataloader-bench NID moves
+0.8714 → 0.8810; 49 documents rise and 4 fall, three of the four being pages set in columns the cut
+cannot divide. Over the 426-input corpus 67 documents change run order on 196 pages, and 3,906 of
+those pages' 219,393 runs move. No text, locator, box, table cell or inferred heading changes; node
+ids, ordinals and block numbers follow the order.
+
+### The CLI and the library
+
+A failed write to stdout exits 2, not 0, and a closed stderr no longer aborts the process. `verify`
+no longer runs a binary found relative to the working directory — whoever controlled a parent
+directory chose the program. `extract --max-pages` is refused for office bytes, which have no page
+budget, instead of being ignored. The library refuses to extract under a profile whose `xref_repair`
+is not the one the document was opened under, and to seal a representation under a profile other
+than the extract's.
+
+### Faster, and no byte moves
+
+Canonical serialization writes members in place and permutes them only when keys arrive unsorted,
+strings are copied a run at a time, and `extract` streams its envelope instead of assembling it:
+nist-sp-800-53Ar5 12.89 → 5.61 s and 3,824.6 → 3,059.9 MiB peak, nist-sp-800-161r1 3.65 → 1.59 s.
+2,872 of 2,872 comparisons identical.
+
+### Identity
+
+**Between releases `main` carried `0.62.0-dev.1`** (decision #33): review N02 found public `main`
+signing different DOCX bytes under the released 0.61.0 identity. This release drops `-dev.1`, and
+the next opens as `0.63.0-dev.1` right after the tag.
+
+**Eight rule ids move here**, each owed by a reader change made since 0.61.0 and deferred to the
+release:
+`declared-font-codes-v2`, `outlines-v2`, `docx-document-order-v2`, `docx-wt-verbatim-v3`,
+`xlsx-stored-value-verbatim-v3`, `pptx-at-verbatim-v3`, `rtf-stated-characters-v2` and
+`epub-xhtml-blocks-verbatim-v2`. Each id's documentation says what moved under it.
+`gutter-columns-v4` moved in its own commit. `profile_sha256` is `sha256:6644906f…`.
+
+**No schema version moves**: no key is added to or removed from any artifact, so
+`REPRESENTATION_SCHEMA_VERSION` stays 0.7.0 and `EXTRACT_SCHEMA_VERSION` 0.5.0. The two new codes
+are values inside an existing key.
 
 ---
 

@@ -85,7 +85,7 @@ pub struct ExtractArtifact {
     /// A page missing from this list was not read; [`Assurance::page_states`] says which of the
     /// reasons applied. Its absence is never evidence that the page holds no text.
     pub pages: Vec<PageExtract>,
-    /// The outline the catalog declares, in `/First`/`/Next` order (`outlines-v1`).
+    /// The outline the catalog declares, in `/First`/`/Next` order (`outlines-v2`).
     ///
     /// **Document-level, unlike `tables`, which ride their page.** An outline is one tree over
     /// the whole catalog and an entry names a page rather than belonging to one.
@@ -1329,7 +1329,7 @@ pub(crate) fn extract_with_positions(
     // borrows (`docs/04-ARCHITECTURE.md` §2.1). `None` means the catalog declares no
     // `/StructTreeRoot` — an untagged document, which is an answer rather than a failure.
     let structure = crate::structure::read(doc.inner())?;
-    // `outlines-v1`. The other declaration this document may carry, read here for the same
+    // `outlines-v2`. The other declaration this document may carry, read here for the same
     // reason the tree is: it is the author's statement, not an inference over the page, and a
     // cycling chain is refused by name rather than followed or truncated.
     let outline = crate::outlines::read(doc)?;

@@ -216,8 +216,8 @@ const CORE: &[&str] = &[
     "OutlineRecord",
     "OfficeRunAttributes",
     "NOT_RUN",
-    "DOCX_READING_ORDER_RULE_V1",
-    "DOCX_TEXT_CODE_RULE_V2",
+    "DOCX_READING_ORDER_RULE_V2",
+    "DOCX_TEXT_CODE_RULE_V3",
     // v2-S3. The third format's address and its facts. A cell is not a run: it has a value type
     // and it may have a formula, and neither is a thing a `<w:r>` has.
     "XlsxLocator",
@@ -225,13 +225,13 @@ const CORE: &[&str] = &[
     "CellValueType",
     "CellTextSource",
     "XLSX_READING_ORDER_RULE_V1",
-    "XLSX_TEXT_CODE_RULE_V2",
+    "XLSX_TEXT_CODE_RULE_V3",
     // v2-S4. The third format's address and its facts. A slide run is neither a cell nor a
     // `<w:r>`: it has a shape, and DrawingML has no `xml:space` to record.
     "PptxLocator",
     "OfficeSlideRunAttributes",
     "PPTX_READING_ORDER_RULE_V1",
-    "PPTX_TEXT_CODE_RULE_V2",
+    "PPTX_TEXT_CODE_RULE_V3",
     // v2-S5. The fifth format's address and its facts, and the first that is not OOXML. The
     // address is a BLOCK rather than a run, because ODF paragraphs often carry no inline element
     // to address; the fact is which of ODF's two blocks it was, because ODF has no `xml:space` to
@@ -270,7 +270,7 @@ const CORE: &[&str] = &[
     "RtfParagraphAttributes",
     "RtfParagraphBreak",
     "RTF_READING_ORDER_RULE_V1",
-    "RTF_TEXT_CODE_RULE_V1",
+    "RTF_TEXT_CODE_RULE_V2",
     // v2-S9. The ninth format's address and its facts. The address names a **part**, so it takes
     // the bijection half of the shape v2-S8 split apart — and the part comes from the package
     // document's spine rather than from the archive's own ordering, which is `opc.rs`'s rule in
@@ -280,7 +280,7 @@ const CORE: &[&str] = &[
     "EpubLocator",
     "EpubBlockAttributes",
     "EPUB_READING_ORDER_RULE_V1",
-    "EPUB_TEXT_CODE_RULE_V1",
+    "EPUB_TEXT_CODE_RULE_V2",
     "PdfLocator",
     "PdfObjectLocator",
     "PdfTaggedLocator",
@@ -347,7 +347,7 @@ const CORE: &[&str] = &[
     "TABLE_DETECTION_V4",
     "TABLE_DETECTION_V5",
     "TABLE_DETECTION_V6",
-    "TEXT_CODE_RULE_V1",
+    "TEXT_CODE_RULE_V2",
     "TableCellPosition",
     "TableCellRecord",
     "TableDetection",

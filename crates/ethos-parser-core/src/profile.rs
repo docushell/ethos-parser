@@ -213,7 +213,15 @@ pub const OBSERVATION_RULE_V1: &str = "page-observations-v1";
 /// - that a simple font's width is one byte regardless of any CMap it carries
 /// - that a composite font's width comes, **for now**, from its `/ToUnicode` codespace, declared
 ///   as `codes::COMPOSITE_FONT_CODES_FROM_TOUNICODE` because `/Encoding` CMaps are not parsed
-pub const TEXT_CODE_RULE_V1: &str = "declared-font-codes-v1";
+///
+/// v2 (0.62.0): what counts as text narrows where v1 read characters no renderer draws (review
+/// 2026-09-26). A `/ToUnicode` CMap's `%` comment runs to its end of line and maps nothing; a
+/// `/BaseEncoding` this profile does not carry is refused, as the same name under `/Encoding` is,
+/// rather than read as StandardEncoding; a one-character glyph name resolves only when it is a
+/// letter, so `/1` in `/Differences` is not `1` (N38); and a composite font whose `/Encoding` is an
+/// embedded CMap and which carries no `/ToUnicode` is refused rather than read one byte at a time
+/// (N16). The id moves because the text it names moves.
+pub const TEXT_CODE_RULE_V2: &str = "declared-font-codes-v2";
 
 /// The **ruled** table-detection rule: grids reconstructed from painted rectangles.
 ///
@@ -514,7 +522,13 @@ pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 /// own, **never renumbered** — and which destination forms resolve: an explicit array, a name or
 /// byte string through `/Names`→`/Dests` or the catalog's older `/Dests`, and `/A` with `/GoTo`.
 /// Any of those changing moves this id and the profile hash with it.
-pub const OUTLINE_RULE_V1: &str = "outlines-v1";
+///
+/// v2 (0.62.0): a title is decoded by the strict rule throughout (review 2026-09-26 N17, tracker
+/// I17). `0xA0`, `0xAD`, half a UTF-16 code unit, a language escape and a UTF-16LE byte-order mark
+/// leave the title absent and counted rather than guessed; a UTF-8 title behind its byte-order mark
+/// (ISO 32000-2 §7.9.2.2.1) reads as UTF-8; and a `/Title` held in an indirect object is read where
+/// it points. The walk, the depth and the destinations are v1's.
+pub const OUTLINE_RULE_V2: &str = "outlines-v2";
 
 /// The rule that builds a text run's box — contract §5.3, §6.
 ///
@@ -927,11 +941,15 @@ pub const NOT_RUN: &str = "not-run-for-this-format";
 /// **Not a rule that decides anything.** OOXML states its own order; this engine reads runs in the
 /// order the part lists them and does no column detection, no sorting and no grouping. The id
 /// exists so an artifact says which order it was read in, the way every other rule id does.
-pub const DOCX_READING_ORDER_RULE_V1: &str = "docx-document-order-v1";
+///
+/// v2 (0.62.0): a self-closing `<w:p/>` or `<w:r/>` is counted as its long form is, so a
+/// paragraph's or a run's ordinal no longer depends on how the file was serialized (review
+/// 2026-09-25 F19). The order is v1's; the addresses it hands out move.
+pub const DOCX_READING_ORDER_RULE_V2: &str = "docx-document-order-v2";
 
 /// v2-S2's DOCX text rule: the characters `<w:t>` carries, verbatim.
 ///
-/// The DOCX counterpart to `declared-font-codes-v1`, and a much smaller claim: OOXML text is
+/// The DOCX counterpart to `declared-font-codes-v2`, and a much smaller claim: OOXML text is
 /// already Unicode, so there is no glyph-code-to-scalar step to get wrong and no ligature caveat
 /// to declare.
 /// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
@@ -940,12 +958,17 @@ pub const DOCX_READING_ORDER_RULE_V1: &str = "docx-document-order-v1";
 /// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
-pub const DOCX_TEXT_CODE_RULE_V2: &str = "docx-wt-verbatim-v2";
+/// v3 (0.62.0): a run's stated `<w:tab/>`, `<w:br/>`, `<w:cr/>` and `<w:noBreakHyphen/>` are the
+/// tab, line feed and U+2011 they state (review 2026-09-26 N04); a self-closing `<mc:Choice/>` is
+/// taken as a long one is (N36); line ends are normalised as XML 1.0 §2.11 requires (N37); a CDATA
+/// section in `<w:t>` is read (tracker I17); and the text of a `<w:moveFrom>` region is passed over
+/// and counted, read once where its `<w:moveTo>` puts it (N18).
+pub const DOCX_TEXT_CODE_RULE_V3: &str = "docx-wt-verbatim-v3";
 
 /// v2-S3's XLSX reading order: sheets in the order `xl/workbook.xml` lists them, cells in the
 /// order their worksheet part lists them.
 ///
-/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V1`] is
+/// **Not a rule that decides anything**, for the same reason [`DOCX_READING_ORDER_RULE_V2`] is
 /// not. The workbook states its own sheet order and each sheet states its own cell order; this
 /// engine follows both and sorts nothing. In particular it does **not** re-order cells into
 /// row-major address order — a sheet whose part lists `B1` before `A1` is read that way, because
@@ -964,7 +987,10 @@ pub const XLSX_READING_ORDER_RULE_V1: &str = "xlsx-workbook-then-sheet-order-v1"
 /// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
-pub const XLSX_TEXT_CODE_RULE_V2: &str = "xlsx-stored-value-verbatim-v2";
+/// v3 (0.62.0): a SpreadsheetML `_xHHHH_` escape (ECMA-376 `ST_Xstring`) is the character it
+/// names, decoded once (review 2026-09-26 N15), and line ends are normalised as XML 1.0 §2.11
+/// requires (N37).
+pub const XLSX_TEXT_CODE_RULE_V3: &str = "xlsx-stored-value-verbatim-v3";
 
 /// v2-S4's PPTX reading order: slides in the order `ppt/presentation.xml` lists them, shapes and
 /// runs in the order each slide part lists them.
@@ -978,7 +1004,7 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 
 /// v2-S4's PPTX text rule: the characters `<a:t>` carries, verbatim.
 ///
-/// The DrawingML counterpart to `docx-wt-verbatim-v2`, and the same small claim: the text is
+/// The DrawingML counterpart to `docx-wt-verbatim-v3`, and the same small claim: the text is
 /// already Unicode, so there is no glyph-code step to get wrong. **No placeholder inheritance is
 /// resolved**: text that a slide layout or master would supply is not substituted in, because
 /// this reader did not read those parts and a substituted string is not one the slide stated.
@@ -988,7 +1014,8 @@ pub const PPTX_READING_ORDER_RULE_V1: &str = "pptx-presentation-then-slide-order
 /// attributes carry. Named entities beyond the five predefined stay refused: `&nbsp;`
 /// is an HTML name an XML parser without a DTD cannot resolve. The id moves because
 /// the behaviour it names moves: a document this rule refused at v1 now reads.
-pub const PPTX_TEXT_CODE_RULE_V2: &str = "pptx-at-verbatim-v2";
+/// v3 (0.62.0): line ends are normalised as XML 1.0 §2.11 requires (review 2026-09-26 N37).
+pub const PPTX_TEXT_CODE_RULE_V3: &str = "pptx-at-verbatim-v3";
 
 /// v2-S5's ODT reading order: paragraphs in the order `content.xml` lists them.
 ///
@@ -1052,7 +1079,7 @@ pub const ODP_READING_ORDER_RULE_V1: &str = "odp-content-document-order-v1";
 /// `<text:s text:c="n">` is n spaces, `<text:tab/>` is a tab and `<text:line-break/>` is a line
 /// feed. **No placeholder inheritance is resolved**: text a master page or a presentation layout
 /// would supply is not substituted in, because this reader did not read those and a substituted
-/// string is not one the draw page stated. That is [`PPTX_TEXT_CODE_RULE_V2`]'s claim in ODF's
+/// string is not one the draw page stated. That is [`PPTX_TEXT_CODE_RULE_V3`]'s claim in ODF's
 /// spelling, and it is why a slide whose title lives only on its master reads as having none.
 /// v2 (0.38.0): numeric character references resolve. `&#233;` is a scalar written
 /// another way (XML 1.0 §4.1, no DTD required), and the hardened resolver the EPUB
@@ -1082,9 +1109,12 @@ pub const RTF_READING_ORDER_RULE_V1: &str = "rtf-stream-document-order-v1";
 /// **Any other `\'hh` above 0x7F is declared, never guessed.** Its meaning depends on a code page
 /// this reader does not carry a table for, so it contributes no character and is counted instead.
 /// Emitting a Latin-1 character for it would be mojibake presented as a success, which is the
-/// failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value. The id moves with the
-/// release that ships the change (decision #33).
-pub const RTF_TEXT_CODE_RULE_V1: &str = "rtf-stated-characters-v1";
+/// failure `docs/01-CONTRACT.md` §5.2 calls worse than an absent value.
+///
+/// v2 (0.62.0): a backslash before a line break is `\par`, which is how Cocoa ends every paragraph
+/// (review 2026-09-26 N01); a carriage return or line feed is not one of the fallback characters a
+/// `\ucN` skips (N45); and a `\'hh` under a declared `\ansicpg1252` is read as above (N03).
+pub const RTF_TEXT_CODE_RULE_V2: &str = "rtf-stated-characters-v2";
 
 /// v2-S9's EPUB reading order: **the spine**, then each document's own order.
 ///
@@ -1118,7 +1148,10 @@ pub const EPUB_READING_ORDER_RULE_V1: &str = "epub-spine-then-document-order-v1"
 /// insert generated text through `::before`; none of that is read, so the text here is what the
 /// document *states* rather than what a reading system would display. `<br/>` is a line feed
 /// because the element states one.
-pub const EPUB_TEXT_CODE_RULE_V1: &str = "epub-xhtml-blocks-verbatim-v1";
+///
+/// v2 (0.62.0): line ends are normalised as XML 1.0 §2.11 requires before the whitespace rule runs,
+/// so a `<pre>` written with CRLF reads LF (review 2026-09-26 N37).
+pub const EPUB_TEXT_CODE_RULE_V2: &str = "epub-xhtml-blocks-verbatim-v2";
 
 /// The resolution page rasters are emitted at, or a declared reason there are none (v1-S6).
 ///
@@ -1369,7 +1402,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// The rule that read the declared outline, or [`NOT_RUN`].
     ///
-    /// See [`OUTLINE_RULE_V1`]. Its own field rather than a fold into `struct_tree_rule`, for
+    /// See [`OUTLINE_RULE_V2`]. Its own field rather than a fold into `struct_tree_rule`, for
     /// the reason the heading rule is its own: a tree and an outline are two declarations, read
     /// by two rules, and one id covering both could not say which of them moved.
     pub outline_rule: String,
@@ -1432,7 +1465,7 @@ pub struct Profile {
     pub font_metrics_data_version: String,
     /// Version id of the character-code rule in force. New at v1-S6.1.
     ///
-    /// See [`TEXT_CODE_RULE_V1`]. Distinct from [`CMAP_DATA_VERSION`], which names the vendored
+    /// See [`TEXT_CODE_RULE_V2`]. Distinct from [`CMAP_DATA_VERSION`], which names the vendored
     /// encoding *tables*: this names how a string is divided into codes before any table is
     /// consulted, and the two can move independently.
     pub text_code_rule: String,
@@ -1466,7 +1499,7 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V4.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
-            outline_rule: OUTLINE_RULE_V1.to_string(),
+            outline_rule: OUTLINE_RULE_V2.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
             markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V10.to_string(),
@@ -1475,7 +1508,7 @@ impl Default for Profile {
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
-            text_code_rule: TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: TEXT_CODE_RULE_V2.to_string(),
             observation_rule: OBSERVATION_RULE_V1.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
@@ -1551,7 +1584,7 @@ impl Profile {
                 stroke_ruled: NOT_RUN.into(),
                 tagged: NOT_RUN.into(),
             },
-            reading_order_rule: DOCX_READING_ORDER_RULE_V1.to_string(),
+            reading_order_rule: DOCX_READING_ORDER_RULE_V2.to_string(),
             struct_tree_rule: NOT_RUN.into(),
             outline_rule: NOT_RUN.into(),
             text_box_rule: NOT_RUN.into(),
@@ -1562,7 +1595,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
-            text_code_rule: DOCX_TEXT_CODE_RULE_V2.to_string(),
+            text_code_rule: DOCX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1631,7 +1664,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
-            text_code_rule: XLSX_TEXT_CODE_RULE_V2.to_string(),
+            text_code_rule: XLSX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1694,7 +1727,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
-            text_code_rule: PPTX_TEXT_CODE_RULE_V2.to_string(),
+            text_code_rule: PPTX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1933,7 +1966,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
-            text_code_rule: RTF_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: RTF_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -1995,7 +2028,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
-            text_code_rule: EPUB_TEXT_CODE_RULE_V1.to_string(),
+            text_code_rule: EPUB_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
             ..Self::default()
@@ -2421,7 +2454,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v1","page_budget":{"mode":"unlimited"},"parser_version":"0.62.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v1","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.62.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3364,11 +3397,24 @@ mod tests {
              `parser_version` `0.61.0` -> `0.62.0-dev.1`, and nothing else. Between releases \
              `main` now carries the next MINOR's pre-release, so no build of it claims a \
              released identity: public `main` had signed different DOCX bytes under 0.61.0's \
-             (review 2026-09-26 N02). The release commit drops `-dev.1` and moves this again."
+             (review 2026-09-26 N02). The release commit drops `-dev.1` and moves this again.\n\n\
+             Moved for the 0.62.0 release, `sha256:1719d829…` -> `sha256:6644906f…`: \
+             `parser_version` `0.62.0-dev.1` -> `0.62.0`, and the two rule ids this profile owed \
+             for reader changes made between releases under decision #33 — `text_code_rule` \
+             `declared-font-codes-v1` -> `-v2`, for what counts as text in a CMap comment, an \
+             uncarried `/BaseEncoding`, a digit glyph name and an embedded CMap with no \
+             `/ToUnicode` (review 2026-09-26 N38, N16), and `outline_rule` `outlines-v1` -> \
+             `-v2`, for a title the strict rule now decodes or leaves counted (N17, tracker I17). \
+             The six office rule ids owed move on their own profiles, which are hashed and not \
+             pinned here: `docx-document-order-v1` -> `-v2` (review 2026-09-25 F19), \
+             `docx-wt-verbatim-v2` -> `-v3`, `xlsx-stored-value-verbatim-v2` -> `-v3`, \
+             `pptx-at-verbatim-v2` -> `-v3`, `rtf-stated-characters-v1` -> `-v2` and \
+             `epub-xhtml-blocks-verbatim-v1` -> `-v2`. Each id's own documentation says what \
+             moved under it. No capability and no knob moves."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:1719d82950e7b26886c688e61111124ea88a627b048ccd7673b9462679e37a14"
+            "sha256:6644906f3398e627f34fb9ba9fb5b2c6beb634f366e3cf42afeeb1c7cc5b826c"
         );
     }
 

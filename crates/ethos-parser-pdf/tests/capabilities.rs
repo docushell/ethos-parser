@@ -1181,7 +1181,7 @@ fn limitations_are_sorted_and_free_of_duplicates() {
 }
 
 /// **The declared outline is read as the document declared it** — the proof for
-/// `capabilities.outlines`, rule `outlines-v1` (`docs/29-OUTLINES-SCOPE.md`).
+/// `capabilities.outlines`, rule `outlines-v2` (`docs/29-OUTLINES-SCOPE.md`).
 ///
 /// `nist-sp-800-218` is the smallest outline in the gate corpus and the numbers are the ones
 /// `docs/measurements/outlines/` measured with an independent instrument before any of this was

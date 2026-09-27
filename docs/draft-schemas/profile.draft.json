@@ -247,12 +247,12 @@
       "minLength": 1,
       "description": "Version id of the character-code rule in force (v1-S6.1). Decides how a string operand is divided into character codes: a simple font is one byte per code (PDF 32000-1 9.6), a composite font's width belongs to the CMap its /Encoding names (9.7.5). Distinct from cmap_data_version, which names the vendored encoding TABLES — this names how a string is divided before any table is consulted.",
       "examples": [
-        "declared-font-codes-v1"
+        "declared-font-codes-v2"
       ]
     },
     "outline_rule": {
       "type": "string",
-      "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v1` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
+      "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v2` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
     },
     "text_box_rule": {
       "type": "string",
@@ -419,11 +419,11 @@
       "locate_rule": "locate-scalar-exact-v1",
       "markdown_rule": "markdown-blocks-v10",
       "observation_rule": "page-observations-v1",
-      "outline_rule": "outlines-v1",
+      "outline_rule": "outlines-v2",
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.62.0-dev.1",
+      "parser_version": "0.62.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"
@@ -437,7 +437,7 @@
         "unruled": "unruled-align-v1"
       },
       "text_box_rule": "advance-over-font-envelope-v1",
-      "text_code_rule": "declared-font-codes-v1",
+      "text_code_rule": "declared-font-codes-v2",
       "verifier": {
         "mode": "not_pinned"
       },

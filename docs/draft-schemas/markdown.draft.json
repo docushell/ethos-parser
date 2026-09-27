@@ -237,9 +237,9 @@
       },
       "markdown": "Hello Ethos\n",
       "markdown_rule": "markdown-blocks-v10",
-      "parser_version": "0.61.0",
-      "profile_sha256": "sha256:78fcfe87e98e15faee5916b69a3dcf8d2e941ce7125c399015d5a7a9e250f7e6",
-      "representation_sha256": "sha256:483beb57e058478716e75a7c65de239c98d717140b6648dce18e2e11f079c9f7",
+      "parser_version": "0.62.0",
+      "profile_sha256": "sha256:6644906f3398e627f34fb9ba9fb5b2c6beb634f366e3cf42afeeb1c7cc5b826c",
+      "representation_sha256": "sha256:b39ab9a086966aede0108c5550298ebcfb3bdc3977d7eb39809c3056e07e46ee",
       "schema_version": "1.1.0",
       "source_sha256": "sha256:f2f6ab91c696a4dffd96512456184451634fda22e19face9f636f3b69c6286f3"
     }
