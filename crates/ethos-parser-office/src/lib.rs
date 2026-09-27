@@ -1487,10 +1487,11 @@ fn read_rtf(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
         if document.undecodable_bytes > 0 {
             detail.push_str(&format!(
                 "{} byte(s) above 0x7F could not be decoded: RTF writes them as `\\'hh` and their \
-                 meaning depends on a code page (`\\ansicpg1252`, `\\ansicpg932`) that this \
-                 reader does not read and carries no table for. Each is counted and contributes \
-                 no character, because emitting a Latin-1 character for one would be a guess \
-                 presented as text. ",
+                 meaning depends on a code page. This reader decodes only a byte the stream \
+                 declares Windows-1252 (`\\ansicpg1252`) in a font of the ANSI character set; \
+                 these were under another code page or none, in a font of another character set, \
+                 or undefined in Windows-1252. Each is counted and contributes no character, \
+                 because emitting one would be a guess presented as text. ",
                 document.undecodable_bytes
             ));
         }
