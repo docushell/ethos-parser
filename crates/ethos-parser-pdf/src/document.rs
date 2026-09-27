@@ -71,6 +71,9 @@ pub struct Document {
     font_cache: std::sync::Mutex<BTreeMap<(lopdf::ObjectId, String), Arc<crate::fonts::Font>>>,
     /// Parsed `/ToUnicode` CMaps, one per stream, against one budget for the whole document.
     tounicode: crate::cmap::ToUnicodeCache,
+    /// The first object the file writes as a stream and `lopdf` read as its bare dictionary, if
+    /// any (tracker I19). Only the writers refuse it: a rewrite would copy the dictionary alone.
+    lost_stream: Option<lopdf::ObjectId>,
 }
 
 impl core::fmt::Debug for Document {
@@ -207,6 +210,7 @@ impl Document {
         }
 
         let pages = walk_page_tree(&inner)?;
+        let lost_stream = lost_stream(bytes, &inner);
 
         Ok(Self {
             // **The ORIGINAL bytes**, deliberately, even after a repair. The artifact must bind
@@ -223,6 +227,7 @@ impl Document {
             opened_under: profile.xref_repair,
             font_cache: std::sync::Mutex::new(BTreeMap::new()),
             tounicode: crate::cmap::ToUnicodeCache::default(),
+            lost_stream,
         })
     }
 
@@ -259,6 +264,11 @@ impl Document {
         id: &str,
     ) -> Option<Arc<crate::fonts::Font>> {
         self.fonts().get(&(oid, id.to_string())).cloned()
+    }
+
+    /// The first object the file writes as a stream and `lopdf` read without its data, if any.
+    pub(crate) fn lost_stream(&self) -> Option<lopdf::ObjectId> {
+        self.lost_stream
     }
 
     /// The document's parsed `/ToUnicode` CMaps.
@@ -513,6 +523,90 @@ fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static s
     None
 }
 
+/// The first object the file writes as a stream that `lopdf` loaded as its bare dictionary.
+///
+/// `lopdf`'s stream parser fails when the data does not end at `endstream` where `/Length` says
+/// it does, or when the `stream` keyword is malformed, and its dictionary alternative then
+/// succeeds, `endobj` being optional (`parser/mod.rs` of 0.44.0): the object loads without its
+/// data, where a renderer that finds `endstream` reads it whole.
+fn lost_stream(bytes: &[u8], doc: &lopdf::Document) -> Option<lopdf::ObjectId> {
+    use lopdf::xref::XrefEntry;
+    doc.reference_table
+        .entries
+        .iter()
+        .find_map(|(&number, entry)| {
+            let XrefEntry::Normal { offset, generation } = *entry else {
+                return None;
+            };
+            let id = (number, generation);
+            let dictionary = matches!(doc.objects.get(&id), Some(lopdf::Object::Dictionary(_)));
+            (dictionary && written_as_stream(bytes, usize::try_from(offset).ok()?)).then_some(id)
+        })
+}
+
+/// Whether the object at `at` is written `N G obj`, a dictionary, then `stream`, separated as
+/// `lopdf` separates them. A string, a hex string or a comment inside the dictionary is skipped
+/// whole, so a `>>` or a `stream` written inside one decides nothing.
+fn written_as_stream(bytes: &[u8], at: usize) -> bool {
+    use crate::freed::{after, space, uint};
+    let open = || {
+        let (_, i) = uint(bytes, space(bytes, at))?;
+        let (_, i) = uint(bytes, space(bytes, i))?;
+        let i = after(bytes, space(bytes, i), b"obj")?;
+        after(bytes, space(bytes, i), b"<<")
+    };
+    let Some(mut i) = open() else {
+        return false;
+    };
+    let mut depth = 1usize;
+    while depth > 0 {
+        let skip = match bytes.get(i..) {
+            Some([b'<', b'<', ..]) => {
+                depth += 1;
+                Some(i + 2)
+            }
+            Some([b'>', b'>', ..]) => {
+                depth -= 1;
+                Some(i + 2)
+            }
+            Some([b'(', ..]) => literal_string_end(bytes, i),
+            Some([b'<', rest @ ..]) => rest.iter().position(|&c| c == b'>').map(|n| i + n + 2),
+            // A comment running to the end of the file ends the dictionary nowhere.
+            Some([b'%', ..]) => Some(space(bytes, i)).filter(|&j| j > i),
+            Some([_, ..]) => Some(i + 1),
+            _ => None,
+        };
+        let Some(next) = skip else {
+            return false;
+        };
+        i = next;
+    }
+    after(bytes, space(bytes, i), b"stream").is_some()
+}
+
+/// Where the literal string opening at `i` ends: its parentheses balance, except one a backslash
+/// escapes (PDF 32000-1 §7.3.4.2).
+fn literal_string_end(bytes: &[u8], mut i: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    loop {
+        match bytes.get(i)? {
+            b'\\' => i += 2,
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => i += 1,
+        }
+    }
+}
+
 /// A `/Pages` node's `/Kids`, or a refusal naming the node.
 fn kids_of(doc: &lopdf::Document, id: lopdf::ObjectId) -> Result<&[lopdf::Object], EngineError> {
     doc.get_dictionary(id)
@@ -615,6 +709,25 @@ fn walk_page_tree(doc: &lopdf::Document) -> Result<Vec<(u32, lopdf::ObjectId)>, 
 mod tests {
     use super::*;
     use crate::test_support::{bench_fixture, conformance_fixture};
+
+    /// **Whether an object is written as a stream is read past its dictionary's strings,
+    /// hex strings and comments** (tracker I19), so a `>>` or a `stream` inside one decides
+    /// nothing.
+    #[test]
+    fn a_stream_is_told_from_a_dictionary_past_what_its_dictionary_holds() {
+        let stream = |object: &str| written_as_stream(object.as_bytes(), 0);
+        assert!(stream(
+            "5 0 obj\n<< /Length 4 >>\nstream\nABCD\nendstream\nendobj"
+        ));
+        assert!(stream(
+            "5 0 obj << /A << /B (x \\) >> stream) >> /C <3E3E> % >> \n >> % c\nstream\n"
+        ));
+        assert!(stream("5 0 obj << /C <41>>>\nstream\n"));
+        assert!(!stream("5 0 obj << /A (x >> stream) >>\nendobj"));
+        assert!(!stream("5 0 obj << /A <<>> >> endobj stream"));
+        assert!(!stream("5 0 obj << /A 1 % to the end"));
+        assert!(!stream("5 0 obj [ 1 2 ] endobj"));
+    }
 
     /// **A poisoned font cache is still a usable font cache.**
     ///
