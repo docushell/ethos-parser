@@ -581,8 +581,8 @@ pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 /// PDF 32000-1 Annex D encoding tables — `WinAnsiEncoding`, the ASCII range of
 /// `StandardEncoding`, and a glyph-name subset — held in `ethos-parser-pdf`'s `encoding` module.
 ///
-/// The Adobe predefined CJK CMaps are **not** carried, so a document naming one is refused
-/// rather than decoded approximately. That is a declared limitation: it travels as the code
+/// The Adobe predefined CJK CMaps are **not** carried, so a document drawing text with a font
+/// naming one is refused rather than decoded approximately. That is a declared limitation: it travels as the code
 /// `predefined-cmaps-not-vendored` in `assurance.limitations`, and it is argued in
 /// `vendor/README.md`. The list was called `not_decoded` at M3 and M4 absorbed it into the L1
 /// gate, so the old name named nothing from M4 until this sentence was repaired at v2-S13.3.

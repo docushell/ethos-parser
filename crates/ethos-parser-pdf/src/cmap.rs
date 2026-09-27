@@ -19,8 +19,8 @@
 //! several scalars** — which is where the ligature caveat comes from.
 //!
 //! Vendored predefined CMaps (the Adobe CJK set) are a separate question; see
-//! [`crate::encoding`] for what this profile does and does not carry, and note that a document
-//! naming a predefined CMap **fails closed** rather than guessing.
+//! [`crate::encoding`] for what this profile does and does not carry, and note that text drawn
+//! with a font naming a predefined CMap **fails closed** rather than guessing.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};

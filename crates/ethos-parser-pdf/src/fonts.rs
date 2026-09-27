@@ -126,6 +126,10 @@ pub enum Decoder {
     ToUnicode(Arc<ToUnicode>),
     /// A simple encoding plus `/Differences`.
     Simple(SimpleEncoding),
+    /// An encoding this profile does not read, and why. The refusal is raised where a string is
+    /// first shown with the font, not where a page lists it (tracker I8): a font a page never
+    /// draws with decides nothing about the document.
+    Refused(String),
 }
 
 /// What kind of font a resource declares itself to be (v1-S6.1).
@@ -237,7 +241,7 @@ impl Font {
             FontKind::Simple => 1,
             FontKind::Composite => match &self.decoder {
                 Decoder::ToUnicode(t) => t.code_bytes().max(1),
-                Decoder::Simple(_) => 1,
+                Decoder::Simple(_) | Decoder::Refused(_) => 1,
             },
         };
         if width == 1 {
@@ -275,6 +279,15 @@ impl Font {
                 })?;
                 e.decode(byte)
             }
+            Decoder::Refused(detail) => Err(encoding_refused(detail)),
+        }
+    }
+
+    /// The refusal this font's encoding carries, if it carries one.
+    pub fn refusal(&self) -> Option<EngineError> {
+        match &self.decoder {
+            Decoder::Refused(detail) => Some(encoding_refused(detail)),
+            _ => None,
         }
     }
 
@@ -562,6 +575,14 @@ pub fn load_page_fonts(
     Ok(out)
 }
 
+/// The refusal of an encoding this profile does not read, as `load_font` found it.
+fn encoding_refused(detail: &str) -> EngineError {
+    EngineError::Unsupported {
+        what: "encoding".into(),
+        detail: detail.to_string(),
+    }
+}
+
 fn load_font(
     doc: &lopdf::Document,
     id: &str,
@@ -608,17 +629,23 @@ fn load_font(
     {
         // A composite font's codes are CIDs under the CMap its `/Encoding` names, and an embedded
         // CMap is not parsed here. Read one byte at a time through a simple encoding they are
-        // characters the document never stated: refused, as a named CMap with no `/ToUnicode` is.
-        return Err(EngineError::Unsupported {
-            what: "encoding".into(),
-            detail: format!(
-                "composite font /{id} names no CMap this profile reads as its /Encoding (an \
-                 embedded CMap is not parsed) and supplies no `/ToUnicode`, so this profile has \
-                 no source for CID to Unicode"
-            ),
-        });
+        // characters the document never stated: refused, as a named CMap with no `/ToUnicode` is,
+        // at the first string shown with the font.
+        Decoder::Refused(format!(
+            "composite font /{id} names no CMap this profile reads as its /Encoding (an \
+             embedded CMap is not parsed) and supplies no `/ToUnicode`, so this profile has \
+             no source for CID to Unicode"
+        ))
     } else {
-        Decoder::Simple(load_simple_encoding(doc, fd)?)
+        // An encoding this profile does not carry is refused where the font is drawn with, as
+        // above; any other failure is still the page's.
+        match load_simple_encoding(doc, fd) {
+            Ok(encoding) => Decoder::Simple(encoding),
+            Err(EngineError::Unsupported { what, detail }) if what == "encoding" => {
+                Decoder::Refused(detail)
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     // 2. Widths.
@@ -1641,8 +1668,12 @@ mod tests {
             lopdf::Object::Name(b"MacExpertEncoding".to_vec()),
         );
         let fd = symbolic_font(32, Some(lopdf::Object::Dictionary(enc)));
-        let e = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
-            .expect_err("refused, not guessed");
+        let e = refusal_of(load_font(
+            &lopdf::Document::new(),
+            "F1",
+            &fd,
+            &Default::default(),
+        ));
         assert_eq!(e.code(), "unsupported", "{e}");
         assert!(
             e.to_string().contains("/BaseEncoding /MacExpertEncoding"),
@@ -1669,6 +1700,14 @@ mod tests {
         assert_eq!(font.builtin_encoding_assumed, None);
     }
 
+    /// The refusal a font's encoding carries to the first string shown with it (tracker I8): the
+    /// font itself loads, so a page that lists it and never draws with it is not refused.
+    fn refusal_of(font: Result<Font, EngineError>) -> EngineError {
+        font.expect("a font this profile cannot decode still loads")
+            .refusal()
+            .expect("and carries its refusal to the first string shown with it")
+    }
+
     /// **An Identity CMap is refused for a different reason than a predefined CJK one, and says
     /// so** (v2.2-S8).
     ///
@@ -1683,8 +1722,12 @@ mod tests {
             let mut fd = lopdf::Dictionary::new();
             fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
             fd.set("Encoding", lopdf::Object::Name(name.to_vec()));
-            let err = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
-                .expect_err("no /ToUnicode and no simple encoding is still a refusal");
+            let err = refusal_of(load_font(
+                &lopdf::Document::new(),
+                "F1",
+                &fd,
+                &Default::default(),
+            ));
             let detail = format!("{err}");
             assert!(
                 detail.contains("the code IS the CID"),
@@ -1704,8 +1747,12 @@ mod tests {
         let mut fd = lopdf::Dictionary::new();
         fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
         fd.set("Encoding", lopdf::Object::Name(b"GBK-EUC-H".to_vec()));
-        let err = load_font(&lopdf::Document::new(), "F1", &fd, &Default::default())
-            .expect_err("refused");
+        let err = refusal_of(load_font(
+            &lopdf::Document::new(),
+            "F1",
+            &fd,
+            &Default::default(),
+        ));
         let detail = format!("{err}");
         assert!(detail.contains("are not vendored"), "{detail}");
         assert!(!detail.contains("the code IS the CID"), "{detail}");
@@ -1724,8 +1771,7 @@ mod tests {
         let mut fd = lopdf::Dictionary::new();
         fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
         fd.set("Encoding", lopdf::Object::Reference(cmap));
-        let e = load_font(&doc, "F1", &fd, &Default::default())
-            .expect_err("no source for CID to Unicode");
+        let e = refusal_of(load_font(&doc, "F1", &fd, &Default::default()));
         assert_eq!(e.code(), "unsupported", "{e}");
         assert!(
             e.to_string()

@@ -32,11 +32,12 @@
 //! the full Adobe Glyph List. Neither is decoded approximately — `docs/01-CONTRACT.md` §8, because
 //! approximate text is worse than no text here: a citation can be verified against it and appear
 //! to hold. What that costs a document differs by which one it needs, and this paragraph said
-//! *"refused with a named error"* of both until v2-S13.3. A document naming a predefined CMap is
-//! genuinely **refused**. A `/Differences` name outside the subset drops **that run** and is
-//! counted into `broken-font-encoding`; only a document that decodes nothing is refused outright,
-//! which is v0.1's decision that failing a whole document over one glyph was more than the
-//! evidence required.
+//! *"refused with a named error"* of both until v2-S13.3. A document drawing text with a font
+//! that names a predefined CMap is genuinely **refused**, at the first string shown with that
+//! font; one a page lists and never draws with refuses nothing (tracker I8). A `/Differences`
+//! name outside the subset drops **that run** and is counted into `broken-font-encoding`; only a
+//! document that decodes nothing is refused outright, which is v0.1's decision that failing a
+//! whole document over one glyph was more than the evidence required.
 //!
 //! This is a declared limitation, not an oversight. It reaches a consumer as the limitation code
 //! `predefined-cmaps-not-vendored` in `assurance.limitations`, so the gap is stated rather than

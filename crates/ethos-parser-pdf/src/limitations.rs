@@ -42,7 +42,8 @@ pub const CLASSIFY_SAMPLE_BOUND: &str = "classify-sample-bound";
 /// The backend refuses xref entries that are not exactly 20 bytes.
 pub const BACKEND_XREF_STRICT_20_BYTE: &str = "backend-xref-strict-20-byte";
 
-/// The Adobe predefined CJK CMaps are not vendored, so a document naming one is refused.
+/// The Adobe predefined CJK CMaps are not vendored, so a document drawing text with a font
+/// naming one is refused.
 pub const PREDEFINED_CMAPS_NOT_VENDORED: &str = "predefined-cmaps-not-vendored";
 
 /// Text drawn inside a form XObject is not descended into.
@@ -132,11 +133,11 @@ pub fn backend_limitations() -> Vec<Limitation> {
         ),
         Limitation::profile(
             PREDEFINED_CMAPS_NOT_VENDORED,
-            "The Adobe predefined CJK CMaps are not vendored. A document whose font names one \
-             is refused with a named error rather than decoded approximately, because a \
-             substituted character is a character the document does not contain. If those files \
-             land, `cmap_data_version` changes and artifacts from before and after become \
-             correctly non-comparable.",
+            "The Adobe predefined CJK CMaps are not vendored. A document that draws text with a \
+             font naming one is refused with a named error rather than decoded approximately, \
+             because a substituted character is a character the document does not contain. If \
+             those files land, `cmap_data_version` changes and artifacts from before and after \
+             become correctly non-comparable.",
         ),
     ]
 }
