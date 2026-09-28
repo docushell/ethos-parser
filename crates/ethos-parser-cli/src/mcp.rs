@@ -629,6 +629,36 @@ fn call_tool(mut params: Value, ledger: &mut ledger::Ledger) -> Result<Outcome, 
         .and_then(Value::as_str)
         .ok_or_else(|| Failure::new(INVALID_PARAMS, "`name` is required"))?;
 
+    // **A key the tool's schema does not declare is refused**, as `additionalProperties: false`
+    // says (review 2026-09-26 N61). `max_pages: 1` handed to `extract` was dropped, and a host that
+    // believed it had bounded the call had not.
+    let declared = tools()
+        .as_array()
+        .and_then(|tools| tools.iter().find(|t| t["name"] == name))
+        .map(|tool| tool["inputSchema"]["properties"].clone());
+    if let (Some(declared), Some(given)) = (&declared, args.as_object()) {
+        if let Some(key) = given
+            .keys()
+            .find(|key| declared.get(key.as_str()).is_none())
+        {
+            return Err(Failure::new(
+                INVALID_PARAMS,
+                format!(
+                    "tool `{name}` takes no argument `{key}`: its input schema declares {} and \
+                     admits nothing else",
+                    declared
+                        .as_object()
+                        .map(|d| d
+                            .keys()
+                            .map(|k| format!("`{k}`"))
+                            .collect::<Vec<_>>()
+                            .join(", "))
+                        .unwrap_or_default()
+                ),
+            ));
+        }
+    }
+
     let outcome = match name {
         "extract" => tool_extract(&args),
         "ground" => tool_ground(&mut args, ledger),

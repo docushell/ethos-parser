@@ -241,6 +241,39 @@ fn the_artifact_through_mcp_is_the_artifact_the_cli_prints() {
     }
 }
 
+/// **An argument a tool's schema does not declare is refused** (review 2026-09-26 N61). Every tool
+/// advertises `additionalProperties: false`, and the server read the keys it knew and dropped the
+/// rest: `extract` with `max_pages: 1` processed every page, so a host that believed it had
+/// bounded the call had not.
+#[test]
+fn an_argument_a_tools_schema_does_not_declare_is_refused() {
+    let pdf = conformance("synthetic/simple-text/document.pdf");
+    let path = pdf.to_str().unwrap();
+    let responses = session(&[
+        call("extract", json!({ "path": path }), 1),
+        call("extract", json!({ "path": path, "max_pages": 1 }), 2),
+        call(
+            "node_get",
+            json!({ "representation": {}, "node_id": "s1", "page": 1 }),
+            3,
+        ),
+    ]);
+    assert_eq!(
+        responses[0]["result"]["isError"],
+        json!(false),
+        "the declared arguments alone read"
+    );
+    for (response, key) in [(&responses[1], "max_pages"), (&responses[2], "page")] {
+        assert_eq!(response["error"]["code"], json!(-32602), "{response}");
+        assert!(
+            response["error"]["message"]
+                .as_str()
+                .is_some_and(|m| m.contains(&format!("takes no argument `{key}`"))),
+            "{response}"
+        );
+    }
+}
+
 /// A DOCX over MCP reads through the same router the CLI uses (0.38.0). Before
 /// the router was shared, `mcp extract` called the PDF reader directly and a
 /// DOCX was refused for lacking a `%PDF-` header — the wrong-cause refusal
