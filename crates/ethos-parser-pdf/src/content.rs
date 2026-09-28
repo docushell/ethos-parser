@@ -443,7 +443,21 @@ impl<'a> Interpreter<'a> {
     fn run_inner(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
         for (index, op) in ops.iter().enumerate() {
             self.op_index = index;
-            let operator = Operator::of(op.operator.as_str())?;
+            let token = op.operator.as_str();
+            let operator = Operator::of(token)?;
+            // Too few is refused where an operand is read; too many only here, because reading
+            // the first of them is where this reader and a renderer part (review 2026-09-26 N48).
+            if let Some(n) = operator.operands_read().filter(|&n| op.operands.len() > n) {
+                return Err(EngineError::Malformed {
+                    what: "content stream".into(),
+                    detail: format!(
+                        "`{token}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}: \
+                         a renderer reads the last {n} and this reader the first, so it refuses \
+                         rather than place text where no renderer draws it",
+                        op.operands.len()
+                    ),
+                });
+            }
             self.dispatch(operator, &op.operands)?;
         }
         Ok(())

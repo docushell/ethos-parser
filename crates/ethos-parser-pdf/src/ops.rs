@@ -240,6 +240,32 @@ impl Operator {
         })
     }
 
+    /// How many operands Table A.1 gives this operator, for an operator whose operands the
+    /// interpreter reads; `None` for one whose operands it reads none of.
+    ///
+    /// The interpreter reads operands from the front and a renderer pops them from the back, so
+    /// the two agree only when the count is right: `1 2 1 0 0 1 72 72 Tm` sets a matrix
+    /// translated to (7, 2) here and to (72, 72) in Ghostscript and CoreGraphics (review
+    /// 2026-09-26 N48). An operator this reader ignores cannot place text wherever its operands
+    /// fall, so its count decides nothing.
+    pub(crate) fn operands_read(self) -> Option<usize> {
+        use Operator::*;
+        Some(match self {
+            CharSpacing | WordSpacing | HorizontalScale | Leading | RenderMode | Rise
+            | ShowText | ShowTextAdjusted | NextLineShowText | BeginMarkedContent | XObject => 1,
+            SelectFont
+            | NextLine
+            | NextLineSetLeading
+            | BeginMarkedContentProps
+            | MoveTo
+            | LineTo => 2,
+            NextLineShowTextSpacing => 3,
+            Rectangle => 4,
+            ConcatMatrix | SetTextMatrix => 6,
+            _ => return None,
+        })
+    }
+
     /// Map a content-stream token to its operator, or `None` if it is not in Table A.1.
     ///
     /// `None` is a **hard error** at the call site, never a skip.

@@ -3284,6 +3284,57 @@ fn resources_inherited_from_the_page_tree_are_read_as_the_pages_own() {
     );
 }
 
+/// **An operator given more operands than Table A.1 gives it is refused** (review 2026-09-26
+/// N48). The interpreter reads operands from the front and a renderer pops them from the back:
+/// with eight before `Tm`, the review's `j2_number_split.pdf` placed its text at (7, 2), where
+/// neither Ghostscript nor CoreGraphics draws it. Every operator whose operands are read is held
+/// to its count: read at exactly it, refused one past it.
+#[test]
+fn an_operator_given_more_operands_than_table_a1_gives_it_is_refused() {
+    // (operator, its operands, one more, what follows so the page stays well-formed)
+    let cases = [
+        ("cm", "1 0 0 1 0 0", "9 1 0 0 1 0 0", ""),
+        ("Tm", "1 0 0 1 72 40", "9 1 0 0 1 72 40", ""),
+        ("Tc", "1", "9 1", ""),
+        ("Tw", "1", "9 1", ""),
+        ("Tz", "100", "9 100", ""),
+        ("TL", "12", "9 12", ""),
+        ("Tr", "0", "9 0", ""),
+        ("Ts", "0", "9 0", ""),
+        ("Tf", "/F1 12", "9 /F1 12", ""),
+        ("Td", "10 10", "9 10 10", ""),
+        ("TD", "10 -12", "9 10 -12", ""),
+        ("Tj", "(x)", "(w) (x)", ""),
+        ("TJ", "[(x)]", "[(w)] [(x)]", ""),
+        ("'", "(x)", "(w) (x)", ""),
+        ("\"", "1 2 (x)", "9 1 2 (x)", ""),
+        ("BDC", "/P <<>>", "/Q /P <<>>", " EMC"),
+        ("BMC", "/P", "/Q /P", " EMC"),
+        ("re", "1 2 3 4", "9 1 2 3 4", " n"),
+        ("m", "1 2", "9 1 2", " n"),
+        ("l", "1 2", "9 1 2", " n"),
+        ("Do", "/Absent", "/Other /Absent", ""),
+    ];
+    for (op, exact, over, after) in cases {
+        let page = |operands: &str| {
+            with_content(
+                format!("BT /F1 12 Tf 12 TL {operands} {op}{after} ET").as_bytes(),
+                None,
+            )
+        };
+        extract_bytes(&page(exact)).unwrap_or_else(|e| panic!("`{op}` {exact} is read: {e}"));
+        let e = extract_bytes(&page(over)).expect_err(op);
+        let n = exact.split(' ').count();
+        assert!(
+            e.to_string().contains(&format!(
+                "`{op}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}",
+                n + 1
+            )),
+            "{op}: {e}"
+        );
+    }
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.
