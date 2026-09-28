@@ -711,6 +711,51 @@ fn two_sheets_naming_one_part_are_refused_by_name() {
     }
 }
 
+/// **Two entries of one name are refused, not read as the first** (review 2026-09-26 N26).
+///
+/// A second `xl/sharedStrings.xml` would repoint every shared cell for a consumer that reads the
+/// last. The single table reads, so the refusal is the duplicate's.
+#[test]
+fn two_entries_of_one_name_are_refused_rather_than_read_as_the_first() {
+    let sheets = [("One", "worksheets/sheet1.xml", citing(1))];
+    let one = workbook(&sheets, Some("First"));
+    let read = ethos_parser_office::read(&one).expect("one table reads");
+    assert_eq!(read.payload().nodes[0].text, "First");
+
+    // The same package with a second table: rebuilt from its entries, one more appended.
+    let mut entries = zip_entries(&one);
+    entries.push((
+        "xl/sharedStrings.xml".to_string(),
+        format!(r#"<sst xmlns="{MAIN}"><si><t>Second</t></si></sst>"#),
+    ));
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()))
+        .collect();
+    let error = ethos_parser_office::read(&build_zip(&borrowed)).expect_err("two tables");
+    let text = error.to_string();
+    assert!(
+        matches!(error, ethos_parser_core::EngineError::Malformed { .. }),
+        "{text}"
+    );
+    assert!(
+        text.contains("`xl/sharedStrings.xml` more than once"),
+        "{text}"
+    );
+}
+
+/// Every entry of a stored archive `build_zip` wrote, in order.
+fn zip_entries(archive: &[u8]) -> Vec<(String, String)> {
+    let names = ethos_parser_office::zip::entry_names(archive).expect("names");
+    names
+        .into_iter()
+        .map(|name| {
+            let body = ethos_parser_office::zip::read_entry(archive, &name).expect("entry");
+            (name, String::from_utf8(body).expect("utf-8"))
+        })
+        .collect()
+}
+
 // -------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------
