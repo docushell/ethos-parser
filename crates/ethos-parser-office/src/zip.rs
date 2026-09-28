@@ -121,6 +121,36 @@ pub fn entry_names(archive: &[u8]) -> Result<Vec<String>, EngineError> {
     Ok(names)
 }
 
+/// Refuse a package whose central directory lists one name twice, before any entry is read.
+///
+/// ZIP permits duplicate names and consumers disagree about which one wins: [`read_entry`] takes
+/// the first, and Python's `zipfile` and macOS's `textutil` the last. So a second
+/// `word/document.xml` or `content.xml` would be neither read nor counted — the artifact would
+/// state the first one's text and declare no erasure, and a consumer preferring the last would
+/// see a different document. Every package reader calls this first; `what` is the package kind
+/// the refusal names, and `noun` what its sentence calls it.
+pub(crate) fn refuse_duplicate_names(
+    names: &[String],
+    what: &str,
+    noun: &str,
+) -> Result<(), EngineError> {
+    let mut sorted: Vec<&str> = names.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    match sorted.windows(2).find(|pair| pair[0] == pair[1]) {
+        Some(pair) => Err(EngineError::Malformed {
+            what: what.into(),
+            detail: format!(
+                "this {noun} lists `{}` more than once. Consumers disagree about which entry of \
+                 a duplicated name wins, so reading either would be this engine choosing which of \
+                 the file's own claims to believe — and the entry it did not read would leave the \
+                 record with nothing naming it.",
+                pair[0]
+            ),
+        }),
+        None => Ok(()),
+    }
+}
+
 /// The archive's **first physical entry**: its name, and whether it is stored uncompressed.
 ///
 /// Read from the local file header at **offset 0**, not from the central directory.

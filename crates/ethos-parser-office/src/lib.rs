@@ -553,6 +553,9 @@ pub fn read(bytes: &[u8]) -> Result<DocumentRepresentation, EngineError> {
 }
 
 fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // entries of one name were read as the first, with nothing declared.
+    zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let part = zip::read_entry(bytes, docx::MAIN_PART)?;
     let docx::MainPart {
         runs,
@@ -724,6 +727,9 @@ fn read_docx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 /// sequence. v2-S3 added no invariant to `ethos-parser-core`; it is the first artifact to use the shape
 /// v2-S2 built.
 fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // entries of one name were read as the first, with nothing declared.
+    zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let workbook = zip::read_entry(bytes, xlsx::WORKBOOK_PART)?;
     let declared = xlsx::read_sheets(&workbook)?;
 
@@ -912,25 +918,9 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 /// read one the package does not list, and would hand ciphertext to the XML reader — which would
 /// come back as "will not parse" and name the wrong cause.
 fn read_odt(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
-    // **A package that names one entry twice is refused before anything is read.** ZIP permits
-    // duplicate names and consumers disagree about which one wins; `zip::read_entry` takes the
-    // first. So a second `content.xml` would be neither read nor counted — the artifact would state
-    // the first one's text, declare no erasure, and a consumer preferring the last would see a
-    // different document. `mimetype` is worse still, because it decides detection.
-    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-    sorted.sort_unstable();
-    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
-        return Err(EngineError::Malformed {
-            what: "opendocument package".into(),
-            detail: format!(
-                "this package lists `{}` more than once. Consumers disagree about which entry of \
-                 a duplicated name wins, so reading either would be this engine choosing which of \
-                 the file's own claims to believe — and the entry it did not read would leave the \
-                 record with nothing naming it.",
-                pair[0]
-            ),
-        });
-    }
+    // **A package that names one entry twice is refused before anything is read**
+    // (`zip::refuse_duplicate_names`). `mimetype` is the worst case, because it decides detection.
+    zip::refuse_duplicate_names(names, "opendocument package", "package")?;
 
     let manifest =
         zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
@@ -1098,20 +1088,7 @@ fn read_ods(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
     // The same refusal `read_odt` opens with, and for the same reason: `zip::read_entry` takes the
     // first entry of a duplicated name, so a second `content.xml` would be neither read nor
     // counted and a consumer preferring the last would see a different document.
-    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-    sorted.sort_unstable();
-    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
-        return Err(EngineError::Malformed {
-            what: "opendocument package".into(),
-            detail: format!(
-                "this package lists `{}` more than once. Consumers disagree about which entry of \
-                 a duplicated name wins, so reading either would be this engine choosing which of \
-                 the file's own claims to believe — and the entry it did not read would leave the \
-                 record with nothing naming it.",
-                pair[0]
-            ),
-        });
-    }
+    zip::refuse_duplicate_names(names, "opendocument package", "package")?;
 
     let manifest =
         zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
@@ -1294,20 +1271,7 @@ fn read_odp(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, En
     // `zip::read_entry` takes the first entry of a duplicated name, so a second `content.xml`
     // would be neither read nor counted and a consumer preferring the last would see a different
     // document.
-    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-    sorted.sort_unstable();
-    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
-        return Err(EngineError::Malformed {
-            what: "opendocument package".into(),
-            detail: format!(
-                "this package lists `{}` more than once. Consumers disagree about which entry of \
-                 a duplicated name wins, so reading either would be this engine choosing which of \
-                 the file's own claims to believe — and the entry it did not read would leave the \
-                 record with nothing naming it.",
-                pair[0]
-            ),
-        });
-    }
+    zip::refuse_duplicate_names(names, "opendocument package", "package")?;
 
     let manifest =
         zip::read_entry(bytes, odt::MANIFEST_PART).map_err(|_| EngineError::MissingPart {
@@ -1635,20 +1599,7 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
     // The same refusal `read_odt` opens with, and for the same reason: `zip::read_entry` takes the
     // first entry of a duplicated name, so a second `container.xml` or a second chapter would be
     // neither read nor counted and a consumer preferring the last would see a different book.
-    let mut sorted: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-    sorted.sort_unstable();
-    if let Some(pair) = sorted.windows(2).find(|pair| pair[0] == pair[1]) {
-        return Err(EngineError::Malformed {
-            what: "epub publication".into(),
-            detail: format!(
-                "this publication lists `{}` more than once. Consumers disagree about which entry \
-                 of a duplicated name wins, so reading either would be this engine choosing which \
-                 of the file's own claims to believe — and the entry it did not read would leave \
-                 the record with nothing naming it.",
-                pair[0]
-            ),
-        });
-    }
+    zip::refuse_duplicate_names(names, "epub publication", "publication")?;
 
     let publication = epub::read(bytes)?;
 
@@ -1835,6 +1786,9 @@ fn read_epub(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 /// `pptx.rs` for why a slide's size
 /// and its position in the deck are both things this engine will not turn into a `PageRecord`.
 fn read_pptx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, EngineError> {
+    // The duplicate refusal the ODF and EPUB readers always made (review 2026-09-26 N26): two
+    // entries of one name were read as the first, with nothing declared.
+    zip::refuse_duplicate_names(names, "ooxml package", "package")?;
     let presentation = zip::read_entry(bytes, pptx::PRESENTATION_PART)?;
     let rel_ids = pptx::read_slide_refs(&presentation)?;
 

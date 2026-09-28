@@ -509,6 +509,39 @@ fn a_truncated_deck_is_refused() {
     }
 }
 
+/// **Two entries of one name are refused, not read as the first** (review 2026-09-26 N26).
+///
+/// The deck's second slide renamed to its first in both headers — the same length, so every offset
+/// holds — leaves two `ppt/slides/slide1.xml`, the second of which a consumer preferring the last
+/// would show. The fixture reads, so the refusal is the duplicate's.
+#[test]
+fn two_entries_of_one_name_are_refused_rather_than_read_as_the_first() {
+    let mut bytes = fixture("deck-slides");
+    ethos_parser_office::read(&bytes).expect("the fixture reads");
+    let (from, to) = (b"ppt/slides/slide7.xml", b"ppt/slides/slide1.xml");
+    let mut renamed = 0;
+    let mut at = 0;
+    while at + from.len() <= bytes.len() {
+        if &bytes[at..at + from.len()] == from {
+            bytes[at..at + from.len()].copy_from_slice(to);
+            renamed += 1;
+        }
+        at += 1;
+    }
+    assert_eq!(renamed, 2, "the local header and the directory");
+
+    let error = ethos_parser_office::read(&bytes).expect_err("two entries of one name");
+    let text = error.to_string();
+    assert!(
+        matches!(error, ethos_parser_core::EngineError::Malformed { .. }),
+        "{text}"
+    );
+    assert!(
+        text.contains("`ppt/slides/slide1.xml` more than once"),
+        "{text}"
+    );
+}
+
 // -------------------------------------------------------------------------------------------
 // Helpers — a minimal stored-entry ZIP, so a negative case needs no fixture file
 // -------------------------------------------------------------------------------------------
