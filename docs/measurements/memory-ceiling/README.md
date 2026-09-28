@@ -764,6 +764,7 @@ allocator to hand the freed pages back; B's next call arrives before it has, and
 on top of pages not yet returned. Given 8 s, B's peak is A's exactly and its footprint is 82 MiB
 lower. The same effect shows in resting memory two seconds after the last reply — 161r1 rests at
 2345 MiB in B against 1802 in A. When resting memory settles was not measured.
+**Amended 2026-09-28:** it does not settle, and since §16 no server holds it.
 
 **Shipped anyway, by the owner's decision, with this section as the record.** A host that fires
 repeat calls at a 950 MiB representation faster than every 4–8 s will see its server peak up to
@@ -986,3 +987,61 @@ and the floor comment in `crates/ethos-parser-pdf/src/extract.rs` carry this rul
 attribution of the floor; §7's and §11's rule paragraphs point here. §8's open items are
 unchanged: there is still no ceiling a caller can set, and a page budget cannot reach the object
 graph.
+
+## 16. MCP answers each line in a process of its own, and a session holds one call's memory
+
+**Run 2026-09-28.** A = `main` at `5937665` (0.63.0-dev.1), B = the same tree with each line of an
+MCP session answered by a process of its own (`crates/ethos-parser-cli/src/mcp.rs`, *One process
+per line*), both release builds. Review 2026-09-26 N35. Instruments: [`mcptree.py`](mcptree.py),
+which samples the resident memory of the server and of every process it started every 20 ms —
+`/usr/bin/time -l` sees one process, and a B session is several — [`mcplatency.py`](mcplatency.py)
+and [`mcpab.py`](mcpab.py).
+
+### §14's open question: resting memory does not settle
+
+§14 left one thing unmeasured, when a server's resting memory settles. It does not. The review's
+in-process loop saw the live heap return to 5.1 MiB after every call while the resident memory
+stayed, and one session shows where that goes:
+
+| one session | A: peak | A: server after the last reply | B: peak | B: server after each reply |
+| --- | ---: | ---: | ---: | ---: |
+| `locate` ×16, `161r1` by path | 4,480 MiB | 3,860 MiB | 737 MiB | 2.4–2.5 MiB |
+| `extract` ×3, `53Ar5`, two sessions | 5,082–5,095 MiB | 4,680–4,693 MiB | 3,854–3,855 MiB | 2.4–2.5 MiB |
+| `node_get` ×6, `171r3` inline (86 MiB) | 1,974 MiB | 1,974 MiB | 1,451 MiB | 90.4 MiB |
+
+A's server after each `locate` rose by 319–320 MiB a call from the third on — 448, 450, 772,
+1,078 … 4,160 MiB — and gave some back once, 4,480 to 3,557 MiB at the fifteenth. An earlier run of
+the same sixteen calls reached 5,080 MiB. Sixteen calls found no plateau. In B every call peaks
+where one call does, 732–737 MiB on fifteen of the sixteen `locate` calls and 877 MiB on one, and
+the server holds 2.4 MiB between them.
+
+**Inline, the server holds its longest line.** A request carrying the representation passes
+through the server on its way to the line's process. Read into a fresh buffer per line, B's server
+grew by a line a call, 90 to 520 MiB over six; read into one buffer, it stays at 90.4 MiB.
+
+### What it costs
+
+| per call | A | B |
+| --- | ---: | ---: |
+| `locate`, `161r1`, calls 2–16 (ledger hits) | 1.45–1.53 s | 1.40–1.44 s |
+| `extract`, `53Ar5`, six calls | 6.97–7.15 s | 6.90–7.20 s |
+| `node_get`, `171r3` inline | 0.95–1.10 s | 1.11–1.14 s |
+| `ping`, median of 200 | 0.01 ms | 7.15–7.56 ms |
+| `node_get` on a 13 KB representation, median of 200 | 0.09 ms | 7.32–7.43 ms |
+
+**A process start, about 7.3 ms a line on macOS**, is the cost, and on a call that does work it
+is inside the noise. The ledger crosses processes: B's later `locate` calls are hits, as A's are.
+An inline representation also crosses one more pipe, 0.1–0.2 s for 86 MiB. The SDKs start one
+server per call, so each of their calls pays the start once more.
+
+### Byte-identical
+
+[`mcpab.py`](mcpab.py) runs one session per build over the same requests — `initialize`,
+`tools/list`, `ping`, then `extract`, `ground`, `node_get` and `locate` on each of the eight gate
+documents, a tampered representation, a missing path, an unknown tool, an unknown method, a line
+that is not JSON and a notification — and compares every reply line: **41 of 41 identical,
+1,911,253,904 bytes**, and the notification answered by neither.
+
+**What this does not change.** A call's own peak: the process answering it runs what A's server
+ran. §15's rule is for one process; before this, no rule of its kind bounded an MCP session,
+whose memory grew with its length, and now a session's peak is its largest call's.

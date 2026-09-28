@@ -45,7 +45,7 @@
 //!    file names a coordinate** — not `page`, not `bbox`, not `x`/`y`/`width`/`height`, not a
 //!    row/column pair. A test reads the advertised schemas and fails on those names.
 //! 3. **Re-validate.** A representation is fingerprint-checked before it is read, exactly as
-//!    `ethos-parser ground` checks it — in this call, or in an earlier call of this process over
+//!    `ethos-parser ground` checks it — in this call, or in an earlier call of this session over
 //!    bytes this call proves identical by hashing every byte it read — and a node id is looked up
 //!    among the nodes parsed from **this call's** bytes.
 //!
@@ -79,8 +79,33 @@
 //! No document, tree, path or byte buffer is kept: 64 digests at most, least recently used first
 //! out, about 6 KiB whatever the input. Nothing a model can name or enumerate lives there — no
 //! argument takes a digest and no reply prints one. **One bit leaks through latency**: that these
-//! exact bytes were verified earlier in this process. It needs the full preimage and reveals no
+//! exact bytes were verified earlier in this session. It needs the full preimage and reveals no
 //! locator; the only way to close it is to verify every time, which is the cost this removes.
+//!
+//! # One process per line
+//!
+//! **This process answers no request itself.** Each line goes to a process of its own, this
+//! binary as `mcp --call`, with the ledger line the session's last answered line left; that process
+//! writes back the ledger line its request leaves, then the reply, which is copied to the host as
+//! it arrives and never held here. The reason is memory the system allocator keeps: a call's live
+//! heap went back to 5 MiB and the server's resident memory did not, so sixteen `locate` calls on
+//! `nist-sp-800-161r1` took one server from 448 MiB to 4,480 in one run and 5,080 in another,
+//! about 320 MiB a call (review 2026-09-26 N35). A process that ends returns all of it: the same
+//! sixteen calls peak at about 735 MiB each, and between calls the server holds 2.4 MiB. Every
+//! reply is byte-identical.
+//! A call that aborts takes only its own process down: its line is answered with JSON-RPC's
+//! internal error and the session goes on. The cost is a process start, 7.3 ms per line on macOS,
+//! and one more thing: a host that kills the server mid-call leaves that call's process running
+//! until it finishes or its first write fails. `docs/measurements/memory-ceiling/` §16 has the
+//! numbers.
+//!
+//! The ledger crosses a pipe between processes of one session, one binary, and nothing else
+//! writes to it. A line whose process ends without a whole reply carries none on. The ledger line
+//! names this binary's version, and a process of another — the binary replaced under a running
+//! server, whose next line runs the new one — starts from an empty ledger, so it verifies what the
+//! old one verified. Run by hand, `mcp --call` believes the ledger line it is handed, which proves
+//! nothing a caller could not prove by rewriting the declared fingerprint: it is a digest, not a
+//! signature.
 //!
 //! # Why there is no framework here
 //!
@@ -99,9 +124,9 @@
 //! calls the same library entry point the matching subcommand calls, and the artifacts are the
 //! artifacts. What lives here is protocol plumbing, which is why it is a CLI module rather than a
 //! fifth crate or a new concept in `ethos-parser-core`. [`ledger`] is plumbing too — it remembers a
-//! verdict core already reached, per process — and it stays here on purpose: a core entry point
+//! verdict core already reached, per session — and it stays here on purpose: a core entry point
 //! that skips verification for a digest would be the fingerprint-accepting constructor core
-//! refuses, and it is sound only inside the process that did the verifying.
+//! refuses, and it is sound only inside the session that did the verifying.
 
 use std::io::{BufRead, Write};
 
@@ -118,37 +143,213 @@ const PROTOCOL_VERSION: &str = "2025-06-18";
 /// JSON-RPC's own codes, plus the one this server actually uses.
 const INVALID_PARAMS: i64 = -32602;
 const METHOD_NOT_FOUND: i64 = -32601;
+const INTERNAL_ERROR: i64 = -32603;
+
+/// The most a line's process may write before its ledger line ends: 64 digests of about 80 bytes
+/// each, and the version.
+const CARRIED_LIMIT: u64 = 16 * 1024;
 
 /// Run the server until stdin closes.
 ///
 /// One JSON object per line. A line that is not JSON, or is JSON this server has no method for,
 /// gets a JSON-RPC error rather than a panic or a silent skip — a host that mis-frames a request
 /// should learn that from the response, not from a closed pipe.
+///
+/// **Each line is answered by a process of its own**, this binary as `mcp --call`; this one carries
+/// the lines out, the replies back and the ledger between them (*One process per line*, above).
 pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
-    serve_with(input, output, &mut ledger::Ledger::new())
+    let program = std::env::current_exe()?;
+    serve_with(input, output, |carried, line, out| {
+        answer_in_child(&program, carried, line, out)
+    })
 }
 
-/// [`serve`], with the session's [`ledger::Ledger`] supplied, so a test can inspect it afterwards.
+/// [`serve`], with how a line is answered supplied, so a test can stand in for the process.
+///
+/// `answer` is given the ledger line the session's last answered line left, and the line; it
+/// writes the reply, if the line takes one, and returns the ledger line to carry on — `None` when
+/// the line's process failed, which carries the one before it on unchanged.
 fn serve_with(
-    input: impl BufRead,
+    mut input: impl BufRead,
     mut output: impl Write,
-    ledger: &mut ledger::Ledger,
+    mut answer: impl FnMut(&str, &str, &mut dyn Write) -> std::io::Result<Option<String>>,
 ) -> std::io::Result<()> {
-    for line in input.lines() {
-        let line = line?;
+    let mut carried = String::new();
+    // One buffer for every line, so the server holds its longest line and no more. A fresh one per
+    // line grew it by a line per call: six calls carrying a 90 MB representation inline took it
+    // from 90 to 520 MiB, where this one stays at 90.
+    let mut buffer = String::new();
+    loop {
+        buffer.clear();
+        if input.read_line(&mut buffer)? == 0 {
+            return Ok(());
+        }
+        // `BufRead::lines`'s own trim: the newline, then one carriage return before it.
+        let line = match buffer.strip_suffix('\n') {
+            Some(line) => line.strip_suffix('\r').unwrap_or(line),
+            None => &buffer,
+        };
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = handle_line(&line, ledger) else {
-            // A notification (no `id`) takes no reply, which is JSON-RPC's rule rather than a
-            // shortcut: answering `notifications/initialized` is a protocol error.
-            continue;
-        };
-        response.write_to(&mut output)?;
-        writeln!(output)?;
+        if let Some(next) = answer(&carried, line, &mut output)? {
+            carried = next;
+        }
         output.flush()?;
     }
-    Ok(())
+}
+
+/// One line of a session, in the process [`serve`] started for it: the ledger line on the first
+/// line of `input` and the request on the second. Writes the ledger line as the request leaves
+/// it, then the reply, if the request takes one.
+pub fn serve_call(mut input: impl BufRead, mut output: impl Write) -> std::io::Result<()> {
+    let mut carried = String::new();
+    input.read_line(&mut carried)?;
+    let mut line = String::new();
+    input.read_line(&mut line)?;
+    let mut ledger = ledger::Ledger::carried(carried.trim_end_matches('\n'));
+    // A notification (no `id`) takes no reply, which is JSON-RPC's rule rather than a shortcut:
+    // answering `notifications/initialized` is a protocol error.
+    let reply = handle_line(line.trim_end_matches('\n'), &mut ledger);
+    writeln!(output, "{}", ledger.carry())?;
+    if let Some(reply) = reply {
+        reply.write_to(&mut output)?;
+        writeln!(output)?;
+    }
+    output.flush()
+}
+
+/// Answer `line` in a process of its own running `program`, this binary, as `mcp --call`.
+fn answer_in_child(
+    program: &std::path::Path,
+    carried: &str,
+    line: &str,
+    output: &mut dyn Write,
+) -> std::io::Result<Option<String>> {
+    use std::process::{Command, Stdio};
+
+    let spawned = Command::new(program)
+        .args(["mcp", "--call"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            let how = format!("it did not start: {e}");
+            return settle(line, Relayed::default(), false, &how, output);
+        }
+    };
+    // Both lines go in before anything is read, which cannot deadlock: the process reads both
+    // before it writes. A failed write means it has already ended, and its status says how.
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = [carried.as_bytes(), b"\n", line.as_bytes(), b"\n"]
+            .iter()
+            .try_for_each(|part| stdin.write_all(part));
+    }
+    let mut relayed = Relayed::default();
+    if let Some(stdout) = child.stdout.take() {
+        let mut stdout = std::io::BufReader::with_capacity(1 << 16, stdout);
+        relayed = relay(&mut stdout, output)?;
+        // Anything past what was relayed, which this binary never writes, is read and dropped so
+        // that the process can end.
+        let _ = std::io::copy(&mut stdout, &mut std::io::sink());
+    }
+    let status = child.wait()?;
+    settle(line, relayed, status.success(), &status.to_string(), output)
+}
+
+/// What a line's process wrote back, as far as [`relay`] read it.
+#[derive(Default)]
+struct Relayed {
+    /// Its first line, the ledger its line leaves, when that line arrived whole.
+    carried: Option<String>,
+    /// Whether any byte of a reply was copied to the host.
+    forwarded: bool,
+    /// Whether the last byte copied ended its line.
+    ended: bool,
+}
+
+/// Read a line's process's ledger line, then copy what follows it, the reply, to `output` as it
+/// arrives. The reply can be the whole representation `extract` returns, and it is never held
+/// here.
+///
+/// A read error ends the copy, and is the process's failure, which its status reports. A write
+/// error is the host's, and is returned.
+fn relay(from: &mut impl BufRead, output: &mut dyn Write) -> std::io::Result<Relayed> {
+    let mut relayed = Relayed::default();
+    let mut carried = String::new();
+    match std::io::Read::take(&mut *from, CARRIED_LIMIT).read_line(&mut carried) {
+        Ok(_) if carried.ends_with('\n') => {
+            carried.pop();
+            relayed.carried = Some(carried);
+        }
+        _ => return Ok(relayed),
+    }
+    loop {
+        let chunk = match from.fill_buf() {
+            Ok([]) => break,
+            Ok(chunk) => chunk,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+        output.write_all(chunk)?;
+        relayed.forwarded = true;
+        relayed.ended = chunk.last() == Some(&b'\n');
+        let n = chunk.len();
+        from.consume(n);
+    }
+    Ok(relayed)
+}
+
+/// Settle a line whose process has ended: its ledger line, when it exited cleanly after a whole
+/// reply or none. Otherwise `None`, which carries the session's ledger on unchanged, and an
+/// internal error for the line's own id — after a newline if part of a reply went out, and not at
+/// all if the whole of one did.
+fn settle(
+    line: &str,
+    relayed: Relayed,
+    clean: bool,
+    how: &str,
+    mut output: &mut dyn Write,
+) -> std::io::Result<Option<String>> {
+    let whole = !relayed.forwarded || relayed.ended;
+    if clean && whole && relayed.carried.is_some() {
+        return Ok(relayed.carried);
+    }
+    if relayed.forwarded && relayed.ended {
+        // Answering the id a second time would break the protocol.
+        return Ok(None);
+    }
+    if relayed.forwarded {
+        writeln!(output)?;
+    }
+    if let Some(reply) = failed(line, how) {
+        reply.write_to(&mut output)?;
+        writeln!(output)?;
+    }
+    Ok(None)
+}
+
+/// The answer to a line whose process ended without a whole one: JSON-RPC's internal error for
+/// the line's own id, or none for a notification. A line that does not parse gets the null id its
+/// parse error would have.
+fn failed(line: &str, how: &str) -> Option<Reply> {
+    let id = match serde_json::from_str::<Value>(line) {
+        Ok(request) => request.get("id")?.clone(),
+        Err(_) => Value::Null,
+    };
+    Some(Reply::Json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": INTERNAL_ERROR,
+            "message": format!(
+                "the process answering this request ended without a whole reply: {how}"
+            )
+        }
+    })))
 }
 
 /// One line in, at most one response out.
@@ -672,7 +873,7 @@ fn locate_summary(found: &ethos_parser_core::Locations) -> String {
 /// about a document that never existed.
 ///
 /// **A path is read once and its bytes handed to the ledger by value**, which parses, hashes and —
-/// unless these exact bytes already verified in this process — verifies that one buffer. The
+/// unless these exact bytes already verified in this session — verifies that one buffer. The
 /// ledger is never given the path. An inline object is verified every time, exactly as before.
 fn representation_arg(
     args: &mut Value,
@@ -713,7 +914,7 @@ fn read_supplied_file(path: &str) -> Result<Vec<u8>, EngineError> {
     }
 }
 
-/// **Which exact bytes already verified in this process** — digests, and nothing else.
+/// **Which exact bytes already verified in this session** — digests, and nothing else.
 ///
 /// The module doc's *What the server keeps between calls* is the argument; this is the mechanism.
 /// Its code never touches the filesystem or a parsed tree's serialization, and
@@ -730,8 +931,9 @@ mod ledger {
 
     /// The identity of one buffer: its length and the SHA-256 of every byte of it.
     ///
-    /// No `Default` and no `Clone`, and one constructor: a key exists only because some buffer was
-    /// hashed.
+    /// No `Default` and no `Clone`, and two ways in: [`Key::of`] hashes a buffer, and
+    /// [`Ledger::carried`] takes back a key an earlier process of this session hashed. A key exists
+    /// only because some buffer was hashed.
     #[derive(PartialEq, Eq)]
     struct Key {
         len: u64,
@@ -828,6 +1030,41 @@ mod ledger {
                 self.verified.pop_front();
             }
             self.verified.push_back(key);
+        }
+
+        /// The ledger as the session's last answered line left it, from the line [`Ledger::carry`]
+        /// wrote there: this binary's version, then `length:sha256` per key, least recently used
+        /// first. Empty when the line is empty, malformed or longer than [`CAPACITY`] keys, and
+        /// when it names another version: a binary replaced under a running server does not take
+        /// the verdicts of the one it replaced. An empty ledger costs a verification, nothing else.
+        pub(super) fn carried(line: &str) -> Self {
+            let mut ledger = Ledger::new();
+            let mut fields = line.split(' ');
+            if fields.next() != Some(env!("CARGO_PKG_VERSION")) {
+                return ledger;
+            }
+            for field in fields {
+                let key = field.split_once(':').and_then(|(len, sha256)| {
+                    Some(Key {
+                        len: len.parse().ok()?,
+                        sha256: sha256.to_owned(),
+                    })
+                });
+                match key {
+                    Some(key) if ledger.verified.len() < CAPACITY => ledger.verified.push_back(key),
+                    _ => return Ledger::new(),
+                }
+            }
+            ledger
+        }
+
+        /// This ledger as one line, for the server to carry to its next line's process.
+        pub(super) fn carry(&self) -> String {
+            let mut line = String::from(env!("CARGO_PKG_VERSION"));
+            for key in &self.verified {
+                line.push_str(&format!(" {}:{}", key.len, key.sha256));
+            }
+            line
         }
 
         #[cfg(test)]
@@ -1283,6 +1520,12 @@ mod tests {
             2,
             "one definition and one call: an entry is made in exactly one place"
         );
+        assert_eq!(
+            code.matches("push_back(").count(),
+            4,
+            "a hit moved to the back, `insert`, `carried` and the test-only \
+             `remembering_unverified`: a key enters nowhere else"
+        );
         let load = &code[code.find("fn load(").expect("load")..];
         assert!(
             load.find("from_slice(").expect("a parse") < load.find("key_of(").expect("a hash"),
@@ -1544,36 +1787,225 @@ mod tests {
         assert_eq!(ledger.stats, ledger::Stats::default());
     }
 
-    /// The failure this catches: a ledger made per line or per call inside the loop, which every test above — each
-    /// handing in its own — would miss.
+    /// One line through the entry its process runs, [`serve_call`], and back through [`relay`] and
+    /// [`settle`]: everything a line's process does, done in this one.
+    fn in_process(
+        carried: &str,
+        line: &str,
+        out: &mut dyn Write,
+    ) -> std::io::Result<Option<String>> {
+        let mut written = Vec::new();
+        serve_call(
+            std::io::Cursor::new(format!("{carried}\n{line}\n")),
+            &mut written,
+        )?;
+        let relayed = relay(&mut std::io::Cursor::new(written), out)?;
+        settle(line, relayed, true, "exit status: 0", out)
+    }
+
+    /// The failure this catches: a ledger line dropped between one line and the next, or made anew
+    /// per line, which every test handing in its own ledger would miss; a failed line's ledger line
+    /// kept; a blank line sent to a process; a line trimmed otherwise than `BufRead::lines` trims
+    /// it — a CRLF's carriage return kept, or a last line without a newline lost or cut.
     #[test]
-    fn serve_threads_one_ledger_through_the_session() {
+    fn serve_carries_each_lines_ledger_to_the_next() {
+        let mut seen = Vec::new();
+        let mut out = Vec::new();
+        serve_with(
+            std::io::Cursor::new("a\r\n\n  \nb\nc\nd\ne\r"),
+            &mut out,
+            |carried, line, out| {
+                seen.push(carried.to_string());
+                writeln!(out, "{line}")?;
+                Ok((line != "b").then(|| format!("after {line}")))
+            },
+        )
+        .expect("serve");
+        assert_eq!(seen, ["", "after a", "after a", "after c", "after d"]);
+        assert_eq!(out, b"a\nb\nc\nd\ne\r\n");
+    }
+
+    /// The failure this catches: a reply the relay changes, a ledger that does not reach the next
+    /// line, and an answer that depends on an earlier line.
+    #[test]
+    fn a_session_answers_as_fresh_sessions_do_and_carries_its_ledger() {
         let dir = scratch("session");
         let p = dir.join("a.json");
-        write(&p, &artifact());
+        let good = artifact();
+        write(&p, &good);
         let call = json!({
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": { "name": "node_get", "arguments": { "representation": at(&p), "node_id": "s1" } }
         });
         let ping = json!({ "jsonrpc": "2.0", "id": 2, "method": "ping" });
         let input = format!("{call}\n{ping}\n{call}\n");
+        let mut carried = Vec::new();
         let mut out = Vec::new();
-        let mut ledger = ledger::Ledger::new();
-        serve_with(std::io::Cursor::new(input), &mut out, &mut ledger).expect("serve");
-        assert_eq!((ledger.stats.verifies, ledger.stats.hits), (1, 1));
+        serve_with(std::io::Cursor::new(input), &mut out, |c, line, o| {
+            let next = in_process(c, line, o)?;
+            carried.push(next.clone());
+            Ok(next)
+        })
+        .expect("serve");
+        for (i, line) in carried.iter().enumerate() {
+            let ledger = ledger::Ledger::carried(line.as_deref().expect("every line carries on"));
+            assert!(ledger.knows(&good), "after line {i}");
+            assert_eq!(ledger.len(), 1, "after line {i}");
+        }
 
         let mut expected = Vec::new();
         for line in [&call, &ping, &call] {
             serve_with(
                 std::io::Cursor::new(format!("{line}\n")),
                 &mut expected,
-                &mut ledger::Ledger::new(),
+                in_process,
             )
             .expect("serve");
         }
         assert_eq!(
             out, expected,
             "a session's replies are three fresh servers' replies"
+        );
+    }
+
+    /// **A carried ledger decides a skip as this process's own does, and only one this version
+    /// wrote.**
+    ///
+    /// The failure this catches: a line's process that ignores the ledger it is handed, which no
+    /// reply shows, because a skip changes none; a carried line that drops a key or reorders them;
+    /// one version taking another's verdicts; a carried line past the bound taken.
+    #[test]
+    fn a_carried_ledger_decides_the_skip_and_only_at_this_version() {
+        let dir = scratch("carried");
+        let p = dir.join("a.json");
+        let bad = tampered(&artifact());
+        write(&p, &bad);
+        let line = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "node_get", "arguments": { "representation": at(&p), "node_id": "s1" } }
+        });
+        let refused = |carried: &str| {
+            let mut out = Vec::new();
+            serve_call(
+                std::io::Cursor::new(format!("{carried}\n{line}\n")),
+                &mut out,
+            )
+            .expect("serve_call");
+            is_error(out.split(|&b| b == b'\n').nth(1).expect("a reply"))
+        };
+        let poisoned = ledger::Ledger::remembering_unverified(&bad).carry();
+        assert!(!refused(&poisoned), "a carried key skips verification");
+        assert!(refused(""), "no ledger: verified, and refused");
+        let elsewhere = poisoned.replacen(env!("CARGO_PKG_VERSION"), "0.0.0", 1);
+        assert!(refused(&elsewhere), "another version's ledger is not taken");
+
+        let good = artifact();
+        let variant = |k: usize| {
+            let mut v = good.clone();
+            v.extend(std::iter::repeat_n(b' ', k));
+            v
+        };
+        let mut ledger = ledger::Ledger::new();
+        for k in 0..ledger::CAPACITY {
+            ledger.load(variant(k)).expect("verifies");
+        }
+        ledger
+            .load(variant(0))
+            .expect("a hit, now most recently used");
+        let mut carried = ledger::Ledger::carried(&ledger.carry());
+        assert_eq!(carried.len(), ledger::CAPACITY);
+        carried.load(variant(ledger::CAPACITY)).expect("verifies");
+        let before = carried.stats;
+        carried.load(variant(0)).expect("still known");
+        assert_eq!(
+            carried.stats.hits,
+            before.hits + 1,
+            "the most recently used key survived the carry and the eviction"
+        );
+        carried.load(variant(1)).expect("verifies again");
+        assert_eq!(
+            carried.stats.verifies,
+            before.verifies + 1,
+            "the least recently used key left first"
+        );
+
+        let over = format!("{} 1:{}", ledger.carry(), "0".repeat(64));
+        assert_eq!(ledger::Ledger::carried(&over).len(), 0);
+        let malformed = format!("{} 1:{} x", env!("CARGO_PKG_VERSION"), "0".repeat(64));
+        assert_eq!(ledger::Ledger::carried(&malformed).len(), 0);
+    }
+
+    /// The failure this catches: a ledger line taken from anywhere but the first line, or a first
+    /// line past the limit copied to the host as if it were a reply.
+    #[test]
+    fn relay_takes_the_first_line_and_copies_the_rest() {
+        let mut out = Vec::new();
+        let relayed = relay(
+            &mut std::io::Cursor::new(b"0.1 5:ab\n{\"id\":1}\n".to_vec()),
+            &mut out,
+        )
+        .expect("relay");
+        assert_eq!(relayed.carried.as_deref(), Some("0.1 5:ab"));
+        assert!(relayed.forwarded && relayed.ended);
+        assert_eq!(out, b"{\"id\":1}\n");
+
+        let mut out = Vec::new();
+        let mut long = vec![b'x'; usize::try_from(CARRIED_LIMIT).expect("small") + 1];
+        long.extend_from_slice(b"\n{\"id\":1}\n");
+        let relayed = relay(&mut std::io::Cursor::new(long), &mut out).expect("relay");
+        assert!(relayed.carried.is_none() && !relayed.forwarded);
+        assert!(out.is_empty());
+    }
+
+    /// **A line whose process fails is answered once, under its own id, and carries no ledger
+    /// on.**
+    ///
+    /// The failure this catches: a failed line left unanswered, answered twice or under another id,
+    /// or its answer run into the reply it cut short; a notification answered; a failed process's
+    /// ledger line kept.
+    #[test]
+    fn a_failed_line_is_answered_once_under_its_own_id() {
+        let line = r#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#;
+        let settled = |carried: Option<&str>, forwarded, ended, clean, line: &str| {
+            let relayed = Relayed {
+                carried: carried.map(String::from),
+                forwarded,
+                ended,
+            };
+            let mut out = Vec::new();
+            let next =
+                settle(line, relayed, clean, "signal: 6 (SIGABRT)", &mut out).expect("settle");
+            (next, String::from_utf8(out).expect("utf-8"))
+        };
+        let error_for_7 = |reply: &str| {
+            let v: Value = serde_json::from_str(reply).expect("a reply");
+            v["id"] == json!(7) && v["error"]["code"] == json!(INTERNAL_ERROR)
+        };
+
+        assert_eq!(
+            settled(Some("L"), true, true, true, line),
+            (Some("L".to_string()), String::new())
+        );
+        let (next, out) = settled(Some("L"), false, false, false, line);
+        assert_eq!(next, None);
+        assert!(out.ends_with('\n') && out.lines().count() == 1 && error_for_7(out.trim_end()));
+        let (next, out) = settled(Some("L"), true, false, false, line);
+        assert_eq!(next, None);
+        let lines: Vec<&str> = out.lines().collect();
+        assert!(
+            lines.len() == 2 && lines[0].is_empty() && error_for_7(lines[1]),
+            "{out}"
+        );
+        assert_eq!(
+            settled(Some("L"), true, true, false, line),
+            (None, String::new())
+        );
+        let (next, out) = settled(None, false, false, true, line);
+        assert!(next.is_none() && error_for_7(out.trim_end()));
+        let notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+        assert_eq!(
+            settled(None, false, false, false, notification),
+            (None, String::new())
         );
     }
 

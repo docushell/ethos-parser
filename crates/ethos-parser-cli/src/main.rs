@@ -181,8 +181,11 @@ enum Command {
     /// the way in — a handle this engine did not mint is an error, never a best guess. See
     /// `docs/history/12-V12-SCOPE.md` §3.
     ///
+    /// **Each request is answered by a process of its own**, running this binary, so a call's
+    /// memory goes back to the system when its answer is out, and a call that aborts fails alone.
+    ///
     /// Exit codes: **0** the stream closed cleanly · **2** stdin or stdout failed.
-    Mcp,
+    Mcp(McpArgs),
 
     /// Draw what was detected onto a copy of the document (v1-S6).
     ///
@@ -421,6 +424,14 @@ struct GroundArgs {
 }
 
 #[derive(clap::Args)]
+struct McpArgs {
+    /// Answer one request as the server's own process for it: the server's ledger line, then the
+    /// request, on stdin. Hidden: it is how `mcp` runs a call, not a way to run one.
+    #[arg(long, hide = true)]
+    call: bool,
+}
+
+#[derive(clap::Args)]
 struct OverlayArgs {
     /// The PDF to annotate.
     path: PathBuf,
@@ -541,7 +552,8 @@ fn main() -> ExitCode {
         }
         // Not `timed`: a server has no one input path and no one stage, and inventing a
         // diagnostics row for the whole session would put a duration on a pipe.
-        Command::Mcp => run_mcp(),
+        Command::Mcp(args) if args.call => run_mcp_call(),
+        Command::Mcp(_) => run_mcp(),
         Command::Ground(args) => {
             let path = args.path.clone();
             timed(Stage::Ground, diag, &path, || run_ground(args))
@@ -1024,6 +1036,18 @@ fn run_mcp() -> ExitCode {
         Ok(()) => ExitCode::from(PROJECTED as u8),
         Err(e) => fail(&EngineError::Io {
             detail: format!("mcp stdio: {e}"),
+        }),
+    }
+}
+
+/// Answer one line of an MCP session, in the process `run_mcp` started for it.
+fn run_mcp_call() -> ExitCode {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    match mcp::serve_call(stdin.lock(), stdout.lock()) {
+        Ok(()) => ExitCode::from(PROJECTED as u8),
+        Err(e) => fail(&EngineError::Io {
+            detail: format!("mcp call: {e}"),
         }),
     }
 }

@@ -913,3 +913,63 @@ fn a_path_that_is_not_a_regular_file_is_refused_at_once() {
     drop(stdin);
     assert_eq!(child.wait().expect("exits").code(), Some(0));
 }
+
+/// **A line whose process fails is answered with an internal error, and the session goes on.**
+///
+/// Each line is answered by a process of its own running the server's binary. A copy of the binary
+/// serves one line, then is deleted under the running server, so every later line's process fails
+/// to start. The failure this catches: a failed line that ends the session, is left unanswered, or
+/// is answered under another id; a notification answered.
+#[cfg(unix)]
+#[test]
+fn a_line_whose_process_fails_is_answered_and_the_session_goes_on() {
+    use std::io::{BufRead, BufReader};
+
+    let dir = stdio_scratch("gone");
+    let copy = dir.join("ethos-parser");
+    std::fs::copy(env!("CARGO_BIN_EXE_ethos-parser"), &copy).expect("copy the binary");
+    let mut child = Command::new(&copy)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("runs");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let initialize = json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {} });
+    writeln!(stdin, "{initialize}").expect("write");
+    let mut first = String::new();
+    stdout.read_line(&mut first).expect("a reply");
+    let first: Value = serde_json::from_str(&first).expect("json");
+    assert_eq!(
+        first["result"]["serverInfo"]["name"],
+        json!("ethos-parser"),
+        "{first}"
+    );
+
+    std::fs::remove_file(&copy).expect("delete the binary");
+    let requests = [
+        call("extract", json!({ "path": "/nonexistent.pdf" }), 5),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        json!({ "jsonrpc": "2.0", "id": 6, "method": "ping" }),
+    ];
+    for request in &requests {
+        writeln!(stdin, "{request}").expect("write");
+    }
+    drop(stdin);
+    let replies: Vec<Value> = stdout
+        .lines()
+        .map(|l| serde_json::from_str(&l.expect("a line")).expect("json"))
+        .collect();
+    assert_eq!(
+        replies.len(),
+        2,
+        "the notification is not answered: {replies:?}"
+    );
+    for (reply, id) in replies.iter().zip([5, 6]) {
+        assert_eq!(reply["id"], json!(id), "{reply}");
+        assert_eq!(reply["error"]["code"], json!(-32603), "{reply}");
+    }
+    assert_eq!(child.wait().expect("exits").code(), Some(0));
+}
