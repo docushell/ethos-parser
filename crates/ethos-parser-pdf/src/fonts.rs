@@ -608,15 +608,17 @@ fn load_font(
     //    as a page's content stream is, rather than parsed.
     let decoder = if let Some(stream) = resolve_stream(doc, fd.get(b"ToUnicode").ok()) {
         let bytes = || {
-            stream
-                .decompressed_content()
-                .map_err(|_| EngineError::Unsupported {
+            use crate::budget::{decoded, stream_past_ceiling, NotDecoded, MAX_DECODED_BYTES};
+            decoded(&stream, MAX_DECODED_BYTES).map_err(|e| match e {
+                NotDecoded::PastLimit => stream_past_ceiling(format!("font /{id}'s /ToUnicode")),
+                NotDecoded::Failed => EngineError::Unsupported {
                     what: "ToUnicode stream filter".into(),
                     detail: format!(
                         "/{id}: the /ToUnicode stream's filter did not decode, and its raw bytes \
                          are not the CMap the font declares"
                     ),
-                })
+                },
+            })
         };
         // Parsed once per stream and shared, whatever font names it. A stream is always an
         // indirect object in a parsed document; the direct arm is for one built in memory.

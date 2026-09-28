@@ -58,6 +58,7 @@ pub mod limitations;
 pub(crate) mod accuracy;
 pub(crate) mod afm;
 pub(crate) mod blocks;
+pub(crate) mod budget;
 pub(crate) mod classify;
 pub(crate) mod cmap;
 pub(crate) mod content;

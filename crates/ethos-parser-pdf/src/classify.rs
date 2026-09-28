@@ -234,8 +234,9 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
 
     // The bound. `take` is the whole mechanism: there is no later phase, and adding one would
     // move `pages_content_scanned` and fail `the_sampler_is_bounded_on_a_492_page_document`.
+    let content = crate::budget::ContentBudget::default();
     for &(page_number, page_id) in doc.pages().iter().take(pages_to_scan as usize) {
-        let tally = tally_page(doc, page_id);
+        let tally = tally_page(doc, page_id, &content);
         scanned += 1;
         rows.push(page_row(page_number, tally));
         page_states.push(PageStateEntry {
@@ -323,12 +324,17 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
 /// M3. A page whose content stream fails to decode yields zero tallies rather than an error: an
 /// unreadable content stream is an observation about the document, and turning it into a hard
 /// failure would make one bad page abort a classification the caller could still route on.
-fn tally_page(doc: &Document, page_id: lopdf::ObjectId) -> PageTally {
+fn tally_page(
+    doc: &Document,
+    page_id: lopdf::ObjectId,
+    content: &crate::budget::ContentBudget,
+) -> PageTally {
     let mut t = PageTally::default();
 
     // `page_operations` refuses a page `lopdf` would read in part or panic on; a refusal is an
     // unreadable content stream like any other here, and yields zero tallies.
-    if let Ok(operations) = crate::extract::page_operations(doc.inner(), 0, page_id) {
+    if let Ok(operations) = crate::extract::page_operations_whole(doc.inner(), 0, page_id, content)
+    {
         for op in &operations {
             let name = op.operator.as_str();
             if th::TEXT_SHOWING_OPERATORS.contains(&name) {

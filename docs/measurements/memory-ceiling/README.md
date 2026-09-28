@@ -1045,3 +1045,64 @@ that is not JSON and a notification — and compares every reply line: **41 of 4
 **What this does not change.** A call's own peak: the process answering it runs what A's server
 ran. §15's rule is for one process; before this, no rule of its kind bounded an MCP session,
 whose memory grew with its length, and now a session's peak is its largest call's.
+
+## 17. What a page may cost: ceilings, and dense pages read alone
+
+**Run 2026-09-28.** A = `main` at `16f64d7`, B = the same tree with `crates/ethos-parser-pdf/src/budget.rs`
+(review 2026-09-25 F08, decision #34), both release builds. Every figure below is `/usr/bin/time -l`,
+one run.
+
+### Why
+
+Deflate expands up to about 1,032:1, and a content operation costs about 620 bytes of memory once
+read — the reader's own token and `lopdf`'s operation, both alive while a page is read. Nothing
+bounded either, and pages read in parallel multiplied both by the host's cores:
+
+| input | A |
+| --- | ---: |
+| one page, 2^20 operations (4.7 KB file) | 651 MiB |
+| one page, 4,194,309 operations (17 KB) | 2,584 MiB |
+| four pages sharing one stream of 2^20 operations, 1 thread / 4 threads | 788 / 2,893 MiB |
+| forty such pages | 8,056 MiB, exit 0 |
+
+§15's rule — 7 MiB plus 5.4 MiB per page — is the worst measured on real documents; one page of the
+17 KB file exceeds it about 200-fold.
+
+### The census the ceilings are set from
+
+`f08_census`, a scratch instrument over `lopdf` alone, read 1,294 real PDFs and 3,370 pages: the gate
+set, gate-zero, the engine fixtures, opendataloader-bench and OmniDocBench `v1_0`.
+
+| per | the census's largest | where | ceiling | margin |
+| --- | ---: | --- | ---: | ---: |
+| page: operations | 166,960 | opendataloader-bench `01030000000141` | 1,048,576 | 6x |
+| page: decoded content | 4,174,844 B | the same | 64 MiB | 16x |
+| stream of any kind: decoded | 4,174,844 B (font 1.39 MB, object stream 417 KB) | | 64 MiB | 16x |
+| document: operations | 5,737,203 | `nist-sp-800-53Ar5` | 33,554,432 | 6x |
+| document: decoded content | 58,143,281 B | `nist-sp-800-53Ar5` | 1 GiB | 18x |
+
+The densest real page costs 162 MiB to extract. The median document's densest page holds 548
+operations and the 99th percentile 37,381. Three of the 3,370 pages hold more than 65,536, the
+threshold past which a page is read alone.
+
+### B
+
+| input | A | B |
+| --- | --- | --- |
+| one page, 2^20 operations exactly | exit 0, 651 MiB | exit 0, 651 MiB |
+| one page, 2^20 + 5 operations | exit 0, 651 MiB | exit 2 `resource_limit`, 70 MiB |
+| one page, 4,194,309 operations | exit 0, 2,584 MiB | exit 2, 118 MiB |
+| four pages sharing a stream of 2^20 + 5 | exit 0, 2,903 MiB | exit 2, 203 MiB |
+| four pages sharing a stream of 2^20 exactly | exit 0, 2,744 MiB, 0.32 s | exit 0, 793 MiB, 0.58 s |
+| forty such pages | exit 0, 8,056 MiB | exit 2 on the document's operations, 3,360 MiB |
+
+**Dense pages cost one at a time**: four at the ceiling take what one thread took before, 793 MiB
+against 788, for 0.26 s more. **What the forty-page file still costs is the allocator, not the
+reader.** Read one after another, each dense page leaves resident memory about 85 MiB higher though
+nothing of it is kept — A on one thread shows the same, 2,197 MiB for twenty such pages — the
+retention §16 measured across MCP calls. The document's operation ceiling is what bounds it, at
+about 32 pages at the page ceiling: about 3.3 GiB for a crafted file, which A read without bound.
+
+`lopdf` decodes object and cross-reference streams while it loads, before any check here, and now
+under the same 64 MiB. It drops an object stream past it rather than refusing it, and the open's
+reconciliation refuses every object the stream held, naming the stream and both causes.

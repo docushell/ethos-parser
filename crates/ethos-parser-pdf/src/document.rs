@@ -140,7 +140,7 @@ impl Document {
         // The document as written, first. The repair is a fallback and nothing else: a
         // well-formed document never goes near it, so the common path is byte-for-byte the v0
         // path and cannot have changed behaviour.
-        let (inner, xref_entries_padded) = match lopdf::Document::load_mem(bytes) {
+        let (inner, xref_entries_padded) = match load(bytes) {
             Ok(doc) => (doc, None),
             Err(original) => {
                 let original = map_lopdf_error(original);
@@ -304,7 +304,7 @@ impl Document {
         let repair = crate::xref::repair_xref(bytes).ok()?;
         // The repaired bytes must parse cleanly. If they do not, the document had something else
         // wrong with it and the original error is still the honest answer.
-        let doc = lopdf::Document::load_mem(&repair.bytes).ok()?;
+        let doc = load(&repair.bytes).ok()?;
         Some((doc, repair.entries_padded))
     }
 
@@ -363,9 +363,23 @@ impl Document {
 /// "unsupported" without parsing a message. LiteParse returns exit 1 for password-protected,
 /// invalid-header, corrupt-header **and** a missing file, identically to "this document is
 /// complex" (parity checklist L16) — failing closed with an indistinguishable signal.
+/// `lopdf`'s load, each object and cross-reference stream it decodes held to
+/// [`crate::budget::MAX_DECODED_BYTES`] (review 2026-09-25 F08). An object stream past it is
+/// dropped rather than refused, and [`unloaded_in_use`] refuses every object it held.
+fn load(bytes: &[u8]) -> Result<lopdf::Document, lopdf::Error> {
+    let options = lopdf::LoadOptions::with_max_decompressed_size(crate::budget::MAX_DECODED_BYTES);
+    lopdf::Document::load_mem_with_options(bytes, options)
+}
+
 fn map_lopdf_error(e: lopdf::Error) -> EngineError {
     use lopdf::Error as L;
     match e {
+        L::Decompress(lopdf::DecompressError::MemoryLimitExceeded { limit }) => {
+            EngineError::ResourceLimit {
+                limit: "decoded bytes of a cross-reference or object stream".into(),
+                configured: limit.to_string(),
+            }
+        }
         L::Decryption(d) => EngineError::Encrypted {
             detail: d.to_string(),
         },
@@ -490,7 +504,7 @@ fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
 ///
 /// A stream whose `/Length` resolves read its data at load, an empty one included, so only one
 /// whose `/Length` does not resolve can have lost it that way.
-fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static str)> {
+fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, String)> {
     use lopdf::xref::XrefEntry;
     let encrypt = doc
         .encryption_state
@@ -504,7 +518,26 @@ fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static s
         };
         let why = match doc.objects.get(&id) {
             _ if Some(id) == encrypt => continue,
-            None => "is in use in the cross-reference table and did not load",
+            None => match *entry {
+                // Only when the stream itself is gone: one that loaded without this object was
+                // decoded, so its size is not the cause.
+                XrefEntry::Compressed { container, .. }
+                    if !doc.objects.contains_key(&(container, 0)) =>
+                {
+                    format!(
+                        "is stored in object stream {container}, which did not load: it is \
+                         malformed, or decodes to more than {} bytes",
+                        crate::budget::MAX_DECODED_BYTES
+                    )
+                }
+                // `lopdf` drops an object stream it cannot decode, itself included.
+                _ if holds_objects(doc, number) => format!(
+                    "is an object stream the cross-reference table stores objects in, and did not \
+                     load: it is malformed, or decodes to more than {} bytes",
+                    crate::budget::MAX_DECODED_BYTES
+                ),
+                _ => "is in use in the cross-reference table and did not load".into(),
+            },
             Some(lopdf::Object::Stream(s))
                 if s.content.is_empty()
                     && s.start_position.is_some()
@@ -514,13 +547,20 @@ fn unloaded_in_use(doc: &lopdf::Document) -> Option<(lopdf::ObjectId, &'static s
                         .and_then(|(_, l)| l.as_i64())
                         .is_err() =>
             {
-                "is a stream whose /Length does not resolve, so its data did not load"
+                "is a stream whose /Length does not resolve, so its data did not load".into()
             }
             _ => continue,
         };
         return Some((id, why));
     }
     None
+}
+
+/// Whether the cross-reference table stores any object inside object `number`, an object stream.
+fn holds_objects(doc: &lopdf::Document, number: u32) -> bool {
+    doc.reference_table.entries.values().any(|entry| {
+        matches!(*entry, lopdf::xref::XrefEntry::Compressed { container, .. } if container == number)
+    })
 }
 
 /// The first object the file writes as a stream that `lopdf` loaded as its bare dictionary.
