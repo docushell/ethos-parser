@@ -5523,6 +5523,157 @@ fn an_encrypted_open_whose_object_streams_nest_is_refused() {
     );
 }
 
+/// `annotation-contents` after `prepare`, encrypted AES-128 (`/V 4 /R 4`, crypt filter `/AESV2`)
+/// under the empty user password and `encrypted_fixture`'s fixed `/ID`, and not yet saved, so a
+/// test can change its ciphertext first. Each run draws its own initialisation vectors; nothing
+/// read from these bytes depends on them.
+fn aes_encrypted_annotations(prepare: impl FnOnce(&mut lopdf::Document)) -> lopdf::Document {
+    use lopdf::encryption::crypt_filters::{Aes128CryptFilter, CryptFilter};
+    let original = std::fs::read(engine_fx("annotation-contents")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let id = lopdf::Object::String(
+        b"0123456789abcdef".to_vec(),
+        lopdf::StringFormat::Hexadecimal,
+    );
+    doc.trailer.set("ID", vec![id.clone(), id]);
+    prepare(&mut doc);
+    let aes: std::sync::Arc<dyn CryptFilter> = std::sync::Arc::new(Aes128CryptFilter);
+    let state = lopdf::EncryptionState::try_from(lopdf::EncryptionVersion::V4 {
+        document: &doc,
+        encrypt_metadata: true,
+        crypt_filters: std::collections::BTreeMap::from([(b"StdCF".to_vec(), aes)]),
+        stream_filter: b"StdCF".to_vec(),
+        string_filter: b"StdCF".to_vec(),
+        owner_password: "owner",
+        user_password: "",
+        permissions: lopdf::Permissions::default(),
+    })
+    .expect("an AES-128 encryption state");
+    doc.encrypt(&state)
+        .expect("encrypts every string and stream");
+    doc
+}
+
+fn saved(mut doc: lopdf::Document) -> Vec<u8> {
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+/// `annotation-contents`'s first annotation, `6 0 R`, the one whose `/Contents` is a string.
+fn annotation_6(doc: &mut lopdf::Document) -> &mut lopdf::Dictionary {
+    doc.get_object_mut((6, 0))
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("annotation 6 0 R")
+}
+
+/// **An encrypted open where an object does not decrypt is refused** (review 2026-09-26 N19).
+/// `lopdf` 0.44.0 discards a decryption error at load and keeps the object as the file writes it,
+/// so with one annotation's `/Contents` a byte short of whole 16-byte blocks, that annotation read
+/// its ciphertext as its text, `extracted`, exit 0.
+#[test]
+fn an_encrypted_open_where_an_object_does_not_decrypt_is_refused() {
+    let profile = Profile::default();
+
+    // The control: whole, it opens, declares the encrypted open, and reads the plaintext.
+    let doc = Document::open_bytes(&saved(aes_encrypted_annotations(|_| {})), &profile)
+        .expect("the empty password opened it");
+    let a = ethos_parser_pdf::extract(&doc, &profile).expect("and it reads");
+    assert!(
+        object_texts(&a).contains(&"Check this figure against the appendix".to_string()),
+        "{:?}",
+        object_texts(&a)
+    );
+    assert!(
+        codes(&a)
+            .contains(&ethos_parser_pdf::limitations::ENCRYPTED_EMPTY_USER_PASSWORD.to_string()),
+        "{:?}",
+        codes(&a)
+    );
+
+    let mut broken = aes_encrypted_annotations(|_| {});
+    let Ok(lopdf::Object::String(contents, _)) = annotation_6(&mut broken).get_mut(b"Contents")
+    else {
+        panic!("annotation 6 0 R carries its /Contents as a string");
+    };
+    contents.pop();
+    let e = Document::open_bytes(&saved(broken), &profile)
+        .expect_err("refused, not read as its ciphertext");
+    assert_eq!(e.code(), "malformed", "{e}");
+    assert!(
+        e.to_string()
+            .contains("object 6 0 R did not decrypt: invalid ciphertext length"),
+        "{e}"
+    );
+}
+
+/// **A signature's `/Contents` is read as written, and what follows it decrypted** (review
+/// 2026-09-26 N19). A signer stores it unencrypted, and `lopdf` decrypts it anyway: the error it
+/// discards left the rest of the signature, and of any dictionary holding it, as ciphertext.
+/// Three real forms signed for usage rights, encrypted AES, failed so. A
+/// signature is a dictionary of `/Type /Sig` carrying `/ByteRange`, as qpdf reads one: with either
+/// alone, a `/Contents` as written is refused like any other that does not decrypt.
+#[test]
+fn a_signatures_contents_is_read_as_written_and_what_follows_it_decrypted() {
+    let signed = |signature: lopdf::Dictionary| {
+        let mut doc = aes_encrypted_annotations(|doc| {
+            // After `/T` and before `/Contents`: `lopdf` decrypts the one, fails on the
+            // signature, and leaves the other as ciphertext.
+            let mut annotation = lopdf::Dictionary::new();
+            for (key, value) in annotation_6(doc).iter() {
+                annotation.set(key.clone(), value.clone());
+                if key == b"T" {
+                    annotation.set("Sig", signature.clone());
+                }
+            }
+            *annotation_6(doc) = annotation;
+        });
+        // As qpdf writes it: not encrypted, and five bytes, which is not whole AES blocks.
+        let Ok(signature) = annotation_6(&mut doc)
+            .get_mut(b"Sig")
+            .and_then(lopdf::Object::as_dict_mut)
+        else {
+            panic!("the annotation holds the signature");
+        };
+        signature.set(
+            "Contents",
+            lopdf::Object::String(b"0\x80\x06\x09*".to_vec(), lopdf::StringFormat::Hexadecimal),
+        );
+        Document::open_bytes(&saved(doc), &Profile::default())
+    };
+    let contents = || lopdf::Object::String(Vec::new(), lopdf::StringFormat::Hexadecimal);
+    let byte_range = || lopdf::Object::from(vec![0.into(), 0.into(), 0.into(), 0.into()]);
+
+    let doc = signed(lopdf::dictionary! {
+        "Type" => "Sig", "ByteRange" => byte_range(), "Contents" => contents()
+    })
+    .expect("a signature's /Contents is not decrypted");
+    let a = ethos_parser_pdf::extract(&doc, &Profile::default()).expect("and it reads");
+    assert!(
+        object_texts(&a).contains(&"Check this figure against the appendix".to_string()),
+        "the annotation's own strings, after the signature, are decrypted: {:?}",
+        object_texts(&a)
+    );
+
+    for (what, signature) in [
+        (
+            "/ByteRange alone",
+            lopdf::dictionary! { "ByteRange" => byte_range(), "Contents" => contents() },
+        ),
+        (
+            "/Type /Sig alone",
+            lopdf::dictionary! { "Type" => "Sig", "Contents" => contents() },
+        ),
+    ] {
+        let e = signed(signature).expect_err(what);
+        assert!(
+            e.to_string()
+                .contains("object 6 0 R did not decrypt: invalid ciphertext length"),
+            "{what}: {e}"
+        );
+    }
+}
+
 // -------------------------------------------------------------------------------------------
 // A dropped run still advances the pen (doc 22 amendments, OPEN-WORK §6)
 // -------------------------------------------------------------------------------------------
