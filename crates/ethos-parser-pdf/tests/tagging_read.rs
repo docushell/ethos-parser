@@ -1096,3 +1096,42 @@ fn an_object_cited_by_the_tree_carries_its_elements_class() {
         }
     }
 }
+
+/// **A structure element whose `/S` or `/ID` is not UTF-8 is refused** (review 2026-09-26 N47).
+/// Both were decoded lossily, so the review's `t01` gave two elements with `/ID <FF>` and
+/// `/ID <FE>` one `element_id`, `"\u{FFFD}"` — a structural locator the document does not state,
+/// shared by two elements — and read `/Foo#FF` as `Foo\u{FFFD}`. The control is the same edit in
+/// UTF-8, which reads.
+#[test]
+fn a_structure_role_or_id_that_is_not_utf8_is_refused() {
+    let with = |key: &'static str, value: Object| {
+        edited(move |doc| {
+            let div = struct_elems(doc)[1];
+            elem_mut(doc, div).set(key, value);
+        })
+    };
+    let hex = |bytes: &[u8]| Object::String(bytes.to_vec(), lopdf::StringFormat::Hexadecimal);
+
+    let a = extract_bytes(&with("ID", hex(b"div-1"))).expect("a UTF-8 /ID reads");
+    assert!(
+        a.pages.iter().flat_map(|p| &p.runs).any(
+            |r| matches!(&r.structural, Some(StructuralLocator::PdfTagged(t))
+                if t.element_id.as_deref() == Some("div-1"))
+        ),
+        "and is carried as the element's id"
+    );
+    extract_bytes(&with("S", Object::Name(b"Foo".to_vec()))).expect("a UTF-8 /S reads");
+
+    for (key, value) in [
+        ("ID", hex(&[0xFF])),
+        ("S", Object::Name(b"Foo\xFF".to_vec())),
+    ] {
+        let e = extract_bytes(&with(key, value)).expect_err(key);
+        assert_eq!(e.code(), "malformed", "{e}");
+        assert!(
+            e.to_string()
+                .contains(&format!("has a /{key} that is not UTF-8")),
+            "{key}: {e}"
+        );
+    }
+}
