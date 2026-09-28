@@ -24,7 +24,7 @@
 //! `classify` takes `&Document` today; M3's `extract` will take the same `&Document`. Nothing
 //! below the CLI opens a file.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -140,7 +140,7 @@ impl Document {
         // The document as written, first. The repair is a fallback and nothing else: a
         // well-formed document never goes near it, so the common path is byte-for-byte the v0
         // path and cannot have changed behaviour.
-        let (inner, xref_entries_padded) = match load(bytes) {
+        let (mut inner, xref_entries_padded) = match load(bytes) {
             Ok(doc) => (doc, None),
             Err(original) => {
                 let original = map_lopdf_error(original);
@@ -178,6 +178,10 @@ impl Document {
                     ),
                 });
             }
+            // An object `lopdf` did not decrypt keeps its ciphertext, which every later stage reads
+            // as text: one annotation's `/Contents` a byte short was read as its text, `extracted`,
+            // exit 0 (review 2026-09-26 N19).
+            decrypt_again(bytes, &mut inner)?;
         }
 
         // `lopdf` drops an object it cannot parse, and leaves a stream whose `/Length` does not
@@ -497,6 +501,85 @@ fn nested_object_stream(doc: &lopdf::Document) -> Option<(u32, u32)> {
         }
         _ => None,
     })
+}
+
+/// Every object `lopdf` failed to decrypt at load, decrypted again, or the refusal of the first
+/// that does not decrypt.
+///
+/// `lopdf` 0.44.0 decrypts each object the cross-reference table places at an offset, `/Encrypt`
+/// aside, and discards the error when one fails (`reader.rs`, `load_encrypted_document`): the
+/// object keeps its ciphertext, and a dictionary keeps it from the failing string on. Each is read
+/// again here, undecrypted, and decrypted by `lopdf`'s own `decrypt_object`, which returns the
+/// error. An object in an object stream was decrypted with its stream, so the stream stands for it.
+///
+/// One failure is `lopdf`'s: a signature's `/Contents` is not encrypted, and `lopdf` decrypts it
+/// anyway — 3 of 313 real documents encrypted AES failed so, each a form signed for usage rights.
+/// An object that fails is decrypted once more by [`decrypt`], which leaves that value as written,
+/// and replaces what `lopdf` loaded; one that fails again is refused.
+fn decrypt_again(bytes: &[u8], doc: &mut lopdf::Document) -> Result<(), EngineError> {
+    use lopdf::xref::XrefEntry;
+    let Some(state) = doc.encryption_state.clone() else {
+        return Ok(());
+    };
+    let mut reader = lopdf::Reader {
+        buffer: bytes,
+        document: lopdf::Document::new(),
+        encryption_state: None,
+        raw_objects: BTreeMap::new(),
+        password: None,
+        strict: false,
+        max_decompressed_size: Some(crate::budget::MAX_DECODED_BYTES),
+    };
+    // `lopdf`'s own table, so an indirect `/Length` resolves.
+    reader.document.reference_table = doc.reference_table.clone();
+    let read = |id| reader.get_object(id, &mut HashSet::new()).ok();
+    for (&number, entry) in &reader.document.reference_table.entries {
+        let XrefEntry::Normal { generation, .. } = *entry else {
+            continue;
+        };
+        let id = (number, generation);
+        if Some(id) == state.encrypt_object_id() {
+            continue;
+        }
+        let Some(mut object) = read(id) else {
+            continue;
+        };
+        if lopdf::encryption::decrypt_object(&state, id, &mut object).is_ok() {
+            continue;
+        }
+        let Some(mut object) = read(id) else {
+            continue;
+        };
+        decrypt(&state, id, &mut object).map_err(|e| EngineError::Malformed {
+            what: "pdf object".into(),
+            detail: format!("object {} {} R did not decrypt: {e}", id.0, id.1),
+        })?;
+        doc.objects.insert(id, object);
+    }
+    Ok(())
+}
+
+/// `object` decrypted as `lopdf`'s `decrypt_object` decrypts it, except a signature dictionary's
+/// `/Contents`, which is left as written: a signer stores it unencrypted, and qpdf reads it so. A
+/// signature dictionary is one of `/Type /Sig` carrying `/ByteRange`, qpdf's test, measured: qpdf
+/// 12.3.2 encrypts `/Contents` in a dictionary with either alone.
+fn decrypt(
+    state: &lopdf::EncryptionState,
+    id: lopdf::ObjectId,
+    object: &mut lopdf::Object,
+) -> Result<(), lopdf::encryption::DecryptionError> {
+    match object {
+        lopdf::Object::Array(items) => items
+            .iter_mut()
+            .try_for_each(|item| decrypt(state, id, item)),
+        lopdf::Object::Dictionary(dict) => {
+            let signature = dict.has_type(b"Sig") && dict.has(b"ByteRange");
+            dict.iter_mut()
+                .filter(|(key, _)| !(signature && key.as_slice() == b"Contents"))
+                .try_for_each(|(_, value)| decrypt(state, id, value))
+        }
+        _ => lopdf::encryption::decrypt_object(state, id, object),
+    }
 }
 
 /// The first object the cross-reference table lists in use whose data `lopdf` did not load, and
