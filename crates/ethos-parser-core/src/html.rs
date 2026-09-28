@@ -165,7 +165,7 @@ pub const HTML_RULE_BLOCKS_V10: &str = "html-blocks-v10";
 #[serde(deny_unknown_fields)]
 pub struct HtmlArtifact {
     /// `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`.
-    #[serde(flatten)]
+    #[serde(flatten, deserialize_with = "pinned_identity")]
     pub identity: ArtifactIdentity,
     /// Digest of the original source bytes, carried through from the representation.
     pub source_sha256: Sha256Hex,
@@ -214,6 +214,11 @@ impl HtmlArtifact {
         }
         Ok(())
     }
+}
+
+/// [`HtmlArtifact::identity`], read only as this module's type at this module's version.
+fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIdentity, D::Error> {
+    ArtifactIdentity::deserialize_pinned(d, HTML_ARTIFACT_TYPE, &[HTML_SCHEMA_VERSION])
 }
 
 // -------------------------------------------------------------------------------------------

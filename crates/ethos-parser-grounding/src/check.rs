@@ -127,9 +127,11 @@ pub struct ReportError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ValidationReport {
-    /// Const `ethos.grounding_validation.v1`.
+    /// Const `ethos.grounding_validation.v1`, and refused on read as anything else.
+    #[serde(deserialize_with = "report_artifact_type")]
     pub artifact_type: String,
-    /// Const `1.0.0`.
+    /// Const `1.0.0`, and refused on read as anything else.
+    #[serde(deserialize_with = "report_schema_version")]
     pub schema_version: String,
     /// Structural verdict.
     pub structure: Structure,
@@ -204,6 +206,28 @@ impl ValidationReport {
             (Structure::Invalid, _) => 1,
         }
     }
+}
+
+/// A report's `artifact_type` or `schema_version`, refused unless it is `only` (review 2026-09-26
+/// N60): the check [`ethos_parser_core::ArtifactIdentity::deserialize_pinned`] makes, for a report
+/// that carries the two as fields of its own.
+fn pinned<'de, D: serde::Deserializer<'de>>(d: D, only: &str) -> Result<String, D::Error> {
+    let found = String::deserialize(d)?;
+    if found != only {
+        return Err(serde::de::Error::custom(format!(
+            "unrecognised `{found}`; this build reads only `{only}`. Refusing rather than \
+             best-effort parsing an unknown shape."
+        )));
+    }
+    Ok(found)
+}
+
+fn report_artifact_type<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    pinned(d, VALIDATION_ARTIFACT_TYPE)
+}
+
+fn report_schema_version<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    pinned(d, VALIDATION_SCHEMA_VERSION)
 }
 
 /// Validate a grounding artifact, and optionally bind it to source bytes.
@@ -1695,6 +1719,26 @@ mod tests {
         let bytes = serde_json::to_vec(&v).unwrap();
         let r = grounding_check(&bytes, Some(b"%PDF-1.7 fake")).unwrap();
         assert_eq!(r.source_binding, SourceBinding::NotChecked);
+    }
+
+    /// **The report reader refuses a shape it does not read** (review 2026-09-26 N60).
+    #[test]
+    fn the_report_reader_refuses_a_shape_it_does_not_read() {
+        let good = serde_json::to_value(grounding_check(&valid_bytes(), None).unwrap()).unwrap();
+        assert!(serde_json::from_value::<ValidationReport>(good.clone()).is_ok());
+        for (key, value) in [
+            ("schema_version", "9.9.9"),
+            ("schema_version", "0.0.0"),
+            ("artifact_type", "not.an.artifact.v7"),
+        ] {
+            let mut bad = good.clone();
+            bad[key] = value.into();
+            let err = serde_json::from_value::<ValidationReport>(bad).err();
+            assert!(
+                err.is_some_and(|e| e.to_string().contains("Refusing rather than")),
+                "{key} `{value}` must be refused"
+            );
+        }
     }
 
     #[test]

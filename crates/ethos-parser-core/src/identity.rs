@@ -200,6 +200,40 @@ pub struct ArtifactIdentity {
     pub profile_sha256: Sha256Hex,
 }
 
+impl ArtifactIdentity {
+    /// Read an identity, refusing it unless it names `artifact_type` at one of `schema_versions`
+    /// (review 2026-09-26 N60).
+    ///
+    /// §8: a reader that does not recognise a shape refuses it. [`crate::DocumentRepresentation`]
+    /// always has; the other artifacts read their identity through this, as
+    /// `#[serde(deserialize_with)]`, so a parse meeting `9.9.9` or another artifact's type stops
+    /// with the representation's own words rather than reading on. More than one version only
+    /// where the type was built to read an earlier shape as well.
+    ///
+    /// # Errors
+    ///
+    /// The deserializer's, or one naming the shape found and the ones this build reads.
+    pub fn deserialize_pinned<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+        artifact_type: &str,
+        schema_versions: &[&str],
+    ) -> Result<Self, D::Error> {
+        let identity = Self::deserialize(deserializer)?;
+        if identity.artifact_type != artifact_type
+            || !schema_versions.contains(&identity.schema_version.as_str())
+        {
+            return Err(serde::de::Error::custom(format!(
+                "unrecognised artifact `{}` version `{}`; this build reads only `{artifact_type}` \
+                 `{}`. Refusing rather than best-effort parsing an unknown shape.",
+                identity.artifact_type,
+                identity.schema_version,
+                schema_versions.join("` or `")
+            )));
+        }
+        Ok(identity)
+    }
+}
+
 /// Source identity and representation identity, which are **not** the same thing.
 ///
 /// The DocuShell companion is explicit that both must be retained: source identity is the hash
@@ -346,5 +380,44 @@ mod tests {
         let bytes = c14n_bytes(&v).unwrap();
         let back: ArtifactIdentity = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(back, id);
+    }
+
+    /// **Each artifact reader here refuses a shape it does not read** (review 2026-09-26 N60).
+    ///
+    /// The review's probe, on an artifact that otherwise reads: two versions no build wrote, and
+    /// another type altogether.
+    #[test]
+    fn every_artifact_reader_refuses_a_shape_it_does_not_read() {
+        fn refuses<T: serde::de::DeserializeOwned>(artifact: &impl Serialize) {
+            let good = serde_json::to_value(artifact).unwrap();
+            assert!(
+                serde_json::from_value::<T>(good.clone()).is_ok(),
+                "its own shape reads"
+            );
+            for (key, value) in [
+                ("schema_version", "9.9.9"),
+                ("schema_version", "0.0.0"),
+                ("artifact_type", "not.an.artifact.v7"),
+            ] {
+                let mut bad = good.clone();
+                bad[key] = value.into();
+                let err = serde_json::from_value::<T>(bad).err();
+                assert!(
+                    err.is_some_and(|e| e.to_string().contains("Refusing rather than")),
+                    "{key} `{value}` must be refused"
+                );
+            }
+        }
+
+        let repr = crate::markdown::tests::simple_repr();
+        let profile = crate::Profile::default();
+        let (v, sha) = (&profile.parser_version, &profile.profile_sha256().unwrap());
+        refuses::<crate::MarkdownArtifact>(
+            &crate::to_markdown(&repr, v, sha, &profile.markdown_rule).unwrap(),
+        );
+        refuses::<crate::HtmlArtifact>(&crate::to_html(&repr, v, sha, &profile.html_rule).unwrap());
+        refuses::<crate::Locations>(
+            &crate::locate(&repr, v, sha, &profile.locate_rule, "Hello").unwrap(),
+        );
     }
 }

@@ -102,6 +102,7 @@ pub struct PageClassification {
 #[serde(deny_unknown_fields)]
 pub struct Classification {
     /// `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`.
+    #[serde(deserialize_with = "pinned_identity")]
     pub identity: ArtifactIdentity,
     /// The bytes this classification describes.
     pub source: SourceRef,
@@ -175,6 +176,15 @@ impl Classification {
             detail: e.to_string(),
         })
     }
+}
+
+/// [`Classification::identity`], read only as this module's type at this module's version.
+fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIdentity, D::Error> {
+    ArtifactIdentity::deserialize_pinned(
+        d,
+        CLASSIFICATION_ARTIFACT_TYPE,
+        &[CLASSIFICATION_SCHEMA_VERSION],
+    )
 }
 
 /// Raw per-page tallies, before any threshold is applied.

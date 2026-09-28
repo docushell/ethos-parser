@@ -147,6 +147,19 @@ test("a thing that is not a representation is refused rather than coerced", () =
   }
 });
 
+test("a representation of a shape this build does not read is refused", () => {
+  // Review 2026-09-26 N60: the CLI and MCP refuse both, so `nodeGet` must not read on. A prefix
+  // test passed the first.
+  for (const [key, value] of [
+    ["artifact_type", "ethos.parser.representation.v9"],
+    ["schema_version", "9.9.9"],
+  ]) {
+    const copy = clone(representation);
+    copy[key] = value;
+    assert.throws(() => nodeGet(copy, mintedId), NotARepresentation, `${key} ${value}`);
+  }
+});
+
 test("a projection is not a representation", () => {
   // `ground`'s output carries locators too, and it is still not the record they were minted in.
   const projection = ground(representation);

@@ -75,7 +75,7 @@ pub const LOCATE_MAX_OCCURRENCES: usize = 1_000_000;
 #[serde(deny_unknown_fields)]
 pub struct Locations {
     /// `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`.
-    #[serde(flatten)]
+    #[serde(flatten, deserialize_with = "pinned_identity")]
     pub identity: ArtifactIdentity,
     /// Digest of the original source bytes, carried through from the representation.
     pub source_sha256: Sha256Hex,
@@ -163,6 +163,11 @@ impl Locations {
             detail: e.to_string(),
         })
     }
+}
+
+/// [`Locations::identity`], read only as this module's type at this module's version.
+fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIdentity, D::Error> {
+    ArtifactIdentity::deserialize_pinned(d, LOCATIONS_ARTIFACT_TYPE, &[LOCATIONS_SCHEMA_VERSION])
 }
 
 fn unsupported(detail: String) -> EngineError {

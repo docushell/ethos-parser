@@ -97,8 +97,9 @@ __version__ = "0.63.0-dev.1"
 #: The ``artifact_type`` ``ethos-parser extract`` stamps on a representation.
 REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0"
 
-#: Everything under this prefix is a representation this package will read.
-_REPRESENTATION_PREFIX = "ethos.parser.representation."
+#: The one representation shape this package reads, beside ``REPRESENTATION_ARTIFACT_TYPE``.
+#: ``crates/ethos-parser-cli/tests/sdk_versions.rs`` pins both to the engine's.
+_REPRESENTATION_SCHEMA_VERSION = "0.7.0"
 
 #: The environment variable that pins the binary, named to match ``ETHOS_BIN``.
 _BINARY_ENV = "ETHOS_PARSER"
@@ -378,13 +379,19 @@ def _validated_payload(representation):
         )
 
     artifact_type = representation.get("artifact_type")
-    if not isinstance(artifact_type, str) or not artifact_type.startswith(
-        _REPRESENTATION_PREFIX
+    schema_version = representation.get("schema_version")
+    if (
+        artifact_type != REPRESENTATION_ARTIFACT_TYPE
+        or schema_version != _REPRESENTATION_SCHEMA_VERSION
     ):
         raise NotARepresentation(
-            "artifact_type is {!r}; expected one under `{}`. `ground` and `node_get` read the "
-            "artifact `extract` minted, not a projection of it.".format(
-                artifact_type, _REPRESENTATION_PREFIX
+            "artifact_type {!r} at schema_version {!r}; this package reads only `{}` `{}`. "
+            "`ground` and `node_get` read the artifact `extract` minted, not a projection of it, "
+            "and not a shape this build does not know.".format(
+                artifact_type,
+                schema_version,
+                REPRESENTATION_ARTIFACT_TYPE,
+                _REPRESENTATION_SCHEMA_VERSION,
             )
         )
 

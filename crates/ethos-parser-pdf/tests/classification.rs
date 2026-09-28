@@ -439,6 +439,27 @@ fn page_indices_survive_the_wire() {
     assert_eq!(back, c);
 }
 
+/// **The classification reader refuses a shape it does not read** (review 2026-09-26 N60).
+#[test]
+fn the_classification_reader_refuses_a_shape_it_does_not_read() {
+    let good =
+        serde_json::to_value(run_ok(conformance("synthetic/simple-text/document.pdf"))).unwrap();
+    assert!(serde_json::from_value::<Classification>(good.clone()).is_ok());
+    for (key, value) in [
+        ("schema_version", "9.9.9"),
+        ("schema_version", "0.0.0"),
+        ("artifact_type", "not.an.artifact.v7"),
+    ] {
+        let mut bad = good.clone();
+        bad["identity"][key] = value.into();
+        let err = serde_json::from_value::<Classification>(bad).err();
+        assert!(
+            err.is_some_and(|e| e.to_string().contains("Refusing rather than")),
+            "{key} `{value}` must be refused"
+        );
+    }
+}
+
 // -------------------------------------------------------------------------------------------
 // 6. simple-text golden — recorded, not tuned
 // -------------------------------------------------------------------------------------------
