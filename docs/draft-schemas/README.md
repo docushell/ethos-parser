@@ -18,7 +18,7 @@ document a shape that already compiles, rather than specifying one to be built.
 | [`extract.draft.json`](extract.draft.json) | Text runs, locators, synthesized flags, the ligature caveat |
 | [`limitation.draft.json`](limitation.draft.json) | A named gap and how far it reaches: profile, document, or one page |
 | [`coverage.draft.json`](coverage.draft.json) | Per-page state, the coverage reconciliation, the terminal state |
-| [`document-representation.draft.json`](document-representation.draft.json) | The canonical record: identity, source, processing run, pages, ordered nodes, fingerprint, geometry sidecar |
+| [`document-representation.draft.json`](document-representation.draft.json) | The canonical record: identity, source, processing run, pages, ordered nodes in all nine formats, tables, outlines, fingerprint, geometry sidecar |
 | [`markdown.draft.json`](markdown.draft.json) | `ethos.markdown.v1` — the string, the anchor map, the census, and what GFM erases |
 | [`html.draft.json`](html.draft.json) | `ethos.html.v1` — the same, with merges kept as `rowspan`/`colspan` |
 | [`locations.draft.json`](locations.draft.json) | `ethos.parser.locations.v0` — where a string lies: occurrences as node ids, offsets into each node's own text, the record's own geometry, and what was searched |
@@ -30,9 +30,19 @@ do not control. A byte-for-byte snapshot lives in
 
 ## Every draft needs a guard
 
-These files are not validated against the code wholesale — adding a JSON Schema validator to prove a
-*draft* matches would be more machinery than a draft warrants. Instead each has a small test pinning
-the one or two fields a reader would actually branch on:
+**Every artifact is walked against its draft.** `every_artifact_the_engine_emits_is_described_by_its_draft`
+in [`crates/ethos-parser-cli/tests/draft_schemas.rs`](../../crates/ethos-parser-cli/tests/draft_schemas.rs)
+builds what the engine emits for every engine and office fixture — each profile, classification,
+extract, representation, Markdown, HTML and locations artifact, and each error shape — and walks
+each against its draft: every key must be one the draft declares, every required key present,
+every `const`, `enum` and `type` met, and some branch of every union fitted. It reaches all fourteen
+files, the seven components through the `$ref`s of the seven artifacts, and every locator and
+attribute variant the representation draft declares must meet a real node. It is a subset of JSON
+Schema, not a validator — no minimum, pattern or length is checked — and it needs no dependency. It
+exists because four of these files rejected every artifact the engine emitted, through 0.62.0, while
+the five tests below passed (review 2026-09-26 N33).
+
+Beside it, a small test per draft pins the one or two fields a reader would actually branch on:
 
 | Test in `contract_invariants.rs` | Pins |
 | --- | --- |
