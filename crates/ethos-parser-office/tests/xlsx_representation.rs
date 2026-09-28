@@ -573,6 +573,145 @@ fn a_truncated_workbook_is_refused() {
 }
 
 // -------------------------------------------------------------------------------------------
+// What a workbook's cells may carry (review 2026-09-25 F09)
+// -------------------------------------------------------------------------------------------
+
+const MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const RELS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+/// A workbook of `(name, target, sheetData)` sheets, each bound by relationship to its target,
+/// with a one-entry shared string table when `shared` is given. A target named twice is one part.
+fn workbook(sheets: &[(&str, &str, String)], shared: Option<&str>) -> Vec<u8> {
+    let mut listed = String::new();
+    let mut rels = String::new();
+    let mut entries: Vec<(String, String)> = Vec::new();
+    for (i, (name, target, cells)) in sheets.iter().enumerate() {
+        let n = i + 1;
+        listed.push_str(&format!(
+            r#"<sheet name="{name}" sheetId="{n}" r:id="rId{n}"/>"#
+        ));
+        rels.push_str(&format!(
+            r#"<Relationship Id="rId{n}" Type="{RELS}/worksheet" Target="{target}"/>"#
+        ));
+        let part = format!("xl/{target}");
+        if !entries.iter().any(|(p, _)| *p == part) {
+            let sheet =
+                format!(r#"<worksheet xmlns="{MAIN}"><sheetData>{cells}</sheetData></worksheet>"#);
+            entries.push((part, sheet));
+        }
+    }
+    if let Some(text) = shared {
+        rels.push_str(&format!(
+            r#"<Relationship Id="rIdS" Type="{RELS}/sharedStrings" Target="sharedStrings.xml"/>"#
+        ));
+        entries.push((
+            "xl/sharedStrings.xml".into(),
+            format!(r#"<sst xmlns="{MAIN}"><si><t>{text}</t></si></sst>"#),
+        ));
+    }
+    entries.push((
+        "xl/workbook.xml".into(),
+        format!(
+            r#"<workbook xmlns="{MAIN}" xmlns:r="{RELS}"><sheets>{listed}</sheets></workbook>"#
+        ),
+    ));
+    entries.push((
+        "xl/_rels/workbook.xml.rels".into(),
+        format!(r#"<Relationships xmlns="{PACKAGE_RELS}">{rels}</Relationships>"#),
+    ));
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(p, b)| (p.as_str(), b.as_str()))
+        .collect();
+    build_zip(&borrowed)
+}
+
+/// `n` cells down column A from row 1, each citing shared string 0.
+fn citing(n: u32) -> String {
+    (1..=n)
+        .map(|r| format!(r#"<row r="{r}"><c r="A{r}" t="s"><v>0</v></c></row>"#))
+        .collect()
+}
+
+fn limit_of(error: &ethos_parser_core::EngineError) -> &str {
+    match error {
+        ethos_parser_core::EngineError::ResourceLimit { limit, .. } => limit,
+        other => panic!("expected a resource limit, got {other}"),
+    }
+}
+
+/// **A workbook's cells share one text budget, whichever sheet they sit on.**
+///
+/// A shared string is stored once and cloned into every cell citing it: an 8,017-byte workbook
+/// citing one 1 MiB string from 1,024 cells made a 1.07 GB artifact. Here 40 cells on one sheet
+/// and 25 on another cite a 1 MiB string: each sheet is under the 64 MiB ceiling, the workbook is
+/// not. The failure this catches: no text ceiling, one per sheet, or a clone left uncounted.
+#[test]
+fn a_workbooks_cells_share_one_text_budget_across_sheets() {
+    let mib = "x".repeat(1 << 20);
+    let past = workbook(
+        &[
+            ("One", "worksheets/sheet1.xml", citing(40)),
+            ("Two", "worksheets/sheet2.xml", citing(25)),
+        ],
+        Some(&mib),
+    );
+    let error = ethos_parser_office::read(&past).expect_err("65 MiB of cell text");
+    assert_eq!(
+        limit_of(&error),
+        "text bytes the cells carry in this workbook"
+    );
+}
+
+/// **Every cell's locator carries its sheet's name, so the name counts once per cell.**
+///
+/// One 1 MiB name over 64 cells is 64 MiB of locators from one attribute. The failure this
+/// catches: a string that multiplies with the cell count and is never counted.
+#[test]
+fn a_sheet_name_is_counted_once_per_cell_that_carries_it() {
+    let name = "N".repeat(1 << 20);
+    let cells: String = (1..=64)
+        .map(|r| format!(r#"<row r="{r}"><c r="A{r}"><v>1</v></c></row>"#))
+        .collect();
+    let past = workbook(&[(&name, "worksheets/sheet1.xml", cells)], None);
+    let error = ethos_parser_office::read(&past).expect_err("64 MiB of addresses and more");
+    assert_eq!(
+        limit_of(&error),
+        "address bytes the cells carry in this workbook"
+    );
+}
+
+/// **Two sheets naming one part are refused before either is read.**
+///
+/// 400 sheets over one part read it 400 times: 1.55 GB before the representation refused the part
+/// for carrying two ids — and a part holding no text cell was read for every sheet and accepted.
+/// The failure this catches: a part read once per sheet that names it.
+#[test]
+fn two_sheets_naming_one_part_are_refused_by_name() {
+    let one_cell = r#"<row r="1"><c r="A1"><v>1</v></c></row>"#.to_string();
+    for cells in [one_cell, String::new()] {
+        let twice = workbook(
+            &[
+                ("One", "worksheets/sheet1.xml", cells.clone()),
+                ("Two", "worksheets/sheet1.xml", cells),
+            ],
+            None,
+        );
+        let error = ethos_parser_office::read(&twice).expect_err("one part, two sheets");
+        let text = error.to_string();
+        assert!(
+            matches!(error, ethos_parser_core::EngineError::Malformed { .. }),
+            "{text}"
+        );
+        assert!(
+            text.contains("`One` and `Two`") && text.contains("`xl/worksheets/sheet1.xml`"),
+            "{text}"
+        );
+    }
+}
+
+// -------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------
 

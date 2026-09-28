@@ -148,6 +148,68 @@ pub(crate) fn declared_len(count: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 
+/// A ceiling on the bytes of the strings a spreadsheet's cell locators carry between them: the
+/// sheet or table name, the part name and the column, once per cell.
+///
+/// A workbook states a sheet's name once and every cell's locator carries it, so one long name
+/// times a million cells is gigabytes the file never spelled out. Real addresses are tens of bytes
+/// a cell. The number is [`odt::MAX_TEXT_BYTES`]'s, the text budget of the other office readers.
+pub(crate) const MAX_ADDRESS_BYTES: usize = 64 * 1024 * 1024;
+
+/// What one spreadsheet's cells may carry between them, across the whole document: at most
+/// [`ods::MAX_CELLS`] cells, [`odt::MAX_TEXT_BYTES`] of cell text and [`MAX_ADDRESS_BYTES`] of
+/// address (review 2026-09-25 F09).
+///
+/// **Per document, and charged per cell before the cell exists.** The bytes a cell carries are
+/// not the bytes the file spends on it: an XLSX cell citing a shared string clones it, an ODS
+/// repeat copies its cell, and every cell's locator repeats its sheet's name. An 8,017-byte
+/// workbook citing one 1 MiB string from 1,024 cells made a 1.07 GB artifact at 3.1 GB resident,
+/// and an 828-byte ODS repeating one 1,370-byte cell 999,424 times a 1.72 GB one at 5.4 GB. A
+/// per-part or per-sheet count would still multiply by the number of parts or sheets.
+pub(crate) struct CellBudget {
+    /// What the refusal names: the part, or the workbook.
+    scope: String,
+    cells: usize,
+    text: usize,
+    address: usize,
+}
+
+impl CellBudget {
+    pub(crate) fn new(scope: impl Into<String>) -> Self {
+        CellBudget {
+            scope: scope.into(),
+            cells: 0,
+            text: 0,
+            address: 0,
+        }
+    }
+
+    /// Admit one more cell carrying `text` bytes of text and `address` bytes of locator strings,
+    /// or refuse by name the first ceiling it would pass.
+    pub(crate) fn admit(&mut self, text: usize, address: usize) -> Result<(), EngineError> {
+        let refuse = |what: &str, configured: usize| EngineError::ResourceLimit {
+            limit: format!("{what} {}", self.scope),
+            configured: configured.to_string(),
+        };
+        if self.cells >= ods::MAX_CELLS {
+            return Err(refuse("cells in", ods::MAX_CELLS));
+        }
+        if text > odt::MAX_TEXT_BYTES - self.text {
+            return Err(refuse("text bytes the cells carry in", odt::MAX_TEXT_BYTES));
+        }
+        if address > MAX_ADDRESS_BYTES - self.address {
+            return Err(refuse(
+                "address bytes the cells carry in",
+                MAX_ADDRESS_BYTES,
+            ));
+        }
+        self.cells += 1;
+        self.text += text;
+        self.address += address;
+        Ok(())
+    }
+}
+
 /// The media type an OOXML word-processing document declares.
 pub const DOCX_MEDIA_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -704,9 +766,12 @@ fn read_xlsx(bytes: &[u8], names: &[String]) -> Result<DocumentRepresentation, E
 
     let mut nodes = Vec::new();
     let mut geometry = Vec::new();
+    // One budget for every sheet: a per-sheet one would multiply by the number of sheets.
+    let mut budget = CellBudget::new("this workbook");
     for sheet in &sheets {
         let part = zip::read_entry(bytes, &sheet.part)?;
-        let cells = xlsx::read_cells(&part, &sheet.part, &shared)?;
+        let address = sheet.name.len() + sheet.part.len();
+        let cells = xlsx::read_cells_within(&part, &sheet.part, &shared, &mut budget, address)?;
 
         // One sheet, one part id — minted per sheet so the bijection holds in both directions.
         let part_id = alloc.next(IdKind::Part)?;
@@ -1965,6 +2030,50 @@ mod tests {
         // And a single slide that already reached the ceiling does not drag the total back down.
         assert_eq!(declare(u32::MAX, u32::MAX), u32::MAX);
         assert_eq!(declare(0, u32::MAX), u32::MAX);
+    }
+
+    /// **Each ceiling admits a cell exactly at it and refuses the first past it, by name.**
+    ///
+    /// The failure this catches: a ceiling never checked, one off by one, the text and address
+    /// counts crossed, or a refusal naming another limit than the one passed.
+    #[test]
+    fn the_cell_budget_admits_to_each_ceiling_and_refuses_past_it() {
+        let limit_of = |e: EngineError| match e {
+            EngineError::ResourceLimit { limit, configured } => (limit, configured),
+            other => panic!("expected a resource limit, got {other}"),
+        };
+
+        let mut text = CellBudget::new("`t`");
+        text.admit(odt::MAX_TEXT_BYTES - 1, 0).expect("under");
+        text.admit(1, 0).expect("exactly at the ceiling");
+        assert_eq!(
+            limit_of(text.admit(1, 0).expect_err("one byte past it")),
+            (
+                "text bytes the cells carry in `t`".to_string(),
+                odt::MAX_TEXT_BYTES.to_string()
+            )
+        );
+
+        let mut address = CellBudget::new("`a`");
+        address
+            .admit(0, MAX_ADDRESS_BYTES)
+            .expect("exactly at the ceiling");
+        assert_eq!(
+            limit_of(address.admit(0, 1).expect_err("one byte past it")),
+            (
+                "address bytes the cells carry in `a`".to_string(),
+                MAX_ADDRESS_BYTES.to_string()
+            )
+        );
+
+        let mut cells = CellBudget::new("`c`");
+        for _ in 0..ods::MAX_CELLS {
+            cells.admit(0, 0).expect("under");
+        }
+        assert_eq!(
+            limit_of(cells.admit(0, 0).expect_err("one cell past it")),
+            ("cells in `c`".to_string(), ods::MAX_CELLS.to_string())
+        );
     }
 
     /// An `as u32` cast wraps in debug **and** release, so it is worse than the `+=` it hides
