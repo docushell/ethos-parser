@@ -110,8 +110,11 @@ export const version = "0.63.0-dev.1";
 /** The `artifact_type` `ethos-parser extract` stamps on a representation. */
 export const REPRESENTATION_ARTIFACT_TYPE = "ethos.parser.representation.v0";
 
-/** Everything under this prefix is a representation this package will read. */
-const REPRESENTATION_PREFIX = "ethos.parser.representation.";
+/**
+ * The one representation shape this package reads, beside `REPRESENTATION_ARTIFACT_TYPE`.
+ * `crates/ethos-parser-cli/tests/sdk_versions.rs` pins both to the engine's.
+ */
+const REPRESENTATION_SCHEMA_VERSION = "0.7.0";
 
 // -------------------------------------------------------------------------------------------
 // The public surface — four functions, and not one of them names a coordinate
@@ -244,11 +247,17 @@ function validatedPayload(representation) {
   }
 
   const artifactType = representation.artifact_type;
-  if (typeof artifactType !== "string" || !artifactType.startsWith(REPRESENTATION_PREFIX)) {
+  const schemaVersion = representation.schema_version;
+  if (
+    artifactType !== REPRESENTATION_ARTIFACT_TYPE ||
+    schemaVersion !== REPRESENTATION_SCHEMA_VERSION
+  ) {
     throw new NotARepresentation(
-      `artifact_type is ${JSON.stringify(artifactType) ?? "absent"}; expected one under ` +
-        `\`${REPRESENTATION_PREFIX}\`. \`ground\` and \`nodeGet\` read the artifact \`extract\` ` +
-        "minted, not a projection of it.",
+      `artifact_type ${JSON.stringify(artifactType) ?? "absent"} at schema_version ` +
+        `${JSON.stringify(schemaVersion) ?? "absent"}; this package reads only ` +
+        `\`${REPRESENTATION_ARTIFACT_TYPE}\` \`${REPRESENTATION_SCHEMA_VERSION}\`. \`ground\` and ` +
+        "`nodeGet` read the artifact `extract` minted, not a projection of it, and not a shape " +
+        "this build does not know.",
     );
   }
 

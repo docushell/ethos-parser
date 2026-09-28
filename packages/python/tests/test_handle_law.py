@@ -145,6 +145,26 @@ def test_a_thing_that_is_not_a_representation_is_refused_rather_than_coerced(
         ethos_parser.node_get(not_a_representation, "s1")
 
 
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("artifact_type", "ethos.parser.representation.v9"),
+        ("schema_version", "9.9.9"),
+    ],
+)
+def test_a_representation_of_a_shape_this_build_does_not_read_is_refused(
+    representation, minted_id, key, value
+):
+    """Review 2026-09-26 N60: the CLI and MCP refuse both, so ``node_get`` must not read on.
+
+    A prefix test passed the first.
+    """
+    edited = copy.deepcopy(representation)
+    edited[key] = value
+    with pytest.raises(NotARepresentation):
+        ethos_parser.node_get(edited, minted_id)
+
+
 def test_a_payload_that_will_not_canonicalize_is_refused(representation):
     """c14n v1 admits no float, and a payload it refuses cannot be the one that digest covers.
 

@@ -62,7 +62,8 @@ pub const EXTRACT_ARTIFACT_TYPE: &str = "ethos.parser.extract.v0";
 /// inferred (`unknown field inferred_heading`). That 0.58.0's `TaggedTableRecord` did not deny
 /// unknown fields never comes into play: a tagged table's cells are tagged runs, refused first.
 /// All three are named in their release notes. The artifact is a draft library surface with no
-/// stored fixtures: only this build's own bytes are ever parsed back, in two round-trip tests.
+/// stored fixtures: only this build's own bytes are ever parsed back, in two round-trip tests and,
+/// edited, in the one that holds the reader to the two shapes it reads — this one and `0.4.0`.
 pub const EXTRACT_SCHEMA_VERSION: &str = "0.5.0";
 
 /// The extract artifact.
@@ -70,6 +71,7 @@ pub const EXTRACT_SCHEMA_VERSION: &str = "0.5.0";
 #[serde(deny_unknown_fields)]
 pub struct ExtractArtifact {
     /// `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`.
+    #[serde(deserialize_with = "pinned_identity")]
     pub identity: ArtifactIdentity,
     /// The bytes this extract describes.
     pub source: SourceRef,
@@ -109,6 +111,17 @@ pub struct ExtractArtifact {
     /// narrower claim that replaced it. The old code still fires, but only for a profile that
     /// turns the capability OFF, which is a different and still-true statement.
     pub assurance: Assurance,
+}
+
+/// [`ExtractArtifact::identity`], read only as this module's type at this module's version — or at
+/// `0.4.0`, the shape before the outline slice, which [`ExtractArtifact::outlines`] defaults so
+/// that it still reads.
+fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIdentity, D::Error> {
+    ArtifactIdentity::deserialize_pinned(
+        d,
+        EXTRACT_ARTIFACT_TYPE,
+        &["0.4.0", EXTRACT_SCHEMA_VERSION],
+    )
 }
 
 impl ExtractArtifact {

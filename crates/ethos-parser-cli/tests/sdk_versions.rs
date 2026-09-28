@@ -133,6 +133,38 @@ fn every_sdk_version_is_the_workspace_version() {
 /// Two links in the chain, because the command lives in a script: `ci.yml` must invoke
 /// `ci/sdk-suites.sh`, and that script must run both suites. Asserting only the first would pass
 /// against a script that had been emptied.
+/// **Both SDKs read exactly the representation shape the engine writes** (review 2026-09-26 N60).
+///
+/// `nodeGet` and `node_get` check `artifact_type` and `schema_version` themselves, without the CLI.
+/// A constant left behind when the representation's version moves would refuse every artifact this
+/// build writes; the prefix test it replaced read any artifact the prefix matched.
+#[test]
+fn every_sdk_reads_the_representation_shape_the_engine_writes() {
+    for (rel, artifact_type, schema_version) in [
+        (
+            "packages/python/src/ethos_parser/__init__.py",
+            "REPRESENTATION_ARTIFACT_TYPE = ",
+            "_REPRESENTATION_SCHEMA_VERSION = ",
+        ),
+        (
+            "packages/node/src/index.js",
+            "export const REPRESENTATION_ARTIFACT_TYPE = ",
+            "const REPRESENTATION_SCHEMA_VERSION = ",
+        ),
+    ] {
+        assert_eq!(
+            declared(rel, artifact_type),
+            ethos_parser_core::REPRESENTATION_ARTIFACT_TYPE,
+            "{rel}"
+        );
+        assert_eq!(
+            declared(rel, schema_version),
+            ethos_parser_core::REPRESENTATION_SCHEMA_VERSION,
+            "{rel}"
+        );
+    }
+}
+
 #[test]
 fn ci_runs_both_sdk_suites() {
     // Only lines that EXECUTE count. A first draft of this test matched the whole workflow for

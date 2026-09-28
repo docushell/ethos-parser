@@ -165,7 +165,7 @@ pub const HTML_RULE_BLOCKS_V10: &str = "html-blocks-v10";
 #[serde(deny_unknown_fields)]
 pub struct HtmlArtifact {
     /// `artifact_type`, `schema_version`, `parser_version`, `profile_sha256`.
-    #[serde(flatten)]
+    #[serde(flatten, deserialize_with = "pinned_identity")]
     pub identity: ArtifactIdentity,
     /// Digest of the original source bytes, carried through from the representation.
     pub source_sha256: Sha256Hex,
@@ -214,6 +214,11 @@ impl HtmlArtifact {
         }
         Ok(())
     }
+}
+
+/// [`HtmlArtifact::identity`], read only as this module's type at this module's version.
+fn pinned_identity<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ArtifactIdentity, D::Error> {
+    ArtifactIdentity::deserialize_pinned(d, HTML_ARTIFACT_TYPE, &[HTML_SCHEMA_VERSION])
 }
 
 // -------------------------------------------------------------------------------------------
@@ -342,6 +347,9 @@ fn flush_block(e: &mut Emit, open: &mut Option<Option<u8>>) {
 /// 6. **Node text is normalized** by [`normalize`] and then entity-escaped.
 /// 7. **A word broken across a line is closed up**, by the same [`hyphen_tail`] the Markdown
 ///    projection calls. The joined word is readable here too, and citable on neither artifact.
+/// 8. **U+0000 is not written**, by the same writer and under the same count as the Markdown
+///    projection: an HTML parser drops it, and reads `&#0;` as U+FFFD. See
+///    [`crate::markdown::NULL_CHARACTERS_NOT_PROJECTED`].
 ///
 /// # Errors
 ///
@@ -968,6 +976,24 @@ mod tests {
              silently agree with a reader who thinks they were an entity"
         );
         assert_tiles(&a);
+    }
+
+    /// **U+0000 is not written, and it is counted**, beside an entity (review 2026-09-26 N40).
+    ///
+    /// An HTML parser drops it from text, so `<p>a\0b</p>` reads `ab`. The census counts the
+    /// document's characters: four in, three written, one removed — not the entity's bytes.
+    #[test]
+    fn a_null_character_is_not_written_and_is_counted() {
+        let a = artifact_of(repr_of(&[("a<\0b", None)]));
+        assert_eq!(a.html, "<p>a&lt;b</p>\n");
+        assert_tiles(&a);
+        assert_eq!(a.coverage.source_chars_emitted, 3);
+        let b = &a.coverage.dropped;
+        assert_eq!(b.len(), 1, "{b:?}");
+        assert_eq!(
+            (b[0].code.as_str(), b[0].chars, b[0].nodes),
+            (crate::markdown::NULL_CHARACTERS_NOT_PROJECTED, 1, 1)
+        );
     }
 
     // ---------------------------------------------------------------------------------------

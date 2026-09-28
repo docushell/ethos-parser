@@ -486,6 +486,34 @@ fn synthesized_flags_survive_canonicalization() {
     assert_eq!(back, a);
 }
 
+/// **The extract reader refuses a shape it does not read** (review 2026-09-26 N60) — and still
+/// reads `0.4.0`, the shape before the outline slice, which `outlines` defaults for.
+#[test]
+fn the_extract_reader_refuses_a_shape_it_does_not_read() {
+    let good = serde_json::to_value(extract_ok(engine_fx("synthesized-space-tj"))).unwrap();
+    assert!(serde_json::from_value::<ExtractArtifact>(good.clone()).is_ok());
+    for (key, value) in [
+        ("schema_version", "9.9.9"),
+        ("schema_version", "0.0.0"),
+        ("schema_version", "0.3.0"),
+        ("artifact_type", "not.an.artifact.v7"),
+    ] {
+        let mut bad = good.clone();
+        bad["identity"][key] = value.into();
+        let err = serde_json::from_value::<ExtractArtifact>(bad).err();
+        assert!(
+            err.is_some_and(|e| e.to_string().contains("Refusing rather than")),
+            "{key} `{value}` must be refused"
+        );
+    }
+
+    let mut before_outlines = good.clone();
+    before_outlines["identity"]["schema_version"] = "0.4.0".into();
+    before_outlines.as_object_mut().unwrap().remove("outlines");
+    let read: ExtractArtifact = serde_json::from_value(before_outlines).expect("0.4.0 reads");
+    assert!(read.outlines.is_empty());
+}
+
 #[test]
 fn text_taken_verbatim_carries_no_synthesis_flags() {
     let a = extract_ok(conformance("synthetic/simple-text/document.pdf"));
