@@ -723,3 +723,49 @@ fn classification_declares_that_its_exit_0_is_not_an_extract_preflight() {
         );
     }
 }
+
+/// `measured-ink-box` with one change applied to its page's content stream, saved.
+fn with_page_content(change: impl FnOnce(&mut lopdf::Stream)) -> Vec<u8> {
+    let path = repo_root().join("fixtures/engine/measured-ink-box/document.pdf");
+    let mut doc = lopdf::Document::load(&path).expect("lopdf loads");
+    let page = doc.get_pages()[&1];
+    let contents = doc
+        .get_dictionary(page)
+        .and_then(|d| d.get(b"Contents"))
+        .and_then(lopdf::Object::as_reference)
+        .expect("one content stream");
+    change(
+        doc.get_object_mut(contents)
+            .and_then(lopdf::Object::as_stream_mut)
+            .expect("a stream"),
+    );
+    let mut out = Vec::new();
+    doc.save_to(&mut out).expect("saves");
+    out
+}
+
+/// Classify and extract over one open of `bytes`, both refused, and the two refusals.
+fn both_refused(bytes: &[u8]) -> (EngineError, EngineError) {
+    let profile = Profile::default();
+    let doc = Document::open_bytes(bytes, &profile).expect("opens");
+    let classified = ethos_parser_pdf::classify(&doc, &profile);
+    assert_eq!(exit_code(&classified), COULD_NOT_READ, "{classified:?}");
+    let extracted = ethos_parser_pdf::extract(&doc, &profile).expect_err("extract refuses");
+    (classified.expect_err("classify refuses"), extracted)
+}
+
+/// **A page `extract` refuses, classify refuses the same way** (review 2026-09-26 N42).
+/// `tally_page` read a content stream that did not decode as zero tallies, so a page whose filter
+/// nothing can decode was classified `no-text`, exit 1 — an observation nobody made. Contract §8
+/// refuses such a page, and the v0 exit-code table gives classify 2 for it.
+#[test]
+fn a_page_extract_refuses_is_refused_by_classify_too() {
+    let bytes = with_page_content(|stream| {
+        stream
+            .dict
+            .set("Filter", lopdf::Object::Name(b"NoSuchFilter".to_vec()));
+    });
+    let (classified, extracted) = both_refused(&bytes);
+    assert_eq!(classified, extracted, "extract's refusal, naming page 1");
+    assert!(classified.to_string().contains("page 1"), "{classified}");
+}

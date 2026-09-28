@@ -4761,11 +4761,12 @@ fn extracted(bytes: &[u8]) -> Result<ExtractArtifact, ethos_parser_core::EngineE
     ethos_parser_pdf::extract(&doc, &profile)
 }
 
-/// **An inline image `lopdf` panics on is refused by name, and `classify` survives it.**
-/// `lopdf` 0.44.0's inline-image parser unwraps a colour-space lookup, so an image that names
-/// neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
+/// **An inline image `lopdf` panics on is refused by name, and `classify` refuses it the same
+/// way.** `lopdf` 0.44.0's inline-image parser unwraps a colour-space lookup, so an image that
+/// names neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
 /// `panic = "abort"` would end the process — an MCP server with it. The tokeniser refuses the
-/// shape before `lopdf` sees it.
+/// shape before `lopdf` sees it. Classify read the refused page as zero tallies until review
+/// 2026-09-26 N42; it gives extract's refusal now.
 #[test]
 fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
     let mut content = MEASURED.to_vec();
@@ -4786,11 +4787,8 @@ fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
 
     let profile = Profile::default();
     let doc = Document::open_bytes(&bytes, &profile).expect("opens");
-    let c = ethos_parser_pdf::classify(&doc, &profile).expect("classify answers");
-    assert_eq!(
-        c.pages[0].text_operators, 0,
-        "an unreadable content stream yields zero tallies, as a decode failure always has"
-    );
+    let c = ethos_parser_pdf::classify(&doc, &profile).expect_err("refused, not a panic");
+    assert_eq!(c, e, "extract's own refusal");
 }
 
 /// **A tail `lopdf` would drop is refused by name.** Its decoder stops at the first operation it

@@ -236,7 +236,7 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
     // move `pages_content_scanned` and fail `the_sampler_is_bounded_on_a_492_page_document`.
     let content = crate::budget::ContentBudget::default();
     for &(page_number, page_id) in doc.pages().iter().take(pages_to_scan as usize) {
-        let tally = tally_page(doc, page_id, &content);
+        let tally = tally_page(doc, page_number, page_id, &content)?;
         scanned += 1;
         rows.push(page_row(page_number, tally));
         page_states.push(PageStateEntry {
@@ -321,34 +321,38 @@ pub fn classify(doc: &Document, profile: &Profile) -> Result<Classification, Eng
 /// Walk one page's content stream and resources, counting.
 ///
 /// Counting only. No text is decoded, no position computed, no operator interpreted — that is
-/// M3. A page whose content stream fails to decode yields zero tallies rather than an error: an
-/// unreadable content stream is an observation about the document, and turning it into a hard
-/// failure would make one bad page abort a classification the caller could still route on.
+/// M3.
+///
+/// # Errors
+///
+/// The refusal [`crate::extract::page_operations`] gives the page, which is `extract`'s own. A
+/// page whose content does not decode used to yield zero tallies here, so a page `extract` refuses
+/// for an undecodable filter was classified `no-text`, exit 1: an observation this reader never
+/// made (review 2026-09-26 N42). `docs/01-CONTRACT.md` §8 makes such a page a refusal, and
+/// `docs/history/03-V0-SCOPE.md` §3.1 gives classify exit 2 for it.
 fn tally_page(
     doc: &Document,
+    page_number: u32,
     page_id: lopdf::ObjectId,
     content: &crate::budget::ContentBudget,
-) -> PageTally {
+) -> Result<PageTally, EngineError> {
     let mut t = PageTally::default();
 
-    // `page_operations` refuses a page `lopdf` would read in part or panic on; a refusal is an
-    // unreadable content stream like any other here, and yields zero tallies.
-    if let Ok(operations) = crate::extract::page_operations_whole(doc.inner(), 0, page_id, content)
-    {
-        for op in &operations {
-            let name = op.operator.as_str();
-            if th::TEXT_SHOWING_OPERATORS.contains(&name) {
-                t.text_operators += 1;
-                t.text_bytes = t
-                    .text_bytes
-                    .saturating_add(operand_text_bytes(&op.operands));
-            }
-            if th::PATH_OPERATORS.contains(&name) {
-                t.path_operators += 1;
-            }
-            if name == th::RECTANGLE_OPERATOR {
-                t.rectangles += 1;
-            }
+    let operations =
+        crate::extract::page_operations_whole(doc.inner(), page_number, page_id, content)?;
+    for op in &operations {
+        let name = op.operator.as_str();
+        if th::TEXT_SHOWING_OPERATORS.contains(&name) {
+            t.text_operators += 1;
+            t.text_bytes = t
+                .text_bytes
+                .saturating_add(operand_text_bytes(&op.operands));
+        }
+        if th::PATH_OPERATORS.contains(&name) {
+            t.path_operators += 1;
+        }
+        if name == th::RECTANGLE_OPERATOR {
+            t.rectangles += 1;
         }
     }
 
@@ -363,7 +367,7 @@ fn tally_page(
         t.image_count = count_image_xobjects(doc, dict);
     }
 
-    t
+    Ok(t)
 }
 
 /// Total bytes of string operands, including strings nested in a `TJ` array.
