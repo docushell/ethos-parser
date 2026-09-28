@@ -71,8 +71,9 @@ fn from_embedded_program(doc: &lopdf::Document, descriptor: &lopdf::Dictionary) 
         .or_else(|| resolve_stream(doc, descriptor.get(b"FontFile3").ok()))?;
 
     // A filter that does not decode leaves the raw bytes, which are not the program: the
-    // descriptor answers instead, as it does for a program `skrifa` cannot parse.
-    let bytes = stream.decompressed_content().ok()?;
+    // descriptor answers instead, as it does for a program `skrifa` cannot parse — and for one
+    // decoding past the ceiling, which no real program does (review 2026-09-25 F08).
+    let bytes = crate::budget::decoded(&stream, crate::budget::MAX_DECODED_BYTES).ok()?;
 
     // `skrifa`, not `ttf-parser`: RUSTSEC-2026-0192 records that ttf-parser's author has
     // declared it unmaintained with no safe upgrade, and names skrifa (Google Fonts' fontations

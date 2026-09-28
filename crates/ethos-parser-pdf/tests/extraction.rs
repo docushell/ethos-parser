@@ -1508,6 +1508,250 @@ fn pdf_with_only_unmappable_text() -> Vec<u8> {
     pdf_from_objects(&objects)
 }
 
+// -------------------------------------------------------------------------------------------
+// What a page may cost (review 2026-09-25 F08)
+// -------------------------------------------------------------------------------------------
+
+/// A PDF whose pages each draw one deflated content stream, with Helvetica as `/F1`.
+fn pdf_of_deflated_pages(contents: &[Vec<u8>]) -> Vec<u8> {
+    use std::io::Write;
+    let mut objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        Vec::new(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ];
+    let mut kids = Vec::new();
+    for content in contents {
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        z.write_all(content).expect("deflates");
+        let data = z.finish().expect("deflates");
+        let page = objects.len() + 1;
+        kids.push(format!("{page} 0 R"));
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+                 /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>",
+                page + 1
+            )
+            .into_bytes(),
+        );
+        let mut stream = format!(
+            "<< /Length {} /Filter /FlateDecode >>\nstream\n",
+            data.len()
+        )
+        .into_bytes();
+        stream.extend_from_slice(&data);
+        stream.extend_from_slice(b"\nendstream");
+        objects.push(stream);
+    }
+    objects[1] = format!(
+        "<< /Type /Pages /Kids [{}] /Count {} >>",
+        kids.join(" "),
+        contents.len()
+    )
+    .into_bytes();
+    pdf_from_objects(&objects)
+}
+
+/// One run of `text` in five operations, then `extra` more that draw nothing.
+fn content_of(text: &str, extra: usize) -> Vec<u8> {
+    let mut content = format!("BT /F1 12 Tf 72 720 Td ({text}) Tj ET\n").into_bytes();
+    for _ in 0..extra {
+        content.extend_from_slice(b"0 w\n");
+    }
+    content
+}
+
+fn extract_bytes(bytes: &[u8]) -> Result<ExtractArtifact, ethos_parser_core::EngineError> {
+    let profile = Profile::default();
+    let doc = Document::open_bytes(bytes, &profile).expect("opens");
+    ethos_parser_pdf::extract(&doc, &profile)
+}
+
+fn resource_limit(e: ethos_parser_core::EngineError) -> (String, String) {
+    match e {
+        ethos_parser_core::EngineError::ResourceLimit { limit, configured } => (limit, configured),
+        other => panic!("expected a resource limit, got {other}"),
+    }
+}
+
+/// **A page denser than the parallel read admits is read alone afterwards, and nothing of it is
+/// lost** (review 2026-09-25 F08).
+///
+/// Pages past 65,536 operations leave the parallel read, so dense pages cost one at a time whatever
+/// the core count. The failure this catches: a deferred page never read again, read as empty, or
+/// put out of page order.
+#[test]
+fn a_dense_page_is_read_alone_after_the_others_and_nothing_is_lost() {
+    let bytes = pdf_of_deflated_pages(&[content_of("Dense", 70_000), content_of("Light", 0)]);
+    let artifact = extract_bytes(&bytes).expect("a dense page within the ceiling reads");
+    let texts: Vec<&str> = runs(&artifact).iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(texts, ["Dense", "Light"]);
+}
+
+/// **A page past 1,048,576 operations is refused, naming the page.**
+///
+/// 17 KB of `0 w` reached 2.6 GB on one page. The failure this catches: no ceiling, a ceiling
+/// that moved, or a refusal that does not say which page.
+#[test]
+fn a_page_past_the_operation_ceiling_is_refused_by_name() {
+    let bytes = pdf_of_deflated_pages(&[content_of("x", (1 << 20) - 5 + 1)]);
+    let e = extract_bytes(&bytes).expect_err("one operation past the ceiling");
+    assert_eq!(
+        resource_limit(e),
+        (
+            "content operations on page 1".to_string(),
+            "1048576".to_string()
+        )
+    );
+}
+
+/// **A page whose content decodes past 64 MiB is refused, naming the page.**
+///
+/// The failure this catches: an unbounded decode of a page's content, which deflate lets a few
+/// kilobytes of source ask for.
+#[test]
+fn a_page_whose_content_decodes_past_the_ceiling_is_refused_by_name() {
+    let bytes = pdf_of_deflated_pages(&[vec![b' '; 64 * 1024 * 1024 + 1]]);
+    let e = extract_bytes(&bytes).expect_err("one byte past the ceiling");
+    assert_eq!(
+        resource_limit(e),
+        (
+            "decoded bytes of page 1's content streams".to_string(),
+            "67108864".to_string()
+        )
+    );
+}
+
+/// **A page whose content decodes past 64 MiB through a filter other than Flate is refused too.**
+///
+/// A Flate stream is measured by the inflate that checks it reaches its end; every other filter
+/// only by the decode. ASCII85's `z` is four zero bytes, so 16 MiB of it decodes past the ceiling.
+/// The failure this catches: a bound on the Flate check alone.
+#[test]
+fn a_page_whose_ascii85_content_decodes_past_the_ceiling_is_refused_by_name() {
+    let mut data = vec![b'z'; 16 * 1024 * 1024 + 1];
+    data.extend_from_slice(b"~>");
+    let mut stream = format!(
+        "<< /Length {} /Filter /ASCII85Decode >>\nstream\n",
+        data.len()
+    )
+    .into_bytes();
+    stream.extend_from_slice(&data);
+    stream.extend_from_slice(b"\nendstream");
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>".to_vec(),
+        stream,
+    ]);
+    let e = extract_bytes(&bytes).expect_err("four bytes past the ceiling");
+    assert_eq!(
+        resource_limit(e),
+        (
+            "decoded bytes of page 1's content streams".to_string(),
+            "67108864".to_string()
+        )
+    );
+}
+
+/// **An inline image inflating past 64 MiB is refused for its size, not read as though it ended**
+/// (review 2026-09-25 F08).
+///
+/// Whether a filtered inline image's data ends at its `EI` window is checked by inflating it, and
+/// past the ceiling that check stops. The failure this catches: an unbounded inflate of a few
+/// kilobytes of source, or a window accepted because its end was never shown.
+#[test]
+fn an_inline_image_inflating_past_the_ceiling_is_refused_for_its_size() {
+    use std::io::Write;
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+    z.write_all(&vec![0u8; 64 * 1024 * 1024 + 1])
+        .expect("deflates");
+    let mut content =
+        b"BT /F1 12 Tf 72 720 Td (x) Tj ET\nBI /W 1 /H 1 /CS /G /BPC 8 /F /Fl ID ".to_vec();
+    content.extend_from_slice(&z.finish().expect("deflates"));
+    content.extend_from_slice(b"\nEI\n");
+    let e = extract_bytes(&pdf_of_deflated_pages(&[content])).expect_err("past the ceiling");
+    assert!(
+        e.to_string().contains("inflating past 67108864 bytes"),
+        "refused for its size: {e}"
+    );
+}
+
+/// **An object stream decoding past 64 MiB is refused at open, naming it** (review 2026-09-25
+/// F08).
+///
+/// `lopdf` decodes object streams while it loads, before any check here runs. With its limit it
+/// drops such a stream rather than refusing it, and the open refuses every object the stream held.
+/// The failure this catches: an unbounded decode at load, or a drop read as an absence.
+#[test]
+fn an_object_stream_decoding_past_the_ceiling_is_refused_at_open() {
+    use std::io::Write;
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offsets = [0usize; 7];
+    let mut object = |out: &mut Vec<u8>, n: usize, body: &[u8]| {
+        offsets[n] = out.len();
+        out.extend_from_slice(format!("{n} 0 obj\n").as_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(b"\nendobj\n");
+    };
+    object(&mut out, 1, b"<< /Type /Catalog /Pages 2 0 R >>");
+    object(&mut out, 2, b"<< /Type /Pages /Kids [5 0 R] /Count 1 >>");
+    object(
+        &mut out,
+        5,
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+    );
+    // Object 4 lives in object stream 3, behind 64 MiB of padding.
+    let header = b"4 0 ";
+    let mut decoded = header.to_vec();
+    decoded.extend_from_slice(b"<< /Filler true >>");
+    decoded.resize(64 * 1024 * 1024 + 1, b' ');
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+    z.write_all(&decoded).expect("deflates");
+    let data = z.finish().expect("deflates");
+    let mut stream = format!(
+        "<< /Type /ObjStm /N 1 /First {} /Filter /FlateDecode /Length {} >>\nstream\n",
+        header.len(),
+        data.len()
+    )
+    .into_bytes();
+    stream.extend_from_slice(&data);
+    stream.extend_from_slice(b"\nendstream");
+    object(&mut out, 3, &stream);
+    // The cross-reference stream: W [1 4 2], object 4 compressed in stream 3 at index 0.
+    let xref_at = out.len();
+    let mut entries = Vec::new();
+    for (n, &offset) in offsets.iter().enumerate() {
+        let (kind, field2, field3): (u8, u32, u16) = match n {
+            0 => (0, 0, 65535),
+            4 => (2, 3, 0),
+            6 => (1, u32::try_from(xref_at).expect("small"), 0),
+            _ => (1, u32::try_from(offset).expect("small"), 0),
+        };
+        entries.push(kind);
+        entries.extend_from_slice(&field2.to_be_bytes());
+        entries.extend_from_slice(&field3.to_be_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Root 1 0 R /Length {} >>\nstream\n",
+            entries.len()
+        )
+        .as_bytes(),
+    );
+    out.extend_from_slice(&entries);
+    out.extend_from_slice(format!("\nendstream\nendobj\nstartxref\n{xref_at}\n%%EOF\n").as_bytes());
+
+    let e = Document::open_bytes(&out, &Profile::default()).expect_err("refused at open");
+    assert!(
+        e.to_string().contains("object 3 0 R is an object stream")
+            && e.to_string()
+                .contains("decodes to more than 67108864 bytes"),
+        "{e}"
+    );
+}
+
 /// A well-formed PDF from its objects, numbered from 1 in order, with computed xref offsets.
 fn pdf_from_objects(objects: &[Vec<u8>]) -> Vec<u8> {
     let mut out = b"%PDF-1.7\n".to_vec();

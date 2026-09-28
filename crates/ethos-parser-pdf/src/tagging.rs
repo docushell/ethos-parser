@@ -359,6 +359,15 @@ fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// What [`deflate_reaches_its_end`] found, short of a loss.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Inflation {
+    /// The deflate data reaches its end.
+    Ends,
+    /// The output passed the limit before the end was reached.
+    PastLimit,
+}
+
 /// Whether a `FlateDecode` stream's deflate data reaches its end: the reader's check, looser
 /// than [`inflate_strict`] by exactly what `lopdf` reads correctly anyway.
 ///
@@ -369,12 +378,19 @@ fn inflate_strict(input: &[u8]) -> Result<Vec<u8>, String> {
 /// data lose nothing — `lopdf` returns the whole content — so neither is refused here, where the
 /// writer, which re-serialises the stream, refuses both. The output is discarded, not collected:
 /// the bytes the reader interprets stay `lopdf`'s.
-pub(crate) fn deflate_reaches_its_end(input: &[u8]) -> Result<(), String> {
+///
+/// **Bounded by `max_output`** (review 2026-09-25 F08): inflating stops once the output passes it,
+/// with [`Inflation::PastLimit`], an answer about size and not about the end. Discarded output
+/// costs no memory, but inflating 64 MiB of source to 64 GiB costs a minute.
+pub(crate) fn deflate_reaches_its_end(
+    input: &[u8],
+    max_output: usize,
+) -> Result<Inflation, String> {
     use flate2::{Decompress, FlushDecompress, Status};
 
     // `lopdf` does not run the inflater on zero bytes, and neither does this.
     if input.is_empty() {
-        return Ok(());
+        return Ok(Inflation::Ends);
     }
     let body = input.get(2..).unwrap_or(&[]);
     let mut inflater = Decompress::new(false);
@@ -392,8 +408,11 @@ pub(crate) fn deflate_reaches_its_end(input: &[u8]) -> Result<(), String> {
         let status = inflater
             .decompress(remaining, &mut scratch, flush)
             .map_err(|e| format!("the deflate data is corrupt: {e}"))?;
+        if usize::try_from(inflater.total_out()).map_or(true, |out| out > max_output) {
+            return Ok(Inflation::PastLimit);
+        }
         match status {
-            Status::StreamEnd => return Ok(()),
+            Status::StreamEnd => return Ok(Inflation::Ends),
             Status::Ok | Status::BufError => {
                 if inflater.total_in() == before_in && inflater.total_out() == before_out {
                     return Err(format!(
@@ -453,7 +472,28 @@ pub(crate) struct Tokenised {
 /// not followed by `EI`, or after whose data no `EI` window exists; nesting past
 /// [`MAX_NESTING_DEPTH`]; an inline image dictionary without a colour space, on which `lopdf`'s
 /// parser panics rather than fails.
+///
+/// [`EngineError::ResourceLimit`] past [`crate::budget::MAX_PAGE_OPERATIONS`] operations.
 pub(crate) fn tokenise(bytes: &[u8]) -> Result<Tokenised, EngineError> {
+    tokenise_within(bytes, crate::budget::MAX_PAGE_OPERATIONS)?.ok_or_else(|| {
+        EngineError::ResourceLimit {
+            limit: "content operations on one page".into(),
+            configured: crate::budget::MAX_PAGE_OPERATIONS.to_string(),
+        }
+    })
+}
+
+/// [`tokenise`], or `Ok(None)` once the buffer holds more than `limit` operations: counted before
+/// each one is kept, so no more than `limit` ever are (review 2026-09-25 F08).
+///
+/// # Errors
+///
+/// [`tokenise`]'s, for a buffer within `limit`, and for one past it an error met before the
+/// operation that passed it.
+pub(crate) fn tokenise_within(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<Option<Tokenised>, EngineError> {
     let lx = Lexer { bytes };
     let refuse = |detail: String| EngineError::Unsupported {
         what: "content stream tokeniser".into(),
@@ -474,6 +514,9 @@ pub(crate) fn tokenise(bytes: &[u8]) -> Result<Tokenised, EngineError> {
                 )))
             }
             Ok(Ok((op, next))) => {
+                if ops.len() == limit {
+                    return Ok(None);
+                }
                 ops.push(op);
                 pos = next;
             }
@@ -497,7 +540,7 @@ pub(crate) fn tokenise(bytes: &[u8]) -> Result<Tokenised, EngineError> {
             bytes.len() - tail
         )));
     }
-    Ok(Tokenised { ops })
+    Ok(Some(Tokenised { ops }))
 }
 
 /// Require the tokeniser's operator sequence to be `lopdf`'s: same count, same names in order.
@@ -612,7 +655,23 @@ pub(crate) fn read_as_rendered(bytes: &[u8], t: &Tokenised, ends: &[usize]) -> R
         let ends_there = match filter.as_slice() {
             b"AHx" | b"ASCIIHexDecode" => text.ends_with(b">"),
             b"A85" | b"ASCII85Decode" => text.ends_with(b"~>"),
-            b"Fl" | b"FlateDecode" => deflate_reaches_its_end(raw).is_ok(),
+            b"Fl" | b"FlateDecode" => {
+                match deflate_reaches_its_end(raw, crate::budget::MAX_DECODED_BYTES) {
+                    Ok(Inflation::Ends) => true,
+                    // Past the ceiling the end is not shown, and a window not shown to be the
+                    // data's end is not read (review 2026-09-25 F08).
+                    Ok(Inflation::PastLimit) => {
+                        return Err(format!(
+                            "the inline image at byte {} is /{} data inflating past {} bytes, \
+                             past which this reader does not check where its data ends",
+                            op.start,
+                            String::from_utf8_lossy(filter),
+                            crate::budget::MAX_DECODED_BYTES
+                        ))
+                    }
+                    Err(_) => false,
+                }
+            }
             _ => continue,
         };
         if !ends_there {
@@ -4123,13 +4182,15 @@ mod tests {
     #[test]
     fn the_readers_flate_check_refuses_a_loss_and_nothing_lopdf_reads_whole() {
         let whole = deflated(PAGE);
-        deflate_reaches_its_end(&whole).expect("a whole stream reaches its end");
-        deflate_reaches_its_end(&[]).expect("zero bytes are no stream to inflate");
+        deflate_reaches_its_end(&whole, crate::budget::MAX_DECODED_BYTES)
+            .expect("a whole stream reaches its end");
+        deflate_reaches_its_end(&[], crate::budget::MAX_DECODED_BYTES)
+            .expect("zero bytes are no stream to inflate");
 
         // Four bytes of Adler-32 end the stream, so a cut of five or more reaches the data.
         for keep in [whole.len() - 5, whole.len() / 2, 3, 1] {
             let cut = &whole[..keep];
-            let e = deflate_reaches_its_end(cut).unwrap_err();
+            let e = deflate_reaches_its_end(cut, crate::budget::MAX_DECODED_BYTES).unwrap_err();
             assert!(e.contains("without reaching its end"), "{keep}: {e}");
             let lenient = flate_stream(cut.to_vec()).decompressed_content();
             assert!(
@@ -4142,7 +4203,7 @@ mod tests {
         // BTYPE 11 is reserved (RFC 1951 §3.2.3): the first block is corrupt.
         let mut corrupt = whole.clone();
         corrupt[2] |= 0b110;
-        let e = deflate_reaches_its_end(&corrupt).unwrap_err();
+        let e = deflate_reaches_its_end(&corrupt, crate::budget::MAX_DECODED_BYTES).unwrap_err();
         assert!(e.contains("corrupt"), "{e}");
         assert_eq!(
             flate_stream(corrupt).decompressed_content().unwrap(),
@@ -4153,7 +4214,8 @@ mod tests {
         let mut wrong_check = whole.clone();
         let last = wrong_check.len() - 1;
         wrong_check[last] ^= 0xff;
-        deflate_reaches_its_end(&wrong_check).expect("a failed check loses no content");
+        deflate_reaches_its_end(&wrong_check, crate::budget::MAX_DECODED_BYTES)
+            .expect("a failed check loses no content");
         assert_eq!(
             flate_stream(wrong_check).decompressed_content().unwrap(),
             PAGE
@@ -4161,8 +4223,49 @@ mod tests {
 
         let mut trailing = whole;
         trailing.extend_from_slice(b"\r\n");
-        deflate_reaches_its_end(&trailing).expect("bytes after the data lose no content");
+        deflate_reaches_its_end(&trailing, crate::budget::MAX_DECODED_BYTES)
+            .expect("bytes after the data lose no content");
         assert_eq!(flate_stream(trailing).decompressed_content().unwrap(), PAGE);
+    }
+
+    /// **The operation limit is checked before each operation is kept** (review 2026-09-25 F08).
+    ///
+    /// The failure this catches: a count taken after the whole page is tokenised, which keeps every
+    /// operation of a hostile page before refusing it, or a limit off by one.
+    #[test]
+    fn the_tokeniser_stops_before_it_keeps_one_operation_past_its_limit() {
+        let four = b"q Q q Q";
+        let at = tokenise_within(four, 4)
+            .expect("tokenises")
+            .expect("four is the limit");
+        assert_eq!(at.ops.len(), 4);
+        assert!(tokenise_within(four, 3).expect("tokenises").is_none());
+        assert!(
+            tokenise_within(b"", 0).expect("tokenises").is_some(),
+            "no operation, no excess"
+        );
+        // A grammar error after the limit is never reached: the size answers first.
+        assert!(tokenise_within(b"q Q q (unclosed", 1)
+            .expect("tokenises")
+            .is_none());
+    }
+
+    /// **Inflating stops once the output passes its limit**, an answer about size rather than
+    /// about the end (review 2026-09-25 F08).
+    ///
+    /// The failure this catches: an unbounded inflate spending a minute on 64 MiB of source, or a
+    /// limit that reports a stream as cut when it is only large.
+    #[test]
+    fn the_flate_check_stops_past_its_limit_without_calling_the_stream_cut() {
+        let whole = deflated(PAGE);
+        assert_eq!(
+            deflate_reaches_its_end(&whole, PAGE.len()).expect("whole"),
+            Inflation::Ends
+        );
+        assert_eq!(
+            deflate_reaches_its_end(&whole, PAGE.len() / 2).expect("not a loss"),
+            Inflation::PastLimit
+        );
     }
 
     #[test]

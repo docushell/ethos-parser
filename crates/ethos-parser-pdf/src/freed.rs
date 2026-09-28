@@ -174,7 +174,7 @@ fn stream(
     let object = reader.get_object(id, &mut HashSet::new()).ok()?;
     let stream = object.as_stream().ok()?;
     let data = if stream.is_compressed() {
-        stream.decompressed_content().ok()?
+        crate::budget::decoded(stream, crate::budget::MAX_DECODED_BYTES).ok()?
     } else {
         stream.content.clone()
     };

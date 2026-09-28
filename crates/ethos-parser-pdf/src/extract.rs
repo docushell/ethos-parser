@@ -386,7 +386,10 @@ struct PageYield {
 /// into the document-global sequence afterwards), and cross-page accumulators are
 /// returned as this page's deltas instead of mutated in place. Pure with respect to
 /// the document handle, which is what lets pages run in parallel.
-#[allow(clippy::too_many_lines)]
+///
+/// `Ok(None)` when the page holds more than `limit` content operations: [`page_operations`]'s
+/// answer, passed up so the caller can read the page again alone.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn extract_page(
     doc: &Document,
     profile: &Profile,
@@ -395,7 +398,9 @@ fn extract_page(
     tree_mcids_by_page: &std::collections::BTreeMap<lopdf::ObjectId, Vec<i64>>,
     page_number: u32,
     page_id: lopdf::ObjectId,
-) -> Result<PageYield, EngineError> {
+    content: &crate::budget::ContentBudget,
+    limit: usize,
+) -> Result<Option<PageYield>, EngineError> {
     let mut alloc = IdAllocator::new(profile_sha256.clone());
     let mut encoding_dropped_runs: u32 = 0;
     let mut encoding_detail = String::new();
@@ -476,7 +481,10 @@ fn extract_page(
             }
         }
 
-        let operations = page_operations(doc.inner(), page_number, page_id)?;
+        let Some(operations) = page_operations(doc.inner(), page_number, page_id, content, limit)?
+        else {
+            return Ok(None);
+        };
 
         // v1-S6. The page's `/XObject` names, so `Do` can be resolved to an object number. The
         // interpreter still never holds a `Document` — it gets names and ids, and extraction
@@ -1157,7 +1165,7 @@ fn extract_page(
             runs,
         };
     }
-    Ok(PageYield {
+    Ok(Some(PageYield {
         page: page_extract,
         ruled_refusals,
         stroke_refusals,
@@ -1181,7 +1189,7 @@ fn extract_page(
         findings_seen,
         font_limitations,
         local_ids: alloc,
-    })
+    }))
 }
 
 /// For every processed page, keyed by its 1-based number ([`PageExtract::index`]), its
@@ -1271,6 +1279,16 @@ pub fn extract(doc: &Document, profile: &Profile) -> Result<ExtractArtifact, Eng
 pub(crate) fn extract_with_positions(
     doc: &Document,
     profile: &Profile,
+) -> Result<(ExtractArtifact, RunPositions), EngineError> {
+    extract_counted(doc, profile, &crate::budget::ContentBudget::default())
+}
+
+/// [`extract_with_positions`], charging `content` for the pages it reads: one budget per reading,
+/// which a test can hand in already spent.
+fn extract_counted(
+    doc: &Document,
+    profile: &Profile,
+    content: &crate::budget::ContentBudget,
 ) -> Result<(ExtractArtifact, RunPositions), EngineError> {
     let profile_sha256 = profile
         .profile_sha256()
@@ -1444,32 +1462,51 @@ pub(crate) fn extract_with_positions(
     // object graph, built in `Document::open_bytes` before this function runs — a cost no budget
     // consulted here can lower. See `docs/measurements/memory-ceiling/` §5 and §15.
     use rayon::prelude::*;
+    let read = |page_number, page_id, limit| {
+        extract_page(
+            doc,
+            profile,
+            &profile_sha256,
+            &structure,
+            &tree_mcids_by_page,
+            page_number,
+            page_id,
+            content,
+            limit,
+        )
+    };
+    // A page denser than `HEAVY_PAGE_OPERATIONS` is left by the parallel read and read below, alone
+    // and in page order, so dense pages cost one at a time whatever the core count (review
+    // 2026-09-25 F08). The output does not depend on which pass read a page.
     let outcomes: Vec<(u32, Option<Result<PageYield, EngineError>>)> = doc
         .pages()
         .par_iter()
         .map(|&(page_number, page_id)| {
             if !budget.admits(page_number) {
-                return (page_number, None);
+                return (page_number, page_id, None);
             }
-            (
-                page_number,
-                Some(extract_page(
-                    doc,
-                    profile,
-                    &profile_sha256,
-                    &structure,
-                    &tree_mcids_by_page,
-                    page_number,
-                    page_id,
-                )),
-            )
+            let outcome = read(page_number, page_id, crate::budget::HEAVY_PAGE_OPERATIONS);
+            (page_number, page_id, Some(outcome))
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|(page_number, page_id, outcome)| {
+            let outcome = outcome.map(|result| match result {
+                Ok(Some(page)) => Ok(page),
+                Ok(None) => read(page_number, page_id, crate::budget::MAX_PAGE_OPERATIONS)?
+                    .ok_or_else(|| crate::budget::page_operations_past_ceiling(page_number)),
+                Err(e) => Err(e),
+            });
+            (page_number, outcome)
         })
         .collect();
 
     // Ahead of every page's own error: the pages ran in parallel, so which of them crossed the
     // document's `ToUnicode` budget is not a property of the document, and an earlier page's
-    // error would otherwise win or lose by timing (review 2026-09-26 N11).
+    // error would otherwise win or lose by timing (review 2026-09-26 N11). The content budget
+    // is the same kind of refusal, for the same reason.
     doc.tounicode().refusal()?;
+    content.refusal()?;
 
     for (page_number, outcome) in outcomes {
         let Some(result) = outcome else {
@@ -1916,6 +1953,7 @@ pub(crate) fn per_page_table_diagnostics(
         })?;
     let mut alloc = IdAllocator::new(profile_sha256);
     let mut out = Vec::with_capacity(doc.pages().len());
+    let content = crate::budget::ContentBudget::default();
 
     for &(page_number, page_id) in doc.pages() {
         let page_dict =
@@ -1927,7 +1965,7 @@ pub(crate) fn per_page_table_diagnostics(
                 })?;
         let geom = PageGeometry::resolve(doc, page_dict)?;
         let fonts = load_page_fonts(doc, page_dict)?;
-        let operations = page_operations(doc.inner(), page_number, page_id)?;
+        let operations = page_operations_whole(doc.inner(), page_number, page_id, &content)?;
         let xobjects = crate::images::page_xobjects(doc.inner(), page_dict);
         let mut interp = Interpreter::new(&fonts).with_xobjects(xobjects);
         interp.run(&operations)?;
@@ -2167,11 +2205,29 @@ fn run_findings(
 /// - [`EngineError::Unsupported`] with `what` = `content stream tokeniser`, naming the page and
 ///   the byte: an operation `lopdf`'s grammar cannot parse with bytes after it, a shape its
 ///   decoder fails the whole page on, or one it panics on.
+/// - [`EngineError::ResourceLimit`]: the page's content streams decode to more than
+///   [`crate::budget::MAX_DECODED_BYTES`] between them, naming the page; or `budget` is spent.
+///
+/// # What a page may cost (review 2026-09-25 F08)
+///
+/// `Ok(None)` when the page holds more than `limit` operations, counted as they are tokenised, so
+/// no more than `limit` ever exist. A caller reading pages in parallel passes
+/// [`crate::budget::HEAVY_PAGE_OPERATIONS`] and reads such a page again alone; every other caller
+/// goes through [`page_operations_whole`]. A page read whole is charged to `budget`.
 pub(crate) fn page_operations(
     doc: &lopdf::Document,
     page_number: u32,
     page_id: lopdf::ObjectId,
-) -> Result<Vec<lopdf::content::Operation>, EngineError> {
+    budget: &crate::budget::ContentBudget,
+    limit: usize,
+) -> Result<Option<Vec<lopdf::content::Operation>>, EngineError> {
+    use crate::budget::{NotDecoded, MAX_DECODED_BYTES};
+    use crate::tagging::Inflation;
+    budget.refusal()?;
+    let past_ceiling =
+        || crate::budget::stream_past_ceiling(format!("page {page_number}'s content streams"));
+    // The page's decoded bytes, the `\n` after each stream aside.
+    let mut decoded_bytes = 0usize;
     let mut content = Vec::new();
     // The offset of the `\n` after each stream, where a token may not continue.
     let mut ends = Vec::new();
@@ -2200,6 +2256,7 @@ pub(crate) fn page_operations(
             what: "content stream filter".into(),
             detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
         };
+        let remaining = MAX_DECODED_BYTES - decoded_bytes;
         let filters = if stream.dict.get(b"Filter").is_ok() {
             stream.filters().map_err(|e| {
                 refuse_filter(format!("/Filter is not a name or an array of names: {e}"))
@@ -2220,39 +2277,52 @@ pub(crate) fn page_operations(
                     .iter()
                     .map(|f| lopdf::Object::Name(f.to_vec()));
                 before.dict.set("Filter", names.collect::<Vec<_>>());
-                // Filters that do not decode fail the whole chain, which is refused below.
-                let Ok(bytes) = before.decompressed_content() else {
-                    break;
+                decoded_before = match crate::budget::decoded(&before, remaining) {
+                    Ok(bytes) => bytes,
+                    Err(NotDecoded::PastLimit) => return Err(past_ceiling()),
+                    // Filters that do not decode fail the whole chain, which is refused below.
+                    Err(NotDecoded::Failed) => break,
                 };
-                decoded_before = bytes;
                 &decoded_before
             };
-            crate::tagging::deflate_reaches_its_end(input).map_err(|detail| {
-                EngineError::Malformed {
-                    what: "content stream".into(),
-                    detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
-                }
-            })?;
+            let reach =
+                crate::tagging::deflate_reaches_its_end(input, remaining).map_err(|detail| {
+                    EngineError::Malformed {
+                        what: "content stream".into(),
+                        detail: format!("page {page_number}, stream {} {}: {detail}", id.0, id.1),
+                    }
+                })?;
+            if reach == Inflation::PastLimit {
+                return Err(past_ceiling());
+            }
         }
         // Decoded here rather than through `get_page_content`, whose fallback for a filter it
         // cannot decode is the stream's raw bytes: text the stream's own filter says is not there.
         // An empty chain is no filter, so the stream's own bytes, which `lopdf` decodes to none.
         let decoded = if filters.is_empty() {
+            if stream.content.len() > remaining {
+                return Err(past_ceiling());
+            }
             Ok(stream.content.clone())
         } else {
-            stream.decompressed_content()
+            crate::budget::decoded(stream, remaining)
         };
-        let bytes = decoded.map_err(|_| {
-            let chain: Vec<String> = filters
-                .iter()
-                .map(|f| format!("/{}", String::from_utf8_lossy(f)))
-                .collect();
-            refuse_filter(format!(
-                "the filter chain [{}] did not decode, and its raw bytes are not what the \
-                 page draws",
-                chain.join(" ")
-            ))
-        })?;
+        let bytes = match decoded {
+            Ok(bytes) => bytes,
+            Err(NotDecoded::PastLimit) => return Err(past_ceiling()),
+            Err(NotDecoded::Failed) => {
+                let chain: Vec<String> = filters
+                    .iter()
+                    .map(|f| format!("/{}", String::from_utf8_lossy(f)))
+                    .collect();
+                return Err(refuse_filter(format!(
+                    "the filter chain [{}] did not decode, and its raw bytes are not what the \
+                     page draws",
+                    chain.join(" ")
+                )));
+            }
+        };
+        decoded_bytes += bytes.len();
         content.extend_from_slice(&bytes);
         content.push(b'\n');
         ends.push(content.len() - 1);
@@ -2264,7 +2334,9 @@ pub(crate) fn page_operations(
         },
         other => other,
     };
-    let tokens = crate::tagging::tokenise(&content).map_err(on_page)?;
+    let Some(tokens) = crate::tagging::tokenise_within(&content, limit).map_err(on_page)? else {
+        return Ok(None);
+    };
     crate::tagging::read_as_rendered(&content, &tokens, &ends).map_err(|detail| {
         EngineError::Malformed {
             what: "content stream".into(),
@@ -2277,7 +2349,21 @@ pub(crate) fn page_operations(
             detail: format!("page {page_number}: {e}"),
         })?;
     crate::tagging::agrees_with_lopdf(&tokens, &decoded.operations).map_err(on_page)?;
-    Ok(decoded.operations)
+    budget.charge(decoded_bytes, decoded.operations.len())?;
+    Ok(Some(decoded.operations))
+}
+
+/// [`page_operations`] for a caller reading one page at a time: every page is read, up to
+/// [`crate::budget::MAX_PAGE_OPERATIONS`], and past it refused naming the page.
+pub(crate) fn page_operations_whole(
+    doc: &lopdf::Document,
+    page_number: u32,
+    page_id: lopdf::ObjectId,
+    budget: &crate::budget::ContentBudget,
+) -> Result<Vec<lopdf::content::Operation>, EngineError> {
+    let limit = crate::budget::MAX_PAGE_OPERATIONS;
+    page_operations(doc, page_number, page_id, budget, limit)?
+        .ok_or_else(|| crate::budget::page_operations_past_ceiling(page_number))
 }
 
 /// Whether the cross-reference table lists `id`, its generation included, as an object in use.
@@ -3211,5 +3297,85 @@ mod tests {
         let past = usize::try_from(u32::MAX).expect("64-bit") + 1;
         assert_eq!(declared_len(past), u32::MAX);
         assert_eq!(declare(u32::MAX - 1, declared_len(past)), u32::MAX);
+    }
+
+    /// Two Helvetica pages; the first carries `/Rotate first_rotate`.
+    fn two_pages(first_rotate: i64) -> Vec<u8> {
+        use lopdf::{dictionary, Object, Stream};
+        let mut doc = lopdf::Document::with_version("1.7");
+        let pages = doc.new_object_id();
+        let font = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"
+        });
+        let mut kids = Vec::new();
+        for (i, rotate) in [first_rotate, 0].into_iter().enumerate() {
+            let text = format!("BT /F1 12 Tf 72 720 Td (page{i}) Tj ET").into_bytes();
+            let content = doc.add_object(Stream::new(dictionary! {}, text));
+            let page = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages,
+                "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+                "Rotate" => rotate,
+                "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+                "Contents" => content,
+            });
+            kids.push(Object::Reference(page));
+        }
+        doc.objects.insert(
+            pages,
+            Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+        doc.trailer.set("Root", catalog);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).expect("saves");
+        bytes
+    }
+
+    /// **A spent content budget is the document's refusal, ahead of any page's own error**
+    /// (review 2026-09-25 F08).
+    ///
+    /// Pages run in parallel, so which page crossed the budget is timing, and the refusal must
+    /// not be. Page 1 here fails on its own `/Rotate 45` before it reads its content, and the
+    /// budget arrives spent: the budget answers. The failure this catches: the budget's refusal
+    /// checked after the pages' errors, where a page's error would win or lose by scheduling.
+    #[test]
+    fn a_spent_content_budget_is_refused_ahead_of_any_pages_own_error() {
+        let profile = Profile::default();
+        let doc = Document::open_bytes(&two_pages(45), &profile).expect("opens");
+
+        let e = extract_counted(&doc, &profile, &crate::budget::ContentBudget::default())
+            .expect_err("page 1 refuses its rotation");
+        assert!(e.to_string().contains("/Rotate"), "{e}");
+
+        let spent = crate::budget::ContentBudget::default();
+        let past = usize::try_from(crate::budget::MAX_DOCUMENT_OPERATIONS).expect("64-bit") + 1;
+        assert!(spent.charge(0, past).is_err());
+        let e = extract_counted(&doc, &profile, &spent).expect_err("the budget is spent");
+        assert!(
+            matches!(&e, EngineError::ResourceLimit { limit, .. }
+                if limit == "content operations in the document's pages"),
+            "{e}"
+        );
+
+        // Reading charges the budget: one at its ceiling is tipped over by a page's operations.
+        let doc = Document::open_bytes(&two_pages(0), &profile).expect("opens");
+        let full = crate::budget::ContentBudget::default();
+        full.charge(0, past - 1).expect("exactly at the ceiling");
+        let e = extract_counted(&doc, &profile, &full).expect_err("the pages tip it over");
+        assert!(
+            matches!(&e, EngineError::ResourceLimit { limit, .. }
+                if limit == "content operations in the document's pages"),
+            "{e}"
+        );
+
+        // And a document within every ceiling reads, pages in order.
+        let (artifact, _) = extract_with_positions(&doc, &profile).expect("reads");
+        let texts: Vec<&str> = artifact
+            .pages
+            .iter()
+            .flat_map(|p| p.runs.iter().map(|r| r.text.as_str()))
+            .collect();
+        assert_eq!(texts, ["page0", "page1"]);
     }
 }

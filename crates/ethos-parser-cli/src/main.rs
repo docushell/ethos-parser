@@ -293,7 +293,9 @@ struct ExtractArgs {
     /// the document — each the worst coefficient measured on the gate corpus. That over-predicts
     /// every point measured: by 3.6% at the tightest, the 733-page document at `--max-pages 128`;
     /// by 12.9% on its full extract; and by 15% to 129% on every other document's. Readings and
-    /// instruments: `docs/measurements/memory-ceiling/` §15.
+    /// instruments: `docs/measurements/memory-ceiling/` §15. A document built to cost more than
+    /// its pages is refused by name first: a page may hold 1,048,576 content operations and 64 MiB
+    /// of decoded content, and dense pages are read one at a time (§17, decision #34).
     ///
     /// The pages left out are not silently dropped. Each is quarantined with
     /// `resource_limit_pages` and the artifact declares the limitation, which is the same
