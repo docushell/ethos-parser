@@ -280,13 +280,15 @@ fn sheet_ref(start: &BytesStart<'_>) -> Result<SheetRef, EngineError> {
 ///
 /// [`EngineError::Malformed`] if a sheet's `r:id` matches no relationship — a package that names
 /// a binding it does not contain is broken, and picking a part by position is the guess this
-/// module refuses.
+/// module refuses — or if two sheets resolve to one part.
 pub fn resolve_sheets(
     sheets: &[SheetRef],
     rels: &[Relationship],
 ) -> Result<(Vec<Sheet>, u32), EngineError> {
     let mut worksheets = Vec::with_capacity(sheets.len());
     let mut other_kinds = 0u32;
+    // Which sheet each part was first bound to.
+    let mut bound: std::collections::BTreeMap<String, &str> = Default::default();
 
     for sheet in sheets {
         let Some(rel) = rels.iter().find(|r| r.id == sheet.rel_id) else {
@@ -305,9 +307,24 @@ pub fn resolve_sheets(
             other_kinds = crate::declare(other_kinds, 1);
             continue;
         }
+        let part = resolve_target(&rel.target, "xl");
+        // **One part holds one sheet's cells.** Two sheets naming one part would read it once
+        // for each, 400 sheets over one part took 1.55 GB before the representation refused the
+        // part carrying two ids, and a part with no text cell was read for every one of them.
+        if let Some(first) = bound.insert(part.clone(), &sheet.name) {
+            return Err(EngineError::Malformed {
+                what: WORKBOOK_RELS_PART.into(),
+                detail: format!(
+                    "sheets `{first}` and `{}` both resolve to part `{part}`. A part holds one \
+                     sheet's cells, and reading it as both would give each of its cells two \
+                     addresses.",
+                    sheet.name
+                ),
+            });
+        }
         worksheets.push(Sheet {
             name: sheet.name.clone(),
-            part: resolve_target(&rel.target, "xl"),
+            part,
         });
     }
 
@@ -407,10 +424,26 @@ pub fn read_shared_strings(part: &[u8], part_name: &str) -> Result<Vec<String>, 
 /// [`EngineError::Malformed`] if the XML will not parse, a `<c>` carries no `r` attribute, an `r`
 /// is not an A1 reference, a `<c>`'s row disagrees with its `<row>`'s, a `t` is not a legal
 /// `ST_CellType`, a shared-string index does not exist, or an `_xHHHH_` escape names no character.
+/// [`EngineError::ResourceLimit`] if the part's cells pass the ceilings a whole workbook is held
+/// to (`crate::CellBudget`) — a workbook's read holds all its sheets to them together.
 pub fn read_cells(
     part: &[u8],
     part_name: &str,
     shared: &[String],
+) -> Result<Vec<Cell>, EngineError> {
+    let mut budget = crate::CellBudget::new(format!("`{part_name}`"));
+    read_cells_within(part, part_name, shared, &mut budget, 0)
+}
+
+/// [`read_cells`], charging each cell to `budget` before it is kept: its text, and `address`
+/// bytes of locator strings besides its column — the sheet's name and part name, which every cell
+/// of the sheet will carry.
+pub(crate) fn read_cells_within(
+    part: &[u8],
+    part_name: &str,
+    shared: &[String],
+    budget: &mut crate::CellBudget,
+    address: usize,
 ) -> Result<Vec<Cell>, EngineError> {
     let mut reader = new_reader(part, part_name)?;
     let mut cells = Vec::new();
@@ -522,6 +555,9 @@ pub fn read_cells(
                                         ),
                                     });
                                 }
+                                // A shared string's text is a clone, so a cell stating one index
+                                // can carry a megabyte: the budget is what bounds the product.
+                                budget.admit(cell.text.len(), address + cell.column.len())?;
                                 cells.push(cell);
                             }
                         }

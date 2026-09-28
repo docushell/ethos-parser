@@ -100,12 +100,14 @@ pub const ODS_MEDIA_TYPE: &str = "application/vnd.oasis.opendocument.spreadsheet
 /// than an out-of-memory kill".
 const MAX_MATERIALISED_REPEAT: u32 = 4096;
 
-/// A ceiling on the cells one `content.xml` may yield.
+/// A ceiling on the cells one `content.xml` may yield, and one workbook's sheets together.
 ///
 /// The amplification a spreadsheet has and a text document does not: one text-bearing cell with
 /// `table:number-columns-repeated="4096"` inside a row with `table:number-rows-repeated="4096"` is
-/// under a hundred source bytes and sixteen million nodes.
-const MAX_CELLS: usize = 1_000_000;
+/// under a hundred source bytes and sixteen million nodes. An XLSX cell costs its XML, but a
+/// deflated part inflates a thousandfold, so the workbook reader takes the same ceiling
+/// (`crate::CellBudget`).
+pub(crate) const MAX_CELLS: usize = 1_000_000;
 
 /// What one element of a spreadsheet's `content.xml` means to this reader.
 ///
@@ -252,10 +254,12 @@ struct DoneCell {
 /// if a `<table:table>` carries no `table:name`, if two tables carry the same one, or if a repeat
 /// attribute is not a positive count. [`EngineError::ResourceLimit`] if blocks nest past
 /// [`crate::odt::MAX_BLOCK_NESTING`], if a text-bearing repeat exceeds [`MAX_MATERIALISED_REPEAT`],
-/// or if the part yields more than [`MAX_CELLS`] cells.
+/// or if the part's cells, repeats materialised, pass a ceiling of `crate::CellBudget`: more than
+/// [`MAX_CELLS`] cells, or more text or address bytes than it admits.
 pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
     let mut reader = new_ns_reader(part, odt::CONTENT_PART)?;
     let mut cells: Vec<(u32, Cell)> = Vec::new();
+    let mut budget = crate::CellBudget::new(format!("`{}`", odt::CONTENT_PART));
     let mut regions_not_read = 0u32;
     let mut foreign_text_not_read = 0u32;
     let mut text_outside_a_cell = 0u32;
@@ -533,7 +537,7 @@ pub fn read_content(part: &[u8]) -> Result<Sheets, EngineError> {
                     Structure::Row if rows.last().is_some_and(|r| r.from_depth == depth + 1) => {
                         let row = rows.pop().expect("checked above");
                         match tables.last() {
-                            Some(table) => materialise(&row, &table.name, &mut cells)?,
+                            Some(table) => materialise(&row, &table.name, &mut cells, &mut budget)?,
                             // **A row outside every `<table:table>` has no name to be addressed
                             // by.** Emitting its cells under `""` would give several of them one
                             // uncitable address — and this reader already refuses a *table* that
@@ -729,6 +733,7 @@ fn materialise(
     row: &OpenRow,
     table: &str,
     cells: &mut Vec<(u32, Cell)>,
+    budget: &mut crate::CellBudget,
 ) -> Result<(), EngineError> {
     if row.done.is_empty() {
         return Ok(());
@@ -751,13 +756,9 @@ fn materialise(
                 // is consulted after the allocation it exists to prevent — 594 source bytes reached
                 // 1.83 GB resident before it fired. `odt.rs` states the rule this now follows, that
                 // "a per-element cap does not deliver it", and spends its budget in the innermost
-                // push for exactly the same reason.
-                if cells.len() >= MAX_CELLS {
-                    return Err(EngineError::ResourceLimit {
-                        limit: format!("cells in `{}`", odt::CONTENT_PART),
-                        configured: MAX_CELLS.to_string(),
-                    });
-                }
+                // push for exactly the same reason. Every copy carries the cell's text and the
+                // table's name, so the budget counts bytes as well as cells.
+                budget.admit(cell.text.len(), table.len() + odt::CONTENT_PART.len())?;
                 cells.push((
                     row.seq,
                     Cell {
@@ -1565,6 +1566,51 @@ mod tests {
             matches!(&e, EngineError::ResourceLimit { limit, configured }
                 if limit.contains("cells") && configured == &MAX_CELLS.to_string()),
             "expected the aggregate cell cap, got {e}"
+        );
+    }
+
+    /// **Every copy a repeat makes carries its cell's text again, so the budget counts bytes.**
+    ///
+    /// 828 bytes repeating one 1,370-byte cell 999,424 times made a 1.72 GB artifact, under the
+    /// cell ceiling. Here 17 rows of 4,096 copies of a 1 KiB cell carry 68 MiB. The failure this
+    /// catches: a ceiling on cells alone, or text charged once at the source and not per copy.
+    #[test]
+    fn a_repeats_copies_are_charged_their_text() {
+        let text = "t".repeat(1024);
+        let e = err(&format!(
+            r#"<table:table table:name="S">
+                 <table:table-row table:number-rows-repeated="17">
+                   <table:table-cell table:number-columns-repeated="4096" office:value-type="string"><text:p>{text}</text:p></table:table-cell>
+                 </table:table-row>
+               </table:table>"#
+        ));
+        assert!(
+            matches!(&e, EngineError::ResourceLimit { limit, configured }
+                if limit == "text bytes the cells carry in `content.xml`"
+                    && configured == &odt::MAX_TEXT_BYTES.to_string()),
+            "expected the text budget, got {e}"
+        );
+    }
+
+    /// **Every copy carries its table's name in its locator, so the name counts per copy.**
+    ///
+    /// 36,864 copies of a one-character cell in a table with a 2 KiB name carry 36 KB of text and
+    /// 76 MB of address. The failure this catches: a locator string that multiplies with the
+    /// repeat and is never counted.
+    #[test]
+    fn a_repeats_copies_are_charged_their_table_name() {
+        let name = "N".repeat(2048);
+        let e = err(&format!(
+            r#"<table:table table:name="{name}">
+                 <table:table-row table:number-rows-repeated="9">
+                   <table:table-cell table:number-columns-repeated="4096" office:value-type="string"><text:p>x</text:p></table:table-cell>
+                 </table:table-row>
+               </table:table>"#
+        ));
+        assert!(
+            matches!(&e, EngineError::ResourceLimit { limit, .. }
+                if limit == "address bytes the cells carry in `content.xml`"),
+            "expected the address budget, got {e}"
         );
     }
 
