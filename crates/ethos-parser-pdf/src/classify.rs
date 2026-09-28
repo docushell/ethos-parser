@@ -342,6 +342,10 @@ fn tally_page(
         crate::extract::page_operations_whole(doc.inner(), page_number, page_id, content)?;
     for op in &operations {
         let name = op.operator.as_str();
+        // Counting interprets nothing, and still refuses what extract refuses (review 2026-09-26
+        // N41): an operator Table A.1 does not list is contract §8's hard error, and the v0 scope
+        // names it as classify's exit-2 example.
+        crate::ops::Operator::of(name)?;
         if th::TEXT_SHOWING_OPERATORS.contains(&name) {
             t.text_operators += 1;
             t.text_bytes = t

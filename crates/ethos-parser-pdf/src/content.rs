@@ -443,17 +443,7 @@ impl<'a> Interpreter<'a> {
     fn run_inner(&mut self, ops: &[lopdf::content::Operation]) -> Result<(), EngineError> {
         for (index, op) in ops.iter().enumerate() {
             self.op_index = index;
-            let token = op.operator.as_str();
-            let Some(operator) = Operator::from_token(token) else {
-                return Err(EngineError::Unsupported {
-                    what: "pdf operator".into(),
-                    detail: format!(
-                        "`{token}` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: \
-                         an unrecognised operator may move or delete text, and skipping it \
-                         produces a well-formed artifact that is silently wrong."
-                    ),
-                });
-            };
+            let operator = Operator::of(op.operator.as_str())?;
             self.dispatch(operator, &op.operands)?;
         }
         Ok(())

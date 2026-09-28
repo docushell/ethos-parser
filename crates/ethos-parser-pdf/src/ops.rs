@@ -227,6 +227,19 @@ pub enum Operator {
 }
 
 impl Operator {
+    /// The operator `token` names, or the refusal of a token Table A.1 does not list: one refusal,
+    /// so the interpreter and classify's tally cannot name the same token two ways.
+    pub(crate) fn of(token: &str) -> Result<Self, ethos_parser_core::EngineError> {
+        Self::from_token(token).ok_or_else(|| ethos_parser_core::EngineError::Unsupported {
+            what: "pdf operator".into(),
+            detail: format!(
+                "`{token}` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: an \
+                 unrecognised operator may move or delete text, and skipping it produces a \
+                 well-formed artifact that is silently wrong."
+            ),
+        })
+    }
+
     /// Map a content-stream token to its operator, or `None` if it is not in Table A.1.
     ///
     /// `None` is a **hard error** at the call site, never a skip.

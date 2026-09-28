@@ -769,3 +769,24 @@ fn a_page_extract_refuses_is_refused_by_classify_too() {
     assert_eq!(classified, extracted, "extract's refusal, naming page 1");
     assert!(classified.to_string().contains("page 1"), "{classified}");
 }
+
+/// **An operator Table A.1 does not list is refused by classify as by extract** (review 2026-09-26
+/// N41). Counting interprets nothing, so classify never looked: the review's `w8.pdf`, whose page
+/// ends `1 2 foo`, was refused by extract and classified exit 0 with an artifact identical to the
+/// clean document's but for its digest. Contract §8 makes the operator a hard error, and the v0
+/// exit-code table names it as classify's example of exit 2.
+#[test]
+fn an_operator_table_a1_does_not_list_is_refused_by_classify_too() {
+    let bytes = with_page_content(|stream| {
+        let mut content = stream.decompressed_content().expect("decodes");
+        content.extend_from_slice(b" 1 2 foo");
+        stream.dict.remove(b"Filter");
+        stream.set_content(content);
+    });
+    let (classified, extracted) = both_refused(&bytes);
+    assert_eq!(
+        classified, extracted,
+        "extract's refusal, naming the operator"
+    );
+    assert!(classified.to_string().contains("`foo`"), "{classified}");
+}
