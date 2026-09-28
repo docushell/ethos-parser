@@ -877,14 +877,12 @@ fn no_public_type_emits_a_decimal_number() {
 
 /// `profile.draft.json`'s example is the **real** canonical profile.
 ///
-/// The DRAFT schemas are documentation, not validated against the code by a test — a deliberate
-/// decision recorded in `docs/draft-schemas/README.md`, because adding a JSON Schema validator to
-/// prove a draft matches is more machinery than a draft warrants.
-///
-/// This is the one exception, and it is cheap: the README claims that example *is* the profile
-/// `ethos-parser-core` emits, and by M4 it was not — it still carried `"unbound-until-m3"` placeholders
-/// two milestones after the backend landed. A claim that specific either holds or should not be
-/// made, and `serde_json` equality is enough to keep it holding.
+/// Every artifact, profiles included, is walked against its draft by `ethos-parser-cli`'s
+/// `draft_schemas.rs` (review 2026-09-26 N33). That walk says a profile *fits* the draft; it cannot
+/// say the example *is* the profile, and the README claims it is: by M4 it was not — it still
+/// carried `"unbound-until-m3"` placeholders two milestones after the backend landed. A claim that
+/// specific either holds or should not be made, and `serde_json` equality is enough to keep it
+/// holding.
 #[test]
 fn the_profile_schema_example_is_the_real_profile() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

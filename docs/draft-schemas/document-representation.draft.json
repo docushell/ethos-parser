@@ -42,7 +42,20 @@
           "required": ["media_type", "sha256"],
           "description": "SOURCE identity: the digest of the exact original bytes. What went in, as opposed to what came out.",
           "properties": {
-            "media_type": { "const": "application/pdf" },
+            "media_type": {
+              "enum": [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.oasis.opendocument.text",
+                "application/vnd.oasis.opendocument.spreadsheet",
+                "application/vnd.oasis.opendocument.presentation",
+                "application/rtf",
+                "application/epub+zip"
+              ],
+              "$comment": "`application/pdf` at v0, and one of nine since v2-S2: ethos-parser-office writes the other eight. NOT ethos.grounding.v1's source.media_type, which that schema pins to `application/pdf` — decision #16: a DOCX can bind to its source through this field and still cannot be grounded."
+            },
             "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
           }
         },
@@ -75,12 +88,12 @@
         "tables": {
           "type": "array",
           "$comment": "v1-S1. Optional on the wire (`#[serde(default)]`) and always written. An empty array means the detector LOOKED and found none; `assurance.capabilities.tables` says whether it looked. Absent from this schema until 2026-09-24 while `additionalProperties` was already false, so this file described a payload the engine had not emitted since v1-S1.",
-          "items": { "type": "object" }
+          "items": { "$ref": "#/$defs/table_record" }
         },
         "outlines": {
           "type": "array",
           "$comment": "docs/29-OUTLINES-SCOPE.md. The hierarchy a PDF catalog declares, one record per `/Outlines` entry, in `/First`/`/Next` order. Optional on the wire and always written: an empty array means the reader LOOKED and the catalog named none, and `assurance.capabilities.outlines` says whether it looked. Never `nodes`: a bookmark title is text no content stream painted, so it has no native locator and North Star #4 requires one on every node.",
-          "items": { "type": "object" }
+          "items": { "$ref": "#/$defs/outline_record" }
         },
         "assurance": {
           "$ref": "urn:ethos-parser:draft-schema:coverage:0",
@@ -120,39 +133,184 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["text_run"],
-          "$comment": "NOT a line and NOT a paragraph. v0 performs no grouping, so a run is exactly what the content stream drew in one operation; calling it a block would be a claim about layout that no code makes. Constrained to ^[a-z0-9][a-z0-9_-]*$ because this spelling becomes the grounding artifact's `kind` verbatim."
+          "enum": ["text_run", "form_field", "annotation", "image"],
+          "$comment": "`text_run` is NOT a line and NOT a paragraph: a PDF run is exactly what the content stream drew in one operation, and an office run is the smallest unit its format writes, so calling either a block would be a claim about layout that no code makes. `form_field` and `annotation` are PDF objects read since v1-S4, and `image` a painted XObject since v1-S6; every office node is a `text_run`, told apart by its attributes. Constrained to ^[a-z0-9][a-z0-9_-]*$ because this spelling becomes the grounding artifact's `kind` verbatim."
         },
-        "parent": { "type": "string", "$comment": "The id of the page record this node was drawn on." },
+        "parent": { "type": "string", "$comment": "For a paginated format, the id of the page record this node was drawn on. For a page-less one, the id of the part it was read from, one id per part the locators name, and one for an RTF's single stream." },
         "ordinal": { "type": "integer", "minimum": 1, "$comment": "1-based and contiguous within a page, in reading order. Refused at parse if it is not." },
         "text": { "type": "string" },
         "native_locator": { "$ref": "#/$defs/native_locator" },
         "structural_locator": { "$ref": "#/$defs/structural_locator" },
         "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0" },
-        "attributes": { "$ref": "#/$defs/text_run_attributes" }
+        "attributes": { "$ref": "#/$defs/node_attributes" }
       }
     },
 
     "native_locator": {
       "title": "NativeLocator — required on every node (§5.1)",
-      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed. Lives in ethos-parser-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. ethos-parser-grounding never reads one.",
+      "$comment": "A discriminated union: adding a format adds a variant, plus an adapter profile, fixtures and inspection behaviour. It does not change the source, run, artifact or verification models. Externally tagged so a new variant is additive and an unrecognised one fails closed: exactly one key, naming the variant. Lives in ethos-parser-core because the union is part of the CONTRACT — see docs/04-ARCHITECTURE.md §1 on machinery versus vocabulary. ethos-parser-grounding never reads one. The three PDF variants address a page; the eight office ones address a part and positions in it, and none carries a page, a box or a coordinate (docs/history/14-V2-SCOPE.md §3).",
       "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
       "additionalProperties": false,
-      "required": ["pdf"],
       "properties": {
-        "pdf": {
+        "pdf": { "$ref": "#/$defs/pdf_locator" },
+        "pdf_object": { "$ref": "#/$defs/pdf_object_locator" },
+        "pdf_image": { "$ref": "#/$defs/pdf_image_locator" },
+        "docx": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["page", "origin_x", "origin_y"],
+          "required": ["part", "paragraph", "run"],
           "properties": {
-            "page": { "type": "integer", "minimum": 1 },
-            "origin_x": { "type": "integer" },
-            "origin_y": { "type": "integer" },
-            "advance": {
-              "type": "integer",
-              "$comment": "OMITTED, not zero, when the document carries no widths. Absent means the reader does not know."
-            }
+            "part": { "type": "string", "examples": ["word/document.xml"], "$comment": "The package's own name for the part, verbatim." },
+            "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <w:p> in the part's document order." },
+            "run": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <w:r> within that paragraph." }
           }
+        },
+        "xlsx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "sheet", "row", "column"],
+          "properties": {
+            "part": { "type": "string", "examples": ["xl/worksheets/sheet1.xml"], "$comment": "The package's name for the worksheet." },
+            "sheet": { "type": "string", "$comment": "The workbook's name for it, as <sheet name> writes it: what a person citing a cell writes down." },
+            "row": { "type": "integer", "minimum": 1, "$comment": "The row as the file numbers it: the digits of <c r=\"B12\">." },
+            "column": { "type": "string", "examples": ["B"], "$comment": "The column as the file spells it: the letters of <c r=\"B12\">." }
+          }
+        },
+        "pptx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "shape", "paragraph", "run"],
+          "properties": {
+            "part": { "type": "string", "examples": ["ppt/slides/slide1.xml"] },
+            "shape": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <p:sp> within the part." },
+            "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <a:p> within that shape's <p:txBody>." },
+            "run": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <a:r> within that paragraph." }
+          }
+        },
+        "odt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "paragraph"],
+          "properties": {
+            "part": { "type": "string", "examples": ["content.xml"] },
+            "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <text:p> or <text:h> in the part's document order." }
+          }
+        },
+        "ods": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "table", "row", "column"],
+          "properties": {
+            "part": { "type": "string", "examples": ["content.xml"] },
+            "table": { "type": "string", "$comment": "The table's own table:name." },
+            "row": { "type": "integer", "minimum": 1, "$comment": "1-based position of the row within its table, counting table:number-rows-repeated." },
+            "column": { "type": "integer", "minimum": 1, "$comment": "1-based position of the cell within its row, counting table:number-columns-repeated. A number, not a letter: OpenDocument writes neither." }
+          }
+        },
+        "odp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "draw_page", "shape", "paragraph"],
+          "properties": {
+            "part": { "type": "string", "examples": ["content.xml"] },
+            "draw_page": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <draw:page> in the part's document order. A position among elements the file lists, never a page this engine measured." },
+            "shape": { "type": "integer", "minimum": 1, "$comment": "1-based position of the shape within that draw page." },
+            "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the <text:p> or <text:h> within that shape." }
+          }
+        },
+        "rtf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["paragraph"],
+          "properties": {
+            "paragraph": { "type": "integer", "minimum": 1, "$comment": "1-based position of the paragraph in the stream's own order. No part: an RTF is one byte stream, and a constant standing in for a part it does not have would be invented." }
+          }
+        },
+        "epub": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part", "block"],
+          "properties": {
+            "part": { "type": "string", "examples": ["OEBPS/chapter1.xhtml"], "$comment": "The spine item's path in the package." },
+            "block": { "type": "integer", "minimum": 1, "$comment": "1-based position of the block within that spine document." }
+          }
+        }
+      }
+    },
+
+    "pdf_locator": {
+      "title": "A glyph run's address: page, baseline origin, advance",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "origin_x", "origin_y"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "origin_x": { "type": "integer" },
+        "origin_y": { "type": "integer" },
+        "advance": {
+          "type": "integer",
+          "$comment": "OMITTED, not zero, when the document carries no widths. Absent means the reader does not know."
+        }
+      }
+    },
+
+    "pdf_object_locator": {
+      "title": "A PDF object's address: page, object id, and the rectangle it declares (v1-S4)",
+      "$comment": "An annotation or a form field has no baseline, no advance and no character origin, so the glyph-run variant is the wrong shape for it. An object id is both halves.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "object", "generation", "rect"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "object": { "type": "integer", "minimum": 0 },
+        "generation": { "type": "integer", "minimum": 0 },
+        "rect": {
+          "$comment": "What the author wrote in /Rect: a rectangle, nothing, or something that is not one.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "value"],
+              "properties": { "state": { "const": "declared" }, "value": { "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state"],
+              "properties": { "state": { "enum": ["not_declared", "malformed"] } }
+            }
+          ]
+        }
+      }
+    },
+
+    "pdf_image_locator": {
+      "title": "A painted image's address: page, XObject id, and the rectangle the Do filled (v1-S6)",
+      "$comment": "Its own variant because the rectangle means something else: an annotation's /Rect is a number the author wrote, and an image's is COMPUTED — the current transformation matrix applied to the unit square.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "object", "generation", "rect"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "object": { "type": "integer", "minimum": 0 },
+        "generation": { "type": "integer", "minimum": 0 },
+        "rect": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "value"],
+              "properties": { "state": { "const": "painted" }, "value": { "$ref": "urn:ethos-parser:draft-schema:geometry:0#/$defs/qrect" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state"],
+              "properties": { "state": { "enum": ["not_axis_aligned", "malformed"] } }
+            }
+          ]
         }
       }
     },
@@ -232,13 +390,400 @@
         "findings": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "enum": ["invisible-render-mode", "off-page"] },
+          "items": { "$ref": "#/$defs/text_finding" },
           "$comment": "v1-S6. What was OBSERVED about this run, never a judgement about it: `invisible-render-mode` means the run was drawn in text rendering mode 3 or 7, which is how an OCR layer is laid under a scan AND how text is hidden from a reader — this profile reports the mode and does not decide which it is looking at. `off-page` means the origin lies outside /CropBox, or /MediaBox where no crop box is declared, after /Rotate. Findings are ADDITIVE: a node carrying one is still emitted with its text, origin and locator intact, and no finding removes anything. Sorted and deduplicated, so two artifacts about one run cannot differ by the order two observations happened in. Omitted when empty, which is almost every run. The same code appears in assurance.limitations as a document-level count; the two are one observation seen twice.",
           "description": "Observations about this run. Never a reason to drop it."
         },
         "region": { "type": "integer", "minimum": 1, "$comment": "D4-S2. Which region of its page the reading-order cut placed this run in, 1-based, in reading order. WHERE text sits, never WHAT it is: not a paragraph, a heading or a column name, and no role may be read from it (P14 — roles come from the structure tree or from nowhere). ABSENT means the cut made no division, which is not the same claim as 'single column'; the profile's reading_order_rule says which rule ran, and under `single-column-v1` no cut runs at all. Absent on almost every page, which is why it is omitted rather than emitted as null." },
         "block": { "type": "integer", "minimum": 1, "$comment": "Which block of its page the leading-gap cut placed this run in, 1-based, in reading order. Emitted under reading_order_rule `gutter-columns-v3` and `gutter-columns-v4`, and absent under every earlier id. WHERE text sits, never WHAT it is: a block is a stretch separated from its neighbours by vertical whitespace wider than its band's own leading, and it is NOT a paragraph, a heading, a list item or a section. No role may be read from it (P14 — roles come from the structure tree or from nowhere), and doc 19 §6 permits this field only as an unnamed Computed index. IT IS NOT A PARAGRAPH INDEX, AND THE MEASUREMENT SAYS SO: on the one gate document able to carry a real paragraph label the rule finds 63.7% of real breaks at 100% precision — it never fires mid-paragraph across 719 chances, and it misses better than a third of the breaks, because 35.1% of real breaks carry no extra leading for any gap rule to see. ABSENT means the rule declined, and unlike region that is the ORDINARY case: a page of uniform body text has no gap wide enough to open a second block and is supposed to have none. Absent also covers a band whose modal gap is a table-column interleave pitch rather than a leading, a band whose gaps are a scatter with no mode, and a format with no cut." },
         "inferred_heading": { "type": "boolean", "const": true, "$comment": "Decision #29. Set where the profile's heading_inference_rule read this run's line as a heading from the TYPE THE PAGE DRAWS, on a document that declares no /StructTreeRoot. Computed, never the author's: the rule id names the rule, and the artifact declares headings-inferred-from-type with the line count and the body reference in centipoints it measured. ABSENT WHERE FALSE — hence `const: true` — so a run the rule did not touch serializes exactly as it did before the rule existed, and a tagged document's artifact differs only by the profile hash. A verdict and not a measurement: the rendered em it was read from exists only inside the PDF reader, and is not on the wire. Only a text run can carry it, so no office node can acquire an inferred heading by accident." }
+      }
+    },
+
+    "text_finding": { "enum": ["invisible-render-mode", "off-page"] },
+
+    "node_attributes": {
+      "title": "NodeAttributes — the kind-specific fields of a node",
+      "$comment": "Externally tagged, exactly one key, like native_locator: a new variant is additive and an unrecognised one fails closed. `text_run`, `form_field`, `annotation` and `image` are the PDF reader's; the other eight are one per office format family, each on a `text_run` node.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "text_run": { "$ref": "#/$defs/text_run_attributes" },
+        "form_field": { "$ref": "#/$defs/form_field_attributes" },
+        "annotation": { "$ref": "#/$defs/annotation_attributes" },
+        "image": { "$ref": "#/$defs/image_attributes" },
+        "office_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["space_preserved"],
+          "properties": { "space_preserved": { "type": "boolean", "$comment": "DOCX: whether the run's <w:t> carried xml:space=\"preserve\"." } }
+        },
+        "office_cell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value_type", "text_source"],
+          "properties": {
+            "value_type": { "enum": ["number", "shared_string", "inline_string", "formula_string", "boolean", "error", "date"], "$comment": "XLSX: the type the cell's t attribute states." },
+            "text_source": { "enum": ["stored_value", "cached_formula_result", "formula_source"], "$comment": "Where the node's text came from: the stored value, the cached result of a formula, or the formula itself." }
+          }
+        },
+        "office_slide_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shape_id", "shape_name"],
+          "properties": {
+            "shape_id": { "type": "integer", "minimum": 0, "$comment": "PPTX: the shape's own <p:cNvPr id>." },
+            "shape_name": { "type": "string", "$comment": "And its <p:cNvPr name>." }
+          }
+        },
+        "office_paragraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["block"],
+          "properties": {
+            "block": { "$ref": "#/$defs/odf_block_kind" },
+            "outline_level": { "type": "integer", "minimum": 0, "$comment": "ODT: a heading's text:outline-level, when it states one." }
+          }
+        },
+        "office_odf_cell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value_type", "text_source"],
+          "properties": {
+            "value_type": { "enum": ["float", "percentage", "currency", "date", "time", "boolean", "string", "void"], "$comment": "ODS: the cell's office:value-type." },
+            "text_source": { "enum": ["stored_text", "cached_formula_text"] }
+          }
+        },
+        "office_odf_shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["block"],
+          "properties": {
+            "draw_page_name": { "type": "string", "$comment": "ODP: the draw page's draw:name, when it has one." },
+            "shape_name": { "type": "string", "$comment": "The shape's draw:name, when it has one." },
+            "block": { "$ref": "#/$defs/odf_block_kind" },
+            "outline_level": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "rtf_paragraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["terminator"],
+          "properties": {
+            "terminator": { "enum": ["paragraph", "section", "cell", "row", "end_of_stream"], "$comment": "Which control word ended the paragraph, or the end of the stream." }
+          }
+        },
+        "epub_block": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["element", "linear"],
+          "properties": {
+            "element": { "type": "string", "examples": ["p", "h1"], "$comment": "The XHTML element the block was read from." },
+            "linear": { "type": "boolean", "$comment": "The spine itemref's linear attribute: false for an item outside the primary reading order." }
+          }
+        }
+      }
+    },
+
+    "odf_block_kind": { "enum": ["paragraph", "heading"], "$comment": "Whether the ODF block was a <text:p> or a <text:h>." },
+
+    "form_field_attributes": {
+      "title": "A form field's attributes (v1-S4)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "flags"],
+      "properties": {
+        "field_name": { "type": "string", "$comment": "The fully qualified name: the /T of every ancestor, root first, joined by `.`. Omitted when no /T appears anywhere up the chain." },
+        "field_type": { "type": "string", "examples": ["Tx", "Btn", "Ch", "Sig"], "$comment": "/FT as the document spells it, from the nearest ancestor that declares one. Omitted when none does." },
+        "value": {
+          "$comment": "/V, typed by what the document wrote. A widget's rendering is never read as page text.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "value"],
+              "properties": { "kind": { "enum": ["text", "name"] }, "value": { "type": "string" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "value"],
+              "properties": { "kind": { "const": "choice" }, "value": { "type": "array", "items": { "type": "string" } } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "value"],
+              "properties": { "kind": { "const": "integer" }, "value": { "type": "integer" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "enum": ["absent", "unsupported"] } }
+            }
+          ]
+        },
+        "flags": { "type": "array", "items": { "type": "string" }, "$comment": "The /Ff bits this profile recognises, named, in ascending bit order." },
+        "unrecognized_flag_bits": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "$comment": "The raw /Ff bits this profile has no name for, kept rather than dropped. Omitted when there are none." }
+      }
+    },
+
+    "annotation_attributes": {
+      "title": "An annotation's attributes (v1-S4)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subtype", "flags"],
+      "properties": {
+        "subtype": { "type": "string", "examples": ["Text", "FreeText"], "$comment": "/Subtype as written." },
+        "name": { "type": "string", "$comment": "/NM, when the document gives one." },
+        "title": { "type": "string", "$comment": "/T — conventionally the author — when the document gives one." },
+        "flags": { "type": "array", "items": { "type": "string" }, "examples": [["hidden"]], "$comment": "The /F bits this profile recognises, named, in ascending bit order. A hidden annotation is flagged, never dropped." },
+        "unrecognized_flag_bits": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "$comment": "The raw /F bits this profile has no name for. Omitted when there are none." }
+      }
+    },
+
+    "image_attributes": {
+      "title": "A painted image's attributes (v1-S6)",
+      "$comment": "No description, caption or alt text: that would be OCR or a model's opinion, and neither is evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stream_sha256", "stream_bytes", "filters", "media_type", "image_mask"],
+      "properties": {
+        "stream_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "$comment": "Digest of the XObject's stream bytes as the file stores them." },
+        "stream_bytes": { "type": "integer", "minimum": 0 },
+        "filters": { "type": "array", "items": { "type": "string" }, "examples": [["FlateDecode"], ["DCTDecode"]] },
+        "media_type": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "value"],
+              "properties": { "state": { "const": "standalone" }, "value": { "type": "string", "examples": ["image/jpeg"] } },
+              "$comment": "The stored bytes are a file of this type on their own."
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state"],
+              "properties": { "state": { "const": "pdf_encoded_samples" } },
+              "$comment": "The bytes are samples only a PDF reader can decode."
+            }
+          ]
+        },
+        "pixel_width": { "type": "integer", "minimum": 0, "$comment": "/Width, when declared." },
+        "pixel_height": { "type": "integer", "minimum": 0, "$comment": "/Height, when declared." },
+        "image_mask": { "type": "boolean" }
+      }
+    },
+
+    "table_record": {
+      "title": "A table, with its cells in slot order (v1-S1)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "page", "geometry", "rows", "columns", "cells", "derivation", "detection_rule", "locator_check"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "page": { "type": "string", "$comment": "The id of the page record the table was found on." },
+        "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0" },
+        "rows": { "type": "integer", "minimum": 0 },
+        "columns": { "type": "integer", "minimum": 0 },
+        "cells": { "type": "array", "items": { "$ref": "#/$defs/table_cell_record" } },
+        "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0", "$comment": "`computed` for a grid this engine reconstructed from ink or alignment, `extracted` for one the structure tree declares." },
+        "detection_rule": { "type": "string", "examples": ["ruled-rects-v6", "unruled-align-v1", "stroke-ruled-v1", "tagged-tables-v1"], "$comment": "The rule that produced this table, from profile.table_detection." },
+        "locator_check": {
+          "$ref": "#/$defs/locator_check",
+          "$comment": "The structural and geometric cross-check of the cells against the grid."
+        },
+        "tagged_check": {
+          "$ref": "#/$defs/tagged_grid_check",
+          "$comment": "The detected grid compared with the /Table the structure tree describes on this page. OMITTED where the tree describes none, which is not the same claim as the two agreeing."
+        }
+      }
+    },
+
+    "table_cell_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "position", "geometry", "text", "node_ids"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "position": { "$ref": "#/$defs/table_cell_position" },
+        "geometry": { "$ref": "urn:ethos-parser:draft-schema:geometry:0" },
+        "text": { "type": "string" },
+        "node_ids": { "type": "array", "items": { "type": "string" }, "$comment": "The nodes whose text the cell holds, in reading order. Empty for an empty cell." }
+      }
+    },
+
+    "table_cell_position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["row", "column", "rowspan", "colspan", "table_id"],
+      "properties": {
+        "row": { "type": "integer", "minimum": 0, "$comment": "Zero-based row of the cell's top-left slot." },
+        "column": { "type": "integer", "minimum": 0, "$comment": "Zero-based column of the cell's top-left slot." },
+        "rowspan": { "type": "integer", "minimum": 1, "$comment": "1 means not merged, never 0." },
+        "colspan": { "type": "integer", "minimum": 1 },
+        "table_id": { "type": "string" }
+      }
+    },
+
+    "cell_slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["row", "column"],
+      "properties": {
+        "row": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "locator_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "check_version", "outcome"],
+      "properties": {
+        "check_id": { "type": "string" },
+        "check_version": { "type": "string" },
+        "outcome": {
+          "$comment": "Internally tagged by `status`. A mismatch lists its faults rather than a verdict.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status"],
+              "properties": { "status": { "const": "ok" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "structural", "geometric"],
+              "properties": {
+                "status": { "const": "mismatch" },
+                "structural": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "row", "column"],
+                        "properties": { "fault": { "enum": ["unowned", "outside_grid"] }, "row": { "type": "integer", "minimum": 0 }, "column": { "type": "integer", "minimum": 0 } }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "slot", "owners"],
+                        "properties": { "fault": { "const": "owned_more_than_once" }, "slot": { "$ref": "#/$defs/cell_slot" }, "owners": { "type": "integer", "minimum": 0 } }
+                      }
+                    ]
+                  }
+                },
+                "geometric": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "slot"],
+                        "properties": { "fault": { "const": "cell_outside_table" }, "slot": { "$ref": "#/$defs/cell_slot" } }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "a", "b"],
+                        "properties": { "fault": { "const": "cells_overlap" }, "a": { "$ref": "#/$defs/cell_slot" }, "b": { "$ref": "#/$defs/cell_slot" } }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "cells", "table"],
+                        "properties": { "fault": { "const": "does_not_tile" }, "cells": { "type": "integer" }, "table": { "type": "integer" } }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "reason"],
+              "properties": { "status": { "const": "not_applicable" }, "reason": { "type": "string" } }
+            }
+          ]
+        }
+      }
+    },
+
+    "tagged_grid_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "check_version", "outcome"],
+      "properties": {
+        "check_id": { "type": "string" },
+        "check_version": { "type": "string" },
+        "outcome": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status"],
+              "properties": { "status": { "const": "ok" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "faults"],
+              "properties": {
+                "status": { "const": "mismatch" },
+                "faults": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "tagged", "detected"],
+                        "properties": { "fault": { "enum": ["row_count_differs", "column_count_differs"] }, "tagged": { "type": "integer", "minimum": 0 }, "detected": { "type": "integer", "minimum": 0 } }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["fault", "row", "column"],
+                        "properties": { "fault": { "enum": ["slot_only_in_tagged", "slot_only_in_detected"] }, "row": { "type": "integer", "minimum": 0 }, "column": { "type": "integer", "minimum": 0 } }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "reason"],
+              "properties": { "status": { "const": "not_applicable" }, "reason": { "type": "string" } }
+            }
+          ]
+        }
+      }
+    },
+
+    "outline_record": {
+      "title": "One /Outlines entry (docs/29-OUTLINES-SCOPE.md)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["derivation", "depth", "object", "generation"],
+      "properties": {
+        "derivation": { "$ref": "urn:ethos-parser:draft-schema:derivation-class:0" },
+        "title": { "type": "string", "$comment": "/Title decoded. Omitted, and counted, where it does not decode — never guessed." },
+        "depth": { "type": "integer", "minimum": 1, "$comment": "The depth the /First and /Next chain gives, 1 for a top-level entry. Never renumbered." },
+        "object": { "type": "integer", "minimum": 0, "$comment": "The entry's own object number." },
+        "generation": { "type": "integer", "minimum": 0 },
+        "page": { "type": "integer", "minimum": 1, "$comment": "The page its destination resolves to, when it resolves. No end is ever emitted." }
       }
     },
 

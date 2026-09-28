@@ -22,7 +22,7 @@
   "properties": {
     "identity": {
       "$ref": "urn:ethos-parser:draft-schema:artifact-identity:0",
-      "description": "artifact_type is `ethos.parser.classification.v0`; schema_version is `0.1.0`. Both DRAFT."
+      "description": "artifact_type is `ethos.parser.classification.v0`, and schema_version is `CLASSIFICATION_SCHEMA_VERSION` in crates/ethos-parser-pdf/src/classify.rs. Both DRAFT."
     },
     "source": {
       "type": "object",

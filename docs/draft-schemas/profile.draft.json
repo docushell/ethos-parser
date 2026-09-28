@@ -59,9 +59,9 @@
     },
     "classify_sample_pages": {
       "type": "integer",
-      "minimum": 1,
+      "minimum": 0,
       "maximum": 9007199254740991,
-      "description": "How many pages classification samples before it stops. Default 8. Its boundedness is the point: cost must not scale with total page count."
+      "description": "How many pages classification samples before it stops. Default 8. Its boundedness is the point: cost must not scale with total page count. 0 on the eight office profiles, which classify nothing."
     },
     "quantum_per_point": {
       "type": "integer",
@@ -116,8 +116,10 @@
         "mode": {
           "enum": [
             "refuse",
-            "pad-19-to-20-v1"
-          ]
+            "pad-19-to-20-v1",
+            "not-run-for-this-format"
+          ],
+          "$comment": "`not-run-for-this-format` on the eight office profiles (v2-S2): the format has no cross-reference table, so no repair policy applies — a declared state rather than a borrowed `refuse`, which would claim machinery that never ran."
         }
       }
     },
@@ -270,8 +272,10 @@
         "form_fields",
         "html",
         "images",
+        "markdown",
         "measured_ink_boxes",
         "multi_column_reading_order",
+        "outlines",
         "page_screenshots",
         "spans",
         "structural_locators",
@@ -291,6 +295,10 @@
         "tables": {
           "type": "boolean",
           "$comment": "true since v1-S1 (ruled), widened at v1-S2 (unruled)"
+        },
+        "outlines": {
+          "type": "boolean",
+          "$comment": "true on the PDF profile since outlines-v1 — proof: the_declared_outline_is_read_as_the_document_declared_it. Claims only that this profile LOOKS at the catalog's /Outlines: the representation's `outlines` array is always written, and without this flag an empty one could not say whether a reader looked. A catalog naming none declares `outline-absent`. False on the eight office profiles, permanently: a package has no PDF catalog to carry one."
         },
         "measured_ink_boxes": {
           "type": "boolean",
