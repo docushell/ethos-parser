@@ -2374,13 +2374,14 @@ pub const TAGS_ARTIFACT_TYPE: &str = "ethos.parser.tags.v0";
 // The writer (scope §3.5–§3.7): the refusals in order, one stream per page, the self-check
 // ---------------------------------------------------------------------------------------------
 
-/// One page as the writer planned it: the bytes `extract` interpreted, their tokens, the
-/// sequences, and the id each of the page's runs will bind to.
+/// One page as the writer planned it: the stream it will be given, the sequences, and the id each
+/// of the page's runs will bind to.
 struct PlannedPage {
     number: u32,
     page_id: ObjectId,
-    buffer: Vec<u8>,
-    tokenised: Tokenised,
+    /// The bytes `extract` interpreted with the sequences spliced in, deflated; empty on a page
+    /// that received no sequence, which is not rewritten.
+    stream: Vec<u8>,
     plan: PagePlan,
     /// Per run of the page, in the artifact's order: the id of the sequence holding its operator,
     /// or `None` for a run inside an `/Artifact` frame.
@@ -2630,11 +2631,18 @@ fn plan_document(doc: &Document, profile: &Profile) -> Result<DocumentPlan, Engi
                 })?;
             run_mcids.push(Some(holder.mcid));
         }
+        // Spliced now, so the page's bytes and tokens are gone before the next page is read.
+        // Kept for every page, they took the peak from 0.8 GB to 2.4 GB on a 32 KB file whose
+        // 200 pages share one 400 KB stream (review 2026-09-26 N31).
+        let stream = if plan.sequences.is_empty() {
+            Vec::new()
+        } else {
+            deflate(&splice(&buffer, &tokenised, &plan.sequences), number)?
+        };
         pages.push(PlannedPage {
             number,
             page_id,
-            buffer,
-            tokenised,
+            stream,
             plan,
             run_mcids,
         });
@@ -2899,10 +2907,9 @@ fn emit(
             .and_then(|c| c.as_reference().ok())
             .filter(|&id| matches!(out.objects.get(&id), Some(Object::Array(_))));
         superseded.extend(indirect);
-        let spliced = splice(&page.buffer, &page.tokenised, &page.plan.sequences);
         let mut dict = lopdf::Dictionary::new();
         dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
-        let stream_id = out.add_object(Stream::new(dict, deflate(&spliced, page.number)?));
+        let stream_id = out.add_object(Stream::new(dict, page.stream.clone()));
         out.get_dictionary_mut(page.page_id)
             .map_err(|e| malformed(format!("page {}: {e}", page.number)))?
             .set("Contents", Object::Reference(stream_id));
