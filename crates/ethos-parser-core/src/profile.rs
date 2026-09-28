@@ -2082,6 +2082,120 @@ mod tests {
         p.profile_sha256().unwrap().to_string()
     }
 
+    /// **Every field of the profile, and of each struct and struct variant inside it, is a key
+    /// in the bytes the profile is hashed from.**
+    ///
+    /// Review 2026-09-26 N29. A `#[serde(skip)]` field is absent from serde's output, and every
+    /// identity check reads serde's output — the pin, the round trip, the schema example — so a
+    /// skipped knob gating heading inference moved representation fingerprints with
+    /// `profile_sha256` unchanged, and every guard passed. [`every_profile_field_is_hash_sensitive`]
+    /// passed too: its pattern binds each leaf as `_`, which a skipped field satisfies.
+    ///
+    /// Here each shape is destructured with no `..`, so a field this test does not name fails to
+    /// compile, and the names compared come from that same pattern, so they cannot drift from it.
+    /// A skipped field is then named here and missing from the bytes. A renamed or conditionally
+    /// omitted field fails too; either is a decision to make here, in the open, rather than under
+    /// the hash.
+    #[test]
+    fn every_profile_field_reaches_the_canonical_bytes() {
+        use std::collections::BTreeSet;
+
+        /// The fields `$value`'s shape declares, bound by name with nothing elided.
+        macro_rules! declared {
+            ($value:expr => $($shape:ident)::+ { $($field:ident),* $(,)? }) => {{
+                #[allow(irrefutable_let_patterns)]
+                let $($shape)::+ { $($field: _),* } = $value else {
+                    panic!("not a {}", stringify!($($shape)::+));
+                };
+                [$(stringify!($field)),*].into_iter().collect::<BTreeSet<&str>>()
+            }};
+        }
+        fn keys(value: &serde_json::Value) -> BTreeSet<&str> {
+            let object = value.as_object().expect("a JSON object");
+            object.keys().map(String::as_str).collect()
+        }
+
+        // Pinned, so the verifier's one struct variant is on the wire too.
+        let profile = Profile {
+            verifier: VerifierPin::pinned(
+                "ethos 0.6.0",
+                Sha256Hex::from_hex(&"0".repeat(64)).expect("hex"),
+            ),
+            ..Profile::default()
+        };
+        let bytes = profile.canonical_bytes().expect("canonical");
+        let wire: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
+
+        assert_eq!(
+            keys(&wire),
+            declared!(&profile => Profile {
+                parser_version,
+                backend,
+                classify_sample_pages,
+                quantum_per_point,
+                coordinate_system,
+                capabilities,
+                page_budget,
+                reading_order_rule,
+                table_detection,
+                struct_tree_rule,
+                outline_rule,
+                text_box_rule,
+                heading_inference_rule,
+                markdown_rule,
+                html_rule,
+                locate_rule,
+                form_annotation_rule,
+                cmap_data_version,
+                font_metrics_data_version,
+                text_code_rule,
+                observation_rule,
+                raster_dpi,
+                xref_repair,
+                verifier,
+            })
+        );
+        assert_eq!(
+            keys(&wire["backend"]),
+            declared!(&profile.backend => BackendIdentity { name, version })
+        );
+        assert_eq!(
+            keys(&wire["coordinate_system"]),
+            declared!(&profile.coordinate_system => CoordinateSystem { unit, origin })
+        );
+        assert_eq!(
+            keys(&wire["capabilities"]),
+            declared!(&profile.capabilities => Capabilities {
+                spans,
+                char_offsets,
+                tables,
+                outlines,
+                measured_ink_boxes,
+                multi_column_reading_order,
+                structural_locators,
+                form_fields,
+                annotations,
+                images,
+                page_screenshots,
+                markdown,
+                html,
+            })
+        );
+        assert_eq!(
+            keys(&wire["table_detection"]),
+            declared!(&profile.table_detection => TableDetection {
+                ruled,
+                unruled,
+                stroke_ruled,
+                tagged,
+            })
+        );
+        assert_eq!(
+            keys(&wire["verifier"]["identity"]),
+            declared!(&profile.verifier => VerifierPin::Pinned { version, sha256 })
+        );
+    }
+
     /// Every field on `Profile` that is mutated below changes the hash when it changes.
     ///
     /// # What the destructuring enforces, and what it does not
