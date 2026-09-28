@@ -154,7 +154,8 @@
                   "annotation-text-not-projected-v1",
                   "image-nodes-carry-no-text-v1",
                   "whitespace-collapsed-v1",
-                  "hyphenation-rejoin-dropped-v1"
+                  "hyphenation-rejoin-dropped-v1",
+                  "null-characters-not-projected-v1"
                 ]
               },
               "chars": {

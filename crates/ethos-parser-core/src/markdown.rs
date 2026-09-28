@@ -702,6 +702,9 @@ impl MarkdownArtifact {
 /// normalizations concatenated with the trailing `-` of the first removed. The removed character
 /// is counted, in `hyphenation-rejoin-dropped-v1`. Inverting such a segment still lands on real
 /// node text — both runs of it — which is what the page drew.
+///
+/// And a segment never holds U+0000, which neither format can carry. That is not this function's
+/// doing — the writer drops it — and it is counted, in `null-characters-not-projected-v1`.
 pub fn normalize(s: &str) -> String {
     let trimmed = s.trim();
     let mut out = String::with_capacity(trimmed.len());
@@ -1449,6 +1452,22 @@ pub(crate) fn on_different_lines(a: &crate::Node, b: &crate::Node) -> bool {
 /// the same number — a run is the head of at most one join.
 pub(crate) const HYPHENATION_REJOIN_DROPPED: &str = "hyphenation-rejoin-dropped-v1";
 
+/// U+0000 in node text, which neither projection writes (review 2026-09-26 N40).
+///
+/// **Neither format can carry it.** CommonMark replaces it with U+FFFD, and an HTML parser drops
+/// it from text and reads `&#0;` as U+FFFD — so a `source` segment holding one renders as a string
+/// the node does not hold. There is no escape to reach for, since both formats' references land on
+/// U+FFFD. So [`Emit::source_encoded`] and its siblings write the text without it, and this counts
+/// it, as [`HYPHENATION_REJOIN_DROPPED`] counts a hyphen: a character of node text, really not in
+/// the output.
+///
+/// **Only U+0000.** Every other control survives both formats — CommonMark passes it as text, and
+/// an HTML parser keeps it with a parse error, which a numeric reference raises too. For
+/// U+0080–U+009F a reference would be worse: HTML reads `&#x92;` as U+2019.
+///
+/// `chars` is the number removed; `nodes` the number of runs that held one.
+pub(crate) const NULL_CHARACTERS_NOT_PROJECTED: &str = "null-characters-not-projected-v1";
+
 /// The bucket a non-projected node belongs to.
 ///
 /// One per node kind rather than one catch-all, because each is a different fact about the
@@ -1631,21 +1650,21 @@ impl Emit {
     /// `node_ids.len() > 1` and knows the quote spans runs. That is the identical signal the
     /// hyphen join has carried since v1.1-S3.
     pub(crate) fn source_continuing(&mut self, s: &str, node: &str) {
+        let (s, chars) = writable(s, s.chars().count());
         if s.is_empty() {
             return;
         }
         let start = self.markdown.len();
-        let chars = s.chars().count();
         match self.segments.last_mut() {
             Some(last) if last.kind == SegmentKind::Source && last.end == start => {
-                self.markdown.push_str(s);
+                self.markdown.push_str(&s);
                 last.end = self.markdown.len();
                 if last.node_ids.iter().all(|id| id != node) {
                     last.node_ids.push(node.to_string());
                 }
             }
             _ => {
-                self.markdown.push_str(s);
+                self.markdown.push_str(&s);
                 self.segments.push(Segment {
                     kind: SegmentKind::Source,
                     start,
@@ -1671,11 +1690,12 @@ impl Emit {
     /// unescaped count keeps `emitted + dropped == in_representation` exactly true, and keeps it
     /// true for the same reason on both artifacts.
     pub(crate) fn source_encoded(&mut self, s: &str, chars: usize, node: &str) {
+        let (s, chars) = writable(s, chars);
         if s.is_empty() {
             return;
         }
         let start = self.markdown.len();
-        self.markdown.push_str(s);
+        self.markdown.push_str(&s);
         self.segments.push(Segment {
             kind: SegmentKind::Source,
             start,
@@ -1711,11 +1731,12 @@ impl Emit {
         first: &str,
         second: &str,
     ) {
+        let (s, chars) = writable(s, chars);
         if s.is_empty() {
             return;
         }
         let start = self.markdown.len();
-        self.markdown.push_str(s);
+        self.markdown.push_str(&s);
         self.segments.push(Segment {
             kind: SegmentKind::Source,
             start,
@@ -1751,6 +1772,19 @@ impl Emit {
             rest = &rest[at + width..];
         }
         self.source(rest, node);
+    }
+}
+
+/// `s` as a `source` writer may write it: without U+0000, and `chars` less as many.
+///
+/// Every [`Emit`] method that takes node text calls this first, so no path through either
+/// projection writes the character; [`census`] counts what it removed, as
+/// [`NULL_CHARACTERS_NOT_PROJECTED`]. `chars` counts the unescaped text, so an HTML entity beside
+/// a U+0000 is still one character and the U+0000 is still one fewer.
+fn writable(s: &str, chars: usize) -> (std::borrow::Cow<'_, str>, usize) {
+    match s.matches('\0').count() {
+        0 => (std::borrow::Cow::Borrowed(s), chars),
+        n => (std::borrow::Cow::Owned(s.replace('\0', "")), chars - n),
     }
 }
 
@@ -1807,6 +1841,8 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 ///    **The representation is untouched**: `extract` still holds both halves with the hyphen
 ///    verbatim, so the joined word is readable and *not* citable, and the map says which two
 ///    strings are.
+/// 8. **U+0000 is not written.** Markdown cannot carry it; see [`NULL_CHARACTERS_NOT_PROJECTED`],
+///    which counts it.
 ///
 /// # Where the tables go
 ///
@@ -2216,6 +2252,19 @@ pub(crate) fn census(
     // including an annotation, and such a node is charged to its dropped bucket AND emitted inside
     // the table. `ethos-parser extract` never writes one, but `ethos-parser markdown` and `ethos-parser html` accept
     // any correctly-fingerprinted representation, so the arithmetic fails closed instead.
+    //
+    // U+0000 first, so the residue below is whitespace alone. No writer emits it (`writable`), and
+    // every projected run's text is written once, so the record says how many were removed.
+    let (nulls, nodes) = payload
+        .nodes
+        .iter()
+        .filter(|n| dropped_code(n.kind).is_none())
+        .map(|n| n.text.matches('\0').count())
+        .filter(|&count| count > 0)
+        .fold((0, 0), |(chars, nodes), count| (chars + count, nodes + 1));
+    if nulls > 0 {
+        buckets.insert(NULL_CHARACTERS_NOT_PROJECTED, (nulls, nodes));
+    }
     let accounted = emitted_chars + buckets.values().map(|(chars, _)| *chars).sum::<usize>();
     let collapsed: usize = in_representation.saturating_sub(accounted);
     if collapsed > 0 {
@@ -3690,6 +3739,61 @@ pub(crate) mod tests {
             .find(|b| b.code == "whitespace-collapsed-v1")
             .expect("the two collapsed spaces are declared");
         assert_eq!(b.chars, 2);
+    }
+
+    /// **U+0000 is not written, and it is counted** (review 2026-09-26 N40).
+    ///
+    /// CommonMark renders it as U+FFFD, so `A\0A` in a `source` segment reads as a string the node
+    /// does not hold. Each writer that takes node text is reached: a block's own run, a run joined
+    /// into its marked-content sequence, and a word closed up across a line.
+    #[test]
+    fn a_null_character_is_not_written_and_is_counted() {
+        let nulls = |a: &MarkdownArtifact| {
+            a.coverage
+                .dropped
+                .iter()
+                .find(|b| b.code == NULL_CHARACTERS_NOT_PROJECTED)
+                .map(|b| (b.chars, b.nodes))
+        };
+
+        let a = artifact_of(repr_of(&[("A\0\0A", None), ("B\0", None), ("C", None)]));
+        assert_eq!(a.markdown, "AA\n\nB\n\nC\n");
+        assert_eq!(nulls(&a), Some((3, 2)), "three removed, from two runs");
+        assert_eq!(a.coverage.source_chars_emitted, 4);
+        assert_eq!(a.coverage.dropped.len(), 1, "and nothing called whitespace");
+        a.validate().expect("tiles and balances");
+
+        let a = project_runs(&[
+            ("Yarr", tagged_at(3), 7200, Some(1000), None),
+            ("o\0w", tagged_at(3), 8200, Some(400), None),
+        ]);
+        assert_eq!(a.markdown, "Yarrow\n");
+        assert_eq!(nulls(&a), Some((1, 1)));
+
+        let a = artifact_of(repr_of_lines(&["hyph\0en-", "ated"]));
+        assert_eq!(a.markdown, "hyphenated\n");
+        assert_eq!(nulls(&a), Some((1, 1)));
+
+        // A node dropped for its kind is counted whole in its own bucket, U+0000 and all — once.
+        let repr = repr_of(&[("A", None), ("note\0", None)]);
+        let mut payload = repr.payload().clone();
+        payload.nodes[1].kind = NodeKind::Annotation;
+        payload.nodes[1].attributes = NodeAttributes::Annotation(crate::AnnotationAttributes {
+            subtype: "Text".into(),
+            name: None,
+            title: None,
+            flags: Vec::new(),
+            unrecognized_flag_bits: Vec::new(),
+        });
+        let a =
+            artifact_of(DocumentRepresentation::seal(payload, repr.geometry().to_vec()).unwrap());
+        assert_eq!(nulls(&a), None);
+
+        assert_eq!(
+            nulls(&artifact_of(simple_repr())),
+            None,
+            "none held, none declared"
+        );
     }
 
     /// Every artifact this module builds validates, on every fixture shape above.
