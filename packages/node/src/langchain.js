@@ -101,7 +101,7 @@ export const TOOL_SCHEMAS = {
     type: "object",
     additionalProperties: false,
     required: ["path"],
-    properties: { path: { type: "string", description: "Path to a PDF file." } },
+    properties: { path: { type: "string", description: "Path to the document." } },
   },
   ground: {
     type: "object",
@@ -135,7 +135,8 @@ export const TOOL_SCHEMAS = {
 
 const DESCRIPTIONS = {
   extract:
-    "Read a PDF and return `DocumentRepresentation v0` — the canonical evidence record. Every " +
+    "Read a document — PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB — and return " +
+    "`DocumentRepresentation v0`, the canonical evidence record. Every " +
     "locator a later call needs is minted here and travels in the tool artifact; pass that " +
     "artifact back rather than composing one.",
   ground:

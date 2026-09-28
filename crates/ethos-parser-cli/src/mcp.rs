@@ -528,15 +528,15 @@ fn tools() -> Value {
         {
             "name": "extract",
             "description":
-                "Read a PDF and return `DocumentRepresentation v0` — the canonical evidence \
-                 record. Byte-identical to `ethos-parser extract`. Every locator a later call needs is \
+                "Read a document — PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB — and return \
+                 `DocumentRepresentation v0`, the canonical evidence record. Byte-identical to `ethos-parser extract`. Every locator a later call needs is \
                  minted here; pass this artifact back rather than composing one.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["path"],
                 "properties": {
-                    "path": { "type": "string", "description": "Path to a PDF file." }
+                    "path": { "type": "string", "description": "Path to the document." }
                 }
             }
         },

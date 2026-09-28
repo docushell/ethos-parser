@@ -341,7 +341,8 @@ pub fn to_representation(
             geometry.push(NodeGeometry {
                 node: image.id.clone(),
                 // **`NotApplicableToKind`**, for the reason an annotation's is: this field means
-                // *measured ink from font metrics*, and an image has no glyphs to measure. Its
+                // *a box measured from a run's advance and its font's metrics*, and an image has
+                // no glyphs to measure. Its
                 // area is on the locator as a `PaintedRect`, where it says it came from the
                 // page's own matrix — a third provenance that must not be flattened into the
                 // other two.
@@ -563,27 +564,31 @@ pub fn to_representation(
 /// makes that possible after the fact.
 /// The declaration that some nodes are the wrong **kind** for a grounding artifact (v1-S4).
 ///
-/// Deliberately separate from [`geometry_absent_limitation`], which means "no ink box could be
+/// Deliberately separate from [`geometry_absent_limitation`], which means "no box could be
 /// measured". These nodes were read perfectly well; `ethos.grounding.v1` offers `elements` and
-/// `spans` and nothing else, and every `bbox` in it means measured ink. A form field's rectangle
-/// is a number the author wrote saying where a widget sits — projecting it would put declared
-/// rectangles beside measured ones with nothing on the wire to tell them apart.
+/// `spans` and nothing else, and every `bbox` this engine puts in it is a text run's measured
+/// box — the pen's advance over the font's envelope, not glyph ink (contract §5.3). A form
+/// field's rectangle is a number the author wrote saying where a widget sits — projecting it
+/// would put declared rectangles beside measured ones with nothing on the wire to tell them apart.
 fn non_text_nodes_limitation(non_text: u32, total: u32) -> Limitation {
     Limitation::document(
         codes::NON_TEXT_NODES_NOT_PROJECTED,
         format!(
             "{non_text} of {total} node(s) in this representation are form fields, annotations or \
              images rather than text runs, so they are OMITTED from any `ethos.grounding.v1` \
-             projection of it. That schema carries `elements` and `spans`, each requiring a bbox \
-             that means MEASURED INK — and these nodes carry two other kinds of rectangle \
-             entirely. An annotation's `/Rect` is a number the author wrote into a dictionary \
+             projection of it. That schema carries `elements` and `spans`, each requiring a bbox, \
+             and this engine gives one only to a text run: the box it MEASURED from the run, the \
+             pen's advance along the baseline over the font's ascent-to-descent envelope \
+             (`text_box_rule`), which is not glyph ink — and these nodes carry two other kinds of \
+             rectangle entirely. An annotation's `/Rect` is a number the author wrote into a dictionary \
              saying where a widget sits. An image's rectangle is the page's own transformation \
              matrix applied to the unit square, computed by this reader. Emitting all three under \
              one key, with nothing on the wire to tell them apart, would flatten exactly the \
              distinction they exist to keep. The nodes are all still here, with their text, their \
              object ids, their digests and their rectangles — the gap is in what the target \
              schema can express, not in what was read. This is a DIFFERENT count from \
-             `geometry-absent-not-groundable`, which means an ink box could not be measured."
+             `geometry-absent-not-groundable`, which means a text run's box could not be \
+             measured."
         ),
     )
 }
@@ -731,11 +736,12 @@ fn not_axis_aligned_clause(not_axis_aligned: u32) -> String {
 /// limitation claiming a population it does not have.
 fn kind_only_detail(kind_absent: u32) -> String {
     format!(
-        "{kind_absent} node(s) in this representation carry no ink box because their KIND has \
-         none — an annotation, a form field or an image, whose rectangle is a number the author \
-         wrote into a dictionary rather than ink this engine measured — so they are OMITTED from \
-         any `ethos.grounding.v1` projection of it, which requires a bbox meaning MEASURED INK on \
-         every element and span. **Every text run here carries one**, so nothing was read and \
+        "{kind_absent} node(s) in this representation carry no measured box because their KIND \
+         has none — an annotation, a form field or an image, whose rectangle is a number the \
+         author wrote into a dictionary rather than a box this engine measured — so they are \
+         OMITTED from any `ethos.grounding.v1` projection of it, which requires a bbox on every \
+         element and span, and this engine gives one only to a text run: the pen's advance over \
+         the font's envelope (`text_box_rule`), not glyph ink. **Every text run here carries one**, so nothing was read and \
          left unmeasurable: their absence is correct rather than a gap, and they are declared \
          because `check_structure` requires this declaration whenever any node is non-groundable. \
          The nodes are still here, with their text, their object ids and their rectangles; \
@@ -815,7 +821,7 @@ mod tests {
         assert_eq!(limitation.code, codes::GEOMETRY_ABSENT_NOT_GROUNDABLE);
         assert!(
             limitation.detail.starts_with(
-                "1 node(s) in this representation carry no ink box \
+                "1 node(s) in this representation carry no measured box \
                                            because their KIND has none"
             ),
             "the detail must open on the population it has: {}",
@@ -844,6 +850,23 @@ mod tests {
     /// carry the sentence it always carried — otherwise every golden in the corpus moves for a
     /// case this slice did not change. A document with one must not say "Two reasons" above
     /// three clauses, which is the v2-S13.3 defect: a statement that stopped being true.
+    /// **No declaration calls a box glyph ink** (review 2026-09-26 N50). Contract §5.3: the box
+    /// this engine emits for a text run is the pen's advance over the font's envelope, not glyph
+    /// ink, and `text_box_rule` names that construction. Two sentences on 145 of 312 census
+    /// artifacts said the grounding projection's bbox "means MEASURED INK".
+    #[test]
+    fn no_declaration_calls_a_box_glyph_ink() {
+        let details = [
+            non_text_nodes_limitation(1, 2).detail,
+            geometry_absent_limitation(0, 0, 0, 0, 0, 0, 0, 1).detail,
+            geometry_absent_limitation(1, 0, 0, 0, 0, 0, 1, 1).detail,
+        ];
+        for detail in details {
+            assert!(!detail.to_lowercase().contains("measured ink"), "{detail}");
+            assert!(!detail.contains("ink box could not"), "{detail}");
+        }
+    }
+
     #[test]
     fn the_off_page_reason_is_counted_and_the_reason_count_follows_it() {
         let none = geometry_absent_limitation(1, 0, 0, 0, 0, 0, 1, 0);
