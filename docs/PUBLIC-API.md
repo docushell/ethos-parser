@@ -88,7 +88,9 @@ agrees with its own attributes.
 `NativeLocator` gained `PdfObject`. An annotation has no baseline, no advance and no character
 origin, so `PdfLocator` is the wrong shape — and filling it with a plausible origin would put a
 coordinate on the wire the document does not contain. Its `AnnotationRect` is deliberately not
-`GeometryPresence`: that type means *measured ink*, and a `/Rect` is a number the author wrote.
+`GeometryPresence`: that type means *a box this engine measured* — for a text run, the pen's
+advance over the font's envelope, not glyph ink (contract §5.3) — and a `/Rect` is a number the
+author wrote.
 
 **The tagged-versus-geometric check is v1-S3, and it is a *second* check rather than a wider
 first one.** `LOCATOR_CHECK_V1` compares a table's own indices against its own boxes;

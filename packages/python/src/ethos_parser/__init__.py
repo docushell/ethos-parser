@@ -219,12 +219,14 @@ class NodeNotFound(EngineError):
 
 
 def extract(pdf_path):
-    """Read a PDF and return ``DocumentRepresentation v0``, as ``ethos-parser extract`` prints it.
+    """Read a document and return ``DocumentRepresentation v0``, as the CLI's ``extract`` prints it.
+
+    Any of the nine formats ``extract`` reads: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB.
 
     Every locator a later call needs is minted here. Pass this object back to :func:`ground` or
     :func:`node_get` rather than composing one.
 
-    :param pdf_path: path to a PDF, as :class:`str` or :class:`os.PathLike`.
+    :param pdf_path: path to the document, as :class:`str` or :class:`os.PathLike`.
     :returns: the parsed canonical artifact.
     :raises EngineNotFound: no binary.
     :raises EngineFailed: the engine could not read the document.

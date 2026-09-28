@@ -3235,6 +3235,218 @@ fn reading_forms_changes_no_earlier_slices_answer() {
 // 15. Images, findings and the overlay (v1-S6)
 // -------------------------------------------------------------------------------------------
 
+/// **A page's `/Resources` inherited from `/Pages` is read as its own would be** (review
+/// 2026-09-26 N43). The key is inheritable (PDF 32000-1 Table 30); the tag writer inherited it,
+/// and the fonts, the images and classify's image count read the page's own alone — so
+/// `image-xobject-drawn` with its dictionary moved up one level was refused for a missing font,
+/// where Ghostscript draws it.
+#[test]
+fn resources_inherited_from_the_page_tree_are_read_as_the_pages_own() {
+    let original = std::fs::read(engine_fx("image-xobject-drawn")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let page = doc.get_pages()[&1];
+    let page_dict = doc
+        .get_object_mut(page)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the page");
+    let resources = page_dict
+        .remove(b"Resources")
+        .expect("the page's own /Resources");
+    let parent = page_dict
+        .get(b"Parent")
+        .and_then(lopdf::Object::as_reference)
+        .expect("a /Parent");
+    doc.get_object_mut(parent)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the /Pages node")
+        .set("Resources", resources);
+    let inherited = saved(doc);
+
+    let profile = Profile::default();
+    let read = |bytes: &[u8]| {
+        let doc = Document::open_bytes(bytes, &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&doc, &profile).expect("reads");
+        let c = ethos_parser_pdf::classify(&doc, &profile).expect("classifies");
+        (
+            serde_json::to_value(&a.pages).expect("serializes"),
+            serde_json::to_value(&c.pages).expect("serializes"),
+        )
+    };
+    let (pages, classified) = read(&inherited);
+    let (their_pages, their_classified) = read(&original);
+    assert_eq!(
+        pages, their_pages,
+        "the runs and the image node, as the page's own resources give them"
+    );
+    assert_eq!(
+        classified, their_classified,
+        "and classify counts the image the page inherits"
+    );
+}
+
+/// **An operator given more operands than Table A.1 gives it is refused** (review 2026-09-26
+/// N48). The interpreter reads operands from the front and a renderer pops them from the back:
+/// with eight before `Tm`, the review's `j2_number_split.pdf` placed its text at (7, 2), where
+/// neither Ghostscript nor CoreGraphics draws it. Every operator whose operands are read is held
+/// to its count: read at exactly it, refused one past it.
+#[test]
+fn an_operator_given_more_operands_than_table_a1_gives_it_is_refused() {
+    // (operator, its operands, one more, what follows so the page stays well-formed)
+    let cases = [
+        ("cm", "1 0 0 1 0 0", "9 1 0 0 1 0 0", ""),
+        ("Tm", "1 0 0 1 72 40", "9 1 0 0 1 72 40", ""),
+        ("Tc", "1", "9 1", ""),
+        ("Tw", "1", "9 1", ""),
+        ("Tz", "100", "9 100", ""),
+        ("TL", "12", "9 12", ""),
+        ("Tr", "0", "9 0", ""),
+        ("Ts", "0", "9 0", ""),
+        ("Tf", "/F1 12", "9 /F1 12", ""),
+        ("Td", "10 10", "9 10 10", ""),
+        ("TD", "10 -12", "9 10 -12", ""),
+        ("Tj", "(x)", "(w) (x)", ""),
+        ("TJ", "[(x)]", "[(w)] [(x)]", ""),
+        ("'", "(x)", "(w) (x)", ""),
+        ("\"", "1 2 (x)", "9 1 2 (x)", ""),
+        ("BDC", "/P <<>>", "/Q /P <<>>", " EMC"),
+        ("BMC", "/P", "/Q /P", " EMC"),
+        ("re", "1 2 3 4", "9 1 2 3 4", " n"),
+        ("m", "1 2", "9 1 2", " n"),
+        ("l", "1 2", "9 1 2", " n"),
+        ("Do", "/Absent", "/Other /Absent", ""),
+    ];
+    for (op, exact, over, after) in cases {
+        let page = |operands: &str| {
+            with_content(
+                format!("BT /F1 12 Tf 12 TL {operands} {op}{after} ET").as_bytes(),
+                None,
+            )
+        };
+        extract_bytes(&page(exact)).unwrap_or_else(|e| panic!("`{op}` {exact} is read: {e}"));
+        let e = extract_bytes(&page(over)).expect_err(op);
+        let n = exact.split(' ').count();
+        assert!(
+            e.to_string().contains(&format!(
+                "`{op}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}",
+                n + 1
+            )),
+            "{op}: {e}"
+        );
+    }
+}
+
+/// **A string ending part-way through a two-byte code is read as Ghostscript renders it, and
+/// declared** (review 2026-09-26 N46). Its lone last byte is read as a code of its own: under
+/// `composite-font-cid-widths`' Identity-H font `<000102>` reads as `AB`, codes `[1, 2]`, and the
+/// pen travels over both. pdf.js reads the byte as a code's first and PDF 32000-1 §9.7.6.3 maps it
+/// to `.notdef`, so the reading is counted under `string-ends-mid-code`. The review's sketch,
+/// dropping the run, lost 27 runs renderers draw across three real documents.
+#[test]
+fn a_string_ending_part_way_through_a_code_is_read_as_rendered_and_declared() {
+    let read = |content: &[u8]| {
+        extract_bytes(&fixture_with_content(
+            "composite-font-cid-widths",
+            content,
+            None,
+        ))
+        .expect("reads")
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::STRING_ENDS_MID_CODE)
+            .map(|l| l.detail.clone())
+    };
+
+    let a = read(b"BT /F1 12 Tf 1 0 0 1 40 100 Tm <000102> Tj <0003> Tj ET");
+    let kept = runs(&a);
+    assert_eq!(
+        kept.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["AB", "C"]
+    );
+    // Codes 1 and 2 are 500 and 750 units wide in `/W`: 6 and 9 points at 12 points.
+    assert_eq!(
+        kept[1].locator.origin_x, 5_500,
+        "the pen travelled over both codes"
+    );
+    let detail = declared(&a).expect("the reading is declared");
+    assert!(detail.starts_with("1 text run(s) end part-way"), "{detail}");
+
+    let whole = read(b"BT /F1 12 Tf 1 0 0 1 40 100 Tm <00010002> Tj <0003> Tj ET");
+    assert_eq!(declared(&whole), None, "whole codes declare nothing");
+}
+
+/// **A field's value and an annotation's text are decoded strictly, and what will not decode is
+/// counted** (review 2026-09-26 N39). Both were read as Latin-1, a name lossily: UTF-8 behind its
+/// byte-order mark came out as mojibake, and `0xA0`, the euro sign in PDFDocEncoding, as a
+/// no-break space. The line controls a multi-line value writes stay text.
+#[test]
+fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
+    let undecodable = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::FORM_ANNOTATION_TEXT_UNDECODABLE)
+            .map(|l| l.detail.clone())
+    };
+    let with_contents = |bytes: &[u8]| {
+        let original = std::fs::read(engine_fx("annotation-contents")).expect("fixture readable");
+        let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+        annotation_6(&mut doc).set(
+            "Contents",
+            lopdf::Object::String(bytes.to_vec(), lopdf::StringFormat::Hexadecimal),
+        );
+        extract_bytes(&saved(doc)).expect("reads")
+    };
+
+    let a = with_contents(b"\xef\xbb\xbfCaf\xc3\xa9");
+    assert!(
+        object_texts(&a).contains(&"Caf\u{e9}".to_string()),
+        "{:?}",
+        object_texts(&a)
+    );
+    let a = with_contents(b"one\ttwo\nthree\rfour");
+    assert!(object_texts(&a).contains(&"one\ttwo\nthree\rfour".to_string()));
+    assert_eq!(undecodable(&a), None, "the line controls are text");
+
+    let a = with_contents(b"Price \xa05");
+    assert!(!object_texts(&a).iter().any(|t| t.contains("Price")));
+    assert_eq!(
+        a.pages[0].objects.len(),
+        2,
+        "the annotation stays, without its text"
+    );
+    let detail = undecodable(&a).expect("the refusal is counted");
+    assert!(detail.starts_with("1 form field value(s)"), "{detail}");
+
+    // A name-valued `/V` that is not UTF-8: the field keeps its node, its value `unsupported`.
+    let original = std::fs::read(engine_fx("form-field-value")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let field = doc
+        .objects
+        .iter()
+        .find(|(_, o)| o.as_dict().is_ok_and(|d| d.has(b"V")))
+        .map(|(id, _)| *id)
+        .expect("a field with a value");
+    doc.get_object_mut(field)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the field")
+        .set("V", lopdf::Object::Name(b"Yes\xff".to_vec()));
+    let a = extract_bytes(&saved(doc)).expect("reads");
+    let values: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| &p.objects)
+        .filter_map(|o| match &o.attributes {
+            ethos_parser_core::NodeAttributes::FormField(f) => Some(f.value.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(values, [ethos_parser_core::FieldValue::Unsupported]);
+    assert!(undecodable(&a).is_some(), "and counted");
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.
@@ -4677,7 +4889,12 @@ type Deflater = fn(&[u8]) -> Vec<u8>;
 /// `measured-ink-box`'s one page with its content replaced: `content` as one stream, deflated
 /// when `deflate` returns the stream bytes to write.
 fn with_content(content: &[u8], deflate: Option<Deflater>) -> Vec<u8> {
-    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    fixture_with_content("measured-ink-box", content, deflate)
+}
+
+/// [`with_content`], on engine fixture `name`'s one page.
+fn fixture_with_content(name: &str, content: &[u8], deflate: Option<Deflater>) -> Vec<u8> {
+    let original = std::fs::read(engine_fx(name)).expect("fixture readable");
     let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
     let page = doc.get_pages()[&1];
     let mut dict = lopdf::Dictionary::new();
@@ -4712,11 +4929,12 @@ fn extracted(bytes: &[u8]) -> Result<ExtractArtifact, ethos_parser_core::EngineE
     ethos_parser_pdf::extract(&doc, &profile)
 }
 
-/// **An inline image `lopdf` panics on is refused by name, and `classify` survives it.**
-/// `lopdf` 0.44.0's inline-image parser unwraps a colour-space lookup, so an image that names
-/// neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
+/// **An inline image `lopdf` panics on is refused by name, and `classify` refuses it the same
+/// way.** `lopdf` 0.44.0's inline-image parser unwraps a colour-space lookup, so an image that
+/// names neither `/CS` nor `/IM true` panics inside `Content::decode`, and the release profile's
 /// `panic = "abort"` would end the process — an MCP server with it. The tokeniser refuses the
-/// shape before `lopdf` sees it.
+/// shape before `lopdf` sees it. Classify read the refused page as zero tallies until review
+/// 2026-09-26 N42; it gives extract's refusal now.
 #[test]
 fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
     let mut content = MEASURED.to_vec();
@@ -4737,11 +4955,8 @@ fn an_inline_image_lopdf_panics_on_is_refused_by_name() {
 
     let profile = Profile::default();
     let doc = Document::open_bytes(&bytes, &profile).expect("opens");
-    let c = ethos_parser_pdf::classify(&doc, &profile).expect("classify answers");
-    assert_eq!(
-        c.pages[0].text_operators, 0,
-        "an unreadable content stream yields zero tallies, as a decode failure always has"
-    );
+    let c = ethos_parser_pdf::classify(&doc, &profile).expect_err("refused, not a panic");
+    assert_eq!(c, e, "extract's own refusal");
 }
 
 /// **A tail `lopdf` would drop is refused by name.** Its decoder stops at the first operation it

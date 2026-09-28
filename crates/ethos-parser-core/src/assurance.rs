@@ -324,6 +324,9 @@ pub mod codes {
     pub const OUTLINE_ABSENT: &str = "outline-absent";
     /// Outline titles holding a byte this engine will not decode, counted.
     pub const OUTLINE_TITLE_UNDECODABLE: &str = "outline-title-undecodable";
+    /// Runs whose string ends part-way through a character code, read as Ghostscript renders it
+    /// and counted (review 2026-09-26 N46).
+    pub const STRING_ENDS_MID_CODE: &str = "string-ends-mid-code";
     /// Outline destinations that named no page of this document, counted.
     pub const OUTLINE_DESTINATION_UNRESOLVED: &str = "outline-destination-unresolved";
     /// [`crate::Capabilities::images`] is true: what an image node does and does not say.
@@ -391,6 +394,13 @@ pub mod codes {
     /// and the unresolved link is **declared**, because a repair nobody recorded is a document
     /// this engine edited on the reader's behalf (checklist L12).
     pub const FORM_FIELD_PARENT_UNRESOLVED: &str = "form-field-parent-unresolved";
+
+    /// Form field values and annotation `/Contents` holding bytes this engine will not decode,
+    /// counted (review 2026-09-26 N39).
+    ///
+    /// Document-scoped and conditional, as [`OUTLINE_TITLE_UNDECODABLE`] is for a title: such a
+    /// field carries the value `unsupported`, and such an annotation no text.
+    pub const FORM_ANNOTATION_TEXT_UNDECODABLE: &str = "form-annotation-text-undecodable";
 
     /// Nodes whose kind `ethos.grounding.v1` cannot express, omitted from the projection (v1-S4).
     ///

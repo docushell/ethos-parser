@@ -363,8 +363,10 @@ struct PageYield {
     em_tally: crate::headings::EmTally,
     props_by_name: u32,
     alternate_texts: u32,
+    partial_code_runs: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
+    undecodable_object_texts: u32,
     inline_images: u32,
     unresolved_xobjects: u32,
     undescended_xobjects: u32,
@@ -412,8 +414,10 @@ fn extract_page(
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut alternate_texts: u32 = 0;
+    let mut partial_code_runs: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
+    let mut undecodable_object_texts: u32 = 0;
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
@@ -724,6 +728,7 @@ fn extract_page(
         );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
         alternate_texts = alternate_texts.saturating_add(interp.alternate_texts);
+        partial_code_runs = partial_code_runs.saturating_add(interp.partial_code_runs);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
         // user space and go through the SAME transform and quantum as a glyph origin — a table
@@ -1031,6 +1036,8 @@ fn extract_page(
             let found = crate::forms::read_page_objects(doc.inner(), page_dict);
             unresolved_field_parents =
                 unresolved_field_parents.saturating_add(found.unresolved_parents);
+            undecodable_object_texts =
+                undecodable_object_texts.saturating_add(found.undecodable_texts);
 
             for object in found.objects {
                 let is_field = matches!(object.detail, crate::forms::PageObjectDetail::Field(_));
@@ -1180,8 +1187,10 @@ fn extract_page(
         em_tally,
         props_by_name,
         alternate_texts,
+        partial_code_runs,
         tagged_without_geometric,
         unresolved_field_parents,
+        undecodable_object_texts,
         inline_images,
         unresolved_xobjects,
         undescended_xobjects,
@@ -1372,9 +1381,12 @@ fn extract_counted(
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut alternate_texts: u32 = 0;
+    let mut partial_code_runs: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
+    // Field values and annotation `/Contents` this engine will not decode (review 2026-09-26 N39).
+    let mut undecodable_object_texts: u32 = 0;
     // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
@@ -1646,8 +1658,10 @@ fn extract_counted(
         computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
         alternate_texts = declare(alternate_texts, y.alternate_texts);
+        partial_code_runs = declare(partial_code_runs, y.partial_code_runs);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
+        undecodable_object_texts = declare(undecodable_object_texts, y.undecodable_object_texts);
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
@@ -1806,6 +1820,9 @@ fn extract_counted(
             declared_len(alternate_elements),
         ));
     }
+    if partial_code_runs > 0 {
+        limitations.push(lim::string_ends_mid_code(partial_code_runs));
+    }
     if !tagged_without_geometric.is_empty() {
         limitations.push(lim::tagged_table_without_geometric_table(
             &tagged_without_geometric,
@@ -1822,6 +1839,11 @@ fn extract_counted(
     }
     if unresolved_field_parents > 0 {
         limitations.push(lim::form_field_parent_unresolved(unresolved_field_parents));
+    }
+    if undecodable_object_texts > 0 {
+        limitations.push(lim::form_annotation_text_undecodable(
+            undecodable_object_texts,
+        ));
     }
 
     // v1-S6. Findings are counted where they were observed and declared once, so a consumer
@@ -2668,6 +2690,32 @@ impl PageGeometry {
 /// controls must not decide how long this process runs, and a cycle must be survived rather than
 /// spun on.
 pub(crate) const INHERITANCE_MAX_DEPTH: usize = 32;
+
+/// A page's resource dictionary: its own `/Resources`, or the nearest ancestor's (PDF 32000-1
+/// Table 30 makes the key inheritable).
+///
+/// A `/Resources` that does not resolve to a dictionary — null, or a reference to no object — is
+/// read as absent, as §7.3.7 reads a null entry, and the walk goes on up. Every reader of a page's
+/// resources asks this, so fonts, images, marked-content property lists and the tag writer find
+/// the same dictionary: until review 2026-09-26 N43 only the property lists and the writer
+/// inherited, and a page taking its fonts from `/Pages` was refused for a missing font.
+pub(crate) fn page_resources(
+    doc: &lopdf::Document,
+    page_dict: &lopdf::Dictionary,
+) -> Option<lopdf::Dictionary> {
+    if let Some(own) = crate::fonts::resolve_dict(doc, page_dict.get(b"Resources").ok()) {
+        return Some(own);
+    }
+    let mut node = crate::fonts::resolve_dict(doc, page_dict.get(b"Parent").ok());
+    for _ in 0..INHERITANCE_MAX_DEPTH {
+        let dict = node?;
+        if let Some(found) = crate::fonts::resolve_dict(doc, dict.get(b"Resources").ok()) {
+            return Some(found);
+        }
+        node = crate::fonts::resolve_dict(doc, dict.get(b"Parent").ok());
+    }
+    None
+}
 
 #[cfg(test)]
 mod tests {

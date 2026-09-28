@@ -323,6 +323,9 @@ pub struct Interpreter<'a> {
     /// Each is the document's own text for what it marks, which this profile does not read: a run
     /// is the glyphs the page draws. Counted so the artifact can say so.
     pub alternate_texts: u32,
+    /// Runs whose string ends part-way through a character code, the lone last byte read as a
+    /// code of its own (review 2026-09-26 N46; [`crate::fonts::Font::split_codes`]).
+    pub partial_code_runs: u32,
     /// Image XObjects this page painted, in the order it painted them (v1-S6).
     pub images: Vec<ImagePlacement>,
     /// `Do` calls naming an XObject this profile could not resolve (v1-S6).
@@ -368,6 +371,7 @@ impl<'a> Interpreter<'a> {
             dropped_runs: 0,
             props_by_name: 0,
             alternate_texts: 0,
+            partial_code_runs: 0,
             images: Vec::new(),
             unresolved_xobjects: 0,
             inline_images: 0,
@@ -444,16 +448,20 @@ impl<'a> Interpreter<'a> {
         for (index, op) in ops.iter().enumerate() {
             self.op_index = index;
             let token = op.operator.as_str();
-            let Some(operator) = Operator::from_token(token) else {
-                return Err(EngineError::Unsupported {
-                    what: "pdf operator".into(),
+            let operator = Operator::of(token)?;
+            // Too few is refused where an operand is read; too many only here, because reading
+            // the first of them is where this reader and a renderer part (review 2026-09-26 N48).
+            if let Some(n) = operator.operands_read().filter(|&n| op.operands.len() > n) {
+                return Err(EngineError::Malformed {
+                    what: "content stream".into(),
                     detail: format!(
-                        "`{token}` is not in PDF 32000-1 Table A.1. Refusing rather than skipping: \
-                         an unrecognised operator may move or delete text, and skipping it \
-                         produces a well-formed artifact that is silently wrong."
+                        "`{token}` takes {n} operand(s) in PDF 32000-1 Table A.1 and was given {}: \
+                         a renderer reads the last {n} and this reader the first, so it refuses \
+                         rather than place text where no renderer draws it",
+                        op.operands.len()
                     ),
                 });
-            };
+            }
             self.dispatch(operator, &op.operands)?;
         }
         Ok(())
@@ -771,9 +779,16 @@ impl<'a> Interpreter<'a> {
         if let Some(refusal) = font.refusal() {
             return Err(refusal);
         }
-        let codes = font.split_codes(bytes);
+        let (codes, partial) = font.split_codes(bytes);
         if codes.is_empty() {
             return Ok(());
+        }
+        // A string that ends part-way through a code: its lone last byte is read as a code, as
+        // Ghostscript renders it, and the run is counted so the artifact says so (review
+        // 2026-09-26 N46). Dropping such runs instead lost 27 that renderers draw — arrows among
+        // them — across three real documents, and moved later runs off where they are drawn.
+        if partial > 0 {
+            self.partial_code_runs = self.partial_code_runs.saturating_add(1);
         }
         // Set before decoding, so a run dropped below still counts as drawn: its text was on the
         // page, and the pen moved for the codes before the refused one.

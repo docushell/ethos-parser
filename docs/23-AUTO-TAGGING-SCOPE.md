@@ -696,6 +696,12 @@ Stated on the artifact where an artifact exists, and here where the output is a 
    content outside the sequences is not marked `/Artifact`.
 7. **Representations from the previous release are refused by this build's parser, and vice
    versa.** Re-extract under the current build. §8.
+8. **A string's unescaped line end is written as `\r`.** PDF 32000-1 §7.3.4.2 reads an end-of-line
+   written raw inside a literal string — CR, LF or CRLF — as one LF. `lopdf` keeps the raw bytes,
+   and they are the same bytes an escaped `\r` gives, so no reader of its parse can tell the two
+   apart: `(line one⏎line two)` reads as `line one\r\nline two`, and the writer escapes the CR,
+   which qpdf then reads as CR LF where the source meant LF. Declared rather than repaired until
+   the parser keeps the distinction (review 2026-09-26 N49); no corpus string carries one.
 
 ## 10. Slices
 

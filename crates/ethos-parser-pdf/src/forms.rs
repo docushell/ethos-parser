@@ -147,6 +147,8 @@ pub struct PageObjects {
     pub objects: Vec<PageObject>,
     /// Widgets whose `/Parent` chain could not be resolved.
     pub unresolved_parents: u32,
+    /// Field values and annotation `/Contents` holding bytes [`decode_content_strict`] refuses.
+    pub undecodable_texts: u32,
 }
 
 /// Read one page's annotations and widgets.
@@ -179,7 +181,7 @@ pub fn read_page_objects(doc: &lopdf::Document, page: &Dictionary) -> PageObject
         let subtype = name_at(doc, dict, b"Subtype").unwrap_or_else(|| "Unknown".into());
 
         if subtype == "Widget" {
-            let (attrs, resolved) = field_attributes(doc, dict, *id);
+            let (attrs, resolved) = field_attributes(doc, dict, *id, &mut out.undecodable_texts);
             if !resolved {
                 out.unresolved_parents += 1;
             }
@@ -195,7 +197,7 @@ pub fn read_page_objects(doc: &lopdf::Document, page: &Dictionary) -> PageObject
                 rect,
                 // `/Contents` is the annotation's own text: the comment, the note, the callout.
                 // Absent means the annotation carries none, which is ordinary for a `/Link`.
-                text: text_at(doc, dict, b"Contents").unwrap_or_default(),
+                text: contents_at(doc, dict, &mut out.undecodable_texts),
                 detail: PageObjectDetail::Annotation(AnnotationAttributes {
                     subtype,
                     name: text_at(doc, dict, b"NM"),
@@ -222,6 +224,7 @@ fn field_attributes(
     doc: &lopdf::Document,
     widget: &Dictionary,
     widget_id: ObjectId,
+    undecodable: &mut u32,
 ) -> (FormFieldAttributes, bool) {
     let mut names: Vec<String> = Vec::new();
     let mut field_type: Option<String> = None;
@@ -241,7 +244,7 @@ fn field_attributes(
             field_type = name_at(doc, dict, b"FT");
         }
         if value.is_none() {
-            value = field_value(doc, dict);
+            value = field_value(doc, dict, undecodable);
         }
         if flag_bits == 0 {
             flag_bits = int_at(doc, dict, b"Ff").unwrap_or(0);
@@ -302,22 +305,45 @@ fn field_attributes(
 /// **`/DV` is deliberately not a fallback.** A default value is what the field would hold if it
 /// were reset, not what it holds — reporting one as the value would put a string in the record
 /// that the document does not currently assert.
-fn field_value(doc: &lopdf::Document, dict: &Dictionary) -> Option<FieldValue> {
+///
+/// A string [`decode_content_strict`] refuses, or a name that is not UTF-8, makes the value
+/// `Unsupported` and is counted in `undecodable` (review 2026-09-26 N39): decoded as Latin-1 and
+/// lossily they were, a byte `0xA0` read as a no-break space where the document means `€`.
+fn field_value(
+    doc: &lopdf::Document,
+    dict: &Dictionary,
+    undecodable: &mut u32,
+) -> Option<FieldValue> {
     let v = resolve(doc, dict.get(b"V").ok())?;
+    let name = |n: &[u8]| String::from_utf8(n.to_vec()).ok();
+    let mut refused = || {
+        *undecodable = undecodable.saturating_add(1);
+        FieldValue::Unsupported
+    };
     Some(match v {
-        Object::String(bytes, _) => FieldValue::Text(decode_text(bytes)),
-        Object::Name(n) => FieldValue::Name(String::from_utf8_lossy(n).into_owned()),
+        Object::String(bytes, _) => match decode_content_strict(bytes) {
+            Some(text) => FieldValue::Text(text),
+            None => refused(),
+        },
+        Object::Name(n) => match name(n) {
+            Some(text) => FieldValue::Name(text),
+            None => refused(),
+        },
         Object::Integer(i) => FieldValue::Integer(*i),
         Object::Array(items) => {
             let mut out = Vec::new();
             for item in items {
-                match item {
-                    Object::String(b, _) => out.push(decode_text(b)),
-                    Object::Name(n) => out.push(String::from_utf8_lossy(n).into_owned()),
+                let text = match item {
+                    Object::String(b, _) => decode_content_strict(b),
+                    Object::Name(n) => name(n),
                     // A mixed array is a shape this profile does not express. Declared rather
                     // than partially reported, because a half-read selection is worse than a
                     // named refusal.
                     _ => return Some(FieldValue::Unsupported),
+                };
+                match text {
+                    Some(text) => out.push(text),
+                    None => return Some(refused()),
                 }
             }
             FieldValue::Choice(out)
@@ -325,6 +351,18 @@ fn field_value(doc: &lopdf::Document, dict: &Dictionary) -> Option<FieldValue> {
         // A stream, a dictionary, a real number: legal PDF this profile has no shape for.
         _ => FieldValue::Unsupported,
     })
+}
+
+/// An annotation's `/Contents`, or empty where it carries none — or holds bytes
+/// [`decode_content_strict`] refuses, which are counted in `undecodable` rather than read.
+fn contents_at(doc: &lopdf::Document, dict: &Dictionary, undecodable: &mut u32) -> String {
+    match resolve(doc, dict.get(b"Contents").ok()) {
+        Some(Object::String(bytes, _)) => decode_content_strict(bytes).unwrap_or_else(|| {
+            *undecodable = undecodable.saturating_add(1);
+            String::new()
+        }),
+        _ => String::new(),
+    }
 }
 
 /// Whether the catalog declares an XFA packet.
@@ -507,6 +545,18 @@ fn text_at(doc: &lopdf::Document, dict: &Dictionary, key: &[u8]) -> Option<Strin
 /// engine's ordinary answer to *I could not read this* — and `docs/29-OUTLINES-SCOPE.md` §4
 /// records why vendoring the block is a separate, optional slice rather than a precondition.
 pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
+    strict(bytes, b"")
+}
+
+/// [`decode_text_strict`] for a field's value or an annotation's `/Contents` (review 2026-09-26
+/// N39), which also admits the three line controls PDFDocEncoding shares with ASCII — tab, line
+/// feed, carriage return — because a multi-line field or comment writes them, and they are text.
+pub(crate) fn decode_content_strict(bytes: &[u8]) -> Option<String> {
+    strict(bytes, b"\t\n\r")
+}
+
+/// The strict decode, admitting the C0 controls in `controls` besides.
+fn strict(bytes: &[u8], controls: &[u8]) -> Option<String> {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
         // An odd trailing byte is half a code unit, and U+001B opens a language escape (§7.9.2.2)
         // whose code is not text: refused, not trimmed and not decoded as characters.
@@ -537,7 +587,7 @@ pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
     // PDFDocEncoding) -- is refused rather than guessed.
     bytes
         .iter()
-        .all(|b| (0x20..=0x7E).contains(b) || (*b >= 0xA1 && *b != 0xAD))
+        .all(|b| (0x20..=0x7E).contains(b) || (*b >= 0xA1 && *b != 0xAD) || controls.contains(b))
         .then(|| bytes.iter().map(|b| char::from(*b)).collect())
 }
 

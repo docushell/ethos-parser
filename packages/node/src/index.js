@@ -118,12 +118,13 @@ const REPRESENTATION_PREFIX = "ethos.parser.representation.";
 // -------------------------------------------------------------------------------------------
 
 /**
- * Read a PDF and return `DocumentRepresentation v0`, as `ethos-parser extract` prints it.
+ * Read a document — PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, RTF or EPUB — and return
+ * `DocumentRepresentation v0`, as `ethos-parser extract` prints it.
  *
  * Every locator a later call needs is minted here. Pass this object back to {@link ground} or
  * {@link nodeGet} rather than composing one.
  *
- * @param {string} pdfPath Path to a PDF.
+ * @param {string} pdfPath Path to the document, in any of those formats.
  * @returns {object} The parsed canonical artifact.
  * @throws {EngineNotFound} No binary.
  * @throws {EngineFailed} The engine could not read the document.

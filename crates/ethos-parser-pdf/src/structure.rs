@@ -551,8 +551,9 @@ impl Walker<'_> {
         }
 
         // Otherwise this is a structure element: it has an `/S`, or it is not one.
-        let Some(raw_role) = d.get(b"S").ok().and_then(as_name) else {
-            return Ok(());
+        let raw_role = match d.get(b"S") {
+            Ok(Object::Name(n)) => element_text(n, "/S", origin)?,
+            _ => return Ok(()),
         };
         self.tree.elements += 1;
         if [b"ActualText".as_slice(), b"Alt", b"E"]
@@ -562,11 +563,11 @@ impl Walker<'_> {
             self.tree.alternate_texts += 1;
         }
 
-        let element_id = d
-            .get(b"ID")
-            .ok()
-            .and_then(as_text)
-            .filter(|s| !s.is_empty());
+        let element_id = match d.get(b"ID") {
+            Ok(Object::String(b, _) | Object::Name(b)) => Some(element_text(b, "/ID", origin)?),
+            _ => None,
+        }
+        .filter(|s| !s.is_empty());
 
         // Auto-tagging S1. Whose element this is, read before its kids so every content item its
         // own `/K` cites binds with the class of the innermost element that cites it — this one —
@@ -1105,6 +1106,29 @@ fn as_text(o: &Object) -> Option<String> {
         Object::Name(n) => Some(name_to_string(n)),
         _ => None,
     }
+}
+
+/// An element's `/S` or `/ID`, which the role path and the structural locator carry as text.
+///
+/// Refused when it is not UTF-8. Both were decoded lossily until review 2026-09-26 N47, so two
+/// elements with `/ID <FF>` and `/ID <FE>` shared one `element_id`, `"\u{FFFD}"`, and `/Foo#FF`
+/// read as `Foo\u{FFFD}`: a role and an id the document does not state, where two collide. No
+/// corpus element carries one (0 of 178,239).
+fn element_text(bytes: &[u8], key: &str, origin: Option<ObjectId>) -> Result<String, EngineError> {
+    String::from_utf8(bytes.to_vec()).map_err(|_| {
+        let element = match origin {
+            Some((number, generation)) => format!("structure element {number} {generation} R"),
+            None => "a structure element".into(),
+        };
+        malformed(
+            key,
+            &format!(
+                "{element} has a {key} that is not UTF-8, and a role path or a structural \
+                 locator carries it as text: substituting for the bytes would state a {key} the \
+                 document does not, and two such would collide"
+            ),
+        )
+    })
 }
 
 /// A PDF name as text.
