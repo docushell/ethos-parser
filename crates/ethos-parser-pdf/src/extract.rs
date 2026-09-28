@@ -366,6 +366,7 @@ struct PageYield {
     partial_code_runs: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
+    undecodable_object_texts: u32,
     inline_images: u32,
     unresolved_xobjects: u32,
     undescended_xobjects: u32,
@@ -416,6 +417,7 @@ fn extract_page(
     let mut partial_code_runs: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
+    let mut undecodable_object_texts: u32 = 0;
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
     let mut undescended_xobjects: u32 = 0;
@@ -1034,6 +1036,8 @@ fn extract_page(
             let found = crate::forms::read_page_objects(doc.inner(), page_dict);
             unresolved_field_parents =
                 unresolved_field_parents.saturating_add(found.unresolved_parents);
+            undecodable_object_texts =
+                undecodable_object_texts.saturating_add(found.undecodable_texts);
 
             for object in found.objects {
                 let is_field = matches!(object.detail, crate::forms::PageObjectDetail::Field(_));
@@ -1186,6 +1190,7 @@ fn extract_page(
         partial_code_runs,
         tagged_without_geometric,
         unresolved_field_parents,
+        undecodable_object_texts,
         inline_images,
         unresolved_xobjects,
         undescended_xobjects,
@@ -1380,6 +1385,8 @@ fn extract_counted(
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
+    // Field values and annotation `/Contents` this engine will not decode (review 2026-09-26 N39).
+    let mut undecodable_object_texts: u32 = 0;
     // v1-S6. Counted across pages, declared once, never repaired and never silently skipped.
     let mut inline_images: u32 = 0;
     let mut unresolved_xobjects: u32 = 0;
@@ -1654,6 +1661,7 @@ fn extract_counted(
         partial_code_runs = declare(partial_code_runs, y.partial_code_runs);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
+        undecodable_object_texts = declare(undecodable_object_texts, y.undecodable_object_texts);
         inline_images = declare(inline_images, y.inline_images);
         unresolved_xobjects = declare(unresolved_xobjects, y.unresolved_xobjects);
         undescended_xobjects = declare(undescended_xobjects, y.undescended_xobjects);
@@ -1831,6 +1839,11 @@ fn extract_counted(
     }
     if unresolved_field_parents > 0 {
         limitations.push(lim::form_field_parent_unresolved(unresolved_field_parents));
+    }
+    if undecodable_object_texts > 0 {
+        limitations.push(lim::form_annotation_text_undecodable(
+            undecodable_object_texts,
+        ));
     }
 
     // v1-S6. Findings are counted where they were observed and declared once, so a consumer

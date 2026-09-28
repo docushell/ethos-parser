@@ -664,6 +664,25 @@ pub fn string_ends_mid_code(runs: u32) -> Limitation {
     )
 }
 
+/// Form field values and annotation `/Contents` holding bytes this engine will not decode (review
+/// 2026-09-26 N39), on `outline-title-undecodable`'s precedent.
+pub fn form_annotation_text_undecodable(count: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::FORM_ANNOTATION_TEXT_UNDECODABLE,
+        format!(
+            "{count} form field value(s) and annotation `/Contents` hold bytes this engine will \
+             not decode, so those fields carry the value `unsupported` and those annotations no \
+             text, each keeping its object id, its rectangle and its flags. A PDF text string is \
+             UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding otherwise (§7.9.2.2), \
+             and this engine vendors no PDFDocEncoding table for `0x80`–`0xA0` and `0xAD`, where \
+             it and Latin-1 part: read as Latin-1, as they were, `0xA0` is a no-break space where \
+             the document means `€`, and `0x80`–`0x9F` are C1 controls inside text that still \
+             reads as well-formed. A name-valued `/V` that is not UTF-8 is counted here too. \
+             Absent and counted, as an outline title is (`outline-title-undecodable`)."
+        ),
+    )
+}
+
 /// The document-scoped limitation for a run stopped by the configured page budget.
 pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     Limitation::document(

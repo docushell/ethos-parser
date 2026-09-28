@@ -3377,6 +3377,76 @@ fn a_string_ending_part_way_through_a_code_is_read_as_rendered_and_declared() {
     assert_eq!(declared(&whole), None, "whole codes declare nothing");
 }
 
+/// **A field's value and an annotation's text are decoded strictly, and what will not decode is
+/// counted** (review 2026-09-26 N39). Both were read as Latin-1, a name lossily: UTF-8 behind its
+/// byte-order mark came out as mojibake, and `0xA0`, the euro sign in PDFDocEncoding, as a
+/// no-break space. The line controls a multi-line value writes stay text.
+#[test]
+fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
+    let undecodable = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::FORM_ANNOTATION_TEXT_UNDECODABLE)
+            .map(|l| l.detail.clone())
+    };
+    let with_contents = |bytes: &[u8]| {
+        let original = std::fs::read(engine_fx("annotation-contents")).expect("fixture readable");
+        let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+        annotation_6(&mut doc).set(
+            "Contents",
+            lopdf::Object::String(bytes.to_vec(), lopdf::StringFormat::Hexadecimal),
+        );
+        extract_bytes(&saved(doc)).expect("reads")
+    };
+
+    let a = with_contents(b"\xef\xbb\xbfCaf\xc3\xa9");
+    assert!(
+        object_texts(&a).contains(&"Caf\u{e9}".to_string()),
+        "{:?}",
+        object_texts(&a)
+    );
+    let a = with_contents(b"one\ttwo\nthree\rfour");
+    assert!(object_texts(&a).contains(&"one\ttwo\nthree\rfour".to_string()));
+    assert_eq!(undecodable(&a), None, "the line controls are text");
+
+    let a = with_contents(b"Price \xa05");
+    assert!(!object_texts(&a).iter().any(|t| t.contains("Price")));
+    assert_eq!(
+        a.pages[0].objects.len(),
+        2,
+        "the annotation stays, without its text"
+    );
+    let detail = undecodable(&a).expect("the refusal is counted");
+    assert!(detail.starts_with("1 form field value(s)"), "{detail}");
+
+    // A name-valued `/V` that is not UTF-8: the field keeps its node, its value `unsupported`.
+    let original = std::fs::read(engine_fx("form-field-value")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let field = doc
+        .objects
+        .iter()
+        .find(|(_, o)| o.as_dict().is_ok_and(|d| d.has(b"V")))
+        .map(|(id, _)| *id)
+        .expect("a field with a value");
+    doc.get_object_mut(field)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the field")
+        .set("V", lopdf::Object::Name(b"Yes\xff".to_vec()));
+    let a = extract_bytes(&saved(doc)).expect("reads");
+    let values: Vec<_> = a
+        .pages
+        .iter()
+        .flat_map(|p| &p.objects)
+        .filter_map(|o| match &o.attributes {
+            ethos_parser_core::NodeAttributes::FormField(f) => Some(f.value.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(values, [ethos_parser_core::FieldValue::Unsupported]);
+    assert!(undecodable(&a).is_some(), "and counted");
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.

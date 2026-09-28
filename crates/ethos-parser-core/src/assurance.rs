@@ -395,6 +395,13 @@ pub mod codes {
     /// this engine edited on the reader's behalf (checklist L12).
     pub const FORM_FIELD_PARENT_UNRESOLVED: &str = "form-field-parent-unresolved";
 
+    /// Form field values and annotation `/Contents` holding bytes this engine will not decode,
+    /// counted (review 2026-09-26 N39).
+    ///
+    /// Document-scoped and conditional, as [`OUTLINE_TITLE_UNDECODABLE`] is for a title: such a
+    /// field carries the value `unsupported`, and such an annotation no text.
+    pub const FORM_ANNOTATION_TEXT_UNDECODABLE: &str = "form-annotation-text-undecodable";
+
     /// Nodes whose kind `ethos.grounding.v1` cannot express, omitted from the projection (v1-S4).
     ///
     /// Document-scoped and conditional, and **distinct from
