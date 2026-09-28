@@ -535,7 +535,7 @@ pub fn load_page_fonts(
 ) -> Result<BTreeMap<String, Arc<Font>>, EngineError> {
     let mut out = BTreeMap::new();
 
-    let Some(resources) = resolve_dict(doc.inner(), page_dict.get(b"Resources").ok()) else {
+    let Some(resources) = crate::extract::page_resources(doc.inner(), page_dict) else {
         return Ok(out);
     };
     let Some(fonts) = resolve_dict(doc.inner(), resources.get(b"Font").ok()) else {

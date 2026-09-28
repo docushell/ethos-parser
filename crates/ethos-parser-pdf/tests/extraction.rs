@@ -3235,6 +3235,55 @@ fn reading_forms_changes_no_earlier_slices_answer() {
 // 15. Images, findings and the overlay (v1-S6)
 // -------------------------------------------------------------------------------------------
 
+/// **A page's `/Resources` inherited from `/Pages` is read as its own would be** (review
+/// 2026-09-26 N43). The key is inheritable (PDF 32000-1 Table 30); the tag writer inherited it,
+/// and the fonts, the images and classify's image count read the page's own alone — so
+/// `image-xobject-drawn` with its dictionary moved up one level was refused for a missing font,
+/// where Ghostscript draws it.
+#[test]
+fn resources_inherited_from_the_page_tree_are_read_as_the_pages_own() {
+    let original = std::fs::read(engine_fx("image-xobject-drawn")).expect("fixture readable");
+    let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
+    let page = doc.get_pages()[&1];
+    let page_dict = doc
+        .get_object_mut(page)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the page");
+    let resources = page_dict
+        .remove(b"Resources")
+        .expect("the page's own /Resources");
+    let parent = page_dict
+        .get(b"Parent")
+        .and_then(lopdf::Object::as_reference)
+        .expect("a /Parent");
+    doc.get_object_mut(parent)
+        .and_then(lopdf::Object::as_dict_mut)
+        .expect("the /Pages node")
+        .set("Resources", resources);
+    let inherited = saved(doc);
+
+    let profile = Profile::default();
+    let read = |bytes: &[u8]| {
+        let doc = Document::open_bytes(bytes, &profile).expect("opens");
+        let a = ethos_parser_pdf::extract(&doc, &profile).expect("reads");
+        let c = ethos_parser_pdf::classify(&doc, &profile).expect("classifies");
+        (
+            serde_json::to_value(&a.pages).expect("serializes"),
+            serde_json::to_value(&c.pages).expect("serializes"),
+        )
+    };
+    let (pages, classified) = read(&inherited);
+    let (their_pages, their_classified) = read(&original);
+    assert_eq!(
+        pages, their_pages,
+        "the runs and the image node, as the page's own resources give them"
+    );
+    assert_eq!(
+        classified, their_classified,
+        "and classify counts the image the page inherits"
+    );
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.

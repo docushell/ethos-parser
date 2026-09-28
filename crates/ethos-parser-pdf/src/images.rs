@@ -46,7 +46,7 @@ pub fn page_xobjects(
     page_dict: &lopdf::Dictionary,
 ) -> BTreeMap<String, lopdf::ObjectId> {
     let mut out = BTreeMap::new();
-    let Some(resources) = crate::fonts::resolve_dict(doc, page_dict.get(b"Resources").ok()) else {
+    let Some(resources) = crate::extract::page_resources(doc, page_dict) else {
         return out;
     };
     let Some(xobjects) = crate::fonts::resolve_dict(doc, resources.get(b"XObject").ok()) else {

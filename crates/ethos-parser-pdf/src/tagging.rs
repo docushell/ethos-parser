@@ -1493,31 +1493,13 @@ pub(crate) enum PropertyList {
     WithoutId,
 }
 
-/// A page's property lists, resolved as the interpreter does not: the page's own `/Resources`,
-/// or the nearest ancestor's (§7.7.3.4), then `/Properties`, then the name.
-///
-/// Bounded at [`crate::extract::INHERITANCE_MAX_DEPTH`] hops for the reason that bound exists.
+/// A page's property lists: its resources, inherited as every reader inherits them
+/// ([`crate::extract::page_resources`]), then `/Properties`, then the name.
 pub(crate) fn page_property_lists<'a>(
     doc: &'a lopdf::Document,
     page_dict: &'a lopdf::Dictionary,
 ) -> impl Fn(&[u8]) -> PropertyList + 'a {
-    let resources = {
-        let mut found = crate::fonts::resolve_dict(doc, page_dict.get(b"Resources").ok());
-        if found.is_none() {
-            let mut node = crate::fonts::resolve_dict(doc, page_dict.get(b"Parent").ok());
-            for _ in 0..crate::extract::INHERITANCE_MAX_DEPTH {
-                let Some(dict) = node else {
-                    break;
-                };
-                found = crate::fonts::resolve_dict(doc, dict.get(b"Resources").ok());
-                if found.is_some() {
-                    break;
-                }
-                node = crate::fonts::resolve_dict(doc, dict.get(b"Parent").ok());
-            }
-        }
-        found
-    };
+    let resources = crate::extract::page_resources(doc, page_dict);
     let properties =
         resources.and_then(|r| crate::fonts::resolve_dict(doc, r.get(b"Properties").ok()));
     move |name: &[u8]| {

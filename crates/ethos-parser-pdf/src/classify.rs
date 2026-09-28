@@ -386,10 +386,7 @@ fn operand_text_bytes(operands: &[lopdf::Object]) -> u32 {
 
 /// Count image XObjects reachable from a page's resource dictionary.
 fn count_image_xobjects(doc: &Document, page_dict: &lopdf::Dictionary) -> u32 {
-    let Ok(resources) = page_dict.get(b"Resources") else {
-        return 0;
-    };
-    let Ok(resources) = resolve_dict(doc, resources) else {
+    let Some(resources) = crate::extract::page_resources(doc.inner(), page_dict) else {
         return 0;
     };
     let Ok(xobjects) = resources.get(b"XObject") else {

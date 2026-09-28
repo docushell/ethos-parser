@@ -2669,6 +2669,32 @@ impl PageGeometry {
 /// spun on.
 pub(crate) const INHERITANCE_MAX_DEPTH: usize = 32;
 
+/// A page's resource dictionary: its own `/Resources`, or the nearest ancestor's (PDF 32000-1
+/// Table 30 makes the key inheritable).
+///
+/// A `/Resources` that does not resolve to a dictionary — null, or a reference to no object — is
+/// read as absent, as §7.3.7 reads a null entry, and the walk goes on up. Every reader of a page's
+/// resources asks this, so fonts, images, marked-content property lists and the tag writer find
+/// the same dictionary: until review 2026-09-26 N43 only the property lists and the writer
+/// inherited, and a page taking its fonts from `/Pages` was refused for a missing font.
+pub(crate) fn page_resources(
+    doc: &lopdf::Document,
+    page_dict: &lopdf::Dictionary,
+) -> Option<lopdf::Dictionary> {
+    if let Some(own) = crate::fonts::resolve_dict(doc, page_dict.get(b"Resources").ok()) {
+        return Some(own);
+    }
+    let mut node = crate::fonts::resolve_dict(doc, page_dict.get(b"Parent").ok());
+    for _ in 0..INHERITANCE_MAX_DEPTH {
+        let dict = node?;
+        if let Some(found) = crate::fonts::resolve_dict(doc, dict.get(b"Resources").ok()) {
+            return Some(found);
+        }
+        node = crate::fonts::resolve_dict(doc, dict.get(b"Parent").ok());
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
