@@ -323,6 +323,9 @@ pub struct Interpreter<'a> {
     /// Each is the document's own text for what it marks, which this profile does not read: a run
     /// is the glyphs the page draws. Counted so the artifact can say so.
     pub alternate_texts: u32,
+    /// Runs whose string ends part-way through a character code, the lone last byte read as a
+    /// code of its own (review 2026-09-26 N46; [`crate::fonts::Font::split_codes`]).
+    pub partial_code_runs: u32,
     /// Image XObjects this page painted, in the order it painted them (v1-S6).
     pub images: Vec<ImagePlacement>,
     /// `Do` calls naming an XObject this profile could not resolve (v1-S6).
@@ -368,6 +371,7 @@ impl<'a> Interpreter<'a> {
             dropped_runs: 0,
             props_by_name: 0,
             alternate_texts: 0,
+            partial_code_runs: 0,
             images: Vec::new(),
             unresolved_xobjects: 0,
             inline_images: 0,
@@ -775,9 +779,16 @@ impl<'a> Interpreter<'a> {
         if let Some(refusal) = font.refusal() {
             return Err(refusal);
         }
-        let codes = font.split_codes(bytes);
+        let (codes, partial) = font.split_codes(bytes);
         if codes.is_empty() {
             return Ok(());
+        }
+        // A string that ends part-way through a code: its lone last byte is read as a code, as
+        // Ghostscript renders it, and the run is counted so the artifact says so (review
+        // 2026-09-26 N46). Dropping such runs instead lost 27 that renderers draw — arrows among
+        // them — across three real documents, and moved later runs off where they are drawn.
+        if partial > 0 {
+            self.partial_code_runs = self.partial_code_runs.saturating_add(1);
         }
         // Set before decoding, so a run dropped below still counts as drawn: its text was on the
         // page, and the pen moved for the codes before the refused one.

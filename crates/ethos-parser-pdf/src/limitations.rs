@@ -647,6 +647,23 @@ pub fn form_field_parent_unresolved(widgets: u32) -> Limitation {
     )
 }
 
+/// Runs whose string ends part-way through a character code (review 2026-09-26 N46).
+pub fn string_ends_mid_code(runs: u32) -> Limitation {
+    Limitation::document(
+        ethos_parser_core::codes::STRING_ENDS_MID_CODE,
+        format!(
+            "{runs} text run(s) end part-way through a character code: a string of odd length \
+             shown with a font whose codes are two bytes. Its lone last byte is read as a code of \
+             its own — `<004142>` as the codes `0x41` and `0x42` — which is what Ghostscript \
+             renders; pdf.js reads the byte as the first of a code, and PDF 32000-1 §9.7.6.3 maps \
+             it to `.notdef`. The renderers disagree, so no reading is the document's own. These \
+             runs keep the one a renderer draws, text and pen travel alike, because dropping them \
+             lost text renderers show on real documents; this declaration is how a consumer knows \
+             which runs hold it."
+        ),
+    )
+}
+
 /// The document-scoped limitation for a run stopped by the configured page budget.
 pub fn resource_limit_pages(budget: u32, page_count: u32) -> Limitation {
     Limitation::document(

@@ -363,6 +363,7 @@ struct PageYield {
     em_tally: crate::headings::EmTally,
     props_by_name: u32,
     alternate_texts: u32,
+    partial_code_runs: u32,
     tagged_without_geometric: Vec<u32>,
     unresolved_field_parents: u32,
     inline_images: u32,
@@ -412,6 +413,7 @@ fn extract_page(
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut alternate_texts: u32 = 0;
+    let mut partial_code_runs: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     let mut unresolved_field_parents: u32 = 0;
     let mut inline_images: u32 = 0;
@@ -724,6 +726,7 @@ fn extract_page(
         );
         props_by_name = props_by_name.saturating_add(interp.props_by_name);
         alternate_texts = alternate_texts.saturating_add(interp.alternate_texts);
+        partial_code_runs = partial_code_runs.saturating_add(interp.partial_code_runs);
 
         // v1-S1: ruled tables, from the rectangles this page actually painted. Rects arrive in
         // user space and go through the SAME transform and quantum as a glyph origin — a table
@@ -1180,6 +1183,7 @@ fn extract_page(
         em_tally,
         props_by_name,
         alternate_texts,
+        partial_code_runs,
         tagged_without_geometric,
         unresolved_field_parents,
         inline_images,
@@ -1372,6 +1376,7 @@ fn extract_counted(
     let mut computed_bound: u32 = 0;
     let mut props_by_name: u32 = 0;
     let mut alternate_texts: u32 = 0;
+    let mut partial_code_runs: u32 = 0;
     let mut tagged_without_geometric: Vec<u32> = Vec::new();
     // v1-S4. Widgets whose `/Parent` chain did not resolve. Counted, declared, never repaired.
     let mut unresolved_field_parents: u32 = 0;
@@ -1646,6 +1651,7 @@ fn extract_counted(
         computed_bound = declare(computed_bound, y.computed_bound);
         props_by_name = declare(props_by_name, y.props_by_name);
         alternate_texts = declare(alternate_texts, y.alternate_texts);
+        partial_code_runs = declare(partial_code_runs, y.partial_code_runs);
         tagged_without_geometric.extend(y.tagged_without_geometric);
         unresolved_field_parents = declare(unresolved_field_parents, y.unresolved_field_parents);
         inline_images = declare(inline_images, y.inline_images);
@@ -1805,6 +1811,9 @@ fn extract_counted(
             alternate_texts,
             declared_len(alternate_elements),
         ));
+    }
+    if partial_code_runs > 0 {
+        limitations.push(lim::string_ends_mid_code(partial_code_runs));
     }
     if !tagged_without_geometric.is_empty() {
         limitations.push(lim::tagged_table_without_geometric_table(

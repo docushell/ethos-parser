@@ -3335,6 +3335,48 @@ fn an_operator_given_more_operands_than_table_a1_gives_it_is_refused() {
     }
 }
 
+/// **A string ending part-way through a two-byte code is read as Ghostscript renders it, and
+/// declared** (review 2026-09-26 N46). Its lone last byte is read as a code of its own: under
+/// `composite-font-cid-widths`' Identity-H font `<000102>` reads as `AB`, codes `[1, 2]`, and the
+/// pen travels over both. pdf.js reads the byte as a code's first and PDF 32000-1 §9.7.6.3 maps it
+/// to `.notdef`, so the reading is counted under `string-ends-mid-code`. The review's sketch,
+/// dropping the run, lost 27 runs renderers draw across three real documents.
+#[test]
+fn a_string_ending_part_way_through_a_code_is_read_as_rendered_and_declared() {
+    let read = |content: &[u8]| {
+        extract_bytes(&fixture_with_content(
+            "composite-font-cid-widths",
+            content,
+            None,
+        ))
+        .expect("reads")
+    };
+    let declared = |a: &ExtractArtifact| {
+        a.assurance
+            .limitations
+            .iter()
+            .find(|l| l.code == ethos_parser_core::codes::STRING_ENDS_MID_CODE)
+            .map(|l| l.detail.clone())
+    };
+
+    let a = read(b"BT /F1 12 Tf 1 0 0 1 40 100 Tm <000102> Tj <0003> Tj ET");
+    let kept = runs(&a);
+    assert_eq!(
+        kept.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["AB", "C"]
+    );
+    // Codes 1 and 2 are 500 and 750 units wide in `/W`: 6 and 9 points at 12 points.
+    assert_eq!(
+        kept[1].locator.origin_x, 5_500,
+        "the pen travelled over both codes"
+    );
+    let detail = declared(&a).expect("the reading is declared");
+    assert!(detail.starts_with("1 text run(s) end part-way"), "{detail}");
+
+    let whole = read(b"BT /F1 12 Tf 1 0 0 1 40 100 Tm <00010002> Tj <0003> Tj ET");
+    assert_eq!(declared(&whole), None, "whole codes declare nothing");
+}
+
 /// **The `images` proof, both halves** (v1-S6).
 ///
 /// A page that PAINTS an image yields a node carrying where it was drawn and which bytes it is.
@@ -4777,7 +4819,12 @@ type Deflater = fn(&[u8]) -> Vec<u8>;
 /// `measured-ink-box`'s one page with its content replaced: `content` as one stream, deflated
 /// when `deflate` returns the stream bytes to write.
 fn with_content(content: &[u8], deflate: Option<Deflater>) -> Vec<u8> {
-    let original = std::fs::read(engine_fx("measured-ink-box")).expect("fixture readable");
+    fixture_with_content("measured-ink-box", content, deflate)
+}
+
+/// [`with_content`], on engine fixture `name`'s one page.
+fn fixture_with_content(name: &str, content: &[u8], deflate: Option<Deflater>) -> Vec<u8> {
+    let original = std::fs::read(engine_fx(name)).expect("fixture readable");
     let mut doc = lopdf::Document::load_mem(&original).expect("lopdf loads");
     let page = doc.get_pages()[&1];
     let mut dict = lopdf::Dictionary::new();

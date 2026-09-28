@@ -82,7 +82,7 @@ fn readers() -> Vec<String> {
 const PDF_EXTRACT: &str = "../../ethos-parser-pdf/src/extract.rs";
 
 /// The `ethos-parser-pdf` counters, which do not share `ethos-parser-office`'s naming.
-const PDF_COUNTERS: [&str; 14] = [
+const PDF_COUNTERS: [&str; 15] = [
     "unclaimed_tree_items",
     "mcids_unbound",
     "composite_fonts",
@@ -114,6 +114,9 @@ const PDF_COUNTERS: [&str; 14] = [
     // Review 2026-09-26 N22. The marked-content sequences carrying `/ActualText`, `/Alt` or `/E`,
     // one half of the count `actual-text-not-read` names; the structure walk counts the other.
     "alternate_texts",
+    // Review 2026-09-26 N46. The runs whose string ends part-way through a code, the count
+    // `string-ends-mid-code` names.
+    "partial_code_runs",
 ];
 
 /// An accumulation that cannot wrap: the crate's saturating fold, or `saturating_add` itself.

@@ -324,6 +324,9 @@ pub mod codes {
     pub const OUTLINE_ABSENT: &str = "outline-absent";
     /// Outline titles holding a byte this engine will not decode, counted.
     pub const OUTLINE_TITLE_UNDECODABLE: &str = "outline-title-undecodable";
+    /// Runs whose string ends part-way through a character code, read as Ghostscript renders it
+    /// and counted (review 2026-09-26 N46).
+    pub const STRING_ENDS_MID_CODE: &str = "string-ends-mid-code";
     /// Outline destinations that named no page of this document, counted.
     pub const OUTLINE_DESTINATION_UNRESOLVED: &str = "outline-destination-unresolved";
     /// [`crate::Capabilities::images`] is true: what an image node does and does not say.

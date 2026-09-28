@@ -236,7 +236,13 @@ impl Font {
     /// is what real documents overwhelmingly use, and unverified otherwise.
     /// `composite-font-codes-from-tounicode` says so on any artifact where it applies, rather than
     /// leaving it to be discovered the way this defect was.
-    pub fn split_codes(&self, bytes: &[u8]) -> Vec<u32> {
+    ///
+    /// The second value counts the bytes at the end that make no whole code — a string of odd
+    /// length under a two-byte codespace — which the last code is read from as it stands:
+    /// `<004142>` reads as codes `[0x41, 0x42]`, as Ghostscript renders it, where pdf.js reads the
+    /// lone byte as a code's first and PDF 32000-1 §9.7.6.3 maps it to `.notdef`. The caller counts
+    /// such a run so the artifact can say which reading it holds (review 2026-09-26 N46).
+    pub fn split_codes(&self, bytes: &[u8]) -> (Vec<u32>, usize) {
         let width = match self.kind {
             FontKind::Simple => 1,
             FontKind::Composite => match &self.decoder {
@@ -245,12 +251,13 @@ impl Font {
             },
         };
         if width == 1 {
-            return bytes.iter().map(|b| u32::from(*b)).collect();
+            return (bytes.iter().map(|b| u32::from(*b)).collect(), 0);
         }
-        bytes
+        let codes = bytes
             .chunks(width)
             .map(|c| c.iter().fold(0u32, |acc, b| (acc << 8) | u32::from(*b)))
-            .collect()
+            .collect();
+        (codes, bytes.len() % width)
     }
 
     /// Decode one character code to its characters.
@@ -1356,7 +1363,7 @@ mod tests {
             WidthSource::Absent { reason: "x".into() },
             FontInk::Absent(GeometryAbsence::NotReportedByReader),
         );
-        assert_eq!(f.split_codes(b"Hi"), vec![0x48, 0x69]);
+        assert_eq!(f.split_codes(b"Hi"), (vec![0x48, 0x69], 0));
     }
 
     fn two_byte_cmap() -> ToUnicode {
@@ -1397,7 +1404,7 @@ mod tests {
         assert_eq!(f.kind, FontKind::Simple);
         assert_eq!(
             f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
-            vec![0x00, 0x41, 0x00, 0x42],
+            (vec![0x00, 0x41, 0x00, 0x42], 0),
             "a two-byte codespace on a SIMPLE font changes nothing about how its string is split"
         );
     }
@@ -1417,8 +1424,10 @@ mod tests {
         f.decoder = Decoder::ToUnicode(Arc::new(two_byte_cmap()));
         assert_eq!(
             f.split_codes(&[0x00, 0x41, 0x00, 0x42]),
-            vec![0x0041, 0x0042]
+            (vec![0x0041, 0x0042], 0)
         );
+        // A lone trailing byte is read as a code of its own, as Ghostscript reads it, and counted.
+        assert_eq!(f.split_codes(&[0x00, 0x41, 0x42]), (vec![0x0041, 0x42], 1));
     }
 
     /// An unlabelled font is simple, which is the conservative reading.
