@@ -153,10 +153,23 @@ Vendoring the block becomes a **separate, optional** improvement (§9 `S-ENC`) t
 than 224, three of which occur here, with qpdf's decoder and the strings' own context as the two
 independent confirmations — but it is **the owner's to take, and nothing in §8 depends on it.**
 
+**Taken 2026-09-30** (owner: *"start your next pick"*). The table is derived, not transcribed:
+[`vendor/generate-pdfdoc-encoding.py`](../vendor/generate-pdfdoc-encoding.py) reads one probe PDF —
+an outline whose entry *i* is titled `A<byte i>A` — through qpdf 12.3.2's text-string decoder,
+pdf.js 5.7.284's outline titles and Ghostscript 10.06.0's own `doc-to-ucode` table, and emits a
+code only where all three give the same scalar: **252 of 256**, the whole block above among them.
+The four they part over stay refused — `0x1B` (pdf.js drops it) and `0x7F`, `0x9F`, `0xAD` (qpdf
+reads U+FFFD, the other two their Latin-1 scalar or nothing). That meets `docs/21` §5 on its own
+terms: every entry cross-validated three ways, none typed. **§8 bar 3, measured over the 70
+fixtures:** the 69 titles decode — `0x85`→U+2013 ×59, `0x84`→U+2014 ×9, `0x90`→U+2019 ×2 — and no
+title holds a scalar in U+0080–U+009F.
+
 **A defect found in passing.** `decode_text`'s doc comment says *"a byte outside it becomes
 `U+FFFD`"*. Its non-UTF-16 branch cannot produce `U+FFFD`. True of the UTF-16 branch
 (`from_utf16_lossy`), false of the other. Correct it on its own — **not** by making the comment match
-the code, because the comment describes the better behaviour.
+the code, because the comment describes the better behaviour. **Corrected with `S-ENC`:**
+`decode_text` reads the same table and gives U+FFFD for a code it cannot read, and its doc comment,
+which had drifted onto `decode_text_strict`, is back on it.
 
 ## 5. Where it goes on the wire, and what that costs
 
@@ -266,13 +279,15 @@ guess a byte, a page or a depth to fill the record.
 | --- | --- | --- |
 | **S1** | The `outlines-v1` reader: walk, resolve, emit the record; titles that decode carry text, the rest are absent and counted; `outline-absent` and the capability flag; the schema bump and everything in §5 | §8 bars 1, 2, 4, 5 |
 | **S2** | The untagged-with-outline fixture, and `tag`'s round-trip comparison | §8 bar 6 |
-| **S-ENC** | *Optional, owner's.* Vendor Annex D.2's 0x80–0x9F, clearing `docs/21` §5 on its own terms; `decode_text` uses it; its doc-comment defect corrected | §8 bar 3's first half |
+| **S-ENC** | *Optional, owner's* — **shipped 2026-09-30** (§4). Vendor Annex D.2's 0x80–0x9F, clearing `docs/21` §5 on its own terms; `decode_text` uses it; its doc-comment defect corrected | §8 bar 3's first half |
 | **S3** | PI-B's cross-check as a counted code with its own rule id | Its own measurement, after `S-ENC` |
 
 **`S-ENC` is no longer first and no longer required.** It is independently useful — `decode_text` is
 live today on annotation and form-field strings, so the block would fix those too, and **how many of
 those strings carry a byte in 0x80–0x9F across the 70 fixtures is not measured and should be before
-`S-ENC` is argued.**
+`S-ENC` is argued.** Measured when it shipped, over 332 local documents: the only annotation or
+field strings it changes are opendataloader-bench `01030000000172`'s nine Link `/Contents`, which
+write `Mann–Whitney` with `0x85`; no label changes.
 
 ## 10. What this scope does not decide
 

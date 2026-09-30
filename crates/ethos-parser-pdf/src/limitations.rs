@@ -673,11 +673,11 @@ pub fn form_annotation_text_undecodable(count: u32) -> Limitation {
             "{count} form field value(s) and annotation `/Contents` hold bytes this engine will \
              not decode, so those fields carry the value `unsupported` and those annotations no \
              text, each keeping its object id, its rectangle and its flags. A PDF text string is \
-             UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding otherwise (§7.9.2.2), \
-             and this engine vendors no PDFDocEncoding table for `0x80`–`0xA0` and `0xAD`, where \
-             it and Latin-1 part: read as Latin-1, as they were, `0xA0` is a no-break space where \
-             the document means `€`, and `0x80`–`0x9F` are C1 controls inside text that still \
-             reads as well-formed. A name-valued `/V` that is not UTF-8 is counted here too. \
+             UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding otherwise (§7.9.2.2). \
+             This engine reads PDFDocEncoding through a table qpdf, pdf.js and Ghostscript agree \
+             on, and will not guess where they part — `0x1B`, `0x7F`, `0x9F` and `0xAD` — nor read \
+             a control character other than tab, line feed and carriage return, or a malformed \
+             UTF-16 or UTF-8 string. A name-valued `/V` that is not UTF-8 is counted here too. \
              Absent and counted, as an outline title is (`outline-title-undecodable`)."
         ),
     )
@@ -795,13 +795,11 @@ pub fn outline_title_undecodable(count: u32) -> Limitation {
         format!(
             "{count} outline entry title(s) hold a byte this engine will not decode, so those \
              entries carry NO title while keeping their depth, their object id and their page. \
-             A PDF text string is UTF-16BE behind a byte-order mark and PDFDocEncoding otherwise \
-             (§7.9.2.2), and `0x80`–`0x9F` is exactly where PDFDocEncoding, Latin-1 and \
-             Windows-1252 disagree. This engine vendors no PDFDocEncoding table for that block, \
-             so decoding one would be a guess — and decoding it as Latin-1, which is what the \
-             table already in this tree would do, puts C1 control characters inside a title that \
-             still reads as well-formed. Absent and counted is the honest answer, and \
-             `docs/29-OUTLINES-SCOPE.md` §4 records what would change it."
+             A PDF text string is UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding \
+             otherwise (§7.9.2.2). This engine reads PDFDocEncoding through a table qpdf, pdf.js \
+             and Ghostscript agree on, and will not guess where they part — `0x1B`, `0x7F`, \
+             `0x9F` and `0xAD` — nor read a control character or a malformed UTF-16 or UTF-8 \
+             string into a title. Absent and counted is the honest answer."
         ),
     )
 }

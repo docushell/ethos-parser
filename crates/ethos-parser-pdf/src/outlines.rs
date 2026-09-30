@@ -30,9 +30,9 @@
 //!   `docs/17-D1-SCOPE.md`:130 refuses a boundary inferred from a bookmark, and this repository's
 //!   own corpus contains **two entries whose target page precedes their predecessor's**, where an
 //!   inferred end would run backwards.
-//! - **Guessing a title byte.** `0x80`–`0x9F` is where PDFDocEncoding, Latin-1 and Windows-1252
-//!   disagree, and `0xA0` and `0xAD` are where PDFDocEncoding and Latin-1 do; this engine vendors
-//!   no table for them, so such a title is absent and counted (`crate::forms::decode_text_strict`).
+//! - **Guessing a title byte.** PDFDocEncoding is read through a table three independent decoders
+//!   agree on (`crate::pdfdoc`); a title holding one of the four codes they part over, a control
+//!   character or malformed UTF-16 is absent and counted (`crate::forms::decode_text_strict`).
 //! - **Dropping an entry.** An unresolved destination, an undecodable title and a page outside the
 //!   budget are each *absent and counted* on a record that is still emitted.
 
