@@ -3408,7 +3408,9 @@ fn a_string_ending_part_way_through_a_code_is_read_as_rendered_and_declared() {
 /// **A field's value and an annotation's text are decoded strictly, and what will not decode is
 /// counted** (review 2026-09-26 N39). Both were read as Latin-1, a name lossily: UTF-8 behind its
 /// byte-order mark came out as mojibake, and `0xA0`, the euro sign in PDFDocEncoding, as a
-/// no-break space. The line controls a multi-line value writes stay text.
+/// no-break space. The line controls a multi-line value writes stay text. Since
+/// `docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`, `0xA0` and `0x85` read through the derived table, and
+/// the refusal is a code that table's three sources part over.
 #[test]
 fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
     let undecodable = |a: &ExtractArtifact| {
@@ -3438,7 +3440,19 @@ fn form_and_annotation_text_is_decoded_strictly_and_counted_where_it_is_not() {
     assert!(object_texts(&a).contains(&"one\ttwo\nthree\rfour".to_string()));
     assert_eq!(undecodable(&a), None, "the line controls are text");
 
-    let a = with_contents(b"Price \xa05");
+    let a = with_contents(b"Price \xa05 \x85 net");
+    assert!(
+        object_texts(&a).contains(&"Price \u{20ac}5 \u{2013} net".to_string()),
+        "{:?}",
+        object_texts(&a)
+    );
+    assert_eq!(
+        undecodable(&a),
+        None,
+        "the euro sign and the en dash are text"
+    );
+
+    let a = with_contents(b"Price \x9f5");
     assert!(!object_texts(&a).iter().any(|t| t.contains("Price")));
     assert_eq!(
         a.pages[0].objects.len(),
@@ -6479,5 +6493,70 @@ fn an_indirect_outline_title_is_read() {
             .map(|o| o.title.as_deref())
             .collect::<Vec<_>>(),
         [Some("Chapter one")]
+    );
+}
+
+/// **An outline title is read through the derived PDFDocEncoding table, or is absent and counted**
+/// (`docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`). `0x85`, `0x84` and `0x90` are the three codes the 69
+/// titles this repository's corpus could not title were written with; `0xA0` is the euro sign;
+/// `0x9F` is a code qpdf, pdf.js and Ghostscript part over, so that entry keeps its place and
+/// loses only its title.
+#[test]
+fn an_outline_title_is_read_through_pdfdoc_encoding_or_absent_and_counted() {
+    let titles: [&[u8]; 5] = [
+        b"Backup \x85 Cryptographic",
+        b"TASKS\x84SYSTEM",
+        b"ORDER 14028\x90s",
+        b"Price \xa05",
+        b"Bad \x9f code",
+    ];
+    let mut objects = vec![
+        b"<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >>".to_vec(),
+        b"<< /Type /Outlines /First 5 0 R /Last 9 0 R /Count 5 >>".to_vec(),
+    ];
+    for (i, title) in titles.iter().enumerate() {
+        let hex: String = title.iter().map(|b| format!("{b:02X}")).collect();
+        let prev = if i > 0 {
+            format!(" /Prev {} 0 R", 4 + i)
+        } else {
+            String::new()
+        };
+        let next = if i < 4 {
+            format!(" /Next {} 0 R", 6 + i)
+        } else {
+            String::new()
+        };
+        objects.push(
+            format!("<< /Title <{hex}> /Parent 4 0 R /Dest [3 0 R /Fit]{prev}{next} >>")
+                .into_bytes(),
+        );
+    }
+    let a = extracted(&pdf_from_objects(&objects)).expect("reads");
+    assert_eq!(
+        a.outlines
+            .iter()
+            .map(|o| o.title.as_deref())
+            .collect::<Vec<_>>(),
+        [
+            Some("Backup \u{2013} Cryptographic"),
+            Some("TASKS\u{2014}SYSTEM"),
+            Some("ORDER 14028\u{2019}s"),
+            Some("Price \u{20ac}5"),
+            None,
+        ]
+    );
+    let declared: Vec<_> = a
+        .assurance
+        .limitations
+        .iter()
+        .filter(|l| l.code == ethos_parser_core::codes::OUTLINE_TITLE_UNDECODABLE)
+        .collect();
+    assert_eq!(declared.len(), 1, "{declared:?}");
+    assert!(
+        declared[0].detail.starts_with("1 outline entry title(s)"),
+        "{}",
+        declared[0].detail
     );
 }

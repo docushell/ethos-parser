@@ -1185,9 +1185,10 @@ fn limitations_are_sorted_and_free_of_duplicates() {
 ///
 /// `nist-sp-800-218` is the smallest outline in the gate corpus and the numbers are the ones
 /// `docs/measurements/outlines/` measured with an independent instrument before any of this was
-/// written: **13 entries, maximum declared depth 2, every destination resolving, 3 titles holding
-/// a byte this engine will not decode.** A reader that renumbered depths, dropped the entries it
-/// could not title, or guessed a page would miss at least one of them.
+/// written: **13 entries, maximum declared depth 2, every destination resolving, 3 titles written
+/// with PDFDocEncoding's `0x84`** — absent and counted until `docs/29-OUTLINES-SCOPE.md` §9
+/// `S-ENC`, read now. A reader that renumbered depths, dropped an entry, or guessed a page or a
+/// byte would miss at least one of them.
 #[test]
 fn the_declared_outline_is_read_as_the_document_declared_it() {
     let a = extract_ok(gate("nist-sp-800-218"));
@@ -1209,29 +1210,36 @@ fn the_declared_outline_is_read_as_the_document_declared_it() {
         "the hierarchy and the titles are the author's statement, not this engine's"
     );
 
-    // Three titles carry a byte in 0x80-0x9F. They are ABSENT and COUNTED, never guessed — and
-    // the entries still carry their depth, their object id and their page.
-    let untitled = a.outlines.iter().filter(|o| o.title.is_none()).count();
-    assert_eq!(untitled, 3, "titles this engine will not decode");
-    let declared: Vec<_> = a
-        .assurance
-        .limitations
+    // Three titles write PDFDocEncoding's em dash, `0x84`. They read through the derived table as
+    // the scalar its three sources agree on — not the C1 control Latin-1 gives, nor the `„`
+    // Windows-1252 gives. Absent-and-counted is proven in `extraction.rs`, on a code they part over.
+    let dashed: Vec<_> = a
+        .outlines
         .iter()
-        .filter(|l| l.code == ethos_parser_core::codes::OUTLINE_TITLE_UNDECODABLE)
+        .filter_map(|o| o.title.as_deref())
+        .filter(|t| t.contains('\u{2014}'))
         .collect();
     assert_eq!(
-        declared.len(),
-        1,
-        "counted once, on the document: {declared:?}"
+        dashed,
+        [
+            "Appendix A\u{2014} The SSDF and Executive Order 14028",
+            "Appendix B\u{2014} Acronyms",
+            "Appendix C\u{2014} Change Log",
+        ]
     );
     assert!(
-        declared[0].detail.starts_with("3 outline entry title(s)"),
-        "the count is on the wire: {}",
-        declared[0].detail
+        a.outlines.iter().all(|o| o.title.is_some()),
+        "every title decodes"
+    );
+    assert!(
+        !a.assurance
+            .limitations
+            .iter()
+            .any(|l| l.code == ethos_parser_core::codes::OUTLINE_TITLE_UNDECODABLE),
+        "nothing is left to count"
     );
 
-    // No entry is dropped for lacking a title, which is the difference between reporting a gap
-    // and hiding one.
+    // No entry is dropped, which is the difference between reporting a gap and hiding one.
     assert!(
         a.outlines.iter().all(|o| o.object != 0),
         "every entry keeps the object id that addresses it"

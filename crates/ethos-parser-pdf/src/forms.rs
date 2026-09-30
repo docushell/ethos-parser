@@ -513,37 +513,21 @@ fn text_at(doc: &lopdf::Document, dict: &Dictionary, key: &[u8]) -> Option<Strin
     }
 }
 
-/// Decode a PDF text string.
-///
-/// Two encodings are legal here (PDF 32000-1 §7.9.2.2): UTF-16BE behind a byte-order mark, and
-/// PDFDocEncoding otherwise. The ASCII range of PDFDocEncoding is Latin-1, which is what this
-/// reads — a byte outside it becomes `U+FFFD` **only here**, in a dictionary string, and never in
-/// page text, where an undecodable code refuses the run instead.
-///
-/// The asymmetry is deliberate. A run's text is evidence a citation is checked against, so a
-/// substituted character there would be a character the document does not contain sitting in the
-/// evidence. A field's title or an annotation's author name is a label, and losing the whole
-/// annotation over one unmappable byte in its author's name would delete content to protect a
-/// string nobody cites.
 /// Decode a PDF text string, **refusing the bytes this engine cannot decode** rather than
 /// substituting for them.
 ///
 /// The same two encodings as [`decode_text`] (§7.9.2.2), plus UTF-8 behind its byte-order mark
 /// (ISO 32000-2 §7.9.2.2.1). Its UTF-16BE branch also refuses half a code unit and a language
-/// escape rather than trimming or decoding them. The larger difference is the other branch.
-/// `decode_text` maps every remaining byte through `char::from`,
-/// which is Latin-1 — so `0x85` becomes `U+0085`, a C1 control character, inside a string that
-/// still reads as well-formed. That is a deliberate choice **for a label**: losing a whole
-/// annotation over one unmappable byte in an author's name would delete content to protect a
-/// string nobody cites.
+/// escape rather than trimming or decoding them. Its PDFDocEncoding branch reads the derived
+/// table in [`crate::pdfdoc`] and refuses the four codes that table's three sources disagree over
+/// — `0x1B`, `0x7F`, `0x9F` and `0xAD` — and every control character, where [`decode_text`]
+/// substitutes U+FFFD or keeps the control.
 ///
-/// An outline title is not that. `0x80`–`0x9F` is exactly where PDFDocEncoding, Latin-1 and
-/// Windows-1252 disagree (and `0xA0` and `0xAD` are two more places PDFDocEncoding and Latin-1
-/// do), this engine vendors no PDFDocEncoding table for it, and **69 of the
-/// 2 273 entries in this repository's own corpus carry such a byte**
-/// (`docs/measurements/outlines/`). So this returns `None` and the caller counts it, which is the
-/// engine's ordinary answer to *I could not read this* — and `docs/29-OUTLINES-SCOPE.md` §4
-/// records why vendoring the block is a separate, optional slice rather than a precondition.
+/// That difference is the reason there are two. A label may lose a byte to U+FFFD: losing a whole
+/// annotation over one unmappable byte in its author's name would delete content to protect a
+/// string nobody cites. An outline title is the document's own word on its structure, so a byte
+/// this engine cannot read leaves the title absent and counted, which is the engine's ordinary
+/// answer to *I could not read this* — never a title that reads as well-formed and is not.
 pub(crate) fn decode_text_strict(bytes: &[u8]) -> Option<String> {
     strict(bytes, b"")
 }
@@ -581,16 +565,29 @@ fn strict(bytes: &[u8], controls: &[u8]) -> Option<String> {
     if bytes.starts_with(&[0xFF, 0xFE]) {
         return None;
     }
-    // PDFDocEncoding agrees with Latin-1 over 0x20..=0x7E and 0xA1..=0xFF except 0xAD. Everything
-    // else -- the C0 controls, 0x7F, the 0x80..=0x9F block the three encodings disagree over, 0xA0
-    // (the euro sign in PDFDocEncoding, a no-break space in Latin-1) and 0xAD (undefined in
-    // PDFDocEncoding) -- is refused rather than guessed.
+    // PDFDocEncoding, through the derived table: a code its three sources disagree over is
+    // refused rather than guessed, and so is a control character `controls` does not admit.
     bytes
         .iter()
-        .all(|b| (0x20..=0x7E).contains(b) || (*b >= 0xA1 && *b != 0xAD) || controls.contains(b))
-        .then(|| bytes.iter().map(|b| char::from(*b)).collect())
+        .map(|&b| match crate::pdfdoc::PDFDOC[usize::from(b)] {
+            Some(c) if !c.is_control() || controls.contains(&b) => Some(c),
+            _ => None,
+        })
+        .collect()
 }
 
+/// Decode a PDF text string.
+///
+/// Two encodings are legal here (PDF 32000-1 §7.9.2.2): UTF-16BE behind a byte-order mark, and
+/// PDFDocEncoding otherwise, read through the derived table in [`crate::pdfdoc`]. A code that
+/// table cannot read becomes `U+FFFD` **only here**, in a dictionary string, and never in page
+/// text, where an undecodable code refuses the run instead.
+///
+/// The asymmetry is deliberate. A run's text is evidence a citation is checked against, so a
+/// substituted character there would be a character the document does not contain sitting in the
+/// evidence. A field's title or an annotation's author name is a label, and losing the whole
+/// annotation over one unmappable byte in its author's name would delete content to protect a
+/// string nobody cites.
 pub(crate) fn decode_text(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
         let units: Vec<u16> = bytes[2..]
@@ -599,7 +596,10 @@ pub(crate) fn decode_text(bytes: &[u8]) -> String {
             .collect();
         return String::from_utf16_lossy(&units);
     }
-    bytes.iter().map(|b| char::from(*b)).collect()
+    bytes
+        .iter()
+        .map(|&b| crate::pdfdoc::PDFDOC[usize::from(b)].unwrap_or('\u{FFFD}'))
+        .collect()
 }
 
 #[cfg(test)]
@@ -655,18 +655,24 @@ mod tests {
         assert_eq!(decode_text(&bytes), "héllo");
     }
 
-    /// **The strict decoder refuses what it used to guess** (review 2026-09-26 N17): the two bytes
-    /// above 0x9F where PDFDocEncoding and Latin-1 disagree, half a UTF-16 code unit and a
-    /// language escape, and (tracker I17) a UTF-16LE byte-order mark; and it reads a UTF-8 title
-    /// (ISO 32000-2 §7.9.2.2.1) as UTF-8.
+    /// **The strict decoder refuses what it used to guess** (review 2026-09-26 N17): a code the
+    /// derived PDFDocEncoding table's sources part over, a control character, half a UTF-16 code
+    /// unit and a language escape, and (tracker I17) a UTF-16LE byte-order mark; and it reads a
+    /// UTF-8 title (ISO 32000-2 §7.9.2.2.1) as UTF-8. `0xA0`, refused here until
+    /// `docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`, reads as the euro sign it is.
     #[test]
     fn the_strict_decoder_refuses_what_it_would_have_guessed() {
         assert_eq!(
-            decode_text_strict(b"Price \xa05"),
-            None,
+            decode_text_strict(b"Price \xa05").as_deref(),
+            Some("Price \u{20ac}5"),
             "0xA0 is the euro sign"
         );
-        assert_eq!(decode_text_strict(b"co\xadop"), None, "0xAD is undefined");
+        assert_eq!(
+            decode_text_strict(b"co\xadop"),
+            None,
+            "the decoders part over 0xAD"
+        );
+        assert_eq!(decode_text_strict(b"a\x01b"), None, "a control character");
         assert_eq!(
             decode_text_strict(b"\xef\xbb\xbfCaf\xc3\xa9").as_deref(),
             Some("Caf\u{e9}")
@@ -693,6 +699,49 @@ mod tests {
     fn a_pdfdoc_text_string_decodes_as_latin1() {
         assert_eq!(decode_text(b"Total due"), "Total due");
         assert_eq!(decode_text(&[0x41, 0xE9]), "Aé");
+    }
+
+    /// **PDFDocEncoding is read through the derived table** (`docs/29-OUTLINES-SCOPE.md` §9
+    /// `S-ENC`): the three codes this repository's outlines write, a diacritic, a bullet and the
+    /// euro sign — and a code the table's three sources part over, which the strict decoder
+    /// refuses and the lenient one reads as U+FFFD, as its doc comment always said it did.
+    #[test]
+    fn pdfdoc_codes_decode_through_the_derived_table() {
+        assert_eq!(
+            decode_text_strict(b"a\x85b\x84c\x90d").as_deref(),
+            Some("a\u{2013}b\u{2014}c\u{2019}d")
+        );
+        assert_eq!(decode_text(b"\x18\x80\xa0"), "\u{2d8}\u{2022}\u{20ac}");
+        for contested in [0x1B, 0x7F, 0x9F, 0xAD] {
+            assert_eq!(
+                decode_text_strict(&[b'a', contested]),
+                None,
+                "{contested:#04x}"
+            );
+            assert_eq!(
+                decode_text(&[b'a', contested]),
+                "a\u{fffd}",
+                "{contested:#04x}"
+            );
+        }
+    }
+
+    /// **The table cannot move text this engine already read, nor yield a C1 control**
+    /// (`docs/29-OUTLINES-SCOPE.md` §8 bar 3) — re-checked with no external source, as
+    /// `crate::encoding` re-checks `crate::winansi_names`.
+    #[test]
+    fn the_derived_table_keeps_latin1_and_never_yields_c1() {
+        for code in (0x20u8..=0x7E).chain(0xA1..=0xFF).filter(|&c| c != 0xAD) {
+            assert_eq!(
+                crate::pdfdoc::PDFDOC[usize::from(code)],
+                Some(char::from(code)),
+                "{code:#04x}"
+            );
+        }
+        assert!(crate::pdfdoc::PDFDOC
+            .iter()
+            .flatten()
+            .all(|c| !('\u{80}'..='\u{9f}').contains(c)));
     }
 
     #[test]

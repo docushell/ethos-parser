@@ -56,16 +56,14 @@ pub struct OutlineRecord {
 
     /// The `/Title` string, decoded — **absent when it could not be decoded**, never guessed.
     ///
-    /// A PDF text string is UTF-16BE behind a byte-order mark and PDFDocEncoding otherwise
-    /// (§7.9.2.2). This engine vendors no PDFDocEncoding table for the `0x80`–`0x9F` block, which
-    /// is exactly where that encoding, Latin-1 and Windows-1252 disagree — 69 of the 2 273 entries
-    /// in this repository's own corpus carry such a byte
-    /// ([`measurements/outlines/`](https://github.com/docushell/ethos-parser)). Decoding them as
-    /// Latin-1 would put C1 control characters inside a title that still reads as well-formed,
-    /// which is worse than absence because it looks like success.
+    /// A PDF text string is UTF-16BE or UTF-8 behind a byte-order mark and PDFDocEncoding
+    /// otherwise (§7.9.2.2). The PDF reader reads PDFDocEncoding through a table three independent
+    /// decoders agree on (`docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`), and a title holding a code they
+    /// part over, a control character or malformed UTF-16 is not decoded: a guess there would put
+    /// a character inside a title that still reads as well-formed, which is worse than absence
+    /// because it looks like success.
     ///
-    /// So the title is absent and counted. `docs/29-OUTLINES-SCOPE.md` §4 records why vendoring
-    /// the block is a separate, optional slice rather than a precondition.
+    /// So the title is absent and counted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 
