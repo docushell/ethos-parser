@@ -189,6 +189,32 @@ Whether `unruled-align-v1`'s other preconditions then hold on those regions is *
 here** and would need the rule re-run per region, which needs a code change this measurement was
 not allowed to make.
 
+**Amended 2026-09-30: measured, and neither narrowing recovers any of the eleven.** The owner
+took the per-`region` fix (North Star #35) and it was measured before any code landed.
+
+- **Per region: 0 of 11.** Every one of the eleven table pages carries **no** region. A region is
+  what the *vertical* cut separated, and these are single-column pages it never divided; a page
+  with one table among body text is one region by definition. Regions are also computed after
+  table detection (`extract.rs`'s `arrange_page` follows `tables::detect`), so the rule could not
+  have read them where it runs. The sentence above, *"whose `region` the artifact already
+  carries"*, was the assumption that failed.
+- **Per leading-gap slab: 0 of 11.** A prototype retried the rule once per slab — the slabs
+  `blocks::slabs` publishes as `block`, computed before detection — wherever the page-wide
+  candidate hit the ceiling. Four of the eleven pages are one slab. On the other seven the slabs
+  **do** isolate the tables (on `01030000000189` three slabs open with its three tables' header
+  rows), and every table slab is then refused by the **gutter floor**, at gaps of 166 to 1 156
+  centipoints against 1 200. The ceiling was masking that refusal, because step 6 is tested
+  before step 2. Scored with the committed pipeline: TEDS 0.1704 → 0.1704, no document's scores
+  moved among the 200, fabrication 0.
+
+**What stands in the way is run granularity, not the lattice's size.** These producers draw a
+cell's words as separate runs, and the rule folds every run's x-origin into a column line, so a
+multi-word cell opens false columns a word apart — the recall cost the rule's own header names
+(*"one run per cell, in practice"*). Recovering these tables needs each line's runs joined into
+phrases before the fold: a new rule id with a fabrication risk of its own, since a narrow column
+gutter and a word space can look alike. It is deferred to its own scoped slice, for 0.64.0 at the
+earliest; the eleven stay refused and declared as they are.
+
 ### Cause 4 — an inferred grid under the gutter floor (3 documents)
 
 `01030000000130` (gap 339 cp), `01030000000180` (392 cp), `01030000000197` (561 cp), each against
