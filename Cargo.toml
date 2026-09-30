@@ -593,7 +593,7 @@ exclude = ["fuzz"]
 # it DECLINED to repair named there too rather than left for someone to rediscover. The office
 # MUTATION half of A11 is still open and this slice does not touch it. **v2 IS STILL NOT
 # COMPLETE**; both escalated questions are restated unchanged.
-version = "0.63.0"
+version = "0.64.0-dev.1"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -632,10 +632,10 @@ serde = { version = "1", features = ["derive", "rc"] }
 proptest = "1"
 
 # internal
-ethos-parser-core = { path = "crates/ethos-parser-core", version = "0.63.0" }
-ethos-parser-pdf = { path = "crates/ethos-parser-pdf", version = "0.63.0" }
-ethos-parser-office = { path = "crates/ethos-parser-office", version = "0.63.0" }
-ethos-parser-grounding = { path = "crates/ethos-parser-grounding", version = "0.63.0" }
+ethos-parser-core = { path = "crates/ethos-parser-core", version = "0.64.0-dev.1" }
+ethos-parser-pdf = { path = "crates/ethos-parser-pdf", version = "0.64.0-dev.1" }
+ethos-parser-office = { path = "crates/ethos-parser-office", version = "0.64.0-dev.1" }
+ethos-parser-grounding = { path = "crates/ethos-parser-grounding", version = "0.64.0-dev.1" }
 
 # Tests are the CI budget, and they were compiling unoptimized.
 #

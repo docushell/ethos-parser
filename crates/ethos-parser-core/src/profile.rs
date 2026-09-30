@@ -2685,7 +2685,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-2","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v11","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v11","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-2","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v11","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v11","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3669,11 +3669,15 @@ mod tests {
              (`docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`); and `markdown_rule` `markdown-blocks-v10` -> \
              `-v11` with `html_rule` `html-blocks-v10` -> `-v11`, for U+0000 no longer written \
              (N40). No office rule id moves: the office changes since 0.62.0 are refusals. No \
-             capability and no knob moves."
+             capability and no knob moves.\n\n\
+             Moved once more right after the `v0.63.0` tag, `sha256:8b9d5f04…` -> \
+             `sha256:f1ac730e…`: `parser_version` `0.63.0` -> `0.64.0-dev.1`, and nothing else \
+             (`docs/RELEASING.md` §5.7, decision #33), so no build of `main` claims the version \
+             just released."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:8b9d5f0479aa2d090e659465a8ef17447f078f125a70feb13f50ce130c221cac"
+            "sha256:f1ac730e7c173948fc8e72a0adc9468f06ec8ddc098899ae0ccc90237d888612"
         );
     }
 
