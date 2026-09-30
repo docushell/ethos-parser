@@ -87,7 +87,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # Why the id moves anyway
 ///
-/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V10`] settled this repository's answer when
+/// Because the artifact does. [`crate::HTML_RULE_BLOCKS_V11`] settled this repository's answer when
 /// it moved an id nothing had ever published under: *two builds in this repository's own history
 /// producing different bytes under one id* is the state a rule id exists to make impossible, and
 /// *a version that is cheap to move is exactly the one worth moving*. `docs/01-CONTRACT.md` §2
@@ -109,7 +109,7 @@ pub const READING_ORDER_RULE_V1: &str = "gutter-columns-v1";
 ///
 /// # No second id for the regions
 ///
-/// [`crate::HTML_RULE_BLOCKS_V10`] is separate from the Markdown rule because those two can move
+/// [`crate::HTML_RULE_BLOCKS_V11`] is separate from the Markdown rule because those two can move
 /// independently. The order and the regions cannot: one cut emits both, and a change to the cut
 /// changes both together. Two ids for one rule would claim a precision that does not exist.
 pub const READING_ORDER_RULE_V2: &str = "gutter-columns-v2";
@@ -192,7 +192,10 @@ pub const READING_ORDER_RULE_V4: &str = "gutter-columns-v4";
 ///
 /// **It does not cover contrast.** Nothing here reads colour, and a profile under this id makes no
 /// claim about whether text was legible — see `codes::LOW_CONTRAST_NOT_DETECTED`.
-pub const OBSERVATION_RULE_V1: &str = "page-observations-v1";
+///
+/// v2 (0.63.0): an image drawn from `/Resources` a page inherits from `/Pages` is a node, where v1
+/// counted it an unresolved `Do` (review 2026-09-26 N43). What the rule observes is v1's.
+pub const OBSERVATION_RULE_V2: &str = "page-observations-v2";
 
 /// The rule v1-S6.1 ships for turning a string operand into character codes.
 ///
@@ -528,7 +531,13 @@ pub const STRUCT_TREE_RULE_V2: &str = "struct-tree-v2";
 /// leave the title absent and counted rather than guessed; a UTF-8 title behind its byte-order mark
 /// (ISO 32000-2 §7.9.2.2.1) reads as UTF-8; and a `/Title` held in an indirect object is read where
 /// it points. The walk, the depth and the destinations are v1's.
-pub const OUTLINE_RULE_V2: &str = "outlines-v2";
+///
+/// v3 (0.63.0): PDFDocEncoding is read through the table qpdf, pdf.js and Ghostscript agree on
+/// (`docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`), so a title written with `0x80`–`0x9E`, `0xA0` or a
+/// spacing diacritic at `0x18`–`0x1F` reads as the characters it holds, where v2 left it absent:
+/// 69 titles in the repository's fixtures, at §8 bar 3's constants. `0x1B`, `0x7F`, `0x9F` and
+/// `0xAD`, which the three part over, still leave a title absent and counted.
+pub const OUTLINE_RULE_V3: &str = "outlines-v3";
 
 /// The rule that builds a text run's box — contract §5.3, §6.
 ///
@@ -587,7 +596,14 @@ pub const HEADING_INFERENCE_RULE_V2: &str = "type-size-v2";
 /// *form fields and annotations* — document ideas any format can have — while the format-specific
 /// walk lives in `ethos-parser-pdf`. The same split `table_detection` already uses: a generic field
 /// holding `"ruled-rects-v3"`.
-pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
+///
+/// v2 (0.63.0): a field's value and an annotation's `/Contents` are decoded strictly (review
+/// 2026-09-26 N39): a byte the decoder will not read makes the value `unsupported` and the text
+/// empty, each node kept and counted as `form-annotation-text-undecodable`, where v1 read Latin-1
+/// and a name lossily; UTF-8 behind its byte-order mark reads as UTF-8. And PDFDocEncoding is read
+/// through the derived table (`S-ENC`), in the labels too, where a code the table cannot read is
+/// U+FFFD.
+pub const FORM_ANNOTATION_RULE_V2: &str = "form-annotations-v2";
 
 /// Identity of the character-decoding data this profile carries.
 ///
@@ -605,7 +621,13 @@ pub const FORM_ANNOTATION_RULE_V1: &str = "form-annotations-v1";
 /// have no PDF backend to declare anything about. When those files land this string
 /// changes, which moves `profile_sha256` — artifacts from before and after are then correctly
 /// non-comparable, because they really were produced by different decoders.
-pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
+///
+/// `-2` (0.63.0): PDFDocEncoding joins the vendored tables, derived from three decoders rather than
+/// transcribed (`ethos-parser-pdf`'s `pdfdoc` module, `docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`). The
+/// characters of an outline title, a field's value, an annotation's text and its labels change
+/// where they hold a code that table defines; page text, which no table here decodes through it,
+/// does not.
+pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-2";
 
 /// Identity of the vendored **font metric** data — Adobe's Core-14 AFMs in `vendor/afm/`.
 ///
@@ -1446,7 +1468,7 @@ pub struct Profile {
     pub struct_tree_rule: String,
     /// The rule that read the declared outline, or [`NOT_RUN`].
     ///
-    /// See [`OUTLINE_RULE_V2`]. Its own field rather than a fold into `struct_tree_rule`, for
+    /// See [`OUTLINE_RULE_V3`]. Its own field rather than a fold into `struct_tree_rule`, for
     /// the reason the heading rule is its own: a tree and an outline are two declarations, read
     /// by two rules, and one id covering both could not say which of them moved.
     pub outline_rule: String,
@@ -1469,7 +1491,7 @@ pub struct Profile {
     pub heading_inference_rule: String,
     /// Version id of the Markdown projection rule in force (v1.1-S1).
     ///
-    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V10`]. On the profile because it decides what
+    /// See [`crate::markdown::MARKDOWN_RULE_BLOCKS_V11`]. On the profile because it decides what
     /// comes out: a run that projected headings from font sizes and a run that refused to would
     /// disagree about the same document, and an artifact whose hash could not tell them apart
     /// would claim a comparability it lacks.
@@ -1480,7 +1502,7 @@ pub struct Profile {
     pub markdown_rule: String,
     /// Version id of the HTML projection rule in force (v1.1-S4).
     ///
-    /// See [`crate::html::HTML_RULE_BLOCKS_V10`]. A **separate** id from
+    /// See [`crate::html::HTML_RULE_BLOCKS_V11`]. A **separate** id from
     /// [`Self::markdown_rule`], and it moves independently: a change to how a `<td>` is spelled is
     /// not a change to how a GFM row is, and one id covering both would make two artifacts
     /// non-comparable every time either projection moved.
@@ -1501,7 +1523,7 @@ pub struct Profile {
     pub locate_rule: String,
     /// Version id of the forms-and-annotations rule in force. New at v1-S4.
     ///
-    /// See [`FORM_ANNOTATION_RULE_V1`].
+    /// See [`FORM_ANNOTATION_RULE_V2`].
     pub form_annotation_rule: String,
     /// Identity of the vendored character-decoding data. See [`CMAP_DATA_VERSION`].
     pub cmap_data_version: String,
@@ -1526,7 +1548,7 @@ pub struct Profile {
     pub text_code_rule: String,
     /// Version id of the image and text-finding rule in force. New at v1-S6.
     ///
-    /// See [`OBSERVATION_RULE_V1`]. On the profile because it decides which `Do` calls become
+    /// See [`OBSERVATION_RULE_V2`]. On the profile because it decides which `Do` calls become
     /// nodes, how a painted rectangle is derived, and what counts as invisible or off-page —
     /// every one of which changes what an artifact says the document contains.
     pub observation_rule: String,
@@ -1554,18 +1576,18 @@ impl Default for Profile {
             reading_order_rule: READING_ORDER_RULE_V4.to_string(),
             table_detection: TableDetection::default(),
             struct_tree_rule: STRUCT_TREE_RULE_V2.to_string(),
-            outline_rule: OUTLINE_RULE_V2.to_string(),
+            outline_rule: OUTLINE_RULE_V3.to_string(),
             text_box_rule: TEXT_BOX_RULE_V1.to_string(),
             heading_inference_rule: HEADING_INFERENCE_RULE_V2.to_string(),
-            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V10.to_string(),
+            markdown_rule: crate::markdown::MARKDOWN_RULE_BLOCKS_V11.to_string(),
             locate_rule: crate::locate::LOCATE_RULE_V1.to_string(),
-            html_rule: crate::html::HTML_RULE_BLOCKS_V10.to_string(),
-            form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
+            html_rule: crate::html::HTML_RULE_BLOCKS_V11.to_string(),
+            form_annotation_rule: FORM_ANNOTATION_RULE_V2.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
             unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V2.to_string(),
-            observation_rule: OBSERVATION_RULE_V1.to_string(),
+            observation_rule: OBSERVATION_RULE_V2.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
             xref_repair: XrefRepair::Pad19To20V1,
             verifier: VerifierPin::NotPinned,
@@ -2663,7 +2685,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-2","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v11","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v11","observation_rule":"page-observations-v2","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3636,11 +3658,22 @@ mod tests {
              `skrifa` 0.39.0 here, `flate2` and `quick-xml` on the seven package profiles, none on \
              RTF (review 2026-09-26 N14). Dependabot #40, skrifa 0.39 -> 0.47, passed every check \
              while the metrics under every PDF text box could move; a bump now fails \
-             `contract_invariants.rs` until identity moves with it."
+             `contract_invariants.rs` until identity moves with it.\n\n\
+             Moved for the 0.63.0 release, `sha256:0b3e4533…` -> `sha256:8b9d5f04…`: \
+             `parser_version` `0.63.0-dev.1` -> `0.63.0`, and the six ids this profile owed for \
+             changes made between releases under decision #33 — `observation_rule` \
+             `page-observations-v1` -> `-v2`, for an image drawn from `/Resources` a page inherits \
+             (review 2026-09-26 N43); `form_annotation_rule` `form-annotations-v1` -> `-v2`, for \
+             strict decoding (N39) and the PDFDocEncoding table; `outline_rule` `outlines-v2` -> \
+             `-v3` and `cmap_data_version` `annex-d-encodings-1` -> `-2`, for that table \
+             (`docs/29-OUTLINES-SCOPE.md` §9 `S-ENC`); and `markdown_rule` `markdown-blocks-v10` -> \
+             `-v11` with `html_rule` `html-blocks-v10` -> `-v11`, for U+0000 no longer written \
+             (N40). No office rule id moves: the office changes since 0.62.0 are refusals. No \
+             capability and no knob moves."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:0b3e453375d5c04829f1e6efe5fc4d48db6fb2878e65014fdc119df5278c785b"
+            "sha256:8b9d5f0479aa2d090e659465a8ef17447f078f125a70feb13f50ce130c221cac"
         );
     }
 

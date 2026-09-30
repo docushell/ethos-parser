@@ -14,7 +14,7 @@
 
 //! Image XObjects: where one was painted, and which bytes it is (v1-S6).
 //!
-//! Part of [`ethos_parser_core::OBSERVATION_RULE_V1`].
+//! Part of [`ethos_parser_core::OBSERVATION_RULE_V2`].
 //!
 //! # What this module refuses to do
 //!

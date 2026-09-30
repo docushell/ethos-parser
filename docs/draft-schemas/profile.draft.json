@@ -104,7 +104,7 @@
       "minLength": 1,
       "description": "Identity of the vendored character-decoding data. Names what is actually vendored rather than what was planned: at M3 that is the PDF 32000-1 Annex D encoding tables, not the Adobe predefined CJK CMaps, whose absence is a declared limitation.",
       "examples": [
-        "annex-d-encodings-1"
+        "annex-d-encodings-2"
       ]
     },
     "font_metrics_data_version": {
@@ -179,7 +179,7 @@
       "minLength": 1,
       "description": "Version id of the forms-and-annotations rule in force (v1-S4). Decides which form-field and annotation nodes exist: which flag bits are named, how a fully-qualified field name is built, and the fact that a widget's rendering is never read as page text. Named for what it does rather than the structure it reads, because ethos-parser-core carries no format concept.",
       "examples": [
-        "form-annotations-v1"
+        "form-annotations-v2"
       ]
     },
     "struct_tree_rule": {
@@ -232,7 +232,7 @@
       "minLength": 1,
       "description": "Version id of the Markdown projection rule in force (v1.1-S1, moved at S2 and again at S3). Decides what `ethos.markdown.v1` contains: which nodes project, whether a table becomes a GFM grid or a run of paragraphs, whether a tagged list becomes list items, whether a heading comes from the structure tree or an EPUB's own `<h1>`-`<h6>`, whether a word the page broke across a line is closed up in the export, and the whitespace rule a source segment's bytes are normalized under. A profile predating v1.1-S1 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "markdown-blocks-v10"
+        "markdown-blocks-v11"
       ]
     },
     "html_rule": {
@@ -240,7 +240,7 @@
       "minLength": 1,
       "description": "Version id of the HTML projection rule in force (v1.1-S4). Decides what `ethos.html.v1` contains. SEPARATE from `markdown_rule` and it moves independently: the two projections say different things about the same table, because GFM has no `rowspan` and `<td rowspan>` does, so one id covering both would make every artifact non-comparable each time either moved. A profile predating v1.1-S4 carries no such key and is REFUSED rather than defaulted — a field defaulted in is a claim the run never made.",
       "examples": [
-        "html-blocks-v10"
+        "html-blocks-v11"
       ]
     },
     "locate_rule": {
@@ -256,7 +256,7 @@
       "minLength": 1,
       "description": "Version id of the image and text-finding rule in force (v1-S6). Decides which `Do` calls become image nodes, how a painted rectangle is derived from the page's own matrix, and what counts as invisible or off-page text.",
       "examples": [
-        "page-observations-v1"
+        "page-observations-v2"
       ]
     },
     "raster_dpi": {
@@ -272,7 +272,7 @@
     },
     "outline_rule": {
       "type": "string",
-      "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v2` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
+      "$comment": "docs/29-OUTLINES-SCOPE.md. The rule that read the catalog's /Outlines: the walk order (/First then /Next, pre-order), the depth semantics (the chain's own, never renumbered) and which destination forms resolve. `outlines-v3` on the PDF profile; `not-run` on the eight office ones, which have no PDF catalog to read."
     },
     "text_box_rule": {
       "type": "string",
@@ -438,23 +438,23 @@
         "tables": true
       },
       "classify_sample_pages": 8,
-      "cmap_data_version": "annex-d-encodings-1",
+      "cmap_data_version": "annex-d-encodings-2",
       "coordinate_system": {
         "origin": "top-left",
         "unit": "centipoint"
       },
       "font_metrics_data_version": "core14-afm-2",
-      "form_annotation_rule": "form-annotations-v1",
+      "form_annotation_rule": "form-annotations-v2",
       "heading_inference_rule": "type-size-v2",
-      "html_rule": "html-blocks-v10",
+      "html_rule": "html-blocks-v11",
       "locate_rule": "locate-scalar-exact-v1",
-      "markdown_rule": "markdown-blocks-v10",
-      "observation_rule": "page-observations-v1",
-      "outline_rule": "outlines-v2",
+      "markdown_rule": "markdown-blocks-v11",
+      "observation_rule": "page-observations-v2",
+      "outline_rule": "outlines-v3",
       "page_budget": {
         "mode": "unlimited"
       },
-      "parser_version": "0.63.0-dev.1",
+      "parser_version": "0.63.0",
       "quantum_per_point": 100,
       "raster_dpi": {
         "mode": "not_emitted"

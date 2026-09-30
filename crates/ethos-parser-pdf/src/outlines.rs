@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The outline a PDF's catalog declares — `docs/29-OUTLINES-SCOPE.md`, rule `outlines-v2`.
+//! The outline a PDF's catalog declares — `docs/29-OUTLINES-SCOPE.md`, rule `outlines-v3`.
 //!
 //! **Consume, never synthesise**, the rule `crate::structure` opens with. A `/First`/`/Next`
 //! chain is a hierarchy the author wrote down, so this reads it and reports it; nothing here

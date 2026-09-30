@@ -3,19 +3,19 @@
 All notable changes to ethos-parser, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Eight versions are tagged, 0.55.0 through 0.62.0, and five of them carry binaries.** 0.55.0,
+**Nine versions are tagged, 0.55.0 through 0.63.0, and five of them carry binaries.** 0.55.0,
 0.56.0 and 0.57.0 each ship the macOS pair — `aarch64` and `x86_64` — on the repository's GitHub
 Release ([`RELEASING.md`](docs/RELEASING.md) §8). **0.60.0 is the first built on every platform it
 ships:** Linux, Windows and both macOS architectures, one fingerprint across four runners —
 delivered, unfortunately, as the single `release-bundle.zip` its own notes tell a reader to unzip.
 **0.61.0 is the first to ship those four as five separate assets** — the four archives and
 `SHA256SUMS.txt`, published 2026-09-25 — so a consumer downloads one platform and the manifest
-instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.62.0 has
-no release object yet**: its tag push builds the four archives and the manifest, and publishing them
-is the owner's separate act. **0.58.0 and 0.59.0 are tags with no release object**, and little is
-lost by that: 0.60.0 descends from both, so their work is in the binaries above, and a reader who
-needs one of those two exactly builds it from its tag under the pinned toolchain. Every earlier
-number is in-tree only. Nothing is on crates.io, npm or PyPI.
+instead of all four; §8's amendment records why 0.60.0's shape could not be repaired. **0.62.0 and
+0.63.0 have no release object yet**: each tag push builds the four archives and the manifest, and
+publishing them is the owner's separate act. **0.58.0 and 0.59.0 are tags with no release
+object**, and little is lost by that: 0.60.0 descends from both, so their work is in the binaries
+above, and a reader who needs one of those two exactly builds it from its tag under the pinned
+toolchain. Every earlier number is in-tree only. Nothing is on crates.io, npm or PyPI.
 
 **Every version moves `profile_sha256`**, because `parser_version` is a profile field — so artifacts
 from two builds are correctly non-comparable even when nothing else changed. That is the mechanism
@@ -27,6 +27,187 @@ the unit of work that had acceptance criteria. The per-slice reasoning behind ea
 milestone documents ([`05`](docs/history/05-MILESTONES.md), [`09`](docs/history/09-V1-MILESTONES.md),
 [`11`](docs/history/11-V11-MILESTONES.md), [`13`](docs/history/13-V12-MILESTONES.md),
 [`15`](docs/history/15-V2-MILESTONES.md)); this file records what changed.
+
+---
+
+## [0.63.0] — what reading may cost is bounded, and PDFDocEncoding read where three decoders agree
+
+**A MINOR, because readers, both projections, the MCP server and the profile changed.** Most of
+this version answers what review 2026-09-26 left open at 0.62.0, and the two cost findings of
+2026-09-25: reading a PDF or a spreadsheet has a ceiling it refuses past, by name; MCP answers each
+request in a process of its own; and shapes the readers used to read otherwise than a renderer — an
+object that did not decrypt, an operator given too many operands — are refused. One reading is new:
+a PDF text string in PDFDocEncoding is read through a table derived from three independent
+decoders, where it used to be read only where it matches Latin-1. And the profile names two more
+things output depends on.
+
+**Measured on real documents, little of it moves output.** Against the v0.62.0 release binary over
+332 local documents — this repository's fixtures and Ethos's, the gate-zero corpus and
+opendataloader-bench's 200 — with identity blanked and the six moved rule ids mapped, `markdown`
+and `html` are byte-identical on all 332 and `classify` on all 316 PDFs, and no exit code changes.
+Of the 332 extracts, 171 are identical. Each of the other 161 differs only where this entry says:
+145 PDFs carry the reworded declaration below, and for 135 of them it is the only difference; the 16
+office documents differ only in their backend string, which carries the version; seven NIST
+documents gain 71 outline titles; three documents gain `string-ends-mid-code`; and one
+opendataloader-bench document's nine link texts read an en dash where they read U+0085. The
+refusals below are of malformed, crafted and hostile inputs. The numbers given with each change are
+quoted from the commit that made it, measured against that commit's parent.
+
+### What reading may cost is bounded
+
+- **A PDF** (decision #34). Nothing bounded what a content stream decodes to or how many operations
+  a page holds, and pages read in parallel multiplied both by the host's cores: 17 KB reached
+  2.6 GB on one page, and forty pages sharing one stream took 8 GB, exit 0. Each is now held to a
+  ceiling set far above a census of 1,294 real PDFs and refused past it as `resource_limit`, naming
+  it: 64 MiB decoded per stream and per page's content; 1,048,576 operations per page, counted
+  before each is kept; and per document, 33,554,432 operations and 1 GiB of content. A page past
+  65,536 operations is read after the others, alone, in page order, and output does not depend on
+  which pass read it. The 17 KB file is refused at 118 MiB. The forty-page one still reaches
+  3.3 GiB before it is refused: each dense page read in turn leaves resident memory about 85 MiB
+  higher, and the document's ceiling bounds that at about 32 pages, where it was unbounded.
+- **A spreadsheet.** A part's inflated size was bounded and its cells were not: an XLSX cell citing
+  a shared string clones it, and an ODS repeat copies its cell. An 8,017-byte workbook citing one
+  1 MiB string from 1,024 cells made a 1.07 GB artifact. One budget per document now holds every
+  sheet's cells to 1,000,000 cells, 64 MiB of text and 64 MiB of locator strings, each refused past
+  as `resource_limit`; that workbook is refused at 69 MiB. Two sheets naming one part are refused
+  before either is read.
+- **An MCP session.** One process served every call, and the allocator kept what each call freed:
+  sixteen `locate` calls took one server from 448 MiB to 4,480 MiB with no plateau. Each request
+  line now runs in a process of its own, which returns its memory when it ends: the same sixteen
+  peak at 737 MiB, and the server holds 2.4 MiB after the last reply. Replies are byte-identical.
+  The cost is a process start, about 7.3 ms a line on macOS, inside the noise of any call that does
+  work. A line whose process fails is answered with JSON-RPC's internal error under its own id, and
+  the session goes on. The verified-digest memo is carried between one session's processes over a
+  pipe the host cannot write, keyed by the binary's version, and decision #24 is amended to say so.
+- **`tag`** splices and deflates each page as it plans it and keeps no page's bytes after: a
+  200-page file sharing one 400 KB stream went from 3.0 GB to 1.0 GB resident. No output byte moved
+  over 803 PDFs.
+
+### Refused, by name
+
+- **An encrypted object `lopdf` could not decrypt.** `lopdf` discards the error and keeps the
+  ciphertext, so an annotation whose `/Contents` was a byte short extracted ciphertext as its text,
+  exit 0. Each object is now decrypted again through `lopdf`'s own call, which reports a failure,
+  and one that fails refuses the document as `malformed`, naming it. One failure is `lopdf`'s own: a
+  signature's `/Contents` is stored unencrypted, so a `/Type /Sig` dictionary carrying `/ByteRange`
+  keeps that value as written, as qpdf 12.3.2 does; encrypted copies of three signed IRS forms,
+  which `lopdf` fails on in every AES variant, read byte-identically. Of 1,260 encrypted PDFs,
+  under `extract` and `classify`, only the review's two crafted files change.
+- **An operator given more operands than PDF 32000-1 Table A.1 gives it.** The interpreter read
+  operands from the front and a renderer pops them from the back, so a `Tm` given more than six
+  numbers placed text where neither Ghostscript nor CoreGraphics draws it.
+- **A structure element whose `/S` or `/ID` is not UTF-8.** Decoded lossily, `/ID <FF>` and
+  `/ID <FE>` gave two elements one `element_id`, `U+FFFD`. No corpus element needs another reading:
+  0 of 178,239.
+- **In `classify`, what `extract` refuses.** A page whose content `extract` refuses was classified
+  `no-text`, exit 1, and an operator Table A.1 does not list was counted, exit 0. Each now exits 2
+  with `extract`'s own message, naming the page. Over 2,088 PDFs, 8 moved: an OmniDocBench document
+  whose `/Filter` is not a name, and seven of the review's hostile files.
+- **A DOCX, XLSX or PPTX package naming one entry twice.** They read the first, where Python's
+  `zipfile` and `textutil` read the last; the ODF and EPUB readers already refused it, and all seven
+  package readers now share one check.
+- **An artifact of a type or version its reader does not read.** Only the representation checked
+  its identity: the Markdown, HTML, locations, extract, classification and grounding-validation
+  readers read `9.9.9` or `not.an.artifact.v7` as their own shape, and the SDKs' `nodeGet` and
+  `node_get` checked a type prefix only. Each now refuses, naming what it reads. Two read wider on
+  purpose: extract also reads `0.4.0`, the shape before outlines, and `ethos.grounding.v1` still
+  parses any identity, because `grounding-check` answers it as Ethos does, `unsupported_version`.
+- **An MCP argument a tool's schema does not declare.** Every tool advertises
+  `additionalProperties: false`, yet `extract` given `"max_pages": 1` read all six pages of a
+  six-page document, so a host that believed it had bounded the call had not. It is
+  `INVALID_PARAMS` now, naming the key.
+
+### Characters read
+
+- **PDFDocEncoding, where three decoders agree.** A PDF text string that is not UTF-16BE is
+  PDFDocEncoding, and this engine read it only where it matches Latin-1: 69 outline titles in the
+  fixtures were absent and counted, and `0x85` read as the C1 control U+0085 where the document
+  means an en dash. `vendor/generate-pdfdoc-encoding.py` reads a 256-entry probe back through qpdf
+  12.3.2, pdf.js 5.7.284 and Ghostscript 10.06.0 and emits a code only where all three give the
+  same scalar: 252 of 256. The four they part over — `0x1B`, `0x7F`, `0x9F`, `0xAD` — stay refused
+  by the strict decoders and become U+FFFD in the lenient one. Over 332 local documents 71 titles
+  gain their text and none lose it, and opendataloader-bench `01030000000172`'s nine links read
+  `Mann– Whitney`.
+- **A form field's value and an annotation's text** are decoded strictly, as a title is: UTF-8
+  behind its byte-order mark reads as UTF-8, not mojibake, and a value that will not decode leaves
+  the field's value `unsupported` or the annotation's text empty, keeps the node, and is counted
+  under a new limitation, `form-annotation-text-undecodable`, which none of the 332 documents above
+  carries. Tab, line feed and carriage return are admitted. Labels (`/T`, `/NM`) keep the lenient
+  decoder.
+- **`/Resources` inherited from `/Pages`** is read by the fonts, the images and `classify`, as the
+  writer already read it; a document whose font sat on `/Pages` was refused. No corpus document
+  inherits its resources.
+- **U+0000 is not written into Markdown or HTML**, and is counted in a new census bucket,
+  `null-characters-not-projected-v1`. Neither format carries it — CommonMark replaces it with
+  U+FFFD and an HTML parser drops it — so a segment holding one rendered as a string its node does
+  not hold. Every other control survives both formats and is written as before. No corpus document
+  holds one.
+
+### Declared
+
+- **`string-ends-mid-code`**, a new limitation. A string of odd length under a two-byte codespace
+  ends in a lone byte, which this engine reads as a code of its own, as Ghostscript renders it;
+  pdf.js and §9.7.6.3 read it otherwise, so no reading is the document's own. Dropping such runs
+  removed 27 that renderers draw, so the reading is kept and declared, with the count of runs.
+  Of the 332 documents above, three carry it: 3,919 runs in gate-zero's `nist-sp-800-53r5`, 937
+  in `nist-sp-800-53Ar5` and 77 in opendataloader-bench `01030000000120`.
+- **No declaration calls a text box glyph ink.** Contract §5.3 settles that a run's box is the pen's
+  advance over the font's envelope, yet the details of `non-text-nodes-not-projected` and
+  `geometry-absent-not-groundable` still said a grounding bbox means measured ink. Both are
+  reworded; of the 316 PDFs above, 145 carry the first and 34 the second. MCP's `extract` tool,
+  both SDKs and their LangChain tools now describe a reader of nine formats rather than of a PDF.
+- **The writers declare** that a line end written raw inside a literal string is written back as
+  `\r`, which qpdf reads as CR LF where the source meant LF (`docs/23-AUTO-TAGGING-SCOPE.md` §9 item
+  8). No corpus string carries one.
+
+### The draft schemas describe what the engine emits
+
+Four drafts rejected every artifact the engine emitted — jsonschema failed 290 of 290
+representations — while the five schema guards passed, because they pin constants and nothing
+compared an artifact with its schema. The drafts now follow the Rust types, and `draft_schemas.rs`
+walks every artifact the engine emits for each engine and office fixture against its draft. Over
+1,723 artifacts from 296 documents jsonschema fails none. The extract and classification drafts no
+longer state a schema version, which had gone stale.
+
+### Identity
+
+**The profile names two more things output depends on** (decision #35):
+
+- `unicode_data_version`, `std-unicode-16.0.0` on the pinned toolchain. Markdown and HTML read
+  `char::is_alphabetic` and `char::is_whitespace`, whose tables follow the compiler: between rustc
+  1.88 and 1.98, `is_alphabetic` changes for 4,662 scalars. A toolchain with other tables now moves
+  `profile_sha256` instead of moving the projections silently.
+- `backend.components`, the resolved version of each third-party crate beside the backend that
+  decides output: `flate2` 1.1.9, `read-fonts` 0.36.0 and `skrifa` 0.39.0 on the PDF profile, and
+  `flate2` and `quick-xml` 0.41.0 on the seven package profiles; none on RTF. A test holds all
+  seventeen to `Cargo.lock`, and a CI job, `dependency-bytes`, compares a Dependabot pull request's
+  artifacts with its base's, identity blanked (`ci/artifact-bytes.py --identity-blind`). The skrifa
+  0.47 bump waits on it.
+
+A test now requires every profile field to reach the bytes the profile is hashed from: the review
+added a `#[serde(skip)]` knob that moved representation fingerprints with `profile_sha256`
+unchanged, and every guard passed.
+
+**Between releases `main` carried `0.63.0-dev.1`** (decision #33). This release drops `-dev.1`,
+and the next opens as `0.64.0-dev.1` right after the tag.
+
+**Six rule ids move here**, each owed by a change made since 0.62.0 and deferred to the release:
+`page-observations-v2` (inherited resources), `form-annotations-v2` (strict decoding and the
+PDFDocEncoding table), `outlines-v3` and `cmap_data_version` `annex-d-encodings-2` (the table), and
+`markdown-blocks-v11` with `html-blocks-v11` (U+0000). No office rule id moves: the office changes
+are refusals. Each id's documentation says what moved under it. `profile_sha256` is
+`sha256:8b9d5f04…`.
+
+**No schema version moves.** `REPRESENTATION_SCHEMA_VERSION` stays 0.7.0 and
+`EXTRACT_SCHEMA_VERSION` 0.5.0, and the Markdown and HTML versions stay where they were. The
+profile gains two keys, and an artifact carries only its hash. The two new limitation codes,
+`string-ends-mid-code` and `form-annotation-text-undecodable`, and the new census bucket are values
+inside existing keys.
+
+Decision #35 records the owner's calls before this release. Its unruled table candidates per
+`region` were measured before they were built and recovered none of the eleven pages they were
+for, so they are deferred and those pages stay refused and declared
+([`tables-why-zero.md`](docs/measurements/opendataloader-bench/tables-why-zero.md)).
 
 ---
 

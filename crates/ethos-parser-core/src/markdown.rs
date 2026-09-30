@@ -141,6 +141,7 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// | v2.2-S5 | `markdown-blocks-v7` | runs the document declared nothing about join along a baseline |
 /// | C1 S2 | `markdown-blocks-v8` | a line the reader read as a heading from its type projects as `#` |
 /// | v2.4 | `markdown-blocks-v10` | an ODT or ODP `<text:h>` projects at the level it declared, and one that cannot is counted |
+/// | 0.63.0 | `markdown-blocks-v11` | U+0000 is not written into a `source` segment, and is counted |
 ///
 /// **The `slice` column above disagrees with the `value` column on two rows and did so before
 /// this slice** — `v1.1-S3` is listed against `-v4` and `v2.2-S0` against `-v3`. Left as found
@@ -188,7 +189,14 @@ pub const MARKDOWN_SCHEMA_VERSION: &str = "1.1.0";
 /// the intermediate** — no tag, no release, no distributed binary, only source. A reader
 /// comparing two artifacts in the wild cannot meet both. Anyone who built `main` in that window
 /// and kept the output should re-run it.
-pub const MARKDOWN_RULE_BLOCKS_V10: &str = "markdown-blocks-v10";
+///
+/// `-v11` at 0.63.0 (review 2026-09-26 N40): U+0000 is not written. CommonMark replaces it with
+/// U+FFFD and an HTML parser drops it, so a `source` segment holding one rendered as a string its
+/// node does not hold; the writers drop it and the census counts it, as
+/// `null-characters-not-projected-v1`. A document whose text holds no U+0000 projects byte for
+/// byte what `-v10` projected, and none of the 2,163 documents measured holds one. Both ids move,
+/// because `crate::html` writes through the same writer.
+pub const MARKDOWN_RULE_BLOCKS_V11: &str = "markdown-blocks-v11";
 
 // -------------------------------------------------------------------------------------------
 // The structural erasures GFM causes, as codes
@@ -1821,7 +1829,7 @@ fn separate(e: &mut Emit, last: &mut Option<Block>, next: Block) {
 
 /// Project a representation into Markdown plus its map.
 ///
-/// # The rule, in full — `markdown-blocks-v10`
+/// # The rule, in full — `markdown-blocks-v11`
 ///
 /// 1. **Text runs only.** Every other node kind is dropped into its own named bucket. **Page
 ///    artifacts are NOT dropped**: a running head is a `text_run` carrying
