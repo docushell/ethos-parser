@@ -549,27 +549,7 @@ fn the_backend_version_is_the_one_the_lock_file_resolves() {
     let text = std::fs::read_to_string(&lock).unwrap_or_else(|e| panic!("{}: {e}", lock.display()));
 
     let declared = Profile::default().backend;
-    let needle = format!("name = \"{}\"", declared.name);
-    let lines: Vec<&str> = text.lines().map(str::trim).collect();
-
-    // A `[[package]]` entry writes `name` then `version`. A dependency *list* writes a bare
-    // `"lopdf",`, which this cannot match.
-    let locked: Vec<&str> = lines
-        .windows(2)
-        .filter(|pair| pair[0] == needle)
-        .map(|pair| {
-            pair[1]
-                .strip_prefix("version = \"")
-                .and_then(|v| v.strip_suffix('"'))
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Cargo.lock: `{}`'s package entry is not followed by a version line \
-                         ({:?}), so this guard can no longer read the lock file's shape",
-                        declared.name, pair[1]
-                    )
-                })
-        })
-        .collect();
+    let locked = locked_versions(&text, &declared.name);
 
     assert_eq!(
         locked.len(),
@@ -587,6 +567,78 @@ fn the_backend_version_is_the_one_the_lock_file_resolves() {
          `profile.rs` and re-bless the profile pins — `profile_sha256` moves, deliberately.",
         declared.name, declared.version, declared.name, locked[0]
     );
+}
+
+/// Every `[[package]]` version `Cargo.lock` resolves `name` to.
+///
+/// A `[[package]]` entry writes `name` then `version`. A dependency *list* writes a bare
+/// `"lopdf",`, which the `name = "…"` needle cannot match.
+fn locked_versions(lock: &str, name: &str) -> Vec<String> {
+    let needle = format!("name = \"{name}\"");
+    let lines: Vec<&str> = lock.lines().map(str::trim).collect();
+    lines
+        .windows(2)
+        .filter(|pair| pair[0] == needle)
+        .map(|pair| {
+            pair[1]
+                .strip_prefix("version = \"")
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Cargo.lock: `{name}`'s package entry is not followed by a version line \
+                         ({:?}), so this guard can no longer read the lock file's shape",
+                        pair[1]
+                    )
+                })
+                .to_string()
+        })
+        .collect()
+}
+
+/// **Every crate a profile names beside its backend is the version the lock file resolves**
+/// (review 2026-09-26 N14, decision #35).
+///
+/// `BackendIdentity::components` names, per profile, the third-party crates whose versions decide
+/// its output: `skrifa` and `read-fonts` under every PDF text box, `flate2` under every inflated
+/// stream or ZIP entry, `quick-xml` under every package part. Dependabot #40 moved `skrifa` 0.39
+/// -> 0.47 with every check green. Now a bump is red here until the profile moves with it, the
+/// same identity event the backend's own version is, one test up.
+#[test]
+fn every_backend_component_is_the_version_the_lock_file_resolves() {
+    let lock = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .join("Cargo.lock");
+    let text = std::fs::read_to_string(&lock).unwrap_or_else(|e| panic!("{}: {e}", lock.display()));
+
+    let profiles = [
+        ("pdf", Profile::default()),
+        ("docx", Profile::docx_v0()),
+        ("xlsx", Profile::xlsx_v0()),
+        ("pptx", Profile::pptx_v0()),
+        ("odt", Profile::odt_v0()),
+        ("ods", Profile::ods_v0()),
+        ("odp", Profile::odp_v0()),
+        ("rtf", Profile::rtf_v0()),
+        ("epub", Profile::epub_v0()),
+    ];
+    let mut named = 0;
+    for (label, profile) in &profiles {
+        for (name, declared) in &profile.backend.components {
+            let locked = locked_versions(&text, name);
+            assert_eq!(
+                locked,
+                [declared.clone()],
+                "the {label} profile declares `{name} {declared}` and Cargo.lock resolves {locked:?}. \
+                 Move the constant in `profile.rs` and re-bless the profile pins: `profile_sha256` \
+                 moves, deliberately, because this crate decides what the profile's reader emits."
+            );
+            named += 1;
+        }
+    }
+    // Guard the guard: three on the PDF profile and two on each of seven package profiles.
+    assert_eq!(named, 17, "the profiles name {named} components");
 }
 
 /// No verification concept has leaked in (`docs/07-VERIFY-BOUNDARY.md`).

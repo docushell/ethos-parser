@@ -21,9 +21,11 @@ flate2 = "1"
 lopdf = { version = "0.44.0", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
-# `skrifa` 0.39, not the current 0.44: the newer tree needs Rust 1.89 and this workspace pins
-# 1.88 deliberately (see rust-toolchain.toml). 0.39 is the newest version that builds on the
-# pinned compiler.
+# `skrifa` 0.39, the version this workspace has measured. This comment used to call it the newest
+# that builds on the pinned 1.88; Dependabot #40 built 0.47 on 1.88 with every check green, so
+# that was not the reason. The reason is identity: skrifa's metrics size every PDF text box, and
+# the profile names this version in `backend.components` (decision #35), so a bump moves
+# `profile_sha256` and waits for a before/after diff of the artifacts' content.
 #
 # `skrifa` rather than `ttf-parser`, which the milestone named: RUSTSEC-2026-0192 records that
 # ttf-parser's author declared it unmaintained with no safe upgrade available, and names skrifa

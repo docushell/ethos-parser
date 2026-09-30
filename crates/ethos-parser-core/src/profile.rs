@@ -632,7 +632,7 @@ fn unicode_data_version() -> String {
     format!("std-unicode-{major}.{minor}.{update}")
 }
 
-/// Identity of the object/xref backend.
+/// Identity of the object/xref backend, and of the crates beside it whose versions decide output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BackendIdentity {
@@ -640,6 +640,39 @@ pub struct BackendIdentity {
     pub name: String,
     /// Exact version string.
     pub version: String,
+    /// The resolved version of each third-party crate, besides the backend itself, that turns a
+    /// document's bytes into this profile's output (review 2026-09-26 N14, decision #35).
+    ///
+    /// The profile named `lopdf` alone, so a bump of the crates under it moved output with
+    /// `profile_sha256` unchanged: Dependabot #40, skrifa 0.39 -> 0.47, passed all 32 checks,
+    /// cross-OS digests included, while skrifa's metrics size every PDF text box. Each profile
+    /// names the crates its own reader runs — the PDF profile `flate2`, `read-fonts` and `skrifa`;
+    /// the seven package formats `flate2`, which inflates their ZIP entries, and `quick-xml`; RTF
+    /// none — and `contract_invariants.rs` holds every version to what `Cargo.lock` resolves, so
+    /// a bump fails there until identity moves with it.
+    pub components: std::collections::BTreeMap<String, String>,
+}
+
+/// `flate2`, as `Cargo.lock` resolves it: every PDF stream and ZIP entry this engine inflates.
+const FLATE2_VERSION: &str = "1.1.9";
+/// `quick-xml`, as `Cargo.lock` resolves it: every OOXML, ODF and EPUB part this engine reads.
+const QUICK_XML_VERSION: &str = "0.41.0";
+/// `read-fonts`, as `Cargo.lock` resolves it: the font tables `skrifa` reads metrics from.
+const READ_FONTS_VERSION: &str = "0.36.0";
+/// `skrifa`, as `Cargo.lock` resolves it: the metrics under every PDF text box.
+const SKRIFA_VERSION: &str = "0.39.0";
+
+/// [`BackendIdentity::components`] from `(crate, version)` pairs.
+fn components(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(name, version)| ((*name).to_string(), (*version).to_string()))
+        .collect()
+}
+
+/// The components of the seven formats read out of a ZIP package with an XML reader.
+fn package_components() -> std::collections::BTreeMap<String, String> {
+    components(&[("flate2", FLATE2_VERSION), ("quick-xml", QUICK_XML_VERSION)])
 }
 
 impl Default for BackendIdentity {
@@ -660,6 +693,11 @@ impl Default for BackendIdentity {
             // `the_backend_version_is_the_one_the_lock_file_resolves` reads the lock file and
             // fails on the drift, so the sentence above is now enforced rather than asserted.
             version: "0.44.0".into(),
+            components: components(&[
+                ("flate2", FLATE2_VERSION),
+                ("read-fonts", READ_FONTS_VERSION),
+                ("skrifa", SKRIFA_VERSION),
+            ]),
         }
     }
 }
@@ -1576,6 +1614,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1649,6 +1688,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1713,6 +1753,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1781,6 +1822,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1836,6 +1878,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1897,6 +1940,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -1956,6 +2000,8 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                // RTF is read by hand: no ZIP to inflate and no XML to parse.
+                components: std::collections::BTreeMap::new(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -2019,6 +2065,7 @@ impl Profile {
             backend: BackendIdentity {
                 name: "ethos-parser-office".into(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                components: package_components(),
             },
             capabilities: Capabilities {
                 spans: true,
@@ -2184,7 +2231,11 @@ mod tests {
         );
         assert_eq!(
             keys(&wire["backend"]),
-            declared!(&profile.backend => BackendIdentity { name, version })
+            declared!(&profile.backend => BackendIdentity {
+                name,
+                version,
+                components,
+            })
         );
         assert_eq!(
             keys(&wire["coordinate_system"]),
@@ -2281,6 +2332,7 @@ mod tests {
                 BackendIdentity {
                     name: _,
                     version: _,
+                    components: _,
                 },
             classify_sample_pages: _,
             quantum_per_point: _,
@@ -2489,6 +2541,15 @@ mod tests {
                 "unicode_data_version",
                 Box::new(|p: &mut Profile| p.unicode_data_version = "std-unicode-99.0.0".into()),
             ),
+            (
+                // Decision #35 (review 2026-09-26 N14): a crate beside the backend, bumped.
+                "backend.components",
+                Box::new(|p: &mut Profile| {
+                    p.backend
+                        .components
+                        .insert("skrifa".into(), "0.47.0".into());
+                }),
+            ),
             // The eight the pattern named and this list did not. Each is a knob that changes what
             // an artifact contains, and until v2-S13.1 nothing anywhere demonstrated that moving
             // it moves the digest — the pin in `the_default_profile_is_pinned` shows each field
@@ -2540,14 +2601,14 @@ mod tests {
         // in the same commit. Thirty-four since decision #22, which added
         // `font_metrics_data_version` with its mutation in the same commit for the same reason.
         // Thirty-five since decision #30, which added `locate_rule` the same way, and thirty-six
-        // since decision #29, which added `heading_inference_rule` the same way. Thirty-seven
-        // since decision #35, which added `unicode_data_version` the same way: thirty-seven
-        // mutations now cover thirty-six of the pattern's thirty-nine leaves.
+        // since decision #29, which added `heading_inference_rule` the same way. Thirty-eight
+        // since decision #35, which added `unicode_data_version` and `backend.components` the
+        // same way: thirty-eight mutations now cover thirty-seven of the pattern's forty leaves.
         assert_eq!(
             mutations.len(),
-            37,
-            "{} single-field mutation(s); thirty-seven is the number at decision #35, which added \
-             `unicode_data_version` with its mutation in the same commit",
+            38,
+            "{} single-field mutation(s); thirty-eight is the number at decision #35, which added \
+             `unicode_data_version` and `backend.components` with their mutations",
             mutations.len()
         );
 
@@ -2602,7 +2663,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3569,11 +3630,17 @@ mod tests {
              built the binary, and nothing on the profile named them, so a build whose tables \
              differ could project one representation differently under one identity. A \
              toolchain whose `std` carries other tables now fails this pin: the tripwire \
-             `rust-toolchain.toml` promised."
+             `rust-toolchain.toml` promised.\n\n\
+             Moved for decision #35 again, `sha256:d2f5863e…` -> `sha256:0b3e4533…`: the backend \
+             identity names `components` beside `lopdf` — `flate2` 1.1.9, `read-fonts` 0.36.0 and \
+             `skrifa` 0.39.0 here, `flate2` and `quick-xml` on the seven package profiles, none on \
+             RTF (review 2026-09-26 N14). Dependabot #40, skrifa 0.39 -> 0.47, passed every check \
+             while the metrics under every PDF text box could move; a bump now fails \
+             `contract_invariants.rs` until identity moves with it."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:d2f5863e4700b8c7de10a378298e7c8d6252ce74d6a9f7bd8f6b2acb4338df40"
+            "sha256:0b3e453375d5c04829f1e6efe5fc4d48db6fb2878e65014fdc119df5278c785b"
         );
     }
 

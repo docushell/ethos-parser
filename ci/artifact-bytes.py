@@ -43,6 +43,17 @@ a version bump whether or not a byte of behaviour changed. That is the identity 
 It also means this file answers exactly one question — *did this code change alter the output?* —
 and answers it only when both sides are built at the same version.
 
+# Identity-blind, for a dependency bump (decision #35)
+
+`--identity-blind` digests each artifact with four values blanked: `profile_sha256`, the
+representation's `representation_c14n_sha256`, a projection's `representation_sha256`, and the
+processor's `backend` string. A bump of a crate the profile names in `backend.components` moves
+`profile_sha256` by design, and with it every fingerprint over a payload that carries it, so a raw
+comparison would differ on every row and say nothing. Blinded, two builds at the same version
+compare on CONTENT: text, boxes, tables, ids and counts. Node ids are a kind prefix and a counter,
+not a hash of the profile, so they need no blanking. CI's `dependency-bytes` job runs this on a
+dependency pull request's base and head.
+
 # It runs on Windows too
 
 CI's `cross-os-digests` job runs this on Linux, macOS and Windows and requires the three lists to
@@ -64,15 +75,42 @@ import argparse
 import hashlib
 import os
 import pathlib
+import re
 import subprocess
 import sys
-from typing import Iterable
+from typing import Callable, Iterable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BINARY = ROOT / "target" / "release" / ("ethos-parser.exe" if os.name == "nt" else "ethos-parser")
 GATE = ROOT / "fixtures" / "gate"
 PROJECTIONS = ("ground", "markdown", "html")
 CHUNK = 1 << 20
+# The identity values `--identity-blind` blanks, and how many bytes it holds back between chunks:
+# more than the longest match, so no match is ever cut in two.
+IDENTITY = re.compile(
+    rb'"(profile_sha256|representation_c14n_sha256|representation_sha256|backend)":"[^"]{0,160}"'
+)
+HOLD = 512
+
+
+def digest_of(read: Callable[[int], bytes], blind: bool) -> str:
+    """sha256 of everything `read` yields, with the identity values blanked when `blind`."""
+    digest = hashlib.sha256()
+    tail = b""
+    while chunk := read(CHUNK):
+        if not blind:
+            digest.update(chunk)
+            continue
+        buffer = tail + chunk
+        cut = max(0, len(buffer) - HOLD)
+        for match in IDENTITY.finditer(buffer):
+            if match.start() < cut < match.end():
+                cut = match.start()
+                break
+        digest.update(IDENTITY.sub(rb'"\1":"-"', buffer[:cut]))
+        tail = buffer[cut:]
+    digest.update(IDENTITY.sub(rb'"\1":"-"', tail))
+    return digest.hexdigest()
 
 
 def ordered(paths: Iterable[pathlib.Path]) -> list[pathlib.Path]:
@@ -96,7 +134,9 @@ def inputs(small: bool, without: frozenset[str]) -> list[pathlib.Path]:
     return found
 
 
-def run(args: list[str], stdin_path: pathlib.Path | None = None) -> tuple[str, int]:
+def run(
+    args: list[str], blind: bool, stdin_path: pathlib.Path | None = None
+) -> tuple[str, int]:
     """`(sha256 of stdout, exit code)`, streamed so a gigabyte artifact costs a megabyte here."""
     with open(stdin_path, "rb") if stdin_path else open(os.devnull, "rb") as source:
         proc = subprocess.Popen(
@@ -105,14 +145,12 @@ def run(args: list[str], stdin_path: pathlib.Path | None = None) -> tuple[str, i
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        digest = hashlib.sha256()
         assert proc.stdout is not None
-        while chunk := proc.stdout.read(CHUNK):
-            digest.update(chunk)
-        return digest.hexdigest(), proc.wait()
+        got = digest_of(proc.stdout.read, blind)
+        return got, proc.wait()
 
 
-def emit(small: bool, without: frozenset[str], workdir: pathlib.Path) -> list[str]:
+def emit(small: bool, without: frozenset[str], workdir: pathlib.Path, blind: bool) -> list[str]:
     lines: list[str] = []
     for source in inputs(small, without):
         name = source.relative_to(ROOT).as_posix()
@@ -122,18 +160,16 @@ def emit(small: bool, without: frozenset[str], workdir: pathlib.Path) -> list[st
             code = subprocess.run(
                 [str(BINARY), "extract", str(source)], stdout=sink, stderr=subprocess.DEVNULL
             ).returncode
-        digest = hashlib.sha256()
         with open(extract, "rb") as handle:
-            while chunk := handle.read(CHUNK):
-                digest.update(chunk)
-        lines.append(f"{digest.hexdigest()}  {name}  extract  exit={code}")
+            got = digest_of(handle.read, blind)
+        lines.append(f"{got}  {name}  extract  exit={code}")
         if code != 0:
             # A refusal is recorded, never skipped — see the module docstring.
             for command in PROJECTIONS:
                 lines.append(f"{'-' * 64}  {name}  {command}  exit=-")
             continue
         for command in PROJECTIONS:
-            got, status = run([command, str(extract)])
+            got, status = run([command, str(extract)], blind)
             lines.append(f"{got}  {name}  {command}  exit={status}")
     return lines
 
@@ -148,6 +184,11 @@ def main() -> int:
         default=[],
         metavar="STEM",
         help="leave out the gate PDF with this file stem; repeatable",
+    )
+    ap.add_argument(
+        "--identity-blind",
+        action="store_true",
+        help="blank the identity values, to compare content across a dependency bump",
     )
     args = ap.parse_args()
 
@@ -167,7 +208,7 @@ def main() -> int:
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        lines = emit(args.small, frozenset(args.without), pathlib.Path(tmp))
+        lines = emit(args.small, frozenset(args.without), pathlib.Path(tmp), args.identity_blind)
 
     # `\n` on every host. Python on Windows writes `\r\n` for each `\n` by default, and a digest
     # list is compared as bytes across operating systems.
