@@ -17,6 +17,7 @@
     "reading_order_rule",
     "cmap_data_version",
     "font_metrics_data_version",
+    "unicode_data_version",
     "xref_repair",
     "verifier",
     "markdown_rule",
@@ -103,6 +104,14 @@
       "description": "Identity of the vendored FONT METRIC data, distinct from cmap_data_version: that one names the tables turning a code into a character, this one the tables turning a character into an advance and a face into an ink envelope. At decision #22 that is Adobe's Core-14 AFMs in vendor/afm/, under APAFML. A standard-14 font the document names with no /Widths gains a measured ink box from them, so a run before and after this string existed produced different geometry and is correctly non-comparable.",
       "examples": [
         "core14-afm-2"
+      ]
+    },
+    "unicode_data_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The Unicode tables the build's std carries, as `std-unicode-<major>.<minor>.<update>` (decision #35). Markdown and HTML decide a line-end hyphen join with `char::is_alphabetic`, and the whitespace rule with `char::is_whitespace`, both of which follow the compiler's tables; named for the tables rather than the compiler, so a toolchain bump that leaves them unchanged leaves identity unchanged.",
+      "examples": [
+        "std-unicode-16.0.0"
       ]
     },
     "xref_repair": {
@@ -446,6 +455,7 @@
       },
       "text_box_rule": "advance-over-font-envelope-v1",
       "text_code_rule": "declared-font-codes-v2",
+      "unicode_data_version": "std-unicode-16.0.0",
       "verifier": {
         "mode": "not_pinned"
       },

@@ -626,6 +626,12 @@ pub const CMAP_DATA_VERSION: &str = "annex-d-encodings-1";
 /// table turns a code into a *width*, never into different text.
 pub const FONT_METRICS_DATA_VERSION: &str = "core14-afm-2";
 
+/// [`Profile::unicode_data_version`], read from the `std` this build was compiled with.
+fn unicode_data_version() -> String {
+    let (major, minor, update) = char::UNICODE_VERSION;
+    format!("std-unicode-{major}.{minor}.{update}")
+}
+
 /// Identity of the object/xref backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1463,6 +1469,17 @@ pub struct Profile {
     pub cmap_data_version: String,
     /// Identity of the vendored font-metric data. See [`FONT_METRICS_DATA_VERSION`].
     pub font_metrics_data_version: String,
+    /// The Unicode tables this build's `std` carries, as `std-unicode-16.0.0` (review 2026-09-26
+    /// N13, decision #35).
+    ///
+    /// `char::is_alphabetic` decides a line-end hyphen join in both projections, and
+    /// `char::is_whitespace` their whitespace rule and the ToUnicode tokenizer; both read tables
+    /// that follow the compiler. rustc 1.88 carries Unicode 16 and 1.98 Unicode 17, and
+    /// `is_alphabetic` changes for 4,662 scalars between them, so a build from another toolchain
+    /// could project one representation differently under one `profile_sha256` — and the 332
+    /// corpus documents agree, so nothing would show it. Named for the tables rather than the
+    /// compiler: a toolchain bump that leaves them unchanged leaves identity unchanged too.
+    pub unicode_data_version: String,
     /// Version id of the character-code rule in force. New at v1-S6.1.
     ///
     /// See [`TEXT_CODE_RULE_V2`]. Distinct from [`CMAP_DATA_VERSION`], which names the vendored
@@ -1508,6 +1525,7 @@ impl Default for Profile {
             form_annotation_rule: FORM_ANNOTATION_RULE_V1.to_string(),
             cmap_data_version: CMAP_DATA_VERSION.to_string(),
             font_metrics_data_version: FONT_METRICS_DATA_VERSION.to_string(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: TEXT_CODE_RULE_V2.to_string(),
             observation_rule: OBSERVATION_RULE_V1.to_string(),
             raster_dpi: RasterDpi::NotEmitted,
@@ -1595,6 +1613,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: DOCX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1664,6 +1683,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: XLSX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1727,6 +1747,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: PPTX_TEXT_CODE_RULE_V3.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1794,6 +1815,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: ODT_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1848,6 +1870,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: ODS_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1908,6 +1931,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: ODP_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -1966,6 +1990,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: RTF_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -2028,6 +2053,7 @@ impl Profile {
             form_annotation_rule: NOT_RUN.into(),
             cmap_data_version: NOT_RUN.into(),
             font_metrics_data_version: NOT_RUN.into(),
+            unicode_data_version: unicode_data_version(),
             text_code_rule: EPUB_TEXT_CODE_RULE_V2.to_string(),
             observation_rule: NOT_RUN.into(),
             xref_repair: XrefRepair::NotRun,
@@ -2148,6 +2174,7 @@ mod tests {
                 form_annotation_rule,
                 cmap_data_version,
                 font_metrics_data_version,
+                unicode_data_version,
                 text_code_rule,
                 observation_rule,
                 raster_dpi,
@@ -2296,6 +2323,7 @@ mod tests {
             form_annotation_rule: _,
             cmap_data_version: _,
             font_metrics_data_version: _,
+            unicode_data_version: _,
             xref_repair: _,
             verifier: _,
         } = &base;
@@ -2456,6 +2484,11 @@ mod tests {
                 "font_metrics_data_version",
                 Box::new(|p: &mut Profile| p.font_metrics_data_version = "core14-afm-9".into()),
             ),
+            (
+                // Decision #35 (review 2026-09-26 N13): the Unicode tables `std` carries.
+                "unicode_data_version",
+                Box::new(|p: &mut Profile| p.unicode_data_version = "std-unicode-99.0.0".into()),
+            ),
             // The eight the pattern named and this list did not. Each is a knob that changes what
             // an artifact contains, and until v2-S13.1 nothing anywhere demonstrated that moving
             // it moves the digest — the pin in `the_default_profile_is_pinned` shows each field
@@ -2507,13 +2540,14 @@ mod tests {
         // in the same commit. Thirty-four since decision #22, which added
         // `font_metrics_data_version` with its mutation in the same commit for the same reason.
         // Thirty-five since decision #30, which added `locate_rule` the same way, and thirty-six
-        // since decision #29, which added `heading_inference_rule` the same way: thirty-six
-        // mutations now cover thirty-five of the pattern's thirty-eight leaves.
+        // since decision #29, which added `heading_inference_rule` the same way. Thirty-seven
+        // since decision #35, which added `unicode_data_version` the same way: thirty-seven
+        // mutations now cover thirty-six of the pattern's thirty-nine leaves.
         assert_eq!(
             mutations.len(),
-            36,
-            "{} single-field mutation(s); thirty-six is the number at decision #29, which added \
-             `heading_inference_rule` with its mutation in the same commit",
+            37,
+            "{} single-field mutation(s); thirty-seven is the number at decision #35, which added \
+             `unicode_data_version` with its mutation in the same commit",
             mutations.len()
         );
 
@@ -2568,7 +2602,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-1","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v1","heading_inference_rule":"type-size-v2","html_rule":"html-blocks-v10","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v10","observation_rule":"page-observations-v1","outline_rule":"outlines-v2","page_budget":{"mode":"unlimited"},"parser_version":"0.63.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3528,11 +3562,18 @@ mod tests {
              Moved once more right after the `v0.62.0` tag, `sha256:6644906f…` -> \
              `sha256:b0fd1b1d…`: `parser_version` `0.62.0` -> `0.63.0-dev.1`, and nothing else \
              (`docs/RELEASING.md` §5.7, decision #33), so no build of `main` claims the version \
-             just released."
+             just released.\n\n\
+             Moved for decision #35, `sha256:b0fd1b1d…` -> `sha256:d2f5863e…`: the new \
+             `unicode_data_version`, `std-unicode-16.0.0` on the pinned toolchain (review \
+             2026-09-26 N13). Markdown and HTML follow the Unicode tables of the compiler that \
+             built the binary, and nothing on the profile named them, so a build whose tables \
+             differ could project one representation differently under one identity. A \
+             toolchain whose `std` carries other tables now fails this pin: the tripwire \
+             `rust-toolchain.toml` promised."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:b0fd1b1d3b9ebbe4e9ad45b81231a2b7a64cf7a9cdad8bbda89f1706be5aa527"
+            "sha256:d2f5863e4700b8c7de10a378298e7c8d6252ce74d6a9f7bd8f6b2acb4338df40"
         );
     }
 

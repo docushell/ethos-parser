@@ -4,7 +4,9 @@
 # workspace precisely so that conflict does not have to be resolved (docs/04-ARCHITECTURE.md §5).
 #
 # Bumping this is an output-affecting change: it belongs in the profile, and the determinism
-# suite is re-run on the bump.
+# suite is re-run on the bump. The profile's `unicode_data_version` names the Unicode tables the
+# toolchain's `std` carries (decision #35), so a bump that changes them fails
+# `the_default_profile_is_pinned` until the profile moves.
 [toolchain]
 channel = "1.88.0"
 components = ["rustfmt", "clippy"]
