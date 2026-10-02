@@ -72,7 +72,7 @@ jobs:
   # depends on. On a tag push there is no input and every target runs; a dispatch with `targets`
   # cleared builds every target too, because a cleared field says nothing was chosen.
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -81,14 +81,16 @@ jobs:
       # `--native` builds nothing else, so nothing here is cross-compiled and every packaged binary
       # was executed by the kind of machine it is for. Why each runner:
       #
-      # - `x86_64-unknown-linux-gnu` on `ubuntu-latest`: gnu rather than musl. The runner's own
+      # - `x86_64-unknown-linux-gnu` on `ubuntu-24.04`: gnu rather than musl. The runner's own
       #   triple is x86_64-unknown-linux-gnu, so this is the one Linux binary that is `verified` in
       #   the script's sense with no second libc, no `apt-get install musl-tools`, no
       #   `rustup target add` and no cross-link step to be wrong about. The cost is a glibc floor:
       #   the binary links the runner image's glibc and runs on distributions at least that new. A
       #   static musl build lifts that and is one more leg — musl-tools plus
       #   `--target x86_64-unknown-linux-musl` — when somebody asks for it; pinning `runs-on` to an
-      #   older Ubuntu lowers the floor too.
+      #   older Ubuntu lowers the floor too. Pinned, not `ubuntu-latest`: that label moves to
+      #   Ubuntu 26 from 2026-10-19, which would raise the floor through a label change rather than
+      #   a commit.
       # - `x86_64-pc-windows-msvc` on `windows-latest`: a `.tar.gz` here too, not a `.zip` — one
       #   packaging path, GNU tar in Git Bash, and no dependency on `zip` or 7-Zip being on the
       #   image. Windows 10 and later ship `tar`, and Windows 11's Explorer opens the archive.
@@ -108,7 +110,7 @@ jobs:
         env:
           WANTED: ${{ github.event_name == 'workflow_dispatch' && inputs.targets || '' }}
           TARGETS: >-
-            [{"target": "x86_64-unknown-linux-gnu", "os": "ubuntu-latest"},
+            [{"target": "x86_64-unknown-linux-gnu", "os": "ubuntu-24.04"},
              {"target": "x86_64-pc-windows-msvc", "os": "windows-latest"},
              {"target": "aarch64-apple-darwin", "os": "macos-latest"},
              {"target": "x86_64-apple-darwin", "os": "macos-15-intel"}]
@@ -145,7 +147,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
 
@@ -210,7 +212,7 @@ jobs:
       # Everything the script wrote: the tarball, the fingerprint of the binary inside it, this
       # runner's own SHA256SUMS.txt and the build log. `verify` consumes the first three.
       # `overwrite`, so re-running a leg does not fail on the name the first attempt uploaded.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: built-${{ matrix.target }}
           path: target/release-artifacts/
@@ -222,21 +224,21 @@ jobs:
     # target left out of `targets` has no leg at all, so it is neither a success nor a failure.
     needs: build
     name: one set of bytes on every runner
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       # The script and the corpus at the same ref: `--assemble` re-derives the produced-row floor
       # from fixtures/gate and the version from Cargo.toml, so an upload built from a different
       # tree fails by name rather than assembling. No tag step here — every leg already refused
       # a tag that does not name this version, before it uploaded anything.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
 
       # One directory per runner under dist/, which is the shape `--assemble` reads. The pattern
       # must not match `release-bundle`, or a re-run of this job would read its own last output
       # as a fifth runner.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: built-*
           path: dist
@@ -248,7 +250,7 @@ jobs:
       # then the `gh release create` line in docs/RELEASING.md §8 over dist/*.tar.gz and
       # dist/SHA256SUMS.txt. The fingerprints ride along so a locally built binary can be held to
       # the runners' bytes with `ci/release-artifacts.sh --fingerprint-only` and `diff`.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-bundle
           path: |

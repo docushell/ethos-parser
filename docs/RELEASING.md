@@ -251,7 +251,7 @@ release, so that is a fact about the workflow rather than a promise in it.
   runner's own target. That builds the binary, EXECUTES it over all eight gate documents, writes
   its `.fingerprint`, refuses if any document was refused, packages the tarball with `LICENSE` and
   `README.md`, and uploads it as `built-<target>`. `--tag` refuses a tag that does not name
-  Cargo.toml's version. Four runners, each native: `ubuntu-latest` → `x86_64-unknown-linux-gnu`,
+  Cargo.toml's version. Four runners, each native: `ubuntu-24.04` → `x86_64-unknown-linux-gnu`,
   `windows-latest` → `x86_64-pc-windows-msvc`, `macos-latest` → `aarch64-apple-darwin`,
   `macos-15-intel` → `x86_64-apple-darwin`. Nothing is cross-compiled.
 - **`verify`.** Downloads every `built-*` and runs `ci/release-artifacts.sh --assemble dist`. The
