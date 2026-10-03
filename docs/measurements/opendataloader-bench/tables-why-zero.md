@@ -215,6 +215,19 @@ phrases before the fold: a new rule id with a fabrication risk of its own, since
 gutter and a word space can look alike. It is deferred to its own scoped slice, for 0.64.0 at the
 earliest; the eleven stay refused and declared as they are.
 
+**Amended 2026-10-03: phrases measured too, and they are not enough.** A prototype joined each
+line's runs into phrases before the fold — a run continuing the one emitted before it on its
+baseline, across a gap narrower than the 1 200-centipoint gutter floor — and retried the rule per
+leading-gap slab wherever the page-wide candidate was refused. Fabrication stayed 0 on the labelled
+set, whose 204 cells did not move; opendataloader-bench TEDS stayed 0.1728; ParseBench's table score
+moved 0.0212 -> 0.0245. Over 299 ParseBench table pages the page-wide candidate was still refused
+by the gutter floor on 243: the fold reads **left** origins, so a right-aligned or centred column
+of numbers opens a column line per width. And the ruled rule refused the drawn grid on 191, 161 of
+them because a column boundary is not traced end to end — on `0000027_page1` the rows are
+zebra-striped, cell rectangles on alternate rows only, so neither of `ruled-rects-v6`'s two shapes
+of evidence holds. Both are new rules, not adjustments: column lines from whitespace across rows
+rather than from left origins, and a striped grid's evidence. The prototype was not kept.
+
 ### Cause 4 — an inferred grid under the gutter floor (3 documents)
 
 `01030000000130` (gap 339 cp), `01030000000180` (392 cp), `01030000000197` (561 cp), each against
