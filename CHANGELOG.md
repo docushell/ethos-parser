@@ -87,6 +87,13 @@ build is not comparable with a 0.63.0 one**.
 
   The last two constants are this engine's, measured on two corpora, where 0.47.0 refused a tuned
   gap epsilon; `MARKDOWN_RULE_BLOCKS_V12`'s doc says where each number comes from.
+- **An `/Identity-H` or `/Identity-V` font with no `/ToUnicode` costs its runs, not the
+  document.** The code is the CID and two bytes wide, so a string splits and the pen advances as
+  the document says; each run shown with the font is omitted and counted under
+  `broken-font-encoding`, as a simple font's undecodable run is. Four of the 506 documents were
+  refused whole over such a font, and one of them reads 1,096 runs and drops 9. A document where
+  nothing decodes is still refused, and so is one drawing with a predefined CJK CMap, whose code
+  widths this profile cannot read.
 
 ---
 

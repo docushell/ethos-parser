@@ -130,6 +130,12 @@ pub enum Decoder {
     /// first shown with the font, not where a page lists it (tracker I8): a font a page never
     /// draws with decides nothing about the document.
     Refused(String),
+    /// `/Identity-H` or `/Identity-V` with no `/ToUnicode`, and why nothing decodes. The code is
+    /// the CID and two bytes wide (§9.7.4.2), so a string splits and the pen advances as the
+    /// document says; only the characters are unknown. A run shown with it is omitted and counted
+    /// under `broken-font-encoding`, as a simple font's undecodable run is, and the document is
+    /// refused only where nothing else decodes (ParseBench, 2026-10-03).
+    Undecodable(String),
 }
 
 /// What kind of font a resource declares itself to be (v1-S6.1).
@@ -248,6 +254,7 @@ impl Font {
             FontKind::Composite => match &self.decoder {
                 Decoder::ToUnicode(t) => t.code_bytes().max(1),
                 Decoder::Simple(_) | Decoder::Refused(_) => 1,
+                Decoder::Undecodable(_) => 2,
             },
         };
         if width == 1 {
@@ -286,7 +293,9 @@ impl Font {
                 })?;
                 e.decode(byte)
             }
-            Decoder::Refused(detail) => Err(encoding_refused(detail)),
+            Decoder::Refused(detail) | Decoder::Undecodable(detail) => {
+                Err(encoding_refused(detail))
+            }
         }
     }
 
@@ -651,7 +660,15 @@ fn load_font(
         match load_simple_encoding(doc, fd) {
             Ok(encoding) => Decoder::Simple(encoding),
             Err(EngineError::Unsupported { what, detail }) if what == "encoding" => {
-                Decoder::Refused(detail)
+                let identity = matches!(
+                    fd.get(b"Encoding"),
+                    Ok(lopdf::Object::Name(n)) if matches!(n.as_slice(), b"Identity-H" | b"Identity-V")
+                );
+                if identity && FontKind::from_subtype(&subtype) == FontKind::Composite {
+                    Decoder::Undecodable(detail)
+                } else {
+                    Decoder::Refused(detail)
+                }
             }
             Err(e) => return Err(e),
         }
@@ -785,7 +802,7 @@ fn load_simple_encoding(
                          `/ToUnicode` can. **Vendoring the predefined CJK CMaps would not change \
                          this document**, which is what the message here used to imply. A \
                          substituted character is a character the document does not contain, so \
-                         the page is refused rather than decoded approximately.",
+                         the run is omitted rather than decoded approximately.",
                         String::from_utf8_lossy(n)
                     )
                 } else {
@@ -1719,8 +1736,8 @@ mod tests {
             .expect("and carries its refusal to the first string shown with it")
     }
 
-    /// **An Identity CMap is refused for a different reason than a predefined CJK one, and says
-    /// so** (v2.2-S8).
+    /// **An Identity CMap fails for a different reason than a predefined CJK one, and says so**
+    /// (v2.2-S8) — and, since 2026-10-03, costs its runs and not the document.
     ///
     /// Both reach the same refusal, and until this slice both blamed the unvendored Adobe CJK
     /// set. That is true of `/GBK-EUC-H` and false of `/Identity-H`: §9.7.4.2 makes the identity
@@ -1733,13 +1750,18 @@ mod tests {
             let mut fd = lopdf::Dictionary::new();
             fd.set("Subtype", lopdf::Object::Name(b"Type0".to_vec()));
             fd.set("Encoding", lopdf::Object::Name(name.to_vec()));
-            let err = refusal_of(load_font(
-                &lopdf::Document::new(),
-                "F1",
-                &fd,
-                &Default::default(),
-            ));
-            let detail = format!("{err}");
+            let font =
+                load_font(&lopdf::Document::new(), "F1", &fd, &Default::default()).expect("loads");
+            assert!(
+                font.refusal().is_none(),
+                "an identity font's runs are omitted and counted, not the document refused"
+            );
+            assert_eq!(
+                font.split_codes(b"\x00\x41\x00\x42"),
+                (vec![0x41, 0x42], 0),
+                "the code is the CID, two bytes wide"
+            );
+            let detail = format!("{}", font.decode_code(0x41).unwrap_err());
             assert!(
                 detail.contains("the code IS the CID"),
                 "an identity CMap must be refused for its own reason: {detail}"

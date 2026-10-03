@@ -6509,6 +6509,58 @@ fn a_font_this_profile_cannot_decode_refuses_only_where_it_is_drawn_with() {
     );
 }
 
+/// **An `/Identity-H` font with no `/ToUnicode` costs its runs, not the document** (ParseBench,
+/// 2026-10-03). The code is the CID, so the string splits and nothing about the page is unread
+/// except those characters: the run is omitted and counted under `broken-font-encoding`, as a
+/// simple font's is. Four of ParseBench's 506 text documents were refused whole over such a font;
+/// one read 1,096 runs and dropped 9. A document where nothing decodes is still refused.
+#[test]
+fn an_identity_font_without_tounicode_drops_its_runs_and_keeps_the_page() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let document = |content: &[u8]| {
+        pdf_from_objects(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R \
+               /F2 6 0 R >> >> /Contents 4 0 R >>"
+                .to_vec(),
+            stream(content),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+            b"<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H >>".to_vec(),
+        ])
+    };
+
+    let mixed =
+        document(b"BT /F1 12 Tf 72 72 Td (Hello) Tj ET BT /F2 12 Tf 72 40 Td <00030004> Tj ET");
+    let a = extracted(&mixed).expect("the page is read");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Hello"]
+    );
+    let declared = a
+        .assurance
+        .limitations
+        .iter()
+        .find(|l| l.code == ethos_parser_pdf::limitations::BROKEN_FONT_ENCODING)
+        .expect("the dropped run is declared");
+    assert!(
+        declared.detail.starts_with("1 text run(s)"),
+        "{}",
+        declared.detail
+    );
+
+    let alone = document(b"BT /F2 12 Tf 72 40 Td <00030004> Tj ET");
+    let e = extracted(&alone).expect_err("nothing decodes, so no artifact");
+    assert_eq!(e.code(), "unsupported", "{e}");
+}
+
 // -------------------------------------------------------------------------------------------
 // Outline titles
 // -------------------------------------------------------------------------------------------
