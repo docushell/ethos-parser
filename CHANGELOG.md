@@ -87,6 +87,11 @@ build is not comparable with a 0.63.0 one**.
 
   The last two constants are this engine's, measured on two corpora, where 0.47.0 refused a tuned
   gap epsilon; `MARKDOWN_RULE_BLOCKS_V12`'s doc says where each number comes from.
+- **A content stream of nothing but comments draws nothing, and the page is read.** PDF
+  32000-1 §7.2.4 reads a comment as whitespace, but `lopdf` takes one only where the next token
+  follows its line break, so a comment-only stream joined to the next made it drop the rest of the
+  page, and the page was refused. Canon scanners write `% CANON_PFINF_TYPE0_TEXTON` as a page's
+  first stream; three ParseBench pages read now, and nothing else moved.
 - **An `/Identity-H` or `/Identity-V` font with no `/ToUnicode` costs its runs, not the
   document.** The code is the CID and two bytes wide, so a string splits and the pen advances as
   the document says; each run shown with the font is omitted and counted under

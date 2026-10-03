@@ -2433,6 +2433,13 @@ pub(crate) fn content_operations(
             }
         };
         decoded_bytes += bytes.len();
+        // A stream of nothing but comments and whitespace draws nothing: PDF 32000-1 §7.2.4 reads
+        // a comment as whitespace. `lopdf`'s grammar takes a comment only where the next token
+        // follows its line break, so joined to the stream after it, it drops the rest of the page;
+        // Canon scanners write `% CANON_PFINF_TYPE0_TEXTON` as a page's first stream.
+        if only_comments(&bytes) {
+            continue;
+        }
         content.extend_from_slice(&bytes);
         content.push(b'\n');
         ends.push(content.len() - 1);
@@ -2473,6 +2480,13 @@ pub(crate) fn page_operations_whole(
     let limit = crate::budget::MAX_PAGE_OPERATIONS;
     page_operations(doc, page_number, page_id, budget, limit)?
         .ok_or_else(|| crate::budget::page_operations_past_ceiling(page_number))
+}
+
+/// Whether `bytes` hold nothing but comments and whitespace.
+fn only_comments(bytes: &[u8]) -> bool {
+    bytes
+        .split(|&b| b == b'\n' || b == b'\r')
+        .all(|line| matches!(line.trim_ascii_start().first(), None | Some(b'%')))
 }
 
 /// Whether the cross-reference table lists `id`, its generation included, as an object in use.

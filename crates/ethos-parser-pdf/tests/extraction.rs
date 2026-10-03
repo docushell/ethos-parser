@@ -3636,6 +3636,37 @@ fn a_drawn_form_xobject_is_read_as_the_page_draws_it() {
     );
 }
 
+/// **A content stream of nothing but comments draws nothing, and the page is read** (ParseBench
+/// `text_ocr__File0021`). Canon scanners write `% CANON_PFINF_TYPE0_TEXTON` as a page's first
+/// stream; `lopdf` takes a comment only where the next token follows its line break, so joined to
+/// the next stream the comment made it drop the rest of the page, and the page was refused.
+#[test]
+fn a_stream_of_only_comments_draws_nothing_and_the_page_is_read() {
+    let stream = |data: &[u8]| {
+        [
+            format!("<< /Length {} >>\nstream\n", data.len()).as_bytes(),
+            data,
+            b"\nendstream",
+        ]
+        .concat()
+    };
+    let bytes = pdf_from_objects(&[
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 4 0 R >> \
+           >> /Contents [5 0 R 6 0 R] >>"
+            .to_vec(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        stream(b"% CANON_PFINF_TYPE0_TEXTON\n"),
+        stream(b"BT /F1 12 Tf 10 100 Td (Scanned) Tj ET"),
+    ]);
+    let a = extracted(&bytes).expect("the comment draws nothing, and the rest is read");
+    assert_eq!(
+        runs(&a).iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+        ["Scanned"]
+    );
+}
+
 /// A one-page document, 300 by 200 points, whose page names Helvetica as `/F1` (object 4) and
 /// draws `page` (object 5). Each of `forms` is a form XObject from object 6 on: its extra dictionary
 /// entries, and its content.
