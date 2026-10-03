@@ -128,3 +128,52 @@ measurement of its own.
 **Bound 4: met**: every cell's text equals its runs' concatenation, 0 of 962 on
 opendataloader-bench, and the unit tests hold it with no run in two cells.
 
+## 6. `whitespace-tracks-v2`: two columns, two rows, and only undeclared documents (2026-10-04)
+
+`-v1` is the rule of §2–§5. Of its 184 zero-scoring ParseBench pages, most were two-column tables —
+a glossary, a key and its value — under the three-column floor, or a header and one row under the
+three-row floor. `-v2` lowers both floors, each with the guard its false tables called for, measured
+on a scratch build reading the floors from the environment, and ships under a new id:
+
+| floors | opendataloader-bench documents with a table, ground truth has none | ParseBench tables |
+| --- | ---: | ---: |
+| three columns, three rows (`-v1`) | 0 | 0.1936 |
+| three columns, two rows | 1 — a chart's axis labels over its legend | — |
+| … two rows only with no empty cell | 0 | 0.2174 |
+| two columns, three rows | 12 | — |
+| two columns, two rows, two-row guard | 20 | 0.2746 |
+| **… two columns need three rows, no first column of list labels, no second column of rising page numbers** | **0** | **0.2630** |
+
+The two-column false tables were lists (a bullet, a number or a note number beside its text),
+tables of contents (an entry beside page numbers that never fall) and pairs of prose fragments; the
+guards are those three, and each is a unit test. A list's labels stand on the left, so a right-hand
+column of small numbers stays a column of values.
+
+**Two changes after the full run, both measured again.** The shipped build's first ParseBench run
+lifted tables to 0.2631 but cost content faithfulness 0.0002 and visual grounding 0.0016 — bound 3 —
+through two-row false tables: a line of authors over its affiliation numbers, and the top of a
+page's three columns of prose (headings over the first lines of their paragraphs). LiteParse's own
+two-row test answers both: a pair stands only apart from the lines around it, under a first row
+whose cells open with a letter or digit that is not lower-case and end with no comma — adapted from
+its "upper-case" so a script without case passes. And the engine's gold negative
+`unruled-near-miss`, three rows of two columns with one value five points off its column, became a
+table: its note refuses it because the alignment rule would have to move a coordinate, which this
+rule does not do, but a gold negative is a safety rail and retiring one is the owner's call. So two
+columns need **four** rows, and the rail holds.
+
+**And `-v2` runs only where the document declares no author structure.** Read on the gate corpus,
+the two-column variant re-read lists the documents declare — reference lists, glossaries, 438
+assessment-objective lists on `nist-sp-800-53Ar5` — as tables, which is an inferred structure
+overriding a declared one. A tagged document says what is a table; the gate is the one headings and
+layout units use. Every ParseBench table page and every opendataloader-bench document declares no
+structure, so the gate costs neither benchmark a table, and on the gate corpus this rule now emits
+none (bound 2 by construction).
+
+Measured with the shipped build: ParseBench tables **0.1936 → 0.2375**, overall 32.23 → 33.11
+(with layout units); content faithfulness 0.6627 unchanged, visual grounding 0.4028 → 0.4030 and no
+page of it fell, formatting unchanged — **bound 3 met**. opendataloader-bench reads exactly as
+under `-v1` (TEDS 0.3918, NID 0.8849, no table on its 158 documents without one): the two-column
+tables it gained under three rows were the ones the four-row floor now refuses. The gate corpus
+gets no table from this rule. The two-column, three-row variant (ParseBench 0.2631) waits on the
+owner's word on `unruled-near-miss`.
+

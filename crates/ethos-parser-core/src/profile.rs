@@ -489,15 +489,23 @@ pub const TABLE_DETECTION_TAGGED_V1: &str = "tagged-tables-v1";
 /// #38, `docs/31-TABLE-TRACKS-SCOPE.md`).
 ///
 /// A line splits into cells wherever its ink leaves a gap wider than one rendered em; a line of
-/// three or more cells opens a table whose tracks are those cells' extents; lines below join while
+/// two or more cells opens a table whose tracks are those cells' extents; lines below join while
 /// their cells sit on the tracks — by centre, left edge or right edge — as rows, sparse rows or
-/// wrapped lines of the row above. A table has at least three rows at a steady pitch, and the
-/// content stream wrote it row by row, which is what tells it from two columns of prose. It runs
-/// last, on runs no other rule's table holds, and a cell holds only its runs' text.
+/// wrapped lines of the row above. Rows come at a steady pitch, and the content stream wrote them
+/// row by row, which is what tells a table from two columns of prose. Two rows stand only with no
+/// empty cell, apart from the lines around them, under a first row that reads as a header; two
+/// columns need four rows, and neither a first column of list labels nor a last column of rising
+/// page numbers — a list or a table of contents set in two columns. It runs last, on runs
+/// no other rule's table holds, **only where the document declares no author structure**, and a
+/// cell holds only its runs' text.
 ///
 /// Its own field beside [`TABLE_DETECTION_UNRULED_V1`], whose evidence is every cell's origin on a
 /// shared column line: a right-aligned column has no such line, and this rule does not need one.
-pub const TABLE_DETECTION_TRACKS_V1: &str = "whitespace-tracks-v1";
+///
+/// **`-v2` because `-v1` was three columns and three rows** and ran on tagged documents' pages
+/// that declared no `/Table`. `-v1` was never pushed or released; the id moves anyway, as
+/// `type-size-v1`'s did.
+pub const TABLE_DETECTION_TRACKS_V2: &str = "whitespace-tracks-v2";
 
 /// The structure-tree rule v1-S3 ships: read `/StructTreeRoot`, bind by `(page, mcid)`.
 ///
@@ -835,7 +843,7 @@ pub struct TableDetection {
     /// Version id of the rule that infers grids from the whitespace across a table's rows
     /// (decision #38).
     ///
-    /// See [`TABLE_DETECTION_TRACKS_V1`]. A fifth field for the reason there were four: its
+    /// See [`TABLE_DETECTION_TRACKS_V2`]. A fifth field for the reason there were four: its
     /// evidence — whitespace shared down a column, not origins on a column line — is its own, and
     /// a table on the wire names the rule that built it.
     pub tracks: String,
@@ -849,7 +857,7 @@ impl Default for TableDetection {
             unruled: TABLE_DETECTION_UNRULED_V1.to_string(),
             stroke_ruled: TABLE_DETECTION_STROKE_V1.to_string(),
             tagged: TABLE_DETECTION_TAGGED_V1.to_string(),
-            tracks: TABLE_DETECTION_TRACKS_V1.to_string(),
+            tracks: TABLE_DETECTION_TRACKS_V2.to_string(),
         }
     }
 }
@@ -2789,7 +2797,7 @@ mod tests {
         let bytes = Profile::default().canonical_bytes().unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
-            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
+            r#"{"backend":{"components":{"flate2":"1.1.9","read-fonts":"0.36.0","skrifa":"0.39.0"},"name":"lopdf","version":"0.44.0"},"capabilities":{"annotations":true,"char_offsets":true,"form_fields":true,"html":true,"images":true,"markdown":true,"measured_ink_boxes":true,"multi_column_reading_order":true,"outlines":true,"page_screenshots":false,"spans":true,"structural_locators":true,"tables":true},"classify_sample_pages":8,"cmap_data_version":"annex-d-encodings-3","coordinate_system":{"origin":"top-left","unit":"centipoint"},"font_metrics_data_version":"core14-afm-2","form_annotation_rule":"form-annotations-v2","heading_inference_rule":"type-size-v3","html_rule":"html-blocks-v12","layout_unit_rule":"line-units-v1","locate_rule":"locate-scalar-exact-v1","markdown_rule":"markdown-blocks-v12","observation_rule":"page-observations-v3","outline_rule":"outlines-v3","page_budget":{"mode":"unlimited"},"parser_version":"0.64.0-dev.1","quantum_per_point":100,"raster_dpi":{"mode":"not_emitted"},"reading_order_rule":"gutter-columns-v4","struct_tree_rule":"struct-tree-v2","table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"},"text_box_rule":"advance-over-font-envelope-v1","text_code_rule":"declared-font-codes-v2","unicode_data_version":"std-unicode-16.0.0","verifier":{"mode":"not_pinned"},"xref_repair":{"mode":"pad-19-to-20-v1"}}"#,
             "the v0 profile changed. Expected causes: a crate version bump (parser_version is \
              part of identity, so a new build IS a new profile — that is by design), or a new \
              field. Update this vector and say why in the commit. Unexpected cause: something \
@@ -3798,11 +3806,15 @@ mod tests {
              Moved for decision #38's layout units, `sha256:a8dbaa62…` -> `sha256:4abfc026…`: \
              the new `layout_unit_rule`, `line-units-v1`, which joins an undeclared page's lines \
              into units by their own spacing and carries each unit's ordinal on its runs. The \
-             office profiles name it `not-run-for-this-format`. Nothing else."
+             office profiles name it `not-run-for-this-format`. Nothing else.\n\n\
+             Moved for decision #38's second table pass, `sha256:4abfc026…` -> \
+             `sha256:c2798ffb…`: `table_detection.tracks` `whitespace-tracks-v1` -> `-v2`, which \
+             reads two columns and two rows under their own guards and runs only where the \
+             document declares no author structure. Nothing else."
         );
         assert_eq!(
             Profile::default().profile_sha256().unwrap().to_string(),
-            "sha256:4abfc02619c015a5422390b9e66531d42c85d1ba22d27f03cf2ae88b56b5f4ea"
+            "sha256:c2798ffb88707f246351985e6304f9bccef3f7f02698cfe4c20727ff357b1bae"
         );
     }
 
@@ -3859,10 +3871,10 @@ mod tests {
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_STROKE_V1),
             (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TAGGED_V1),
             (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TAGGED_V1),
-            (TABLE_DETECTION_V6, TABLE_DETECTION_TRACKS_V1),
-            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V1),
-            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V1),
-            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V1),
+            (TABLE_DETECTION_V6, TABLE_DETECTION_TRACKS_V2),
+            (TABLE_DETECTION_UNRULED_V1, TABLE_DETECTION_TRACKS_V2),
+            (TABLE_DETECTION_STROKE_V1, TABLE_DETECTION_TRACKS_V2),
+            (TABLE_DETECTION_TAGGED_V1, TABLE_DETECTION_TRACKS_V2),
         ] {
             assert_ne!(
                 a, b,
@@ -3874,7 +3886,7 @@ mod tests {
         let s = String::from_utf8(base.canonical_bytes().unwrap()).unwrap();
         assert!(
             s.contains(
-                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1","unruled":"unruled-align-v1"}"#
+                r#""table_detection":{"ruled":"ruled-rects-v6","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2","unruled":"unruled-align-v1"}"#
             ),
             "{s}"
         );
@@ -3930,7 +3942,7 @@ mod tests {
 
         // The fifth, decision #38's: whitespace across a table's rows is its own evidence.
         let mut tracks_moved = base.clone();
-        tracks_moved.table_detection.tracks = "whitespace-tracks-v2".into();
+        tracks_moved.table_detection.tracks = "whitespace-tracks-SENTINEL-NEVER-A-RELEASE".into();
         assert_ne!(
             hash(&base),
             hash(&tracks_moved),
@@ -3989,7 +4001,7 @@ mod tests {
             "a pre-#38 profile must not silently acquire the tracks rule"
         );
 
-        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v1"}"#;
+        let good = r#"{"ruled":"ruled-rects-v6","unruled":"unruled-align-v1","stroke_ruled":"stroke-ruled-v1","tagged":"tagged-tables-v1","tracks":"whitespace-tracks-v2"}"#;
         assert_eq!(
             serde_json::from_str::<TableDetection>(good).unwrap(),
             TableDetection::default()

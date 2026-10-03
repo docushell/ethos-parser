@@ -120,27 +120,27 @@ A new profile field, `layout_unit_rule`, `line-units-v1` (the office profiles na
 
 ### Tables inferred from the whitespace across their rows (decision #38)
 
-A fifth table rule, `whitespace-tracks-v1`, in a fifth `table_detection` field, `tracks`, so
+A fifth table rule, `whitespace-tracks-v2`, in a fifth `table_detection` field, `tracks`, so
 `profile_sha256` moves on every profile (the office ones name it `not-run-for-this-format`).
 [`docs/31-TABLE-TRACKS-SCOPE.md`](docs/31-TABLE-TRACKS-SCOPE.md) is the scope, set before the code,
-and its §5 the measurements.
+and its §5 and §6 the measurements; `-v1`, three columns and three rows, was never pushed.
 
 - **A line splits into cells wherever its ink leaves a gap wider than one rendered em**; a line of
-  three or more cells opens a table whose tracks are those cells' extents, and lines below join it
+  two or more cells opens a table whose tracks are those cells' extents, and lines below join it
   while their cells sit on the tracks by centre, left edge or right edge — as rows, sparse rows
   with empty cells, or wrapped lines of the row above. A right-aligned column of numbers is a
   column, which `unruled-align-v1` could never find.
-- **What makes it a table and not prose:** three rows or more at a steady pitch; no cell reaching
-  a neighbouring track; upright runs only, so a document number set up the margin is no column;
-  and the content stream writing it row by row, which tells it from two columns of prose.
-- **It runs last**, on runs no other rule's table holds, and never on a page whose structure tree
-  declares a `/Table`: the author's table wins. A cell holds only its runs' text.
+- **What makes it a table and not prose:** rows at a steady pitch, written row by row in the
+  content stream, which tells a table from two columns of prose; two rows only with no empty cell,
+  standing apart under a header-like first row; two columns only with four rows, and not beside a
+  column of list labels or of rising page numbers; no cell reaching a neighbouring track; upright
+  runs only, so a document number set up the margin is no column.
+- **It runs last**, on runs no other rule's table holds, and **only where the document declares no
+  author structure**: a tagged document says what is a table. A cell holds only its runs' text.
 - **Measured:** opendataloader-bench TEDS 0.1728 -> 0.3918 (15 documents rose, none fell), NID
-  0.8793 -> 0.8849; no table on any of its 158 documents without one in ground truth, and every
-  one of the 65 it emits on the gate corpus read and none prose.
-  ParseBench tables 0.0212 -> 0.1936 and overall 25.11 -> 28.70 (local run, same scorer);
-  content faithfulness 0.6619 -> 0.6627 and visual grounding 0.2224 -> 0.2267, so no false
-  table took text out of the prose.
+  0.8793 -> 0.8849; no table on any of its 158 documents without one in ground truth, and none on
+  the tagged gate corpus. ParseBench tables 0.0212 -> 0.2375; content faithfulness and visual
+  grounding did not fall, so no inferred table took text out of the prose.
 
 ### Headings get levels, and a bold line that stands apart is one (decision #38)
 

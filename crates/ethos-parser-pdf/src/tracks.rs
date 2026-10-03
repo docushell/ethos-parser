@@ -18,24 +18,27 @@
 //! `crate::unruled` asks every cell's *origin* to sit on a shared column line, so a right-aligned
 //! or centred column of numbers opens a line per width and the candidate fails its gutter floor.
 //! This rule reads what such a table does share: **whitespace across its rows**. A line splits into
-//! cells wherever its ink leaves a gap wider than one rendered em; a line of three or more cells
-//! opens a table whose **tracks** are those cells' extents; and the lines below join it while their
-//! cells sit on the tracks — by centre, by left edge or by right edge.
+//! cells wherever its ink leaves a gap wider than one rendered em; a line of two or more cells opens
+//! a table whose **tracks** are those cells' extents; and the lines below join it while their cells
+//! sit on the tracks — by centre, by left edge or by right edge.
 //!
 //! # What it reads
 //!
-//! **Upright runs only**: a run whose measured box starts at its origin and ends where its pen
-//! does. A document number set up the margin has its pen along the page and its box across it, and
-//! a glyph of it on a row's baseline would otherwise be a column (`docs/31-TABLE-TRACKS-SCOPE.md`
-//! §5). And never a run another rule's table holds, or a page whose structure tree declares a
-//! `/Table` — the caller's gate, because the author's table wins.
+//! **Upright runs only**: a run whose measured box starts at its origin, with its baseline across
+//! the box. A document number set up the margin has its box across the page from its origin, and a
+//! glyph of it on a row's baseline would otherwise be a column (`docs/31-TABLE-TRACKS-SCOPE.md`
+//! §5). Never a run another rule's table holds, and never on a document that declares author
+//! structure — the caller's gate, because a tagged document says what is a table.
 //!
 //! # What makes it a table and not prose
 //!
-//! Three things, each measured before this code (`docs/31-TABLE-TRACKS-SCOPE.md` §3):
+//! Each clause measured before it was written (`docs/31-TABLE-TRACKS-SCOPE.md` §3, §6):
 //!
-//! 1. **Three columns and three rows.** Two prose columns beside a footnote number, or one
-//!    justified line pair, can pass for two rows; the third row is what they lack.
+//! 1. **Enough rows for what they claim.** Two rows stand only with no empty cell, apart from the
+//!    lines around them, under a first row that reads as a header — a chart's axis labels over its
+//!    legend are a pair with gaps, the top of three columns of prose runs on below. Two columns need
+//!    four rows, and are no table where the first column is nothing but list labels or the second
+//!    nothing but rising page numbers: a list or a table of contents set in two columns.
 //! 2. **A steady row pitch**: the gaps between rows vary by at most half their mean.
 //! 3. **The content stream wrote it row by row** — `crate::unruled`'s rule 5, at row grain: every
 //!    run of row *r* is emitted before any run of row *r* + 1. Two columns of prose are written
@@ -64,10 +67,16 @@ pub const TRACK_TOLERANCE: i64 = 600;
 pub const UPRIGHT_TOLERANCE: i64 = 5;
 
 /// The fewest cells a line may open a table with.
-pub const MIN_COLUMNS: usize = 3;
+pub const MIN_COLUMNS: usize = 2;
 
-/// The fewest rows a table may have.
-pub const MIN_ROWS: usize = 3;
+/// The fewest rows a table may have — and a table of this many rows has no empty cell, since two
+/// rows are thin evidence of a column and only a complete pair stands as one.
+pub const MIN_ROWS: usize = 2;
+
+/// The fewest rows a table of two columns may have. Two columns beside each other over a few lines
+/// are as often prose fragments, a short list or a near miss as a table: the engine's gold negative
+/// `unruled-near-miss` is three rows of two columns, and it stays no table.
+pub const MIN_ROWS_OF_TWO_COLUMNS: usize = 4;
 
 /// One run, as the rule reads it.
 #[derive(Debug, Clone, Copy)]
@@ -126,7 +135,8 @@ pub(crate) fn detect(
     let mut i = 0;
     while i < lines.len() {
         if let Some((rows, end)) = grow(&lines, i) {
-            if accepted(&rows) {
+            let pair_stands = rows.len() > MIN_ROWS || pair_plausible(&lines, i, end, &rows, runs);
+            if pair_stands && accepted(&rows, runs) {
                 if let Some(table) = build(page, &rows, runs, alloc)? {
                     tables.push(table);
                     i = end;
@@ -382,9 +392,31 @@ fn grow(lines: &[Line], start: usize) -> Option<(Vec<Row>, usize)> {
 }
 
 /// Whether the rows are a table: enough of them, a steady pitch, and written row by row.
-fn accepted(rows: &[Row]) -> bool {
-    if rows.len() < MIN_ROWS {
+fn accepted(rows: &[Row], runs: &[TrackRun<'_>]) -> bool {
+    let columns = rows[0].cells.len();
+    if rows.len() < MIN_ROWS
+        || (columns == 2 && rows.len() < MIN_ROWS_OF_TWO_COLUMNS)
+        || (rows.len() == MIN_ROWS
+            && rows
+                .iter()
+                .any(|r| r.cells.iter().any(|c| c.runs.is_empty())))
+    {
         return false;
+    }
+    // Two columns, the first nothing but list labels or the second nothing but rising page
+    // numbers, are a list or a table of contents set in two columns, not a table. A list's labels
+    // stand on the left; a right-hand column of small numbers is a column of values.
+    if columns == 2 {
+        let column = |k: usize| -> Vec<String> {
+            rows.iter()
+                .map(|r| cell_text(&r.cells[k], runs))
+                .filter(|t| !t.trim().is_empty())
+                .collect()
+        };
+        let labels = |texts: &[String]| !texts.is_empty() && texts.iter().all(|t| is_label(t));
+        if labels(&column(0)) || is_contents(&column(1)) {
+            return false;
+        }
     }
     // The pitch's spread at most half its mean, in integers: 4·n·Σg² ≤ 5·(Σg)².
     let gaps: Vec<i128> = rows
@@ -410,6 +442,86 @@ fn accepted(rows: &[Row]) -> bool {
         .collect();
     by_run.sort_unstable();
     by_run.windows(2).all(|w| w[0].1 <= w[1].1)
+}
+
+/// Whether a table of two rows stands as one — LiteParse's two-row test, adapted: the pair stands
+/// apart, with no line within a row's reach above or below it, and every cell of its first row
+/// opens with a letter or digit that is no lower-case letter and ends with no comma or semicolon. The
+/// top of three columns of prose — headings over the first lines of their paragraphs — fails the
+/// first, since the paragraphs run on below; a line of names over its affiliation numbers fails the
+/// second, its cells opening with the commas between the names.
+fn pair_plausible(
+    lines: &[Line],
+    start: usize,
+    end: usize,
+    rows: &[Row],
+    runs: &[TrackRun<'_>],
+) -> bool {
+    let within_reach = |above: &Line, below: &Line| {
+        let em = above.em.max(below.em);
+        5 * (below.y - above.y) <= 21 * em
+    };
+    let clear_above = start
+        .checked_sub(1)
+        .and_then(|k| lines.get(k))
+        .is_none_or(|above| !within_reach(above, &lines[start]));
+    let clear_below = lines
+        .get(end)
+        .is_none_or(|below| !within_reach(&lines[end - 1], below));
+    let heads = rows[0].cells.iter().all(|c| {
+        let text = cell_text(c, runs);
+        let text = text.trim();
+        text.chars()
+            .next()
+            .is_some_and(|first| first.is_alphanumeric() && !first.is_lowercase())
+            && !text.ends_with([',', ';'])
+    });
+    clear_above && clear_below && heads
+}
+
+/// A cell's text: its runs' text in content order.
+fn cell_text(cell: &Cell, runs: &[TrackRun<'_>]) -> String {
+    let mut order = cell.runs.clone();
+    order.sort_unstable();
+    order.iter().map(|&i| runs[i].text).collect()
+}
+
+/// Whether `text` is a list label and nothing more: a bullet or another mark that is no letter or
+/// digit, a number of up to three digits, or a single letter — the last two perhaps opened by `(`
+/// and closed by `.` or `)`. A column of these is a list's labels, or a column of note numbers.
+fn is_label(text: &str) -> bool {
+    let text = text.trim();
+    let mut chars = text.chars();
+    if let (Some(only), None) = (chars.next(), chars.next()) {
+        if !only.is_alphanumeric() {
+            return true;
+        }
+    }
+    let text = text.strip_prefix('(').unwrap_or(text);
+    let text = text
+        .strip_suffix('.')
+        .or_else(|| text.strip_suffix(')'))
+        .unwrap_or(text);
+    ((1..=3).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_digit()))
+        || (text.chars().count() == 1 && text.chars().all(|c| c.is_ascii_alphabetic()))
+}
+
+/// Whether `texts`, a column's cells top to bottom, are a table of contents' page numbers: three
+/// or more, each a number of up to four digits or a roman numeral, the numbers never falling.
+fn is_contents(texts: &[String]) -> bool {
+    let mut last = 0u32;
+    texts.len() >= 3
+        && texts.iter().all(|t| {
+            let t = t.trim();
+            if !t.is_empty() && t.len() <= 4 && t.bytes().all(|b| b.is_ascii_digit()) {
+                let page = t.parse::<u32>().unwrap_or(0);
+                let rising = page >= last;
+                last = page;
+                rising
+            } else {
+                !t.is_empty() && t.chars().all(|c| "ivxlcdmIVXLCDM".contains(c))
+            }
+        })
 }
 
 /// The table the rows make, or `None` where a run of it has no measured box to place it by.
@@ -502,7 +614,7 @@ fn build(
         cells,
         check,
         tagged_check: None,
-        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V1.to_string(),
+        rule: ethos_parser_core::TABLE_DETECTION_TRACKS_V2.to_string(),
     }))
 }
 
@@ -584,7 +696,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].rows, found[0].columns), (4, 3));
         assert_eq!(texts(&found[0])[2], ["South", "18.25", "9.1"]);
-        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V1);
+        assert_eq!(found[0].rule, ethos_parser_core::TABLE_DETECTION_TRACKS_V2);
     }
 
     /// **The same shape written down each column is prose, not a table** — two columns of text
@@ -597,9 +709,108 @@ mod tests {
         assert!(tables(&runs).is_empty());
     }
 
+    /// **Two rows stand only complete**: a header and one full row are a table, and the same pair
+    /// with a cell missing is not — two rows are thin evidence of a column.
     #[test]
-    fn two_rows_are_not_a_table() {
-        assert!(tables(&numbers()[..6]).is_empty());
+    fn two_rows_are_a_table_only_with_no_empty_cell() {
+        let found = tables(&numbers()[..6]);
+        assert_eq!((found[0].rows, found[0].columns), (2, 3));
+        let mut gapped = numbers()[..6].to_vec();
+        gapped.remove(4);
+        assert!(tables(&gapped).is_empty());
+    }
+
+    /// **A pair with prose running on below it is the top of a page's columns**, not a table.
+    #[test]
+    fn a_pair_with_prose_running_on_below_is_no_table() {
+        let mut runs = numbers()[..6].to_vec();
+        runs.push(run(
+            100,
+            132,
+            300,
+            "and the paragraph runs on across the page",
+        ));
+        assert!(tables(&runs).is_empty());
+        let mut apart = numbers()[..6].to_vec();
+        apart.push(run(100, 200, 300, "a paragraph well below the pair"));
+        assert_eq!(
+            tables(&apart).len(),
+            1,
+            "the same pair with room below stands"
+        );
+    }
+
+    /// **A pair whose first row is no header is no table**: a cell opening lower-case or with the
+    /// comma between two names, as a line of authors over its affiliation numbers does.
+    #[test]
+    fn a_pair_whose_first_row_is_no_header_is_no_table() {
+        for head in [", Jan Koschorreck", "region"] {
+            let mut runs = numbers()[..6].to_vec();
+            runs[0].text = head;
+            assert!(tables(&runs).is_empty(), "{head:?}");
+        }
+    }
+
+    /// Two columns of `n` rows: a term and its definition.
+    fn glossary(n: usize) -> Vec<TrackRun<'static>> {
+        const TERMS: [(&str, &str); 4] = [
+            ("AED", "Advanced Electronic Data"),
+            ("AFC", "Audit and Finance Committee"),
+            ("ASC", "Accounting Standards Codification"),
+            ("ASU", "Accounting Standards Update"),
+        ];
+        TERMS[..n]
+            .iter()
+            .enumerate()
+            .flat_map(|(k, &(term, definition))| {
+                let y = 100 + 16 * k as i64;
+                [run(100, y, 30, term), run(200, y, 160, definition)]
+            })
+            .collect()
+    }
+
+    /// **Two columns need four rows**: a glossary of four terms is a table, of three is not.
+    #[test]
+    fn two_columns_need_four_rows() {
+        assert!(tables(&glossary(3)).is_empty());
+        let found = tables(&glossary(4));
+        assert_eq!((found[0].rows, found[0].columns), (4, 2));
+    }
+
+    /// **A list set in two columns is a list**: a column of bullets or numbers beside its items.
+    #[test]
+    fn a_column_of_list_labels_is_a_list_not_a_table() {
+        for label in ["•", "1.", "(a)", "12"] {
+            let runs: Vec<TrackRun<'static>> = (0..4)
+                .flat_map(|k| {
+                    let y = 100 + 16 * k;
+                    [
+                        run(100, y, 8, label),
+                        run(130, y, 200, "an item of the list"),
+                    ]
+                })
+                .collect();
+            assert!(tables(&runs).is_empty(), "{label:?}");
+        }
+    }
+
+    /// **A table of contents is not a table**: entries beside page numbers that never fall. The
+    /// same column with a number falling is a table's column of values.
+    #[test]
+    fn rising_page_numbers_are_contents_and_falling_ones_are_values() {
+        let contents = |pages: [&'static str; 4]| -> Vec<TrackRun<'static>> {
+            pages
+                .iter()
+                .enumerate()
+                .flat_map(|(k, &page)| {
+                    let y = 100 + 16 * k as i64;
+                    [run(100, y, 160, "Chapter title"), run(400, y, 15, page)]
+                })
+                .collect()
+        };
+        assert!(tables(&contents(["3", "7", "7", "12"])).is_empty());
+        assert!(tables(&contents(["iii", "v", "1", "9"])).is_empty());
+        assert_eq!(tables(&contents(["30", "7", "12", "4"])).len(), 1);
     }
 
     /// A cell's second line joins it, and the row count does not grow.
@@ -646,7 +857,7 @@ mod tests {
 
     /// **A glyph drawn up the margin is no column.** Two columns, and on each row's baseline a
     /// character of a document number set vertically beside the text: its box runs across the
-    /// page, its pen along it, and three cells a line would otherwise open a table.
+    /// page, its pen along it, and it would otherwise be a third column.
     #[test]
     fn a_margin_set_vertically_opens_no_column() {
         let mut runs = Vec::new();
@@ -662,7 +873,7 @@ mod tests {
             runs.push(run(100, y, 40, "Label"));
             runs.push(run(240, y, 30, "Value"));
         }
-        assert!(tables(&runs).is_empty());
+        assert_eq!(tables(&runs)[0].columns, 2);
         runs.iter_mut().filter(|r| r.x == 2000).for_each(|r| {
             r.rect = Some(QuantRect {
                 x0: r.x,
@@ -672,8 +883,8 @@ mod tests {
             })
         });
         assert_eq!(
-            tables(&runs).len(),
-            1,
+            tables(&runs)[0].columns,
+            3,
             "the premise: set upright, the same glyphs are a column"
         );
     }

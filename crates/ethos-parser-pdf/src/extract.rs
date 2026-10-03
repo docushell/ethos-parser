@@ -873,15 +873,12 @@ fn extract_page(
 
         // Decision #38. Last, on the runs no table above holds: grids inferred from the whitespace
         // across a table's rows (`docs/31-TABLE-TRACKS-SCOPE.md`). Here, before reading order,
-        // because the rule reads the order the content stream wrote the rows in. **Not on a page
-        // whose structure tree declares a `/Table`**: the author's declaration wins, as it does for
-        // headings, and an inferred table there would take the declared one's place in the pairing
-        // below.
-        let declares_tables = structure
-            .as_ref()
-            .is_some_and(|tree| tree.tables.iter().any(|t| t.page == Some(page_id)));
-        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V1
-            && !declares_tables
+        // because the rule reads the order the content stream wrote the rows in. **Only where the
+        // document declares no author structure**: a tagged document says what is a table, and an
+        // inferred one would override a list or a paragraph it declared — and, on a page that
+        // declares a `/Table`, take that table's place in the pairing below.
+        if profile.table_detection.tracks == ethos_parser_core::TABLE_DETECTION_TRACKS_V2
+            && no_author_structure(structure.as_ref())
         {
             let track_runs: Vec<crate::tracks::TrackRun<'_>> = runs
                 .iter()
